@@ -21,4 +21,8 @@ void ecs_table_index_fini(ecs_table_index_t *map);
 
 #define ecs_table_index_at(map, index) ecs_vec_get_mut(&(map)->tables, index, ecs_table_t)
 
-uint16_t ecs_table_index_get_or_create(ecs_table_index_t *map, ecs_type_t type, const struct ecs_component_index_s *component_index);
+uint16_t ecs_table_index_get_or_create(
+    ecs_table_index_t *map,
+    ecs_type_t type,
+    const struct ecs_component_index_s *component_index
+);

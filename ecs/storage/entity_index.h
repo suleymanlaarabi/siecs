@@ -10,11 +10,11 @@ typedef struct {
 } ecs_entity_record_t;
 
 typedef struct {
-    ecs_vec_t entities; // ecs_entity_record_t
+    ecs_vec_t entities;  // ecs_entity_record_t
     ecs_vec_t available; // uint32_t
 } ecs_entity_index_t;
 
-#define ecs_entity_index_get_record(index, entity_id) \
+#define ecs_entity_index_get_record(index, entity_id)                                              \
     ecs_vec_get_mut((&index->entities), entity_id, ecs_entity_record_t)
 
 static inline ecs_entity_t ecs_entity_index_create(ecs_entity_index_t *index, uint32_t row) {
@@ -27,8 +27,9 @@ static inline ecs_entity_t ecs_entity_index_create(ecs_entity_index_t *index, ui
     } else {
         entity_id = index->entities.size;
         generation = 0;
-        ecs_entity_record_t record = {0, .table_row = row};
-        ecs_vec_push(&index->entities, &record, sizeof(ecs_entity_record_t));
+        ecs_entity_record_t *record = (ecs_entity_record_t *)
+            ecs_vec_push_empty(&index->entities, sizeof(ecs_entity_record_t));
+        *record = (ecs_entity_record_t){ 0, .table_row = row };
     }
     return ecs_entity(entity_id, generation);
 }

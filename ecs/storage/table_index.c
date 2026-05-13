@@ -1,6 +1,6 @@
 #include "table_index.h"
-#include "../table.h"
 #include "../datastructure/vec.h"
+#include "../table.h"
 #include "ecs/type.h"
 #include <stdint.h>
 #include <stdlib.h>
@@ -14,7 +14,7 @@ static inline uint32_t ecs_type_hash(ecs_type_t type) {
         h ^= (uint32_t)type.ids[i];
         h *= 16777619u;
     }
-    // Final mix to improve distribution
+
     h ^= h >> 16;
     h *= 0x85ebca6bu;
     h ^= h >> 13;
@@ -65,7 +65,11 @@ static void ecs_table_index_resize(ecs_table_index_t *map) {
     free(old_slots);
 }
 
-uint16_t ecs_table_index_get_or_create(ecs_table_index_t *map, ecs_type_t type, const struct ecs_component_index_s *component_index) {
+uint16_t ecs_table_index_get_or_create(
+    ecs_table_index_t *map,
+    ecs_type_t type,
+    const struct ecs_component_index_s *component_index
+) {
     uint32_t hash = ecs_type_hash(type);
     uint32_t slot_idx = hash & map->slot_mask;
 
@@ -73,7 +77,9 @@ uint16_t ecs_table_index_get_or_create(ecs_table_index_t *map, ecs_type_t type, 
     while (map->slots[slot_idx].table_index != UINT32_MAX) {
         if (ECS_LIKELY(map->slots[slot_idx].hash == hash)) {
             ecs_table_t *table = ecs_table_index_at(map, map->slots[slot_idx].table_index);
-            if (ECS_LIKELY(ecs_type_equals(table->type.ids, table->type.count, type.ids, type.count))) {
+            if (ECS_LIKELY(
+                    ecs_type_equals(table->type.ids, table->type.count, type.ids, type.count)
+                )) {
                 ecs_type_fini(&type);
                 return (uint16_t)map->slots[slot_idx].table_index;
             }
@@ -93,7 +99,7 @@ uint16_t ecs_table_index_get_or_create(ecs_table_index_t *map, ecs_type_t type, 
 
     uint32_t table_idx = map->tables.size;
     ecs_table_t new_table;
-    ecs_table_init(&new_table, type, table_idx, component_index);
+    ecs_table_init(&new_table, type, component_index);
     ecs_vec_push(&map->tables, &new_table, sizeof(ecs_table_t));
 
     map->slots[slot_idx].hash = hash;

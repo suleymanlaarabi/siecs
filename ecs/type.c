@@ -1,10 +1,9 @@
 #include "type.h"
 #include <stdint.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
-static inline
-void ecs_type_sort(ecs_type_t *type) {
+static inline void ecs_type_sort(ecs_type_t *type) {
     // insertion sort is efficient for nearly sorted arrays
     for (int i = 1; i < type->count; i++) {
         uint16_t key = type->ids[i];
@@ -65,7 +64,6 @@ void ecs_type_fini(ecs_type_t *type) {
         type->ids = NULL;
     }
 }
-
 
 uint64_t ecs_type_bloom(ecs_type_t *type) {
     uint64_t filter = 0;
