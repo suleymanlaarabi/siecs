@@ -13,13 +13,17 @@ Test(table_index, basic) {
     ecs_component_index_create(&comp_idx, "Pos", 8, false);
     ecs_component_index_create(&comp_idx, "Vel", 8, false);
 
-    uint16_t *ids1 = malloc(sizeof(uint16_t)); ids1[0] = 1;
+    uint16_t *ids1 = malloc(sizeof(uint16_t));
+    ids1[0] = 1;
     ecs_type_t type1 = { .ids = ids1, .count = 1 };
 
-    uint16_t *ids2 = malloc(2 * sizeof(uint16_t)); ids2[0] = 1; ids2[1] = 2;
+    uint16_t *ids2 = malloc(2 * sizeof(uint16_t));
+    ids2[0] = 1;
+    ids2[1] = 2;
     ecs_type_t type2 = { .ids = ids2, .count = 2 };
 
-    uint16_t *ids3 = malloc(sizeof(uint16_t)); ids3[0] = 1;
+    uint16_t *ids3 = malloc(sizeof(uint16_t));
+    ids3[0] = 1;
     ecs_type_t type3 = { .ids = ids3, .count = 1 };
 
     uint16_t idx1 = ecs_table_index_get_or_create(&map, type1, &comp_idx);
