@@ -20,9 +20,6 @@ TEST_LDLIBS := -lcriterion
 OBJ_DIR     := .build/obj
 BIN_DIR     := bin
 
-
-# Source and Test discovery
-# We use find and then strip the ./ prefix for consistency
 ALL_C_FILES := $(shell find . -type f -name '*.c' -not -path "./.build/*")
 ALL_C_FILES := $(ALL_C_FILES:./%=%)
 
@@ -36,9 +33,11 @@ LIB_OBJ   := $(patsubst %.c,$(OBJ_DIR)/%.o,$(LIB_SRC))
 TEST_OBJ  := $(patsubst %.c,$(OBJ_DIR)/%.o,$(TEST_SRC))
 BENCH_OBJ := $(patsubst %.c,$(OBJ_DIR)/%.o,$(BENCH_SRC))
 
+FORMAT_FILES := $(shell find . -type f \( -name '*.c' -o -name '*.h' \) -not -path "./.build/*" -not -path "./docs/*")
+
 DEPS := $(OBJ:.o=.d) $(LIB_OBJ:.o=.d) $(TEST_OBJ:.o=.d) $(BENCH_OBJ:.o=.d)
 
-.PHONY: all build run test bench clean fclean re
+.PHONY: all build run test bench clean fclean re format format-check tidy
 
 all: build
 
@@ -56,6 +55,12 @@ test: $(TEST_NAME)
 bench: $(BENCH_NAME)
 	./$(BENCH_NAME)
 
+format:
+	clang-format -i $(FORMAT_FILES)
+
+format-check:
+	clang-format --dry-run --Werror $(FORMAT_FILES)
+
 $(NAME): $(OBJ) | $(BIN_DIR)
 	$(CC) $(OBJ) -o $@ $(LDFLAGS) $(LDLIBS)
 
@@ -65,7 +70,6 @@ $(TEST_NAME): $(LIB_OBJ) $(TEST_OBJ) | $(BIN_DIR)
 $(BENCH_NAME): $(LIB_OBJ) $(BENCH_OBJ) | $(BIN_DIR)
 	$(CC) $(LIB_OBJ) $(BENCH_OBJ) -o $@ $(LDFLAGS) $(LDLIBS)
 
-# Bench objects compile with optimisations enabled
 $(OBJ_DIR)/bench/%.o: bench/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(BENCH_OPT) -c $< -o $@

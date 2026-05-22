@@ -1,20 +1,20 @@
-#include "bench.h"
 #include "../ecs/world.h"
-#include <stdlib.h>
+#include "bench.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 /* ── Components (39 variables total) ───────────────────────────── */
 
-ECS_COMPONENT_DECLARE(Position,    { float x, y, z; })           /* 3  */
-ECS_COMPONENT_DECLARE(Velocity,    { float x, y, z; })           /* 3  */
-ECS_COMPONENT_DECLARE(Rotation,    { float x, y, z, w; })        /* 4  */
-ECS_COMPONENT_DECLARE(Scale,       { float x, y, z; })           /* 3  */
-ECS_COMPONENT_DECLARE(Color,       { float r, g, b, a; })        /* 4  */
-ECS_COMPONENT_DECLARE(Health,      { float hp, max_hp, regen; }) /* 3  */
-ECS_COMPONENT_DECLARE(Stats,       { float atk, def, spd, mass; }) /* 4 */
-ECS_COMPONENT_DECLARE(Meta,        { int active, layer, tag, flags; }) /* 4 */
-ECS_COMPONENT_DECLARE(Camera,      { float near, far, fov, aspect; }) /* 4 */
-ECS_COMPONENT_DECLARE(Light,       { float lx, ly, lz, lr, lg, lb, intensity; }) /* 7 */
+ECS_COMPONENT_DECLARE(Position, { float x, y, z; })                        /* 3  */
+ECS_COMPONENT_DECLARE(Velocity, { float x, y, z; })                        /* 3  */
+ECS_COMPONENT_DECLARE(Rotation, { float x, y, z, w; })                     /* 4  */
+ECS_COMPONENT_DECLARE(Scale, { float x, y, z; })                           /* 3  */
+ECS_COMPONENT_DECLARE(Color, { float r, g, b, a; })                        /* 4  */
+ECS_COMPONENT_DECLARE(Health, { float hp, max_hp, regen; })                /* 3  */
+ECS_COMPONENT_DECLARE(Stats, { float atk, def, spd, mass; })               /* 4 */
+ECS_COMPONENT_DECLARE(Meta, { int active, layer, tag, flags; })            /* 4 */
+ECS_COMPONENT_DECLARE(Camera, { float near, far, fov, aspect; })           /* 4 */
+ECS_COMPONENT_DECLARE(Light, { float lx, ly, lz, lr, lg, lb, intensity; }) /* 7 */
 
 ECS_COMPONENT_DEFINE(Position)
 ECS_COMPONENT_DEFINE(Velocity)
@@ -102,7 +102,7 @@ static void teardown_add(void *ctx) {
 
 static void setup_kill(void *ctx) {
     (void)ctx;
-    g_world    = ecs_init();
+    g_world = ecs_init();
     g_entities = malloc(N_ENTITIES * sizeof(ecs_entity_t));
     register_components(g_world);
     for (int i = 0; i < N_ENTITIES; i++) {
@@ -132,7 +132,7 @@ static void teardown_kill(void *ctx) {
 
 static void setup_has(void *ctx) {
     (void)ctx;
-    g_world    = ecs_init();
+    g_world = ecs_init();
     g_entities = malloc(N_ENTITIES * sizeof(ecs_entity_t));
     register_components(g_world);
     for (int i = 0; i < N_ENTITIES; i++) {
@@ -164,17 +164,20 @@ static void teardown_has(void *ctx) {
 int main(void) {
     printf("ECS benchmark — %d entities per run\n\n", N_ENTITIES);
 
-    BENCH("ecs_new x100000",
-          5, NULL, bench_create, setup_create, teardown_create);
+    BENCH("ecs_new x100000", 5, NULL, bench_create, setup_create, teardown_create);
 
-    BENCH("ecs_new + add 10 components x100000",
-          5, NULL, bench_add_components, setup_add, teardown_add);
+    BENCH(
+        "ecs_new + add 10 components x100000",
+        5,
+        NULL,
+        bench_add_components,
+        setup_add,
+        teardown_add
+    );
 
-    BENCH("ecs_kill x100000",
-          5, NULL, bench_kill, setup_kill, teardown_kill);
+    BENCH("ecs_kill x100000", 5, NULL, bench_kill, setup_kill, teardown_kill);
 
-    BENCH("ecs_has x100000",
-          5, NULL, bench_has, setup_has, teardown_has);
+    BENCH("ecs_has x100000", 5, NULL, bench_has, setup_has, teardown_has);
 
     return 0;
 }
