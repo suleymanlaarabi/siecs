@@ -41,11 +41,11 @@ void ecs_fini(ecs_world_t *world);
         .name = #cname,                                                                            \
         .size = sizeof(cname),                                                                     \
     };                                                                                             \
-    ecs_component_t ecs_id(cname)
+    ecs_component_t ecs_id(cname) = 0
 
 #define ECS_BIT_DEFINE(cname)                                                                      \
     ecs_component_desc_t ecs_id(cname##_desc) = { .name = #cname, .size = 0, .is_bitset = true };  \
-    ecs_component_t ecs_id(cname)
+    ecs_component_t ecs_id(cname) = 0
 
 #define ECS_COMPONENT_REGISTER(world, cname)                                                       \
     ecs_id(cname) = ecs_component_init(world, &ecs_id(cname##_desc))

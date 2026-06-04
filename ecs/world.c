@@ -1,3 +1,4 @@
+#include "ecs/world.h"
 #include "./id.h"
 #include "ecs/datastructure/bitset.h"
 #include "ecs/datastructure/idmap.h"
@@ -7,10 +8,12 @@
 #include "ecs/storage/table_index.h"
 #include "ecs/table.h"
 #include "ecs/type.h"
+#include "ecs/utils.h"
 #include "world_internal.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #define ecs_get_record(world, entity)                                                              \
     ecs_vec_get_mut(&world->entity_index.entities, ecs_first(entity), ecs_entity_record_t)
@@ -37,6 +40,7 @@ ecs_world_t *ecs_init() {
 }
 
 ecs_entity_t ecs_new(ecs_world_t *world) {
+    ecs_assert_not_null(world);
     ecs_table_t *table = ecs_get_table(world, 0);
 
     ecs_entity_t entity = ecs_entity_index_create(&world->entity_index, table->entity_count);
@@ -46,6 +50,7 @@ ecs_entity_t ecs_new(ecs_world_t *world) {
 }
 
 ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc) {
+    ecs_assert_not_null(world);
     return ecs_component_index_create(
         &world->component_index,
         desc->name,
@@ -149,21 +154,26 @@ static inline void ecs_emit(
     }
 }
 
-void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
+void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
+    ecs_assert_not_null(world);
+    ecs_assert_id_valid(cid);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     uint16_t from_id = record->table_id;
     ecs_table_t *table = ecs_get_table(world, from_id);
 
-    uint16_t new_table_id = ecs_table_get_add_edge(table, id);
+    uint16_t new_table_id = ecs_table_get_add_edge(table, cid);
 
     if (new_table_id == UINT16_MAX) {
         uint32_t old_count = world->table_index.tables.size;
-        ecs_type_t new_type = ecs_type_with_add(&table->type, id);
+        ecs_type_t new_type = ecs_type_with_add(&table->type, cid);
         new_table_id =
             ecs_table_index_get_or_create(&world->table_index, new_type, &world->component_index);
         // Re-fetch: ecs_table_index_get_or_create may realloc the tables vec
         table = ecs_get_table(world, from_id);
-        ecs_id_map_set(&table->add_edge, id, new_table_id);
+        ecs_id_map_set(&table->add_edge, cid, new_table_id);
         if ((uint32_t)new_table_id == old_count) {
             ecs_query_index_add_table(
                 &world->query_index,
@@ -175,30 +185,35 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
                 ecs_get_table(world, new_table_id)
             );
         }
-    } else if (new_table_id < table->type.count && table->type.ids[new_table_id] == id) {
+    } else if (new_table_id < table->type.count && table->type.ids[new_table_id] == cid) {
         return;
     }
 
-    migrate_entity_add(world, record, entity, table, new_table_id, id);
+    migrate_entity_add(world, record, entity, table, new_table_id, cid);
 
     ecs_emit(world, ecs_get_table(world, new_table_id), entity, OnAdd, NULL);
 }
 
-void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
+void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
+    ecs_assert_not_null(world);
+    ecs_assert_id_valid(cid);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     uint16_t from_id = record->table_id;
     ecs_table_t *table = ecs_get_table(world, from_id);
 
-    int col_idx = ecs_table_get_column_index(table, id);
+    int col_idx = ecs_table_get_column_index(table, cid);
 
-    if (col_idx == UINT16_MAX || col_idx >= table->type.count || table->type.ids[col_idx] != id) {
+    if (col_idx == UINT16_MAX || col_idx >= table->type.count || table->type.ids[col_idx] != cid) {
         return;
     }
 
     uint16_t new_table_id = table->cls[col_idx].remove_edge;
     if (new_table_id == UINT16_MAX) {
         uint32_t old_count = world->table_index.tables.size;
-        ecs_type_t new_type = ecs_type_with_remove(&table->type, id);
+        ecs_type_t new_type = ecs_type_with_remove(&table->type, cid);
         new_table_id =
             ecs_table_index_get_or_create(&world->table_index, new_type, &world->component_index);
         // Re-fetch: ecs_table_index_get_or_create may realloc the tables vec
@@ -221,13 +236,22 @@ void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id)
 
     migrate_entity_remove(world, record, entity, table, new_table_id, (uint16_t)col_idx);
 }
-void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
+void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
+    ecs_assert_not_null(world);
+    ecs_assert_id_valid(cid);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
-    return ecs_table_get_component(table, id, record->table_row);
+    return ecs_table_get_component(table, cid, record->table_row);
 }
 
 void ecs_kill(ecs_world_t *world, ecs_entity_t entity) {
+    ecs_assert_not_null(world);
+    ecs_assert_entity_valid(entity);
+    ecs_is_alive(world, entity);
+
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
 
@@ -241,6 +265,10 @@ void ecs_kill(ecs_world_t *world, ecs_entity_t entity) {
 }
 
 bool ecs_has_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
+    ecs_assert_not_null(world);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
     uint16_t tid = ecs_get_record(world, entity)->table_id;
     return ecs_table_has(ecs_get_table(world, tid), id);
 }
@@ -259,6 +287,10 @@ void ecs_fini(ecs_world_t *world) {
 }
 
 void ecs_set_bit(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, bool value) {
+    ecs_assert_not_null(world);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
 
@@ -278,6 +310,10 @@ void ecs_set_bit(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, bo
 }
 
 bool ecs_get_bit(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
+    ecs_assert_not_null(world);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
 
@@ -292,6 +328,7 @@ bool ecs_get_bit(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
 }
 
 uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *desc) {
+    ecs_assert_not_null(world);
     uint32_t qid = ecs_query_index_create(&world->query_index, desc);
     ecs_table_t *tables = ecs_vec_data(&world->table_index.tables, ecs_table_t);
     ecs_query_index_update_matches(
@@ -306,6 +343,8 @@ uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *desc) {
 ecs_event_t ecs_event(ecs_world_t *world) { return world->observer_index.event_count++; }
 
 uint32_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc) {
+    ecs_assert_not_null(world);
+
     uint32_t oid = ecs_observer_index_create(&world->observer_index, desc);
     ecs_table_t *tables = ecs_vec_data(&world->table_index.tables, ecs_table_t);
     ecs_observer_index_match_tables(
@@ -318,12 +357,18 @@ uint32_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc) 
 }
 
 void ecs_observer_trigger(ecs_world_t *world, ecs_entity_t entity, ecs_event_t event, void *data) {
+    ecs_assert_not_null(world);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
     ecs_emit(world, table, entity, event, data);
 }
 
 ecs_iter_t ecs_query_iter(ecs_world_t *world, uint32_t query_id) {
+    ecs_assert_not_null(world);
+
     ecs_query_cache_t *cache =
         ecs_vec_get_mut(&world->query_index.queries, query_id, ecs_query_cache_t);
     return (ecs_iter_t){
@@ -347,12 +392,15 @@ ecs_table_t *ecs_iter_table(ecs_iter_t *it) {
 }
 
 void *ecs_field(ecs_iter_t *it, ecs_component_t cid) {
+    ecs_assert_id_valid(cid);
+
     ecs_table_t *table = ecs_iter_table(it);
     uint16_t col = ecs_table_get_column_index(table, cid);
     return table->cls[col].data;
 }
 
 ecs_bitfield_t ecs_bitfield(ecs_iter_t *it, ecs_component_t cid) {
+    ecs_assert_id_valid(cid);
     ecs_table_t *table = ecs_iter_table(it);
     uint16_t col = ecs_table_get_column_index(table, cid);
 
