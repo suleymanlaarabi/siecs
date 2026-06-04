@@ -1,6 +1,7 @@
 #include "../ecs/id.h"
 #include "../ecs/world.h"
 #include <criterion/criterion.h>
+#include <criterion/internal/test.h>
 #include <stdint.h>
 
 typedef struct {
@@ -47,6 +48,23 @@ Test(component, add_remove) {
     v = ecs_get_cid(world, e, vel_id);
     cr_assert_float_eq(v->dx, 1.0f, 0.0001f);
     cr_assert_float_eq(v->dy, 2.0f, 0.0001f);
+
+    ecs_fini(world);
+}
+
+Test(component, set) {
+    ecs_world_t *world = ecs_init();
+
+    ecs_component_t pos_id = ecs_component(world, { .name = "Position", .size = sizeof(Position) });
+
+    ecs_entity_t e = ecs_new(world);
+
+    Position new_pos = { 5.0f, 10.0f };
+    ecs_set_cid(world, e, pos_id, &new_pos);
+
+    Position *p = ecs_get_cid(world, e, pos_id);
+    cr_assert_float_eq(p->x, 5.0f, 0.0001f);
+    cr_assert_float_eq(p->y, 10.0f, 0.0001f);
 
     ecs_fini(world);
 }

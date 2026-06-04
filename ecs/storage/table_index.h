@@ -1,6 +1,5 @@
 #pragma once
 #include "../datastructure/vec.h"
-#include "../storage/component_index.h"
 #include "../type.h"
 #include <stdint.h>
 
@@ -21,8 +20,8 @@ void ecs_table_index_fini(ecs_table_index_t *map);
 
 #define ecs_table_index_at(map, index) ecs_vec_get_mut(&(map)->tables, index, ecs_table_t)
 
+struct ecs_world_s;
 uint16_t ecs_table_index_get_or_create(
-    ecs_table_index_t *map,
-    ecs_type_t type,
-    const struct ecs_component_index_s *component_index
+    struct ecs_world_s *world,
+    ecs_type_t type
 );

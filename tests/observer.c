@@ -16,7 +16,6 @@ static int g_add_count;
 static int g_remove_count;
 static int g_custom_count;
 static ecs_entity_t g_last_entity;
-static void *g_last_data;
 static bool g_had_component_on_remove;
 
 static void reset_state(void) {
@@ -24,29 +23,25 @@ static void reset_state(void) {
     g_remove_count = 0;
     g_custom_count = 0;
     g_last_entity = 0;
-    g_last_data = NULL;
     g_had_component_on_remove = false;
 }
 
-static void on_add(ecs_world_t *world, ecs_entity_t entity, void *data) {
+static void on_add(ecs_world_t *world, ecs_entity_t entity) {
     (void)world;
-    (void)data;
     g_add_count++;
     g_last_entity = entity;
 }
 
-static void on_remove(ecs_world_t *world, ecs_entity_t entity, void *data) {
-    (void)data;
+static void on_remove(ecs_world_t *world, ecs_entity_t entity) {
     g_remove_count++;
     // OnRemove fires before migration, so the component is still present.
     g_had_component_on_remove = ecs_has(world, entity, Player);
 }
 
-static void on_custom(ecs_world_t *world, ecs_entity_t entity, void *data) {
+static void on_custom(ecs_world_t *world, ecs_entity_t entity) {
     (void)world;
     g_custom_count++;
     g_last_entity = entity;
-    g_last_data = data;
 }
 
 static ecs_world_t *setup(void) {
@@ -161,8 +156,8 @@ Test(observer, custom_event_only_matching_table) {
     ecs_entity_t enemy = ecs_new(world);
     ecs_add(world, enemy, Enemy);
 
-    ecs_observer_trigger(world, player, damage, NULL);
-    ecs_observer_trigger(world, enemy, damage, NULL);
+    ecs_observer_trigger(world, player, damage);
+    ecs_observer_trigger(world, enemy, damage);
 
     cr_assert_eq(g_custom_count, 1, "Custom event must fire only for the matching table");
     cr_assert_eq(g_last_entity, player, "Custom event must report the matching entity");
@@ -187,13 +182,9 @@ Test(observer, custom_event_data_reaches_callback) {
     ecs_entity_t player = ecs_new(world);
     ecs_add(world, player, Player);
 
-    Damage dmg = { .amount = 10 };
-    ecs_observer_trigger(world, player, damage, &dmg);
+    ecs_observer_trigger(world, player, damage);
 
     cr_assert_eq(g_custom_count, 1, "Custom event should fire once");
-    cr_assert_eq(g_last_data, &dmg, "Event data pointer must reach the callback");
-    cr_assert_eq(((Damage *)g_last_data)->amount, 10, "Event data payload must be intact");
-
     ecs_fini(world);
 }
 

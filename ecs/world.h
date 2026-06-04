@@ -69,8 +69,11 @@ void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id)
 #define ecs_has(world, entity, cname) ecs_has_cid(world, entity, ecs_id(cname))
 bool ecs_has_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
-#define ecs_get(world, entity, cname) ecs_get_cid(world, entity, ecs_id(cname))
+#define ecs_get(world, entity, cname) ((cname *) ecs_get_cid(world, entity, ecs_id(cname)))
 void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+
+#define ecs_set(world, entity, cname, ...) ecs_set_cid(world, entity, ecs_id(cname), &(cname) __VA_ARGS__)
+void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
 
 void ecs_set_bit(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, bool value);
 bool ecs_get_bit(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
@@ -89,7 +92,7 @@ enum {
     OnSet = 2,
 };
 
-typedef void (*ecs_observer_callback_t)(ecs_world_t *world, ecs_entity_t entity, void *event);
+typedef void (*ecs_observer_callback_t)(ecs_world_t *world, ecs_entity_t entity);
 
 typedef struct {
     ecs_event_t on;
@@ -101,7 +104,7 @@ typedef struct {
 
 ecs_event_t ecs_event(ecs_world_t *world);
 uint32_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc);
-void ecs_observer_trigger(ecs_world_t *world, ecs_entity_t entity, ecs_event_t event, void *data);
+void ecs_observer_trigger(ecs_world_t *world, ecs_entity_t entity, ecs_event_t event);
 
 typedef struct {
     ecs_world_t *world;

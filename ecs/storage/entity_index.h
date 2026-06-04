@@ -15,7 +15,7 @@ typedef struct {
 } ecs_entity_index_t;
 
 #define ecs_entity_index_get_record(index, entity_id)                                              \
-    ecs_vec_get_mut((&index->entities), entity_id, ecs_entity_record_t)
+    ecs_vec_get_mut((&(index)->entities), entity_id, ecs_entity_record_t)
 
 static inline ecs_entity_t ecs_entity_index_create(ecs_entity_index_t *index, uint32_t row) {
     uint32_t entity_id;

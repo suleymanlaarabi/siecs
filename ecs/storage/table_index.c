@@ -1,7 +1,11 @@
-#include "table_index.h"
 #include "../datastructure/vec.h"
 #include "../table.h"
+#include "ecs/storage/component_index.h"
+#include "ecs/storage/observer_index.h"
+#include "ecs/storage/query_index.h"
 #include "ecs/type.h"
+#include "ecs/world.h"
+#include "ecs/world_internal.h"
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -66,10 +70,11 @@ static void ecs_table_index_resize(ecs_table_index_t *map) {
 }
 
 uint16_t ecs_table_index_get_or_create(
-    ecs_table_index_t *map,
-    ecs_type_t type,
-    const struct ecs_component_index_s *component_index
+    ecs_world_t *world,
+    ecs_type_t type
 ) {
+    const ecs_component_index_t *component_index = &world->component_index;
+    ecs_table_index_t *map = &world->table_index;
     uint32_t hash = ecs_type_hash(type);
     uint32_t slot_idx = hash & map->slot_mask;
 
@@ -105,5 +110,14 @@ uint16_t ecs_table_index_get_or_create(
     map->slots[slot_idx].hash = hash;
     map->slots[slot_idx].table_index = table_idx;
 
+    ecs_query_index_add_table(
+        &world->query_index,
+        ecs_table_index_at(map ,table_idx),
+        table_idx
+    );
+    ecs_observer_index_add_table(
+        &world->observer_index,
+        ecs_table_index_at(map, table_idx)
+    );
     return (uint16_t)table_idx;
 }
