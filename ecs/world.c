@@ -1,6 +1,6 @@
 #include "ecs/world.h"
 #include "./id.h"
-#include "ecs/datastructure/bitset.h"
+#include "ecs/compiler.h"
 #include "ecs/datastructure/idmap.h"
 #include "ecs/datastructure/vec.h"
 #include "ecs/storage/component_index.h"
@@ -51,31 +51,16 @@ ecs_entity_t ecs_new(ecs_world_t *world) {
 
 ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc) {
     ecs_assert_not_null(world);
-    return ecs_component_index_create(
-        &world->component_index,
-        desc->name,
-        desc->size,
-        desc->is_bitset
-    );
+    return ecs_component_index_create(&world->component_index, desc->name, desc->size);
 }
 
 static inline void
 copy_column(ecs_column_t *from, uint32_t from_row, ecs_column_t *to, uint32_t to_row) {
-    if (from->is_bitset) {
-        ecs_bit_set src_bs = { .words = (uint64_t *)from->data };
-        ecs_bit_set dst_bs = { .words = (uint64_t *)to->data };
-        if (ecs_bitset_is_set(&src_bs, from_row)) {
-            ecs_bitset_set(&dst_bs, to_row);
-        } else {
-            ecs_bitset_unset(&dst_bs, to_row);
-        }
-    } else if (from->size > 0) {
-        memcpy(
-            (uint8_t *)to->data + (from->size * to_row),
-            (uint8_t *)from->data + (from->size * from_row),
-            from->size
-        );
-    }
+    memcpy(
+        (uint8_t *)to->data + (from->size * to_row),
+        (uint8_t *)from->data + (from->size * from_row),
+        from->size
+    );
 }
 
 static inline void migrate_entity_add(
@@ -165,7 +150,9 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
         // Re-fetch: ecs_table_index_get_or_create may realloc the tables vec
         table = ecs_get_table(world, from_id);
         ecs_id_map_set(&table->add_edge, cid, new_table_id);
-    } else if (new_table_id < table->type.count && table->type.ids[new_table_id] == cid) {
+    } else if (
+        ECS_UNLIKELY(new_table_id < table->type.count && table->type.ids[new_table_id] == cid)
+    ) {
         return;
     }
 
@@ -186,7 +173,9 @@ void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid
 
     int col_idx = ecs_table_get_column_index(table, cid);
 
-    if (col_idx == UINT16_MAX || col_idx >= table->type.count || table->type.ids[col_idx] != cid) {
+    if (ECS_UNLIKELY(
+            col_idx == UINT16_MAX || col_idx >= table->type.count || table->type.ids[col_idx] != cid
+        )) {
         return;
     }
 
@@ -271,47 +260,6 @@ void ecs_fini(ecs_world_t *world) {
     free(world);
 }
 
-void ecs_set_bit(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, bool value) {
-    ecs_assert_not_null(world);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(world, entity);
-
-    ecs_entity_record_t *record = ecs_get_record(world, entity);
-    ecs_table_t *table = ecs_get_table(world, record->table_id);
-
-    int col_idx = ecs_table_get_column_index(table, id);
-    if (col_idx == UINT16_MAX || col_idx >= table->type.count || !table->cls[col_idx].is_bitset) {
-        return;
-    }
-
-    uint64_t *words = (uint64_t *)table->cls[col_idx].data;
-    ecs_bit_set bs = { .words = words };
-    if (value)
-        ecs_bitset_set(&bs, record->table_row);
-    else
-        ecs_bitset_unset(&bs, record->table_row);
-
-    ecs_emit(world, table, entity, OnSet);
-}
-
-bool ecs_get_bit(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
-    ecs_assert_not_null(world);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(world, entity);
-
-    ecs_entity_record_t *record = ecs_get_record(world, entity);
-    ecs_table_t *table = ecs_get_table(world, record->table_id);
-
-    int col_idx = ecs_table_get_column_index(table, id);
-    if (col_idx == UINT16_MAX || col_idx >= table->type.count || !table->cls[col_idx].is_bitset) {
-        return false;
-    }
-
-    uint64_t *words = (uint64_t *)table->cls[col_idx].data;
-    ecs_bit_set bs = { .words = words };
-    return ecs_bitset_is_set(&bs, record->table_row);
-}
-
 uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *desc) {
     ecs_assert_not_null(world);
     uint32_t qid = ecs_query_index_create(&world->query_index, desc);
@@ -380,15 +328,4 @@ void *ecs_field(ecs_iter_t *it, ecs_component_t cid) {
     ecs_table_t *table = ecs_iter_table(it);
     uint16_t col = ecs_table_get_column_index(table, cid);
     return table->cls[col].data;
-}
-
-ecs_bitfield_t ecs_bitfield(ecs_iter_t *it, ecs_component_t cid) {
-    ecs_assert_id_valid(cid);
-    ecs_table_t *table = ecs_iter_table(it);
-    uint16_t col = ecs_table_get_column_index(table, cid);
-
-    return (ecs_bitfield_t){
-        .words = (const uint64_t *)table->cls[col].data,
-        .word_count = (table->entity_count + 63u) >> 6,
-    };
 }

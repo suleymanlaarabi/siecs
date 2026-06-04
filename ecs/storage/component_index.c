@@ -3,17 +3,13 @@
 #include "ecs/world.h"
 #include <stdlib.h>
 
-ecs_component_t ecs_component_index_create(
-    ecs_component_index_t *index,
-    const char *name,
-    uint64_t size,
-    bool is_bitset
-) {
+ecs_component_t
+ecs_component_index_create(ecs_component_index_t *index, const char *name, uint64_t size) {
     ecs_component_record_t record = {
         .name = name,
         .required = NULL,
         .required_count = 0,
-        .size = is_bitset ? UINT32_MAX : size,
+        .size = size,
     };
 
     ecs_vec_push(&index->components, &record, sizeof(ecs_component_record_t));

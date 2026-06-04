@@ -12,20 +12,11 @@ typedef uint16_t ecs_query_id_t;
 typedef struct {
     const char *name;
     uint64_t size;
-    bool is_bitset;
 } ecs_component_desc_t;
 
-#ifndef MAX_QUERY_REQUIRED
-#define MAX_QUERY_REQUIRED 8
-#endif
-
-#ifndef MAX_QUERY_EXCLUDED
-#define MAX_QUERY_EXCLUDED 4
-#endif
-
 typedef struct {
-    ecs_component_t required[MAX_QUERY_REQUIRED];
-    ecs_component_t excluded[MAX_QUERY_EXCLUDED];
+    ecs_component_t required[8];
+    ecs_component_t excluded[4];
 } ecs_query_desc_t;
 
 ecs_world_t *ecs_init();
@@ -41,10 +32,6 @@ void ecs_fini(ecs_world_t *world);
         .name = #cname,                                                                            \
         .size = sizeof(cname),                                                                     \
     };                                                                                             \
-    ecs_component_t ecs_id(cname) = 0
-
-#define ECS_BIT_DEFINE(cname)                                                                      \
-    ecs_component_desc_t ecs_id(cname##_desc) = { .name = #cname, .size = 0, .is_bitset = true };  \
     ecs_component_t ecs_id(cname) = 0
 
 #define ECS_COMPONENT_REGISTER(world, cname)                                                       \
@@ -74,9 +61,6 @@ void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
 #define ecs_set(world, entity, cname, ...) ecs_set_cid(world, entity, ecs_id(cname), &(cname) __VA_ARGS__)
 void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
-
-void ecs_set_bit(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, bool value);
-bool ecs_get_bit(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
 void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require);
 
@@ -117,25 +101,3 @@ ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);
 bool ecs_iter_next(ecs_iter_t *it);
 struct ecs_table_s *ecs_iter_table(ecs_iter_t *it);
 void *ecs_field(ecs_iter_t *it, ecs_component_t cid);
-
-typedef struct {
-    const uint64_t *words;
-    uint32_t word_count;
-} ecs_bitfield_t;
-
-ecs_bitfield_t ecs_bitfield(ecs_iter_t *it, ecs_component_t cid);
-
-#define ECS_BITS_FOREACH_SET(bits, name, ...)                                                      \
-    do {                                                                                           \
-        const uint64_t *_ecs_words = (bits).words;                                                 \
-        uint32_t _ecs_word_count = (bits).word_count;                                              \
-        for (uint32_t _ecs_w = 0, _ecs_base = 0; _ecs_w < _ecs_word_count;                         \
-             ++_ecs_w, _ecs_base += 64u) {                                                         \
-            uint64_t _ecs_word = _ecs_words[_ecs_w];                                               \
-            while (_ecs_word) {                                                                    \
-                uint32_t name = _ecs_base + (uint32_t)__builtin_ctzll(_ecs_word);                  \
-                _ecs_word &= _ecs_word - 1;                                                        \
-                __VA_ARGS__                                                                        \
-            }                                                                                      \
-        }                                                                                          \
-    } while (0)

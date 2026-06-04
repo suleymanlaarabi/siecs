@@ -8,9 +8,7 @@
 typedef struct {
     void *data;
     uint32_t size;
-    uint16_t remove_edge; // the table that has the component removed or UINT16_MAX if the edge is
-                          // not set
-    uint16_t is_bitset;
+    uint16_t remove_edge; // the table that has the component removed or UINT16_MAX if the edge is not set
 } ecs_column_t;
 
 typedef struct ecs_table_s {

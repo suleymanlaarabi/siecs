@@ -12,6 +12,8 @@ void on_position_added(ecs_world_t *world, ecs_entity_t) { ecs_new(world); }
 int main() {
     ecs_world_t *world = ecs_init();
 
+    ecs_new(world);
+
     // ECS_COMPONENT_REGISTER(world, Position);
     // ECS_COMPONENT_REGISTER(world, Velocity);
 

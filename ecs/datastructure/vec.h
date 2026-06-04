@@ -34,7 +34,7 @@ static inline void *ecs_vec_push_empty(ecs_vec_t *vec, const uint32_t element_si
 }
 
 // Specialized push for 2-byte types
-static inline void ecs_vec_push_u16(ecs_vec_t *vec, uint16_t value) {
+static inline void ecs_vec_push_u16(ecs_vec_t *vec, const uint16_t value) {
     if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
         ecs_vec_grow(vec, sizeof(uint16_t));
     }
@@ -42,7 +42,7 @@ static inline void ecs_vec_push_u16(ecs_vec_t *vec, uint16_t value) {
 }
 
 // Specialized push for 4-byte types
-static inline void ecs_vec_push_u32(ecs_vec_t *vec, uint32_t value) {
+static inline void ecs_vec_push_u32(ecs_vec_t *vec, const uint32_t value) {
     if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
         ecs_vec_grow(vec, sizeof(uint32_t));
     }

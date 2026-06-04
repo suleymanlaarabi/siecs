@@ -2,7 +2,6 @@
 #include "./storage/component_index.h"
 #include "./type.h"
 #include "./world.h"
-#include "ecs/datastructure/bitset.h"
 #include "ecs/datastructure/idmap.h"
 #include <stdint.h>
 #include <stdlib.h>
@@ -25,18 +24,8 @@ void ecs_table_init(
 
     for (uint16_t i = 0; i < type.count; i++) {
         const ecs_component_record_t *rec = ecs_component_index_get(component_index, type.ids[i]);
-        bool is_bitset = rec->size == UINT32_MAX;
-        table->cls[i].size = is_bitset ? 0 : rec->size;
-        table->cls[i].is_bitset = is_bitset;
-
-        if (is_bitset) {
-            uint32_t word_count = (table->entity_capacity + 63) / 64;
-            table->cls[i].data = calloc(word_count, sizeof(uint64_t));
-        } else if (rec->size != 0) {
-            table->cls[i].data = malloc(rec->size * table->entity_capacity);
-        } else {
-            table->cls[i].data = NULL;
-        }
+        table->cls[i].size = rec->size;
+        table->cls[i].data = rec->size != 0 ? malloc(rec->size * table->entity_capacity) : NULL;
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
     }
@@ -46,16 +35,7 @@ static inline void ecs_table_grow(ecs_table_t *table) {
     uint64_t new_capacity = table->entity_capacity * 2;
     table->entities = realloc(table->entities, sizeof(ecs_entity_t) * new_capacity);
     for (uint16_t i = 0; i < table->type.count; i++) {
-        if (table->cls[i].is_bitset) {
-            uint32_t old_word_count = (table->entity_capacity + 63) / 64;
-            uint32_t new_word_count = (new_capacity + 63) / 64;
-            table->cls[i].data = realloc(table->cls[i].data, new_word_count * sizeof(uint64_t));
-            memset(
-                (uint8_t *)table->cls[i].data + (old_word_count * sizeof(uint64_t)),
-                0,
-                (new_word_count - old_word_count) * sizeof(uint64_t)
-            );
-        } else if (table->cls[i].size != 0) {
+        if (table->cls[i].size != 0) {
             table->cls[i].data = realloc(table->cls[i].data, table->cls[i].size * new_capacity);
         }
     }
@@ -68,12 +48,6 @@ uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
     }
     uint32_t row = table->entity_count++;
     table->entities[row] = entity;
-    for (uint16_t i = 0; i < table->type.count; i++) {
-        if (table->cls[i].is_bitset) {
-            ecs_bit_set bs = { .words = (uint64_t *)table->cls[i].data };
-            ecs_bitset_unset(&bs, row);
-        }
-    }
     return row;
 }
 
@@ -86,17 +60,7 @@ ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row) {
         ecs_entity_t moved_entity = table->entities[last_row];
         table->entities[row] = moved_entity;
         for (uint16_t i = 0; i < table->type.count; i++) {
-            if (table->cls[i].is_bitset) {
-                uint64_t *words = (uint64_t *)table->cls[i].data;
-                ecs_bit_set bs = { .words = words };
-                bool val = ecs_bitset_is_set(&bs, last_row);
-                if (val) {
-                    ecs_bitset_set(&bs, row);
-                } else {
-                    ecs_bitset_unset(&bs, row);
-                }
-                ecs_bitset_unset(&bs, last_row);
-            } else if (table->cls[i].size != 0) {
+            if (table->cls[i].size != 0) {
                 void *src = (char *)table->cls[i].data + (table->cls[i].size * last_row);
                 void *dst = (char *)table->cls[i].data + (table->cls[i].size * row);
                 memcpy(dst, src, table->cls[i].size);
@@ -104,13 +68,6 @@ ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row) {
         }
         table->entity_count -= 1;
         return moved_entity;
-    }
-
-    for (uint16_t i = 0; i < table->type.count; i++) {
-        if (table->cls[i].is_bitset) {
-            ecs_bit_set bs = { .words = (uint64_t *)table->cls[i].data };
-            ecs_bitset_unset(&bs, last_row);
-        }
     }
     table->entity_count -= 1;
     return removed_entity;
