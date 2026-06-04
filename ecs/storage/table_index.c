@@ -1,4 +1,3 @@
-#include "../datastructure/vec.h"
 #include "../table.h"
 #include "ecs/storage/component_index.h"
 #include "ecs/storage/observer_index.h"
@@ -9,8 +8,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define INITIAL_CAPACITY 64
+#define INITIAL_SLOT_SHIFT 4
 #define LOAD_FACTOR 0.75
+#define ECS_TABLE_SLOT_EMPTY UINT16_MAX
 
 static inline uint32_t ecs_type_hash(ecs_type_t type) {
     uint32_t h = 2166136261u;
@@ -27,60 +27,76 @@ static inline uint32_t ecs_type_hash(ecs_type_t type) {
     return h;
 }
 
-void ecs_table_index_init(ecs_table_index_t *map) {
-    ecs_vec_init(&map->tables, sizeof(ecs_table_t));
-    map->slot_count = INITIAL_CAPACITY;
-    map->slot_mask = map->slot_count - 1;
-    map->slots = malloc(sizeof(ecs_type_slot_t) * map->slot_count);
-    for (uint32_t i = 0; i < map->slot_count; ++i) {
-        map->slots[i].table_index = UINT32_MAX;
+static inline uint16_t ecs_type_hash_fingerprint(uint32_t hash) {
+    return (uint16_t)(hash ^ (hash >> 16));
+}
+
+static inline uint32_t ecs_table_index_slot_count(const ecs_table_index_t *map) {
+    return 1u << map->slot_shift;
+}
+
+static inline void ecs_table_index_init_slots(ecs_table_index_t *map) {
+    uint32_t slot_count = ecs_table_index_slot_count(map);
+    map->slots = malloc(sizeof(ecs_type_slot_t) * slot_count);
+    for (uint32_t i = 0; i < slot_count; ++i) {
+        map->slots[i].table_index = ECS_TABLE_SLOT_EMPTY;
     }
 }
 
-void ecs_table_index_fini(ecs_table_index_t *map) {
-    for (uint32_t i = 0; i < map->tables.size; i++) {
-        ecs_table_fini(ecs_vec_get_mut(&map->tables, i, ecs_table_t));
+static inline void
+ecs_table_index_insert_slot(ecs_table_index_t *map, uint32_t hash, uint16_t table_index) {
+    uint32_t slot_mask = ecs_table_index_slot_count(map) - 1;
+    uint32_t slot_idx = hash & slot_mask;
+    while (map->slots[slot_idx].table_index != ECS_TABLE_SLOT_EMPTY) {
+        slot_idx = (slot_idx + 1) & slot_mask;
     }
-    ecs_vec_fini(&map->tables);
+    map->slots[slot_idx].hash = ecs_type_hash_fingerprint(hash);
+    map->slots[slot_idx].table_index = table_index;
+}
+
+void ecs_table_index_init(ecs_table_index_t *map) {
+    map->table_count = 0;
+    map->table_capacity = 1;
+    map->tables = malloc(sizeof(ecs_table_t) * map->table_capacity);
+    map->slot_shift = INITIAL_SLOT_SHIFT;
+    ecs_table_index_init_slots(map);
+}
+
+void ecs_table_index_fini(ecs_table_index_t *map) {
+    for (uint16_t i = 0; i < map->table_count; i++) {
+        ecs_table_fini(&map->tables[i]);
+    }
+    free(map->tables);
     free(map->slots);
 }
 
 static void ecs_table_index_resize(ecs_table_index_t *map) {
-    uint32_t old_count = map->slot_count;
     ecs_type_slot_t *old_slots = map->slots;
 
-    map->slot_count *= 2;
-    map->slot_mask = map->slot_count - 1;
-    map->slots = malloc(sizeof(ecs_type_slot_t) * map->slot_count);
-    for (uint32_t i = 0; i < map->slot_count; ++i) {
-        map->slots[i].table_index = UINT32_MAX;
-    }
-
-    for (uint32_t i = 0; i < old_count; ++i) {
-        if (old_slots[i].table_index != UINT32_MAX) {
-            uint32_t hash = old_slots[i].hash;
-            uint32_t slot_idx = hash & map->slot_mask;
-            while (map->slots[slot_idx].table_index != UINT32_MAX) {
-                slot_idx = (slot_idx + 1) & map->slot_mask;
-            }
-            map->slots[slot_idx] = old_slots[i];
-        }
+    map->slot_shift += 1;
+    ecs_table_index_init_slots(map);
+    for (uint16_t i = 0; i < map->table_count; ++i) {
+        ecs_table_index_insert_slot(map, ecs_type_hash(map->tables[i].type), i);
     }
     free(old_slots);
 }
 
-uint16_t ecs_table_index_get_or_create(
-    ecs_world_t *world,
-    ecs_type_t type
-) {
+static void ecs_table_index_grow_tables(ecs_table_index_t *map) {
+    map->table_capacity *= 2;
+    map->tables = realloc(map->tables, sizeof(ecs_table_t) * map->table_capacity);
+}
+
+uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     const ecs_component_index_t *component_index = &world->component_index;
     ecs_table_index_t *map = &world->table_index;
     uint32_t hash = ecs_type_hash(type);
-    uint32_t slot_idx = hash & map->slot_mask;
+    uint16_t hash_fingerprint = ecs_type_hash_fingerprint(hash);
+    uint32_t slot_mask = ecs_table_index_slot_count(map) - 1;
+    uint32_t slot_idx = hash & slot_mask;
 
     // Fast path: lookup
-    while (map->slots[slot_idx].table_index != UINT32_MAX) {
-        if (ECS_LIKELY(map->slots[slot_idx].hash == hash)) {
+    while (map->slots[slot_idx].table_index != ECS_TABLE_SLOT_EMPTY) {
+        if (ECS_LIKELY(map->slots[slot_idx].hash == hash_fingerprint)) {
             ecs_table_t *table = ecs_table_index_at(map, map->slots[slot_idx].table_index);
             if (ECS_LIKELY(
                     ecs_type_equals(table->type.ids, table->type.count, type.ids, type.count)
@@ -89,35 +105,29 @@ uint16_t ecs_table_index_get_or_create(
                 return (uint16_t)map->slots[slot_idx].table_index;
             }
         }
-        slot_idx = (slot_idx + 1) & map->slot_mask;
+        slot_idx = (slot_idx + 1) & slot_mask;
     }
 
     // Slow path: creation
-    if (ECS_UNLIKELY(map->tables.size >= map->slot_count * LOAD_FACTOR)) {
+    if (ECS_UNLIKELY(map->table_count >= ecs_table_index_slot_count(map) * LOAD_FACTOR)) {
         ecs_table_index_resize(map);
         // re-calculate slot_idx after resize
-        slot_idx = hash & map->slot_mask;
-        while (map->slots[slot_idx].table_index != UINT32_MAX) {
-            slot_idx = (slot_idx + 1) & map->slot_mask;
-        }
+        slot_mask = ecs_table_index_slot_count(map) - 1;
+        slot_idx = hash & slot_mask;
+    }
+    if (ECS_UNLIKELY(map->table_count >= map->table_capacity)) {
+        ecs_table_index_grow_tables(map);
     }
 
-    uint32_t table_idx = map->tables.size;
+    uint16_t table_idx = map->table_count++;
     ecs_table_t new_table;
     ecs_table_init(&new_table, type, component_index);
-    ecs_vec_push(&map->tables, &new_table, sizeof(ecs_table_t));
+    map->tables[table_idx] = new_table;
 
-    map->slots[slot_idx].hash = hash;
+    map->slots[slot_idx].hash = hash_fingerprint;
     map->slots[slot_idx].table_index = table_idx;
 
-    ecs_query_index_add_table(
-        &world->query_index,
-        ecs_table_index_at(map ,table_idx),
-        table_idx
-    );
-    ecs_observer_index_add_table(
-        &world->observer_index,
-        ecs_table_index_at(map, table_idx)
-    );
+    ecs_query_index_add_table(&world->query_index, ecs_table_index_at(map, table_idx), table_idx);
+    ecs_observer_index_add_table(&world->observer_index, ecs_table_index_at(map, table_idx));
     return (uint16_t)table_idx;
 }

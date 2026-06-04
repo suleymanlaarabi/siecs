@@ -37,13 +37,10 @@ Test(query, bloom_filter_subset_match) {
     ecs_world_t_internal *wi = (ecs_world_t_internal *)world;
     ecs_query_index_t *qi = &wi->query_index;
 
-    ecs_vec_t *tables_vec = &wi->table_index.tables;
-    ecs_table_t *tables = (ecs_table_t *)tables_vec->data;
-
     ecs_query_cache_t *cache = ecs_vec_get_mut(&qi->queries, q, ecs_query_cache_t);
     ecs_vec_clear(&cache->matches);
 
-    ecs_query_index_update_matches(qi, tables, (uint16_t)tables_vec->size, q);
+    ecs_query_index_update_matches(qi, wi->table_index.tables, wi->table_index.table_count, q);
 
     cache = ecs_vec_get_mut(&qi->queries, q, ecs_query_cache_t);
 

@@ -17,8 +17,9 @@ void ecs_table_init(
     table->entity_capacity = 1;
     table->entity_count = 0;
     table->entities = malloc(sizeof(ecs_entity_t) * table->entity_capacity);
-    table->cls = malloc(sizeof(ecs_column_t) * type.count);
+    table->cls = type.count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.count);
     table->bloom = ecs_type_bloom(&type);
+
     ecs_vec_init(&table->observers_by_event, sizeof(ecs_vec_t));
     ecs_id_map_init(&table->add_edge);
 

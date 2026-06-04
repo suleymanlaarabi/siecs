@@ -315,11 +315,10 @@ bool ecs_get_bit(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
 uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *desc) {
     ecs_assert_not_null(world);
     uint32_t qid = ecs_query_index_create(&world->query_index, desc);
-    ecs_table_t *tables = ecs_vec_data(&world->table_index.tables, ecs_table_t);
     ecs_query_index_update_matches(
         &world->query_index,
-        tables,
-        (uint16_t)world->table_index.tables.size,
+        world->table_index.tables,
+        world->table_index.table_count,
         qid
     );
     return qid;
@@ -331,11 +330,10 @@ uint32_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc) 
     ecs_assert_not_null(world);
 
     uint32_t oid = ecs_observer_index_create(&world->observer_index, desc);
-    ecs_table_t *tables = ecs_vec_data(&world->table_index.tables, ecs_table_t);
     ecs_observer_index_match_tables(
         &world->observer_index,
-        tables,
-        (uint16_t)world->table_index.tables.size,
+        world->table_index.tables,
+        world->table_index.table_count,
         oid
     );
     return oid;

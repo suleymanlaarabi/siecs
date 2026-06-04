@@ -1,24 +1,25 @@
 #pragma once
-#include "../datastructure/vec.h"
+#include "../table.h"
 #include "../type.h"
 #include <stdint.h>
 
 typedef struct {
-    uint32_t hash;
-    uint32_t table_index; // UINT32_MAX for empty
+    uint16_t table_index; // UINT16_MAX for empty
+    uint16_t hash;
 } ecs_type_slot_t;
 
 typedef struct {
-    ecs_vec_t tables; // ecs_table_t
+    ecs_table_t *tables;
     ecs_type_slot_t *slots;
-    uint32_t slot_count;
-    uint32_t slot_mask;
+    uint16_t table_count;
+    uint16_t table_capacity;
+    uint8_t slot_shift; // slot_count = 1 << slot_shift
 } ecs_table_index_t;
 
 void ecs_table_index_init(ecs_table_index_t *map);
 void ecs_table_index_fini(ecs_table_index_t *map);
 
-#define ecs_table_index_at(map, index) ecs_vec_get_mut(&(map)->tables, index, ecs_table_t)
+#define ecs_table_index_at(map, index) (&(map)->tables[index])
 
 struct ecs_world_s;
 uint16_t ecs_table_index_get_or_create(
