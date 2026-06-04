@@ -3,7 +3,7 @@
 #include <string.h>
 
 void ecs_vec_init(ecs_vec_t *vec, uint32_t element_size) {
-    vec->data = malloc(element_size * 1); // Start with 1 elements
+    vec->data = malloc(element_size); // Start with 1 elements
     vec->size = 0;
     vec->capacity = 1;
 }

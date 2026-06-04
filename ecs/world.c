@@ -328,7 +328,7 @@ ecs_event_t ecs_event(ecs_world_t *world) { return world->observer_index.event_c
 
 uint32_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc) {
     ecs_assert_not_null(world);
-
+    ecs_assert(desc->callback != NULL, "Observer callback cannot be NULL");
     uint32_t oid = ecs_observer_index_create(&world->observer_index, desc);
     ecs_observer_index_match_tables(
         &world->observer_index,
