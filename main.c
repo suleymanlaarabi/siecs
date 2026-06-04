@@ -23,23 +23,30 @@ void OnSetPosition(ecs_world_t *world, ecs_entity_t entity) {
 int main() {
     ecs_world_t *world = ecs_init();
 
-    ECS_COMPONENT_REGISTER(world, Position);
+    // ECS_COMPONENT_REGISTER(world, Position);
 
-    ecs_observer(world, {
-        .on = OnAdd,
-        .query = {},
-        .callback = OnAddPosition,
-    });
+    // ecs_observer(
+    //     world,
+    //     {
+    //         .on = OnAdd,
+    //         .query = {},
+    //         .callback = OnAddPosition,
+    //     }
+    // );
 
-    ecs_entity_t entity = ecs_new(world);
+    // ecs_entity_t entity = ecs_new(world);
 
-    ecs_add(world, entity, Position);
+    // ecs_add(world, entity, Position);
 
-    ecs_set(world, entity, Position, {
-        .x = 15,
-        .y = 15,
-    });
-
+    // ecs_set(
+    //     world,
+    //     entity,
+    //     Position,
+    //     {
+    //         .x = 15,
+    //         .y = 15,
+    //     }
+    // );
 
     ecs_fini(world);
     return 0;

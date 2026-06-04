@@ -3,11 +3,12 @@
 #include "../world.h"
 #include <stdint.h>
 
+
 typedef struct {
     const char *name;
+    uint16_t *required;
+    uint32_t required_count;
     uint32_t size;
-    uint32_t is_bitset;
-    ecs_vec_t required; // ecs_component_t
 } ecs_component_record_t;
 
 typedef struct ecs_component_index_s {

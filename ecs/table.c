@@ -24,10 +24,11 @@ void ecs_table_init(
 
     for (uint16_t i = 0; i < type.count; i++) {
         const ecs_component_record_t *rec = ecs_component_index_get(component_index, type.ids[i]);
-        table->cls[i].size = rec->size;
-        table->cls[i].is_bitset = rec->is_bitset;
+        bool is_bitset = rec->size == UINT32_MAX;
+        table->cls[i].size = is_bitset ? 0 : rec->size;
+        table->cls[i].is_bitset = is_bitset;
 
-        if (rec->is_bitset) {
+        if (is_bitset) {
             uint32_t word_count = (table->entity_capacity + 63) / 64;
             table->cls[i].data = calloc(word_count, sizeof(uint64_t));
         } else if (rec->size != 0) {
