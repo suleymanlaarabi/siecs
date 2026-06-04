@@ -139,7 +139,7 @@ ecs_emit(ecs_world_t *world, ecs_table_t *table, ecs_entity_t entity, ecs_event_
     ecs_vec_t *list = ecs_vec_get_mut(&table->observers_by_event, event, ecs_vec_t);
     uint32_t n = list->size;
     for (uint32_t i = 0; i < n; i++) {
-        uint32_t oid = *ecs_vec_get(list, i, uint16_t);
+        uint16_t oid = *ecs_vec_get(list, i, uint16_t);
         ecs_observer_t *obs =
             ecs_vec_get_mut(&world->observer_index.observers, oid, ecs_observer_t);
         obs->callback(world, entity);
