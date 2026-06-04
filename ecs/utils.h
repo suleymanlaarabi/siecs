@@ -1,7 +1,5 @@
 #pragma once
 
-
-
 #ifndef NDEBUG
 #include <stdio.h>
 #define ecs_id_valid(id) ((id) != 0)

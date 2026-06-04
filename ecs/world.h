@@ -7,7 +7,7 @@ struct ecs_world_s;
 typedef struct ecs_world_s ecs_world_t;
 typedef uint64_t ecs_entity_t;
 typedef uint16_t ecs_component_t;
-typedef uint32_t ecs_query_id_t;
+typedef uint16_t ecs_query_id_t;
 
 typedef struct {
     const char *name;
@@ -110,7 +110,7 @@ typedef struct {
     ecs_world_t *world;
     ecs_query_id_t query_id;
     uint16_t table_idx;
-    uint32_t table_count;
+    uint16_t table_count;
 } ecs_iter_t;
 
 ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);

@@ -41,7 +41,7 @@ void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
     query->bloom = ecs_type_bloom(&type);
 }
 
-uint32_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc) {
+ecs_query_id_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc) {
     ecs_query_cache_t *query_cache = ecs_vec_push_empty(&index->queries, sizeof(ecs_query_cache_t));
     ecs_query_from_desc(desc, &query_cache->query);
     ecs_vec_init(&query_cache->matches, sizeof(uint16_t));
@@ -53,7 +53,7 @@ void ecs_query_index_update_matches(
     ecs_query_index_t *index,
     const ecs_table_t *tables,
     uint16_t table_count,
-    uint32_t query
+    ecs_query_id_t query
 ) {
     ecs_query_cache_t *query_cache = ecs_vec_get_mut(&index->queries, query, ecs_query_cache_t);
 

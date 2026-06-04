@@ -23,12 +23,12 @@ typedef struct {
 
 void ecs_query_index_init(ecs_query_index_t *index);
 void ecs_query_index_fini(ecs_query_index_t *index);
-uint32_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc);
+uint16_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc);
 void ecs_query_index_update_matches(
     ecs_query_index_t *index,
     const ecs_table_t *tables,
     uint16_t table_count,
-    uint32_t query
+    uint16_t query
 );
 void ecs_query_index_add_table(
     ecs_query_index_t *index,

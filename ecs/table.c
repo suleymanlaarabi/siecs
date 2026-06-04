@@ -119,20 +119,20 @@ void *ecs_table_get_component(ecs_table_t *table, ecs_component_t component_id, 
     return (uint8_t *)column->data + ((column->size) * row);
 }
 
-void ecs_table_add_observer(ecs_table_t *table, uint16_t event, uint32_t observer_id) {
+void ecs_table_add_observer(ecs_table_t *table, uint16_t event, uint16_t observer_id) {
     ecs_vec_ensure(&table->observers_by_event, event + 1, sizeof(ecs_vec_t));
     ecs_vec_t *list = ecs_vec_get_mut(&table->observers_by_event, event, ecs_vec_t);
     if (list->capacity == 0) {
-        ecs_vec_init(list, sizeof(uint32_t));
+        ecs_vec_init(list, sizeof(uint16_t));
     }
-    ecs_vec_push_u32(list, observer_id);
+    ecs_vec_push_u16(list, observer_id);
 }
 
 void ecs_table_fini(ecs_table_t *table) {
     for (uint16_t i = 0; i < table->type.count; i++) {
         free(table->cls[i].data);
     }
-    for (uint32_t e = 0; e < table->observers_by_event.size; e++) {
+    for (uint16_t e = 0; e < table->observers_by_event.size; e++) {
         ecs_vec_fini(ecs_vec_get_mut(&table->observers_by_event, e, ecs_vec_t));
     }
     ecs_vec_fini(&table->observers_by_event);

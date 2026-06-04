@@ -13,14 +13,14 @@ void ecs_observer_index_init(ecs_observer_index_t *index) {
 }
 
 void ecs_observer_index_fini(ecs_observer_index_t *index) {
-    for (uint32_t i = 0; i < index->observers.size; i++) {
+    for (uint16_t i = 0; i < index->observers.size; i++) {
         ecs_observer_t *obs = ecs_vec_get_mut(&index->observers, i, ecs_observer_t);
         ecs_query_fini(&obs->query);
     }
     ecs_vec_fini(&index->observers);
 }
 
-uint32_t ecs_observer_index_create(ecs_observer_index_t *index, const ecs_observer_desc_t *desc) {
+uint16_t ecs_observer_index_create(ecs_observer_index_t *index, const ecs_observer_desc_t *desc) {
     ecs_observer_t *obs = ecs_vec_push_empty(&index->observers, sizeof(ecs_observer_t));
     obs->event = desc->on;
     obs->callback = desc->callback;
@@ -32,7 +32,7 @@ void ecs_observer_index_match_tables(
     ecs_observer_index_t *index,
     ecs_table_t *tables,
     uint16_t table_count,
-    uint32_t observer_id
+    uint16_t observer_id
 ) {
     ecs_observer_t *obs = ecs_vec_get_mut(&index->observers, observer_id, ecs_observer_t);
     for (uint16_t i = 0; i < table_count; i++) {

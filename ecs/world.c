@@ -131,22 +131,15 @@ static inline void migrate_entity_remove(
     record->table_row = new_row;
 }
 
-static inline void ecs_emit(
-    ecs_world_t *world,
-    ecs_table_t *table,
-    ecs_entity_t entity,
-    ecs_event_t event
-) {
-    if (event >= table->observers_by_event.size) {
+static inline void
+ecs_emit(ecs_world_t *world, ecs_table_t *table, ecs_entity_t entity, ecs_event_t event) {
+    if (table->observers_by_event.size <= event) {
         return;
     }
-    // Snapshot the count: observers registered by a callback must not fire for
-    // the event already in flight. Re-fetch the per-event list each iteration in
-    // case a nested registration reallocs the outer vec or the inner list.
-    uint32_t n = ecs_vec_get_mut(&table->observers_by_event, event, ecs_vec_t)->size;
+    ecs_vec_t *list = ecs_vec_get_mut(&table->observers_by_event, event, ecs_vec_t);
+    uint32_t n = list->size;
     for (uint32_t i = 0; i < n; i++) {
-        ecs_vec_t *list = ecs_vec_get_mut(&table->observers_by_event, event, ecs_vec_t);
-        uint32_t oid = *ecs_vec_get(list, i, uint32_t);
+        uint32_t oid = *ecs_vec_get(list, i, uint16_t);
         ecs_observer_t *obs =
             ecs_vec_get_mut(&world->observer_index.observers, oid, ecs_observer_t);
         obs->callback(world, entity);
@@ -358,7 +351,7 @@ void ecs_observer_trigger(ecs_world_t *world, ecs_entity_t entity, ecs_event_t e
     ecs_emit(world, table, entity, event);
 }
 
-ecs_iter_t ecs_query_iter(ecs_world_t *world, uint32_t query_id) {
+ecs_iter_t ecs_query_iter(ecs_world_t *world, uint16_t query_id) {
     ecs_assert_not_null(world);
 
     ecs_query_cache_t *cache =

@@ -7,22 +7,16 @@ typedef struct {
 
 void ecs_bitset_init(ecs_bit_set *bitset, uint64_t bit_count);
 
-static inline bool ecs_bitset_is_set(ecs_bit_set *bitset, uint64_t i) {
-    uint64_t word_index = i / 64;
-    uint64_t bit_index = i % 64;
-    return (bitset->words[word_index] & (1ULL << bit_index)) != 0;
+static inline bool ecs_bitset_is_set(const ecs_bit_set *bitset, uint64_t i) {
+    return (bitset->words[i >> 6] & (1ULL << (i & 63))) != 0;
 }
 
 static inline void ecs_bitset_set(ecs_bit_set *bitset, uint64_t i) {
-    uint64_t word_index = i / 64;
-    uint64_t bit_index = i % 64;
-    bitset->words[word_index] |= (1ULL << bit_index);
+    bitset->words[i >> 6] |= (1ULL << (i & 63));
 }
 
 static inline void ecs_bitset_unset(ecs_bit_set *bitset, uint64_t i) {
-    uint64_t word_index = i / 64;
-    uint64_t bit_index = i % 64;
-    bitset->words[word_index] &= ~(1ULL << bit_index);
+    bitset->words[i >> 6] &= ~(1ULL << (i & 63));
 }
 
 void ecs_bitset_grow(ecs_bit_set *bitset, uint64_t bit_count);

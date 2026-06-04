@@ -23,4 +23,12 @@ void ecs_component_index_init(ecs_component_index_t *index) {
     ecs_vec_init(&index->components, sizeof(ecs_component_record_t));
 }
 
-void ecs_component_index_fini(ecs_component_index_t *index) { ecs_vec_fini(&index->components); }
+void ecs_component_index_fini(ecs_component_index_t *index) {
+    ecs_component_record_t *records = index->components.data;
+
+    for (uint32_t i = 0; i < index->components.size; i++) {
+        ecs_component_record_t *record = &records[i];
+        ecs_vec_fini(&record->required);
+    }
+    ecs_vec_fini(&index->components);
+}

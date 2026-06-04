@@ -22,8 +22,7 @@ typedef struct ecs_table_s {
     ecs_column_t *cls;
     ecs_type_t type;
     uint64_t bloom;
-    ecs_vec_t observers_by_event; // ecs_vec_t per event id; each holds uint32_t observer ids.
-                                  // Lazily allocated.
+    ecs_vec_t observers_by_event; // ecs_vec_t per event id; each holds uint16_t observer ids.
 } ecs_table_t;
 
 struct ecs_component_index_s;
@@ -43,7 +42,7 @@ void *ecs_table_get_component(ecs_table_t *table, ecs_component_t component_id, 
 
 // Append an observer id to this table's dense list for the given event,
 // growing the per-event slot array on demand.
-void ecs_table_add_observer(ecs_table_t *table, uint16_t event, uint32_t observer_id);
+void ecs_table_add_observer(ecs_table_t *table, uint16_t event, uint16_t observer_id);
 
 static inline uint16_t
 ecs_table_get_add_edge(const ecs_table_t *table, ecs_component_t component_id) {
