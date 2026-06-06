@@ -8,15 +8,12 @@ typedef struct {
 
 ECS_COMPONENT_DEFINE(Position);
 ECS_COMPONENT_DEFINE(Velocity);
-ECS_RELATION_DEFINE(ChildOf);
 
 int main() {
     ecs_world_t *world = ecs_init();
     ecs_entity_t parent = ecs_new(world);
     ecs_entity_t child_a = ecs_new(world);
     ecs_entity_t child_b = ecs_new(world);
-
-    ECS_COMPONENT_REGISTER(world, ChildOf);
 
     ecs_set(world, child_a, ChildOf, { .target = parent });
     ecs_set(world, child_b, ChildOf, { .target = parent });

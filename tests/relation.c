@@ -4,17 +4,18 @@
 #include <signal.h>
 #include <stdint.h>
 
-ECS_RELATION_DEFINE(ChildOf);
+ECS_RELATION_DECLARE(ChildOf2);
+ECS_RELATION_DEFINE(ChildOf2);
 ECS_RELATION_DECLARE(Likes);
 ECS_RELATION_DEFINE(Likes);
 
 static ecs_world_t *setup_relation(void) {
     ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, ChildOf);
+    ECS_COMPONENT_REGISTER(world, ChildOf2);
     return world;
 }
 
-static ecs_component_t child_of_source(void) { return ecs_source(ChildOf); }
+static ecs_component_t child_of_source(void) { return ecs_source(ChildOf2); }
 static ecs_component_t likes_source(void) { return ecs_source(Likes); }
 
 static ecs_world_t *setup_two_relations(void) {
@@ -46,9 +47,9 @@ Test(relation, set_creates_source_on_target) {
     ecs_entity_t parent = ecs_new(world);
     ecs_entity_t child = ecs_new(world);
 
-    ecs_set(world, child, ChildOf, { .target = parent });
+    ecs_set(world, child, ChildOf2, { .target = parent });
 
-    cr_assert(ecs_has(world, child, ChildOf), "Child must keep relation component");
+    cr_assert(ecs_has(world, child, ChildOf2), "Child must keep relation component");
     cr_assert(
         ecs_has_cid(world, parent, child_of_source()),
         "Parent must receive hidden relation source component"
@@ -67,8 +68,8 @@ Test(relation, multiple_children_share_source) {
     ecs_entity_t child_a = ecs_new(world);
     ecs_entity_t child_b = ecs_new(world);
 
-    ecs_set(world, child_a, ChildOf, { .target = parent });
-    ecs_set(world, child_b, ChildOf, { .target = parent });
+    ecs_set(world, child_a, ChildOf2, { .target = parent });
+    ecs_set(world, child_b, ChildOf2, { .target = parent });
 
     RelationSource *source = source_get(world, parent);
     cr_assert_eq(source->entities.size, 2, "Parent source should contain two children");
@@ -83,8 +84,8 @@ Test(relation, setting_same_target_does_not_duplicate_child) {
     ecs_entity_t parent = ecs_new(world);
     ecs_entity_t child = ecs_new(world);
 
-    ecs_set(world, child, ChildOf, { .target = parent });
-    ecs_set(world, child, ChildOf, { .target = parent });
+    ecs_set(world, child, ChildOf2, { .target = parent });
+    ecs_set(world, child, ChildOf2, { .target = parent });
 
     RelationSource *source = source_get(world, parent);
     cr_assert_eq(source->entities.size, 1, "Same relation target must not duplicate child");
@@ -99,8 +100,8 @@ Test(relation, changing_target_moves_child_between_sources) {
     ecs_entity_t parent_b = ecs_new(world);
     ecs_entity_t child = ecs_new(world);
 
-    ecs_set(world, child, ChildOf, { .target = parent_a });
-    ecs_set(world, child, ChildOf, { .target = parent_b });
+    ecs_set(world, child, ChildOf2, { .target = parent_a });
+    ecs_set(world, child, ChildOf2, { .target = parent_b });
 
     cr_assert(
         !ecs_has_cid(world, parent_a, child_of_source()),
@@ -119,10 +120,10 @@ Test(relation, removing_relation_removes_child_from_source) {
     ecs_entity_t parent = ecs_new(world);
     ecs_entity_t child = ecs_new(world);
 
-    ecs_set(world, child, ChildOf, { .target = parent });
-    ecs_remove(world, child, ChildOf);
+    ecs_set(world, child, ChildOf2, { .target = parent });
+    ecs_remove(world, child, ChildOf2);
 
-    cr_assert(!ecs_has(world, child, ChildOf), "Child relation component should be removed");
+    cr_assert(!ecs_has(world, child, ChildOf2), "Child relation component should be removed");
     cr_assert(
         !ecs_has_cid(world, parent, child_of_source()),
         "Parent hidden source should be removed when last child is removed"
@@ -137,9 +138,9 @@ Test(relation, removing_one_child_keeps_source_for_other_children) {
     ecs_entity_t child_a = ecs_new(world);
     ecs_entity_t child_b = ecs_new(world);
 
-    ecs_set(world, child_a, ChildOf, { .target = parent });
-    ecs_set(world, child_b, ChildOf, { .target = parent });
-    ecs_remove(world, child_a, ChildOf);
+    ecs_set(world, child_a, ChildOf2, { .target = parent });
+    ecs_set(world, child_b, ChildOf2, { .target = parent });
+    ecs_remove(world, child_a, ChildOf2);
 
     cr_assert(
         ecs_has_cid(world, parent, child_of_source()),
@@ -159,7 +160,7 @@ Test(relation, killing_child_removes_child_from_source) {
     ecs_entity_t parent = ecs_new(world);
     ecs_entity_t child = ecs_new(world);
 
-    ecs_set(world, child, ChildOf, { .target = parent });
+    ecs_set(world, child, ChildOf2, { .target = parent });
     ecs_kill(world, child);
 
     cr_assert(
@@ -175,11 +176,11 @@ Test(relation, killing_parent_removes_relation_from_child) {
     ecs_entity_t parent = ecs_new(world);
     ecs_entity_t child = ecs_new(world);
 
-    ecs_set(world, child, ChildOf, { .target = parent });
+    ecs_set(world, child, ChildOf2, { .target = parent });
     ecs_kill(world, parent);
 
     cr_assert(!ecs_is_alive(world, parent), "Killed parent should be dead");
-    cr_assert(!ecs_has(world, child, ChildOf), "Killing parent should remove relation from child");
+    cr_assert(!ecs_has(world, child, ChildOf2), "Killing parent should remove relation from child");
 
     ecs_fini(world);
 }
@@ -190,12 +191,12 @@ Test(relation, killing_parent_removes_relation_from_all_children) {
     ecs_entity_t child_a = ecs_new(world);
     ecs_entity_t child_b = ecs_new(world);
 
-    ecs_set(world, child_a, ChildOf, { .target = parent });
-    ecs_set(world, child_b, ChildOf, { .target = parent });
+    ecs_set(world, child_a, ChildOf2, { .target = parent });
+    ecs_set(world, child_b, ChildOf2, { .target = parent });
     ecs_kill(world, parent);
 
-    cr_assert(!ecs_has(world, child_a, ChildOf), "Killing parent should remove relation A");
-    cr_assert(!ecs_has(world, child_b, ChildOf), "Killing parent should remove relation B");
+    cr_assert(!ecs_has(world, child_a, ChildOf2), "Killing parent should remove relation A");
+    cr_assert(!ecs_has(world, child_b, ChildOf2), "Killing parent should remove relation B");
 
     ecs_fini(world);
 }
@@ -206,14 +207,14 @@ Test(relation, setting_dead_target_aborts, .signal = SIGABRT) {
     ecs_entity_t child = ecs_new(world);
 
     ecs_kill(world, target);
-    ecs_set(world, child, ChildOf, { .target = target });
+    ecs_set(world, child, ChildOf2, { .target = target });
 }
 
 Test(relation, setting_invalid_target_aborts, .signal = SIGABRT) {
     ecs_world_t *world = setup_relation();
     ecs_entity_t child = ecs_new(world);
 
-    ecs_set(world, child, ChildOf, { .target = 0 });
+    ecs_set(world, child, ChildOf2, { .target = 0 });
 }
 
 Test(relation, multiple_relation_types_keep_separate_sources) {
@@ -222,16 +223,16 @@ Test(relation, multiple_relation_types_keep_separate_sources) {
     ecs_entity_t parent_b = ecs_new(world);
     ecs_entity_t child = ecs_new(world);
 
-    ecs_set(world, child, ChildOf, { .target = parent_a });
+    ecs_set(world, child, ChildOf2, { .target = parent_a });
     ecs_set(world, child, Likes, { .target = parent_b });
 
     cr_assert(
         ecs_has_cid(world, parent_a, child_of_source()),
-        "ChildOf target should have ChildOf source"
+        "ChildOf2 target should have ChildOf2 source"
     );
     cr_assert(
         !ecs_has_cid(world, parent_a, likes_source()),
-        "ChildOf target should not get Likes source"
+        "ChildOf2 target should not get Likes source"
     );
     cr_assert(
         ecs_has_cid(world, parent_b, likes_source()),
@@ -239,15 +240,15 @@ Test(relation, multiple_relation_types_keep_separate_sources) {
     );
     cr_assert(
         !ecs_has_cid(world, parent_b, child_of_source()),
-        "Likes target should not get ChildOf source"
+        "Likes target should not get ChildOf2 source"
     );
 
     RelationSource *child_of = source_get_by(world, parent_a, child_of_source());
     RelationSource *likes = source_get_by(world, parent_b, likes_source());
 
-    cr_assert_eq(child_of->entities.size, 1, "ChildOf source should contain one child");
+    cr_assert_eq(child_of->entities.size, 1, "ChildOf2 source should contain one child");
     cr_assert_eq(likes->entities.size, 1, "Likes source should contain one child");
-    cr_assert(source_contains(child_of, child), "ChildOf source should contain child");
+    cr_assert(source_contains(child_of, child), "ChildOf2 source should contain child");
     cr_assert(source_contains(likes, child), "Likes source should contain child");
 
     ecs_fini(world);
@@ -263,18 +264,18 @@ Test(relation, query_children_by_relation_component) {
     ecs_entity_t unrelated = ecs_new(world);
     (void)unrelated;
 
-    ecs_set(world, child_a, ChildOf, { .target = parent_a });
-    ecs_set(world, child_b, ChildOf, { .target = parent_a });
-    ecs_set(world, child_c, ChildOf, { .target = parent_b });
+    ecs_set(world, child_a, ChildOf2, { .target = parent_a });
+    ecs_set(world, child_b, ChildOf2, { .target = parent_a });
+    ecs_set(world, child_c, ChildOf2, { .target = parent_b });
 
-    ecs_query_id_t query = ecs_query(world, { .read = { ecs_id(ChildOf) } });
+    ecs_query_id_t query = ecs_query(world, { .read = { ecs_id(ChildOf2) } });
 
     uint32_t count = 0;
     uint32_t parent_a_count = 0;
     uint32_t parent_b_count = 0;
     ecs_iter_t it = ecs_query_iter(world, query);
     while (ecs_iter_next(&it)) {
-        ChildOf *relations = ecs_field(&it, 0);
+        ChildOf2 *relations = ecs_field(&it, 0);
         for (uint32_t i = 0; i < it.count; i++) {
             count++;
             if (relations[i].target == parent_a) {
@@ -286,9 +287,9 @@ Test(relation, query_children_by_relation_component) {
         }
     }
 
-    cr_assert_eq(count, 3, "ChildOf query should iterate only children with relation");
-    cr_assert_eq(parent_a_count, 2, "ChildOf query should see two children for parent A");
-    cr_assert_eq(parent_b_count, 1, "ChildOf query should see one child for parent B");
+    cr_assert_eq(count, 3, "ChildOf2 query should iterate only children with relation");
+    cr_assert_eq(parent_a_count, 2, "ChildOf2 query should see two children for parent A");
+    cr_assert_eq(parent_b_count, 1, "ChildOf2 query should see one child for parent B");
 
     ecs_fini(world);
 }
@@ -303,11 +304,11 @@ Test(relation, query_sources_by_ecs_source_component) {
     ecs_entity_t unrelated = ecs_new(world);
     (void)unrelated;
 
-    ecs_set(world, child_a, ChildOf, { .target = parent_a });
-    ecs_set(world, child_b, ChildOf, { .target = parent_a });
-    ecs_set(world, child_c, ChildOf, { .target = parent_b });
+    ecs_set(world, child_a, ChildOf2, { .target = parent_a });
+    ecs_set(world, child_b, ChildOf2, { .target = parent_a });
+    ecs_set(world, child_c, ChildOf2, { .target = parent_b });
 
-    ecs_query_id_t query = ecs_query(world, { .read = { ecs_source(ChildOf) } });
+    ecs_query_id_t query = ecs_query(world, { .read = { ecs_source(ChildOf2) } });
 
     uint32_t parent_count = 0;
     uint32_t total_children = 0;
@@ -348,22 +349,22 @@ Test(relation, query_children_and_sources_for_separate_relation_types) {
     ecs_entity_t likes_parent = ecs_new(world);
     ecs_entity_t child = ecs_new(world);
 
-    ecs_set(world, child, ChildOf, { .target = child_of_parent });
+    ecs_set(world, child, ChildOf2, { .target = child_of_parent });
     ecs_set(world, child, Likes, { .target = likes_parent });
 
     ecs_query_id_t children_query =
-        ecs_query(world, { .read = { ecs_id(ChildOf), ecs_id(Likes) } });
-    ecs_query_id_t child_of_sources_query = ecs_query(world, { .read = { ecs_source(ChildOf) } });
+        ecs_query(world, { .read = { ecs_id(ChildOf2), ecs_id(Likes) } });
+    ecs_query_id_t child_of_sources_query = ecs_query(world, { .read = { ecs_source(ChildOf2) } });
     ecs_query_id_t likes_sources_query = ecs_query(world, { .read = { ecs_source(Likes) } });
 
     uint32_t child_rows = 0;
     ecs_iter_t it = ecs_query_iter(world, children_query);
     while (ecs_iter_next(&it)) {
-        ChildOf *child_of = ecs_field(&it, 0);
+        ChildOf2 *child_of = ecs_field(&it, 0);
         Likes *likes = ecs_field(&it, 1);
         for (uint32_t i = 0; i < it.count; i++) {
             child_rows++;
-            cr_assert_eq(child_of[i].target, child_of_parent, "ChildOf field should be correct");
+            cr_assert_eq(child_of[i].target, child_of_parent, "ChildOf2 field should be correct");
             cr_assert_eq(likes[i].target, likes_parent, "Likes field should be correct");
         }
     }
@@ -381,7 +382,7 @@ Test(relation, query_children_and_sources_for_separate_relation_types) {
     }
 
     cr_assert_eq(child_rows, 1, "Combined relation query should find child once");
-    cr_assert_eq(child_of_source_rows, 1, "ChildOf source query should find one parent");
+    cr_assert_eq(child_of_source_rows, 1, "ChildOf2 source query should find one parent");
     cr_assert_eq(likes_source_rows, 1, "Likes source query should find one parent");
 
     ecs_fini(world);
