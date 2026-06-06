@@ -15,8 +15,8 @@ int main() {
     ecs_entity_t child_a = ecs_new(world);
     ecs_entity_t child_b = ecs_new(world);
 
-    ecs_set(world, child_a, ChildOf, { .target = parent });
-    ecs_set(world, child_b, ChildOf, { .target = parent });
+    ecs_set(world, child_a, ChildOf, { parent });
+    ecs_set(world, child_b, ChildOf, { parent });
 
     ecs_kill(world, parent);
 

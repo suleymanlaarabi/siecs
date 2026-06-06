@@ -8,7 +8,7 @@ typedef struct ecs_world_s ecs_world_t;
 typedef uint64_t ecs_entity_t;
 typedef uint16_t ecs_component_t;
 typedef uint16_t ecs_query_id_t;
-typedef char * Name;
+typedef char *Name;
 
 typedef uint16_t ecs_event_t;
 
@@ -23,7 +23,12 @@ typedef struct {
 typedef void (*ecs_observer_callback_t)(ecs_observer_event_t *event);
 // Component hooks receive the new value passed to ecs_set_cid. The stored value
 // is still the old one until the hook returns, so ecs_get_cid can read old data.
-typedef void (*ecs_component_hook_t)(ecs_world_t *world, ecs_entity_t entity, ecs_component_t component, const void *ptr);
+typedef void (*ecs_component_hook_t)(
+    ecs_world_t *world,
+    ecs_entity_t entity,
+    ecs_component_t component,
+    const void *ptr
+);
 
 typedef struct {
     const char *name;
@@ -31,6 +36,7 @@ typedef struct {
     ecs_component_hook_t on_set;
     ecs_component_hook_t on_remove;
     bool is_relation;
+    const char *source_name;
 } ecs_component_desc_t;
 
 typedef struct {
@@ -57,9 +63,18 @@ void ecs_fini(ecs_world_t *world);
 #define ECS_COMPONENT_REGISTER(world, cname)                                                       \
     ecs_id(cname) = ecs_component_init(world, &ecs_id(cname##_desc))
 
-
-void RelationOnSet(ecs_world_t *world, ecs_entity_t entity, ecs_component_t component, const void *ptr);
-void RelationOnRemove(ecs_world_t *world, ecs_entity_t entity, ecs_component_t component, const void *ptr);
+void RelationOnSet(
+    ecs_world_t *world,
+    ecs_entity_t entity,
+    ecs_component_t component,
+    const void *ptr
+);
+void RelationOnRemove(
+    ecs_world_t *world,
+    ecs_entity_t entity,
+    ecs_component_t component,
+    const void *ptr
+);
 
 #define ECS_RELATION_DEFINE(cname)                                                                 \
     ecs_component_desc_t ecs_id(cname##_desc) = {                                                  \
@@ -67,7 +82,8 @@ void RelationOnRemove(ecs_world_t *world, ecs_entity_t entity, ecs_component_t c
         .size = sizeof(cname),                                                                     \
         .on_set = RelationOnSet,                                                                   \
         .on_remove = RelationOnRemove,                                                             \
-        .is_relation = true                                                                        \
+        .is_relation = true,                                                                       \
+        .source_name = "Source" #cname,                                                            \
     };                                                                                             \
     ecs_component_t ecs_id(cname) = 0
 
@@ -98,13 +114,14 @@ void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id)
 #define ecs_has(world, entity, cname) ecs_has_cid(world, entity, ecs_id(cname))
 bool ecs_has_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
-#define ecs_get(world, entity, cname) ((cname *) ecs_get_cid(world, entity, ecs_id(cname)))
+#define ecs_get(world, entity, cname) ((cname *)ecs_get_cid(world, entity, ecs_id(cname)))
 void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
-#define ecs_try_get(world, entity, cname) ((cname *) ecs_try_get_cid(world, entity, ecs_id(cname)))
+#define ecs_try_get(world, entity, cname) ((cname *)ecs_try_get_cid(world, entity, ecs_id(cname)))
 void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid);
 
-#define ecs_set(world, entity, cname, ...) ecs_set_cid(world, entity, ecs_id(cname), &(cname) __VA_ARGS__)
+#define ecs_set(world, entity, cname, ...)                                                         \
+    ecs_set_cid(world, entity, ecs_id(cname), &(cname)__VA_ARGS__)
 void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
 
 void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require);

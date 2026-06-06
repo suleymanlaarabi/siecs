@@ -1,6 +1,7 @@
 #pragma once
 #include "../datastructure/vec.h"
 #include "../world.h"
+#include "ecs/datastructure/map.h"
 #include <stdint.h>
 
 typedef struct {
@@ -14,6 +15,9 @@ typedef struct {
 
 typedef struct ecs_component_index_s {
     ecs_vec_t components; // ecs_component_record_t
+    #ifndef NDEBUG
+    ecs_map_t component_name_map;
+    #endif
 } ecs_component_index_t;
 
 ecs_component_t ecs_component_index_create(

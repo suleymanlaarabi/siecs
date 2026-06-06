@@ -104,7 +104,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
     if (desc->is_relation) {
         ecs_component_t source = ecs_component_index_create(
             &world->component_index,
-            "todo",
+            desc->source_name,
             sizeof(RelationSource),
             NULL,
             RelationSourceOnRemove

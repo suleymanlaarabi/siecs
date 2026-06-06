@@ -1,4 +1,5 @@
 #include "component_index.h"
+#include "ecs/datastructure/map.h"
 #include "ecs/datastructure/vec.h"
 #include "ecs/world.h"
 #include <stdlib.h>
@@ -20,11 +21,19 @@ ecs_component_t ecs_component_index_create(
     };
 
     ecs_vec_push(&index->components, &record, sizeof(ecs_component_record_t));
+#ifndef NDEBUG
+    if (name) {
+        ecs_map_set(&index->component_name_map, name, index->components.size - 1);
+    }
+#endif
     return index->components.size - 1;
 }
 
 void ecs_component_index_init(ecs_component_index_t *index) {
     ecs_vec_init(&index->components, sizeof(ecs_component_record_t));
+#ifndef NDEBUG
+    ecs_map_init(&index->component_name_map, 16);
+#endif
 }
 
 void ecs_component_index_fini(ecs_component_index_t *index) {
@@ -34,4 +43,7 @@ void ecs_component_index_fini(ecs_component_index_t *index) {
         free(records[i].required);
     }
     ecs_vec_fini(&index->components);
+#ifndef NDEBUG
+    ecs_map_fini(&index->component_name_map);
+#endif
 }
