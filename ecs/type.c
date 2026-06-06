@@ -21,7 +21,9 @@ ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id) {
         .ids = malloc((type->count + 1) * sizeof(uint16_t)),
         .count = type->count + 1,
     };
-    memcpy(new_type.ids, type->ids, type->count * sizeof(uint16_t));
+    if (type->count > 0) {
+        memcpy(new_type.ids, type->ids, type->count * sizeof(uint16_t));
+    }
     new_type.ids[type->count] = id;
     ecs_type_sort(&new_type);
     return new_type;

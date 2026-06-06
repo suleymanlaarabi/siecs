@@ -9,17 +9,19 @@ Queries cache matching archetype tables.
 
 ```c
 ecs_query_id_t moving = ecs_query(world, {
+    .read = { ecs_id(Position), ecs_id(Velocity) },
     .required = { ecs_id(Position), ecs_id(Velocity) },
 });
 ```
 
-Required component arrays are capped by `MAX_QUERY_REQUIRED` and excluded arrays
-by `MAX_QUERY_EXCLUDED`.
+Read and required component arrays are capped at 8 components, and excluded
+arrays are capped at 4 components.
 
 ## Exclude components
 
 ```c
 ecs_query_id_t visible_moving = ecs_query(world, {
+    .read = { ecs_id(Position), ecs_id(Velocity) },
     .required = { ecs_id(Position), ecs_id(Velocity) },
     .excluded = { ecs_id(Hidden) },
 });
@@ -35,8 +37,8 @@ ecs_iter_t it = ecs_query_iter(world, moving);
 
 while (ecs_iter_next(&it)) {
     ecs_table_t *table = ecs_iter_table(&it);
-    Position *positions = ecs_field(&it, ecs_id(Position));
-    Velocity *velocities = ecs_field(&it, ecs_id(Velocity));
+    Position *positions = ecs_field(&it, 0);
+    Velocity *velocities = ecs_field(&it, 1);
 
     for (uint32_t i = 0; i < table->entity_count; i++) {
         positions[i].x += velocities[i].x;
@@ -45,7 +47,8 @@ while (ecs_iter_next(&it)) {
 }
 ```
 
-`ecs_field()` returns the raw column storage for the current table.
+`ecs_field()` returns the raw column storage for the current table by `.read`
+term index.
 
 ## Cache updates
 

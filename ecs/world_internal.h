@@ -1,9 +1,11 @@
 #pragma once
+#include "ecs/datastructure/vec.h"
 #include "ecs/storage/component_index.h"
 #include "ecs/storage/entity_index.h"
 #include "ecs/storage/observer_index.h"
 #include "ecs/storage/query_index.h"
 #include "ecs/storage/table_index.h"
+#include "ecs/world.h"
 
 typedef struct ecs_world_s {
     ecs_entity_index_t entity_index;
@@ -12,3 +14,44 @@ typedef struct ecs_world_s {
     ecs_query_index_t query_index;
     ecs_observer_index_t observer_index;
 } ecs_world_t;
+
+typedef struct {
+    ecs_entity_t target;
+} RelationTarget;
+
+typedef struct {
+    ecs_vec_t entities;
+} RelationSource;
+
+#define ecs_get_record(world, entity)                                                              \
+    ecs_vec_get_mut(&world->entity_index.entities, ecs_first(entity), ecs_entity_record_t)
+#define ecs_get_table(world, tid) ecs_table_index_at(&world->table_index, tid)
+
+static inline void ecs_emit(
+    ecs_world_t *world,
+    ecs_table_t *table,
+    ecs_entity_t entity,
+    ecs_event_t event,
+    const void *trigger_data
+) {
+    if (table->observers_by_event.size <= event) {
+        return;
+    }
+    ecs_vec_t *list = ecs_vec_get_mut(&table->observers_by_event, event, ecs_vec_t);
+    uint32_t n = list->size;
+    for (uint32_t i = 0; i < n; i++) {
+        uint16_t oid = *ecs_vec_get(list, i, uint16_t);
+        ecs_observer_t *obs =
+            ecs_vec_get_mut(&world->observer_index.observers, oid, ecs_observer_t);
+        ecs_observer_event_t observer_event = {
+            .world = world,
+            .entity = entity,
+            .event = event,
+            .user_data = obs->user_data,
+            .trigger_data = trigger_data,
+        };
+        obs->callback(&observer_event);
+    }
+}
+
+void ecs_bootstrap(ecs_world_t *world);

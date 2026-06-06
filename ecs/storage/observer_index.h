@@ -9,6 +9,7 @@ typedef struct {
     ecs_event_t event;
     ecs_query_t query;
     ecs_observer_callback_t callback;
+    uintptr_t user_data;
 } ecs_observer_t;
 
 typedef struct {

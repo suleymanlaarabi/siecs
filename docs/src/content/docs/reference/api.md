@@ -90,13 +90,14 @@ ecs_query_id_t ecs_query_init(
 ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);
 bool ecs_iter_next(ecs_iter_t *it);
 struct ecs_table_s *ecs_iter_table(ecs_iter_t *it);
-void *ecs_field(ecs_iter_t *it, ecs_component_t cid);
+void *ecs_field(ecs_iter_t *it, uint16_t query_term);
 ```
 
 Macro wrapper:
 
 ```c
 ecs_query(world, {
+    .read = { ecs_id(Position), ecs_id(Velocity) },
     .required = { ecs_id(Position), ecs_id(Velocity) },
     .excluded = { ecs_id(Hidden) },
 });

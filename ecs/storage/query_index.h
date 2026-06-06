@@ -6,15 +6,18 @@
 
 typedef struct {
     uint64_t bloom;
+    ecs_component_t *read;
     ecs_component_t *required;
     ecs_component_t *excluded;
+    uint16_t read_count;
     uint16_t required_count;
     uint16_t excluded_count;
 } ecs_query_t;
 
-typedef struct {
+typedef struct ecs_query_cache_s {
     ecs_query_t query;
-    ecs_vec_t matches; // uint16_t table ids
+    ecs_vec_t table_ids; // uint16_t
+    ecs_vec_t fields;    // void ** slots: &table->cls[col].data
 } ecs_query_cache_t;
 
 typedef struct {
@@ -26,13 +29,13 @@ void ecs_query_index_fini(ecs_query_index_t *index);
 uint16_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc);
 void ecs_query_index_update_matches(
     ecs_query_index_t *index,
-    const ecs_table_t *tables,
+    ecs_table_t *tables,
     uint16_t table_count,
     uint16_t query
 );
 void ecs_query_index_add_table(
     ecs_query_index_t *index,
-    const ecs_table_t *table,
+    ecs_table_t *table,
     uint16_t table_id
 );
 
@@ -51,6 +54,11 @@ static inline bool ecs_query_match_table(const ecs_query_t *query, const ecs_tab
     }
     for (uint16_t i = 0; i < query->required_count; i++) {
         if (!ecs_table_has(table, query->required[i])) {
+            return false;
+        }
+    }
+    for (uint16_t i = 0; i < query->read_count; i++) {
+        if (!ecs_table_has(table, query->read[i])) {
             return false;
         }
     }

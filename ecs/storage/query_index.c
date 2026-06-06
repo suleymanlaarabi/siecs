@@ -1,7 +1,7 @@
 #include "query_index.h"
 #include "ecs/datastructure/vec.h"
 #include "ecs/table.h"
-#include "ecs/type.h"
+#include "ecs/utils.h"
 #include "ecs/world.h"
 #include <stdint.h>
 #include <stdlib.h>
@@ -14,44 +14,77 @@ void ecs_query_index_init(ecs_query_index_t *index) {
 void ecs_query_index_fini(ecs_query_index_t *index) {
     for (uint32_t i = 0; i < index->queries.size; i++) {
         ecs_query_cache_t *cache = ecs_vec_get_mut(&index->queries, i, ecs_query_cache_t);
-        ecs_vec_fini(&cache->matches);
+        ecs_vec_fini(&cache->table_ids);
+        ecs_vec_fini(&cache->fields);
         ecs_query_fini(&cache->query);
     }
     ecs_vec_fini(&index->queries);
 }
 
 void ecs_query_fini(ecs_query_t *query) {
+    free(query->read);
     free(query->required);
     free(query->excluded);
 }
 
-void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
-    int i = 0;
-    for (; desc->required[i]; i++) {
+static uint16_t ecs_query_count_terms(const ecs_component_t *ids) {
+    uint16_t i = 0;
+    while (ids[i]) {
+        i++;
     }
-    query->required = malloc(sizeof(ecs_component_t) * i);
-    memcpy(query->required, desc->required, sizeof(ecs_component_t) * i);
-    query->required_count = i;
-    for (i = 0; desc->excluded[i]; i++)
-        ;
-    query->excluded = malloc(sizeof(ecs_component_t) * i);
-    query->excluded_count = i;
-    memcpy(query->excluded, desc->excluded, sizeof(ecs_component_t) * i);
-    ecs_type_t type = { .ids = query->required, .count = query->required_count };
-    query->bloom = ecs_type_bloom(&type);
+    return i;
+}
+
+static ecs_component_t *ecs_query_copy_terms(const ecs_component_t *ids, uint16_t count) {
+    if (count == 0) {
+        return NULL;
+    }
+    ecs_component_t *copy = malloc(sizeof(ecs_component_t) * count);
+    memcpy(copy, ids, sizeof(ecs_component_t) * count);
+    return copy;
+}
+
+void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
+    query->read_count = ecs_query_count_terms(desc->read);
+    query->required_count = ecs_query_count_terms(desc->required);
+    query->excluded_count = ecs_query_count_terms(desc->excluded);
+
+    query->read = ecs_query_copy_terms(desc->read, query->read_count);
+    query->required = ecs_query_copy_terms(desc->required, query->required_count);
+    query->excluded = ecs_query_copy_terms(desc->excluded, query->excluded_count);
+
+    query->bloom = 0;
+    for (uint16_t i = 0; i < query->read_count; i++) {
+        query->bloom |= 1ull << (query->read[i] % 64);
+    }
+    for (uint16_t i = 0; i < query->required_count; i++) {
+        query->bloom |= 1ull << (query->required[i] % 64);
+    }
+}
+
+static void
+ecs_query_cache_add_table(ecs_query_cache_t *cache, ecs_table_t *table, uint16_t table_id) {
+    ecs_vec_push_u16(&cache->table_ids, table_id);
+    for (uint16_t i = 0; i < cache->query.read_count; i++) {
+        uint16_t col = ecs_table_get_column_index(table, cache->query.read[i]);
+        void **slot = &table->cls[col].data;
+        ecs_vec_push(&cache->fields, &slot, sizeof(void **));
+    }
 }
 
 ecs_query_id_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc) {
+    ecs_assert(desc->read[0] != 0, "query must read at least one component\n");
     ecs_query_cache_t *query_cache = ecs_vec_push_empty(&index->queries, sizeof(ecs_query_cache_t));
     ecs_query_from_desc(desc, &query_cache->query);
-    ecs_vec_init(&query_cache->matches, sizeof(uint16_t));
+    ecs_vec_init(&query_cache->table_ids, sizeof(uint16_t));
+    ecs_vec_init(&query_cache->fields, sizeof(void **));
 
     return index->queries.size - 1;
 }
 
 void ecs_query_index_update_matches(
     ecs_query_index_t *index,
-    const ecs_table_t *tables,
+    ecs_table_t *tables,
     uint16_t table_count,
     ecs_query_id_t query
 ) {
@@ -59,20 +92,16 @@ void ecs_query_index_update_matches(
 
     for (uint16_t i = 0; i < table_count; i++) {
         if (ecs_query_match_table(&query_cache->query, &tables[i])) {
-            ecs_vec_push_u16(&query_cache->matches, i);
+            ecs_query_cache_add_table(query_cache, &tables[i], i);
         }
     }
 }
 
-void ecs_query_index_add_table(
-    ecs_query_index_t *index,
-    const ecs_table_t *table,
-    uint16_t table_id
-) {
+void ecs_query_index_add_table(ecs_query_index_t *index, ecs_table_t *table, uint16_t table_id) {
     for (uint32_t i = 0; i < index->queries.size; i++) {
         ecs_query_cache_t *cache = ecs_vec_get_mut(&index->queries, i, ecs_query_cache_t);
         if (ecs_query_match_table(&cache->query, table)) {
-            ecs_vec_push_u16(&cache->matches, table_id);
+            ecs_query_cache_add_table(cache, table, table_id);
         }
     }
 }

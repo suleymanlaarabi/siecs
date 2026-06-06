@@ -33,6 +33,9 @@ static inline void *ecs_vec_push_empty(ecs_vec_t *vec, const uint32_t element_si
     return ptr;
 }
 
+bool ecs_vec_contains_u64(const ecs_vec_t *vec, uint64_t value);
+void ecs_vec_remove_u64(ecs_vec_t *vec, uint64_t value);
+
 // Specialized push for 2-byte types
 static inline void ecs_vec_push_u16(ecs_vec_t *vec, const uint16_t value) {
     if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
@@ -48,6 +51,16 @@ static inline void ecs_vec_push_u32(ecs_vec_t *vec, const uint32_t value) {
     }
     ((uint32_t *)vec->data)[vec->size++] = value;
 }
+
+// Specialized push for 8-byte types
+static inline void ecs_vec_push_u64(ecs_vec_t *vec, const uint64_t value) {
+    if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
+        ecs_vec_grow(vec, sizeof(uint64_t));
+    }
+    ((uint64_t *)vec->data)[vec->size++] = value;
+}
+
+void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_size);
 
 // Direct pointer access for fast iteration
 #define ecs_vec_get(vec, index, type) (&((const type *)(vec)->data)[index])

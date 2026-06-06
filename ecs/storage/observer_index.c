@@ -24,6 +24,7 @@ uint16_t ecs_observer_index_create(ecs_observer_index_t *index, const ecs_observ
     ecs_observer_t *obs = ecs_vec_push_empty(&index->observers, sizeof(ecs_observer_t));
     obs->event = desc->on;
     obs->callback = desc->callback;
+    obs->user_data = desc->user_data;
     ecs_query_from_desc(&desc->query, &obs->query);
     return index->observers.size - 1;
 }

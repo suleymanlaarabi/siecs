@@ -196,7 +196,10 @@ static void setup_query_iter(void *ctx) {
         ecs_add(g_world, e, Position);
         ecs_add(g_world, e, Velocity);
     }
-    g_query = ecs_query(g_world, { .required = { ecs_id(Position), ecs_id(Velocity) } });
+    g_query = ecs_query(g_world, {
+        .read = { ecs_id(Position), ecs_id(Velocity) },
+        .required = { ecs_id(Position), ecs_id(Velocity) },
+    });
 }
 
 static void bench_query_iter(void *ctx) {
@@ -212,15 +215,28 @@ static void bench_query_iter(void *ctx) {
     (void)sink;
 }
 
+static void bench_query_fields(void *ctx) {
+    (void)ctx;
+    volatile uintptr_t sink = 0;
+    for (int i = 0; i < QUERY_ITER_REPS; i++) {
+        ecs_iter_t it = ecs_query_iter(g_world, g_query);
+        while (ecs_iter_next(&it)) {
+            Position *positions = ecs_field(&it, 0);
+            Velocity *velocities = ecs_field(&it, 1);
+            sink += (uintptr_t)positions + (uintptr_t)velocities;
+        }
+    }
+    (void)sink;
+}
+
 static void teardown_query_iter(void *ctx) {
     (void)ctx;
     ecs_fini(g_world);
     g_world = NULL;
 }
 
-static void on_observer_emit(ecs_world_t *world, ecs_entity_t entity) {
-    (void)world;
-    (void)entity;
+static void on_observer_emit(ecs_observer_event_t *event) {
+    (void)event;
     g_observer_count++;
 }
 
@@ -295,6 +311,15 @@ int main(void) {
         5,
         NULL,
         bench_query_iter,
+        setup_query_iter,
+        teardown_query_iter
+    );
+
+    BENCH(
+        "query fields x100000 x10000",
+        5,
+        NULL,
+        bench_query_fields,
         setup_query_iter,
         teardown_query_iter
     );

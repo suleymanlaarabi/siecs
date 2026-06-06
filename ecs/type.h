@@ -21,5 +21,7 @@ static inline int
 ecs_type_equals(const uint16_t *a_ids, uint16_t a_count, const uint16_t *b_ids, uint16_t b_count) {
     if (a_count != b_count)
         return 0;
+    if (a_count == 0)
+        return 1;
     return memcmp(a_ids, b_ids, (size_t)a_count * sizeof(uint16_t)) == 0;
 }

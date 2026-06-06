@@ -3,12 +3,13 @@
 #include "../world.h"
 #include <stdint.h>
 
-
 typedef struct {
     const char *name;
     uint16_t *required;
     uint32_t required_count;
     uint32_t size;
+    ecs_component_hook_t on_set;
+    ecs_component_hook_t on_remove;
 } ecs_component_record_t;
 
 typedef struct ecs_component_index_s {
@@ -18,7 +19,9 @@ typedef struct ecs_component_index_s {
 ecs_component_t ecs_component_index_create(
     ecs_component_index_t *index,
     const char *name,
-    uint64_t size
+    uint64_t size,
+    ecs_component_hook_t on_set,
+    ecs_component_hook_t on_remove
 );
 
 #define ecs_component_index_get(index, id)                                                         \

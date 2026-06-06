@@ -2,6 +2,7 @@
 
 #ifndef NDEBUG
 #include <stdio.h>
+#include <stdlib.h>
 #define ecs_cid_valid(id) ((id) != 0)
 #define ecs_entity_valid(entity) (ecs_first(entity) != 0)
 

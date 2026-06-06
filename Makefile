@@ -1,5 +1,6 @@
 NAME        := bin/app
 TEST_NAME   := bin/tests
+TEST_UBSAN_NAME := bin/tests-ubsan
 BENCH_NAME  := bin/bench
 
 CC          := gcc
@@ -9,6 +10,7 @@ WARNINGS    := -Wall -Wextra -Wpedantic
 DEBUG       := -g3
 DEPFLAGS    := -MMD -MP
 BENCH_OPT   := -O2
+UBSAN_FLAGS := -fsanitize=undefined -fno-sanitize-recover=undefined
 
 CFLAGS      := $(CSTD) $(WARNINGS) $(OPTIM) $(DEBUG) $(DEPFLAGS)
 CPPFLAGS    := -I.
@@ -18,6 +20,7 @@ LDLIBS      :=
 TEST_LDLIBS := -lcriterion
 
 OBJ_DIR     := .build/obj
+UBSAN_OBJ_DIR := .build/ubsan
 BIN_DIR     := bin
 
 ALL_C_FILES := $(shell find . -type f -name '*.c' -not -path "./.build/*")
@@ -50,6 +53,8 @@ run: $(NAME)
 .PHONY: test
 test: $(TEST_NAME)
 	./$(TEST_NAME)
+	$(MAKE) $(TEST_UBSAN_NAME) TEST_NAME=$(TEST_UBSAN_NAME) OBJ_DIR=$(UBSAN_OBJ_DIR) CFLAGS='$(CFLAGS) $(UBSAN_FLAGS)' LDFLAGS='$(LDFLAGS) $(UBSAN_FLAGS)'
+	./$(TEST_UBSAN_NAME)
 
 .PHONY: bench
 bench: $(BENCH_NAME)

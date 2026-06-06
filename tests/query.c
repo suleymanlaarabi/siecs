@@ -7,9 +7,9 @@
 
 typedef ecs_world_t ecs_world_t_internal;
 
-ECS_COMPONENT_DECLARE(Pos, { float x, y; })
-ECS_COMPONENT_DECLARE(Vel, { float x, y; })
-ECS_COMPONENT_DECLARE(Acc, { float x, y; })
+ECS_COMPONENT_DECLARE(Pos, { float x, y; });
+ECS_COMPONENT_DECLARE(Vel, { float x, y; });
+ECS_COMPONENT_DECLARE(Acc, { float x, y; });
 
 ECS_COMPONENT_DEFINE(Pos);
 ECS_COMPONENT_DEFINE(Vel);
@@ -32,19 +32,26 @@ Test(query, bloom_filter_subset_match) {
     ecs_add(world, e2, Vel);
     ecs_add(world, e2, Acc);
 
-    uint32_t q = ecs_query(world, { .required = { ecs_id(Pos), ecs_id(Vel) } });
+    uint32_t q = ecs_query(
+        world,
+        {
+            .read = { ecs_id(Pos), ecs_id(Vel) },
+            .required = { ecs_id(Pos), ecs_id(Vel) },
+        }
+    );
 
     ecs_world_t_internal *wi = (ecs_world_t_internal *)world;
     ecs_query_index_t *qi = &wi->query_index;
 
     ecs_query_cache_t *cache = ecs_vec_get_mut(&qi->queries, q, ecs_query_cache_t);
-    ecs_vec_clear(&cache->matches);
+    ecs_vec_clear(&cache->table_ids);
+    ecs_vec_clear(&cache->fields);
 
     ecs_query_index_update_matches(qi, wi->table_index.tables, wi->table_index.table_count, q);
 
     cache = ecs_vec_get_mut(&qi->queries, q, ecs_query_cache_t);
 
-    cr_assert_eq(cache->matches.size, 2, "Query should match 2 tables (Pos+Vel and Pos+Vel+Acc)");
+    cr_assert_eq(cache->table_ids.size, 2, "Query should match 2 tables (Pos+Vel and Pos+Vel+Acc)");
 
     ecs_fini(world);
 }
@@ -62,7 +69,13 @@ Test(query, iter_count) {
     ecs_entity_t lone = ecs_new(world);
     ecs_add(world, lone, Pos);
 
-    uint32_t q = ecs_query(world, { .required = { ecs_id(Pos), ecs_id(Vel) } });
+    uint32_t q = ecs_query(
+        world,
+        {
+            .read = { ecs_id(Pos), ecs_id(Vel) },
+            .required = { ecs_id(Pos), ecs_id(Vel) },
+        }
+    );
 
     uint32_t count = 0;
     ecs_iter_t it = ecs_query_iter(world, q);
@@ -87,11 +100,17 @@ Test(query, iter_data_write) {
     p->x = 1.0f;
     p->y = 2.0f;
 
-    uint32_t q = ecs_query(world, { .required = { ecs_id(Pos), ecs_id(Vel), 0 } });
+    uint32_t q = ecs_query(
+        world,
+        {
+            .read = { ecs_id(Pos), ecs_id(Vel) },
+            .required = { ecs_id(Pos), ecs_id(Vel), 0 },
+        }
+    );
 
     ecs_iter_t it = ecs_query_iter(world, q);
     while (ecs_iter_next(&it)) {
-        Pos *positions = ecs_field(&it, ecs_id(Pos));
+        Pos *positions = ecs_field(&it, 0);
         uint32_t n = ecs_iter_table(&it)->entity_count;
         for (uint32_t i = 0; i < n; i++) {
             positions[i].x += 10.0f;
@@ -108,7 +127,13 @@ Test(query, cache_auto_update) {
     ECS_COMPONENT_REGISTER(world, Pos);
     ECS_COMPONENT_REGISTER(world, Vel);
 
-    uint32_t q = ecs_query(world, { .required = { ecs_id(Pos), ecs_id(Vel), 0 } });
+    uint32_t q = ecs_query(
+        world,
+        {
+            .read = { ecs_id(Pos), ecs_id(Vel) },
+            .required = { ecs_id(Pos), ecs_id(Vel), 0 },
+        }
+    );
 
     ecs_entity_t e1 = ecs_new(world);
     ecs_add(world, e1, Pos);
@@ -144,8 +169,14 @@ Test(query, iter_excluded) {
     ecs_add(world, e3, Vel);
     ecs_add(world, e3, Acc);
 
-    uint32_t q =
-        ecs_query(world, { .required = { ecs_id(Pos), ecs_id(Vel) }, .excluded = { ecs_id(Acc) } });
+    uint32_t q = ecs_query(
+        world,
+        {
+            .read = { ecs_id(Pos), ecs_id(Vel) },
+            .required = { ecs_id(Pos), ecs_id(Vel) },
+            .excluded = { ecs_id(Acc) },
+        }
+    );
 
     uint32_t count = 0;
     ecs_iter_t it = ecs_query_iter(world, q);
