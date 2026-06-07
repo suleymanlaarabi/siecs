@@ -85,7 +85,7 @@ static void ecs_map_grow(ecs_map_t *m) {
     ecs_map_slot_t *new_slots = (ecs_map_slot_t *)calloc(new_cap, sizeof(ecs_map_slot_t));
 
     for (size_t i = 0; i < m->cap; i++) {
-        ecs_map_slot_t *s = &m->slots[i];
+        const ecs_map_slot_t *s = &m->slots[i];
         if (s->key) {
             ecs_map_insert_raw(new_slots, new_cap, s->key, s->hash, s->value);
         }

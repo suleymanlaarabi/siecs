@@ -16,13 +16,13 @@ static inline void ecs_id_map_set(ecs_id_map_t *map, uint16_t id, uint16_t value
     map->ids[id] = value;
 }
 
-static inline uint16_t ecs_id_map_at(ecs_id_map_t *map, uint16_t id) { return map->ids[id]; }
+static inline uint16_t ecs_id_map_at(const ecs_id_map_t *map, uint16_t id) { return map->ids[id]; }
 
 static inline uint16_t ecs_id_map_at_or_invalid(const ecs_id_map_t *map, uint16_t id) {
     return map->capacity > id ? map->ids[id] : UINT16_MAX;
 }
 
 
-static inline uint16_t ecs_id_map_has(ecs_id_map_t *map, uint16_t id) {
+static inline uint16_t ecs_id_map_has(const ecs_id_map_t *map, uint16_t id) {
     return map->capacity > id && map->ids[id] != UINT16_MAX;
 }
