@@ -10,16 +10,34 @@
 extern "C" {
 #endif
 
+/*
+ * Public id symbol generated for a component type.
+ *
+ * Users normally do not call this macro directly. It is used by the typed
+ * helpers such as ecs_add(world, entity, Position).
+ */
 #define ecs_id(name) _ecs_id_##name##__
 
+/* Opaque ECS world. Create with ecs_init and destroy with ecs_fini. */
 struct ecs_world_s;
 typedef struct ecs_world_s ecs_world_t;
+
+/* Public handle types. A zero id is reserved internally and is not user data. */
 typedef uint64_t ecs_entity_t;
 typedef uint16_t ecs_component_t;
 typedef uint16_t ecs_query_id_t;
 typedef uint16_t ecs_system_id_t;
 typedef uint16_t ecs_event_t;
 
+/*
+ * Event payload passed to observer callbacks.
+ *
+ * trigger_data is event-specific:
+ * - OnAdd: pointer to the added component storage.
+ * - OnRemove: pointer to the component storage before removal.
+ * - OnSet: pointer to the new value passed to ecs_set/ecs_set_cid.
+ * - Custom events: pointer passed to ecs_observer_trigger.
+ */
 typedef struct {
     ecs_world_t *world;
     ecs_entity_t entity;
@@ -30,6 +48,15 @@ typedef struct {
 
 typedef void (*ecs_observer_callback_t)(ecs_observer_event_t *event);
 
+/*
+ * Component lifecycle hook.
+ *
+ * on_set receives the new value passed to ecs_set/ecs_set_cid. At that moment,
+ * the table still contains the previous value, so ecs_get/ecs_get_cid can be
+ * used by the hook to inspect old data.
+ *
+ * on_remove receives the value that is about to be removed.
+ */
 typedef void (*ecs_component_hook_t)(
     ecs_world_t *world,
     ecs_entity_t entity,
@@ -37,6 +64,13 @@ typedef void (*ecs_component_hook_t)(
     const void *ptr
 );
 
+/*
+ * Component registration descriptor.
+ *
+ * name and size are required for normal components. Hooks are optional.
+ * Relation fields are used by ECS_RELATION_DEFINE and should normally not be
+ * filled manually by user code.
+ */
 typedef struct {
     const char *name;
     uint64_t size;
@@ -46,20 +80,45 @@ typedef struct {
     const char *source_name;
 } ecs_component_desc_t;
 
+/*
+ * Query descriptor.
+ *
+ * Arrays are zero-terminated component id lists:
+ * - read: components returned by ecs_field.
+ * - required: components that must exist but are not returned.
+ * - excluded: components that must not exist.
+ *
+ * A query must read at least one component.
+ */
 typedef struct {
     ecs_component_t read[10];
     ecs_component_t required[8];
     ecs_component_t excluded[6];
 } ecs_query_desc_t;
 
+/* Create an ECS world. */
 ecs_world_t *ecs_init(void);
+
+/* Destroy a world and all ECS storage owned by it. world must not be NULL. */
 void ecs_fini(ecs_world_t *world);
 
+/*
+ * Declare a component type and its public component id.
+ *
+ * Use in headers:
+ *   ECS_COMPONENT_DECLARE(Position, { float x; float y; });
+ */
 #define ECS_COMPONENT_DECLARE(cname, ...)                                                          \
     typedef struct __VA_ARGS__ cname;                                                              \
     extern ecs_component_t ecs_id(cname);                                                          \
     extern ecs_component_desc_t ecs_id(cname##_desc)
 
+/*
+ * Define a component declared with ECS_COMPONENT_DECLARE.
+ *
+ * Use once in a C file:
+ *   ECS_COMPONENT_DEFINE(Position);
+ */
 #define ECS_COMPONENT_DEFINE(cname)                                                                \
     ecs_component_desc_t ecs_id(cname##_desc) = {                                                  \
         .name = #cname,                                                                            \
@@ -67,9 +126,21 @@ void ecs_fini(ecs_world_t *world);
     };                                                                                             \
     ecs_component_t ecs_id(cname) = 0
 
+/*
+ * Register a component type in a world.
+ *
+ * Must be called before using the typed helpers for that component with this
+ * world. Stores the generated component id in ecs_id(cname).
+ */
 #define ECS_COMPONENT_REGISTER(world, cname)                                                       \
     ecs_id(cname) = ecs_component_init(world, &ecs_id(cname##_desc))
 
+/*
+ * Define a relation component.
+ *
+ * A relation stores an entity target. The implementation also creates a source
+ * component used internally to track reverse links.
+ */
 #define ECS_RELATION_DEFINE(cname)                                                                 \
     ecs_component_desc_t ecs_id(cname##_desc) = {                                                  \
         .name = #cname,                                                                            \
@@ -79,48 +150,139 @@ void ecs_fini(ecs_world_t *world);
     };                                                                                             \
     ecs_component_t ecs_id(cname) = 0
 
+/* Return the internal source component id associated with a relation id. */
 #define ecs_source(name) (ecs_id(name) + 1)
 
+/* Declare a relation type. The generated struct contains ecs_entity_t target. */
 #define ECS_RELATION_DECLARE(name) ECS_COMPONENT_DECLARE(name, { ecs_entity_t target; })
 
+/* Builtin relation for parent/child relationships. */
 ECS_RELATION_DECLARE(ChildOf);
 
+/*
+ * Register a component from an inline descriptor.
+ *
+ * Example:
+ *   ecs_component_t Position = ecs_component(world, {
+ *       .name = "Position",
+ *       .size = sizeof(Position)
+ *   });
+ */
 #define ecs_component(world, ...) ecs_component_init(world, &(ecs_component_desc_t)__VA_ARGS__)
+
+/* Register a component descriptor and return its component id. */
 ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc);
 
+/* Create a new alive entity in world. world must not be NULL. */
 ecs_entity_t ecs_new(ecs_world_t *world);
+
+/*
+ * Return whether entity is alive in world.
+ *
+ * entity must be a handle created by this world. Passing arbitrary ids is not a
+ * supported validity check.
+ */
 int ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity);
+
+/* Destroy an alive entity and remove all of its components. */
 void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
 
+/*
+ * Create a query from an inline descriptor.
+ *
+ * Example:
+ *   ecs_query_id_t q = ecs_query(world, {
+ *       .read = { ecs_id(Position), ecs_id(Velocity) }
+ *   });
+ */
 #define ecs_query(world, ...) ecs_query_init(world, &(ecs_query_desc_t)__VA_ARGS__)
+
+/* Create a query. The query descriptor must read at least one component. */
 uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *query);
+
+/* Destroy a query id created by ecs_query/ecs_query_init. */
 void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
 
+/* Add a typed component tag/storage to an alive entity. */
 #define ecs_add(world, entity, cname) ecs_add_cid(world, entity, ecs_id(cname))
+
+/*
+ * Add a component id to an alive entity.
+ *
+ * If the component is already present, this is currently treated as a no-op by
+ * table migration. The component id must be registered in the same world.
+ */
 void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
+/* Remove a typed component from an alive entity. */
 #define ecs_remove(world, entity, cname) ecs_remove_cid(world, entity, ecs_id(cname))
+
+/*
+ * Remove a component id from an alive entity.
+ *
+ * Removing a component that is not present is a no-op.
+ */
 void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
+/* Return whether an alive entity has a typed component. */
 #define ecs_has(world, entity, cname) ecs_has_cid(world, entity, ecs_id(cname))
+
+/* Return whether an alive entity has a component id. */
 bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
+/*
+ * Get a typed component pointer from an alive entity.
+ *
+ * The component is assumed to exist. Use ecs_try_get when the component may be
+ * absent.
+ */
 #define ecs_get(world, entity, cname) ((cname *)ecs_get_cid(world, entity, ecs_id(cname)))
+
+/*
+ * Get a component pointer by id.
+ *
+ * The component is assumed to exist on the entity. Use ecs_try_get_cid when the
+ * component may be absent.
+ */
 void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
+/* Get a typed component pointer, or NULL if the entity does not have it. */
 #define ecs_try_get(world, entity, cname) ((cname *)ecs_try_get_cid(world, entity, ecs_id(cname)))
+
+/* Get a component pointer by id, or NULL if the entity does not have it. */
 void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid);
 
+/*
+ * Set a typed component value on an alive entity.
+ *
+ * Adds the component if needed, then emits OnSet. Component on_set hooks and
+ * OnSet observers receive the new value before it is copied into storage.
+ */
 #define ecs_set(world, entity, cname, ...)                                                         \
     ecs_set_cid(world, entity, ecs_id(cname), &(cname)__VA_ARGS__)
+
+/*
+ * Set a component value by id.
+ *
+ * data must point to at least the registered component size. Adds the component
+ * if needed.
+ */
 void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
 
+/*
+ * Planned API: declare that component implies require.
+ *
+ * This function is declared for future use and should not be considered stable
+ * until it has tests and an implementation.
+ */
 void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require);
 
+/* Builtin observer events. */
 #define OnAdd 0
 #define OnRemove 1
 #define OnSet 2
 
+/* Observer descriptor. callback is required. */
 typedef struct {
     ecs_event_t on;
     ecs_query_desc_t query;
@@ -128,10 +290,20 @@ typedef struct {
     uintptr_t user_data;
 } ecs_observer_desc_t;
 
+/* Create an observer from an inline descriptor. */
 #define ecs_observer(world, ...) ecs_observer_init(world, &(ecs_observer_desc_t)__VA_ARGS__)
 
+/* Allocate and return a custom event id. */
 ecs_event_t ecs_event(ecs_world_t *world);
+
+/* Create an observer. desc->callback must not be NULL. */
 uint32_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc);
+
+/*
+ * Trigger an event for an alive entity.
+ *
+ * Observers matching the entity's current table and event id will be called.
+ */
 void ecs_observer_trigger(
     ecs_world_t *world,
     ecs_entity_t entity,
@@ -139,6 +311,12 @@ void ecs_observer_trigger(
     const void *trigger_data
 );
 
+/*
+ * Query iterator.
+ *
+ * Users may read world and count. The other fields are implementation details
+ * and should not be accessed directly.
+ */
 typedef struct {
     ecs_world_t *world;
     uint32_t count;
@@ -148,10 +326,25 @@ typedef struct {
     uint16_t table_count;
 } ecs_iter_t;
 
+/* Create a stack iterator for a query id. */
 ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);
+
+/*
+ * Advance an iterator to the next non-empty batch.
+ *
+ * Returns false when iteration is finished. it->count is the number of entities
+ * in the current batch.
+ */
 bool ecs_iter_next(ecs_iter_t *it);
+
+/*
+ * Return the component array for a read term in the current iterator batch.
+ *
+ * query_term is zero-based and must refer to an entry from ecs_query_desc_t.read.
+ */
 static inline void *ecs_field(ecs_iter_t *it, uint16_t query_term) { return *it->ptrs[query_term]; }
 
+/* System phases. System execution is planned API and not stable yet. */
 typedef enum {
     OnPreUpdate,
     OnUpdate,
@@ -159,6 +352,7 @@ typedef enum {
     OnRender,
 } ecs_phase_t;
 
+/* Planned system descriptor. Not stable until system execution is implemented. */
 typedef struct {
     ecs_query_desc_t query;
     void (*callback)(ecs_iter_t *);
@@ -166,7 +360,10 @@ typedef struct {
     ecs_system_id_t after[4];
 } ecs_system_desc_t;
 
+/* Planned API: create a system from an inline descriptor. */
 #define ecs_system(world, ...) ecs_system_init(world, &(ecs_system_desc_t)__VA_ARGS__)
+
+/* Planned API: not stable until implemented and tested. */
 ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc);
 
 #ifdef __cplusplus
