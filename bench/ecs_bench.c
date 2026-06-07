@@ -1,19 +1,21 @@
 #include "../ecs/table.h"
+#include "../ecs/storage/table_index.h"
 #include "../ecs/world.h"
 #include "bench.h"
+#include "ecs/world_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 
-ECS_COMPONENT_DECLARE(Position, { float x, y, z; })                        /* 3  */
-ECS_COMPONENT_DECLARE(Velocity, { float x, y, z; })                        /* 3  */
-ECS_COMPONENT_DECLARE(Rotation, { float x, y, z, w; })                     /* 4  */
-ECS_COMPONENT_DECLARE(Scale, { float x, y, z; })                           /* 3  */
-ECS_COMPONENT_DECLARE(Color, { float r, g, b, a; })                        /* 4  */
-ECS_COMPONENT_DECLARE(Health, { float hp, max_hp, regen; })                /* 3  */
-ECS_COMPONENT_DECLARE(Stats, { float atk, def, spd, mass; })               /* 4 */
-ECS_COMPONENT_DECLARE(Meta, { int active, layer, tag, flags; })            /* 4 */
-ECS_COMPONENT_DECLARE(Camera, { float near, far, fov, aspect; })           /* 4 */
-ECS_COMPONENT_DECLARE(Light, { float lx, ly, lz, lr, lg, lb, intensity; }) /* 7 */
+ECS_COMPONENT_DECLARE(Position, { float x, y, z; });                        /* 3  */
+ECS_COMPONENT_DECLARE(Velocity, { float x, y, z; });                        /* 3  */
+ECS_COMPONENT_DECLARE(Rotation, { float x, y, z, w; });                     /* 4  */
+ECS_COMPONENT_DECLARE(Scale, { float x, y, z; });                           /* 3  */
+ECS_COMPONENT_DECLARE(Color, { float r, g, b, a; });                        /* 4  */
+ECS_COMPONENT_DECLARE(Health, { float hp, max_hp, regen; });                /* 3  */
+ECS_COMPONENT_DECLARE(Stats, { float atk, def, spd, mass; });               /* 4 */
+ECS_COMPONENT_DECLARE(Meta, { int active, layer, tag, flags; });            /* 4 */
+ECS_COMPONENT_DECLARE(Camera, { float near, far, fov, aspect; });           /* 4 */
+ECS_COMPONENT_DECLARE(Light, { float lx, ly, lz, lr, lg, lb, intensity; }); /* 7 */
 
 ECS_COMPONENT_DEFINE(Position);
 ECS_COMPONENT_DEFINE(Velocity);
@@ -28,10 +30,15 @@ ECS_COMPONENT_DEFINE(Light);
 
 #define N_ENTITIES 100000
 #define QUERY_ITER_REPS 10000
+#define QUERY_CREATE_TABLES 2200
+#define QUERY_CREATE_COMPONENT_POOL 2048
+#define QUERY_CREATE_COMPONENTS_PER_TABLE 24
+#define QUERY_CREATE_TERMS 7
 
 static ecs_world_t *g_world;
 static ecs_entity_t *g_entities;
 static ecs_query_id_t g_query;
+static ecs_component_t g_query_create_terms[QUERY_CREATE_TERMS];
 static uint64_t g_observer_count;
 
 static void register_components(ecs_world_t *w) {
@@ -196,10 +203,13 @@ static void setup_query_iter(void *ctx) {
         ecs_add(g_world, e, Position);
         ecs_add(g_world, e, Velocity);
     }
-    g_query = ecs_query(g_world, {
-        .read = { ecs_id(Position), ecs_id(Velocity) },
-        .required = { ecs_id(Position), ecs_id(Velocity) },
-    });
+    g_query = ecs_query(
+        g_world,
+        {
+            .read = { ecs_id(Position), ecs_id(Velocity) },
+            .required = { ecs_id(Position), ecs_id(Velocity) },
+        }
+    );
 }
 
 static void bench_query_iter(void *ctx) {
@@ -230,6 +240,71 @@ static void bench_query_fields(void *ctx) {
 }
 
 static void teardown_query_iter(void *ctx) {
+    (void)ctx;
+    ecs_fini(g_world);
+    g_world = NULL;
+}
+
+static int cmp_component_id(const void *a, const void *b) {
+    const ecs_component_t lhs = *(const ecs_component_t *)a;
+    const ecs_component_t rhs = *(const ecs_component_t *)b;
+    return (lhs > rhs) - (lhs < rhs);
+}
+
+static void setup_query_create(void *ctx) {
+    (void)ctx;
+    g_world = ecs_init();
+    const uint32_t target_table = QUERY_CREATE_TABLES / 2;
+    ecs_component_t components[QUERY_CREATE_COMPONENT_POOL];
+
+    for (uint32_t i = 0; i < QUERY_CREATE_COMPONENT_POOL; i++) {
+        components[i] = ecs_component(g_world, { .name = NULL, .size = 8 });
+    }
+
+    for (uint32_t table_i = 0; table_i < QUERY_CREATE_TABLES; table_i++) {
+        ecs_component_t *ids =
+            malloc(sizeof(ecs_component_t) * QUERY_CREATE_COMPONENTS_PER_TABLE);
+
+        for (uint32_t col = 0; col < QUERY_CREATE_COMPONENTS_PER_TABLE; col++) {
+            ids[col] = components[(table_i * 37 + col * 11) % QUERY_CREATE_COMPONENT_POOL];
+        }
+
+        qsort(ids, QUERY_CREATE_COMPONENTS_PER_TABLE, sizeof(ecs_component_t), cmp_component_id);
+        if (table_i == target_table) {
+            for (uint32_t i = 0; i < QUERY_CREATE_TERMS; i++) {
+                g_query_create_terms[i] = ids[i];
+            }
+        }
+
+        ecs_table_index_get_or_create(
+            g_world,
+            (ecs_type_t){
+                .ids = ids,
+                .count = QUERY_CREATE_COMPONENTS_PER_TABLE,
+            }
+        );
+    }
+}
+
+static void bench_query_create(void *ctx) {
+    (void)ctx;
+    g_query = ecs_query(
+        g_world,
+        {
+            .read = {
+                g_query_create_terms[0],
+                g_query_create_terms[1],
+                g_query_create_terms[2],
+                g_query_create_terms[3],
+                g_query_create_terms[4],
+                g_query_create_terms[5],
+                g_query_create_terms[6],
+            },
+        }
+    );
+}
+
+static void teardown_query_create(void *ctx) {
     (void)ctx;
     ecs_fini(g_world);
     g_world = NULL;
@@ -317,11 +392,20 @@ int main(void) {
 
     BENCH(
         "query fields x100000 x10000",
-        5,
+        100,
         NULL,
         bench_query_fields,
         setup_query_iter,
         teardown_query_iter
+    );
+
+    BENCH(
+        "query create 2200 tables x24 comps",
+        1,
+        NULL,
+        bench_query_create,
+        setup_query_create,
+        teardown_query_create
     );
 
     BENCH(

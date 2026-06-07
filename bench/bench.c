@@ -37,13 +37,5 @@ bench_result_t bench_run(const bench_desc_t *desc) {
 }
 
 void bench_print(const char *name, bench_result_t r) {
-    printf(
-        "%-40s  avg: %8.2f ns  min: %8.2f ns  max: %8.2f ns  total: %8.2f ms  iters: %lu\n",
-        name,
-        r.avg_ns,
-        r.min_ns,
-        r.max_ns,
-        r.total_ms,
-        (unsigned long)r.iterations
-    );
+    printf("%-40s  %8.2f ms\n", name, r.total_ms);
 }
