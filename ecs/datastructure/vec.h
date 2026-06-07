@@ -72,3 +72,20 @@ void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_
 
 // Direct indexed access for fast writes. Does not check bounds or grow the vec.
 #define ecs_vec_set(vec, type, index, value) (((type *)vec->data)[index] = value)
+
+
+#define ecs_vec_iter(vec, type, value, ...)                                                        \
+    const type *__values = (vec)->data;                                                            \
+    const uint32_t __count = (vec)->size;                                                          \
+    for (uint32_t i = 0; i < __count; i++) {                                                       \
+        const type *value = &__values[i];                                                          \
+        __VA_ARGS__                                                                                \
+    }
+
+#define ecs_vec_iter_mut(vec, type, value, ...)                                                    \
+    type *__values = (vec)->data;                                                                  \
+    const uint32_t __count = (vec)->size;                                                          \
+    for (uint32_t i = 0; i < __count; i++) {                                                       \
+        type *value = &__values[i];                                                                \
+        __VA_ARGS__                                                                                \
+    }

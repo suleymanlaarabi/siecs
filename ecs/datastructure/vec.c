@@ -50,22 +50,18 @@ void ecs_vec_ensure(ecs_vec_t *vec, uint32_t count, const uint32_t element_size)
 void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_size) {
     if (index < vec->size - 1) {
         void *dst = (uint8_t *)vec->data + (index * element_size);
-        void *src = (uint8_t *)vec->data + ((vec->size - 1) * element_size);
+        const void *src = (uint8_t *)vec->data + ((vec->size - 1) * element_size);
         memcpy(dst, src, element_size);
     }
     vec->size--;
 }
 
 bool ecs_vec_contains_u64(const ecs_vec_t *vec, const uint64_t value) {
-    const uint64_t *data = vec->data;
-    const uint32_t count = vec->size;
-
-    for (uint32_t i = 0; i < count; i++) {
-        if (data[i] == value) {
+    ecs_vec_iter(vec, uint64_t, current, {
+        if (*current == value) {
             return true;
         }
-    }
-
+    });
     return false;
 }
 
@@ -78,13 +74,10 @@ static inline void ecs_vec_remove_fast_u64(ecs_vec_t *vec, uint32_t index) {
 }
 
 void ecs_vec_remove_u64(ecs_vec_t *vec, uint64_t value) {
-    const uint64_t *data = vec->data;
-    const uint32_t count = vec->size;
-
-    for (uint32_t i = 0; i < count; i++) {
-        if (data[i] == value) {
+    ecs_vec_iter(vec, uint64_t, current, {
+        if (*current == value) {
             ecs_vec_remove_fast_u64(vec, i);
             return;
         }
-    }
+    });
 }
