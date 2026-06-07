@@ -1,0 +1,20 @@
+---
+Checks: >
+  -*,
+  bugprone-integer-division,
+  bugprone-misplaced-widening-cast,
+  bugprone-sizeof-expression,
+  bugprone-too-small-loop-variable,
+  clang-analyzer-optin.performance.*,
+  misc-const-correctness,
+  performance-*,
+  readability-non-const-parameter
+HeaderFilterRegex: '^(ecs|bench|tests)/.*'
+FormatStyle: file
+WarningsAsErrors: ''
+CheckOptions:
+  - key: misc-const-correctness.WarnPointersAsValues
+    value: 'true'
+  - key: misc-const-correctness.TransformPointersAsValues
+    value: 'true'
+...

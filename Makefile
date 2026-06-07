@@ -22,6 +22,15 @@ TEST_LDLIBS := -lcriterion
 OBJ_DIR     := .build/obj
 UBSAN_OBJ_DIR := .build/ubsan
 BIN_DIR     := bin
+CLANG_TIDY  := clang-tidy
+CLANG_TIDY_FLAGS :=
+CPPCHECK    := cppcheck
+CPPCHECK_FLAGS := --enable=style,performance --std=c23 --inline-suppr --quiet
+CPPCHECK_FLAGS += --suppress=nullPointerOutOfMemory
+CPPCHECK_FLAGS += --suppress=invalidPrintfArgType_sint
+CPPCHECK_FLAGS += --suppress=normalCheckLevelMaxBranches
+CPPCHECK_FLAGS += --suppress=returnImplicitInt
+CPPCHECK_FLAGS += --suppress=unknownMacro
 
 ALL_C_FILES := $(shell find . -type f -name '*.c' -not -path "./.build/*")
 ALL_C_FILES := $(ALL_C_FILES:./%=%)
@@ -37,10 +46,11 @@ TEST_OBJ  := $(patsubst %.c,$(OBJ_DIR)/%.o,$(TEST_SRC))
 BENCH_OBJ := $(patsubst %.c,$(OBJ_DIR)/%.o,$(BENCH_SRC))
 
 FORMAT_FILES := $(shell find . -type f \( -name '*.c' -o -name '*.h' \) -not -path "./.build/*" -not -path "./docs/*")
+LINT_FILES   := $(filter-out docs/%,$(ALL_C_FILES))
 
 DEPS := $(OBJ:.o=.d) $(LIB_OBJ:.o=.d) $(TEST_OBJ:.o=.d) $(BENCH_OBJ:.o=.d)
 
-.PHONY: all build run test bench clean fclean re format format-check tidy
+.PHONY: all build run test bench clean fclean re format format-check lint lint-strict cppcheck tidy
 
 all: build
 
@@ -65,6 +75,17 @@ format:
 
 format-check:
 	clang-format --dry-run --Werror $(FORMAT_FILES)
+
+lint:
+	$(CLANG_TIDY) $(CLANG_TIDY_FLAGS) -p . $(LINT_FILES)
+
+lint-strict: CLANG_TIDY_FLAGS := --warnings-as-errors=*
+lint-strict: lint
+
+cppcheck:
+	$(CPPCHECK) $(CPPCHECK_FLAGS) $(CPPFLAGS) ecs main.c
+
+tidy: lint
 
 $(NAME): $(OBJ) | $(BIN_DIR)
 	$(CC) $(OBJ) -o $@ $(LDFLAGS) $(LDLIBS)
