@@ -827,9 +827,7 @@ void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid) {
     ecs_vec_remove_fast(&world->query_index.queries, qid, sizeof(ecs_query_cache_t));
 }
 
-#include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
 void ecs_table_init(
     ecs_table_t *table,

@@ -3,9 +3,7 @@
 #include "./type.h"
 #include "datastructure/idmap.h"
 #include "datastructure/vec.h"
-#include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
 void ecs_table_init(
     ecs_table_t *table,

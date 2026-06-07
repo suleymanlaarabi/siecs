@@ -47,9 +47,9 @@ typedef struct {
 } ecs_component_desc_t;
 
 typedef struct {
-    ecs_component_t read[8];
-    ecs_component_t required[6];
-    ecs_component_t excluded[4];
+    ecs_component_t read[10];
+    ecs_component_t required[8];
+    ecs_component_t excluded[6];
 } ecs_query_desc_t;
 
 ecs_world_t *ecs_init(void);
@@ -117,11 +117,9 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, co
 
 void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require);
 
-enum {
-    OnAdd = 0,
-    OnRemove = 1,
-    OnSet = 2,
-};
+#define OnAdd 0
+#define OnRemove 1
+#define OnSet 2
 
 typedef struct {
     ecs_event_t on;
