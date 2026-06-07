@@ -97,7 +97,7 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     // Fast path: lookup
     while (map->slots[slot_idx].table_index != ECS_TABLE_SLOT_EMPTY) {
         if (ECS_LIKELY(map->slots[slot_idx].hash == hash_fingerprint)) {
-            ecs_table_t *table = ecs_table_index_at(map, map->slots[slot_idx].table_index);
+            const ecs_table_t *table = ecs_table_index_at(map, map->slots[slot_idx].table_index);
             if (ECS_LIKELY(
                     ecs_type_equals(table->type.ids, table->type.count, type.ids, type.count)
                 )) {
@@ -121,7 +121,7 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
 
     uint16_t table_idx = map->table_count++;
     ecs_table_t new_table;
-    ecs_table_init(&new_table, type, component_index);
+    ecs_table_init(&new_table, type, component_index, table_idx);
     map->tables[table_idx] = new_table;
 
     map->slots[slot_idx].hash = hash_fingerprint;

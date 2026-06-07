@@ -1,6 +1,6 @@
 #pragma once
-#include <stdbool.h>
 #include <stdint.h>
+
 #define ecs_id(name) _ecs_id_##name##__
 
 struct ecs_world_s;
@@ -8,8 +8,7 @@ typedef struct ecs_world_s ecs_world_t;
 typedef uint64_t ecs_entity_t;
 typedef uint16_t ecs_component_t;
 typedef uint16_t ecs_query_id_t;
-typedef char *Name;
-
+typedef uint16_t ecs_system_id_t;
 typedef uint16_t ecs_event_t;
 
 typedef struct {
@@ -41,7 +40,7 @@ typedef struct {
 
 typedef struct {
     ecs_component_t read[8];
-    ecs_component_t required[8];
+    ecs_component_t required[6];
     ecs_component_t excluded[4];
 } ecs_query_desc_t;
 
@@ -63,25 +62,10 @@ void ecs_fini(ecs_world_t *world);
 #define ECS_COMPONENT_REGISTER(world, cname)                                                       \
     ecs_id(cname) = ecs_component_init(world, &ecs_id(cname##_desc))
 
-void RelationOnSet(
-    ecs_world_t *world,
-    ecs_entity_t entity,
-    ecs_component_t component,
-    const void *ptr
-);
-void RelationOnRemove(
-    ecs_world_t *world,
-    ecs_entity_t entity,
-    ecs_component_t component,
-    const void *ptr
-);
-
 #define ECS_RELATION_DEFINE(cname)                                                                 \
     ecs_component_desc_t ecs_id(cname##_desc) = {                                                  \
         .name = #cname,                                                                            \
         .size = sizeof(cname),                                                                     \
-        .on_set = RelationOnSet,                                                                   \
-        .on_remove = RelationOnRemove,                                                             \
         .is_relation = true,                                                                       \
         .source_name = "Source" #cname,                                                            \
     };                                                                                             \
@@ -93,17 +77,17 @@ void RelationOnRemove(
 
 ECS_RELATION_DECLARE(ChildOf);
 
-extern ecs_component_t ecs_id(Name);
-
 #define ecs_component(world, ...) ecs_component_init(world, &(ecs_component_desc_t)__VA_ARGS__)
 ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc);
 
 ecs_entity_t ecs_new(ecs_world_t *world);
-int ecs_is_alive(ecs_world_t *world, ecs_entity_t entity);
+int ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity);
 void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
 
 #define ecs_query(world, ...) ecs_query_init(world, &(ecs_query_desc_t)__VA_ARGS__)
 uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *query);
+
+void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
 
 #define ecs_add(world, entity, cname) ecs_add_cid(world, entity, ecs_id(cname))
 void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
@@ -112,7 +96,7 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
 #define ecs_has(world, entity, cname) ecs_has_cid(world, entity, ecs_id(cname))
-bool ecs_has_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
 #define ecs_get(world, entity, cname) ((cname *)ecs_get_cid(world, entity, ecs_id(cname)))
 void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
@@ -151,19 +135,35 @@ void ecs_observer_trigger(
     ecs_world_t *world,
     ecs_entity_t entity,
     ecs_event_t event,
-    void *trigger_data
+    const void *trigger_data
 );
 
 typedef struct {
     ecs_world_t *world;
+    uint32_t count;
     struct ecs_query_cache_s *cache;
     void ***ptrs;
     uint16_t table_idx;
     uint16_t table_count;
-    uint32_t count;
 } ecs_iter_t;
 
 ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);
 bool ecs_iter_next(ecs_iter_t *it);
-struct ecs_table_s *ecs_iter_table(ecs_iter_t *it);
 static inline void *ecs_field(ecs_iter_t *it, uint16_t query_term) { return *it->ptrs[query_term]; }
+
+typedef enum {
+    OnPreUpdate,
+    OnUpdate,
+    OnPostUpdate,
+    OnRender,
+} ecs_phase_t;
+
+typedef struct {
+    ecs_query_desc_t query;
+    void (*callback)(ecs_iter_t *);
+    ecs_phase_t phase;
+    ecs_system_id_t after[4];
+} ecs_system_desc_t;
+
+#define ecs_system(world, ...) ecs_system_init(world, &(ecs_system_desc_t)__VA_ARGS__)
+ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc);

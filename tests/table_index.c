@@ -1,22 +1,28 @@
 #include "ecs/storage/table_index.h"
 #include "ecs/storage/component_index.h"
 #include "ecs/table.h"
-#include "ecs/world_internal.h"
 #include "ecs/world.h"
+#include "ecs/world_internal.h"
 #include <criterion/criterion.h>
 #include <stdlib.h>
 
 Test(table_index, basic) {
     ecs_world_t *world = ecs_init();
 
-    ecs_component(world, {
-        .name = "Pos",
-        .size = 8,
-    });
-    ecs_component(world, {
-        .name = "Vel",
-        .size = 8,
-    });
+    ecs_component(
+        world,
+        {
+            .name = "Pos",
+            .size = 8,
+        }
+    );
+    ecs_component(
+        world,
+        {
+            .name = "Vel",
+            .size = 8,
+        }
+    );
 
     uint16_t *ids1 = malloc(sizeof(uint16_t));
     ids1[0] = 1;
@@ -51,8 +57,13 @@ Test(table_index, resize) {
 
     // Create many types to trigger resize
     for (uint32_t i = 0; i < 100; i++) {
+        ecs_component(world, {
+            .name = NULL,
+            .size = 8,
+        });
+
         uint16_t *ids = malloc(sizeof(uint16_t));
-        ids[0] = (uint16_t)i;
+        ids[0] = (uint16_t)(i + 1);
         ecs_type_t type = { .ids = ids, .count = 1 };
 
         uint16_t idx = ecs_table_index_get_or_create(world, type);
@@ -60,11 +71,14 @@ Test(table_index, resize) {
 
         // Lookup again with a DIFFERENT allocation because get_or_create takes ownership
         uint16_t *ids_lookup = malloc(sizeof(uint16_t));
-        ids_lookup[0] = (uint16_t)i;
+        ids_lookup[0] = (uint16_t)(i + 1);
         ecs_type_t type_lookup = { .ids = ids_lookup, .count = 1 };
 
         uint16_t idx_lookup = ecs_table_index_get_or_create(world, type_lookup);
-        cr_assert_eq(idx_lookup, i + 1); // +1 because index 0 is the empty table (created by the ecs_init)
+        cr_assert_eq(
+            idx_lookup,
+            i + 1
+        ); // +1 because index 0 is the empty table (created by the ecs_init)
     }
     ecs_fini(world);
 }

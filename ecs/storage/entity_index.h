@@ -39,7 +39,7 @@ static inline ecs_entity_t ecs_entity_index_create(ecs_entity_index_t *index, ui
     return ecs_entity(entity_id, generation);
 }
 
-static inline bool ecs_entity_index_is_alive(ecs_entity_index_t *index, ecs_entity_t entity) {
+static inline bool ecs_entity_index_is_alive(const ecs_entity_index_t *index, ecs_entity_t entity) {
     return ecs_entity_index_get_record(index, ecs_first(entity))->generation == ecs_second(entity);
 }
 

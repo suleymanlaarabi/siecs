@@ -13,9 +13,9 @@ void ecs_observer_index_init(ecs_observer_index_t *index) {
 }
 
 void ecs_observer_index_fini(ecs_observer_index_t *index) {
-    for (uint16_t i = 0; i < index->observers.size; i++) {
+    for (uint32_t i = 0; i < index->observers.size; i++) {
         ecs_observer_t *obs = ecs_vec_get_mut(&index->observers, i, ecs_observer_t);
-        ecs_query_fini(&obs->query);
+        ecs_query_index_destroy(&obs->query);
     }
     ecs_vec_fini(&index->observers);
 }

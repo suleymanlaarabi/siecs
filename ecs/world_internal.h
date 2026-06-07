@@ -5,7 +5,6 @@
 #include "ecs/storage/observer_index.h"
 #include "ecs/storage/query_index.h"
 #include "ecs/storage/table_index.h"
-#include "ecs/world.h"
 
 typedef struct ecs_world_s {
     ecs_entity_index_t entity_index;
@@ -37,7 +36,7 @@ static inline void ecs_emit(
     if (table->observers_by_event.size <= event) {
         return;
     }
-    ecs_vec_t *list = ecs_vec_get_mut(&table->observers_by_event, event, ecs_vec_t);
+    const ecs_vec_t *list = ecs_vec_get(&table->observers_by_event, event, ecs_vec_t);
     uint32_t n = list->size;
     for (uint32_t i = 0; i < n; i++) {
         uint16_t oid = *ecs_vec_get(list, i, uint16_t);
@@ -55,3 +54,4 @@ static inline void ecs_emit(
 }
 
 void ecs_bootstrap(ecs_world_t *world);
+struct ecs_table_s *ecs_iter_table(ecs_iter_t *it);

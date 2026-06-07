@@ -21,7 +21,7 @@ void ecs_observer_trigger(
     ecs_world_t *world,
     ecs_entity_t entity,
     ecs_event_t event,
-    void *trigger_data
+    const void *trigger_data
 ) {
     ecs_assert_not_null(world);
     ecs_assert_entity_valid(entity);

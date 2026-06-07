@@ -67,7 +67,7 @@ void ecs_type_fini(ecs_type_t *type) {
     }
 }
 
-uint64_t ecs_type_bloom(ecs_type_t *type) {
+uint64_t ecs_type_bloom(const ecs_type_t *type) {
     uint64_t filter = 0;
 
     for (uint16_t i = 0; i < type->count; i++) {

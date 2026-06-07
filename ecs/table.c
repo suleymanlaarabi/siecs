@@ -3,6 +3,7 @@
 #include "./type.h"
 #include "./world.h"
 #include "ecs/datastructure/idmap.h"
+#include "ecs/datastructure/vec.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,7 +11,8 @@
 void ecs_table_init(
     ecs_table_t *table,
     ecs_type_t type,
-    const ecs_component_index_t *component_index
+    const ecs_component_index_t *component_index,
+    uint16_t table_id
 ) {
     table->type = type;
     table->entity_capacity = 1;
@@ -23,7 +25,8 @@ void ecs_table_init(
     ecs_id_map_init(&table->add_edge);
 
     for (uint16_t i = 0; i < type.count; i++) {
-        const ecs_component_record_t *rec = ecs_component_index_get(component_index, type.ids[i]);
+        ecs_component_record_t *rec = ecs_component_index_get_mut(component_index, type.ids[i]);
+        ecs_vec_push_u16(&rec->tables, table_id);
         table->cls[i].size = rec->size;
         table->cls[i].data = rec->size != 0 ? malloc(rec->size * table->entity_capacity) : NULL;
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
@@ -32,7 +35,7 @@ void ecs_table_init(
 }
 
 static inline void ecs_table_grow(ecs_table_t *table) {
-    uint64_t new_capacity = table->entity_capacity * 2;
+    uint64_t new_capacity = table->entity_capacity * (uint64_t)2;
     table->entities = realloc(table->entities, sizeof(ecs_entity_t) * new_capacity);
     for (uint16_t i = 0; i < table->type.count; i++) {
         if (table->cls[i].size != 0) {
@@ -61,7 +64,7 @@ ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row) {
         table->entities[row] = moved_entity;
         for (uint16_t i = 0; i < table->type.count; i++) {
             if (table->cls[i].size != 0) {
-                void *src = (char *)table->cls[i].data + (table->cls[i].size * last_row);
+                const void *src = (char *)table->cls[i].data + (table->cls[i].size * last_row);
                 void *dst = (char *)table->cls[i].data + (table->cls[i].size * row);
                 memcpy(dst, src, table->cls[i].size);
             }
@@ -91,7 +94,7 @@ void ecs_table_fini(ecs_table_t *table) {
     for (uint16_t i = 0; i < table->type.count; i++) {
         free(table->cls[i].data);
     }
-    for (uint16_t e = 0; e < table->observers_by_event.size; e++) {
+    for (uint32_t e = 0; e < table->observers_by_event.size; e++) {
         ecs_vec_fini(ecs_vec_get_mut(&table->observers_by_event, e, ecs_vec_t));
     }
     ecs_vec_fini(&table->observers_by_event);

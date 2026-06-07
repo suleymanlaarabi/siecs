@@ -47,7 +47,7 @@ Test(query, bloom_filter_subset_match) {
     ecs_vec_clear(&cache->table_ids);
     ecs_vec_clear(&cache->fields);
 
-    ecs_query_index_update_matches(qi, wi->table_index.tables, wi->table_index.table_count, q);
+    ecs_query_index_update_matches(world, cache);
 
     cache = ecs_vec_get_mut(&qi->queries, q, ecs_query_cache_t);
 

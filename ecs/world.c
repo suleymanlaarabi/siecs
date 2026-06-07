@@ -49,6 +49,13 @@ static inline void migrate_entity_add(
     uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
     uint16_t k = ecs_table_get_column_index(to_table, added_id);
+    if (to_table->cls[k].size != 0) {
+        memset(
+            (uint8_t *)to_table->cls[k].data + (to_table->cls[k].size * new_row),
+            0,
+            to_table->cls[k].size
+        );
+    }
     for (uint16_t i = 0; i < k; i++)
         copy_column(&from_table->cls[i], old_row, &to_table->cls[i], new_row);
     for (uint16_t i = k + 1; i < to_table->type.count; i++)
@@ -116,7 +123,7 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     migrate_entity_add(world, record, entity, table, new_table_id, cid);
 
     ecs_table_t *new_table = ecs_get_table(world, new_table_id);
-    void *component_data = ecs_table_get_component(new_table, cid, record->table_row);
+    const void *component_data = ecs_table_get_component(new_table, cid, record->table_row);
     ecs_emit(world, new_table, entity, OnAdd, component_data);
 }
 
@@ -164,7 +171,7 @@ void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) 
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(world, entity);
 
-    ecs_entity_record_t *record = ecs_get_record(world, entity);
+    const ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
     return ecs_table_get_component(table, cid, record->table_row);
 }
@@ -175,7 +182,7 @@ void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t c
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(world, entity);
 
-    ecs_entity_record_t *record = ecs_get_record(world, entity);
+    const ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
 
     if (ecs_table_has(table, cid)) {
@@ -205,7 +212,7 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, c
     memcpy(dst, data, crec->size);
 }
 
-bool ecs_has_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
+bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
     ecs_assert_not_null(world);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(world, entity);

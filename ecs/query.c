@@ -1,15 +1,17 @@
+#include "ecs/datastructure/vec.h"
+#include "ecs/storage/query_index.h"
+#include "ecs/table.h"
 #include "ecs/utils.h"
 #include "ecs/world.h"
 #include "ecs/world_internal.h"
+#include <stdint.h>
 
 uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *desc) {
     ecs_assert_not_null(world);
     uint32_t qid = ecs_query_index_create(&world->query_index, desc);
     ecs_query_index_update_matches(
-        &world->query_index,
-        world->table_index.tables,
-        world->table_index.table_count,
-        qid
+        world,
+        ecs_vec_get_mut(&world->query_index.queries, qid, ecs_query_cache_t)
     );
     return qid;
 }
@@ -33,14 +35,27 @@ bool ecs_iter_next(ecs_iter_t *it) {
     if (it->table_idx >= it->table_count) {
         return false;
     }
-    it->ptrs = &((void ***)it->cache->fields.data)[it->table_idx * it->cache->query.read_count];
     it->count =
         it->world->table_index.tables[((uint16_t *)it->cache->table_ids.data)[it->table_idx]]
             .entity_count;
+    if (it->count == 0) {
+        return ecs_iter_next(it);
+    }
+    it->ptrs = &((void ***)it->cache->fields.data)[it->table_idx * it->cache->query.read_count];
     return true;
 }
 
 ecs_table_t *ecs_iter_table(ecs_iter_t *it) {
     uint16_t tid = *ecs_vec_get_mut(&it->cache->table_ids, it->table_idx, uint16_t);
     return ecs_table_index_at(&it->world->table_index, tid);
+}
+
+void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid) {
+    ecs_query_cache_t *cache = ecs_vec_get_mut(&world->query_index.queries, qid, ecs_query_cache_t);
+
+    ecs_query_index_destroy(&cache->query);
+    ecs_vec_fini(&cache->fields);
+    ecs_vec_fini(&cache->table_ids);
+
+    ecs_vec_remove_fast(&world->query_index.queries, qid, sizeof(ecs_query_cache_t));
 }

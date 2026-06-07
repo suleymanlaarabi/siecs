@@ -28,7 +28,8 @@ struct ecs_component_index_s;
 void ecs_table_init(
     ecs_table_t *table,
     ecs_type_t type,
-    const struct ecs_component_index_s *component_index
+    const struct ecs_component_index_s *component_index,
+    uint16_t table_id
 );
 void ecs_table_fini(ecs_table_t *table);
 uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity);
@@ -54,10 +55,10 @@ static inline bool ecs_table_has(const ecs_table_t *table, ecs_component_t compo
 }
 
 static inline uint16_t
-ecs_table_get_column_index(ecs_table_t *table, ecs_component_t component_id) {
+ecs_table_get_column_index(const ecs_table_t *table, ecs_component_t component_id) {
     return ecs_id_map_at(&table->add_edge, component_id);
 }
 
-static inline uint16_t ecs_table_get_remove_edge(ecs_table_t *table, ecs_component_t component_id) {
+static inline uint16_t ecs_table_get_remove_edge(const ecs_table_t *table, ecs_component_t component_id) {
     return table->cls[ecs_table_get_column_index(table, component_id)].remove_edge;
 }

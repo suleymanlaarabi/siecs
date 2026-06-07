@@ -18,7 +18,9 @@ ecs_component_t ecs_component_index_create(
         .size = size,
         .on_set = on_set,
         .on_remove = on_remove,
+        .tables = { 0 },
     };
+    ecs_vec_init(&record.tables, sizeof(uint16_t));
 
     ecs_vec_push(&index->components, &record, sizeof(ecs_component_record_t));
 #ifndef NDEBUG
@@ -41,8 +43,10 @@ void ecs_component_index_fini(ecs_component_index_t *index) {
 
     for (uint32_t i = 0; i < index->components.size; i++) {
         free(records[i].required);
+        ecs_vec_fini(&records[i].tables);
     }
     ecs_vec_fini(&index->components);
+
 #ifndef NDEBUG
     ecs_map_fini(&index->component_name_map);
 #endif
