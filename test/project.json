@@ -1,0 +1,24 @@
+{
+    "id": "siecs.test",
+    "type": "application",
+    "value": {
+        "public": false,
+        "clangd": true,
+        "use": [
+            "siecs"
+        ]
+    },
+    "lang.c": {
+        "c-standard": "c99"
+    },
+    "test": {
+        "testsuites": [
+            {
+                "id": "entity",
+                "testcases": [
+                    "create"
+                ]
+            }
+        ]
+    }
+}

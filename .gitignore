@@ -1,0 +1,8 @@
+.bake_cache
+.cache/
+bin/
+compile_commands.json
+test/include/siecs-test/
+gcov
+.DS_Store
+.vscode

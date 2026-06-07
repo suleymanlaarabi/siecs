@@ -1,0 +1,21 @@
+{
+    "id": "siecs",
+    "type": "package",
+    "value": {
+        "author": "Suleyman Laarabi",
+        "description": "Small ECS library",
+        "clangd": true,
+        "amalgamate": [
+            {
+                "path": "distr"
+            }
+        ]
+    },
+    "lang.c": {
+        "c-standard": "c99",
+        "export-symbols": true,
+        "include": [
+            "src"
+        ]
+    }
+}
