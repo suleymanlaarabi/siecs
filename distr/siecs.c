@@ -689,9 +689,8 @@ void RelationSourceOnRemove(
 ) {
     RelationSource *source_data = (void *)ptr;
 
-    const uint32_t count = source_data->entities.size;
-
     const ecs_entity_t *entities = source_data->entities.data;
+    const uint32_t count = source_data->entities.size;
 
     // Prevent recursive calls to RelationOnRemove when removing relation from child
     source_data->entities.size = UINT32_MAX;
@@ -1455,18 +1454,6 @@ void ecs_fini(ecs_world_t *world) {
     ecs_observer_index_fini(&world->observer_index);
     ecs_system_index_fini(&world->system_index);
     free(world);
-}
-
-void ecs_clone_w_entity(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
-    const ecs_entity_record_t *target_record = ecs_get_record(world, target);
-    ecs_table_t *target_table = ecs_get_table(world, target_record->table_id);
-
-    ecs_entity_record_t *entity_record = ecs_get_record(world, entity);
-    ecs_table_t *entity_table = ecs_get_table(world, entity_record->table_id);
-
-    ecs_table_add_entity(target_table, entity);
-
-    migrate_entity(world, entity_record, entity, entity_table, target_record->table_id);
 }
 
 #ifndef ECS_HTTP_SERVER
