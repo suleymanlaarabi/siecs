@@ -1,6 +1,7 @@
 #include "system_index.h"
 #include "../datastructure/vec.h"
 #include "../utils.h"
+#include <stdint.h>
 #include <stdlib.h>
 
 static bool ecs_system_id_valid(const ecs_system_index_t *index, ecs_system_id_t system) {
@@ -87,7 +88,7 @@ void ecs_system_index_build_plan(ecs_system_index_t *index) {
     uint8_t *state = calloc(index->systems.size, sizeof(uint8_t));
     ecs_assert_not_null(state);
 
-    for (ecs_system_id_t system = 1; system < index->systems.size; system++) {
+    for (uint32_t system = 1; system < index->systems.size; system++) {
         ecs_system_t *sys = ecs_system_index_get(index, system);
         ecs_assert(sys->phase < EcsPhaseCount, "invalid system phase: %u\n", sys->phase);
 
