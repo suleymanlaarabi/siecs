@@ -17,7 +17,7 @@ Include the public API with:
 | `ecs_entity_t` | Entity handle. |
 | `ecs_component_t` | Component id. |
 | `ecs_query_id_t` | Query id. |
-| `ecs_system_id_t` | System id. System execution is not stable yet. |
+| `ecs_system_id_t` | System id. Id `0` is reserved. |
 | `ecs_event_t` | Observer event id. |
 | `ecs_iter_t` | Query iterator. Users may read `world` and `count`. |
 
@@ -106,9 +106,9 @@ void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
 
 ```c
 typedef struct {
-    ecs_component_t read[10];
-    ecs_component_t required[8];
-    ecs_component_t excluded[6];
+    ecs_component_t read[8];
+    ecs_component_t required[6];
+    ecs_component_t excluded[4];
 } ecs_query_desc_t;
 ```
 
@@ -157,11 +157,69 @@ ecs_source(Name);
 
 `ChildOf` is declared by the public API and registered during world bootstrap.
 
-## Planned API
-
-These symbols are currently declared but should not be treated as stable until
-they are implemented and tested:
+## Systems
 
 ```c
+typedef enum {
+    EcsOnLoad,
+    EcsPostLoad,
+    EcsPreUpdate,
+    EcsOnUpdate,
+    EcsPostUpdate,
+    EcsPreRender,
+    EcsOnRender,
+    EcsPostRender,
+    EcsPhaseCount,
+} ecs_phase_t;
+```
+
+`ecs_progress()` runs enabled systems in phase order. `OnPreUpdate`,
+`OnUpdate`, `OnPostUpdate`, and `OnRender` are compatibility aliases for the
+matching `Ecs*` names.
+
+```c
+typedef struct {
+    const char *name;
+    ecs_query_desc_t query;
+    void (*callback)(ecs_iter_t *);
+    ecs_phase_t phase;
+    ecs_system_id_t after[4];
+    bool disabled;
+} ecs_system_desc_t;
+```
+
+```c
+#define ecs_system(world, ...)
 ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc);
+void ecs_progress(ecs_world_t *world);
+void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase);
+void ecs_run_system(ecs_world_t *world, ecs_system_id_t system);
+void ecs_enable_system(ecs_world_t *world, ecs_system_id_t system, bool enabled);
+```
+
+`after` declares systems that must run first in the same phase. System id `0` is
+reserved, so an empty `after` array is written as `{ 0 }` or omitted. Dependency
+cycles and cross-phase dependencies are debug assertion failures.
+
+Example:
+
+```c
+static void Move(ecs_iter_t *it) {
+    Position *p = ecs_field(it, 0);
+    Velocity *v = ecs_field(it, 1);
+
+    for (uint32_t i = 0; i < it->count; i++) {
+        p[i].x += v[i].x;
+        p[i].y += v[i].y;
+    }
+}
+
+ecs_system(world, {
+    .name = "Move",
+    .phase = EcsOnUpdate,
+    .query = { .read = { ecs_id(Position), ecs_id(Velocity) } },
+    .callback = Move,
+});
+
+ecs_progress(world);
 ```

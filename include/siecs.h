@@ -343,27 +343,58 @@ bool ecs_iter_next(ecs_iter_t *it);
  */
 static inline void *ecs_field(ecs_iter_t *it, uint16_t query_term) { return *it->ptrs[query_term]; }
 
-/* System phases. System execution is planned API and not stable yet. */
+/* System phases run in enum order when ecs_progress is called. */
 typedef enum {
-    OnPreUpdate,
-    OnUpdate,
-    OnPostUpdate,
-    OnRender,
+    EcsOnLoad,
+    EcsPostLoad,
+    EcsPreUpdate,
+    EcsOnUpdate,
+    EcsPostUpdate,
+    EcsPreRender,
+    EcsOnRender,
+    EcsPostRender,
+    EcsPhaseCount,
 } ecs_phase_t;
 
-/* Planned system descriptor. Not stable until system execution is implemented. */
+/* Backward-compatible phase aliases. Prefer the Ecs* names in new code. */
+#define OnPreUpdate EcsPreUpdate
+#define OnUpdate EcsOnUpdate
+#define OnPostUpdate EcsPostUpdate
+#define OnRender EcsOnRender
+
+/*
+ * System descriptor.
+ *
+ * callback is called once per non-empty iterator batch matching query. phase
+ * controls when ecs_progress/ecs_run_phase executes the system. after contains
+ * up to four system ids that must run before this system in the same phase.
+ */
 typedef struct {
+    const char *name;
     ecs_query_desc_t query;
     void (*callback)(ecs_iter_t *);
     ecs_phase_t phase;
     ecs_system_id_t after[4];
+    bool disabled;
 } ecs_system_desc_t;
 
-/* Planned API: create a system from an inline descriptor. */
+/* Create a system from an inline descriptor. */
 #define ecs_system(world, ...) ecs_system_init(world, &(ecs_system_desc_t)__VA_ARGS__)
 
-/* Planned API: not stable until implemented and tested. */
+/* Register a system and return its id. System id 0 is reserved. */
 ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc);
+
+/* Run all enabled systems in phase order. */
+void ecs_progress(ecs_world_t *world);
+
+/* Run all enabled systems from one phase. */
+void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase);
+
+/* Run one enabled system immediately. */
+void ecs_run_system(ecs_world_t *world, ecs_system_id_t system);
+
+/* Enable or disable a system. Disabled systems stay registered but do not run. */
+void ecs_enable_system(ecs_world_t *world, ecs_system_id_t system, bool enabled);
 
 #ifdef __cplusplus
 }

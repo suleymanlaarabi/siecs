@@ -19,6 +19,15 @@
                     "create",
                     "with"
                 ]
+            },
+            {
+                "id": "system",
+                "testcases": [
+                    "run",
+                    "phase_order",
+                    "after_order",
+                    "enable"
+                ]
             }
         ]
     }
