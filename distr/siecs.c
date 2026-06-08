@@ -273,13 +273,9 @@ uint16_t ecs_table_index_get_or_create(
 ECS_RELATION_DEFINE(ChildOf);
 
 void ecs_bootstrap(ecs_world_t *world) {
-    // Create empty table (index 0)
+    // Reserve identifiers used to represent false return values.
     ecs_table_index_get_or_create(world, (ecs_type_t){ 0 });
-
-    // Reserve entity id 0
     ecs_new(world);
-
-    // Reserve component id 0
     ecs_component(world, {});
 
     ECS_COMPONENT_REGISTER(world, ChildOf);
@@ -1396,6 +1392,29 @@ void ecs_fini(ecs_world_t *world) {
     free(world);
 }
 
+#ifndef ECS_HTTP_SERVER
+#define ECS_HTTP_SERVER
+
+typedef struct {
+    int sock;
+} ecs_http_server_t;
+
+#endif
+
+#include <netinet/in.h>
+#include <stdint.h>
+#include <sys/socket.h>
+
+typedef struct {
+} ecs_http_request_t;
+
+void ecs_http_server_init(ecs_http_server_t *server) {
+    server->sock = socket(AF_INET, SOCK_STREAM, 0);
+}
+
+static inline void
+ecs_http_server_parse_request(ecs_http_request_t *request, const char *request_str) {}
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1557,6 +1576,218 @@ uint32_t ecs_map_get(const ecs_map_t *m, const char *key) {
 
 bool ecs_map_has(const ecs_map_t *m, const char *key) { return ecs_map_get(m, key) != UINT32_MAX; }
 #endif
+
+#ifndef ECS_STRING_H
+#define ECS_STRING_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+typedef struct {
+    char *data; // null terminated string
+    uint32_t len;
+    uint32_t capacity;
+} ecs_str_t;
+
+void ecs_str_init(ecs_str_t *str);
+void ecs_str_fini(ecs_str_t *str);
+ecs_str_t ecs_str_new();
+ecs_str_t ecs_str_with_capacity(uint32_t capacity);
+
+void ecs_str_reserve(ecs_str_t *str, uint32_t capacity);
+void ecs_str_resize(ecs_str_t *str, uint32_t len);
+ecs_str_t ecs_str_from_cstr(const char *cstr);
+ecs_str_t ecs_str_clone(const ecs_str_t *str);
+
+const char *ecs_str_cstr(const ecs_str_t *str);
+char ecs_str_at(const ecs_str_t *str, uint32_t index);
+
+void ecs_str_char_append(ecs_str_t *dst, char src);
+void ecs_str_str_append(ecs_str_t *dst, const ecs_str_t *src);
+void ecs_str_insert(ecs_str_t *str, uint32_t pos, char c);
+void ecs_str_remove(ecs_str_t *str, uint32_t pos);
+void ecs_str_pop_back(ecs_str_t *str);
+
+void ecs_str_trim(ecs_str_t *str);
+
+bool ecs_str_starts_with(const ecs_str_t *str, const ecs_str_t *prefix);
+bool ecs_str_ends_with(const ecs_str_t *str, const ecs_str_t *suffix);
+bool ecs_str_cmp(const ecs_str_t *a, const ecs_str_t *b);
+
+#endif
+
+#include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
+
+void ecs_str_init(ecs_str_t *str) {
+    str->data = NULL;
+    str->len = 0;
+    str->capacity = 0;
+}
+
+void ecs_str_fini(ecs_str_t *str) {
+    if (str->data) {
+        free(str->data);
+    }
+    ecs_str_init(str);
+}
+
+ecs_str_t ecs_str_new() {
+    ecs_str_t str;
+    ecs_str_init(&str);
+    return str;
+}
+
+ecs_str_t ecs_str_with_capacity(uint32_t capacity) {
+    ecs_str_t str;
+    str.len = 0;
+    str.capacity = capacity;
+    if (capacity > 0) {
+        str.data = malloc(capacity + 1);
+        str.data[0] = '\0';
+    } else {
+        str.data = NULL;
+    }
+    return str;
+}
+
+void ecs_str_reserve(ecs_str_t *str, uint32_t capacity) {
+    if (capacity > str->capacity) {
+        str->data = realloc(str->data, capacity + 1);
+        str->capacity = capacity;
+        if (str->len == 0 && str->data) {
+            str->data[0] = '\0';
+        }
+    }
+}
+
+void ecs_str_resize(ecs_str_t *str, uint32_t len) {
+    ecs_str_reserve(str, len);
+    if (str->data) {
+        str->data[len] = '\0';
+    }
+    str->len = len;
+}
+
+ecs_str_t ecs_str_from_cstr(const char *cstr) {
+    if (!cstr)
+        return ecs_str_new();
+    uint32_t len = (uint32_t)strlen(cstr);
+    ecs_str_t str = ecs_str_with_capacity(len);
+    if (len > 0) {
+        memcpy(str.data, cstr, len + 1);
+        str.len = len;
+    }
+    return str;
+}
+
+ecs_str_t ecs_str_clone(const ecs_str_t *str) {
+    if (!str || !str->data)
+        return ecs_str_new();
+    ecs_str_t new_str = ecs_str_with_capacity(str->len);
+    if (str->len > 0) {
+        memcpy(new_str.data, str->data, str->len + 1);
+        new_str.len = str->len;
+    }
+    return new_str;
+}
+
+const char *ecs_str_cstr(const ecs_str_t *str) { return str->data ? str->data : ""; }
+
+char ecs_str_at(const ecs_str_t *str, uint32_t index) {
+    ecs_assert(index < str->len, "index out of bounds: %d (len: %d)", index, str->len);
+    return str->data[index];
+}
+
+void ecs_str_char_append(ecs_str_t *dst, char src) {
+    if (dst->len + 1 > dst->capacity) {
+        uint32_t new_cap = dst->capacity == 0 ? 8 : dst->capacity * 2;
+        ecs_str_reserve(dst, new_cap);
+    }
+    dst->data[dst->len++] = src;
+    dst->data[dst->len] = '\0';
+}
+
+void ecs_str_str_append(ecs_str_t *dst, const ecs_str_t *src) {
+    if (!src || src->len == 0)
+        return;
+    uint32_t required = dst->len + src->len;
+    if (required > dst->capacity) {
+        ecs_str_reserve(dst, required);
+    }
+    memcpy(dst->data + dst->len, src->data, src->len);
+    dst->len = required;
+    dst->data[dst->len] = '\0';
+}
+
+void ecs_str_insert(ecs_str_t *str, uint32_t pos, char c) {
+    ecs_assert(pos <= str->len, "pos out of bounds: %d (len: %d)", pos, str->len);
+    if (str->len + 1 > str->capacity) {
+        uint32_t new_cap = str->capacity == 0 ? 8 : str->capacity * 2;
+        ecs_str_reserve(str, new_cap);
+    }
+    memmove(str->data + pos + 1, str->data + pos, str->len - pos + 1);
+    str->data[pos] = c;
+    str->len++;
+}
+
+void ecs_str_remove(ecs_str_t *str, uint32_t pos) {
+    ecs_assert(pos < str->len, "pos out of bounds: %d (len: %d)", pos, str->len);
+    memmove(str->data + pos, str->data + pos + 1, str->len - pos);
+    str->len--;
+}
+
+void ecs_str_pop_back(ecs_str_t *str) {
+    if (str->len > 0) {
+        str->len--;
+        str->data[str->len] = '\0';
+    }
+}
+
+void ecs_str_trim(ecs_str_t *str) {
+    if (str->len == 0)
+        return;
+    uint32_t start = 0;
+    while (start < str->len && isspace((unsigned char)str->data[start])) {
+        start++;
+    }
+    if (start == str->len) {
+        str->len = 0;
+        str->data[0] = '\0';
+        return;
+    }
+    uint32_t end = str->len - 1;
+    while (end > start && isspace((unsigned char)str->data[end])) {
+        end--;
+    }
+    uint32_t new_len = end - start + 1;
+    if (start > 0) {
+        memmove(str->data, str->data + start, new_len);
+    }
+    str->len = new_len;
+    str->data[str->len] = '\0';
+}
+
+bool ecs_str_starts_with(const ecs_str_t *str, const ecs_str_t *prefix) {
+    if (prefix->len > str->len)
+        return false;
+    return memcmp(str->data, prefix->data, prefix->len) == 0;
+}
+
+bool ecs_str_ends_with(const ecs_str_t *str, const ecs_str_t *suffix) {
+    if (suffix->len > str->len)
+        return false;
+    return memcmp(str->data + (str->len - suffix->len), suffix->data, suffix->len) == 0;
+}
+
+bool ecs_str_cmp(const ecs_str_t *a, const ecs_str_t *b) {
+    if (a->len != b->len)
+        return false;
+    if (a->len == 0)
+        return true;
+    return memcmp(a->data, b->data, a->len) == 0;
+}
 
 #include <stdlib.h>
 #include <string.h>
@@ -1869,6 +2100,7 @@ void ecs_query_index_add_table(
     }
 }
 
+#include <stdint.h>
 #include <stdlib.h>
 
 static bool ecs_system_id_valid(const ecs_system_index_t *index, ecs_system_id_t system) {
@@ -1955,7 +2187,7 @@ void ecs_system_index_build_plan(ecs_system_index_t *index) {
     uint8_t *state = calloc(index->systems.size, sizeof(uint8_t));
     ecs_assert_not_null(state);
 
-    for (ecs_system_id_t system = 1; system < index->systems.size; system++) {
+    for (uint32_t system = 1; system < index->systems.size; system++) {
         ecs_system_t *sys = ecs_system_index_get(index, system);
         ecs_assert(sys->phase < EcsPhaseCount, "invalid system phase: %u\n", sys->phase);
 
