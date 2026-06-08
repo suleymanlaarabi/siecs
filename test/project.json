@@ -1,34 +1,28 @@
 {
-    "id": "siecs.test",
-    "type": "application",
-    "value": {
-        "public": false,
-        "clangd": true,
-        "use": [
-            "siecs"
-        ]
-    },
-    "lang.c": {
-        "c-standard": "c99"
-    },
-    "test": {
-        "testsuites": [
-            {
-                "id": "entity",
-                "testcases": [
-                    "create",
-                    "with"
-                ]
-            },
-            {
-                "id": "system",
-                "testcases": [
-                    "run",
-                    "phase_order",
-                    "after_order",
-                    "enable"
-                ]
-            }
-        ]
-    }
+  "id": "siecs.test",
+  "type": "application",
+  "value": {
+    "public": false,
+    "clangd": true,
+    "use": ["siecs"]
+  },
+  "lang.c": {
+    "c-standard": "c99"
+  },
+  "test": {
+    "testsuites": [
+      {
+        "id": "entity",
+        "testcases": ["create", "with"]
+      },
+      {
+        "id": "system",
+        "testcases": ["run", "phase_order", "after_order", "enable"]
+      },
+      {
+        "id": "string",
+        "testcases": ["init", "append", "trim", "starts_ends_with"]
+      }
+    ]
+  }
 }
