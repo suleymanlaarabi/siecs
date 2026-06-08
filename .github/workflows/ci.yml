@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: bake ${{ matrix.os }} ${{ matrix.compiler }} ${{ matrix.config }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            compiler: clang-18
+            cc: clang-18
+            compiler_package: clang-18
+            config: debug
+          - os: ubuntu-24.04
+            compiler: clang-18
+            cc: clang-18
+            compiler_package: clang-18
+            config: release
+          - os: macos-latest
+            compiler: clang
+            cc: clang
+            config: debug
+
+    env:
+      CC: ${{ matrix.cc }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install compiler
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.compiler_package }}
+
+      - name: Install bake
+        run: |
+          git clone https://github.com/SanderMertens/bake
+          make -C bake/build-$(uname)
+          bake/bake setup
+
+      - name: Build library
+        run: |
+          if [ "${{ matrix.config }}" = "release" ]; then
+            bake rebuild --cfg release
+          else
+            bake rebuild
+          fi
+
+      - name: Build tests
+        run: |
+          if [ "${{ matrix.config }}" = "release" ]; then
+            bake rebuild test --cfg release
+          else
+            bake rebuild test
+          fi
+
+      - name: Run tests
+        run: |
+          if [ "${{ matrix.config }}" = "release" ]; then
+            bake run test --cfg release
+          else
+            bake run test
+          fi
