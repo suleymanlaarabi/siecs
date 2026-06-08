@@ -9,11 +9,11 @@
 
 typedef struct {
     const char *str;
-    uint32_t len;
     uint32_t pos;
+    uint32_t len;
 } ecs_scanner_t;
 
-void ecs_scanner_init(ecs_scanner_t *scanner);
+void ecs_scanner_init(ecs_scanner_t *scanner, const char *str);
 
 static inline bool ecs_scanner_is_done(const ecs_scanner_t *scanner) {
     return scanner->pos >= scanner->len;
@@ -43,7 +43,8 @@ static inline void ecs_scanner_skip_whitespace(ecs_scanner_t *scanner) {
     ecs_scanner_skip_while(scanner, isblank);
 }
 
-static inline ecs_str_t ecs_scanner_take_while(ecs_scanner_t *scanner, const ecs_scanner_cmp_t cmp) {
+static inline ecs_str_t
+ecs_scanner_take_while(ecs_scanner_t *scanner, const ecs_scanner_cmp_t cmp) {
     ecs_str_t str = ecs_str_new();
 
     while (!ecs_scanner_is_done(scanner) && cmp(ecs_scanner_peek(scanner))) {
@@ -53,13 +54,9 @@ static inline ecs_str_t ecs_scanner_take_while(ecs_scanner_t *scanner, const ecs
     return str;
 }
 
-static inline bool ecs_is_identifier_start(int c) {
-    return isalpha(c) || c == '_';
-}
+static inline bool ecs_is_identifier_start(int c) { return isalpha(c) || c == '_'; }
 
-static inline bool ecs_is_identifier_part(int c) {
-    return isalnum(c) || c == '_';
-}
+static inline bool ecs_is_identifier_part(int c) { return isalnum(c) || c == '_'; }
 
 static inline ecs_str_t ecs_scanner_take_identifier(ecs_scanner_t *scanner) {
     ecs_str_t str = ecs_str_new();
@@ -75,6 +72,28 @@ static inline ecs_str_t ecs_scanner_take_identifier(ecs_scanner_t *scanner) {
     }
 
     return str;
+}
+
+static inline char ecs_scanner_peek_next(const ecs_scanner_t *scanner) {
+    if (scanner->pos + 1 >= scanner->len) {
+        return '\0';
+    }
+    return scanner->str[scanner->pos + 1];
+}
+
+static inline bool ecs_scanner_match(ecs_scanner_t *scanner, char expected) {
+    if (ecs_scanner_is_done(scanner)) {
+        return false;
+    }
+    return scanner->str[scanner->pos] == expected;
+}
+
+static inline const char *ecs_scanner_current_ptr(const ecs_scanner_t *scanner) {
+    return scanner->str + scanner->pos;
+}
+
+static inline void ecs_scanner_advance_n(ecs_scanner_t *scanner, uint64_t count) {
+    scanner->pos += count;
 }
 
 #endif
