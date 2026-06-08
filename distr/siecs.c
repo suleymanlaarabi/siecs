@@ -540,12 +540,34 @@ void ecs_observer_index_add_table(ecs_observer_index_t *index, ecs_table_t *tabl
 
 #endif
 
+#ifndef SIECS_STORAGE_SYSTEM_INDEX_H
+#define SIECS_STORAGE_SYSTEM_INDEX_H
+#include <stdint.h>
+
+typedef struct {
+    ecs_query_id_t qid;
+    void (*callback)(ecs_iter_t *);
+    ecs_system_id_t after[4];
+} ecs_system_t;
+
+typedef struct {
+    ecs_vec_t systems;
+} ecs_system_index_t;
+
+void ecs_system_index_init(ecs_system_index_t *index);
+void ecs_system_index_fini(ecs_system_index_t *index);
+
+ecs_system_id_t ecs_system_index_create(ecs_system_index_t *index, const ecs_system_t *system);
+
+#endif
+
 typedef struct ecs_world_s {
     ecs_entity_index_t entity_index;
     ecs_component_index_t component_index;
     ecs_table_index_t table_index;
     ecs_query_index_t query_index;
     ecs_observer_index_t observer_index;
+    ecs_system_index_t system_index;
 } ecs_world_t;
 
 typedef struct {
@@ -831,6 +853,19 @@ void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid) {
     ecs_vec_remove_fast(&world->query_index.queries, qid, sizeof(ecs_query_cache_t));
 }
 
+#include <string.h>
+
+ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc) {
+    ecs_system_t sys = {
+        .qid = ecs_query_init(world, &desc->query),
+        .callback = desc->callback,
+    };
+
+    memcpy(sys.after, desc->after, sizeof(ecs_system_id_t[4]));
+
+    return ecs_system_index_create(&world->system_index, &sys);
+}
+
 #include <stdlib.h>
 
 void ecs_table_init(
@@ -1018,6 +1053,7 @@ ecs_world_t *ecs_init() {
     ecs_table_index_init(&world->table_index);
     ecs_query_index_init(&world->query_index);
     ecs_observer_index_init(&world->observer_index);
+    ecs_system_index_init(&world->system_index);
 
     ecs_bootstrap(world);
     return world;
@@ -1287,6 +1323,7 @@ void ecs_fini(ecs_world_t *world) {
     ecs_table_index_fini(&world->table_index);
     ecs_query_index_fini(&world->query_index);
     ecs_observer_index_fini(&world->observer_index);
+    ecs_system_index_fini(&world->system_index);
     free(world);
 }
 
@@ -1763,33 +1800,15 @@ void ecs_query_index_add_table(
     }
 }
 
-#ifndef SIECS_STORAGE_SYSTEM_INDEX_H
-#define SIECS_STORAGE_SYSTEM_INDEX_H
-#include <stdint.h>
-
-typedef struct {
-    ecs_query_id_t qid;
-    void (*callback)(ecs_iter_t *);
-    ecs_system_id_t after[4];
-} ecs_system_t;
-
-typedef struct {
-    ecs_vec_t systems;
-} ecs_system_index_t;
-
-void ecs_system_index_init(ecs_system_index_t *index);
-void ecs_system_index_fini(ecs_system_index_t *index);
-ecs_system_id_t ecs_system_index_create(
-    ecs_system_index_t *index,
-    const ecs_system_desc_t *desc
-);
-
-#endif
-
 void ecs_system_index_init(ecs_system_index_t *index) {
     ecs_vec_init(&index->systems, sizeof(ecs_system_t));
 
     ecs_vec_ensure(&index->systems, 1, sizeof(ecs_system_t));
+}
+
+ecs_system_id_t ecs_system_index_create(ecs_system_index_t *index, const ecs_system_t *system) {
+    ecs_vec_push(&index->systems, system, sizeof(ecs_system_t));
+    return index->systems.size - 1;
 }
 
 void ecs_system_index_fini(ecs_system_index_t *index) { ecs_vec_fini(&index->systems); }
