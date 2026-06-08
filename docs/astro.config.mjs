@@ -18,8 +18,6 @@ export default defineConfig({
             'entities',
             'queries',
             'systems',
-            'rfc-system-language',
-            'observers',
             'relations',
             'internals',
           ],
