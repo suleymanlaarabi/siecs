@@ -16,9 +16,7 @@ typedef struct {
 
 void ecs_system_index_init(ecs_system_index_t *index);
 void ecs_system_index_fini(ecs_system_index_t *index);
-ecs_system_id_t ecs_system_index_create(
-    ecs_system_index_t *index,
-    const ecs_system_desc_t *desc
-);
+
+ecs_system_id_t ecs_system_index_create(ecs_system_index_t *index, const ecs_system_t *system);
 
 #endif

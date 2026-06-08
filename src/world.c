@@ -5,6 +5,7 @@
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
 #include "storage/query_index.h"
+#include "storage/system_index.h"
 #include "storage/table_index.h"
 #include "table.h"
 #include "type.h"
@@ -21,6 +22,7 @@ ecs_world_t *ecs_init() {
     ecs_table_index_init(&world->table_index);
     ecs_query_index_init(&world->query_index);
     ecs_observer_index_init(&world->observer_index);
+    ecs_system_index_init(&world->system_index);
 
     ecs_bootstrap(world);
     return world;
@@ -290,5 +292,6 @@ void ecs_fini(ecs_world_t *world) {
     ecs_table_index_fini(&world->table_index);
     ecs_query_index_fini(&world->query_index);
     ecs_observer_index_fini(&world->observer_index);
+    ecs_system_index_fini(&world->system_index);
     free(world);
 }

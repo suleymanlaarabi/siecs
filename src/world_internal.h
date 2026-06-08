@@ -5,6 +5,7 @@
 #include "storage/entity_index.h"
 #include "storage/observer_index.h"
 #include "storage/query_index.h"
+#include "storage/system_index.h"
 #include "storage/table_index.h"
 
 typedef struct ecs_world_s {
@@ -13,6 +14,7 @@ typedef struct ecs_world_s {
     ecs_table_index_t table_index;
     ecs_query_index_t query_index;
     ecs_observer_index_t observer_index;
+    ecs_system_index_t system_index;
 } ecs_world_t;
 
 typedef struct {
