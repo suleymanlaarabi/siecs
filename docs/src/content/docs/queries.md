@@ -26,9 +26,9 @@ Current descriptor limits:
 
 | Field | Maximum entries |
 | --- | --- |
-| `read` | 10 |
-| `required` | 8 |
-| `excluded` | 6 |
+| `read` | 8 |
+| `required` | 6 |
+| `excluded` | 4 |
 
 ## Iterate
 

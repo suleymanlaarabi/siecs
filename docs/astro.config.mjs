@@ -17,6 +17,7 @@ export default defineConfig({
             'components',
             'entities',
             'queries',
+            'systems',
             'observers',
             'relations',
             'internals',
