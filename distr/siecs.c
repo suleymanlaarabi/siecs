@@ -271,6 +271,7 @@ uint16_t ecs_table_index_get_or_create(
 #endif
 
 ECS_RELATION_DEFINE(ChildOf);
+ECS_COMPONENT_DEFINE(IsA);
 
 void ecs_bootstrap(ecs_world_t *world) {
     // Reserve identifiers used to represent false return values.
@@ -279,6 +280,7 @@ void ecs_bootstrap(ecs_world_t *world) {
     ecs_component(world, {});
 
     ECS_COMPONENT_REGISTER(world, ChildOf);
+    ECS_COMPONENT_REGISTER(world, IsA);
 }
 
 #ifndef SIECS_STORAGE_COMPONENT_INDEX_H
@@ -687,8 +689,9 @@ void RelationSourceOnRemove(
 ) {
     RelationSource *source_data = (void *)ptr;
 
-    const ecs_entity_t *entities = source_data->entities.data;
     const uint32_t count = source_data->entities.size;
+
+    const ecs_entity_t *entities = source_data->entities.data;
 
     // Prevent recursive calls to RelationOnRemove when removing relation from child
     source_data->entities.size = UINT32_MAX;
@@ -729,6 +732,9 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
     }
 }
 
+#include <stdint.h>
+#include <stdio.h>
+
 ecs_entity_t ecs_new(ecs_world_t *world) {
     ecs_assert_not_null(world);
     ecs_table_t *table = ecs_get_table(world, 0);
@@ -747,6 +753,17 @@ void ecs_kill(ecs_world_t *world, ecs_entity_t entity) {
     ecs_assert_not_null(world);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(world, entity);
+
+    RelationSource *parent = ecs_try_get_cid(world, entity, ecs_source(ChildOf));
+
+    if (parent) {
+        const ecs_entity_t *entities = parent->entities.data;
+        const uint32_t count = parent->entities.size;
+
+        for (uint32_t i = 0; i < count; i++) {
+            ecs_kill(world, entities[i]);
+        }
+    }
 
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
@@ -1133,6 +1150,54 @@ copy_column(ecs_column_t *from, uint32_t from_row, ecs_column_t *to, uint32_t to
     );
 }
 
+// Generic migration: move an entity from its current table to an arbitrary
+// target table, without knowing which components were added or removed, or how
+// many. Both type id arrays are sorted ascending, so a sorted merge classifies
+// each column: shared -> copy, only-in-from -> removed (skip), only-in-to ->
+// added (zero). Pure data movement; callers own events/hooks.
+static inline void migrate_entity(
+    ecs_world_t *world,
+    ecs_entity_record_t *record,
+    ecs_entity_t entity,
+    ecs_table_t *from_table,
+    uint16_t to_id
+) {
+    ecs_table_t *to_table = ecs_get_table(world, to_id);
+
+    uint32_t old_row = record->table_row;
+    uint32_t new_row = ecs_table_add_entity(to_table, entity);
+
+    uint16_t fi = 0, ti = 0;
+    while (fi < from_table->type.count && ti < to_table->type.count) {
+        uint16_t fid = from_table->type.ids[fi];
+        uint16_t tid = to_table->type.ids[ti];
+        if (fid == tid) {
+            copy_column(&from_table->cls[fi], old_row, &to_table->cls[ti], new_row);
+            fi++;
+            ti++;
+        } else if (fid < tid) {
+            fi++;
+        } else {
+            ecs_column_t *c = &to_table->cls[ti];
+            if (c->size != 0)
+                memset((uint8_t *)c->data + (c->size * new_row), 0, c->size);
+            ti++;
+        }
+    }
+    for (; ti < to_table->type.count; ti++) {
+        ecs_column_t *c = &to_table->cls[ti];
+        if (c->size != 0)
+            memset((uint8_t *)c->data + (c->size * new_row), 0, c->size);
+    }
+
+    ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
+    if (moved != entity)
+        ecs_get_record(world, moved)->table_row = old_row;
+
+    record->table_id = to_id;
+    record->table_row = new_row;
+}
+
 static inline void migrate_entity_add(
     ecs_world_t *world,
     ecs_entity_record_t *record,
@@ -1390,6 +1455,18 @@ void ecs_fini(ecs_world_t *world) {
     ecs_observer_index_fini(&world->observer_index);
     ecs_system_index_fini(&world->system_index);
     free(world);
+}
+
+void ecs_clone_w_entity(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
+    const ecs_entity_record_t *target_record = ecs_get_record(world, target);
+    ecs_table_t *target_table = ecs_get_table(world, target_record->table_id);
+
+    ecs_entity_record_t *entity_record = ecs_get_record(world, entity);
+    ecs_table_t *entity_table = ecs_get_table(world, entity_record->table_id);
+
+    ecs_table_add_entity(target_table, entity);
+
+    migrate_entity(world, entity_record, entity, entity_table, target_record->table_id);
 }
 
 #ifndef ECS_HTTP_SERVER

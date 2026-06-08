@@ -158,10 +158,11 @@ void ecs_fini(ecs_world_t *world);
  * Use once in a C file:
  *   ECS_COMPONENT_DEFINE(Position);
  */
-#define ECS_COMPONENT_DEFINE(cname)                                                                \
+#define ECS_COMPONENT_DEFINE(cname, ...)                                                                \
     ecs_component_desc_t ecs_id(cname##_desc) = {                                                  \
         .name = #cname,                                                                            \
         .size = sizeof(cname),                                                                     \
+        __VA_ARGS__                                                                                 \
     };                                                                                             \
     ecs_component_t ecs_id(cname) = 0
 
@@ -197,6 +198,9 @@ void ecs_fini(ecs_world_t *world);
 
 /* Builtin relation for parent/child relationships. */
 ECS_RELATION_DECLARE(ChildOf);
+
+/* Builtin component for inheritance relationships. */
+ECS_COMPONENT_DECLARE(IsA, { ecs_entity_t target; });
 
 /*
  * Register a component from an inline descriptor.

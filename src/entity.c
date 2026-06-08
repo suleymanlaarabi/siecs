@@ -1,8 +1,11 @@
+#include "datastructure/vec.h"
 #include "siecs.h"
 #include "storage/component_index.h"
 #include "table.h"
 #include "utils.h"
 #include "world_internal.h"
+#include <stdint.h>
+#include <stdio.h>
 
 ecs_entity_t ecs_new(ecs_world_t *world) {
     ecs_assert_not_null(world);
@@ -22,6 +25,17 @@ void ecs_kill(ecs_world_t *world, ecs_entity_t entity) {
     ecs_assert_not_null(world);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(world, entity);
+
+    RelationSource *parent = ecs_try_get_cid(world, entity, ecs_source(ChildOf));
+
+    if (parent) {
+        const ecs_entity_t *entities = parent->entities.data;
+        const uint32_t count = parent->entities.size;
+
+        for (uint32_t i = 0; i < count; i++) {
+            ecs_kill(world, entities[i]);
+        }
+    }
 
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);

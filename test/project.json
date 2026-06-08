@@ -17,6 +17,10 @@
         "testcases": ["create", "with"]
       },
       {
+        "id": "childof",
+        "testcases": ["kill_parent"]
+      },
+      {
         "id": "system",
         "testcases": ["run", "phase_order", "after_order", "enable"]
       },
