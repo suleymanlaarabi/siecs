@@ -105,6 +105,23 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     uint16_t from_id = record->table_id;
     ecs_table_t *table = ecs_get_table(world, from_id);
 
+    if (ecs_table_has(table, cid)) {
+        return;
+    }
+
+    const ecs_component_record_t *crec = ecs_component_index_get(&world->component_index, cid);
+    for (uint32_t i = 0; i < crec->required_count; i++) {
+        ecs_add_cid(world, entity, crec->required[i]);
+    }
+
+    record = ecs_get_record(world, entity);
+    from_id = record->table_id;
+    table = ecs_get_table(world, from_id);
+
+    if (ecs_table_has(table, cid)) {
+        return;
+    }
+
     uint16_t new_table_id = ecs_table_get_add_edge(table, cid);
 
     if (new_table_id == UINT16_MAX) {
@@ -219,6 +236,52 @@ bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t 
 
     uint16_t tid = ecs_get_record(world, entity)->table_id;
     return ecs_table_has(ecs_get_table(world, tid), id);
+}
+
+#ifndef NDEBUG
+static bool ecs_component_requires(
+    const ecs_world_t *world,
+    ecs_component_t component,
+    ecs_component_t require
+) {
+    const ecs_component_record_t *record =
+        ecs_component_index_get(&world->component_index, component);
+
+    for (uint32_t i = 0; i < record->required_count; i++) {
+        ecs_component_t current = record->required[i];
+        if (current == require || ecs_component_requires(world, current, require)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+#endif
+
+void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require) {
+    ecs_assert_not_null(world);
+    ecs_assert_id_valid(component);
+    ecs_assert_id_valid(require);
+    ecs_assert(component != require, "component cannot require itself: %d\n", component);
+    ecs_assert(
+        !ecs_component_requires(world, require, component),
+        "cyclic component requirement: %d requires %d\n",
+        component,
+        require
+    );
+
+    ecs_component_record_t *record =
+        ecs_component_index_get_mut(&world->component_index, component);
+
+    for (uint32_t i = 0; i < record->required_count; i++) {
+        if (record->required[i] == require) {
+            return;
+        }
+    }
+
+    record->required =
+        realloc(record->required, sizeof(ecs_component_t) * (record->required_count + 1));
+    record->required[record->required_count++] = require;
 }
 
 void ecs_fini(ecs_world_t *world) {

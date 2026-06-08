@@ -19,6 +19,10 @@
 
 #else
 #define ecs_assert(condition, ...)
+#define ecs_assert_id_valid(id)
+#define ecs_assert_not_null(ptr)
+#define ecs_assert_entity_valid(entity)
+#define ecs_assert_is_alive(world, entity)
 #endif
 
 #endif

@@ -16,7 +16,8 @@
             {
                 "id": "entity",
                 "testcases": [
-                    "create"
+                    "create",
+                    "with"
                 ]
             }
         ]

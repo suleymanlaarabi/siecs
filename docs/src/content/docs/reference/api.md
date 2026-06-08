@@ -87,6 +87,15 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, co
 `ecs_get()` and `ecs_get_cid()` assume the component exists. Use
 `ecs_try_get()` or `ecs_try_get_cid()` when absence is valid.
 
+```c
+void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require);
+```
+
+`ecs_with(world, component, require)` declares that adding `component` also adds
+`require` first.
+
+Requirement cycles are invalid and are asserted in debug builds when declared.
+
 ## Queries
 
 ```c
@@ -154,6 +163,5 @@ These symbols are currently declared but should not be treated as stable until
 they are implemented and tested:
 
 ```c
-void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require);
 ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc);
 ```

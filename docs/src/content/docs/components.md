@@ -75,6 +75,23 @@ if (ecs_has(world, entity, Position)) {
 
 Removing a component that is not present is a no-op.
 
+## Component Requirements
+
+Use `ecs_with()` when adding one component should also add another component:
+
+```c
+ecs_with(world, ecs_id(Renderable), ecs_id(Transform));
+
+ecs_add(world, entity, Renderable);
+
+/* Transform was added first. */
+```
+
+This only affects future adds. It does not rewrite existing entities.
+
+Requirement cycles are invalid. In debug builds, cycles are asserted when
+calling `ecs_with()`.
+
 ## Id-Based Components
 
 For generic code, register a component from a descriptor:

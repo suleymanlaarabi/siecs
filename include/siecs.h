@@ -270,10 +270,9 @@ void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t c
 void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
 
 /*
- * Planned API: declare that component implies require.
+ * Declare that adding component also adds require first.
  *
- * This function is declared for future use and should not be considered stable
- * until it has tests and an implementation.
+ * Requirement cycles are debug assertion failures when declared.
  */
 void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require);
 

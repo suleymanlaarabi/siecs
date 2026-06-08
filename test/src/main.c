@@ -10,11 +10,16 @@
 
 // Testsuite 'entity'
 void entity_create(void);
+void entity_with(void);
 
 bake_test_case entity_testcases[] = {
     {
         "create",
         entity_create
+    },
+    {
+        "with",
+        entity_with
     }
 };
 
@@ -24,7 +29,7 @@ static bake_test_suite suites[] = {
         "entity",
         NULL,
         NULL,
-        1,
+        2,
         entity_testcases
     }
 };
