@@ -1,11 +1,7 @@
 #include <siecs_test.h>
 
-ECS_COMPONENT_DECLARE(Transform, {
-    int value;
-});
-ECS_COMPONENT_DECLARE(Renderable, {
-    int value;
-});
+ECS_COMPONENT_DECLARE(Transform, { int value; });
+ECS_COMPONENT_DECLARE(Renderable, { int value; });
 
 ECS_COMPONENT_DEFINE(Transform);
 ECS_COMPONENT_DEFINE(Renderable);

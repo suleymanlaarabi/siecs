@@ -6,3 +6,4 @@ test/include/siecs-test/
 gcov
 .DS_Store
 .vscode
+/next_plan

@@ -3,6 +3,7 @@
 
 #include "siecs/bake_config.h"
 
+#include <sireflect.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -78,6 +79,7 @@ typedef struct {
     ecs_component_hook_t on_remove;
     bool is_relation;
     const char *source_name;
+    const sireflect_struct_desc_t *struct_desc;
 } ecs_component_desc_t;
 
 /*
@@ -109,7 +111,7 @@ void ecs_fini(ecs_world_t *world);
  *   ECS_COMPONENT_DECLARE(Position, { float x; float y; });
  */
 #define ECS_COMPONENT_DECLARE(cname, ...)                                                          \
-    typedef struct __VA_ARGS__ cname;                                                              \
+    SIREFLECT_STRUCT(cname, __VA_ARGS__)                                                           \
     extern ecs_component_t ecs_id(cname);                                                          \
     extern ecs_component_desc_t ecs_id(cname##_desc)
 
@@ -119,12 +121,11 @@ void ecs_fini(ecs_world_t *world);
  * Use once in a C file:
  *   ECS_COMPONENT_DEFINE(Position);
  */
-#define ECS_COMPONENT_DEFINE(cname, ...)                                                                \
-    ecs_component_desc_t ecs_id(cname##_desc) = {                                                  \
-        .name = #cname,                                                                            \
-        .size = sizeof(cname),                                                                     \
-        __VA_ARGS__                                                                                 \
-    };                                                                                             \
+#define ECS_COMPONENT_DEFINE(cname, ...)                                                           \
+    ecs_component_desc_t ecs_id(cname##_desc) = { .name = #cname,                                  \
+                                                  .size = sizeof(cname),                           \
+                                                  .struct_desc = &sireflect_desc(cname),           \
+                                                  __VA_ARGS__ };                                   \
     ecs_component_t ecs_id(cname) = 0
 
 /*

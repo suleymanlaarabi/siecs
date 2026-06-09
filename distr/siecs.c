@@ -383,6 +383,7 @@ void ecs_component_index_fini(ecs_component_index_t *index);
 
 #ifndef SIECS_WORLD_INTERNAL_H
 #define SIECS_WORLD_INTERNAL_H
+#include "sireflect.h"
 #ifndef SIECS_STORAGE_ENTITY_INDEX_H
 #define SIECS_STORAGE_ENTITY_INDEX_H
 #include <stdint.h>
@@ -573,6 +574,7 @@ typedef struct ecs_world_s {
     ecs_query_index_t query_index;
     ecs_observer_index_t observer_index;
     ecs_system_index_t system_index;
+    sireflect_registry_t *sireflect_registry;
 } ecs_world_t;
 
 typedef struct {
@@ -1123,6 +1125,7 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
     return filter;
 }
 
+#include "sireflect.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1135,6 +1138,8 @@ ecs_world_t *ecs_init() {
     ecs_query_index_init(&world->query_index);
     ecs_observer_index_init(&world->observer_index);
     ecs_system_index_init(&world->system_index);
+
+    world->sireflect_registry = sireflect_registry_init();
 
     ecs_bootstrap(world);
     return world;
@@ -1453,31 +1458,31 @@ void ecs_fini(ecs_world_t *world) {
     ecs_query_index_fini(&world->query_index);
     ecs_observer_index_fini(&world->observer_index);
     ecs_system_index_fini(&world->system_index);
+    sireflect_registry_fini(world->sireflect_registry);
+
     free(world);
+}
+
+void ecs_clone_w_entity(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
+    const ecs_entity_record_t *target_record = ecs_get_record(world, target);
+    ecs_table_t *target_table = ecs_get_table(world, target_record->table_id);
+
+    ecs_entity_record_t *entity_record = ecs_get_record(world, entity);
+    ecs_table_t *entity_table = ecs_get_table(world, entity_record->table_id);
+
+    ecs_table_add_entity(target_table, entity);
+
+    migrate_entity(world, entity_record, entity, entity_table, target_record->table_id);
 }
 
 #ifndef ECS_HTTP_SERVER
 #define ECS_HTTP_SERVER
-
-typedef struct {
-    int sock;
-} ecs_http_server_t;
 
 #endif
 
 #include <netinet/in.h>
 #include <stdint.h>
 #include <sys/socket.h>
-
-typedef struct {
-} ecs_http_request_t;
-
-void ecs_http_server_init(ecs_http_server_t *server) {
-    server->sock = socket(AF_INET, SOCK_STREAM, 0);
-}
-
-static inline void
-ecs_http_server_parse_request(ecs_http_request_t *request, const char *request_str) {}
 
 #include <stdint.h>
 #include <stdlib.h>

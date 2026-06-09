@@ -18,7 +18,7 @@
 #define SIECS_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
-/* No dependencies */
+#include <sireflect.h>
 
 /* Convenience macro for exporting symbols */
 #ifndef siecs_STATIC

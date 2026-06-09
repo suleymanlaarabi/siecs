@@ -1,6 +1,7 @@
 #ifndef SIECS_WORLD_INTERNAL_H
 #define SIECS_WORLD_INTERNAL_H
 #include "datastructure/vec.h"
+#include "sireflect.h"
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
 #include "storage/observer_index.h"
@@ -15,6 +16,7 @@ typedef struct ecs_world_s {
     ecs_query_index_t query_index;
     ecs_observer_index_t observer_index;
     ecs_system_index_t system_index;
+    sireflect_registry_t *sireflect_registry;
 } ecs_world_t;
 
 typedef struct {

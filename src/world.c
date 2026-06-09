@@ -2,6 +2,7 @@
 #include "compiler.h"
 #include "datastructure/idmap.h"
 #include "siecs.h"
+#include "sireflect.h"
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
 #include "storage/query_index.h"
@@ -23,6 +24,8 @@ ecs_world_t *ecs_init() {
     ecs_query_index_init(&world->query_index);
     ecs_observer_index_init(&world->observer_index);
     ecs_system_index_init(&world->system_index);
+
+    world->sireflect_registry = sireflect_registry_init();
 
     ecs_bootstrap(world);
     return world;
@@ -341,5 +344,19 @@ void ecs_fini(ecs_world_t *world) {
     ecs_query_index_fini(&world->query_index);
     ecs_observer_index_fini(&world->observer_index);
     ecs_system_index_fini(&world->system_index);
+    sireflect_registry_fini(world->sireflect_registry);
+
     free(world);
+}
+
+void ecs_clone_w_entity(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
+    const ecs_entity_record_t *target_record = ecs_get_record(world, target);
+    ecs_table_t *target_table = ecs_get_table(world, target_record->table_id);
+
+    ecs_entity_record_t *entity_record = ecs_get_record(world, entity);
+    ecs_table_t *entity_table = ecs_get_table(world, entity_record->table_id);
+
+    ecs_table_add_entity(target_table, entity);
+
+    migrate_entity(world, entity_record, entity, entity_table, target_record->table_id);
 }
