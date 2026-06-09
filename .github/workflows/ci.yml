@@ -37,6 +37,7 @@ jobs:
           - os: macos-latest
             compiler: clang
             cc: clang
+            compiler_package: clang
             config: debug
 
     env:
