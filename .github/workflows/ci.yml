@@ -60,17 +60,17 @@ jobs:
       - name: Build library
         run: |
           if [ "${{ matrix.config }}" = "release" ]; then
-            bake rebuild --cfg release
+            bake rebuild -r --cfg release
           else
-            bake rebuild
+            bake rebuild -r
           fi
 
       - name: Build tests
         run: |
           if [ "${{ matrix.config }}" = "release" ]; then
-            bake rebuild test --cfg release
+            bake rebuild test -r --cfg release
           else
-            bake rebuild test
+            bake rebuild test -r
           fi
 
       - name: Run tests
