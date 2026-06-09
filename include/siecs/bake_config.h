@@ -19,6 +19,7 @@
 
 /* Headers of public dependencies */
 #include <sireflect.h>
+#include <sijson.h>
 
 /* Convenience macro for exporting symbols */
 #ifndef siecs_STATIC
