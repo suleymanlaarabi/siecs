@@ -151,7 +151,7 @@ void ecs_fini(ecs_world_t *world);
  *   ECS_COMPONENT_DECLARE(Position, { float x; float y; });
  */
 #define ECS_COMPONENT_DECLARE(cname, ...)                                                          \
-    SIREFLECT_STRUCT(cname, __VA_ARGS__)                                                           \
+    SIJSON_DECLARE(cname, __VA_ARGS__)                                                             \
     extern ecs_component_t ecs_id(cname);                                                          \
     extern ecs_component_desc_t ecs_id(cname##_desc)
 
@@ -161,7 +161,7 @@ void ecs_fini(ecs_world_t *world);
  * Use once in a C file:
  *   ECS_COMPONENT_DEFINE(Position);
  */
-#define ECS_COMPONENT_DEFINE(cname, ...)                                                           \
+#define ECS_COMPONENT_DEFINE(cname, ...)     SIJSON_DEFINE(cname)                                               \
     ecs_component_desc_t ecs_id(cname##_desc) = { .name = #cname,                                  \
                                                   .size = sizeof(cname),                           \
                                                   .struct_desc = &sireflect_desc(cname),           \

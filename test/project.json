@@ -4,7 +4,7 @@
   "value": {
     "public": false,
     "clangd": true,
-    "use": ["siecs"]
+    "use": ["siecs", "sijson"]
   },
   "lang.c": {
     "c-standard": "c99",
@@ -15,6 +15,10 @@
       {
         "id": "entity",
         "testcases": ["create", "with"]
+      },
+      {
+        "id": "component",
+        "testcases": ["reflection"]
       },
       {
         "id": "childof",

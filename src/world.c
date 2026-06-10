@@ -2,6 +2,7 @@
 #include "compiler.h"
 #include "datastructure/idmap.h"
 #include "siecs.h"
+#include "sijson.h"
 #include "sireflect.h"
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
@@ -25,7 +26,7 @@ ecs_world_t *ecs_init() {
     ecs_observer_index_init(&world->observer_index);
     ecs_system_index_init(&world->system_index);
 
-    world->sireflect_registry = sireflect_registry_init();
+    world->sireflect_registry = sijson_default_registry();
 
     ecs_bootstrap(world);
     return world;

@@ -1,4 +1,5 @@
 #include "siecs.h"
+#include "sireflect.h"
 #ifndef SIECS_STORAGE_TABLE_INDEX_H
 #define SIECS_STORAGE_TABLE_INDEX_H
 #ifndef SIECS_TABLE_H
@@ -270,19 +271,8 @@ uint16_t ecs_table_index_get_or_create(
 
 #endif
 
-ECS_RELATION_DEFINE(ChildOf);
-ECS_COMPONENT_DEFINE(IsA);
-
-void ecs_bootstrap(ecs_world_t *world) {
-    // Reserve identifiers used to represent false return values.
-    ecs_table_index_get_or_create(world, (ecs_type_t){ 0 });
-    ecs_new(world);
-    ecs_component(world, {});
-
-    ECS_COMPONENT_REGISTER(world, ChildOf);
-    ECS_COMPONENT_REGISTER(world, IsA);
-}
-
+#ifndef SIECS_WORLD_INTERNAL_H
+#define SIECS_WORLD_INTERNAL_H
 #include "sireflect.h"
 #ifndef SIECS_STORAGE_COMPONENT_INDEX_H
 #define SIECS_STORAGE_COMPONENT_INDEX_H
@@ -356,38 +346,6 @@ void ecs_component_index_fini(ecs_component_index_t *index);
 
 #endif
 
-#ifndef SIECS_UTILS_H
-#define SIECS_UTILS_H
-#ifndef NDEBUG
-#include <stdio.h>
-#include <stdlib.h>
-#define ecs_cid_valid(id) ((id) != 0)
-#define ecs_entity_valid(entity) (ecs_first(entity) != 0)
-
-#define ecs_assert(condition, ...) \
-    if (!(condition)) { \
-        fprintf(stderr, __VA_ARGS__); \
-        abort(); \
-    }
-
-#define ecs_assert_id_valid(id) ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
-#define ecs_assert_not_null(ptr) ecs_assert((ptr) != NULL, "null pointer: %s\n", #ptr)
-#define ecs_assert_entity_valid(entity) ecs_assert(ecs_entity_valid(entity), "invalid entity: %d, entity must be registered\n", ecs_first(entity))
-#define ecs_assert_is_alive(world, entity) ecs_assert(ecs_is_alive(world, entity), "entity is dead: %d\n", ecs_first(entity))
-
-#else
-#define ecs_assert(condition, ...)
-#define ecs_assert_id_valid(id)
-#define ecs_assert_not_null(ptr)
-#define ecs_assert_entity_valid(entity)
-#define ecs_assert_is_alive(world, entity)
-#endif
-
-#endif
-
-#ifndef SIECS_WORLD_INTERNAL_H
-#define SIECS_WORLD_INTERNAL_H
-#include "sireflect.h"
 #ifndef SIECS_STORAGE_ENTITY_INDEX_H
 #define SIECS_STORAGE_ENTITY_INDEX_H
 #include <stdint.h>
@@ -625,6 +583,60 @@ struct ecs_table_s *ecs_iter_table(ecs_iter_t *it);
 
 #endif
 
+ECS_RELATION_DEFINE(ChildOf);
+ECS_COMPONENT_DEFINE(IsA);
+
+void ecs_bootstrap(ecs_world_t *world) {
+    // Reserve identifiers used to represent false return values.
+    ecs_table_index_get_or_create(world, (ecs_type_t){ 0 });
+    ecs_new(world);
+    ecs_component(world, {});
+
+    // Register the ecs_entity_t struct reflection.
+    sireflect_register_struct(
+        world->sireflect_registry,
+        &(sireflect_struct_desc_t){
+            .name = "ecs_entity_t",
+            .fields = "{ uint32_t id; uint32_t generation; }",
+            .size = sizeof(ecs_entity_t),
+            .align = _Alignof(ecs_entity_t),
+        }
+    );
+
+    ECS_COMPONENT_REGISTER(world, ChildOf);
+    ECS_COMPONENT_REGISTER(world, IsA);
+}
+
+#include "sireflect.h"
+#ifndef SIECS_UTILS_H
+#define SIECS_UTILS_H
+#ifndef NDEBUG
+#include <stdio.h>
+#include <stdlib.h>
+#define ecs_cid_valid(id) ((id) != 0)
+#define ecs_entity_valid(entity) (ecs_first(entity) != 0)
+
+#define ecs_assert(condition, ...) \
+    if (!(condition)) { \
+        fprintf(stderr, __VA_ARGS__); \
+        abort(); \
+    }
+
+#define ecs_assert_id_valid(id) ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
+#define ecs_assert_not_null(ptr) ecs_assert((ptr) != NULL, "null pointer: %s\n", #ptr)
+#define ecs_assert_entity_valid(entity) ecs_assert(ecs_entity_valid(entity), "invalid entity: %d, entity must be registered\n", ecs_first(entity))
+#define ecs_assert_is_alive(world, entity) ecs_assert(ecs_is_alive(world, entity), "entity is dead: %d\n", ecs_first(entity))
+
+#else
+#define ecs_assert(condition, ...)
+#define ecs_assert_id_valid(id)
+#define ecs_assert_not_null(ptr)
+#define ecs_assert_entity_valid(entity)
+#define ecs_assert_is_alive(world, entity)
+#endif
+
+#endif
+
 #include <stdint.h>
 
 void RelationOnSet(
@@ -710,8 +722,11 @@ void RelationSourceOnRemove(
 ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc) {
     ecs_assert_not_null(world);
 
-    sireflect_handle_t reflection =
-        sireflect_register_struct(world->sireflect_registry, desc->struct_desc);
+    sireflect_handle_t reflection = SIREFLECT_INVALID_HANDLE;
+
+    if (desc->struct_desc) {
+        reflection = sireflect_register_struct(world->sireflect_registry, desc->struct_desc);
+    }
 
     if (desc->is_relation) {
         ecs_component_t component = ecs_component_index_create(
@@ -720,25 +735,16 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             desc->size,
             RelationOnSet,
             RelationOnRemove,
-            0
+            reflection
         );
 
-        // sireflect_handle_t source_reflection = sireflect_register_struct(
-        //     world->sireflect_registry,
-        //     &(sireflect_struct_desc_t){
-        //         .name = desc->source_name,
-        //         .align = _Alignof(RelationSource),
-        //         .size = sizeof(RelationSource),
-        //         .fields = "{ void *data; uint32_t size; uint32_t capacity; }",
-        //     }
-        // );
         ecs_component_index_create(
             &world->component_index,
             desc->source_name,
             sizeof(RelationSource),
             NULL,
             RelationSourceOnRemove,
-            0
+            SIREFLECT_INVALID_HANDLE
         );
         return component;
     } else {
@@ -748,7 +754,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             desc->size,
             desc->on_set,
             desc->on_remove,
-            0
+            reflection
         );
     }
 }
@@ -1145,6 +1151,7 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
     return filter;
 }
 
+#include "sijson.h"
 #include "sireflect.h"
 #include <stdint.h>
 #include <stdlib.h>
@@ -1159,7 +1166,7 @@ ecs_world_t *ecs_init() {
     ecs_observer_index_init(&world->observer_index);
     ecs_system_index_init(&world->system_index);
 
-    world->sireflect_registry = sireflect_registry_init();
+    world->sireflect_registry = sijson_default_registry();
 
     ecs_bootstrap(world);
     return world;

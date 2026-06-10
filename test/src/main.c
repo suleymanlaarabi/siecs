@@ -12,6 +12,9 @@
 void entity_create(void);
 void entity_with(void);
 
+// Testsuite 'component'
+void component_reflection(void);
+
 // Testsuite 'childof'
 void childof_kill_parent(void);
 
@@ -43,6 +46,13 @@ bake_test_case entity_testcases[] = {
     {
         "with",
         entity_with
+    }
+};
+
+bake_test_case component_testcases[] = {
+    {
+        "reflection",
+        component_reflection
     }
 };
 
@@ -128,6 +138,13 @@ static bake_test_suite suites[] = {
         entity_testcases
     },
     {
+        "component",
+        NULL,
+        NULL,
+        1,
+        component_testcases
+    },
+    {
         "childof",
         NULL,
         NULL,
@@ -158,5 +175,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 5);
+    return bake_test_run("siecs.test", argc, argv, suites, 6);
 }
