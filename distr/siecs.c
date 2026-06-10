@@ -283,6 +283,7 @@ void ecs_bootstrap(ecs_world_t *world) {
     ECS_COMPONENT_REGISTER(world, IsA);
 }
 
+#include "sireflect.h"
 #ifndef SIECS_STORAGE_COMPONENT_INDEX_H
 #define SIECS_STORAGE_COMPONENT_INDEX_H
 #ifndef SIECS_DATASTRUCTURE_MAP_H
@@ -315,6 +316,7 @@ bool ecs_map_has(const ecs_map_t *m, const char *key);
 
 #endif
 
+#include "sireflect.h"
 #include <stdint.h>
 
 typedef struct {
@@ -325,6 +327,7 @@ typedef struct {
     ecs_component_hook_t on_set;
     ecs_component_hook_t on_remove;
     ecs_vec_t tables; // uint16_t
+    sireflect_handle_t reflection;
 } ecs_component_record_t;
 
 typedef struct ecs_component_index_s {
@@ -339,7 +342,8 @@ ecs_component_t ecs_component_index_create(
     const char *name,
     uint64_t size,
     ecs_component_hook_t on_set,
-    ecs_component_hook_t on_remove
+    ecs_component_hook_t on_remove,
+    sireflect_handle_t reflection
 );
 
 #define ecs_component_index_get(index, id)                                                         \
@@ -706,20 +710,35 @@ void RelationSourceOnRemove(
 ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc) {
     ecs_assert_not_null(world);
 
+    sireflect_handle_t reflection =
+        sireflect_register_struct(world->sireflect_registry, desc->struct_desc);
+
     if (desc->is_relation) {
         ecs_component_t component = ecs_component_index_create(
             &world->component_index,
             desc->name,
             desc->size,
             RelationOnSet,
-            RelationOnRemove
+            RelationOnRemove,
+            0
         );
+
+        // sireflect_handle_t source_reflection = sireflect_register_struct(
+        //     world->sireflect_registry,
+        //     &(sireflect_struct_desc_t){
+        //         .name = desc->source_name,
+        //         .align = _Alignof(RelationSource),
+        //         .size = sizeof(RelationSource),
+        //         .fields = "{ void *data; uint32_t size; uint32_t capacity; }",
+        //     }
+        // );
         ecs_component_index_create(
             &world->component_index,
             desc->source_name,
             sizeof(RelationSource),
             NULL,
-            RelationSourceOnRemove
+            RelationSourceOnRemove,
+            0
         );
         return component;
     } else {
@@ -728,7 +747,8 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             desc->name,
             desc->size,
             desc->on_set,
-            desc->on_remove
+            desc->on_remove,
+            0
         );
     }
 }
@@ -2435,6 +2455,7 @@ void ecs_scanner_init(ecs_scanner_t *scanner, const char *str) {
     scanner->len = (uint32_t)strlen(str);
 }
 
+#include "sireflect.h"
 #include <stdlib.h>
 
 ecs_component_t ecs_component_index_create(
@@ -2442,7 +2463,8 @@ ecs_component_t ecs_component_index_create(
     const char *name,
     uint64_t size,
     ecs_component_hook_t on_set,
-    ecs_component_hook_t on_remove
+    ecs_component_hook_t on_remove,
+    sireflect_handle_t reflection
 ) {
     ecs_component_record_t record = {
         .name = name,
@@ -2452,6 +2474,7 @@ ecs_component_t ecs_component_index_create(
         .on_set = on_set,
         .on_remove = on_remove,
         .tables = { 0 },
+        .reflection = reflection,
     };
     ecs_vec_init(&record.tables, sizeof(uint16_t));
 

@@ -1,4 +1,5 @@
 #include "datastructure/vec.h"
+#include "sireflect.h"
 #include "storage/component_index.h"
 #include "utils.h"
 #include "world_internal.h"
@@ -87,20 +88,29 @@ void RelationSourceOnRemove(
 ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc) {
     ecs_assert_not_null(world);
 
+    sireflect_handle_t reflection = SIREFLECT_INVALID_HANDLE;
+
+    if (desc->struct_desc) {
+        reflection = sireflect_register_struct(world->sireflect_registry, desc->struct_desc);
+    }
+
     if (desc->is_relation) {
         ecs_component_t component = ecs_component_index_create(
             &world->component_index,
             desc->name,
             desc->size,
             RelationOnSet,
-            RelationOnRemove
+            RelationOnRemove,
+            reflection
         );
+
         ecs_component_index_create(
             &world->component_index,
             desc->source_name,
             sizeof(RelationSource),
             NULL,
-            RelationSourceOnRemove
+            RelationSourceOnRemove,
+            SIREFLECT_INVALID_HANDLE
         );
         return component;
     } else {
@@ -109,7 +119,8 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             desc->name,
             desc->size,
             desc->on_set,
-            desc->on_remove
+            desc->on_remove,
+            reflection
         );
     }
 }

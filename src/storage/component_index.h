@@ -3,6 +3,7 @@
 #include "../datastructure/vec.h"
 #include "siecs.h"
 #include "../datastructure/map.h"
+#include "sireflect.h"
 #include <stdint.h>
 
 typedef struct {
@@ -13,6 +14,7 @@ typedef struct {
     ecs_component_hook_t on_set;
     ecs_component_hook_t on_remove;
     ecs_vec_t tables; // uint16_t
+    sireflect_handle_t reflection;
 } ecs_component_record_t;
 
 typedef struct ecs_component_index_s {
@@ -27,7 +29,8 @@ ecs_component_t ecs_component_index_create(
     const char *name,
     uint64_t size,
     ecs_component_hook_t on_set,
-    ecs_component_hook_t on_remove
+    ecs_component_hook_t on_remove,
+    sireflect_handle_t reflection
 );
 
 #define ecs_component_index_get(index, id)                                                         \

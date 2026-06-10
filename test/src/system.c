@@ -1,8 +1,6 @@
 #include <siecs_test.h>
 
-ECS_COMPONENT_DECLARE(SystemPosition, {
-    int value;
-});
+ECS_COMPONENT_DECLARE(SystemPosition, { int value; });
 
 ECS_COMPONENT_DEFINE(SystemPosition);
 
@@ -68,12 +66,15 @@ void system_run(void) {
     ECS_COMPONENT_REGISTER(world, SystemPosition);
     ecs_entity_t entity = create_system_entity(world, 41);
 
-    ecs_system(world, {
-        .name = "Count",
-        .phase = EcsOnUpdate,
-        .query = { .read = { ecs_id(SystemPosition) } },
-        .callback = count_system,
-    });
+    ecs_system(
+        world,
+        {
+            .name = "Count",
+            .phase = EcsOnUpdate,
+            .query = { .read = { ecs_id(SystemPosition) } },
+            .callback = count_system,
+        }
+    );
 
     ecs_progress(world);
 
@@ -94,24 +95,33 @@ void system_phase_order(void) {
     ECS_COMPONENT_REGISTER(world, SystemPosition);
     create_system_entity(world, 0);
 
-    ecs_system(world, {
-        .name = "Render",
-        .phase = EcsOnRender,
-        .query = { .read = { ecs_id(SystemPosition) } },
-        .callback = order_render,
-    });
-    ecs_system(world, {
-        .name = "Update",
-        .phase = EcsOnUpdate,
-        .query = { .read = { ecs_id(SystemPosition) } },
-        .callback = order_update,
-    });
-    ecs_system(world, {
-        .name = "PreUpdate",
-        .phase = EcsPreUpdate,
-        .query = { .read = { ecs_id(SystemPosition) } },
-        .callback = order_pre_update,
-    });
+    ecs_system(
+        world,
+        {
+            .name = "Render",
+            .phase = EcsOnRender,
+            .query = { .read = { ecs_id(SystemPosition) } },
+            .callback = order_render,
+        }
+    );
+    ecs_system(
+        world,
+        {
+            .name = "Update",
+            .phase = EcsOnUpdate,
+            .query = { .read = { ecs_id(SystemPosition) } },
+            .callback = order_update,
+        }
+    );
+    ecs_system(
+        world,
+        {
+            .name = "PreUpdate",
+            .phase = EcsPreUpdate,
+            .query = { .read = { ecs_id(SystemPosition) } },
+            .callback = order_pre_update,
+        }
+    );
 
     ecs_progress(world);
 
@@ -132,19 +142,25 @@ void system_after_order(void) {
     ECS_COMPONENT_REGISTER(world, SystemPosition);
     create_system_entity(world, 0);
 
-    ecs_system_id_t first = ecs_system(world, {
-        .name = "First",
-        .phase = EcsOnUpdate,
-        .query = { .read = { ecs_id(SystemPosition) } },
-        .callback = order_first,
-    });
-    ecs_system(world, {
-        .name = "Second",
-        .phase = EcsOnUpdate,
-        .query = { .read = { ecs_id(SystemPosition) } },
-        .callback = order_second,
-        .after = { first },
-    });
+    ecs_system_id_t first = ecs_system(
+        world,
+        {
+            .name = "First",
+            .phase = EcsOnUpdate,
+            .query = { .read = { ecs_id(SystemPosition) } },
+            .callback = order_first,
+        }
+    );
+    ecs_system(
+        world,
+        {
+            .name = "Second",
+            .phase = EcsOnUpdate,
+            .query = { .read = { ecs_id(SystemPosition) } },
+            .callback = order_second,
+            .after = { first },
+        }
+    );
 
     ecs_run_phase(world, EcsOnUpdate);
 
@@ -164,13 +180,16 @@ void system_enable(void) {
     ECS_COMPONENT_REGISTER(world, SystemPosition);
     create_system_entity(world, 0);
 
-    ecs_system_id_t system = ecs_system(world, {
-        .name = "Disabled",
-        .phase = EcsOnUpdate,
-        .query = { .read = { ecs_id(SystemPosition) } },
-        .callback = count_system,
-        .disabled = true,
-    });
+    ecs_system_id_t system = ecs_system(
+        world,
+        {
+            .name = "Disabled",
+            .phase = EcsOnUpdate,
+            .query = { .read = { ecs_id(SystemPosition) } },
+            .callback = count_system,
+            .disabled = true,
+        }
+    );
 
     ecs_progress(world);
     test_assert(system_calls == 0);

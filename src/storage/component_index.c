@@ -2,6 +2,7 @@
 #include "../datastructure/map.h"
 #include "../datastructure/vec.h"
 #include "siecs.h"
+#include "sireflect.h"
 #include <stdlib.h>
 
 ecs_component_t ecs_component_index_create(
@@ -9,7 +10,8 @@ ecs_component_t ecs_component_index_create(
     const char *name,
     uint64_t size,
     ecs_component_hook_t on_set,
-    ecs_component_hook_t on_remove
+    ecs_component_hook_t on_remove,
+    sireflect_handle_t reflection
 ) {
     ecs_component_record_t record = {
         .name = name,
@@ -19,6 +21,7 @@ ecs_component_t ecs_component_index_create(
         .on_set = on_set,
         .on_remove = on_remove,
         .tables = { 0 },
+        .reflection = reflection,
     };
     ecs_vec_init(&record.tables, sizeof(uint16_t));
 
