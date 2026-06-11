@@ -1,6 +1,7 @@
 #ifndef SIECS_WORLD_INTERNAL_H
 #define SIECS_WORLD_INTERNAL_H
 #include "datastructure/vec.h"
+#include "siecs.h"
 #include "sihttp.h"
 #include "sireflect.h"
 #include "storage/component_index.h"
@@ -22,6 +23,7 @@ typedef struct ecs_world_s {
     #ifdef SIECS_REST
     sihttp_server_t *server;
     #endif
+    ecs_world_feat_desc_t features;
 } ecs_world_t;
 
 struct sihttp_app_state_s {

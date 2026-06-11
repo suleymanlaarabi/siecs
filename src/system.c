@@ -75,7 +75,9 @@ void ecs_progress(ecs_world_t *world) {
         ecs_run_phase(world, phase);
     }
 #ifdef SIECS_REST
-    sihttp_server_poll(world->server);
+    if (world->features.rest) {
+        sihttp_server_poll(world->server);
+    }
     sleep_ms(5);
 #endif
 }

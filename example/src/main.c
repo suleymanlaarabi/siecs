@@ -4,7 +4,7 @@
 #include <unistd.h>
 
 int main(void) {
-    ecs_world_t *world = ecs_init();
+    ecs_world_t *world = ecs_with_features({ .rest = true });
 
     while (true) {
         ecs_progress(world);

@@ -543,6 +543,7 @@ typedef struct ecs_world_s {
     #ifdef SIECS_REST
     sihttp_server_t *server;
     #endif
+    ecs_world_feat_desc_t features;
 } ecs_world_t;
 
 struct sihttp_app_state_s {
@@ -983,7 +984,9 @@ void ecs_progress(ecs_world_t *world) {
         ecs_run_phase(world, phase);
     }
 #ifdef SIECS_REST
-    sihttp_server_poll(world->server);
+    if (world->features.rest) {
+        sihttp_server_poll(world->server);
+    }
     sleep_ms(5);
 #endif
 }
@@ -1221,10 +1224,18 @@ ecs_world_t *ecs_init() {
     ecs_query_index_init(&world->query_index);
     ecs_observer_index_init(&world->observer_index);
     ecs_system_index_init(&world->system_index);
+    world->features = (ecs_world_feat_desc_t){ 0 };
 
     world->sireflect_registry = sijson_default_registry();
 
     ecs_bootstrap(world);
+    return world;
+}
+
+ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
+    ecs_world_t *world = ecs_init();
+
+    world->features = *features;
 
 #ifdef SIECS_REST
     sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
@@ -1240,7 +1251,9 @@ ecs_world_t *ecs_init() {
 
     sihttp_get(world->server, "/entities", get_entities);
 
-    sihttp_server_start(world->server);
+    if (features->rest) {
+        sihttp_server_start(world->server);
+    }
 #endif
 
     return world;
@@ -1562,7 +1575,9 @@ void ecs_fini(ecs_world_t *world) {
     sireflect_registry_fini(world->sireflect_registry);
 
 #ifdef SIECS_REST
-    sihttp_server_stop(world->server);
+    if (world->features.rest) {
+        sihttp_server_stop(world->server);
+    }
     sihttp_server_fini(world->server);
 #endif
 

@@ -142,6 +142,19 @@ typedef struct {
 /* Create an ECS world. */
 ecs_world_t *ecs_init(void);
 
+/* World feature descriptor. */
+typedef struct {
+    #ifdef SIECS_REST
+    bool rest;
+    #endif
+} ecs_world_feat_desc_t;
+
+/* Create a world with the given features. */
+#define ecs_with_features(...) ecs_init_w_features(&(ecs_world_feat_desc_t) __VA_ARGS__ )
+
+/* Initialize a world with the given features. */
+ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features);
+
 /* Destroy a world and all ECS storage owned by it. world must not be NULL. */
 void ecs_fini(ecs_world_t *world);
 
