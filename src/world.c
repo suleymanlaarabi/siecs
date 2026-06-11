@@ -2,6 +2,7 @@
 #include "compiler.h"
 #include "datastructure/idmap.h"
 #include "siecs.h"
+#include "sihttp.h"
 #include "sijson.h"
 #include "sireflect.h"
 #include "storage/component_index.h"
@@ -27,6 +28,19 @@ ecs_world_t *ecs_init() {
     ecs_system_index_init(&world->system_index);
 
     world->sireflect_registry = sijson_default_registry();
+
+    sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
+
+    state->world = world;
+
+    sihttp_server_t *server = sihttp_server(
+        {
+            .port = 4040,
+            .state = state,
+        }
+    );
+
+    sihttp_server_run(server);
 
     ecs_bootstrap(world);
     return world;

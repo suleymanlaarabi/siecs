@@ -1,6 +1,7 @@
 #ifndef SIECS_WORLD_INTERNAL_H
 #define SIECS_WORLD_INTERNAL_H
 #include "datastructure/vec.h"
+#include "sihttp.h"
 #include "sireflect.h"
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
@@ -18,6 +19,10 @@ typedef struct ecs_world_s {
     ecs_system_index_t system_index;
     sireflect_registry_t *sireflect_registry;
 } ecs_world_t;
+
+struct sihttp_app_state_s {
+    ecs_world_t *world;
+};
 
 typedef struct {
     ecs_entity_t target;
@@ -60,5 +65,6 @@ static inline void ecs_emit(
 
 void ecs_bootstrap(ecs_world_t *world);
 struct ecs_table_s *ecs_iter_table(ecs_iter_t *it);
+
 
 #endif
