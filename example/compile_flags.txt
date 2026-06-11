@@ -1,3 +1,4 @@
+-fvisibility=hidden
 -fPIC
 -g
 -O0
@@ -11,9 +12,9 @@
 -D__BAKE__
 -D__BAKE__
 -fstack-protector-all
--DBAKE_PROJECT_ID="siecs"
--Dsiecs_EXPORTS
--I/home/suleyman/siecs_bake/src
--I/home/suleyman/siecs_bake/include
+-DBAKE_PROJECT_ID="siecs.example"
+-Dsiecs_example_EXPORTS
+-I./../src
+-I./include
 -I
 /home/suleyman/bake/include

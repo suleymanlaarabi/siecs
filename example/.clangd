@@ -1,0 +1,8 @@
+CompileFlags:
+  Add:
+    - -I/home/suleyman/siecs_bake/test/include
+    - -I/home/suleyman/siecs_bake/include
+    - -I/home/suleyman/bake/include
+
+Diagnostics:
+  UnusedIncludes: None
