@@ -15,7 +15,16 @@
   "lang.c": {
     "c-standard": "c23",
     "export-symbols": true,
-    "include": ["src"]
+    "include": ["src"],
+    "${os linux}": {
+      "lib": ["pthread"],
+      "${cfg debug}": {
+        "export-symbols": true
+      },
+      "${cfg sanitize}": {
+        "export-symbols": true
+      }
+    }
   },
   "bundle": {
     "repositories": {

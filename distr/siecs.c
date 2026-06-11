@@ -273,6 +273,7 @@ uint16_t ecs_table_index_get_or_create(
 
 #ifndef SIECS_WORLD_INTERNAL_H
 #define SIECS_WORLD_INTERNAL_H
+#include "sihttp.h"
 #include "sireflect.h"
 #ifndef SIECS_STORAGE_COMPONENT_INDEX_H
 #define SIECS_STORAGE_COMPONENT_INDEX_H
@@ -538,6 +539,10 @@ typedef struct ecs_world_s {
     ecs_system_index_t system_index;
     sireflect_registry_t *sireflect_registry;
 } ecs_world_t;
+
+struct sihttp_app_state_s {
+    ecs_world_t *world;
+};
 
 typedef struct {
     ecs_entity_t target;
@@ -1151,6 +1156,7 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
     return filter;
 }
 
+#include "sihttp.h"
 #include "sijson.h"
 #include "sireflect.h"
 #include <stdint.h>
@@ -1167,6 +1173,21 @@ ecs_world_t *ecs_init() {
     ecs_system_index_init(&world->system_index);
 
     world->sireflect_registry = sijson_default_registry();
+
+#ifdef SIECS_REST
+    sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
+
+    state->world = world;
+
+    sihttp_server_t *server = sihttp_server(
+        {
+            .port = 4040,
+            .state = state,
+        }
+    );
+
+    sihttp_server_run(server);
+#endif
 
     ecs_bootstrap(world);
     return world;
@@ -1501,15 +1522,6 @@ void ecs_clone_w_entity(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t ta
 
     migrate_entity(world, entity_record, entity, entity_table, target_record->table_id);
 }
-
-#ifndef ECS_HTTP_SERVER
-#define ECS_HTTP_SERVER
-
-#endif
-
-#include <netinet/in.h>
-#include <stdint.h>
-#include <sys/socket.h>
 
 #include <stdint.h>
 #include <stdlib.h>
