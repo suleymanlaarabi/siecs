@@ -530,6 +530,8 @@ void ecs_system_index_build_plan(ecs_system_index_t *index);
 
 #endif
 
+#include <bits/pthreadtypes.h>
+
 typedef struct ecs_world_s {
     ecs_entity_index_t entity_index;
     ecs_component_index_t component_index;
@@ -538,6 +540,9 @@ typedef struct ecs_world_s {
     ecs_observer_index_t observer_index;
     ecs_system_index_t system_index;
     sireflect_registry_t *sireflect_registry;
+    #ifdef SIECS_REST
+    sihttp_server_t *server;
+    #endif
 } ecs_world_t;
 
 struct sihttp_app_state_s {
@@ -905,7 +910,9 @@ void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid) {
     ecs_vec_remove_fast(&world->query_index.queries, qid, sizeof(ecs_query_cache_t));
 }
 
+#include "sihttp.h"
 #include <string.h>
+#include <time.h>
 
 ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc) {
     ecs_assert_not_null(world);
@@ -960,12 +967,25 @@ void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase) {
     }
 }
 
+#ifdef SIECS_REST
+void sleep_ms(long ms) {
+    struct timespec ts;
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = (ms % 1000) * 1000000L;
+    nanosleep(&ts, NULL);
+}
+#endif
+
 void ecs_progress(ecs_world_t *world) {
     ecs_assert_not_null(world);
 
     for (ecs_phase_t phase = 0; phase < EcsPhaseCount; phase++) {
         ecs_run_phase(world, phase);
     }
+#ifdef SIECS_REST
+    sihttp_server_poll(world->server);
+    sleep_ms(5);
+#endif
 }
 
 void ecs_enable_system(ecs_world_t *world, ecs_system_id_t system, bool enabled) {
@@ -1159,9 +1179,39 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
 #include "sihttp.h"
 #include "sijson.h"
 #include "sireflect.h"
+#include <bits/pthreadtypes.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef SIECS_REST
+
+sihttp_response_t get_entities(const sihttp_request_t *req) {
+    ecs_world_t *world = req->state->world;
+
+    sijson_value_t array = sijson_make_array();
+
+    const uint64_t count = world->entity_index.entities.size;
+    const ecs_entity_record_t *records = world->entity_index.entities.data;
+
+    for (uint64_t i = 0; i < count; i++) {
+        sijson_array_push(
+            array,
+            sijson_make_string(siformat("(%ld, %d)", i, records[i].generation))
+        );
+    }
+
+    return sihttp_response(
+        {
+            .status = 200,
+            .body = sijson_stringify(array),
+            .content_type = SIHTTP_CONTENT_JSON,
+        }
+    );
+}
+
+#endif
 
 ecs_world_t *ecs_init() {
     ecs_world_t *world = malloc(sizeof(ecs_world_t));
@@ -1174,22 +1224,25 @@ ecs_world_t *ecs_init() {
 
     world->sireflect_registry = sijson_default_registry();
 
+    ecs_bootstrap(world);
+
 #ifdef SIECS_REST
     sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
 
     state->world = world;
 
-    sihttp_server_t *server = sihttp_server(
+    world->server = sihttp_server(
         {
             .port = 4040,
             .state = state,
         }
     );
 
-    sihttp_server_run(server);
+    sihttp_get(world->server, "/entities", get_entities);
+
+    sihttp_server_start(world->server);
 #endif
 
-    ecs_bootstrap(world);
     return world;
 }
 
@@ -1507,6 +1560,11 @@ void ecs_fini(ecs_world_t *world) {
     ecs_observer_index_fini(&world->observer_index);
     ecs_system_index_fini(&world->system_index);
     sireflect_registry_fini(world->sireflect_registry);
+
+#ifdef SIECS_REST
+    sihttp_server_stop(world->server);
+    sihttp_server_fini(world->server);
+#endif
 
     free(world);
 }

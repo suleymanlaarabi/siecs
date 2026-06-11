@@ -14,9 +14,39 @@
 #include "type.h"
 #include "utils.h"
 #include "world_internal.h"
+#include <bits/pthreadtypes.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef SIECS_REST
+
+sihttp_response_t get_entities(const sihttp_request_t *req) {
+    ecs_world_t *world = req->state->world;
+
+    sijson_value_t array = sijson_make_array();
+
+    const uint64_t count = world->entity_index.entities.size;
+    const ecs_entity_record_t *records = world->entity_index.entities.data;
+
+    for (uint64_t i = 0; i < count; i++) {
+        sijson_array_push(
+            array,
+            sijson_make_string(siformat("(%ld, %d)", i, records[i].generation))
+        );
+    }
+
+    return sihttp_response(
+        {
+            .status = 200,
+            .body = sijson_stringify(array),
+            .content_type = SIHTTP_CONTENT_JSON,
+        }
+    );
+}
+
+#endif
 
 ecs_world_t *ecs_init() {
     ecs_world_t *world = malloc(sizeof(ecs_world_t));
@@ -29,22 +59,25 @@ ecs_world_t *ecs_init() {
 
     world->sireflect_registry = sijson_default_registry();
 
+    ecs_bootstrap(world);
+
 #ifdef SIECS_REST
     sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
 
     state->world = world;
 
-    sihttp_server_t *server = sihttp_server(
+    world->server = sihttp_server(
         {
             .port = 4040,
             .state = state,
         }
     );
 
-    sihttp_server_run(server);
+    sihttp_get(world->server, "/entities", get_entities);
+
+    sihttp_server_start(world->server);
 #endif
 
-    ecs_bootstrap(world);
     return world;
 }
 
@@ -362,6 +395,11 @@ void ecs_fini(ecs_world_t *world) {
     ecs_observer_index_fini(&world->observer_index);
     ecs_system_index_fini(&world->system_index);
     sireflect_registry_fini(world->sireflect_registry);
+
+#ifdef SIECS_REST
+    sihttp_server_stop(world->server);
+    sihttp_server_fini(world->server);
+#endif
 
     free(world);
 }

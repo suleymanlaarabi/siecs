@@ -1,8 +1,10 @@
 #include "siecs.h"
+#include "sihttp.h"
 #include "storage/system_index.h"
 #include "utils.h"
 #include "world_internal.h"
 #include <string.h>
+#include <time.h>
 
 ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc) {
     ecs_assert_not_null(world);
@@ -57,12 +59,25 @@ void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase) {
     }
 }
 
+#ifdef SIECS_REST
+void sleep_ms(long ms) {
+    struct timespec ts;
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = (ms % 1000) * 1000000L;
+    nanosleep(&ts, NULL);
+}
+#endif
+
 void ecs_progress(ecs_world_t *world) {
     ecs_assert_not_null(world);
 
     for (ecs_phase_t phase = 0; phase < EcsPhaseCount; phase++) {
         ecs_run_phase(world, phase);
     }
+#ifdef SIECS_REST
+    sihttp_server_poll(world->server);
+    sleep_ms(5);
+#endif
 }
 
 void ecs_enable_system(ecs_world_t *world, ecs_system_id_t system, bool enabled) {

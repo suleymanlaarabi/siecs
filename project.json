@@ -21,10 +21,12 @@
       "${cfg debug}": {
         "export-symbols": true
       },
+      "cflags": ["-D_POSIX_C_SOURCE=200809L"],
       "${cfg sanitize}": {
         "export-symbols": true
       }
-    }
+    },
+    "cflags": ["-DSIECS_REST"]
   },
   "bundle": {
     "repositories": {

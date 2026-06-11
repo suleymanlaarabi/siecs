@@ -9,6 +9,7 @@
 #include "storage/query_index.h"
 #include "storage/system_index.h"
 #include "storage/table_index.h"
+#include <bits/pthreadtypes.h>
 
 typedef struct ecs_world_s {
     ecs_entity_index_t entity_index;
@@ -18,6 +19,9 @@ typedef struct ecs_world_s {
     ecs_observer_index_t observer_index;
     ecs_system_index_t system_index;
     sireflect_registry_t *sireflect_registry;
+    #ifdef SIECS_REST
+    sihttp_server_t *server;
+    #endif
 } ecs_world_t;
 
 struct sihttp_app_state_s {

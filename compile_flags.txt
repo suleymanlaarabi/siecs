@@ -9,6 +9,8 @@
 -Wno-missing-field-initializers
 -Wno-unused-parameter
 -D__BAKE__
+-D_POSIX_C_SOURCE=200809L
+-DSIECS_REST
 -D__BAKE__
 -fstack-protector-all
 -DBAKE_PROJECT_ID="siecs"
