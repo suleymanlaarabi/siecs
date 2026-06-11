@@ -14,8 +14,6 @@
 #include "type.h"
 #include "utils.h"
 #include "world_internal.h"
-#include <bits/pthreadtypes.h>
-#include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>

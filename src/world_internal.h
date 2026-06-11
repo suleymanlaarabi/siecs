@@ -10,7 +10,6 @@
 #include "storage/query_index.h"
 #include "storage/system_index.h"
 #include "storage/table_index.h"
-#include <bits/pthreadtypes.h>
 
 typedef struct ecs_world_s {
     ecs_entity_index_t entity_index;

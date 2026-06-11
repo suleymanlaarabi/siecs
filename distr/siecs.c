@@ -530,8 +530,6 @@ void ecs_system_index_build_plan(ecs_system_index_t *index);
 
 #endif
 
-#include <bits/pthreadtypes.h>
-
 typedef struct ecs_world_s {
     ecs_entity_index_t entity_index;
     ecs_component_index_t component_index;
@@ -1182,8 +1180,6 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
 #include "sihttp.h"
 #include "sijson.h"
 #include "sireflect.h"
-#include <bits/pthreadtypes.h>
-#include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
