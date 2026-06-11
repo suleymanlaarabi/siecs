@@ -4,7 +4,7 @@
 -fprofile-arcs
 -ftest-coverage
 -O0
--std=c99
+-std=c23
 
 -Wall
 -W

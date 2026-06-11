@@ -29,6 +29,7 @@ ecs_world_t *ecs_init() {
 
     world->sireflect_registry = sijson_default_registry();
 
+#ifdef SIECS_REST
     sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
 
     state->world = world;
@@ -41,6 +42,7 @@ ecs_world_t *ecs_init() {
     );
 
     sihttp_server_run(server);
+#endif
 
     ecs_bootstrap(world);
     return world;
