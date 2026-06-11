@@ -35,7 +35,7 @@ static inline ecs_entity_t ecs_entity_index_create(ecs_entity_index_t *index, ui
         generation = 0;
         ecs_entity_record_t *record = (ecs_entity_record_t *)
             ecs_vec_push_empty(&index->entities, sizeof(ecs_entity_record_t));
-        *record = (ecs_entity_record_t){ 0, .table_row = row };
+        *record = (ecs_entity_record_t){ .generation = 0, .table_row = row, .table_id = 0 };
     }
     return ecs_entity(entity_id, generation);
 }
@@ -48,6 +48,7 @@ static inline void ecs_entity_index_kill(ecs_entity_index_t *index, uint32_t ent
     ecs_entity_record_t *record = ecs_entity_index_get_record(index, entity_id);
     record->generation += 1;
     record->table_row = index->first_available;
+    record->table_id = UINT16_MAX;
     index->first_available = entity_id;
 }
 

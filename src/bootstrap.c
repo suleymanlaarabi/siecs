@@ -1,3 +1,4 @@
+#include "addons/addons.h"
 #include "siecs.h"
 #include "sireflect.h"
 #include "storage/table_index.h"
@@ -5,6 +6,7 @@
 
 ECS_RELATION_DEFINE(ChildOf);
 ECS_COMPONENT_DEFINE(IsA);
+ECS_COMPONENT_DEFINE(Name);
 
 void ecs_bootstrap(ecs_world_t *world) {
     // Reserve identifiers used to represent false return values.
@@ -25,4 +27,9 @@ void ecs_bootstrap(ecs_world_t *world) {
 
     ECS_COMPONENT_REGISTER(world, ChildOf);
     ECS_COMPONENT_REGISTER(world, IsA);
+    ECS_COMPONENT_REGISTER(world, Name);
+
+#ifdef SIECS_REST
+    init_rest(world);
+#endif
 }

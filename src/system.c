@@ -68,7 +68,7 @@ void sleep_ms(long ms) {
 }
 #endif
 
-void ecs_progress(ecs_world_t *world) {
+bool ecs_progress(ecs_world_t *world) {
     ecs_assert_not_null(world);
 
     for (ecs_phase_t phase = 0; phase < EcsPhaseCount; phase++) {
@@ -80,6 +80,8 @@ void ecs_progress(ecs_world_t *world) {
     }
     sleep_ms(5);
 #endif
+
+    return !world->exit;
 }
 
 void ecs_enable_system(ecs_world_t *world, ecs_system_id_t system, bool enabled) {

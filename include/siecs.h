@@ -177,6 +177,11 @@ ECS_RELATION_DECLARE(ChildOf);
 /* Builtin component for inheritance relationships. */
 ECS_COMPONENT_DECLARE(IsA, { ecs_entity_t target; });
 
+/* Builtin component for entity names. */
+ECS_COMPONENT_DECLARE(Name, {
+    char *value;
+});
+
 /*
  * Register a component from an inline descriptor.
  *
@@ -403,7 +408,7 @@ typedef struct {
 ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc);
 
 /* Run all enabled systems in phase order. */
-void ecs_progress(ecs_world_t *world);
+bool ecs_progress(ecs_world_t *world);
 
 /* Run all enabled systems from one phase. */
 void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase);

@@ -18,35 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef SIECS_REST
-
-sihttp_response_t get_entities(const sihttp_request_t *req) {
-    ecs_world_t *world = req->state->world;
-
-    sijson_value_t array = sijson_make_array();
-
-    const uint64_t count = world->entity_index.entities.size;
-    const ecs_entity_record_t *records = world->entity_index.entities.data;
-
-    for (uint64_t i = 0; i < count; i++) {
-        sijson_array_push(
-            array,
-            sijson_make_string(siformat("(%ld, %d)", i, records[i].generation))
-        );
-    }
-
-    return sihttp_response(
-        {
-            .status = 200,
-            .body = sijson_stringify(array),
-            .content_type = SIHTTP_CONTENT_JSON,
-        }
-    );
-}
-
-#endif
-
-ecs_world_t *ecs_init() {
+ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world_t *world = malloc(sizeof(ecs_world_t));
     ecs_entity_index_init(&world->entity_index);
     ecs_component_index_init(&world->component_index);
@@ -54,7 +26,7 @@ ecs_world_t *ecs_init() {
     ecs_query_index_init(&world->query_index);
     ecs_observer_index_init(&world->observer_index);
     ecs_system_index_init(&world->system_index);
-    world->features = (ecs_world_feat_desc_t){ 0 };
+    world->features = *features;
 
     world->sireflect_registry = sijson_default_registry();
 
@@ -62,29 +34,8 @@ ecs_world_t *ecs_init() {
     return world;
 }
 
-ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
-    ecs_world_t *world = ecs_init();
-
-    world->features = *features;
-
-#ifdef SIECS_REST
-    sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
-
-    state->world = world;
-
-    world->server = sihttp_server(
-        {
-            .port = 4040,
-            .state = state,
-        }
-    );
-
-    sihttp_get(world->server, "/entities", get_entities);
-
-    if (features->rest) {
-        sihttp_server_start(world->server);
-    }
-#endif
+ecs_world_t *ecs_init() {
+    ecs_world_t *world = ecs_with_features({});
 
     return world;
 }

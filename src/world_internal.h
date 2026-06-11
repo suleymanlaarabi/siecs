@@ -23,6 +23,7 @@ typedef struct ecs_world_s {
     sihttp_server_t *server;
     #endif
     ecs_world_feat_desc_t features;
+    bool exit;
 } ecs_world_t;
 
 struct sihttp_app_state_s {

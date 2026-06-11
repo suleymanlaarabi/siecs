@@ -1,4 +1,13 @@
 #include "siecs.h"
+#ifndef ECS_ADDONS_H
+#define ECS_ADDONS_H
+
+#ifdef SIECS_REST
+void init_rest(ecs_world_t *world);
+#endif
+
+#endif
+
 #include "sireflect.h"
 #ifndef SIECS_STORAGE_TABLE_INDEX_H
 #define SIECS_STORAGE_TABLE_INDEX_H
@@ -382,7 +391,7 @@ static inline ecs_entity_t ecs_entity_index_create(ecs_entity_index_t *index, ui
         generation = 0;
         ecs_entity_record_t *record = (ecs_entity_record_t *)
             ecs_vec_push_empty(&index->entities, sizeof(ecs_entity_record_t));
-        *record = (ecs_entity_record_t){ 0, .table_row = row };
+        *record = (ecs_entity_record_t){ .generation = 0, .table_row = row, .table_id = 0 };
     }
     return ecs_entity(entity_id, generation);
 }
@@ -395,6 +404,7 @@ static inline void ecs_entity_index_kill(ecs_entity_index_t *index, uint32_t ent
     ecs_entity_record_t *record = ecs_entity_index_get_record(index, entity_id);
     record->generation += 1;
     record->table_row = index->first_available;
+    record->table_id = UINT16_MAX;
     index->first_available = entity_id;
 }
 
@@ -542,6 +552,7 @@ typedef struct ecs_world_s {
     sihttp_server_t *server;
     #endif
     ecs_world_feat_desc_t features;
+    bool exit;
 } ecs_world_t;
 
 struct sihttp_app_state_s {
@@ -594,6 +605,7 @@ struct ecs_table_s *ecs_iter_table(ecs_iter_t *it);
 
 ECS_RELATION_DEFINE(ChildOf);
 ECS_COMPONENT_DEFINE(IsA);
+ECS_COMPONENT_DEFINE(Name);
 
 void ecs_bootstrap(ecs_world_t *world) {
     // Reserve identifiers used to represent false return values.
@@ -614,6 +626,11 @@ void ecs_bootstrap(ecs_world_t *world) {
 
     ECS_COMPONENT_REGISTER(world, ChildOf);
     ECS_COMPONENT_REGISTER(world, IsA);
+    ECS_COMPONENT_REGISTER(world, Name);
+
+#ifdef SIECS_REST
+    init_rest(world);
+#endif
 }
 
 #include "sireflect.h"
@@ -975,7 +992,7 @@ void sleep_ms(long ms) {
 }
 #endif
 
-void ecs_progress(ecs_world_t *world) {
+bool ecs_progress(ecs_world_t *world) {
     ecs_assert_not_null(world);
 
     for (ecs_phase_t phase = 0; phase < EcsPhaseCount; phase++) {
@@ -987,6 +1004,8 @@ void ecs_progress(ecs_world_t *world) {
     }
     sleep_ms(5);
 #endif
+
+    return !world->exit;
 }
 
 void ecs_enable_system(ecs_world_t *world, ecs_system_id_t system, bool enabled) {
@@ -1184,35 +1203,7 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef SIECS_REST
-
-sihttp_response_t get_entities(const sihttp_request_t *req) {
-    ecs_world_t *world = req->state->world;
-
-    sijson_value_t array = sijson_make_array();
-
-    const uint64_t count = world->entity_index.entities.size;
-    const ecs_entity_record_t *records = world->entity_index.entities.data;
-
-    for (uint64_t i = 0; i < count; i++) {
-        sijson_array_push(
-            array,
-            sijson_make_string(siformat("(%ld, %d)", i, records[i].generation))
-        );
-    }
-
-    return sihttp_response(
-        {
-            .status = 200,
-            .body = sijson_stringify(array),
-            .content_type = SIHTTP_CONTENT_JSON,
-        }
-    );
-}
-
-#endif
-
-ecs_world_t *ecs_init() {
+ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world_t *world = malloc(sizeof(ecs_world_t));
     ecs_entity_index_init(&world->entity_index);
     ecs_component_index_init(&world->component_index);
@@ -1220,7 +1211,7 @@ ecs_world_t *ecs_init() {
     ecs_query_index_init(&world->query_index);
     ecs_observer_index_init(&world->observer_index);
     ecs_system_index_init(&world->system_index);
-    world->features = (ecs_world_feat_desc_t){ 0 };
+    world->features = *features;
 
     world->sireflect_registry = sijson_default_registry();
 
@@ -1228,29 +1219,8 @@ ecs_world_t *ecs_init() {
     return world;
 }
 
-ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
-    ecs_world_t *world = ecs_init();
-
-    world->features = *features;
-
-#ifdef SIECS_REST
-    sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
-
-    state->world = world;
-
-    world->server = sihttp_server(
-        {
-            .port = 4040,
-            .state = state,
-        }
-    );
-
-    sihttp_get(world->server, "/entities", get_entities);
-
-    if (features->rest) {
-        sihttp_server_start(world->server);
-    }
-#endif
+ecs_world_t *ecs_init() {
+    ecs_world_t *world = ecs_with_features({});
 
     return world;
 }
@@ -1591,6 +1561,117 @@ void ecs_clone_w_entity(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t ta
 
     migrate_entity(world, entity_record, entity, entity_table, target_record->table_id);
 }
+
+#include "datastructure/vec.h"
+#include "id.h"
+#include "sihttp.h"
+#include "sijson.h"
+#include "world_internal.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifdef SIECS_REST
+
+sijson_value_t entity_json(ecs_world_t *world, ecs_entity_t entity) {
+    sijson_value_t object = sijson_make_object();
+
+    const char *name = NULL;
+
+    if (ecs_has(world, entity, Name)) {
+        name = ecs_get(world, entity, Name)->value;
+    } else {
+        name = siformat("(%d, %d)", ecs_first(entity), ecs_second(entity));
+    }
+
+    sijson_object_set(object, "name", sijson_make_string(name));
+    sijson_object_set(object, "index", sijson_make_number(ecs_first(entity)));
+    sijson_object_set(object, "generation", sijson_make_number(ecs_second(entity)));
+
+    if (ecs_has_cid(world, entity, ecs_source(ChildOf))) {
+        sijson_object_set(object, "hasChildren", sijson_make_bool(true));
+    }
+
+    return object;
+}
+
+sihttp_response_t get_entities(const sihttp_request_t *req) {
+    ecs_world_t *world = req->state->world;
+
+    int64_t id = sihttp_param(req, "id");
+
+    sijson_clean();
+
+    sijson_value_t array = sijson_make_array();
+
+    const uint64_t count = world->entity_index.entities.size;
+    const ecs_entity_record_t *records = world->entity_index.entities.data;
+
+    if (id != 0) {
+        ecs_entity_t entity = ecs_entity(id, records[id].generation);
+
+        if (!ecs_has_cid(world, entity, ecs_source(ChildOf))) {
+            return sihttp_response(
+                {
+                    .status = 200,
+                    .body = strdup("[]"),
+                    .content_type = SIHTTP_CONTENT_JSON,
+                }
+            );
+        };
+
+        const RelationSource *source = ecs_get_cid(world, entity, ecs_source(ChildOf));
+
+        ecs_vec_iter(&source->entities, ecs_entity_t, child, {
+            sijson_array_push(array, entity_json(world, *child));
+        });
+    } else {
+        for (uint64_t i = 1; i < count; i++) {
+            if (records[i].table_id == UINT16_MAX) {
+                continue;
+            }
+
+            ecs_entity_t entity = ecs_entity(i, records[i].generation);
+
+            if (ecs_has(world, entity, ChildOf)) {
+                continue;
+            }
+
+            sijson_array_push(array, entity_json(world, entity));
+        }
+    }
+
+    return sihttp_response(
+        {
+            .status = 200,
+            .body = sijson_stringify(array),
+            .content_type = SIHTTP_CONTENT_JSON,
+        }
+    );
+}
+
+void init_rest(ecs_world_t *world) {
+    sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
+
+    state->world = world;
+
+    world->server = sihttp_server(
+        {
+            .port = 4040,
+            .state = state,
+        }
+    );
+
+    sihttp_get(world->server, "/entities", get_entities);
+    sihttp_get(world->server, "/entities/:id", get_entities);
+
+    if (world->features.rest) {
+        sihttp_server_start(world->server);
+    }
+}
+
+#endif
 
 #include <stdint.h>
 #include <stdlib.h>
