@@ -25,6 +25,7 @@
 /* Headers of public dependencies */
 #include "sireflect.h"
 #include "sijson.h"
+#include "sihttp.h"
 
 /* Convenience macro for exporting symbols */
 #ifndef siecs_STATIC

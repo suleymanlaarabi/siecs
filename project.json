@@ -10,7 +10,7 @@
         "path": "distr"
       }
     ],
-    "use": ["sireflect", "sijson"]
+    "use": ["sireflect", "sijson", "sihttp"]
   },
   "lang.c": {
     "c-standard": "c23",
@@ -20,7 +20,8 @@
   "bundle": {
     "repositories": {
       "sireflect": "https://github.com/suleymanlaarabi/sireflect",
-      "sijson": "https://github.com/suleymanlaarabi/sijson"
+      "sijson": "https://github.com/suleymanlaarabi/sijson",
+      "sihttp": "https://github.com/suleymanlaarabi/sihttp"
     }
   }
 }
