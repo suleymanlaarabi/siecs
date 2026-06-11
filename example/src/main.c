@@ -1,3 +1,9 @@
 
 
-int main(void) { return 0; }
+#include "siecs.h"
+int main(void) {
+    ecs_world_t *world = ecs_init();
+
+    ecs_fini(world);
+    return 0;
+}

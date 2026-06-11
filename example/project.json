@@ -8,6 +8,7 @@
   },
   "lang.c": {
     "c-standard": "c23",
-    "include": ["../src"]
+    "include": ["../src"],
+    "cflags": ["-DSIECS_REST"]
   }
 }
