@@ -7,7 +7,7 @@
     "use": ["siecs", "sijson"]
   },
   "lang.c": {
-    "c-standard": "c99",
+    "c-standard": "c23",
     "include": ["../src"]
   },
   "test": {
