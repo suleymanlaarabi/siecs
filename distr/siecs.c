@@ -320,7 +320,7 @@ bool ecs_map_has(const ecs_map_t *m, const char *key);
 #include <stdint.h>
 
 typedef struct {
-    const char *name;
+    char *name;
     uint16_t *required;
     uint32_t required_count;
     uint32_t size;
@@ -339,7 +339,7 @@ typedef struct ecs_component_index_s {
 
 ecs_component_t ecs_component_index_create(
     ecs_component_index_t *index,
-    const char *name,
+    char *name,
     uint64_t size,
     ecs_component_hook_t on_set,
     ecs_component_hook_t on_remove,
@@ -611,7 +611,9 @@ void ecs_bootstrap(ecs_world_t *world) {
     // Reserve identifiers used to represent false return values.
     ecs_table_index_get_or_create(world, (ecs_type_t){ 0 });
     ecs_new(world);
-    ecs_component(world, {});
+    ecs_component(world, {
+        .name = "Invalid"
+    });
 
     // Register the ecs_entity_t struct reflection.
     sireflect_register_struct(
@@ -632,6 +634,46 @@ void ecs_bootstrap(ecs_world_t *world) {
     init_rest(world);
 #endif
 }
+
+#ifndef ECS_STRING_H
+#define ECS_STRING_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+typedef struct {
+    char *data; // null terminated string
+    uint32_t len;
+    uint32_t capacity;
+} ecs_str_t;
+
+void ecs_str_init(ecs_str_t *str);
+void ecs_str_fini(ecs_str_t *str);
+ecs_str_t ecs_str_new();
+ecs_str_t ecs_str_with_capacity(uint32_t capacity);
+
+void ecs_str_reserve(ecs_str_t *str, uint32_t capacity);
+void ecs_str_resize(ecs_str_t *str, uint32_t len);
+ecs_str_t ecs_str_from_cstr(const char *cstr);
+ecs_str_t ecs_str_clone(const ecs_str_t *str);
+
+const char *ecs_str_cstr(const ecs_str_t *str);
+char ecs_str_at(const ecs_str_t *str, uint32_t index);
+
+void ecs_str_char_append(ecs_str_t *dst, char src);
+void ecs_str_str_append(ecs_str_t *dst, const ecs_str_t *src);
+void ecs_str_cstr_append(ecs_str_t *dst, const char *src);
+void ecs_str_insert(ecs_str_t *str, uint32_t pos, char c);
+void ecs_str_remove(ecs_str_t *str, uint32_t pos);
+void ecs_str_pop_back(ecs_str_t *str);
+
+void ecs_str_trim(ecs_str_t *str);
+
+bool ecs_str_starts_with(const ecs_str_t *str, const ecs_str_t *prefix);
+bool ecs_str_ends_with(const ecs_str_t *str, const ecs_str_t *suffix);
+bool ecs_str_cmp(const ecs_str_t *a, const ecs_str_t *b);
+
+#endif
 
 #include "sireflect.h"
 #ifndef SIECS_UTILS_H
@@ -664,6 +706,8 @@ void ecs_bootstrap(ecs_world_t *world) {
 #endif
 
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 void RelationOnSet(
     ecs_world_t *world,
@@ -747,6 +791,7 @@ void RelationSourceOnRemove(
 
 ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc) {
     ecs_assert_not_null(world);
+    ecs_assert_not_null(desc->name);
 
     sireflect_handle_t reflection = SIREFLECT_INVALID_HANDLE;
 
@@ -757,16 +802,19 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
     if (desc->is_relation) {
         ecs_component_t component = ecs_component_index_create(
             &world->component_index,
-            desc->name,
+            strdup(desc->name),
             desc->size,
             RelationOnSet,
             RelationOnRemove,
             reflection
         );
 
+        ecs_str_t source_name = ecs_str_from_cstr("Source");
+        ecs_str_cstr_append(&source_name, desc->name);
+
         ecs_component_index_create(
             &world->component_index,
-            desc->source_name,
+            source_name.data,
             sizeof(RelationSource),
             NULL,
             RelationSourceOnRemove,
@@ -776,7 +824,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
     } else {
         return ecs_component_index_create(
             &world->component_index,
-            desc->name,
+            strdup(desc->name),
             desc->size,
             desc->on_set,
             desc->on_remove,
@@ -1835,45 +1883,6 @@ uint32_t ecs_map_get(const ecs_map_t *m, const char *key) {
 bool ecs_map_has(const ecs_map_t *m, const char *key) { return ecs_map_get(m, key) != UINT32_MAX; }
 #endif
 
-#ifndef ECS_STRING_H
-#define ECS_STRING_H
-
-#include <stdint.h>
-#include <stdbool.h>
-
-typedef struct {
-    char *data; // null terminated string
-    uint32_t len;
-    uint32_t capacity;
-} ecs_str_t;
-
-void ecs_str_init(ecs_str_t *str);
-void ecs_str_fini(ecs_str_t *str);
-ecs_str_t ecs_str_new();
-ecs_str_t ecs_str_with_capacity(uint32_t capacity);
-
-void ecs_str_reserve(ecs_str_t *str, uint32_t capacity);
-void ecs_str_resize(ecs_str_t *str, uint32_t len);
-ecs_str_t ecs_str_from_cstr(const char *cstr);
-ecs_str_t ecs_str_clone(const ecs_str_t *str);
-
-const char *ecs_str_cstr(const ecs_str_t *str);
-char ecs_str_at(const ecs_str_t *str, uint32_t index);
-
-void ecs_str_char_append(ecs_str_t *dst, char src);
-void ecs_str_str_append(ecs_str_t *dst, const ecs_str_t *src);
-void ecs_str_insert(ecs_str_t *str, uint32_t pos, char c);
-void ecs_str_remove(ecs_str_t *str, uint32_t pos);
-void ecs_str_pop_back(ecs_str_t *str);
-
-void ecs_str_trim(ecs_str_t *str);
-
-bool ecs_str_starts_with(const ecs_str_t *str, const ecs_str_t *prefix);
-bool ecs_str_ends_with(const ecs_str_t *str, const ecs_str_t *suffix);
-bool ecs_str_cmp(const ecs_str_t *a, const ecs_str_t *b);
-
-#endif
-
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1975,6 +1984,18 @@ void ecs_str_str_append(ecs_str_t *dst, const ecs_str_t *src) {
         ecs_str_reserve(dst, required);
     }
     memcpy(dst->data + dst->len, src->data, src->len);
+    dst->len = required;
+    dst->data[dst->len] = '\0';
+}
+
+void ecs_str_cstr_append(ecs_str_t *dst, const char *src) {
+    if (!src || *src == '\0')
+        return;
+    uint32_t required = dst->len + strlen(src);
+    if (required > dst->capacity) {
+        ecs_str_reserve(dst, required);
+    }
+    memcpy(dst->data + dst->len, src, strlen(src));
     dst->len = required;
     dst->data[dst->len] = '\0';
 }
@@ -2626,10 +2647,11 @@ void ecs_scanner_init(ecs_scanner_t *scanner, const char *str) {
 
 #include "sireflect.h"
 #include <stdlib.h>
+#include <string.h>
 
 ecs_component_t ecs_component_index_create(
     ecs_component_index_t *index,
-    const char *name,
+    char *name,
     uint64_t size,
     ecs_component_hook_t on_set,
     ecs_component_hook_t on_remove,
@@ -2668,6 +2690,7 @@ void ecs_component_index_fini(ecs_component_index_t *index) {
 
     for (uint32_t i = 0; i < index->components.size; i++) {
         free(records[i].required);
+        free(records[i].name);
         ecs_vec_fini(&records[i].tables);
     }
     ecs_vec_fini(&index->components);

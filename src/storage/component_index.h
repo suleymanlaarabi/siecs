@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 typedef struct {
-    const char *name;
+    char *name;
     uint16_t *required;
     uint32_t required_count;
     uint32_t size;
@@ -26,7 +26,7 @@ typedef struct ecs_component_index_s {
 
 ecs_component_t ecs_component_index_create(
     ecs_component_index_t *index,
-    const char *name,
+    char *name,
     uint64_t size,
     ecs_component_hook_t on_set,
     ecs_component_hook_t on_remove,

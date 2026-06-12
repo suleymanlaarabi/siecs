@@ -4,10 +4,11 @@
 #include "siecs.h"
 #include "sireflect.h"
 #include <stdlib.h>
+#include <string.h>
 
 ecs_component_t ecs_component_index_create(
     ecs_component_index_t *index,
-    const char *name,
+    char *name,
     uint64_t size,
     ecs_component_hook_t on_set,
     ecs_component_hook_t on_remove,
@@ -46,6 +47,7 @@ void ecs_component_index_fini(ecs_component_index_t *index) {
 
     for (uint32_t i = 0; i < index->components.size; i++) {
         free(records[i].required);
+        free(records[i].name);
         ecs_vec_fini(&records[i].tables);
     }
     ecs_vec_fini(&index->components);

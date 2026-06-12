@@ -105,6 +105,18 @@ void ecs_str_str_append(ecs_str_t *dst, const ecs_str_t *src) {
     dst->data[dst->len] = '\0';
 }
 
+void ecs_str_cstr_append(ecs_str_t *dst, const char *src) {
+    if (!src || *src == '\0')
+        return;
+    uint32_t required = dst->len + strlen(src);
+    if (required > dst->capacity) {
+        ecs_str_reserve(dst, required);
+    }
+    memcpy(dst->data + dst->len, src, strlen(src));
+    dst->len = required;
+    dst->data[dst->len] = '\0';
+}
+
 void ecs_str_insert(ecs_str_t *str, uint32_t pos, char c) {
     ecs_assert(pos <= str->len, "pos out of bounds: %d (len: %d)", pos, str->len);
     if (str->len + 1 > str->capacity) {

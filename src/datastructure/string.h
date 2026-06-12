@@ -26,6 +26,7 @@ char ecs_str_at(const ecs_str_t *str, uint32_t index);
 
 void ecs_str_char_append(ecs_str_t *dst, char src);
 void ecs_str_str_append(ecs_str_t *dst, const ecs_str_t *src);
+void ecs_str_cstr_append(ecs_str_t *dst, const char *src);
 void ecs_str_insert(ecs_str_t *str, uint32_t pos, char c);
 void ecs_str_remove(ecs_str_t *str, uint32_t pos);
 void ecs_str_pop_back(ecs_str_t *str);

@@ -78,7 +78,6 @@ typedef struct {
     ecs_component_hook_t on_set;
     ecs_component_hook_t on_remove;
     bool is_relation;
-    const char *source_name;
     const sireflect_struct_desc_t *struct_desc;
 } ecs_component_desc_t;
 
@@ -161,7 +160,6 @@ void ecs_fini(ecs_world_t *world);
         .name = #cname,                                                                            \
         .size = sizeof(cname),                                                                     \
         .is_relation = true,                                                                       \
-        .source_name = "Source" #cname,                                                            \
     };                                                                                             \
     ecs_component_t ecs_id(cname) = 0
 
