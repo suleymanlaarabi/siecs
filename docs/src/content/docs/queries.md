@@ -9,26 +9,25 @@ Queries match archetype tables and return component arrays in batches.
 
 ```c
 ecs_query_id_t moving = ecs_query(world, {
-    .read = { ecs_id(Position), ecs_id(Velocity) },
+    .terms = { ecs_inout(Position), ecs_in(Velocity) },
 });
 ```
 
-The `read`, `required`, and `excluded` arrays are zero-terminated component id
-lists.
+The `terms` array is a zero-terminated list of component terms.
 
-| Field | Meaning |
+| Term | Meaning |
 | --- | --- |
-| `read` | Components returned by `ecs_field()`. At least one read component is required. |
-| `required` | Components that must exist but are not returned. |
-| `excluded` | Components that must not exist. |
+| `ecs_in(T)` | `T` must exist and is returned by `ecs_field()` for reading. |
+| `ecs_out(T)` | `T` must exist and is returned by `ecs_field()` for writing. |
+| `ecs_inout(T)` | `T` must exist and is returned by `ecs_field()` for reading and writing. |
+| `ecs_filter(T)` | `T` must exist but is not returned. |
+| `ecs_not(T)` | `T` must not exist. |
 
 Current descriptor limits:
 
 | Field | Maximum entries |
 | --- | --- |
-| `read` | 8 |
-| `required` | 6 |
-| `excluded` | 4 |
+| `terms` | 16 |
 
 ## Iterate
 
@@ -49,26 +48,25 @@ while (ecs_iter_next(&it)) {
 `ecs_iter_next()` advances to the next non-empty batch. `it.count` is the number
 of entities in the current batch.
 
-`ecs_field(&it, index)` returns the component array for the matching entry in
-`.read`. The index is zero-based.
+`ecs_field(&it, index)` returns component arrays for `ecs_in`, `ecs_out`, and
+`ecs_inout` terms in declaration order. `ecs_filter` and `ecs_not` do not create
+field indexes.
 
 ## Required And Excluded Components
 
-Use `required` when a component must exist but does not need to be returned:
+Use `ecs_filter` when a component must exist but does not need to be returned:
 
 ```c
 ecs_query_id_t visible_positions = ecs_query(world, {
-    .read = { ecs_id(Position) },
-    .required = { ecs_id(Visible) },
+    .terms = { ecs_inout(Position), ecs_filter(Visible) },
 });
 ```
 
-Use `excluded` to skip entities with a component:
+Use `ecs_not` to skip entities with a component:
 
 ```c
 ecs_query_id_t active_positions = ecs_query(world, {
-    .read = { ecs_id(Position) },
-    .excluded = { ecs_id(Disabled) },
+    .terms = { ecs_inout(Position), ecs_not(Disabled) },
 });
 ```
 

@@ -8,12 +8,10 @@
 
 typedef struct {
     uint64_t bloom;
-    ecs_component_t *read;
-    ecs_component_t *required;
-    ecs_component_t *excluded;
-    uint16_t read_count;
-    uint16_t required_count;
-    uint16_t excluded_count;
+    ecs_query_term_t *terms;
+    ecs_component_t *fields;
+    uint16_t term_count;
+    uint16_t field_count;
 } ecs_query_t;
 
 typedef struct ecs_query_cache_s {
@@ -47,18 +45,13 @@ static inline bool ecs_query_match_table(const ecs_query_t *query, const ecs_tab
     if (ECS_LIKELY((query->bloom & table->bloom) != query->bloom)) {
         return false;
     }
-    for (uint16_t i = 0; i < query->excluded_count; i++) {
-        if (ecs_table_has(table, query->excluded[i])) {
-            return false;
-        }
-    }
-    for (uint16_t i = 0; i < query->required_count; i++) {
-        if (!ecs_table_has(table, query->required[i])) {
-            return false;
-        }
-    }
-    for (uint16_t i = 0; i < query->read_count; i++) {
-        if (!ecs_table_has(table, query->read[i])) {
+    for (uint16_t i = 0; i < query->term_count; i++) {
+        ecs_query_term_t term = query->terms[i];
+        if (term.access == EcsNot) {
+            if (ecs_table_has(table, term.id)) {
+                return false;
+            }
+        } else if (!ecs_table_has(table, term.id)) {
             return false;
         }
     }

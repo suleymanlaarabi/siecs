@@ -36,7 +36,12 @@ bool ecs_iter_next(ecs_iter_t *it) {
             return false;
         it->count = it->world->table_index.tables[tids[it->table_idx]].entity_count;
     } while (it->count == 0);
-    it->ptrs = &((void ***)it->cache->fields.data)[it->table_idx * it->cache->query.read_count];
+    if (it->cache->query.field_count == 0) {
+        it->ptrs = NULL;
+    } else {
+        void ***fields = it->cache->fields.data;
+        it->ptrs = &fields[it->table_idx * it->cache->query.field_count];
+    }
     return true;
 }
 

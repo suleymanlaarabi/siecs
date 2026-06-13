@@ -26,7 +26,7 @@ ecs_system_id_t Move = ecs_system(world, {
     .name = "Move",
     .phase = EcsOnUpdate,
     .query = {
-        .read = { ecs_id(Position), ecs_id(Velocity) },
+        .terms = { ecs_inout(Position), ecs_in(Velocity) },
     },
     .callback = move_system,
 });
@@ -35,9 +35,10 @@ ecs_system_id_t Move = ecs_system(world, {
 `callback` is required. `name` is optional, but recommended because it makes
 debugging and traces easier to read.
 
-The query follows the same rules as queries created with `ecs_query()`: `read`
-components are returned through `ecs_field()`, `required` components must exist
-but are not returned, and `excluded` components must not exist.
+The query follows the same rules as queries created with `ecs_query()`: `ecs_in`,
+`ecs_out`, and `ecs_inout` terms are returned through `ecs_field()`,
+`ecs_filter` terms must exist but are not returned, and `ecs_not` terms must not
+exist.
 
 ## Run Systems
 
@@ -82,14 +83,14 @@ phase, use `after` when a system depends on another system having run first:
 ecs_system_id_t Integrate = ecs_system(world, {
     .name = "Integrate",
     .phase = EcsOnUpdate,
-    .query = { .read = { ecs_id(Position), ecs_id(Velocity) } },
+    .query = { .terms = { ecs_inout(Position), ecs_in(Velocity) } },
     .callback = integrate_system,
 });
 
 ecs_system(world, {
     .name = "SyncTransform",
     .phase = EcsOnUpdate,
-    .query = { .read = { ecs_id(Position), ecs_id(Transform) } },
+    .query = { .terms = { ecs_in(Position), ecs_inout(Transform) } },
     .callback = sync_transform_system,
     .after = { Integrate },
 });
@@ -110,7 +111,7 @@ or toggle it later:
 ecs_system_id_t Damage = ecs_system(world, {
     .name = "Damage",
     .phase = EcsOnUpdate,
-    .query = { .read = { ecs_id(Health) } },
+    .query = { .terms = { ecs_inout(Health) } },
     .callback = damage_system,
     .disabled = true,
 });

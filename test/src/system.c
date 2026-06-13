@@ -71,7 +71,7 @@ void system_run(void) {
         {
             .name = "Count",
             .phase = EcsOnUpdate,
-            .query = { .read = { ecs_id(SystemPosition) } },
+            .query = { .terms = { ecs_inout(SystemPosition) } },
             .callback = count_system,
         }
     );
@@ -100,7 +100,7 @@ void system_phase_order(void) {
         {
             .name = "Render",
             .phase = EcsOnRender,
-            .query = { .read = { ecs_id(SystemPosition) } },
+            .query = { .terms = { ecs_in(SystemPosition) } },
             .callback = order_render,
         }
     );
@@ -109,7 +109,7 @@ void system_phase_order(void) {
         {
             .name = "Update",
             .phase = EcsOnUpdate,
-            .query = { .read = { ecs_id(SystemPosition) } },
+            .query = { .terms = { ecs_in(SystemPosition) } },
             .callback = order_update,
         }
     );
@@ -118,7 +118,7 @@ void system_phase_order(void) {
         {
             .name = "PreUpdate",
             .phase = EcsPreUpdate,
-            .query = { .read = { ecs_id(SystemPosition) } },
+            .query = { .terms = { ecs_in(SystemPosition) } },
             .callback = order_pre_update,
         }
     );
@@ -147,7 +147,7 @@ void system_after_order(void) {
         {
             .name = "First",
             .phase = EcsOnUpdate,
-            .query = { .read = { ecs_id(SystemPosition) } },
+            .query = { .terms = { ecs_in(SystemPosition) } },
             .callback = order_first,
         }
     );
@@ -156,7 +156,7 @@ void system_after_order(void) {
         {
             .name = "Second",
             .phase = EcsOnUpdate,
-            .query = { .read = { ecs_id(SystemPosition) } },
+            .query = { .terms = { ecs_in(SystemPosition) } },
             .callback = order_second,
             .after = { first },
         }
@@ -185,7 +185,7 @@ void system_enable(void) {
         {
             .name = "Disabled",
             .phase = EcsOnUpdate,
-            .query = { .read = { ecs_id(SystemPosition) } },
+            .query = { .terms = { ecs_inout(SystemPosition) } },
             .callback = count_system,
             .disabled = true,
         }

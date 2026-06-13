@@ -27,7 +27,9 @@ int main(void) {
     ECS_COMPONENT_REGISTER(world, Velocity);
 
     ecs_system(world, {
-        .query.read = { ecs_id(Position), ecs_id(Velocity) }
+        .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
+        .callback = Move,
+        .phase = EcsOnUpdate,
     });
 
     ecs_entity_t entity = ecs_new(world);

@@ -89,21 +89,46 @@ typedef struct {
     const sireflect_struct_desc_t *struct_desc;
 } ecs_component_desc_t;
 
+/* Query term access mode. */
+typedef enum {
+    EcsIn,     /* Component must exist and is returned by ecs_field for reading. */
+    EcsOut,    /* Component must exist and is returned by ecs_field for writing. */
+    EcsInOut,  /* Component must exist and is returned by ecs_field for read/write. */
+    EcsFilter, /* Component must exist but is not returned by ecs_field. */
+    EcsNot,    /* Component must not exist and is not returned by ecs_field. */
+} ecs_term_access_t;
+
+typedef struct {
+    ecs_component_t id;
+    ecs_term_access_t access;
+} ecs_query_term_t;
+
 /*
  * Query descriptor.
  *
- * Arrays are zero-terminated component id lists:
- * - read: components returned by ecs_field.
- * - required: components that must exist but are not returned.
- * - excluded: components that must not exist.
+ * terms is a zero-terminated component term list. Terms with EcsIn, EcsOut and
+ * EcsInOut are returned by ecs_field in declaration order. EcsFilter and EcsNot
+ * only affect table matching.
  *
- * A query must read at least one component.
+ * A query must contain at least one term.
  */
 typedef struct {
-    ecs_component_t read[10];
-    ecs_component_t required[8];
-    ecs_component_t excluded[6];
+    ecs_query_term_t terms[16];
 } ecs_query_desc_t;
+
+#ifdef __cplusplus
+#define ecs_in(cname) ecs_query_term_t{ ecs_id(cname), EcsIn }
+#define ecs_out(cname) ecs_query_term_t{ ecs_id(cname), EcsOut }
+#define ecs_inout(cname) ecs_query_term_t{ ecs_id(cname), EcsInOut }
+#define ecs_filter(cname) ecs_query_term_t{ ecs_id(cname), EcsFilter }
+#define ecs_not(cname) ecs_query_term_t{ ecs_id(cname), EcsNot }
+#else
+#define ecs_in(cname) ((ecs_query_term_t){ ecs_id(cname), EcsIn })
+#define ecs_out(cname) ((ecs_query_term_t){ ecs_id(cname), EcsOut })
+#define ecs_inout(cname) ((ecs_query_term_t){ ecs_id(cname), EcsInOut })
+#define ecs_filter(cname) ((ecs_query_term_t){ ecs_id(cname), EcsFilter })
+#define ecs_not(cname) ((ecs_query_term_t){ ecs_id(cname), EcsNot })
+#endif
 
 /* Create an ECS world. */
 ecs_world_t *ecs_init(void);
@@ -228,7 +253,7 @@ void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
  *
  * Example:
  *   ecs_query_id_t q = ecs_query(world, {
- *       .read = { ecs_id(Position), ecs_id(Velocity) }
+ *       .terms = { ecs_in(Position), ecs_in(Velocity) }
  *   });
  */
 #define ecs_query(world, ...) ecs_query_init(world, &(ecs_query_desc_t)__VA_ARGS__)
@@ -375,8 +400,8 @@ bool ecs_iter_next(ecs_iter_t *it);
 /*
  * Return the component array for a read term in the current iterator batch.
  *
- * query_term is zero-based and must refer to an entry from
- * ecs_query_desc_t.read.
+ * query_term is zero-based and must refer to an EcsIn, EcsOut or EcsInOut term
+ * from ecs_query_desc_t.terms.
  */
 static inline void *ecs_field(ecs_iter_t *it, uint16_t query_term) { return *it->ptrs[query_term]; }
 

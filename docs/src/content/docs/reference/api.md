@@ -47,8 +47,9 @@ typedef struct {
     uint64_t size;
     ecs_component_hook_t on_set;
     ecs_component_hook_t on_remove;
+    ecs_component_hook_t on_add;
     bool is_relation;
-    const char *source_name;
+    const sireflect_struct_desc_t *struct_desc;
 } ecs_component_desc_t;
 ```
 
@@ -105,12 +106,34 @@ void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
 ```
 
 ```c
+typedef enum {
+    EcsIn,
+    EcsOut,
+    EcsInOut,
+    EcsFilter,
+    EcsNot,
+} ecs_term_access_t;
+
 typedef struct {
-    ecs_component_t read[8];
-    ecs_component_t required[6];
-    ecs_component_t excluded[4];
+    ecs_component_t id;
+    ecs_term_access_t access;
+} ecs_query_term_t;
+
+typedef struct {
+    ecs_query_term_t terms[16];
 } ecs_query_desc_t;
 ```
+
+```c
+ecs_in(Component);
+ecs_out(Component);
+ecs_inout(Component);
+ecs_filter(Component);
+ecs_not(Component);
+```
+
+`ecs_field()` returns only `EcsIn`, `EcsOut`, and `EcsInOut` terms in
+declaration order.
 
 ```c
 ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);
@@ -217,7 +240,7 @@ static void Move(ecs_iter_t *it) {
 ecs_system(world, {
     .name = "Move",
     .phase = EcsOnUpdate,
-    .query = { .read = { ecs_id(Position), ecs_id(Velocity) } },
+    .query = { .terms = { ecs_inout(Position), ecs_in(Velocity) } },
     .callback = Move,
 });
 

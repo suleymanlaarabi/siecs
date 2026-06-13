@@ -19,6 +19,11 @@ void component_on_add(void);
 // Testsuite 'childof'
 void childof_kill_parent(void);
 
+// Testsuite 'query'
+void query_terms_field_order(void);
+void query_out_term_matches_and_returns_field(void);
+void query_not_excludes_tables(void);
+
 // Testsuite 'system'
 void system_run(void);
 void system_phase_order(void);
@@ -65,6 +70,21 @@ bake_test_case childof_testcases[] = {
     {
         "kill_parent",
         childof_kill_parent
+    }
+};
+
+bake_test_case query_testcases[] = {
+    {
+        "terms_field_order",
+        query_terms_field_order
+    },
+    {
+        "out_term_matches_and_returns_field",
+        query_out_term_matches_and_returns_field
+    },
+    {
+        "not_excludes_tables",
+        query_not_excludes_tables
     }
 };
 
@@ -157,6 +177,13 @@ static bake_test_suite suites[] = {
         childof_testcases
     },
     {
+        "query",
+        NULL,
+        NULL,
+        3,
+        query_testcases
+    },
+    {
         "system",
         NULL,
         NULL,
@@ -180,5 +207,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 6);
+    return bake_test_run("siecs.test", argc, argv, suites, 7);
 }
