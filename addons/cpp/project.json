@@ -1,0 +1,18 @@
+{
+  "id": "cpp",
+  "type": "package",
+  "value": {
+    "author": "Jane Doe",
+    "description": "Instant noodles for drones",
+    "clangd": true,
+    "use": ["siecs"]
+  },
+  "bundle": {
+    "repositories": {
+      "sireflect": "https://github.com/suleymanlaarabi/sireflect",
+      "sijson": "https://github.com/suleymanlaarabi/sijson",
+      "sihttp": "https://github.com/suleymanlaarabi/sihttp",
+      "siecs": "https://github.com/suleymanlaarabi/siecs"
+    }
+  }
+}
