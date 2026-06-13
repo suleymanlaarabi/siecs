@@ -1,11 +1,15 @@
 {
-  "id": "cpp",
+  "id": "siecs_cpp",
   "type": "package",
   "value": {
     "author": "Jane Doe",
     "description": "Instant noodles for drones",
     "clangd": true,
+    "language": "cpp",
     "use": ["siecs"]
+  },
+  "lang.cpp": {
+    "cpp-standard": "c++23"
   },
   "bundle": {
     "repositories": {

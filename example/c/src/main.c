@@ -1,5 +1,3 @@
-
-
 #include "siecs.h"
 #include <unistd.h>
 

@@ -13,9 +13,9 @@
 -DSIECS_REST
 -D__BAKE__
 -fstack-protector-all
--DBAKE_PROJECT_ID="siecs.example"
--Dsiecs_example_EXPORTS
--Iexample/../src
--Iexample/include
+-DBAKE_PROJECT_ID="siecs.example.c"
+-Dsiecs_example_c_EXPORTS
+-Iexample/c/../../src
+-Iexample/c/include
 -I
 /home/suleyman/bake/include

@@ -2,7 +2,7 @@
 -fPIC
 -g
 -O0
--std=c++17
+-std=c++23
 -Wall
 -W
 -Wextra
@@ -11,8 +11,8 @@
 -D__BAKE__
 -D__BAKE__
 -fstack-protector-all
--DBAKE_PROJECT_ID="cpp"
--Dcpp_EXPORTS
--Iaddons/cpp/include
+-DBAKE_PROJECT_ID="siecs.example.cpp"
+-Dsiecs_example_cpp_EXPORTS
+-Iexample/cpp/include
 -I
 /home/suleyman/bake/include

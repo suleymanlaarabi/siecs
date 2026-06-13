@@ -1,0 +1,13 @@
+{
+  "id": "siecs.example.cpp",
+  "type": "application",
+  "value": {
+    "public": false,
+    "clangd": true,
+    "language": "cpp",
+    "use": ["siecs_cpp", "siecs"]
+  },
+  "lang.cpp": {
+    "cpp-standard": "c++23"
+  }
+}

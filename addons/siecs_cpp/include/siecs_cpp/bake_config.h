@@ -14,14 +14,26 @@
  * dependencies will automatically show up in this file. Include bake_config.h
  * in your main project file. Do not edit! */
 
-#ifndef SIECS_EXAMPLE_BAKE_CONFIG_H
-#define SIECS_EXAMPLE_BAKE_CONFIG_H
+#ifndef SIECS_CPP_BAKE_CONFIG_H
+#define SIECS_CPP_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
 #include <siecs.h>
-#include <sijson.h>
-#include <sireflect.h>
-#include <sihttp.h>
+
+/* Convenience macro for exporting symbols */
+#ifndef siecs_cpp_STATIC
+#if defined(siecs_cpp_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
+  #define SIECS_CPP_API __declspec(dllexport)
+#elif defined(siecs_cpp_EXPORTS)
+  #define SIECS_CPP_API __attribute__((__visibility__("default")))
+#elif defined(_MSC_VER)
+  #define SIECS_CPP_API __declspec(dllimport)
+#else
+  #define SIECS_CPP_API
+#endif
+#else
+  #define SIECS_CPP_API
+#endif
 
 #endif
 

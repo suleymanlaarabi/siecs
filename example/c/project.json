@@ -1,5 +1,5 @@
 {
-  "id": "siecs.example",
+  "id": "siecs.example.c",
   "type": "application",
   "value": {
     "public": false,
@@ -8,7 +8,7 @@
   },
   "lang.c": {
     "c-standard": "c23",
-    "include": ["../src"],
+    "include": ["../../src"],
     "cflags": ["-DSIECS_REST"]
   }
 }
