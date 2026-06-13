@@ -1,8 +1,8 @@
 #ifndef SIECS_DATASTRUCTURE_VEC_H
 #define SIECS_DATASTRUCTURE_VEC_H
+#include "../compiler.h"
 #include <stdbool.h>
 #include <stdint.h>
-#include "../compiler.h"
 
 typedef struct {
     void *data;
@@ -46,14 +46,6 @@ static inline void ecs_vec_push_u16(ecs_vec_t *vec, const uint16_t value) {
     ((uint16_t *)vec->data)[vec->size++] = value;
 }
 
-// Specialized push for 4-byte types
-static inline void ecs_vec_push_u32(ecs_vec_t *vec, const uint32_t value) {
-    if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
-        ecs_vec_grow(vec, sizeof(uint32_t));
-    }
-    ((uint32_t *)vec->data)[vec->size++] = value;
-}
-
 // Specialized push for 8-byte types
 static inline void ecs_vec_push_u64(ecs_vec_t *vec, const uint64_t value) {
     if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
@@ -74,7 +66,6 @@ void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_
 
 // Direct indexed access for fast writes. Does not check bounds or grow the vec.
 #define ecs_vec_set(vec, type, index, value) (((type *)vec->data)[index] = value)
-
 
 #define ecs_vec_iter(vec, type, value, ...)                                                        \
     const type *__values = (vec)->data;                                                            \

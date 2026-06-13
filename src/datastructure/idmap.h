@@ -23,9 +23,4 @@ static inline uint16_t ecs_id_map_at_or_invalid(const ecs_id_map_t *map, uint16_
     return map->capacity > id ? map->ids[id] : UINT16_MAX;
 }
 
-
-static inline uint16_t ecs_id_map_has(const ecs_id_map_t *map, uint16_t id) {
-    return map->capacity > id && map->ids[id] != UINT16_MAX;
-}
-
 #endif

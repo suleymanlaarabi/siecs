@@ -38,22 +38,19 @@ static inline uint16_t ecs_id_map_at_or_invalid(const ecs_id_map_t *map, uint16_
     return map->capacity > id ? map->ids[id] : UINT16_MAX;
 }
 
-static inline uint16_t ecs_id_map_has(const ecs_id_map_t *map, uint16_t id) {
-    return map->capacity > id && map->ids[id] != UINT16_MAX;
-}
-
 #endif
 
 #ifndef SIECS_DATASTRUCTURE_VEC_H
 #define SIECS_DATASTRUCTURE_VEC_H
-#include <stdbool.h>
-#include <stdint.h>
 #ifndef SIECS_COMPILER_H
 #define SIECS_COMPILER_H
 #define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
 #define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
 
 #endif
+
+#include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
     void *data;
@@ -95,14 +92,6 @@ static inline void ecs_vec_push_u16(ecs_vec_t *vec, const uint16_t value) {
         ecs_vec_grow(vec, sizeof(uint16_t));
     }
     ((uint16_t *)vec->data)[vec->size++] = value;
-}
-
-// Specialized push for 4-byte types
-static inline void ecs_vec_push_u32(ecs_vec_t *vec, const uint32_t value) {
-    if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
-        ecs_vec_grow(vec, sizeof(uint32_t));
-    }
-    ((uint32_t *)vec->data)[vec->size++] = value;
 }
 
 // Specialized push for 8-byte types
@@ -195,7 +184,8 @@ ecs_type_equals(const uint16_t *a_ids, uint16_t a_count, const uint16_t *b_ids, 
 typedef struct {
     void *data;
     uint32_t size;
-    uint16_t remove_edge; // the table that has the component removed or UINT16_MAX if the edge is not set
+    uint16_t remove_edge; // the table that has the component removed or UINT16_MAX if the edge is
+                          // not set
 } ecs_column_t;
 
 typedef struct ecs_table_s {
@@ -244,10 +234,6 @@ static inline bool ecs_table_has(const ecs_table_t *table, ecs_component_t compo
 static inline uint16_t
 ecs_table_get_column_index(const ecs_table_t *table, ecs_component_t component_id) {
     return ecs_id_map_at(&table->add_edge, component_id);
-}
-
-static inline uint16_t ecs_table_get_remove_edge(const ecs_table_t *table, ecs_component_t component_id) {
-    return table->cls[ecs_table_get_column_index(table, component_id)].remove_edge;
 }
 
 #endif

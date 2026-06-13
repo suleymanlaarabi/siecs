@@ -10,7 +10,8 @@
 typedef struct {
     void *data;
     uint32_t size;
-    uint16_t remove_edge; // the table that has the component removed or UINT16_MAX if the edge is not set
+    uint16_t remove_edge; // the table that has the component removed or UINT16_MAX if the edge is
+                          // not set
 } ecs_column_t;
 
 typedef struct ecs_table_s {
@@ -59,10 +60,6 @@ static inline bool ecs_table_has(const ecs_table_t *table, ecs_component_t compo
 static inline uint16_t
 ecs_table_get_column_index(const ecs_table_t *table, ecs_component_t component_id) {
     return ecs_id_map_at(&table->add_edge, component_id);
-}
-
-static inline uint16_t ecs_table_get_remove_edge(const ecs_table_t *table, ecs_component_t component_id) {
-    return table->cls[ecs_table_get_column_index(table, component_id)].remove_edge;
 }
 
 #endif
