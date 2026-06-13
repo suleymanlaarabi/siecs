@@ -6,3 +6,7 @@ test/include/siecs-test/
 gcov
 .DS_Store
 .vscode
+.clang-format
+.clang-tidy
+.clangd
+compile_flags.txt
