@@ -105,6 +105,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             desc->size,
             RelationOnSet,
             RelationOnRemove,
+            desc->on_add,
             reflection
         );
 
@@ -117,6 +118,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             sizeof(RelationSource),
             NULL,
             RelationSourceOnRemove,
+            desc->on_add,
             SIREFLECT_INVALID_HANDLE
         );
         return component;
@@ -127,6 +129,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             desc->size,
             desc->on_set,
             desc->on_remove,
+            desc->on_add,
             reflection
         );
     }

@@ -18,7 +18,7 @@
       },
       {
         "id": "component",
-        "testcases": ["reflection"]
+        "testcases": ["reflection", "on_add"]
       },
       {
         "id": "childof",

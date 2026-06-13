@@ -14,6 +14,7 @@ void entity_with(void);
 
 // Testsuite 'component'
 void component_reflection(void);
+void component_on_add(void);
 
 // Testsuite 'childof'
 void childof_kill_parent(void);
@@ -53,6 +54,10 @@ bake_test_case component_testcases[] = {
     {
         "reflection",
         component_reflection
+    },
+    {
+        "on_add",
+        component_on_add
     }
 };
 
@@ -141,7 +146,7 @@ static bake_test_suite suites[] = {
         "component",
         NULL,
         NULL,
-        1,
+        2,
         component_testcases
     },
     {

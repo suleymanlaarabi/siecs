@@ -12,6 +12,7 @@ ecs_component_t ecs_component_index_create(
     uint64_t size,
     ecs_component_hook_t on_set,
     ecs_component_hook_t on_remove,
+    ecs_component_hook_t on_add,
     sireflect_handle_t reflection
 ) {
     ecs_component_record_t record = {
@@ -21,6 +22,7 @@ ecs_component_t ecs_component_index_create(
         .size = size,
         .on_set = on_set,
         .on_remove = on_remove,
+        .on_add = on_add,
         .tables = { 0 },
         .reflection = reflection,
     };

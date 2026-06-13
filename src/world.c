@@ -102,11 +102,10 @@ static inline void migrate_entity_add(
     ecs_entity_record_t *record,
     ecs_entity_t entity,
     ecs_table_t *from_table,
-    uint16_t to_id,
+    ecs_table_t *to_table,
+    uint16_t to_table_id,
     ecs_component_t added_id
 ) {
-    ecs_table_t *to_table = ecs_get_table(world, to_id);
-
     uint32_t old_row = record->table_row;
     uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
@@ -127,7 +126,7 @@ static inline void migrate_entity_add(
     if (moved != entity)
         ecs_get_record(world, moved)->table_row = old_row;
 
-    record->table_id = to_id;
+    record->table_id = to_table_id;
     record->table_row = new_row;
 }
 
@@ -199,10 +198,13 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
         return;
     }
 
-    migrate_entity_add(world, record, entity, table, new_table_id, cid);
-
     ecs_table_t *new_table = ecs_get_table(world, new_table_id);
+    migrate_entity_add(world, record, entity, table, new_table, new_table_id, cid);
+
     const void *component_data = ecs_table_get_component(new_table, cid, record->table_row);
+    if (crec->on_add) {
+        crec->on_add(world, entity, cid, component_data);
+    }
     ecs_emit(world, new_table, entity, OnAdd, component_data);
 }
 

@@ -44,6 +44,12 @@
 
 #endif
 
+#ifdef __cplusplus
+#ifndef _Alignof
+#define _Alignof alignof
+#endif
+#endif
+
 #include <sireflect.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -118,6 +124,7 @@ typedef struct {
     uint64_t size;
     ecs_component_hook_t on_set;
     ecs_component_hook_t on_remove;
+    ecs_component_hook_t on_add;
     bool is_relation;
     const sireflect_struct_desc_t *struct_desc;
 } ecs_component_desc_t;
@@ -143,13 +150,13 @@ ecs_world_t *ecs_init(void);
 
 /* World feature descriptor. */
 typedef struct {
-    #ifdef SIECS_REST
+#ifdef SIECS_REST
     bool rest;
-    #endif
+#endif
 } ecs_world_feat_desc_t;
 
 /* Create a world with the given features. */
-#define ecs_with_features(...) ecs_init_w_features(&(ecs_world_feat_desc_t) __VA_ARGS__ )
+#define ecs_with_features(...) ecs_init_w_features(&(ecs_world_feat_desc_t)__VA_ARGS__)
 
 /* Initialize a world with the given features. */
 ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features);
@@ -174,7 +181,8 @@ void ecs_fini(ecs_world_t *world);
  * Use once in a C file:
  *   ECS_COMPONENT_DEFINE(Position);
  */
-#define ECS_COMPONENT_DEFINE(cname, ...)     SIJSON_DEFINE(cname)                                               \
+#define ECS_COMPONENT_DEFINE(cname, ...)                                                           \
+    SIJSON_DEFINE(cname)                                                                           \
     ecs_component_desc_t ecs_id(cname##_desc) = { .name = #cname,                                  \
                                                   .size = sizeof(cname),                           \
                                                   .struct_desc = &sireflect_desc(cname),           \
@@ -217,9 +225,7 @@ ECS_RELATION_DECLARE(ChildOf);
 ECS_COMPONENT_DECLARE(IsA, { ecs_entity_t target; });
 
 /* Builtin component for entity names. */
-ECS_COMPONENT_DECLARE(Name, {
-    char *value;
-});
+ECS_COMPONENT_DECLARE(Name, { char *value; });
 
 /*
  * Register a component from an inline descriptor.
