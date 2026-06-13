@@ -5,11 +5,15 @@
     "author": "Jane Doe",
     "description": "Instant noodles for drones",
     "clangd": true,
-    "language": "cpp",
-    "use": ["siecs"]
+    "use": ["siecs"],
+    "amalgamate": [
+      {
+        "path": "../../distr/"
+      }
+    ]
   },
-  "lang.cpp": {
-    "cpp-standard": "c++23"
+  "lang.c": {
+    "c-standard": "c23"
   },
   "bundle": {
     "repositories": {

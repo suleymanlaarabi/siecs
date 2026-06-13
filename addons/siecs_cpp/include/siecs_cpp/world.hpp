@@ -11,9 +11,7 @@ class world {
   public:
     world() : _world(ecs_init()) {}
 
-    template <typename T> ecs_component_t component() {
-        return ecs_cpp_component_id<T>(_world);
-    }
+    template <typename T> ecs_component_t component() { return ecs_cpp_component_id<T>(_world); }
 
     ecs::entity entity() { return ecs::entity(_world, ecs_new(_world)); }
 };
