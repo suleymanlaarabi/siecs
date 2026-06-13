@@ -29,7 +29,8 @@ extern "C" {
 struct ecs_world_s;
 typedef struct ecs_world_s ecs_world_t;
 
-/* Public handle types. A zero id is reserved internally and is not user data. */
+/* Public handle types. A zero id is reserved internally and is not user data.
+ */
 typedef uint64_t ecs_entity_t;
 typedef uint16_t ecs_component_t;
 typedef uint16_t ecs_query_id_t;
@@ -158,6 +159,13 @@ void ecs_fini(ecs_world_t *world);
     ecs_id(cname) = ecs_component_init(world, &ecs_id(cname##_desc))
 
 /*
+ * Declare and define a component type
+ */
+#define ECS_COMPONENT(cname, ...)                                                                  \
+    ECS_COMPONENT_DECLARE(cname, __VA_ARGS__);                                                     \
+    ECS_COMPONENT_DEFINE(cname);
+
+/*
  * Define a relation component.
  *
  * A relation stores an entity target. The implementation also creates a source
@@ -174,7 +182,8 @@ void ecs_fini(ecs_world_t *world);
 /* Return the internal source component id associated with a relation id. */
 #define ecs_source(name) (ecs_id(name) + 1)
 
-/* Declare a relation type. The generated struct contains ecs_entity_t target. */
+/* Declare a relation type. The generated struct contains ecs_entity_t target.
+ */
 #define ECS_RELATION_DECLARE(name) ECS_COMPONENT_DECLARE(name, { ecs_entity_t target; })
 
 /* Builtin relation for parent/child relationships. */
@@ -366,7 +375,8 @@ bool ecs_iter_next(ecs_iter_t *it);
 /*
  * Return the component array for a read term in the current iterator batch.
  *
- * query_term is zero-based and must refer to an entry from ecs_query_desc_t.read.
+ * query_term is zero-based and must refer to an entry from
+ * ecs_query_desc_t.read.
  */
 static inline void *ecs_field(ecs_iter_t *it, uint16_t query_term) { return *it->ptrs[query_term]; }
 
@@ -420,7 +430,8 @@ void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase);
 /* Run one enabled system immediately. */
 void ecs_run_system(ecs_world_t *world, ecs_system_id_t system);
 
-/* Enable or disable a system. Disabled systems stay registered but do not run. */
+/* Enable or disable a system. Disabled systems stay registered but do not run.
+ */
 void ecs_enable_system(ecs_world_t *world, ecs_system_id_t system, bool enabled);
 
 #ifdef __cplusplus
