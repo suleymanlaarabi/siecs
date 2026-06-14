@@ -9,6 +9,8 @@ class entity {
     ecs_world_t *_world;
 
   public:
+    static ecs::entity null() { return entity(nullptr, 0); }
+
     entity(ecs_world_t *world, ecs_entity_t entity) : _entity(entity), _world(world) {}
 
     template <typename T> entity add() {

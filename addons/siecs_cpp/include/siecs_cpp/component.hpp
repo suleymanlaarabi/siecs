@@ -32,15 +32,17 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
     ecs_component_desc_t desc = {
         .name = name.c_str(),
         .size = sisizeof<T>(),
-        .on_remove =
-            [](ecs_world_t *world, ecs_entity_t, ecs_component_t, const void *ptr) {
-                static_cast<const T *>(ptr)->~T();
-            },
-        .on_add =
-            [](ecs_world_t *world, ecs_entity_t, ecs_component_t, const void *ptr) {
-                new (const_cast<void *>(ptr)) T();
-            },
-        .struct_desc = NULL,
+        .on_set = nullptr,
+        .on_remove = []([[maybe_unused]] ecs_world_t *world,
+                        [[maybe_unused]] ecs_entity_t entity,
+                        [[maybe_unused]] ecs_component_t component,
+                        const void *ptr) { static_cast<const T *>(ptr)->~T(); },
+        .on_add = []([[maybe_unused]] ecs_world_t *world,
+                     [[maybe_unused]] ecs_entity_t entity,
+                     [[maybe_unused]] ecs_component_t component,
+                     const void *ptr) { new (const_cast<void *>(ptr)) T(); },
+        .is_relation = false,
+        .struct_desc = nullptr,
     };
 
     cid = ecs_component_init(world, &desc);

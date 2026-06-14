@@ -52,6 +52,9 @@
 #include "siecs.h"
 #pragma once
 #include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <utility>
 
 namespace ecs {
 
@@ -71,6 +74,47 @@ template <class T> consteval std::string_view type_name() {
     constexpr auto start = prefix.size();
     constexpr auto end = func.size() - suffix.size();
     return func.substr(start, end - start);
+}
+
+template <typename T> struct function_traits;
+
+// function pointer
+template <typename R, typename... Args> struct function_traits<R (*)(Args...)> {
+    using return_type = R;
+    using args_tuple = std::tuple<Args...>;
+};
+
+// function reference
+template <typename R, typename... Args> struct function_traits<R (&)(Args...)> {
+    using return_type = R;
+    using args_tuple = std::tuple<Args...>;
+};
+
+// member function pointer const
+template <typename C, typename R, typename... Args>
+struct function_traits<R (C::*)(Args...) const> {
+    using return_type = R;
+    using args_tuple = std::tuple<Args...>;
+};
+
+// member function pointer non-const
+template <typename C, typename R, typename... Args> struct function_traits<R (C::*)(Args...)> {
+    using return_type = R;
+    using args_tuple = std::tuple<Args...>;
+};
+
+// lambda / functor
+template <typename F>
+struct function_traits : function_traits<decltype(&std::remove_reference_t<F>::operator())> {};
+
+template <typename Tuple, typename Fn, std::size_t... I>
+constexpr void for_each_type_impl(Fn &&fn, std::index_sequence<I...>) {
+    (fn.template operator()<std::tuple_element_t<I, Tuple>>(), ...);
+}
+
+template <typename Tuple, typename Fn> constexpr void for_each_type(Fn &&fn) {
+    constexpr std::size_t N = std::tuple_size_v<Tuple>;
+    for_each_type_impl<Tuple>(std::forward<Fn>(fn), std::make_index_sequence<N>{});
 }
 
 } // namespace ecs
@@ -105,15 +149,17 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
     ecs_component_desc_t desc = {
         .name = name.c_str(),
         .size = sisizeof<T>(),
-        .on_remove =
-            [](ecs_world_t *world, ecs_entity_t, ecs_component_t, const void *ptr) {
-                static_cast<const T *>(ptr)->~T();
-            },
-        .on_add =
-            [](ecs_world_t *world, ecs_entity_t, ecs_component_t, const void *ptr) {
-                new (const_cast<void *>(ptr)) T();
-            },
-        .struct_desc = NULL,
+        .on_set = nullptr,
+        .on_remove = []([[maybe_unused]] ecs_world_t *world,
+                        [[maybe_unused]] ecs_entity_t entity,
+                        [[maybe_unused]] ecs_component_t component,
+                        const void *ptr) { static_cast<const T *>(ptr)->~T(); },
+        .on_add = []([[maybe_unused]] ecs_world_t *world,
+                     [[maybe_unused]] ecs_entity_t entity,
+                     [[maybe_unused]] ecs_component_t component,
+                     const void *ptr) { new (const_cast<void *>(ptr)) T(); },
+        .is_relation = false,
+        .struct_desc = nullptr,
     };
 
     cid = ecs_component_init(world, &desc);
@@ -133,6 +179,8 @@ class entity {
     ecs_world_t *_world;
 
   public:
+    static ecs::entity null() { return entity(nullptr, 0); }
+
     entity(ecs_world_t *world, ecs_entity_t entity) : _entity(entity), _world(world) {}
 
     template <typename T> entity add() {
@@ -148,19 +196,160 @@ class entity {
 
 } // namespace ecs
 
+#pragma once
+
 #include "siecs.h"
+#include <cstdint>
+#include <functional>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+
+namespace ecs {
+
+template <typename F, typename Tuple, std::size_t... Is>
+inline void call_fields_impl(F &&func, Tuple &fields, uint32_t count, std::index_sequence<Is...>) {
+    for (uint32_t i = 0; i < count; ++i) {
+        std::invoke(std::forward<F>(func), (std::get<Is>(fields)[i])...);
+    }
+}
+
+template <typename F, typename Tuple>
+inline void call_fields(F &&func, Tuple &fields, uint32_t count) {
+    constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<Tuple>>;
+
+    call_fields_impl(std::forward<F>(func), fields, count, std::make_index_sequence<N>{});
+}
+
+template <typename Args, std::size_t... Is>
+auto make_fields(ecs_iter_t *it, std::index_sequence<Is...>) {
+    return std::tuple{ static_cast<std::remove_reference_t<std::tuple_element_t<Is, Args>> *>(
+        ecs_field(it, static_cast<uint16_t>(Is))
+    )... };
+}
+
+template <typename T> consteval ecs_term_access_t term_access() {
+    static_assert(
+        std::is_lvalue_reference_v<T>,
+        "query callback arguments must be lvalue references"
+    );
+
+    if constexpr (std::is_const_v<std::remove_reference_t<T>>) {
+        return EcsIn;
+    } else {
+        return EcsInOut;
+    }
+}
+
+class world;
+
+class query {
+    ecs_query_desc_t desc{};
+    uint16_t term_index = 0;
+    ecs_world_t *_world = nullptr;
+
+  public:
+    explicit query(ecs_world_t *world) noexcept : _world(world) {}
+
+    template <typename... T> query &&require() {
+
+        (
+            [&] {
+                desc.terms[term_index].id = ecs::ecs_cpp_component_id<T>(_world);
+                desc.terms[term_index].access = EcsFilter;
+                term_index += 1;
+            }(),
+            ...);
+
+        return std::move(*this);
+    }
+
+    template <typename... T> query &&exclude() {
+
+        (
+            [&] {
+                desc.terms[term_index].id = ecs::ecs_cpp_component_id<T>(_world);
+                desc.terms[term_index].access = EcsNot;
+                term_index += 1;
+            }(),
+            ...);
+
+        return std::move(*this);
+    }
+
+    template <typename F> void each(F &&func) {
+        using traits = function_traits<std::remove_reference_t<F>>;
+        using args = typename traits::args_tuple;
+        constexpr std::size_t arg_count = std::tuple_size_v<args>;
+        static_assert(arg_count > 0, "query callbacks must read at least one component");
+
+        for_each_type<args>([&]<typename T>() {
+            desc.terms[term_index].id = ecs::ecs_cpp_component_id<std::remove_cvref_t<T>>(_world);
+            desc.terms[term_index].access = term_access<T>();
+            term_index += 1;
+        });
+
+        ecs_query_id_t qid = ecs_query_init(_world, &desc);
+        ecs_iter_t it = ecs_query_iter(_world, qid);
+
+        while (ecs_iter_next(&it)) {
+            auto fields = make_fields<args>(&it, std::make_index_sequence<arg_count>{});
+
+            call_fields(std::forward<F>(func), fields, it.count);
+        }
+
+        ecs_query_fini(_world, qid);
+    }
+
+    void first() { return; }
+};
+
+} // namespace ecs
+
+#include "siecs.h"
+#include <utility>
 
 namespace ecs {
 
 class world {
-    ecs_world_t *_world;
+    ecs_world_t *_world = nullptr;
 
   public:
-    world() : _world(ecs_init()) {}
+    world() noexcept : _world(ecs_init()) {}
+    explicit world(ecs_world_t *world) noexcept : _world(world) {}
 
-    template <typename T> ecs_component_t component() { return ecs_cpp_component_id<T>(_world); }
+    world(const world &) = delete;
+    world &operator=(const world &) = delete;
 
-    ecs::entity entity() { return ecs::entity(_world, ecs_new(_world)); }
+    world(world &&other) noexcept : _world(std::exchange(other._world, nullptr)) {}
+
+    world &operator=(world &&other) noexcept {
+        if (this != &other) {
+            reset();
+            _world = std::exchange(other._world, nullptr);
+        }
+
+        return *this;
+    }
+
+    ~world() noexcept { reset(); }
+
+    [[nodiscard]] ecs_world_t *c_ptr() const noexcept { return _world; }
+
+    void reset(ecs_world_t *world = nullptr) noexcept {
+        if (_world != nullptr) {
+            ecs_fini(_world);
+        }
+
+        _world = world;
+    }
+
+    template <typename T> [[nodiscard]] ecs_component_t component() const {
+        return ecs_cpp_component_id<T>(_world);
+    }
+
+    [[nodiscard]] ecs::entity entity() const { return ecs::entity(_world, ecs_new(_world)); }
+    [[nodiscard]] ecs::query query() const { return ecs::query(_world); }
 };
 
 } // namespace ecs
