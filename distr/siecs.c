@@ -59,6 +59,7 @@ typedef struct {
 } ecs_vec_t;
 
 void ecs_vec_init(ecs_vec_t *vec, const uint32_t element_size);
+void ecs_vec_init_w_size(ecs_vec_t *vec, const uint32_t element_size, uint32_t size);
 void ecs_vec_fini(ecs_vec_t *vec);
 void ecs_vec_grow(ecs_vec_t *vec, const uint32_t element_size);
 void ecs_vec_resize_max(ecs_vec_t *vec, uint32_t new_capacity, const uint32_t element_size);
@@ -357,8 +358,8 @@ typedef struct {
 } ecs_entity_record_t;
 
 typedef struct {
-    ecs_vec_t entities;        // ecs_entity_record_t
-    uint32_t first_available;  // UINT32_MAX when no dead entity can be reused
+    ecs_vec_t entities;       // ecs_entity_record_t
+    uint32_t first_available; // UINT32_MAX when no dead entity can be reused
 } ecs_entity_index_t;
 
 #define ecs_entity_index_get_record(index, entity_id)                                              \
@@ -1082,7 +1083,7 @@ void ecs_table_init(
         ecs_component_record_t *rec = ecs_component_index_get_mut(component_index, type.ids[i]);
         ecs_vec_push_u16(&rec->tables, table_id);
         table->cls[i].size = rec->size;
-        table->cls[i].data = rec->size != 0 ? malloc(rec->size * table->entity_capacity) : NULL;
+        table->cls[i].data = rec->size != 0 ? calloc(0, rec->size * table->entity_capacity) : NULL;
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
     }
@@ -1094,6 +1095,7 @@ static inline void ecs_table_grow(ecs_table_t *table) {
     for (uint16_t i = 0; i < table->type.count; i++) {
         if (table->cls[i].size != 0) {
             table->cls[i].data = realloc(table->cls[i].data, table->cls[i].size * new_capacity);
+            memset((uint8_t *)table->cls[i].data + (table->cls[i].size * table->entity_capacity), 0, table->cls[i].size * (new_capacity - table->entity_capacity));
         }
     }
     table->entity_capacity = new_capacity;
@@ -1266,7 +1268,8 @@ ecs_world_t *ecs_init() {
 }
 
 static inline void
-copy_column(ecs_column_t *from, uint32_t from_row, ecs_column_t *to, uint32_t to_row) {
+copy_column(const ecs_column_t *restrict from, const uint32_t from_row, ecs_column_t *restrict to, const uint32_t to_row) {
+    if (from->size == 0) return;
     memcpy(
         (uint8_t *)to->data + (from->size * to_row),
         (uint8_t *)from->data + (from->size * from_row),
@@ -1282,9 +1285,9 @@ copy_column(ecs_column_t *from, uint32_t from_row, ecs_column_t *to, uint32_t to
 static inline void migrate_entity(
     ecs_world_t *world,
     ecs_entity_record_t *record,
-    ecs_entity_t entity,
+    const ecs_entity_t entity,
     ecs_table_t *from_table,
-    uint16_t to_id
+    const uint16_t to_id
 ) {
     ecs_table_t *to_table = ecs_get_table(world, to_id);
 
@@ -1323,34 +1326,28 @@ static inline void migrate_entity(
 }
 
 static inline void migrate_entity_add(
-    ecs_world_t *world,
+    const ecs_world_t *world,
     ecs_entity_record_t *record,
-    ecs_entity_t entity,
+    const ecs_entity_t entity,
     ecs_table_t *from_table,
     ecs_table_t *to_table,
-    uint16_t to_table_id,
-    ecs_component_t added_id
+    const uint16_t to_table_id,
+    const ecs_component_t added_id
 ) {
-    uint32_t old_row = record->table_row;
-    uint32_t new_row = ecs_table_add_entity(to_table, entity);
+    const uint32_t old_row = record->table_row;
+    const uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
-    uint16_t k = ecs_table_get_column_index(to_table, added_id);
-    if (to_table->cls[k].size != 0) {
-        memset(
-            (uint8_t *)to_table->cls[k].data + (to_table->cls[k].size * new_row),
-            0,
-            to_table->cls[k].size
-        );
-    }
+    const uint16_t k = ecs_table_get_column_index(to_table, added_id);
+
     for (uint16_t i = 0; i < k; i++)
         copy_column(&from_table->cls[i], old_row, &to_table->cls[i], new_row);
     for (uint16_t i = k + 1; i < to_table->type.count; i++)
         copy_column(&from_table->cls[i - 1], old_row, &to_table->cls[i], new_row);
 
     ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
-    if (moved != entity)
+    if (moved != entity){
         ecs_get_record(world, moved)->table_row = old_row;
-
+    }
     record->table_id = to_table_id;
     record->table_row = new_row;
 }
@@ -1393,8 +1390,8 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
 
     uint16_t edge = ecs_table_get_add_edge(table, cid);
 
-    if (edge < table->type.count && table->type.ids[edge] == cid) {
-        return; // id already present
+    if (ECS_UNLIKELY(edge < table->type.count && table->type.ids[edge] == cid)) {
+        return; // cid already present
     }
 
     const ecs_component_record_t *crec = ecs_component_index_get(&world->component_index, cid);
@@ -1408,7 +1405,7 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     }
 
     if (edge == UINT16_MAX) {
-        ecs_type_t new_type = ecs_type_with_add(&table->type, cid);
+        const ecs_type_t new_type = ecs_type_with_add(&table->type, cid);
         edge = ecs_table_index_get_or_create(world, new_type);
 
         // Re-fetch: ecs_table_index_get_or_create may realloc the tables vec
@@ -2110,6 +2107,12 @@ void ecs_vec_init(ecs_vec_t *vec, uint32_t element_size) {
     vec->capacity = 1;
 }
 
+void ecs_vec_init_w_size(ecs_vec_t *vec, uint32_t element_size, uint32_t size) {
+    vec->data = malloc(element_size * size);
+    vec->size = 0;
+    vec->capacity = size;
+}
+
 void ecs_vec_fini(ecs_vec_t *vec) { free(vec->data); }
 
 void ecs_vec_grow(ecs_vec_t *vec, uint32_t element_size) {
@@ -2714,7 +2717,7 @@ ecs_component_t ecs_component_index_create(
 }
 
 void ecs_component_index_init(ecs_component_index_t *index) {
-    ecs_vec_init(&index->components, sizeof(ecs_component_record_t));
+    ecs_vec_init_w_size(&index->components, sizeof(ecs_component_record_t), 256);
 #ifndef NDEBUG
     ecs_map_init(&index->component_name_map, 16);
 #endif
@@ -2736,7 +2739,7 @@ void ecs_component_index_fini(ecs_component_index_t *index) {
 }
 
 void ecs_entity_index_init(ecs_entity_index_t *index) {
-    ecs_vec_init(&index->entities, sizeof(ecs_entity_record_t));
+    ecs_vec_init_w_size(&index->entities, sizeof(ecs_entity_record_t), 256);
     index->first_available = UINT32_MAX;
 }
 
@@ -3077,7 +3080,7 @@ void ecs_system_index_fini(ecs_system_index_t *index) {
 #include <stdint.h>
 #include <stdlib.h>
 
-#define INITIAL_SLOT_SHIFT 4
+#define INITIAL_SLOT_SHIFT 12
 #define LOAD_FACTOR 0.75
 #define ECS_TABLE_SLOT_EMPTY UINT16_MAX
 
@@ -3107,9 +3110,7 @@ static inline uint32_t ecs_table_index_slot_count(const ecs_table_index_t *map) 
 static inline void ecs_table_index_init_slots(ecs_table_index_t *map) {
     uint32_t slot_count = ecs_table_index_slot_count(map);
     map->slots = malloc(sizeof(ecs_type_slot_t) * slot_count);
-    for (uint32_t i = 0; i < slot_count; ++i) {
-        map->slots[i].table_index = ECS_TABLE_SLOT_EMPTY;
-    }
+    memset(map->slots, 0xFF, sizeof(ecs_type_slot_t) * slot_count);
 }
 
 static inline void

@@ -11,6 +11,7 @@ typedef struct {
 } ecs_vec_t;
 
 void ecs_vec_init(ecs_vec_t *vec, const uint32_t element_size);
+void ecs_vec_init_w_size(ecs_vec_t *vec, const uint32_t element_size, uint32_t size);
 void ecs_vec_fini(ecs_vec_t *vec);
 void ecs_vec_grow(ecs_vec_t *vec, const uint32_t element_size);
 void ecs_vec_resize_max(ecs_vec_t *vec, uint32_t new_capacity, const uint32_t element_size);

@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define INITIAL_SLOT_SHIFT 4
+#define INITIAL_SLOT_SHIFT 12
 #define LOAD_FACTOR 0.75
 #define ECS_TABLE_SLOT_EMPTY UINT16_MAX
 
@@ -37,9 +37,7 @@ static inline uint32_t ecs_table_index_slot_count(const ecs_table_index_t *map) 
 static inline void ecs_table_index_init_slots(ecs_table_index_t *map) {
     uint32_t slot_count = ecs_table_index_slot_count(map);
     map->slots = malloc(sizeof(ecs_type_slot_t) * slot_count);
-    for (uint32_t i = 0; i < slot_count; ++i) {
-        map->slots[i].table_index = ECS_TABLE_SLOT_EMPTY;
-    }
+    memset(map->slots, 0xFF, sizeof(ecs_type_slot_t) * slot_count);
 }
 
 static inline void

@@ -38,7 +38,7 @@ ecs_component_t ecs_component_index_create(
 }
 
 void ecs_component_index_init(ecs_component_index_t *index) {
-    ecs_vec_init(&index->components, sizeof(ecs_component_record_t));
+    ecs_vec_init_w_size(&index->components, sizeof(ecs_component_record_t), 256);
 #ifndef NDEBUG
     ecs_map_init(&index->component_name_map, 16);
 #endif

@@ -13,8 +13,8 @@ typedef struct {
 } ecs_entity_record_t;
 
 typedef struct {
-    ecs_vec_t entities;        // ecs_entity_record_t
-    uint32_t first_available;  // UINT32_MAX when no dead entity can be reused
+    ecs_vec_t entities;       // ecs_entity_record_t
+    uint32_t first_available; // UINT32_MAX when no dead entity can be reused
 } ecs_entity_index_t;
 
 #define ecs_entity_index_get_record(index, entity_id)                                              \

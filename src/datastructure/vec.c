@@ -8,6 +8,12 @@ void ecs_vec_init(ecs_vec_t *vec, uint32_t element_size) {
     vec->capacity = 1;
 }
 
+void ecs_vec_init_w_size(ecs_vec_t *vec, uint32_t element_size, uint32_t size) {
+    vec->data = malloc(element_size * size);
+    vec->size = 0;
+    vec->capacity = size;
+}
+
 void ecs_vec_fini(ecs_vec_t *vec) { free(vec->data); }
 
 void ecs_vec_grow(ecs_vec_t *vec, uint32_t element_size) {
