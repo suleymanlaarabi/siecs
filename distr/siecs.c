@@ -772,7 +772,6 @@ void RelationSourceOnRemove(
 
 ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc) {
     ecs_assert_not_null(world);
-    ecs_assert_not_null(desc->name);
 
     sireflect_handle_t reflection = SIREFLECT_INVALID_HANDLE;
 
@@ -783,7 +782,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
     if (desc->is_relation) {
         ecs_component_t component = ecs_component_index_create(
             &world->component_index,
-            strdup(desc->name),
+            desc->name ? strdup(desc->name) : NULL,
             desc->size,
             RelationOnSet,
             RelationOnRemove,
@@ -791,8 +790,12 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             reflection
         );
 
-        ecs_str_t source_name = ecs_str_from_cstr("Source");
-        ecs_str_cstr_append(&source_name, desc->name);
+        ecs_str_t source_name = {0};
+
+        if (desc->name) {
+            source_name = ecs_str_from_cstr("Source");
+            ecs_str_cstr_append(&source_name, desc->name);
+        }
 
         ecs_component_index_create(
             &world->component_index,
@@ -807,7 +810,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
     } else {
         return ecs_component_index_create(
             &world->component_index,
-            strdup(desc->name),
+            desc->name ? strdup(desc->name) : NULL,
             desc->size,
             desc->on_set,
             desc->on_remove,
@@ -1388,40 +1391,37 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     uint16_t from_id = record->table_id;
     ecs_table_t *table = ecs_get_table(world, from_id);
 
-    if (ecs_table_has(table, cid)) {
-        return;
+    uint16_t edge = ecs_table_get_add_edge(table, cid);
+
+    if (edge < table->type.count && table->type.ids[edge] == cid) {
+        return; // id already present
     }
 
     const ecs_component_record_t *crec = ecs_component_index_get(&world->component_index, cid);
-    for (uint32_t i = 0; i < crec->required_count; i++) {
-        ecs_add_cid(world, entity, crec->required[i]);
+    if (crec->required_count) {
+        for (uint32_t i = 0; i < crec->required_count; i++) {
+            ecs_add_cid(world, entity, crec->required[i]);
+        }
+
+        from_id = record->table_id;
+        table = ecs_get_table(world, from_id);
     }
 
-    record = ecs_get_record(world, entity);
-    from_id = record->table_id;
-    table = ecs_get_table(world, from_id);
-
-    if (ecs_table_has(table, cid)) {
-        return;
-    }
-
-    uint16_t new_table_id = ecs_table_get_add_edge(table, cid);
-
-    if (new_table_id == UINT16_MAX) {
+    if (edge == UINT16_MAX) {
         ecs_type_t new_type = ecs_type_with_add(&table->type, cid);
-        new_table_id = ecs_table_index_get_or_create(world, new_type);
+        edge = ecs_table_index_get_or_create(world, new_type);
 
         // Re-fetch: ecs_table_index_get_or_create may realloc the tables vec
         table = ecs_get_table(world, from_id);
-        ecs_id_map_set(&table->add_edge, cid, new_table_id);
+        ecs_id_map_set(&table->add_edge, cid, edge);
     } else if (
-        ECS_UNLIKELY(new_table_id < table->type.count && table->type.ids[new_table_id] == cid)
+        ECS_UNLIKELY(edge < table->type.count && table->type.ids[edge] == cid)
     ) {
         return;
     }
 
-    ecs_table_t *new_table = ecs_get_table(world, new_table_id);
-    migrate_entity_add(world, record, entity, table, new_table, new_table_id, cid);
+    ecs_table_t *new_table = ecs_get_table(world, edge);
+    migrate_entity_add(world, record, entity, table, new_table, edge, cid);
 
     const void *component_data = ecs_table_get_component(new_table, cid, record->table_row);
     if (crec->on_add) {
@@ -1711,6 +1711,48 @@ void init_rest(ecs_world_t *world) {
 }
 
 #endif
+
+#ifndef ECS_ARENA_H
+#define ECS_ARENA_H
+
+#include "compiler.h"
+#include <stdint.h>
+#include <stdlib.h>
+
+typedef struct {
+    uint32_t capacity;
+    uint32_t cursor;
+    uint8_t *buf;
+} ecs_arena_t;
+
+void ecs_arena_init(ecs_arena_t *allocator);
+void ecs_arena_fini(ecs_arena_t *allocator);
+
+static inline void *ecs_arena_alloc(ecs_arena_t *allocator, uint32_t size) {
+    if (ECS_LIKELY(allocator->cursor + size <= allocator->capacity)) {
+        allocator->cursor += size;
+        return allocator->buf + (allocator->cursor - size);
+    }
+    allocator->buf = (uint8_t *)realloc(allocator->buf, allocator->capacity + size);
+    allocator->capacity = allocator->capacity + size;
+    allocator->cursor += size;
+    return allocator->buf + (allocator->cursor - size);
+}
+
+static inline void ecs_arena_reset(ecs_arena_t *allocator) { allocator->cursor = 0; }
+
+#endif
+
+#include <stdlib.h>
+
+void ecs_arena_init(ecs_arena_t *allocator) {
+    allocator->buf = malloc(8);
+    allocator->capacity = 8;
+    allocator->cursor = 0;
+}
+void ecs_arena_fini(ecs_arena_t *allocator) {
+    free(allocator->buf);
+}
 
 #include <stdint.h>
 #include <stdlib.h>

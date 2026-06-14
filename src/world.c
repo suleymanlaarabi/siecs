@@ -166,40 +166,37 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     uint16_t from_id = record->table_id;
     ecs_table_t *table = ecs_get_table(world, from_id);
 
-    if (ecs_table_has(table, cid)) {
-        return;
+    uint16_t edge = ecs_table_get_add_edge(table, cid);
+
+    if (edge < table->type.count && table->type.ids[edge] == cid) {
+        return; // id already present
     }
 
     const ecs_component_record_t *crec = ecs_component_index_get(&world->component_index, cid);
-    for (uint32_t i = 0; i < crec->required_count; i++) {
-        ecs_add_cid(world, entity, crec->required[i]);
+    if (crec->required_count) {
+        for (uint32_t i = 0; i < crec->required_count; i++) {
+            ecs_add_cid(world, entity, crec->required[i]);
+        }
+
+        from_id = record->table_id;
+        table = ecs_get_table(world, from_id);
     }
 
-    record = ecs_get_record(world, entity);
-    from_id = record->table_id;
-    table = ecs_get_table(world, from_id);
-
-    if (ecs_table_has(table, cid)) {
-        return;
-    }
-
-    uint16_t new_table_id = ecs_table_get_add_edge(table, cid);
-
-    if (new_table_id == UINT16_MAX) {
+    if (edge == UINT16_MAX) {
         ecs_type_t new_type = ecs_type_with_add(&table->type, cid);
-        new_table_id = ecs_table_index_get_or_create(world, new_type);
+        edge = ecs_table_index_get_or_create(world, new_type);
 
         // Re-fetch: ecs_table_index_get_or_create may realloc the tables vec
         table = ecs_get_table(world, from_id);
-        ecs_id_map_set(&table->add_edge, cid, new_table_id);
+        ecs_id_map_set(&table->add_edge, cid, edge);
     } else if (
-        ECS_UNLIKELY(new_table_id < table->type.count && table->type.ids[new_table_id] == cid)
+        ECS_UNLIKELY(edge < table->type.count && table->type.ids[edge] == cid)
     ) {
         return;
     }
 
-    ecs_table_t *new_table = ecs_get_table(world, new_table_id);
-    migrate_entity_add(world, record, entity, table, new_table, new_table_id, cid);
+    ecs_table_t *new_table = ecs_get_table(world, edge);
+    migrate_entity_add(world, record, entity, table, new_table, edge, cid);
 
     const void *component_data = ecs_table_get_component(new_table, cid, record->table_row);
     if (crec->on_add) {
