@@ -90,7 +90,6 @@ void RelationSourceOnRemove(
 
 ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc) {
     ecs_assert_not_null(world);
-    ecs_assert_not_null(desc->name);
 
     sireflect_handle_t reflection = SIREFLECT_INVALID_HANDLE;
 
@@ -101,7 +100,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
     if (desc->is_relation) {
         ecs_component_t component = ecs_component_index_create(
             &world->component_index,
-            strdup(desc->name),
+            desc->name ? strdup(desc->name) : NULL,
             desc->size,
             RelationOnSet,
             RelationOnRemove,
@@ -109,8 +108,13 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             reflection
         );
 
-        ecs_str_t source_name = ecs_str_from_cstr("Source");
-        ecs_str_cstr_append(&source_name, desc->name);
+
+        ecs_str_t source_name = {0};
+
+        if (desc->name) {
+            source_name = ecs_str_from_cstr("Source");
+            ecs_str_cstr_append(&source_name, desc->name);
+        }
 
         ecs_component_index_create(
             &world->component_index,
@@ -125,7 +129,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
     } else {
         return ecs_component_index_create(
             &world->component_index,
-            strdup(desc->name),
+            desc->name ? strdup(desc->name) : NULL,
             desc->size,
             desc->on_set,
             desc->on_remove,
