@@ -81,3 +81,57 @@ jobs:
           else
             bake run test
           fi
+
+  cmake-consumer:
+    name: cmake and pkg-config consumer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake pkg-config
+
+      - name: Configure C consumer
+        run: cmake -S test/consumer_cmake/c -B build-consumer-c -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang
+
+      - name: Build C consumer
+        run: cmake --build build-consumer-c --parallel
+
+      - name: Test C consumer
+        run: ctest --test-dir build-consumer-c --output-on-failure
+
+      - name: Configure C++ consumer
+        run: cmake -S test/consumer_cmake/cpp -B build-consumer-cpp -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+
+      - name: Build C++ consumer
+        run: cmake --build build-consumer-cpp --parallel
+
+      - name: Test C++ consumer
+        run: ctest --test-dir build-consumer-cpp --output-on-failure
+
+      - name: Install SIECS with CMake
+        run: |
+          cmake -S . -B build-install \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$PWD/siecs-prefix" \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DSIECS_BUILD_CPP=ON
+          cmake --build build-install --parallel
+          cmake --install build-install
+
+      - name: Build C consumer with pkg-config
+        run: |
+          export PKG_CONFIG_PATH="$PWD/siecs-prefix/lib/pkgconfig"
+          clang -std=c23 test/consumer_cmake/c/main.c $(pkg-config --cflags --libs siecs) -o build-pkg-c
+          ./build-pkg-c
+
+      - name: Build C++ consumer with pkg-config
+        run: |
+          export PKG_CONFIG_PATH="$PWD/siecs-prefix/lib/pkgconfig"
+          clang++ -std=c++23 test/consumer_cmake/cpp/main.cpp $(pkg-config --cflags --libs siecs-cpp) -o build-pkg-cpp
+          ./build-pkg-cpp

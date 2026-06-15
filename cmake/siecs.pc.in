@@ -1,0 +1,10 @@
+prefix=${pcfiledir}/../..
+exec_prefix=${prefix}
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: siecs
+Description: Small ECS library
+Version: @PROJECT_VERSION@
+Cflags: -I${includedir} -Dsiecs_STATIC -Dsireflect_STATIC -Dsijson_STATIC -Dsihttp_STATIC
+Libs: -L${libdir} -lsiecs -lsihttp -lsijson -lsireflect -pthread

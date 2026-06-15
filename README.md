@@ -10,9 +10,9 @@
 - Built-in support for entity hierarchies and entity relations.
 - Integrated reflection framework with JSON serialization and deserialization.
 
-# CPP
+# C++
 ```cpp
-#include "siecs.h"
+#include <siecs_cpp/siecs_cpp.hpp>
 
 struct Position {
     float x, y;
@@ -40,7 +40,7 @@ int main() {
 
 # C
 ```c
-#include "siecs.h"
+#include <siecs.h>
 
 ECS_COMPONENT(Position, {
     float x;
@@ -82,4 +82,115 @@ int main(void) {
 
     ecs_fini(world);
 }
+```
+
+
+## CMake Example
+
+C:
+
+```cmake
+cmake_minimum_required(VERSION 3.21)
+
+project(my_app LANGUAGES C)
+
+include(FetchContent)
+
+FetchContent_Declare(
+  siecs
+  GIT_REPOSITORY https://github.com/suleymanlaarabi/siecs.git
+  GIT_TAG main
+)
+
+FetchContent_MakeAvailable(siecs)
+
+add_executable(my_app main.c)
+target_link_libraries(my_app PRIVATE siecs::siecs)
+```
+
+C++:
+
+```cmake
+cmake_minimum_required(VERSION 3.21)
+
+project(my_app LANGUAGES C CXX)
+
+include(FetchContent)
+
+FetchContent_Declare(
+  siecs
+  GIT_REPOSITORY https://github.com/suleymanlaarabi/siecs.git
+  GIT_TAG main
+)
+
+FetchContent_MakeAvailable(siecs)
+
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE siecs::siecs_cpp)
+```
+
+## Bake Example
+
+C:
+
+```json
+{
+  "id": "my_app",
+  "type": "application",
+  "value": {
+    "use": ["siecs"]
+  },
+  "lang.c": {
+    "c-standard": "c23"
+  },
+  "bundle": {
+    "repositories": {
+      "siecs": "https://github.com/suleymanlaarabi/siecs"
+    }
+  }
+}
+```
+
+C++:
+
+```json
+{
+  "id": "my_app",
+  "type": "application",
+  "value": {
+    "language": "cpp",
+    "use": ["siecs_cpp", "siecs"]
+  },
+  "lang.cpp": {
+    "cpp-standard": "c++23"
+  },
+  "bundle": {
+    "repositories": {
+      "siecs": "https://github.com/suleymanlaarabi/siecs",
+      "siecs_cpp": "https://github.com/suleymanlaarabi/siecs"
+    }
+  }
+}
+```
+
+## pkg-config Example
+
+Install SIECS once from the repository checkout:
+
+```sh
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr/local -DSIECS_BUILD_CPP=ON
+cmake --build build
+cmake --install build
+```
+
+C:
+
+```sh
+cc -std=c23 main.c $(pkg-config --cflags --libs siecs)
+```
+
+C++:
+
+```sh
+c++ -std=c++23 main.cpp $(pkg-config --cflags --libs siecs-cpp)
 ```
