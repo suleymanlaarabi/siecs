@@ -87,8 +87,7 @@ int main(void) {
 
 ## CMake Example
 
-C:
-
+C
 ```cmake
 cmake_minimum_required(VERSION 3.21)
 
@@ -108,8 +107,7 @@ add_executable(my_app main.c)
 target_link_libraries(my_app PRIVATE siecs::siecs)
 ```
 
-C++:
-
+C++
 ```cmake
 cmake_minimum_required(VERSION 3.21)
 
@@ -131,8 +129,7 @@ target_link_libraries(my_app PRIVATE siecs::siecs_cpp)
 
 ## Bake Example
 
-C:
-
+C
 ```json
 {
   "id": "my_app",
@@ -151,8 +148,7 @@ C:
 }
 ```
 
-C++:
-
+C++
 ```json
 {
   "id": "my_app",
@@ -172,30 +168,3 @@ C++:
   }
 }
 ```
-
-## Manual Source Build
-
-For custom build systems, compile the C sources from `src/` and expose these
-include directories:
-
-- `include`
-- `sireflect/include`
-- `sijson/include`
-- `sihttp/include`
-
-Link the public dependencies with SIECS:
-
-- `sireflect`
-- `sijson`
-- `sihttp`
-
-Use these compile definitions for static builds:
-
-- `siecs_STATIC`
-- `sireflect_STATIC`
-- `sijson_STATIC`
-- `sihttp_STATIC`
-- `SIECS_REST` only when the REST addon is enabled
-
-The C++ API is header-only. Add `addons/siecs_cpp/include` and link the C
-library.
