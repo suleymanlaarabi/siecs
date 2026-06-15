@@ -10,6 +10,35 @@
 - Built-in support for entity hierarchies and entity relations.
 - Integrated reflection framework with JSON serialization and deserialization.
 
+# CPP
+```cpp
+#include "siecs.h"
+
+struct Position {
+    float x, y;
+};
+
+struct Velocity {
+    float x, y;
+};
+
+int main() {
+    ecs::world world;
+
+    world.entity().set(Position{ 0, 0 }).set(Velocity{ 10, 10 });
+
+    world.system("Move")
+        .phase(EcsOnUpdate)
+        .each([](Position &pos, const Velocity &vel) {
+            pos.x += vel.x;
+            pos.y += vel.y;
+        });
+
+    world.progress();
+}
+```
+
+# C
 ```c
 #include "siecs.h"
 
