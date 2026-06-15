@@ -3,8 +3,6 @@ cmake_minimum_required(VERSION 3.21)
 project(siecs VERSION 0.1.0 LANGUAGES C)
 
 include(FetchContent)
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
 
 option(SIECS_REST "Build SIECS with the REST addon enabled" ON)
 option(SIECS_BUILD_CPP "Expose the header-only C++ wrapper target" ${CMAKE_CXX_COMPILER_LOADED})
@@ -44,7 +42,6 @@ function(siecs_fetch_c_dependency dep_name repository)
     target_include_directories(${dep_name}
         PUBLIC
             "$<BUILD_INTERFACE:${${dep_name}_SOURCE_DIR}/include>"
-            "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
         PRIVATE
             "${${dep_name}_SOURCE_DIR}/src"
     )
@@ -79,7 +76,6 @@ target_compile_definitions(siecs
 target_include_directories(siecs
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-        "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
@@ -104,89 +100,10 @@ if(SIECS_BUILD_CPP)
     target_include_directories(siecs_cpp
         INTERFACE
             "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/addons/siecs_cpp/include>"
-            "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
     )
     target_link_libraries(siecs_cpp INTERFACE siecs)
 endif()
 
 if(SIECS_BUILD_TESTS)
     enable_testing()
-endif()
-
-install(
-    TARGETS sireflect sijson sihttp siecs
-    EXPORT siecsTargets
-    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-)
-
-if(SIECS_BUILD_CPP)
-    install(
-        TARGETS siecs_cpp
-        EXPORT siecsTargets
-        INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-    )
-endif()
-
-install(DIRECTORY "${sireflect_SOURCE_DIR}/include/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
-install(DIRECTORY "${sijson_SOURCE_DIR}/include/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
-install(DIRECTORY "${sihttp_SOURCE_DIR}/include/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
-
-if(SIECS_BUILD_CPP)
-    install(
-        DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/addons/siecs_cpp/include/"
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-    )
-endif()
-
-install(
-    EXPORT siecsTargets
-    NAMESPACE siecs::
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/siecs"
-)
-
-configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/siecsConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/siecsConfig.cmake"
-    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/siecs"
-)
-
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/siecsConfigVersion.cmake"
-    VERSION "${PROJECT_VERSION}"
-    COMPATIBILITY SameMajorVersion
-)
-
-install(
-    FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/siecsConfig.cmake"
-        "${CMAKE_CURRENT_BINARY_DIR}/siecsConfigVersion.cmake"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/siecs"
-)
-
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/siecs.pc.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/siecs.pc"
-    @ONLY
-)
-
-install(
-    FILES "${CMAKE_CURRENT_BINARY_DIR}/siecs.pc"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
-)
-
-if(SIECS_BUILD_CPP)
-    configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/siecs-cpp.pc.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/siecs-cpp.pc"
-        @ONLY
-    )
-
-    install(
-        FILES "${CMAKE_CURRENT_BINARY_DIR}/siecs-cpp.pc"
-        DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
-    )
 endif()

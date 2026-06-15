@@ -27,7 +27,7 @@ add_executable(my_app main.c)
 target_link_libraries(my_app PRIVATE siecs::siecs)
 ```
 
-C++
+C++:
 ```cmake
 cmake_minimum_required(VERSION 3.21)
 
@@ -89,38 +89,31 @@ C++
 }
 ```
 
-## pkg-config Example
-
-Install SIECS once from the repository checkout:
-
-```sh
-cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr/local -DSIECS_BUILD_CPP=ON
-cmake --build build
-cmake --install build
-```
-
-C
-```sh
-cc -std=c23 main.c $(pkg-config --cflags --libs siecs)
-```
-
-C++
-```sh
-c++ -std=c++23 main.cpp $(pkg-config --cflags --libs siecs-cpp)
-```
-
 ## Manual Source Build
 
-If you use a custom build system, build the C sources from `src/`, expose
-`include/` to users, and link the three public dependencies: `sireflect`,
-`sijson`, and `sihttp`.
+For custom build systems, compile the C sources from `src/` and expose these
+include directories:
 
-Required compile definitions:
+- `include`
+- `sireflect/include`
+- `sijson/include`
+- `sihttp/include`
+
+Link the public dependencies with SIECS:
+
+- `sireflect`
+- `sijson`
+- `sihttp`
+
+Use these compile definitions for static builds:
 
 - `siecs_STATIC`
+- `sireflect_STATIC`
+- `sijson_STATIC`
+- `sihttp_STATIC`
 - `SIECS_REST` only when the REST addon is enabled
 
-The C++ API is header-only and only needs `addons/siecs_cpp/include` plus the C
+The C++ API is header-only. Add `addons/siecs_cpp/include` and link the C
 library.
 
 ## Minimal Program

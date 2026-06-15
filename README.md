@@ -173,24 +173,29 @@ C++:
 }
 ```
 
-## pkg-config Example
+## Manual Source Build
 
-Install SIECS once from the repository checkout:
+For custom build systems, compile the C sources from `src/` and expose these
+include directories:
 
-```sh
-cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr/local -DSIECS_BUILD_CPP=ON
-cmake --build build
-cmake --install build
-```
+- `include`
+- `sireflect/include`
+- `sijson/include`
+- `sihttp/include`
 
-C:
+Link the public dependencies with SIECS:
 
-```sh
-cc -std=c23 main.c $(pkg-config --cflags --libs siecs)
-```
+- `sireflect`
+- `sijson`
+- `sihttp`
 
-C++:
+Use these compile definitions for static builds:
 
-```sh
-c++ -std=c++23 main.cpp $(pkg-config --cflags --libs siecs-cpp)
-```
+- `siecs_STATIC`
+- `sireflect_STATIC`
+- `sijson_STATIC`
+- `sihttp_STATIC`
+- `SIECS_REST` only when the REST addon is enabled
+
+The C++ API is header-only. Add `addons/siecs_cpp/include` and link the C
+library.
