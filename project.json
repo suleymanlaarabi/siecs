@@ -5,11 +5,6 @@
     "author": "Suleyman Laarabi",
     "description": "Small ECS library",
     "clangd": true,
-    "amalgamate": [
-      {
-        "path": "distr"
-      }
-    ],
     "use": ["sireflect", "sijson", "sihttp"]
   },
   "lang.c": {
