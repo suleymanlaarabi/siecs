@@ -31,7 +31,5 @@ void ecs_bootstrap(ecs_world_t *world) {
     ECS_COMPONENT_REGISTER(world, IsA);
     ECS_COMPONENT_REGISTER(world, Name);
 
-#ifdef SIECS_REST
     init_rest(world);
-#endif
 }

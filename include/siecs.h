@@ -117,11 +117,16 @@ typedef struct {
 } ecs_query_desc_t;
 
 #ifdef __cplusplus
-#define ecs_in(cname) ecs_query_term_t{ ecs_id(cname), EcsIn }
-#define ecs_out(cname) ecs_query_term_t{ ecs_id(cname), EcsOut }
-#define ecs_inout(cname) ecs_query_term_t{ ecs_id(cname), EcsInOut }
-#define ecs_filter(cname) ecs_query_term_t{ ecs_id(cname), EcsFilter }
-#define ecs_not(cname) ecs_query_term_t{ ecs_id(cname), EcsNot }
+#define ecs_in(cname)                                                                              \
+    ecs_query_term_t { ecs_id(cname), EcsIn }
+#define ecs_out(cname)                                                                             \
+    ecs_query_term_t { ecs_id(cname), EcsOut }
+#define ecs_inout(cname)                                                                           \
+    ecs_query_term_t { ecs_id(cname), EcsInOut }
+#define ecs_filter(cname)                                                                          \
+    ecs_query_term_t { ecs_id(cname), EcsFilter }
+#define ecs_not(cname)                                                                             \
+    ecs_query_term_t { ecs_id(cname), EcsNot }
 #else
 #define ecs_in(cname) ((ecs_query_term_t){ ecs_id(cname), EcsIn })
 #define ecs_out(cname) ((ecs_query_term_t){ ecs_id(cname), EcsOut })
@@ -135,9 +140,7 @@ ecs_world_t *ecs_init(void);
 
 /* World feature descriptor. */
 typedef struct {
-#ifdef SIECS_REST
     bool rest;
-#endif
 } ecs_world_feat_desc_t;
 
 /* Create a world with the given features. */
@@ -403,7 +406,9 @@ bool ecs_iter_next(ecs_iter_t *it);
  * field_index is zero-based among EcsIn, EcsOut and EcsInOut terms only.
  * EcsFilter and EcsNot terms affect matching but are not returned as fields.
  */
-static inline void *ecs_field(ecs_iter_t *it, uint16_t field_index) { return *it->ptrs[field_index]; }
+static inline void *ecs_field(ecs_iter_t *it, uint16_t field_index) {
+    return *it->ptrs[field_index];
+}
 
 /* System phases run in enum order when ecs_progress is called. */
 typedef enum {

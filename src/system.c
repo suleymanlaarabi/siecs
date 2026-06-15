@@ -59,14 +59,12 @@ void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase) {
     }
 }
 
-#ifdef SIECS_REST
-void sleep_ms(long ms) {
+static inline void sleep_ms(long ms) {
     struct timespec ts;
     ts.tv_sec = ms / 1000;
     ts.tv_nsec = (ms % 1000) * 1000000L;
     nanosleep(&ts, NULL);
 }
-#endif
 
 bool ecs_progress(ecs_world_t *world) {
     ecs_assert_not_null(world);
@@ -74,12 +72,10 @@ bool ecs_progress(ecs_world_t *world) {
     for (ecs_phase_t phase = 0; phase < EcsPhaseCount; phase++) {
         ecs_run_phase(world, phase);
     }
-#ifdef SIECS_REST
     if (world->features.rest) {
         sihttp_server_poll(world->server);
     }
     sleep_ms(5);
-#endif
 
     return !world->exit;
 }

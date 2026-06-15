@@ -4,7 +4,6 @@ project(siecs VERSION 0.1.0 LANGUAGES C)
 
 include(FetchContent)
 
-option(SIECS_REST "Build SIECS with the REST addon enabled" ON)
 option(SIECS_BUILD_CPP "Expose the header-only C++ wrapper target" ${CMAKE_CXX_COMPILER_LOADED})
 option(SIECS_BUILD_TESTS "Build SIECS CMake tests" OFF)
 option(SIECS_BUILD_EXAMPLES "Build SIECS CMake examples" OFF)
@@ -57,10 +56,6 @@ target_link_libraries(sihttp PUBLIC sijson)
 file(GLOB_RECURSE siecs_sources CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
 )
-
-if(NOT SIECS_REST)
-    list(FILTER siecs_sources EXCLUDE REGEX "/src/addons/rest\\.c$")
-endif()
 
 add_library(siecs STATIC ${siecs_sources})
 add_library(siecs::siecs ALIAS siecs)

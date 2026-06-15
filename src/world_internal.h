@@ -19,9 +19,7 @@ typedef struct ecs_world_s {
     ecs_observer_index_t observer_index;
     ecs_system_index_t system_index;
     sireflect_registry_t *sireflect_registry;
-    #ifdef SIECS_REST
     sihttp_server_t *server;
-    #endif
     ecs_world_feat_desc_t features;
     bool exit;
 } ecs_world_t;
@@ -71,6 +69,5 @@ static inline void ecs_emit(
 
 void ecs_bootstrap(ecs_world_t *world);
 struct ecs_table_s *ecs_iter_table(ecs_iter_t *it);
-
 
 #endif

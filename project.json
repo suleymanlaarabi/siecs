@@ -21,8 +21,7 @@
       "${cfg sanitize}": {
         "export-symbols": true
       }
-    },
-    "cflags": ["-DSIECS_REST"]
+    }
   },
   "bundle": {
     "repositories": {

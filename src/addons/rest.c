@@ -9,8 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef SIECS_REST
-
 sijson_value_t entity_json(ecs_world_t *world, ecs_entity_t entity) {
     sijson_value_t object = sijson_make_object();
 
@@ -107,5 +105,3 @@ void init_rest(ecs_world_t *world) {
         sihttp_server_start(world->server);
     }
 }
-
-#endif

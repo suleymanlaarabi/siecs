@@ -111,7 +111,6 @@ Use these compile definitions for static builds:
 - `sireflect_STATIC`
 - `sijson_STATIC`
 - `sihttp_STATIC`
-- `SIECS_REST` only when the REST addon is enabled
 
 The C++ API is header-only. Add `addons/siecs_cpp/include` and link the C
 library.

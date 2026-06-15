@@ -349,12 +349,10 @@ void ecs_fini(ecs_world_t *world) {
     ecs_system_index_fini(&world->system_index);
     sireflect_registry_fini(world->sireflect_registry);
 
-#ifdef SIECS_REST
     if (world->features.rest) {
         sihttp_server_stop(world->server);
     }
     sihttp_server_fini(world->server);
-#endif
 
     free(world);
 }
