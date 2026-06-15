@@ -441,10 +441,10 @@ bool ecs_iter_next(ecs_iter_t *it);
 /*
  * Return the component array for a read term in the current iterator batch.
  *
- * query_term is zero-based and must refer to an EcsIn, EcsOut or EcsInOut term
- * from ecs_query_desc_t.terms.
+ * field_index is zero-based among EcsIn, EcsOut and EcsInOut terms only.
+ * EcsFilter and EcsNot terms affect matching but are not returned as fields.
  */
-static inline void *ecs_field(ecs_iter_t *it, uint16_t query_term) { return *it->ptrs[query_term]; }
+static inline void *ecs_field(ecs_iter_t *it, uint16_t field_index) { return *it->ptrs[field_index]; }
 
 /* System phases run in enum order when ecs_progress is called. */
 typedef enum {

@@ -3,6 +3,7 @@
 #include "entity.hpp"
 #include "query.hpp"
 #include "siecs.h"
+#include "system.hpp"
 #include <utility>
 
 namespace ecs {
@@ -46,6 +47,9 @@ class world {
 
     [[nodiscard]] ecs::entity entity() const { return ecs::entity(_world, ecs_new(_world)); }
     [[nodiscard]] ecs::query query() const { return ecs::query(_world); }
+    [[nodiscard]] ecs::system system(const char *name) const { return ecs::system(_world, name); }
+
+    void progress() { ecs_progress(_world); }
 };
 
 } // namespace ecs
