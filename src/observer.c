@@ -1,13 +1,15 @@
+#include "datastructure/vec.h"
+#include "storage/observer_index.h"
 #include "utils.h"
 #include "siecs.h"
 #include "world_internal.h"
 
 ecs_event_t ecs_event(ecs_world_t *world) { return world->observer_index.event_count++; }
 
-uint32_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc) {
+ecs_observer_id_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc) {
     ecs_assert_not_null(world);
     ecs_assert(desc->callback != NULL, "Observer callback cannot be NULL");
-    uint32_t oid = ecs_observer_index_create(&world->observer_index, desc);
+    ecs_observer_id_t oid = ecs_observer_index_create(&world->observer_index, desc);
     ecs_observer_index_match_tables(
         &world->observer_index,
         world->table_index.tables,
@@ -15,6 +17,14 @@ uint32_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc) 
         oid
     );
     return oid;
+}
+
+void ecs_observer_enable(ecs_world_t *world, ecs_observer_id_t id) {
+    ecs_vec_get_mut(&world->observer_index.observers, id, ecs_observer_t)->enabled = true;
+}
+
+void ecs_observer_disable(ecs_world_t *world, ecs_observer_id_t id) {
+    ecs_vec_get_mut(&world->observer_index.observers, id, ecs_observer_t)->enabled = false;
 }
 
 void ecs_observer_trigger(

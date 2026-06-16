@@ -56,6 +56,9 @@ static inline void ecs_emit(
         uint16_t oid = *ecs_vec_get(list, i, uint16_t);
         ecs_observer_t *obs =
             ecs_vec_get_mut(&world->observer_index.observers, oid, ecs_observer_t);
+        if (!obs->enabled) {
+            continue;
+        }
         ecs_observer_event_t observer_event = {
             .world = world,
             .entity = entity,

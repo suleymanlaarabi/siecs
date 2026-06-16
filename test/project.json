@@ -37,6 +37,10 @@
         "testcases": ["run", "phase_order", "after_order", "enable"]
       },
       {
+        "id": "observer",
+        "testcases": ["enable"]
+      },
+      {
         "id": "string",
         "testcases": ["init", "append", "trim", "starts_ends_with"]
       },

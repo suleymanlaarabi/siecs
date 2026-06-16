@@ -30,6 +30,9 @@ void system_phase_order(void);
 void system_after_order(void);
 void system_enable(void);
 
+// Testsuite 'observer'
+void observer_enable(void);
+
 // Testsuite 'string'
 void string_init(void);
 void string_append(void);
@@ -104,6 +107,13 @@ bake_test_case system_testcases[] = {
     {
         "enable",
         system_enable
+    }
+};
+
+bake_test_case observer_testcases[] = {
+    {
+        "enable",
+        observer_enable
     }
 };
 
@@ -191,6 +201,13 @@ static bake_test_suite suites[] = {
         system_testcases
     },
     {
+        "observer",
+        NULL,
+        NULL,
+        1,
+        observer_testcases
+    },
+    {
         "string",
         NULL,
         NULL,
@@ -207,5 +224,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 7);
+    return bake_test_run("siecs.test", argc, argv, suites, 8);
 }

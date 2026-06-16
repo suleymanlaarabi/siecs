@@ -36,6 +36,7 @@ typedef uint16_t ecs_component_t;
 typedef uint16_t ecs_query_id_t;
 typedef uint16_t ecs_system_id_t;
 typedef uint16_t ecs_event_t;
+typedef uint32_t ecs_observer_id_t;
 
 /*
  * Event payload passed to observer callbacks.
@@ -360,7 +361,10 @@ typedef struct {
 ecs_event_t ecs_event(ecs_world_t *world);
 
 /* Create an observer. desc->callback must not be NULL. */
-uint32_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc);
+ecs_observer_id_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc);
+
+void ecs_observer_enable(ecs_world_t *world, ecs_observer_id_t id);
+void ecs_observer_disable(ecs_world_t *world, ecs_observer_id_t id);
 
 /*
  * Trigger an event for an alive entity.

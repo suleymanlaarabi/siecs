@@ -1,8 +1,8 @@
 #ifndef SIECS_STORAGE_OBSERVER_INDEX_H
 #define SIECS_STORAGE_OBSERVER_INDEX_H
 #include "../datastructure/vec.h"
-#include "query_index.h"
 #include "../table.h"
+#include "query_index.h"
 #include "siecs.h"
 #include <stdint.h>
 
@@ -11,6 +11,7 @@ typedef struct {
     ecs_query_t query;
     ecs_observer_callback_t callback;
     uintptr_t user_data;
+    bool enabled;
 } ecs_observer_t;
 
 typedef struct {
