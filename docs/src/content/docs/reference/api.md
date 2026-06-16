@@ -217,7 +217,7 @@ ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *des
 void ecs_progress(ecs_world_t *world);
 void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase);
 void ecs_run_system(ecs_world_t *world, ecs_system_id_t system);
-void ecs_enable_system(ecs_world_t *world, ecs_system_id_t system, bool enabled);
+void ecs_system_enable(ecs_world_t *world, ecs_system_id_t system, bool enabled);
 ```
 
 `after` declares systems that must run first in the same phase. System id `0` is

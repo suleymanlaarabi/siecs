@@ -462,7 +462,8 @@ void ecs_run_system(ecs_world_t *world, ecs_system_id_t system);
 
 /* Enable or disable a system. Disabled systems stay registered but do not run.
  */
-void ecs_enable_system(ecs_world_t *world, ecs_system_id_t system, bool enabled);
+void ecs_system_enable(ecs_world_t *world, ecs_system_id_t system);
+void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system);
 
 #ifdef __cplusplus
 }

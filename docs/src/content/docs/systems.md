@@ -116,8 +116,8 @@ ecs_system_id_t Damage = ecs_system(world, {
     .disabled = true,
 });
 
-ecs_enable_system(world, Damage, true);
-ecs_enable_system(world, Damage, false);
+ecs_system_enable(world, Damage, true);
+ecs_system_enable(world, Damage, false);
 ```
 
 Disabled systems are skipped by `ecs_progress()`, `ecs_run_phase()`, and

@@ -194,11 +194,11 @@ void system_enable(void) {
     ecs_progress(world);
     test_assert(system_calls == 0);
 
-    ecs_enable_system(world, system, true);
+    ecs_system_enable(world, system);
     ecs_progress(world);
     test_assert(system_calls == 1);
 
-    ecs_enable_system(world, system, false);
+    ecs_system_disable(world, system);
     ecs_progress(world);
     test_assert(system_calls == 1);
 

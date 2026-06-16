@@ -80,14 +80,26 @@ bool ecs_progress(ecs_world_t *world) {
     return !world->exit;
 }
 
-void ecs_enable_system(ecs_world_t *world, ecs_system_id_t system, bool enabled) {
+void ecs_system_enable(ecs_world_t *world, ecs_system_id_t system) {
     ecs_assert_not_null(world);
 
     ecs_system_t *sys = ecs_system_index_get(&world->system_index, system);
-    if (sys->enabled == enabled) {
+    if (sys->enabled == true) {
         return;
     }
 
-    sys->enabled = enabled;
+    sys->enabled = true;
+    world->system_index.plan_dirty = true;
+}
+
+void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system) {
+    ecs_assert_not_null(world);
+
+    ecs_system_t *sys = ecs_system_index_get(&world->system_index, system);
+    if (sys->enabled == false) {
+        return;
+    }
+
+    sys->enabled = false;
     world->system_index.plan_dirty = true;
 }
