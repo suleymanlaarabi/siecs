@@ -45,6 +45,40 @@ static ecs_query_term_t *ecs_query_copy_terms(const ecs_query_term_t *terms, uin
     return copy;
 }
 
+static bool
+ecs_query_has_term(const ecs_query_term_t *terms, uint16_t term_count, ecs_component_t id) {
+    for (uint16_t i = 0; i < term_count; i++) {
+        if (terms[i].id == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static ecs_query_term_t *
+ecs_query_copy_terms_with_implicit_disabled(const ecs_query_term_t *terms, uint16_t *count) {
+    const ecs_component_t disabled = ecs_id(Disabled);
+
+    if (!disabled || ecs_query_has_term(terms, *count, disabled)) {
+        return ecs_query_copy_terms(terms, *count);
+    }
+
+    const uint16_t query_term_capacity = 16;
+    ecs_assert(
+        *count + 1 < query_term_capacity,
+        "query has no room for implicit Disabled term\n"
+    );
+
+    ecs_query_term_t *copy = malloc(sizeof(ecs_query_term_t) * (*count + 1));
+    if (*count != 0) {
+        memcpy(copy, terms, sizeof(ecs_query_term_t) * *count);
+    }
+    copy[*count] = (ecs_query_term_t){ .id = disabled, .access = EcsNot };
+    *count += 1;
+
+    return copy;
+}
+
 static bool ecs_query_term_is_field(ecs_query_term_t term) {
     return term.access == EcsIn || term.access == EcsOut || term.access == EcsInOut;
 }
@@ -79,9 +113,11 @@ static void ecs_query_validate_terms(const ecs_query_term_t *terms, uint16_t ter
 
 void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
     query->term_count = ecs_query_count_terms(desc->terms);
-    ecs_query_validate_terms(desc->terms, query->term_count);
+    ecs_assert(query->term_count != 0, "query must contain at least one term\n");
 
-    query->terms = ecs_query_copy_terms(desc->terms, query->term_count);
+    query->terms = ecs_query_copy_terms_with_implicit_disabled(desc->terms, &query->term_count);
+    ecs_query_validate_terms(query->terms, query->term_count);
+
     query->field_count = 0;
     for (uint16_t i = 0; i < query->term_count; i++) {
         if (ecs_query_term_is_field(query->terms[i])) {

@@ -23,6 +23,8 @@ void childof_kill_parent(void);
 void query_terms_field_order(void);
 void query_out_term_matches_and_returns_field(void);
 void query_not_excludes_tables(void);
+void query_excludes_disabled_by_default(void);
+void query_can_include_disabled_explicitly(void);
 
 // Testsuite 'system'
 void system_run(void);
@@ -30,9 +32,13 @@ void system_phase_order(void);
 void system_start_phases_run_once(void);
 void system_after_order(void);
 void system_enable(void);
+void system_skips_disabled_by_default(void);
+void system_can_run_on_disabled_when_requested(void);
 
 // Testsuite 'observer'
 void observer_enable(void);
+void observer_skips_disabled_by_default(void);
+void observer_can_match_disabled_when_requested(void);
 
 // Testsuite 'module'
 void module_import_registers_runtime(void);
@@ -96,6 +102,14 @@ bake_test_case query_testcases[] = {
     {
         "not_excludes_tables",
         query_not_excludes_tables
+    },
+    {
+        "excludes_disabled_by_default",
+        query_excludes_disabled_by_default
+    },
+    {
+        "can_include_disabled_explicitly",
+        query_can_include_disabled_explicitly
     }
 };
 
@@ -119,6 +133,14 @@ bake_test_case system_testcases[] = {
     {
         "enable",
         system_enable
+    },
+    {
+        "skips_disabled_by_default",
+        system_skips_disabled_by_default
+    },
+    {
+        "can_run_on_disabled_when_requested",
+        system_can_run_on_disabled_when_requested
     }
 };
 
@@ -126,6 +148,14 @@ bake_test_case observer_testcases[] = {
     {
         "enable",
         observer_enable
+    },
+    {
+        "skips_disabled_by_default",
+        observer_skips_disabled_by_default
+    },
+    {
+        "can_match_disabled_when_requested",
+        observer_can_match_disabled_when_requested
     }
 };
 
@@ -225,21 +255,21 @@ static bake_test_suite suites[] = {
         "query",
         NULL,
         NULL,
-        3,
+        5,
         query_testcases
     },
     {
         "system",
         NULL,
         NULL,
-        5,
+        7,
         system_testcases
     },
     {
         "observer",
         NULL,
         NULL,
-        1,
+        3,
         observer_testcases
     },
     {

@@ -50,3 +50,49 @@ void observer_enable(void) {
 
     ecs_fini(world);
 }
+
+void observer_skips_disabled_by_default(void) {
+    reset_observer_state();
+
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, ObserverValue);
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_set(world, entity, ObserverValue, { 1 });
+    ecs_add(world, entity, Disabled);
+
+    ecs_observer(world, {
+        .on = OnSet,
+        .query = { .terms = { ecs_in(ObserverValue) } },
+        .callback = on_observer_value_set,
+    });
+
+    ecs_set(world, entity, ObserverValue, { 2 });
+    test_int(0, observer_calls);
+    test_int(0, observer_last_value);
+
+    ecs_fini(world);
+}
+
+void observer_can_match_disabled_when_requested(void) {
+    reset_observer_state();
+
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, ObserverValue);
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_set(world, entity, ObserverValue, { 1 });
+    ecs_add(world, entity, Disabled);
+
+    ecs_observer(world, {
+        .on = OnSet,
+        .query = { .terms = { ecs_in(ObserverValue), ecs_filter(Disabled) } },
+        .callback = on_observer_value_set,
+    });
+
+    ecs_set(world, entity, ObserverValue, { 2 });
+    test_int(1, observer_calls);
+    test_int(2, observer_last_value);
+
+    ecs_fini(world);
+}

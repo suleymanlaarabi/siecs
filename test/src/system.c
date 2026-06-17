@@ -278,3 +278,63 @@ void system_enable(void) {
 
     ecs_fini(world);
 }
+
+void system_skips_disabled_by_default(void) {
+    reset_system_test_state();
+
+    ecs_world_t *world = ecs_init();
+    test_not_null(world);
+
+    ECS_COMPONENT_REGISTER(world, SystemPosition);
+    ecs_entity_t enabled = create_system_entity(world, 0);
+    ecs_entity_t disabled = create_system_entity(world, 0);
+    ecs_add(world, disabled, Disabled);
+
+    ecs_system(
+        world,
+        {
+            .name = "SkipDisabled",
+            .phase = EcsOnUpdate,
+            .query = { .terms = { ecs_inout(SystemPosition) } },
+            .callback = count_system,
+        }
+    );
+
+    ecs_progress(world);
+
+    test_int(1, system_seen);
+    test_int(1, ecs_get(world, enabled, SystemPosition)->value);
+    test_int(0, ecs_get(world, disabled, SystemPosition)->value);
+
+    ecs_fini(world);
+}
+
+void system_can_run_on_disabled_when_requested(void) {
+    reset_system_test_state();
+
+    ecs_world_t *world = ecs_init();
+    test_not_null(world);
+
+    ECS_COMPONENT_REGISTER(world, SystemPosition);
+    ecs_entity_t enabled = create_system_entity(world, 0);
+    ecs_entity_t disabled = create_system_entity(world, 0);
+    ecs_add(world, disabled, Disabled);
+
+    ecs_system(
+        world,
+        {
+            .name = "RunDisabled",
+            .phase = EcsOnUpdate,
+            .query = { .terms = { ecs_inout(SystemPosition), ecs_filter(Disabled) } },
+            .callback = count_system,
+        }
+    );
+
+    ecs_progress(world);
+
+    test_int(1, system_seen);
+    test_int(0, ecs_get(world, enabled, SystemPosition)->value);
+    test_int(1, ecs_get(world, disabled, SystemPosition)->value);
+
+    ecs_fini(world);
+}

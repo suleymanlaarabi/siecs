@@ -109,3 +109,46 @@ void query_not_excludes_tables(void) {
     ecs_query_fini(world, query);
     ecs_fini(world);
 }
+
+void query_excludes_disabled_by_default(void) {
+    ecs_world_t *world = query_test_world();
+    ecs_entity_t enabled = query_test_entity(world, 1, 2, 3);
+    ecs_entity_t disabled = query_test_entity(world, 10, 20, 30);
+    ecs_add(world, disabled, Disabled);
+
+    ecs_query_id_t query = ecs_query(world, { .terms = { ecs_in(QueryPosition) } });
+
+    ecs_iter_t it = ecs_query_iter(world, query);
+    test_true(ecs_iter_next(&it));
+
+    QueryPosition *position = ecs_field(&it, 0);
+    test_int(1, it.count);
+    test_int(ecs_get(world, enabled, QueryPosition)->value, position[0].value);
+    test_false(ecs_iter_next(&it));
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
+void query_can_include_disabled_explicitly(void) {
+    ecs_world_t *world = query_test_world();
+    ecs_entity_t enabled = query_test_entity(world, 1, 2, 3);
+    ecs_entity_t disabled = query_test_entity(world, 10, 20, 30);
+    ecs_add(world, disabled, Disabled);
+
+    ecs_query_id_t query =
+        ecs_query(world, { .terms = { ecs_in(QueryPosition), ecs_filter(Disabled) } });
+
+    ecs_iter_t it = ecs_query_iter(world, query);
+    test_true(ecs_iter_next(&it));
+
+    QueryPosition *position = ecs_field(&it, 0);
+    test_int(1, it.count);
+    test_int(ecs_get(world, disabled, QueryPosition)->value, position[0].value);
+    test_int(1, ecs_has(world, disabled, Disabled));
+    test_int(0, ecs_has(world, enabled, Disabled));
+    test_false(ecs_iter_next(&it));
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}

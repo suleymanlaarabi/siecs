@@ -331,6 +331,9 @@ ECS_COMPONENT_DECLARE(IsA, { ecs_entity_t target; });
 /* Builtin component for entity names. */
 ECS_COMPONENT_DECLARE(Name, { char *value; });
 
+/* Builtin component excluded from queries by default. */
+ECS_COMPONENT_DECLARE(Disabled, { uint8_t value; });
+
 /*
  * Register a component from an inline descriptor.
  *

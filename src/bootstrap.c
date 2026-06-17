@@ -7,6 +7,7 @@
 ECS_RELATION_DEFINE(ChildOf);
 ECS_COMPONENT_DEFINE(IsA);
 ECS_COMPONENT_DEFINE(Name);
+ECS_COMPONENT_DEFINE(Disabled);
 
 void ecs_bootstrap(ecs_world_t *world) {
     // Reserve identifiers used to represent false return values.
@@ -30,6 +31,7 @@ void ecs_bootstrap(ecs_world_t *world) {
     ECS_COMPONENT_REGISTER(world, ChildOf);
     ECS_COMPONENT_REGISTER(world, IsA);
     ECS_COMPONENT_REGISTER(world, Name);
+    ECS_COMPONENT_REGISTER(world, Disabled);
 
     init_rest(world);
 }
