@@ -11,6 +11,24 @@
 - C modules for grouping components, systems, and observers behind one import.
 - Integrated reflection framework with JSON serialization and deserialization.
 
+## Why C?
+
+C is an extremely simple, predictable language that compiles quickly. It also provides a stable and widely supported ABI, making SIECS easy to use from many other languages.
+
+* Simple and widely supported ABI.
+* Fast compilation times.
+* Few hidden abstractions.
+* Easy to integrate into existing projects.
+* C is a stupidly simple language. Less time is spent thinking about complex abstractions, and more time is spent designing the ECS itself.
+
+SIECS is designed to remain extensible at runtime. Important parts of the system remain represented during execution rather than existing only for the compiler.
+
+* Runtime extensibility comes first.
+* Less logic locked away inside the compiler.
+* Less reliance on language-specific features.
+* More control over what actually exists at runtime.
+* Components and behaviors can be added, discovered and manipulated dynamically.
+
 # C++
 ```cpp
 #include <siecs_cpp/siecs_cpp.hpp>
