@@ -23,30 +23,16 @@ static void resource_reset_hooks(void) {
     resource_on_remove_last = 0;
 }
 
-static void resource_hook_on_set(
-    ecs_world_t *world,
-    ecs_entity_t entity,
-    ecs_component_t component,
-    const void *ptr
-) {
+static void resource_hook_on_set(ecs_world_t *world, const void *ptr) {
     (void)world;
-    (void)entity;
-    (void)component;
 
     const ResourceHooked *value = ptr;
     resource_on_set_calls++;
     resource_on_set_last = value->value;
 }
 
-static void resource_hook_on_remove(
-    ecs_world_t *world,
-    ecs_entity_t entity,
-    ecs_component_t component,
-    const void *ptr
-) {
+static void resource_hook_on_remove(ecs_world_t *world, const void *ptr) {
     (void)world;
-    (void)entity;
-    (void)component;
 
     const ResourceHooked *value = ptr;
     resource_on_remove_calls++;
@@ -176,4 +162,20 @@ void resource_hooks(void) {
     test_int(24, resource_on_remove_last);
 
     ecs_fini(world);
+}
+
+void resource_does_not_consume_component_ids(void) {
+    ecs_component_t component_without_resource;
+    ecs_component_t component_after_resource;
+
+    ecs_world_t *world = ecs_init();
+    component_without_resource = ecs_component(world, { .name = "ResourceComponentIdProbe", .size = 0 });
+    ecs_fini(world);
+
+    world = ecs_init();
+    ECS_RESOURCE_REGISTER(world, ResourceTime);
+    component_after_resource = ecs_component(world, { .name = "ResourceComponentIdProbe", .size = 0 });
+    ecs_fini(world);
+
+    test_uint(component_without_resource, component_after_resource);
 }

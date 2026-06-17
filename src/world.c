@@ -348,7 +348,7 @@ void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t req
 }
 
 void ecs_fini(ecs_world_t *world) {
-    ecs_resource_index_fini(&world->resource_index, world, &world->component_index);
+    ecs_resource_index_fini(&world->resource_index, world);
     ecs_entity_index_fini(&world->entity_index);
     ecs_component_index_fini(&world->component_index);
     ecs_table_index_fini(&world->table_index);

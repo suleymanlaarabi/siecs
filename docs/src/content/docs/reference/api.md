@@ -122,7 +122,8 @@ Requirement cycles are invalid and are asserted in debug builds when declared.
 
 ## Resources
 
-Resources are component-typed values stored once per world.
+Resources are typed values stored once per world. They use `ecs_resource_t`
+ids, separate from component ids.
 
 ```c
 ECS_RESOURCE_DECLARE(Time, { float dt; });
@@ -145,17 +146,18 @@ ecs_remove_resource(world, Time);
 Id-based functions:
 
 ```c
-void ecs_set_resource_cid(ecs_world_t *world, ecs_component_t id, const void *data);
-void *ecs_resource_cid(ecs_world_t *world, ecs_component_t id);
-void *ecs_try_resource_cid(ecs_world_t *world, ecs_component_t id);
-bool ecs_has_resource_cid(const ecs_world_t *world, ecs_component_t id);
-void ecs_remove_resource_cid(ecs_world_t *world, ecs_component_t id);
+ecs_resource_t ecs_resource_init(ecs_world_t *world, const ecs_resource_desc_t *desc);
+void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);
+void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id);
+void *ecs_try_resource_rid(ecs_world_t *world, ecs_resource_t id);
+bool ecs_has_resource_rid(const ecs_world_t *world, ecs_resource_t id);
+void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id);
 ```
 
-`ecs_resource_cid()` asserts if the resource is absent. Use
-`ecs_try_resource_cid()` when absence is valid. Component `on_set` hooks run
-when a resource is set, and `on_remove` hooks run when a resource is removed or
-when the world is destroyed.
+`ecs_resource_rid()` asserts if the resource is absent. Use
+`ecs_try_resource_rid()` when absence is valid. Resource `on_set` hooks run when
+a resource is set, and `on_remove` hooks run when a resource is removed or when
+the world is destroyed.
 
 ## Queries
 

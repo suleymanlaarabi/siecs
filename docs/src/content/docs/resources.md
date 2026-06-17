@@ -3,14 +3,14 @@ title: Resources
 description: Storing and reading unique world-level values from C.
 ---
 
-Resources are component-typed values stored once per world. Use them for state
-that is unique to the world, not attached to each entity: frame time, input
-state, renderer handles, asset registries, shared config, or global simulation
+Resources are typed values stored once per world. Use them for state that is
+unique to the world, not attached to each entity: frame time, input state,
+renderer handles, asset registries, shared config, or global simulation
 settings.
 
-Resources reuse the same ids as components, but they are stored in a separate
-world index. They are not added to an entity, they are not query terms, and they
-do not consume an `ecs_field()` slot.
+Resources have their own `ecs_resource_t` ids. They do not consume component
+ids, they are not added to an entity, they are not query terms, and they do not
+consume an `ecs_field()` slot.
 
 ## Declare A Resource
 
@@ -35,8 +35,8 @@ Register it once per world before using it:
 ECS_RESOURCE_REGISTER(world, Time);
 ```
 
-The resource macros intentionally mirror component macros. A resource has a
-normal `ecs_component_t` id, so generic code can also use the `_cid` functions.
+The resource macros intentionally mirror component macros, but resources are
+registered in a dedicated resource registry.
 
 ## Set And Read
 
@@ -132,58 +132,49 @@ The resource is not part of the query. The system above matches entities with
 Typed helpers are wrappers around the id-based API:
 
 ```c
-void ecs_set_resource_cid(ecs_world_t *world, ecs_component_t id, const void *data);
-void *ecs_resource_cid(ecs_world_t *world, ecs_component_t id);
-void *ecs_try_resource_cid(ecs_world_t *world, ecs_component_t id);
-bool ecs_has_resource_cid(const ecs_world_t *world, ecs_component_t id);
-void ecs_remove_resource_cid(ecs_world_t *world, ecs_component_t id);
+void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);
+void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id);
+void *ecs_try_resource_rid(ecs_world_t *world, ecs_resource_t id);
+bool ecs_has_resource_rid(const ecs_world_t *world, ecs_resource_t id);
+void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id);
 ```
 
 This is useful for generic module code:
 
 ```c
-ecs_component_t time_id = ecs_id(Time);
+ecs_resource_t time_id = ecs_id(Time);
 
-if (ecs_has_resource_cid(world, time_id)) {
-    const Time *time = ecs_resource_cid(world, time_id);
+if (ecs_has_resource_rid(world, time_id)) {
+    const Time *time = ecs_resource_rid(world, time_id);
     /* use time */
 }
 ```
 
 ## Hooks
 
-Resources reuse component descriptors, so component hooks also apply to
-resources:
+Resources have dedicated resource hooks:
 
 - `on_set` runs when `ecs_set_resource()` writes a value.
 - `on_remove` runs when `ecs_remove_resource()` removes the value.
 - `on_remove` also runs during `ecs_fini()` for resources still present in the
   world.
 
-Hooks receive entity id `0`, because resources are world-level values and are
-not stored on public entities.
+Hooks receive only the world and the resource value pointer.
 
 ```c
-static void on_time_set(
-    ecs_world_t *world,
-    ecs_entity_t entity,
-    ecs_component_t id,
-    void *data
-) {
+static void on_time_set(ecs_world_t *world, const void *data) {
     (void)world;
-    (void)entity; /* Always 0 for resources. */
-    (void)id;
 
-    Time *time = data;
+    const Time *time = data;
     if (time->dt < 0.0f) {
-        time->dt = 0.0f;
+        /* reject or record invalid data */
     }
 }
 ```
 
 ## Performance Notes
 
-Resource lookup is a direct index by `ecs_component_t`, so access is O(1). The
+Resource lookup is a direct index by `ecs_resource_t`, so access is O(1). The
 value is stored once in the world and is independent from table iteration.
 
 For hot C systems, resolve the resource once before the loop over `it->count`,

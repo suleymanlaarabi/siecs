@@ -109,7 +109,6 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             reflection
         );
 
-
         ecs_str_t source_name = {0};
 
         if (desc->name) {

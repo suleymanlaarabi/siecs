@@ -37,6 +37,7 @@ typedef uint16_t ecs_query_id_t;
 typedef uint16_t ecs_system_id_t;
 typedef uint16_t ecs_event_t;
 typedef uint16_t ecs_module_id_t;
+typedef uint16_t ecs_resource_t;
 typedef uint32_t ecs_observer_id_t;
 
 /*
@@ -133,6 +134,15 @@ typedef struct {
     bool is_relation;
     const sireflect_struct_desc_t *struct_desc;
 } ecs_component_desc_t;
+
+typedef void (*ecs_resource_hook_t)(ecs_world_t *world, const void *ptr);
+
+typedef struct {
+    const char *name;
+    uint64_t size;
+    ecs_resource_hook_t on_set;
+    ecs_resource_hook_t on_remove;
+} ecs_resource_desc_t;
 
 /* Query term access mode. */
 typedef enum {
@@ -445,37 +455,53 @@ void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t c
 void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
 
 /*
- * Declare and define a resource type. Resources reuse component ids and
- * lifecycle hooks, but are stored once per world instead of on entities.
+ * Declare and define a resource type.
+ *
+ * Resources use their own id space and are stored once per world. They are not
+ * components, do not appear in queries, and do not consume component ids.
  */
-#define ECS_RESOURCE_DECLARE(rname, ...) ECS_COMPONENT_DECLARE(rname, __VA_ARGS__)
-#define ECS_RESOURCE_DEFINE(rname, ...) ECS_COMPONENT_DEFINE(rname, __VA_ARGS__)
-#define ECS_RESOURCE_REGISTER(world, rname) ECS_COMPONENT_REGISTER(world, rname)
+#define ECS_RESOURCE_DECLARE(rname, ...)                                                           \
+    typedef struct rname rname;                                                                    \
+    struct rname __VA_ARGS__;                                                                      \
+    extern ecs_resource_t ecs_id(rname);                                                           \
+    extern ecs_resource_desc_t ecs_id(rname##_desc)
+
+#define ECS_RESOURCE_DEFINE(rname, ...)                                                            \
+    ecs_resource_desc_t ecs_id(rname##_desc) = {                                                    \
+        .name = #rname,                                                                            \
+        .size = sizeof(rname),                                                                     \
+        __VA_ARGS__                                                                                \
+    };                                                                                             \
+    ecs_resource_t ecs_id(rname) = 0
+
+#define ECS_RESOURCE_REGISTER(world, rname)                                                        \
+    ecs_id(rname) = ecs_resource_init(world, &ecs_id(rname##_desc))
 
 /* Set or replace a world resource. */
 #define ecs_set_resource(world, rname, ...)                                                        \
-    ecs_set_resource_cid(world, ecs_id(rname), &(rname)__VA_ARGS__)
+    ecs_set_resource_rid(world, ecs_id(rname), &(rname)__VA_ARGS__)
 
 /* Get a world resource. The resource must exist. */
-#define ecs_resource(world, rname) ((rname *)ecs_resource_cid(world, ecs_id(rname)))
-#define ecs_resource_read(world, rname) ((const rname *)ecs_resource_cid(world, ecs_id(rname)))
+#define ecs_resource(world, rname) ((rname *)ecs_resource_rid(world, ecs_id(rname)))
+#define ecs_resource_read(world, rname) ((const rname *)ecs_resource_rid(world, ecs_id(rname)))
 
 /* Get a world resource, or NULL if it does not exist. */
-#define ecs_try_resource(world, rname) ((rname *)ecs_try_resource_cid(world, ecs_id(rname)))
+#define ecs_try_resource(world, rname) ((rname *)ecs_try_resource_rid(world, ecs_id(rname)))
 #define ecs_try_resource_read(world, rname)                                                        \
-    ((const rname *)ecs_try_resource_cid(world, ecs_id(rname)))
+    ((const rname *)ecs_try_resource_rid(world, ecs_id(rname)))
 
 /* Return whether a world resource exists. */
-#define ecs_has_resource(world, rname) ecs_has_resource_cid(world, ecs_id(rname))
+#define ecs_has_resource(world, rname) ecs_has_resource_rid(world, ecs_id(rname))
 
 /* Remove a world resource if it exists. */
-#define ecs_remove_resource(world, rname) ecs_remove_resource_cid(world, ecs_id(rname))
+#define ecs_remove_resource(world, rname) ecs_remove_resource_rid(world, ecs_id(rname))
 
-void ecs_set_resource_cid(ecs_world_t *world, ecs_component_t id, const void *data);
-void *ecs_resource_cid(ecs_world_t *world, ecs_component_t id);
-void *ecs_try_resource_cid(ecs_world_t *world, ecs_component_t id);
-bool ecs_has_resource_cid(const ecs_world_t *world, ecs_component_t id);
-void ecs_remove_resource_cid(ecs_world_t *world, ecs_component_t id);
+ecs_resource_t ecs_resource_init(ecs_world_t *world, const ecs_resource_desc_t *desc);
+void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);
+void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id);
+void *ecs_try_resource_rid(ecs_world_t *world, ecs_resource_t id);
+bool ecs_has_resource_rid(const ecs_world_t *world, ecs_resource_t id);
+void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id);
 
 /*
  * Declare that adding component also adds require first.

@@ -28,7 +28,8 @@
           "remove",
           "replace",
           "from_system_c",
-          "hooks"
+          "hooks",
+          "does_not_consume_component_ids"
         ]
       },
       {

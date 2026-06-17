@@ -93,27 +93,27 @@ class world {
 
     template <typename T> void set_resource(T &&value) const {
         using type = std::remove_cvref_t<T>;
-        ecs_set_resource_cid(_world, ecs_cpp_component_id<type>(_world), &value);
+        ecs_set_resource_rid(_world, ecs_cpp_resource_id<type>(_world), &value);
     }
 
     template <typename T> [[nodiscard]] T &resource() const {
         using type = std::remove_cv_t<T>;
-        return *static_cast<T *>(ecs_resource_cid(_world, ecs_cpp_component_id<type>(_world)));
+        return *static_cast<T *>(ecs_resource_rid(_world, ecs_cpp_resource_id<type>(_world)));
     }
 
     template <typename T> [[nodiscard]] T *try_resource() const {
         using type = std::remove_cv_t<T>;
-        return static_cast<T *>(ecs_try_resource_cid(_world, ecs_cpp_component_id<type>(_world)));
+        return static_cast<T *>(ecs_try_resource_rid(_world, ecs_cpp_resource_id<type>(_world)));
     }
 
     template <typename T> [[nodiscard]] bool has_resource() const {
         using type = std::remove_cv_t<T>;
-        return ecs_has_resource_cid(_world, ecs_cpp_component_id<type>(_world));
+        return ecs_has_resource_rid(_world, ecs_cpp_resource_id<type>(_world));
     }
 
     template <typename T> void remove_resource() const {
         using type = std::remove_cv_t<T>;
-        ecs_remove_resource_cid(_world, ecs_cpp_component_id<type>(_world));
+        ecs_remove_resource_rid(_world, ecs_cpp_resource_id<type>(_world));
     }
 
     template <typename T>
