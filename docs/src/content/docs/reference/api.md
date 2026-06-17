@@ -236,6 +236,9 @@ ecs_source(Name);
 
 ```c
 typedef enum {
+    EcsPreStart,
+    EcsStart,
+    EcsPostStart,
     EcsOnLoad,
     EcsPostLoad,
     EcsPreUpdate,
@@ -248,9 +251,11 @@ typedef enum {
 } ecs_phase_t;
 ```
 
-`ecs_progress()` runs enabled systems in phase order. `OnPreUpdate`,
-`OnUpdate`, `OnPostUpdate`, and `OnRender` are compatibility aliases for the
-matching `Ecs*` names.
+`ecs_progress()` runs enabled systems in phase order. `EcsPreStart`,
+`EcsStart`, and `EcsPostStart` are run only by the first `ecs_progress()` call
+for a world. Manual `ecs_run_phase()` calls still run any valid phase normally.
+`OnPreUpdate`, `OnUpdate`, `OnPostUpdate`, and `OnRender` are compatibility
+aliases for the matching `Ecs*` names.
 
 ```c
 typedef struct {

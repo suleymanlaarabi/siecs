@@ -29,6 +29,9 @@ ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_module_index_init(&world->module_index);
     world->active_module = 0;
     world->features = *features;
+    world->did_start = false;
+    world->exit = false;
+    world->server = NULL;
 
     world->sireflect_registry = sireflect_registry_init();
 

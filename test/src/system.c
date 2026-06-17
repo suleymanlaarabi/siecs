@@ -31,14 +31,29 @@ static void order_pre_update(ecs_iter_t *it) {
     system_order[system_order_count++] = 1;
 }
 
-static void order_update(ecs_iter_t *it) {
+static void order_pre_start(ecs_iter_t *it) {
+    (void)it;
+    system_order[system_order_count++] = 1;
+}
+
+static void order_start(ecs_iter_t *it) {
     (void)it;
     system_order[system_order_count++] = 2;
 }
 
-static void order_render(ecs_iter_t *it) {
+static void order_post_start(ecs_iter_t *it) {
     (void)it;
     system_order[system_order_count++] = 3;
+}
+
+static void order_update(ecs_iter_t *it) {
+    (void)it;
+    system_order[system_order_count++] = 4;
+}
+
+static void order_render(ecs_iter_t *it) {
+    (void)it;
+    system_order[system_order_count++] = 5;
 }
 
 static void order_first(ecs_iter_t *it) {
@@ -127,8 +142,67 @@ void system_phase_order(void) {
 
     test_assert(system_order_count == 3);
     test_assert(system_order[0] == 1);
+    test_assert(system_order[1] == 4);
+    test_assert(system_order[2] == 5);
+
+    ecs_fini(world);
+}
+
+void system_start_phases_run_once(void) {
+    reset_system_test_state();
+
+    ecs_world_t *world = ecs_init();
+    test_not_null(world);
+
+    ECS_COMPONENT_REGISTER(world, SystemPosition);
+    create_system_entity(world, 0);
+
+    ecs_system(
+        world,
+        {
+            .name = "PreStart",
+            .phase = EcsPreStart,
+            .query = { .terms = { ecs_in(SystemPosition) } },
+            .callback = order_pre_start,
+        }
+    );
+    ecs_system(
+        world,
+        {
+            .name = "Start",
+            .phase = EcsStart,
+            .query = { .terms = { ecs_in(SystemPosition) } },
+            .callback = order_start,
+        }
+    );
+    ecs_system(
+        world,
+        {
+            .name = "PostStart",
+            .phase = EcsPostStart,
+            .query = { .terms = { ecs_in(SystemPosition) } },
+            .callback = order_post_start,
+        }
+    );
+    ecs_system(
+        world,
+        {
+            .name = "Update",
+            .phase = EcsOnUpdate,
+            .query = { .terms = { ecs_in(SystemPosition) } },
+            .callback = order_update,
+        }
+    );
+
+    ecs_progress(world);
+    ecs_progress(world);
+
+    test_assert(system_order_count == 5);
+    test_assert(system_order[0] == 1);
     test_assert(system_order[1] == 2);
     test_assert(system_order[2] == 3);
+    test_assert(system_order[3] == 4);
+    test_assert(system_order[4] == 4);
 
     ecs_fini(world);
 }

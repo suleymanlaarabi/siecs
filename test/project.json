@@ -34,7 +34,7 @@
       },
       {
         "id": "system",
-        "testcases": ["run", "phase_order", "after_order", "enable"]
+        "testcases": ["run", "phase_order", "start_phases_run_once", "after_order", "enable"]
       },
       {
         "id": "observer",

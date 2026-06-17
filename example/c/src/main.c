@@ -24,10 +24,8 @@ ECS_MODULE_DECLARE(physics, {});
 
 ECS_MODULE_DEFINE(physics);
 
-int main(void) {
-    ecs_world_t *world = ecs_init();
-
-    ECS_MODULE_IMPORT(world, physics, {});
+void physics_import(ecs_world_t *world, const physics_props_t *props) {
+    (void)props;
 
     ECS_COMPONENT_REGISTER(world, Position);
     ECS_COMPONENT_REGISTER(world, Velocity);
@@ -37,6 +35,12 @@ int main(void) {
         .callback = Move,
         .phase = EcsOnUpdate,
     });
+}
+
+int main(void) {
+    ecs_world_t *world = ecs_init();
+
+    ECS_MODULE_IMPORT(world, physics, {});
 
     ecs_entity_t entity = ecs_new(world);
     ecs_set(world, entity, Position, {0, 0});

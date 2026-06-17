@@ -523,6 +523,9 @@ static inline void *ecs_field(ecs_iter_t *it, uint16_t field_index) {
 
 /* System phases run in enum order when ecs_progress is called. */
 typedef enum {
+    EcsPreStart,
+    EcsStart,
+    EcsPostStart,
     EcsOnLoad,
     EcsPostLoad,
     EcsPreUpdate,

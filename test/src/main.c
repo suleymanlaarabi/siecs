@@ -27,6 +27,7 @@ void query_not_excludes_tables(void);
 // Testsuite 'system'
 void system_run(void);
 void system_phase_order(void);
+void system_start_phases_run_once(void);
 void system_after_order(void);
 void system_enable(void);
 
@@ -106,6 +107,10 @@ bake_test_case system_testcases[] = {
     {
         "phase_order",
         system_phase_order
+    },
+    {
+        "start_phases_run_once",
+        system_start_phases_run_once
     },
     {
         "after_order",
@@ -227,7 +232,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        4,
+        5,
         system_testcases
     },
     {

@@ -52,6 +52,9 @@ ecs_progress(world);
 
 | Phase | Typical use |
 | --- | --- |
+| `EcsPreStart` | Setup work before start systems. Runs only on the first `ecs_progress()`. |
+| `EcsStart` | One-time startup logic. Runs only on the first `ecs_progress()`. |
+| `EcsPostStart` | Work that must run after start systems. Runs only on the first `ecs_progress()`. |
 | `EcsOnLoad` | One-frame load or bootstrap work. |
 | `EcsPostLoad` | Work that must run after load systems. |
 | `EcsPreUpdate` | Prepare state before simulation. |
@@ -67,6 +70,9 @@ You can also run one phase or one system manually:
 ecs_run_phase(world, EcsOnUpdate);
 ecs_run_system(world, Move);
 ```
+
+The one-time start rule applies only to `ecs_progress()`. Calling
+`ecs_run_phase(world, EcsStart)` manually runs that phase normally.
 
 `ecs_run_system()` ignores phase order and runs only the selected enabled
 system. This is useful for tests or explicit one-off work.

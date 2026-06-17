@@ -72,7 +72,14 @@ static inline void sleep_ms(long ms) {
 bool ecs_progress(ecs_world_t *world) {
     ecs_assert_not_null(world);
 
-    for (ecs_phase_t phase = 0; phase < EcsPhaseCount; phase++) {
+    if (!world->did_start) {
+        ecs_run_phase(world, EcsPreStart);
+        ecs_run_phase(world, EcsStart);
+        ecs_run_phase(world, EcsPostStart);
+        world->did_start = true;
+    }
+
+    for (ecs_phase_t phase = EcsOnLoad; phase < EcsPhaseCount; phase++) {
         ecs_run_phase(world, phase);
     }
     if (world->features.rest) {
