@@ -1,5 +1,6 @@
 #include "datastructure/string.h"
 #include "datastructure/vec.h"
+#include "module.h"
 #include "sireflect.h"
 #include "storage/component_index.h"
 #include "utils.h"
@@ -116,7 +117,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             ecs_str_cstr_append(&source_name, desc->name);
         }
 
-        ecs_component_index_create(
+        ecs_component_t source = ecs_component_index_create(
             &world->component_index,
             source_name.data,
             sizeof(RelationSource),
@@ -125,9 +126,11 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             desc->on_add,
             SIREFLECT_INVALID_HANDLE
         );
+        ecs_module_record_component(world, component);
+        ecs_module_record_component(world, source);
         return component;
     } else {
-        return ecs_component_index_create(
+        ecs_component_t component = ecs_component_index_create(
             &world->component_index,
             desc->name ? strdup(desc->name) : NULL,
             desc->size,
@@ -136,5 +139,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             desc->on_add,
             reflection
         );
+        ecs_module_record_component(world, component);
+        return component;
     }
 }

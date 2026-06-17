@@ -36,7 +36,19 @@ typedef uint16_t ecs_component_t;
 typedef uint16_t ecs_query_id_t;
 typedef uint16_t ecs_system_id_t;
 typedef uint16_t ecs_event_t;
+typedef uint16_t ecs_module_id_t;
 typedef uint32_t ecs_observer_id_t;
+
+typedef void (*ecs_module_import_t)(ecs_world_t *world, const void *desc);
+
+typedef struct {
+    const char *name;
+    const void *key;
+    ecs_module_import_t import;
+    const void *desc;
+    uint32_t desc_size;
+    bool disabled;
+} ecs_module_desc_t;
 
 /*
  * Event payload passed to observer callbacks.
@@ -193,6 +205,39 @@ void ecs_fini(ecs_world_t *world);
 #define ECS_COMPONENT(cname, ...)                                                                  \
     ECS_COMPONENT_DECLARE(cname, __VA_ARGS__);                                                     \
     ECS_COMPONENT_DEFINE(cname);
+
+#define ECS_MODULE_DECLARE(module_name, ...)                                                       \
+    typedef struct module_name##_desc_t __VA_ARGS__ module_name##_desc_t;                          \
+    extern ecs_module_id_t ecs_id(module_name);                                                    \
+    extern const char ecs_id(module_name##_module_key);                                            \
+    void ecs_id(module_name##_import_wrapper)(ecs_world_t *world, const void *desc);                \
+    void module_name##_import(ecs_world_t *world, const module_name##_desc_t *desc)
+
+#define ECS_MODULE_DEFINE(module_name)                                                             \
+    ecs_module_id_t ecs_id(module_name) = 0;                                                       \
+    const char ecs_id(module_name##_module_key) = 0;                                                \
+    void ecs_id(module_name##_import_wrapper)(ecs_world_t *world, const void *desc) {               \
+        module_name##_import(world, (const module_name##_desc_t *)desc);                           \
+    }
+
+#define ECS_MODULE_IMPORT(world, module_name, ...)                                                 \
+    (ecs_id(module_name) = ecs_module_init(                                                        \
+         world,                                                                                    \
+         &(ecs_module_desc_t){                                                                     \
+             .name = #module_name,                                                                 \
+             .key = &ecs_id(module_name##_module_key),                                             \
+             .import = ecs_id(module_name##_import_wrapper),                                       \
+             .desc = &(module_name##_desc_t)__VA_ARGS__,                                           \
+             .desc_size = sizeof(module_name##_desc_t),                                            \
+         }                                                                                         \
+     ))
+
+#define ecs_module(world, ...) ecs_module_init(world, &(ecs_module_desc_t)__VA_ARGS__)
+
+ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *desc);
+void ecs_module_enable(ecs_world_t *world, ecs_module_id_t module);
+void ecs_module_disable(ecs_world_t *world, ecs_module_id_t module);
+bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t module);
 
 /*
  * Define a relation component.

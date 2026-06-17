@@ -33,6 +33,13 @@ void system_enable(void);
 // Testsuite 'observer'
 void observer_enable(void);
 
+// Testsuite 'module'
+void module_import_registers_runtime(void);
+void module_enable(void);
+void module_disabled_import(void);
+void module_double_import_is_noop(void);
+void module_same_module_two_worlds(void);
+
 // Testsuite 'string'
 void string_init(void);
 void string_append(void);
@@ -114,6 +121,29 @@ bake_test_case observer_testcases[] = {
     {
         "enable",
         observer_enable
+    }
+};
+
+bake_test_case module_testcases[] = {
+    {
+        "import_registers_runtime",
+        module_import_registers_runtime
+    },
+    {
+        "enable",
+        module_enable
+    },
+    {
+        "disabled_import",
+        module_disabled_import
+    },
+    {
+        "double_import_is_noop",
+        module_double_import_is_noop
+    },
+    {
+        "same_module_two_worlds",
+        module_same_module_two_worlds
     }
 };
 
@@ -208,6 +238,13 @@ static bake_test_suite suites[] = {
         observer_testcases
     },
     {
+        "module",
+        NULL,
+        NULL,
+        5,
+        module_testcases
+    },
+    {
         "string",
         NULL,
         NULL,
@@ -224,5 +261,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 8);
+    return bake_test_run("siecs.test", argc, argv, suites, 9);
 }

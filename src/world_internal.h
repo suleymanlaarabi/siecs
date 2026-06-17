@@ -6,6 +6,7 @@
 #include "sireflect.h"
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
+#include "storage/module_index.h"
 #include "storage/observer_index.h"
 #include "storage/query_index.h"
 #include "storage/system_index.h"
@@ -18,6 +19,8 @@ typedef struct ecs_world_s {
     ecs_query_index_t query_index;
     ecs_observer_index_t observer_index;
     ecs_system_index_t system_index;
+    ecs_module_index_t module_index;
+    ecs_module_id_t active_module;
     sireflect_registry_t *sireflect_registry;
     sihttp_server_t *server;
     ecs_world_feat_desc_t features;

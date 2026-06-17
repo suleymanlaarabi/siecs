@@ -1,5 +1,6 @@
 #include "siecs.h"
 #include "sihttp.h"
+#include "module.h"
 #include "storage/system_index.h"
 #include "utils.h"
 #include "world_internal.h"
@@ -22,7 +23,9 @@ ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *des
 
     memcpy(sys.after, desc->after, sizeof(ecs_system_id_t[4]));
 
-    return ecs_system_index_create(&world->system_index, &sys);
+    ecs_system_id_t system = ecs_system_index_create(&world->system_index, &sys);
+    ecs_module_record_system(world, system);
+    return system;
 }
 
 void ecs_run_system(ecs_world_t *world, ecs_system_id_t system) {

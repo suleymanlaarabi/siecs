@@ -41,6 +41,16 @@
         "testcases": ["enable"]
       },
       {
+        "id": "module",
+        "testcases": [
+          "import_registers_runtime",
+          "enable",
+          "disabled_import",
+          "double_import_is_noop",
+          "same_module_two_worlds"
+        ]
+      },
+      {
         "id": "string",
         "testcases": ["init", "append", "trim", "starts_ends_with"]
       },

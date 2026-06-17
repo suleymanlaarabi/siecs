@@ -1,4 +1,5 @@
 #include "datastructure/vec.h"
+#include "module.h"
 #include "storage/observer_index.h"
 #include "utils.h"
 #include "siecs.h"
@@ -16,6 +17,7 @@ ecs_observer_id_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_
         world->table_index.table_count,
         oid
     );
+    ecs_module_record_observer(world, oid);
     return oid;
 }
 
