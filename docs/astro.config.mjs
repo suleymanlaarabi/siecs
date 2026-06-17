@@ -15,6 +15,7 @@ export default defineConfig({
           items: [
             'getting-started',
             'components',
+            'resources',
             'entities',
             'queries',
             'systems',
