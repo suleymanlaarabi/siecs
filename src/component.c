@@ -95,7 +95,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
     sireflect_handle_t reflection = SIREFLECT_INVALID_HANDLE;
 
     if (desc->struct_desc) {
-        reflection = sireflect_register_struct(world->sireflect_registry, desc->struct_desc);
+        reflection = sireflect_try_register_struct(world->sireflect_registry, desc->struct_desc);
     }
 
     if (desc->is_relation) {
