@@ -1,0 +1,153 @@
+---
+title: Modules
+description: Grouping components, systems, and observers behind one import.
+---
+
+Modules are import units. They let a library or feature register its components,
+relations, systems, and observers through one typed entry point.
+
+Entities are not attached to modules. Component data is not removed when a
+module is disabled.
+
+## Declare A Module
+
+Declare a module in a header:
+
+```c
+ECS_MODULE_DECLARE(physics, {
+    float gravity;
+});
+```
+
+This creates a typed descriptor named `physics_desc_t` and declares the import
+function:
+
+```c
+void physics_import(ecs_world_t *world, const physics_desc_t *desc);
+```
+
+## Define And Import
+
+Define the module in exactly one C file:
+
+```c
+ECS_MODULE_DEFINE(physics);
+
+void physics_import(ecs_world_t *world, const physics_desc_t *desc) {
+    ECS_COMPONENT_REGISTER(world, Position);
+    ECS_COMPONENT_REGISTER(world, Velocity);
+
+    ecs_system(world, {
+        .name = "Move",
+        .phase = EcsOnUpdate,
+        .query = {
+            .terms = { ecs_inout(Position), ecs_in(Velocity) },
+        },
+        .callback = move_system,
+    });
+
+    (void)desc;
+}
+```
+
+Import it from application code:
+
+```c
+ecs_module_id_t Physics = ECS_MODULE_IMPORT(world, physics, {
+    .gravity = 9.81f,
+});
+```
+
+The descriptor is passed only to `physics_import()`. Store any runtime settings
+you need in components, globals owned by your module, or user-managed state.
+
+## Empty Modules
+
+Modules with no parameters still use an empty descriptor:
+
+```c
+ECS_MODULE_DECLARE(rendering, {});
+ECS_MODULE_DEFINE(rendering);
+
+void rendering_import(ecs_world_t *world, const rendering_desc_t *desc) {
+    (void)desc;
+    /* Register rendering systems and observers. */
+}
+
+ECS_MODULE_IMPORT(world, rendering, {});
+```
+
+## What Gets Captured
+
+During `ECS_MODULE_IMPORT()`, SIECS records registrations made through the
+normal public API:
+
+```c
+ECS_COMPONENT_REGISTER(world, Position);
+ecs_system(world, { /* ... */ });
+ecs_observer(world, { /* ... */ });
+```
+
+Those ids are appended to the active module. User code does not need a separate
+`module_add_*` call.
+
+Nested imports are supported. If one module imports another, registrations made
+after the nested import continue to belong to the parent module.
+
+## Enable And Disable
+
+Modules are enabled by default. Disabling a module disables only the systems and
+observers recorded by that module:
+
+```c
+ecs_module_disable(world, Physics);
+ecs_module_enable(world, Physics);
+```
+
+Components and relations stay registered. Existing component data stays valid.
+Component hooks still run because hooks belong to components, not to the module
+scheduler.
+
+Import a module disabled with the generic API:
+
+```c
+physics_desc_t settings = { .gravity = 9.81f };
+
+ecs_module_id_t Physics = ecs_module(world, {
+    .name = "physics",
+    .key = &ecs_id(physics_module_key),
+    .import = ecs_id(physics_import_wrapper),
+    .desc = &settings,
+    .desc_size = sizeof(settings),
+    .disabled = true,
+});
+```
+
+## Idempotency
+
+Imports are idempotent per world. Importing the same module twice returns the
+same module id and does not register duplicate systems or observers:
+
+```c
+ecs_module_id_t first = ECS_MODULE_IMPORT(world, physics, { .gravity = 9.81f });
+ecs_module_id_t second = ECS_MODULE_IMPORT(world, physics, { .gravity = 1.0f });
+
+/* first == second */
+```
+
+The first descriptor wins. Later imports with different descriptor values do not
+reconfigure an already imported module.
+
+## Performance Model
+
+Modules do not add checks to query iteration, table matching, or system
+callbacks. Capture happens only during registration.
+
+Enable and disable are linear over the ids stored in the module:
+
+- systems are toggled with `ecs_system_enable()` and `ecs_system_disable()`
+- observers are toggled with `ecs_observer_enable()` and `ecs_observer_disable()`
+- components are retained for ownership/debug information and are not toggled
+
+The runtime handle is `ecs_module_id_t`; no string lookup is needed to enable or
+disable a module.

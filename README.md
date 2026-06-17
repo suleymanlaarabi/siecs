@@ -8,6 +8,7 @@
 - Fast core with zero runtime dependencies.
 - Modern type-safe C++23 API.
 - Built-in support for entity hierarchies and entity relations.
+- C modules for grouping components, systems, and observers behind one import.
 - Integrated reflection framework with JSON serialization and deserialization.
 
 # C++
@@ -79,6 +80,44 @@ int main(void) {
     ecs_set(world, entity, Velocity, {1, 1});
 
     while (ecs_progress(world)) {}
+
+    ecs_fini(world);
+}
+```
+
+# C Modules
+Modules can wrap the component and system setup from the C example:
+
+```c
+ECS_MODULE_DECLARE(physics, {
+    float gravity;
+});
+
+ECS_MODULE_DEFINE(physics);
+
+void physics_import(ecs_world_t *world, const physics_desc_t *desc) {
+    ECS_COMPONENT_REGISTER(world, Position);
+    ECS_COMPONENT_REGISTER(world, Velocity);
+
+    ecs_system(world, {
+        .name = "Move",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_inout(Position), ecs_in(Velocity) } },
+        .callback = Move,
+    });
+
+    (void)desc;
+}
+
+int main(void) {
+    ecs_world_t *world = ecs_init();
+
+    ecs_module_id_t Physics = ECS_MODULE_IMPORT(world, physics, {
+        .gravity = 9.81f,
+    });
+
+    ecs_module_disable(world, Physics);
+    ecs_module_enable(world, Physics);
 
     ecs_fini(world);
 }

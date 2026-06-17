@@ -18,6 +18,7 @@ export default defineConfig({
             'entities',
             'queries',
             'systems',
+            'modules',
             'relations',
             'internals',
           ],
