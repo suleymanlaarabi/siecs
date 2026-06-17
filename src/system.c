@@ -10,13 +10,15 @@
 ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc) {
     ecs_assert_not_null(world);
     ecs_assert_not_null(desc);
-    ecs_assert_not_null(desc->callback);
+    ecs_assert(desc->callback || desc->run, "system requires callback or run function\n");
     ecs_assert(desc->phase < EcsPhaseCount, "invalid system phase: %u\n", desc->phase);
 
     ecs_system_t sys = {
         .name = desc->name,
         .qid = ecs_query_init(world, &desc->query),
         .callback = desc->callback,
+        .run = desc->run,
+        .ctx = desc->ctx,
         .phase = desc->phase,
         .enabled = !desc->disabled,
     };
@@ -36,9 +38,13 @@ void ecs_run_system(ecs_world_t *world, ecs_system_id_t system) {
         return;
     }
 
-    ecs_iter_t it = ecs_query_iter(world, sys->qid);
-    while (ecs_iter_next(&it)) {
-        sys->callback(&it);
+    if (sys->run) {
+        sys->run(world, sys->qid, sys->ctx);
+    } else {
+        ecs_iter_t it = ecs_query_iter(world, sys->qid);
+        while (ecs_iter_next(&it)) {
+            sys->callback(&it);
+        }
     }
 }
 

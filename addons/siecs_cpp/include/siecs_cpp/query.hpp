@@ -2,6 +2,7 @@
 
 #include "siecs.h"
 #include "siecs_cpp/component.hpp"
+#include "siecs_cpp/resource.hpp"
 #include "siecs_cpp/type.hpp"
 #include <cassert>
 #include <cstdint>
@@ -14,30 +15,69 @@ namespace ecs {
 
 namespace detail {
 
+template <typename T> consteval ecs_term_access_t term_access();
+
+template <typename Args, std::size_t I, std::size_t... Is>
+consteval std::size_t field_index_before_impl(std::index_sequence<Is...>) {
+    return ((Is < I && !is_res_v<std::tuple_element_t<Is, Args>> ? 1U : 0U) + ... + 0U);
+}
+
+template <typename Args, std::size_t I> consteval std::size_t field_index_before() {
+    return field_index_before_impl<Args, I>(std::make_index_sequence<std::tuple_size_v<Args>>{});
+}
+
+template <typename Args, std::size_t... Is>
+consteval std::size_t component_arg_count_impl(std::index_sequence<Is...>) {
+    return ((!is_res_v<std::tuple_element_t<Is, Args>> ? 1U : 0U) + ... + 0U);
+}
+
+template <typename Args> consteval std::size_t component_arg_count() {
+    return component_arg_count_impl<Args>(std::make_index_sequence<std::tuple_size_v<Args>>{});
+}
+
+template <typename Args, std::size_t I, typename Resources>
+inline auto make_batch_arg(ecs_iter_t *it, Resources &resources) {
+    using arg = std::tuple_element_t<I, Args>;
+
+    if constexpr (is_res_v<arg>) {
+        return std::get<I>(resources);
+    } else {
+        using value_type = std::remove_reference_t<arg>;
+        return static_cast<value_type *>(
+            ecs_field(it, static_cast<uint16_t>(field_index_before<Args, I>()))
+        );
+    }
+}
+
+template <typename Args, typename Resources, std::size_t... Is>
+inline auto make_fields(ecs_iter_t *it, Resources &resources, std::index_sequence<Is...>) {
+    return std::tuple{ make_batch_arg<Args, Is>(it, resources)... };
+}
+
+template <std::size_t I, typename Tuple>
+inline decltype(auto) row_arg(Tuple &fields, uint32_t row) {
+    auto &field = std::get<I>(fields);
+
+    if constexpr (is_res_v<std::remove_reference_t<decltype(field)>>) {
+        (void)row;
+        return field;
+    } else {
+        return field[row];
+    }
+}
+
 template <typename F, typename Tuple, std::size_t... Is>
-inline void call_fields_impl(F &&func, Tuple &fields, uint32_t count, std::index_sequence<Is...>) {
+inline void call_fields_impl(F &func, Tuple &fields, uint32_t count, std::index_sequence<Is...>) {
     for (uint32_t i = 0; i < count; i++) {
-        std::invoke(std::forward<F>(func), (std::get<Is>(fields)[i])...);
+        std::invoke(func, row_arg<Is>(fields, i)...);
     }
 }
 
 template <typename F, typename Tuple>
-inline void call_fields(F &&func, Tuple &fields, uint32_t count) {
+inline void call_fields(F &func, Tuple &fields, uint32_t count) {
     constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<Tuple>>;
 
-    call_fields_impl(std::forward<F>(func), fields, count, std::make_index_sequence<N>{});
-}
-
-template <typename Args, std::size_t... Is>
-inline auto make_fields(ecs_iter_t *it, std::index_sequence<Is...>) {
-    /*
-     * ecs_field indexes only field terms (EcsIn/EcsOut/EcsInOut), not every
-     * query term. require/exclude append EcsFilter/EcsNot terms, and callback
-     * arguments append all field terms, so callback argument N maps to field N.
-     */
-    return std::tuple{ static_cast<std::remove_reference_t<std::tuple_element_t<Is, Args>> *>(
-        ecs_field(it, static_cast<uint16_t>(Is))
-    )... };
+    call_fields_impl(func, fields, count, std::make_index_sequence<N>{});
 }
 
 template <typename T> consteval ecs_term_access_t term_access() {
@@ -85,24 +125,28 @@ template <typename Args>
 inline void
 append_callback_terms(ecs_world_t *world, ecs_query_desc_t &desc, uint16_t &term_index) {
     for_each_type<Args>([&]<typename T>() {
-        append_term(
-            desc,
-            term_index,
-            ecs::ecs_cpp_component_id<std::remove_cvref_t<T>>(world),
-            term_access<T>()
-        );
+        if constexpr (!is_res_v<T>) {
+            append_term(
+                desc,
+                term_index,
+                ecs::ecs_cpp_component_id<std::remove_cvref_t<T>>(world),
+                term_access<T>()
+            );
+        }
     });
 }
 
 template <typename F, typename Args>
 inline void run_query(F &func, ecs_world_t *world, ecs_query_id_t qid) {
-    constexpr std::size_t arg_count = std::tuple_size_v<Args>;
-    static_assert(arg_count > 0, "query callbacks must read at least one component");
+    constexpr std::size_t component_count = component_arg_count<Args>();
+    static_assert(component_count > 0, "query callbacks must read at least one component");
 
+    auto resources = make_resources<Args>(world);
     ecs_iter_t it = ecs_query_iter(world, qid);
 
     while (ecs_iter_next(&it)) {
-        auto fields = make_fields<Args>(&it, std::make_index_sequence<arg_count>{});
+        auto fields =
+            make_fields<Args>(&it, resources, std::make_index_sequence<std::tuple_size_v<Args>>{});
         call_fields(func, fields, it.count);
     }
 }
@@ -133,8 +177,8 @@ class query {
     template <typename F> void each(F &&func) {
         using traits = function_traits<std::remove_reference_t<F>>;
         using args = typename traits::args_tuple;
-        constexpr std::size_t arg_count = std::tuple_size_v<args>;
-        static_assert(arg_count > 0, "query callbacks must read at least one component");
+        constexpr std::size_t component_count = detail::component_arg_count<args>();
+        static_assert(component_count > 0, "query callbacks must read at least one component");
 
         detail::append_callback_terms<args>(_world, desc, term_index);
 

@@ -21,6 +21,17 @@
         "testcases": ["reflection", "on_add"]
       },
       {
+        "id": "resource",
+        "testcases": [
+          "set_get",
+          "try_get_missing",
+          "remove",
+          "replace",
+          "from_system_c",
+          "hooks"
+        ]
+      },
+      {
         "id": "childof",
         "testcases": ["kill_parent"]
       },

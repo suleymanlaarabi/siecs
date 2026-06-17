@@ -120,6 +120,43 @@ void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t req
 
 Requirement cycles are invalid and are asserted in debug builds when declared.
 
+## Resources
+
+Resources are component-typed values stored once per world.
+
+```c
+ECS_RESOURCE_DECLARE(Time, { float dt; });
+ECS_RESOURCE_DEFINE(Time);
+ECS_RESOURCE_REGISTER(world, Time);
+```
+
+Typed helpers:
+
+```c
+ecs_set_resource(world, Time, { .dt = 0.016f });
+ecs_resource(world, Time);
+ecs_resource_read(world, Time);
+ecs_try_resource(world, Time);
+ecs_try_resource_read(world, Time);
+ecs_has_resource(world, Time);
+ecs_remove_resource(world, Time);
+```
+
+Id-based functions:
+
+```c
+void ecs_set_resource_cid(ecs_world_t *world, ecs_component_t id, const void *data);
+void *ecs_resource_cid(ecs_world_t *world, ecs_component_t id);
+void *ecs_try_resource_cid(ecs_world_t *world, ecs_component_t id);
+bool ecs_has_resource_cid(const ecs_world_t *world, ecs_component_t id);
+void ecs_remove_resource_cid(ecs_world_t *world, ecs_component_t id);
+```
+
+`ecs_resource_cid()` asserts if the resource is absent. Use
+`ecs_try_resource_cid()` when absence is valid. Component `on_set` hooks run
+when a resource is set, and `on_remove` hooks run when a resource is removed or
+when the world is destroyed.
+
 ## Queries
 
 ```c
@@ -278,6 +315,8 @@ typedef struct {
     const char *name;
     ecs_query_desc_t query;
     void (*callback)(ecs_iter_t *);
+    void (*run)(ecs_world_t *world, ecs_query_id_t query, void *ctx);
+    void *ctx;
     ecs_phase_t phase;
     ecs_system_id_t after[4];
     bool disabled;

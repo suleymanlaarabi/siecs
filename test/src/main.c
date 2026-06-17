@@ -16,6 +16,14 @@ void entity_with(void);
 void component_reflection(void);
 void component_on_add(void);
 
+// Testsuite 'resource'
+void resource_set_get(void);
+void resource_try_get_missing(void);
+void resource_remove(void);
+void resource_replace(void);
+void resource_from_system_c(void);
+void resource_hooks(void);
+
 // Testsuite 'childof'
 void childof_kill_parent(void);
 
@@ -80,6 +88,33 @@ bake_test_case component_testcases[] = {
     {
         "on_add",
         component_on_add
+    }
+};
+
+bake_test_case resource_testcases[] = {
+    {
+        "set_get",
+        resource_set_get
+    },
+    {
+        "try_get_missing",
+        resource_try_get_missing
+    },
+    {
+        "remove",
+        resource_remove
+    },
+    {
+        "replace",
+        resource_replace
+    },
+    {
+        "from_system_c",
+        resource_from_system_c
+    },
+    {
+        "hooks",
+        resource_hooks
     }
 };
 
@@ -245,6 +280,13 @@ static bake_test_suite suites[] = {
         component_testcases
     },
     {
+        "resource",
+        NULL,
+        NULL,
+        6,
+        resource_testcases
+    },
+    {
         "childof",
         NULL,
         NULL,
@@ -296,5 +338,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 9);
+    return bake_test_run("siecs.test", argc, argv, suites, 10);
 }

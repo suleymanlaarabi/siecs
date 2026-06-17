@@ -56,6 +56,18 @@ of entities in the current batch.
 `ecs_inout` terms in declaration order. `ecs_filter` and `ecs_not` do not create
 field indexes.
 
+In the C++ API, `ecs::res<T>` and `ecs::res<const T>` callback parameters are
+resources, not query terms. They are resolved from the world before table
+iteration and do not consume field indexes:
+
+```cpp
+world.query().each([](ecs::res<const Time> time,
+                      Position &position,
+                      const Velocity &velocity) {
+    position.x += velocity.x * time->dt;
+});
+```
+
 ## Required And Excluded Components
 
 Use `ecs_filter` when a component must exist but does not need to be returned:

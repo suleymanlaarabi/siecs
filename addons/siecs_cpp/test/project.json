@@ -20,6 +20,17 @@
         ]
       },
       {
+        "id": "resource",
+        "testcases": [
+          "world_api",
+          "system_read",
+          "system_write",
+          "query_read",
+          "does_not_create_query_term",
+          "field_index_stays_correct"
+        ]
+      },
+      {
         "id": "module_import",
         "testcases": [
           "import_without_props",

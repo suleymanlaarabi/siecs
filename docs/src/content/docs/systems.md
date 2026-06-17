@@ -32,8 +32,8 @@ ecs_system_id_t Move = ecs_system(world, {
 });
 ```
 
-`callback` is required. `name` is optional, but recommended because it makes
-debugging and traces easier to read.
+`callback` is required for normal C systems. `name` is optional, but recommended
+because it makes debugging and traces easier to read.
 
 The query follows the same rules as queries created with `ecs_query()`: `ecs_in`,
 `ecs_out`, and `ecs_inout` terms are returned through `ecs_field()`,
@@ -49,6 +49,37 @@ ecs_system(world, {
     .phase = EcsOnUpdate,
     .query = { .terms = { ecs_in(Position), ecs_filter(Disabled) } },
     .callback = paused_debug_system,
+});
+```
+
+## Use Resources
+
+Resources are unique values stored on the world. In C systems, read them through
+`it->world` before the entity loop:
+
+```c
+static void move_system(ecs_iter_t *it) {
+    const Time *time = ecs_resource_read(it->world, Time);
+    Position *positions = ecs_field(it, 0);
+    const Velocity *velocities = ecs_field(it, 1);
+
+    for (uint32_t i = 0; i < it->count; i++) {
+        positions[i].x += velocities[i].x * time->dt;
+    }
+}
+```
+
+In C++, callbacks can request `ecs::res<T>` or `ecs::res<const T>`. Resource
+parameters do not become query terms and do not consume an `ecs_field()` index.
+SIECS resolves them before iterating the query tables.
+
+```cpp
+world.system("Move").each([](
+    ecs::res<const Time> time,
+    Position &position,
+    const Velocity &velocity
+) {
+    position.x += velocity.x * time->dt;
 });
 ```
 
@@ -166,6 +197,8 @@ typedef struct {
     const char *name;
     ecs_query_desc_t query;
     void (*callback)(ecs_iter_t *);
+    void (*run)(ecs_world_t *world, ecs_query_id_t query, void *ctx);
+    void *ctx;
     ecs_phase_t phase;
     ecs_system_id_t after[4];
     bool disabled;
@@ -177,6 +210,8 @@ typedef struct {
 | `name` | Optional debug name. |
 | `query` | Components matched by the system. |
 | `callback` | Function called for each non-empty matching batch. |
+| `run` | Optional low-level runner called once for the whole query execution. |
+| `ctx` | User pointer passed to `run`. |
 | `phase` | Phase used by `ecs_progress()` and `ecs_run_phase()`. |
 | `after` | Same-phase systems that must run before this one. |
 | `disabled` | When true, the system is created but not run. |

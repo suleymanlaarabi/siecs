@@ -445,6 +445,39 @@ void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t c
 void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
 
 /*
+ * Declare and define a resource type. Resources reuse component ids and
+ * lifecycle hooks, but are stored once per world instead of on entities.
+ */
+#define ECS_RESOURCE_DECLARE(rname, ...) ECS_COMPONENT_DECLARE(rname, __VA_ARGS__)
+#define ECS_RESOURCE_DEFINE(rname, ...) ECS_COMPONENT_DEFINE(rname, __VA_ARGS__)
+#define ECS_RESOURCE_REGISTER(world, rname) ECS_COMPONENT_REGISTER(world, rname)
+
+/* Set or replace a world resource. */
+#define ecs_set_resource(world, rname, ...)                                                        \
+    ecs_set_resource_cid(world, ecs_id(rname), &(rname)__VA_ARGS__)
+
+/* Get a world resource. The resource must exist. */
+#define ecs_resource(world, rname) ((rname *)ecs_resource_cid(world, ecs_id(rname)))
+#define ecs_resource_read(world, rname) ((const rname *)ecs_resource_cid(world, ecs_id(rname)))
+
+/* Get a world resource, or NULL if it does not exist. */
+#define ecs_try_resource(world, rname) ((rname *)ecs_try_resource_cid(world, ecs_id(rname)))
+#define ecs_try_resource_read(world, rname)                                                        \
+    ((const rname *)ecs_try_resource_cid(world, ecs_id(rname)))
+
+/* Return whether a world resource exists. */
+#define ecs_has_resource(world, rname) ecs_has_resource_cid(world, ecs_id(rname))
+
+/* Remove a world resource if it exists. */
+#define ecs_remove_resource(world, rname) ecs_remove_resource_cid(world, ecs_id(rname))
+
+void ecs_set_resource_cid(ecs_world_t *world, ecs_component_t id, const void *data);
+void *ecs_resource_cid(ecs_world_t *world, ecs_component_t id);
+void *ecs_try_resource_cid(ecs_world_t *world, ecs_component_t id);
+bool ecs_has_resource_cid(const ecs_world_t *world, ecs_component_t id);
+void ecs_remove_resource_cid(ecs_world_t *world, ecs_component_t id);
+
+/*
  * Declare that adding component also adds require first.
  *
  * Requirement cycles are debug assertion failures when declared.
@@ -557,6 +590,8 @@ typedef struct {
     const char *name;
     ecs_query_desc_t query;
     void (*callback)(ecs_iter_t *);
+    void (*run)(ecs_world_t *world, ecs_query_id_t query, void *ctx);
+    void *ctx;
     ecs_phase_t phase;
     ecs_system_id_t after[4];
     bool disabled;

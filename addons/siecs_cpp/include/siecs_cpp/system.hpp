@@ -6,11 +6,10 @@ namespace ecs {
 
 namespace detail {
 
-template <typename Callback, typename Args> static void system_callback(ecs_iter_t *it) {
-    constexpr std::size_t arg_count = std::tuple_size_v<Args>;
-    auto fields = make_fields<Args>(it, std::make_index_sequence<arg_count>{});
-
-    call_fields(Callback{}, fields, it->count);
+template <typename Callback, typename Args>
+static void system_run(ecs_world_t *world, ecs_query_id_t query, void *) {
+    Callback callback{};
+    run_query<Callback, Args>(callback, world, query);
 }
 
 } // namespace detail
@@ -47,7 +46,7 @@ class system : public query {
         using traits = function_traits<callback>;
         using args = typename traits::args_tuple;
         static_assert(
-            std::tuple_size_v<args> > 0,
+            detail::component_arg_count<args>() > 0,
             "system callbacks must read at least one component"
         );
 
@@ -56,7 +55,7 @@ class system : public query {
         ecs_system_desc_t system_desc = {
             .name = name,
             .query = this->desc,
-            .callback = detail::system_callback<callback, args>,
+            .run = detail::system_run<callback, args>,
             .phase = _phase,
         };
 

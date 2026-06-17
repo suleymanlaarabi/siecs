@@ -12,6 +12,14 @@
 void entity_state_enable_disable(void);
 void entity_state_disabled_entities_are_skipped(void);
 
+// Testsuite 'resource'
+void resource_world_api(void);
+void resource_system_read(void);
+void resource_system_write(void);
+void resource_query_read(void);
+void resource_does_not_create_query_term(void);
+void resource_field_index_stays_correct(void);
+
 // Testsuite 'module_import'
 void module_import_import_without_props(void);
 void module_import_import_with_props(void);
@@ -30,6 +38,33 @@ bake_test_case entity_state_testcases[] = {
     {
         "disabled_entities_are_skipped",
         entity_state_disabled_entities_are_skipped
+    }
+};
+
+bake_test_case resource_testcases[] = {
+    {
+        "world_api",
+        resource_world_api
+    },
+    {
+        "system_read",
+        resource_system_read
+    },
+    {
+        "system_write",
+        resource_system_write
+    },
+    {
+        "query_read",
+        resource_query_read
+    },
+    {
+        "does_not_create_query_term",
+        resource_does_not_create_query_term
+    },
+    {
+        "field_index_stays_correct",
+        resource_field_index_stays_correct
     }
 };
 
@@ -73,6 +108,13 @@ static bake_test_suite suites[] = {
         entity_state_testcases
     },
     {
+        "resource",
+        NULL,
+        NULL,
+        6,
+        resource_testcases
+    },
+    {
         "module_import",
         NULL,
         NULL,
@@ -89,5 +131,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs_cpp.test", argc, argv, suites, 3);
+    return bake_test_run("siecs_cpp.test", argc, argv, suites, 4);
 }

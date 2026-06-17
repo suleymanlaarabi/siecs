@@ -6,6 +6,10 @@ description: Declaring, registering, setting, reading, and removing components.
 Components are data types registered in a world. They can be used through typed
 macros or directly through `ecs_component_t` ids.
 
+Resources also reuse component ids, but they are stored once per world instead
+of once per entity. Use a component for per-entity data, and a resource for
+unique world state such as time, input, renderer state, or shared config.
+
 ## Typed Components
 
 Declare a component in a header or source file:

@@ -11,22 +11,30 @@ struct Velocity {
     float x, y;
 };
 
+struct Time {
+    float delta;
+};
+
 struct physics {
     void import(ecs::world &world) {
         world.component<Position>();
         world.component<Velocity>();
 
-        world.system("Move").phase(EcsOnUpdate).each([](Position &pos, const Velocity &vel) {
-            pos.x += vel.x;
-            pos.y += vel.y;
+        world.system("Move")
+            .phase(EcsOnUpdate)
+            .each([](Position &pos, const Velocity &vel, ecs::res<const Time> time) {
+                pos.x += vel.x * time->delta;
+                pos.y += vel.y * time->delta;
 
-            std::cout << pos.x << "\n";
-        });
+                std::cout << pos.x << "\n";
+            });
     }
 };
 
 int main() {
     ecs::world world;
+
+    world.set_resource(Time(16));
 
     world.import<physics>();
 

@@ -8,6 +8,7 @@
 #include "storage/entity_index.h"
 #include "storage/module_index.h"
 #include "storage/query_index.h"
+#include "storage/resource_index.h"
 #include "storage/system_index.h"
 #include "storage/table_index.h"
 #include "table.h"
@@ -27,6 +28,7 @@ ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_observer_index_init(&world->observer_index);
     ecs_system_index_init(&world->system_index);
     ecs_module_index_init(&world->module_index);
+    ecs_resource_index_init(&world->resource_index);
     world->active_module = 0;
     world->features = *features;
     world->did_start = false;
@@ -346,6 +348,7 @@ void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t req
 }
 
 void ecs_fini(ecs_world_t *world) {
+    ecs_resource_index_fini(&world->resource_index, world, &world->component_index);
     ecs_entity_index_fini(&world->entity_index);
     ecs_component_index_fini(&world->component_index);
     ecs_table_index_fini(&world->table_index);
