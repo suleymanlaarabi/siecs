@@ -8,6 +8,10 @@
 
 #include <test.h>
 
+// Testsuite 'entity_state'
+void entity_state_enable_disable(void);
+void entity_state_disabled_entities_are_skipped(void);
+
 // Testsuite 'module_import'
 void module_import_import_without_props(void);
 void module_import_import_with_props(void);
@@ -17,6 +21,17 @@ void module_import_double_import(void);
 void module_state_lookup_empty(void);
 void module_state_enable(void);
 void module_state_reimport_after_world_fini(void);
+
+bake_test_case entity_state_testcases[] = {
+    {
+        "enable_disable",
+        entity_state_enable_disable
+    },
+    {
+        "disabled_entities_are_skipped",
+        entity_state_disabled_entities_are_skipped
+    }
+};
 
 bake_test_case module_import_testcases[] = {
     {
@@ -51,6 +66,13 @@ bake_test_case module_state_testcases[] = {
 
 static bake_test_suite suites[] = {
     {
+        "entity_state",
+        NULL,
+        NULL,
+        2,
+        entity_state_testcases
+    },
+    {
         "module_import",
         NULL,
         NULL,
@@ -67,5 +89,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs_cpp.test", argc, argv, suites, 2);
+    return bake_test_run("siecs_cpp.test", argc, argv, suites, 3);
 }

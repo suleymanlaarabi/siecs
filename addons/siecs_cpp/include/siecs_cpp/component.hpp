@@ -58,4 +58,8 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
     return cid;
 }
 
+template <> inline ecs_component_t ecs_cpp_component_id<Disabled>(ecs_world_t *) {
+    return ecs_id(Disabled);
+}
+
 } // namespace ecs

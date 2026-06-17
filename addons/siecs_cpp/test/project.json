@@ -13,6 +13,13 @@
   "test": {
     "testsuites": [
       {
+        "id": "entity_state",
+        "testcases": [
+          "enable_disable",
+          "disabled_entities_are_skipped"
+        ]
+      },
+      {
         "id": "module_import",
         "testcases": [
           "import_without_props",
