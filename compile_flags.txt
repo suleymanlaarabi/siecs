@@ -1,5 +1,7 @@
 -fPIC
 -g
+-fprofile-arcs
+-ftest-coverage
 -O0
 -std=c23
 
@@ -14,7 +16,7 @@
 -fstack-protector-all
 -DBAKE_PROJECT_ID="siecs"
 -Dsiecs_EXPORTS
--I./src
--I./include
+-I/home/suleyman/projects/siecs/src
+-I/home/suleyman/projects/siecs/include
 -I
 /home/suleyman/bake/include

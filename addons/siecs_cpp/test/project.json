@@ -1,0 +1,33 @@
+{
+  "id": "siecs_cpp.test",
+  "type": "application",
+  "value": {
+    "language": "cpp",
+    "public": false,
+    "clangd": true,
+    "use": ["siecs_cpp", "siecs"]
+  },
+  "lang.cpp": {
+    "cpp-standard": "c++23"
+  },
+  "test": {
+    "testsuites": [
+      {
+        "id": "module_import",
+        "testcases": [
+          "import_without_props",
+          "import_with_props",
+          "double_import"
+        ]
+      },
+      {
+        "id": "module_state",
+        "testcases": [
+          "lookup_empty",
+          "enable",
+          "two_worlds"
+        ]
+      }
+    ]
+  }
+}

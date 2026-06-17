@@ -235,6 +235,7 @@ void ecs_fini(ecs_world_t *world);
 #define ecs_module(world, ...) ecs_module_init(world, &(ecs_module_desc_t)__VA_ARGS__)
 
 ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *desc);
+ecs_module_id_t ecs_module_find(ecs_world_t *world, const void *key);
 void ecs_module_enable(ecs_world_t *world, ecs_module_id_t module);
 void ecs_module_disable(ecs_world_t *world, ecs_module_id_t module);
 bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t module);

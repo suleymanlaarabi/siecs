@@ -31,6 +31,11 @@ ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *des
     return module;
 }
 
+ecs_module_id_t ecs_module_find(ecs_world_t *world, const void *key) {
+    ecs_assert_not_null(world);
+    return ecs_module_index_find(&world->module_index, key);
+}
+
 void ecs_module_enable(ecs_world_t *world, ecs_module_id_t module) {
     ecs_assert_not_null(world);
 

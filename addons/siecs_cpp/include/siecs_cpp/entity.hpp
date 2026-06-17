@@ -13,6 +13,8 @@ class entity {
 
     entity(ecs_world_t *world, ecs_entity_t entity) : _entity(entity), _world(world) {}
 
+    [[nodiscard]] ecs_entity_t id() const noexcept { return _entity; }
+
     template <typename T> entity add() {
         ecs_add_cid(_world, _entity, ecs_cpp_component_id<T>(_world));
         return *this;

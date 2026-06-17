@@ -25,7 +25,7 @@ void ecs_table_init(
         ecs_component_record_t *rec = ecs_component_index_get_mut(component_index, type.ids[i]);
         ecs_vec_push_u16(&rec->tables, table_id);
         table->cls[i].size = rec->size;
-        table->cls[i].data = rec->size != 0 ? calloc(0, rec->size * table->entity_capacity) : NULL;
+        table->cls[i].data = rec->size != 0 ? calloc(table->entity_capacity, rec->size) : NULL;
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
     }
@@ -37,7 +37,11 @@ static inline void ecs_table_grow(ecs_table_t *table) {
     for (uint16_t i = 0; i < table->type.count; i++) {
         if (table->cls[i].size != 0) {
             table->cls[i].data = realloc(table->cls[i].data, table->cls[i].size * new_capacity);
-            memset((uint8_t *)table->cls[i].data + (table->cls[i].size * table->entity_capacity), 0, table->cls[i].size * (new_capacity - table->entity_capacity));
+            memset(
+                (uint8_t *)table->cls[i].data + (table->cls[i].size * table->entity_capacity),
+                0,
+                table->cls[i].size * (new_capacity - table->entity_capacity)
+            );
         }
     }
     table->entity_capacity = new_capacity;
