@@ -8,6 +8,14 @@
 
 namespace ecs {
 
+namespace detail {
+
+template <typename T> struct component_type {
+    static inline ecs_component_t id;
+};
+
+} // namespace detail
+
 template <typename T, typename = void> struct is_complete : std::false_type {};
 
 template <typename T> struct is_complete<T, std::void_t<decltype(sizeof(T))>> : std::true_type {};
@@ -21,7 +29,7 @@ template <typename T> constexpr size_t sisizeof() {
 }
 
 template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *world) {
-    static ecs_component_t cid = 0;
+    ecs_component_t &cid = detail::component_type<T>::id;
 
     if (cid != 0) {
         return cid;

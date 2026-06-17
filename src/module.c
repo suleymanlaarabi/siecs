@@ -2,23 +2,22 @@
 #include "utils.h"
 #include "world_internal.h"
 
-static inline const void *ecs_module_key(const ecs_module_desc_t *desc) {
-    return desc->key ? desc->key : (const void *)desc->import;
-}
-
 ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *desc) {
     ecs_assert_not_null(world);
     ecs_assert_not_null(desc);
     ecs_assert_not_null(desc->name);
     ecs_assert_not_null(desc->import);
 
-    const void *key = ecs_module_key(desc);
-    ecs_module_id_t existing = ecs_module_index_find(&world->module_index, key);
+    ecs_module_id_t existing = ecs_module_index_find(&world->module_index, desc->id);
     if (existing) {
         return existing;
     }
 
-    ecs_module_id_t module = ecs_module_index_create(&world->module_index, key, desc->name);
+    ecs_module_id_t module = ecs_module_index_create(&world->module_index, desc->id, desc->name);
+    if (desc->id) {
+        *desc->id = module;
+    }
+
     ecs_module_id_t prev = world->active_module;
     world->active_module = module;
     desc->import(world, desc->desc);
@@ -31,9 +30,9 @@ ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *des
     return module;
 }
 
-ecs_module_id_t ecs_module_find(ecs_world_t *world, const void *key) {
+ecs_module_id_t ecs_module_find(ecs_world_t *world, const ecs_module_id_t *id) {
     ecs_assert_not_null(world);
-    return ecs_module_index_find(&world->module_index, key);
+    return ecs_module_index_find(&world->module_index, id);
 }
 
 void ecs_module_enable(ecs_world_t *world, ecs_module_id_t module) {

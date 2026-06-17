@@ -47,7 +47,7 @@
           "enable",
           "disabled_import",
           "double_import_is_noop",
-          "same_module_two_worlds"
+          "reimport_after_world_fini"
         ]
       },
       {

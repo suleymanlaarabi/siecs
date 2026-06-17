@@ -28,18 +28,23 @@ void module_state_enable(void) {
     test_int(1, module_system_calls);
 }
 
-void module_state_two_worlds(void) {
+void module_state_reimport_after_world_fini(void) {
     reset_module_state();
 
-    ecs::world first_world;
-    ecs::world second_world;
+    {
+        ecs::world first_world;
+        auto first = first_world.import<cpp_physics_with_props>({ .gravity = 1 });
 
-    auto first = first_world.import<cpp_physics_with_props>({ .gravity = 1 });
+        test_assert(static_cast<bool>(first));
+        test_true(first_world.module<cpp_physics_with_props>().is_enabled());
+    }
+
+    test_int(0, ecs::detail::module_type<cpp_physics_with_props>::id);
+
+    ecs::world second_world;
     auto second = second_world.import<cpp_physics_with_props>({ .gravity = 2 });
 
-    test_assert(static_cast<bool>(first));
     test_assert(static_cast<bool>(second));
     test_int(2, module_import_calls);
-    test_true(first_world.module<cpp_physics_with_props>().is_enabled());
     test_true(second_world.module<cpp_physics_with_props>().is_enabled());
 }

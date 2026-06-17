@@ -38,7 +38,7 @@ void module_import_registers_runtime(void);
 void module_enable(void);
 void module_disabled_import(void);
 void module_double_import_is_noop(void);
-void module_same_module_two_worlds(void);
+void module_reimport_after_world_fini(void);
 
 // Testsuite 'string'
 void string_init(void);
@@ -142,8 +142,8 @@ bake_test_case module_testcases[] = {
         module_double_import_is_noop
     },
     {
-        "same_module_two_worlds",
-        module_same_module_two_worlds
+        "reimport_after_world_fini",
+        module_reimport_after_world_fini
     }
 };
 

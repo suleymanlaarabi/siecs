@@ -32,7 +32,7 @@ class world {
 
         ecs_module_desc_t desc = {
             .name = name.c_str(),
-            .key = &detail::module_type<T>::key,
+            .id = &detail::module_type<T>::id,
             .import = import_module_callback<T>,
             .desc = &module,
             .desc_size = sizeof(T),
@@ -104,7 +104,7 @@ class world {
     }
 
     template <typename T> [[nodiscard]] module_ref<T> module() const noexcept {
-        return module_ref<T>(_world, ecs_module_find(_world, &detail::module_type<T>::key));
+        return module_ref<T>(_world, ecs_module_find(_world, &detail::module_type<T>::id));
     }
 
     [[nodiscard]] ecs::entity entity() const { return ecs::entity(_world, ecs_new(_world)); }

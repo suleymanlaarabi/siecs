@@ -42,7 +42,7 @@ template <typename T> class module_ref {
 namespace detail {
 
 template <typename T> struct module_type {
-    static inline char key;
+    static inline ecs_module_id_t id;
 };
 
 template <typename T>

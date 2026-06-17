@@ -20,8 +20,14 @@ void Move(ecs_iter_t *it) {
     }
 }
 
+ECS_MODULE_DECLARE(physics, {});
+
+ECS_MODULE_DEFINE(physics);
+
 int main(void) {
     ecs_world_t *world = ecs_init();
+
+    ECS_MODULE_IMPORT(world, physics, {});
 
     ECS_COMPONENT_REGISTER(world, Position);
     ECS_COMPONENT_REGISTER(world, Velocity);

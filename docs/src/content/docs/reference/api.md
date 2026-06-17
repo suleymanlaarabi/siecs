@@ -202,7 +202,7 @@ typedef void (*ecs_module_import_t)(ecs_world_t *world, const void *desc);
 
 typedef struct {
     const char *name;
-    const void *key;
+    ecs_module_id_t *id;
     ecs_module_import_t import;
     const void *desc;
     uint32_t desc_size;
@@ -213,6 +213,7 @@ typedef struct {
 ```c
 #define ecs_module(world, ...)
 ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *desc);
+ecs_module_id_t ecs_module_find(ecs_world_t *world, const ecs_module_id_t *id);
 void ecs_module_enable(ecs_world_t *world, ecs_module_id_t module);
 void ecs_module_disable(ecs_world_t *world, ecs_module_id_t module);
 bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t module);

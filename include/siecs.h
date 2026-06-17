@@ -39,11 +39,43 @@ typedef uint16_t ecs_event_t;
 typedef uint16_t ecs_module_id_t;
 typedef uint32_t ecs_observer_id_t;
 
+/*
+ * Module import callback.
+ *
+ * Called the first time the module is imported into the active world. The
+ * callback is expected to register the module's components, systems, observers,
+ * and nested modules. Registrations made while the callback runs are recorded
+ * under the importing module so ecs_module_enable/ecs_module_disable can toggle
+ * its systems and observers later.
+ *
+ * desc is the user props pointer from ecs_module_desc_t. The library does not
+ * retain or copy it; it is only valid for the duration of this call.
+ */
 typedef void (*ecs_module_import_t)(ecs_world_t *world, const void *desc);
 
+/*
+ * Module registration descriptor.
+ *
+ * name and import are required.
+ *
+ * id points to the module id storage used as the import cache. If *id is not 0,
+ * ecs_module_init returns it and does not call import again. If *id is 0,
+ * ecs_module_init creates the module and stores the new id in *id. The typed
+ * ECS_MODULE_* macros pass the generated ecs_id(module_name) storage here.
+ *
+ * This module cache is process-global by design. SIECS supports one active
+ * world owning a given typed module at a time; ecs_fini resets imported module
+ * ids to 0 so a later world can import them again.
+ *
+ * desc/desc_size describe optional import props. desc_size is informational in
+ * the current C API and is kept for validation/introspection compatibility.
+ *
+ * disabled imports the module and immediately disables the systems and observers
+ * captured during import. Components remain registered.
+ */
 typedef struct {
     const char *name;
-    const void *key;
+    ecs_module_id_t *id;
     ecs_module_import_t import;
     const void *desc;
     uint32_t desc_size;
@@ -206,36 +238,65 @@ void ecs_fini(ecs_world_t *world);
     ECS_COMPONENT_DECLARE(cname, __VA_ARGS__);                                                     \
     ECS_COMPONENT_DEFINE(cname);
 
+/*
+ * Declare a typed module.
+ *
+ * Use in a header:
+ *   ECS_MODULE_DECLARE(physics, { float gravity; });
+ *
+ * This declares physics_props_t, the public module id symbol ecs_id(physics),
+ * an import wrapper, and the user-defined import function:
+ *   void physics_import(ecs_world_t *world, const physics_props_t *props);
+ */
 #define ECS_MODULE_DECLARE(module_name, ...)                                                       \
     typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;                        \
     extern ecs_module_id_t ecs_id(module_name);                                                    \
-    extern const char ecs_id(module_name##_module_key);                                            \
     void ecs_id(module_name##_import_wrapper)(ecs_world_t *world, const void *desc);                \
     void module_name##_import(ecs_world_t *world, const module_name##_props_t *props)
 
+/*
+ * Define a typed module declared with ECS_MODULE_DECLARE.
+ *
+ * Use once in a C file before implementing module_name_import.
+ */
 #define ECS_MODULE_DEFINE(module_name)                                                             \
     ecs_module_id_t ecs_id(module_name) = 0;                                                       \
-    const char ecs_id(module_name##_module_key) = 0;                                                \
     void ecs_id(module_name##_import_wrapper)(ecs_world_t *world, const void *desc) {               \
         module_name##_import(world, (const module_name##_props_t *)desc);                          \
     }
 
+/*
+ * Import a typed module into a world.
+ *
+ * The first import calls module_name_import and stores the returned module id in
+ * ecs_id(module_name). Later imports of the same module in the same world return
+ * the existing id without calling module_name_import again; the first props
+ * value wins.
+ */
 #define ECS_MODULE_IMPORT(world, module_name, ...)                                                 \
     (ecs_id(module_name) = ecs_module_init(                                                        \
          world,                                                                                    \
          &(ecs_module_desc_t){                                                                     \
              .name = #module_name,                                                                 \
-             .key = &ecs_id(module_name##_module_key),                                             \
+             .id = &ecs_id(module_name),                                                           \
              .import = ecs_id(module_name##_import_wrapper),                                       \
              .desc = &(module_name##_props_t)__VA_ARGS__,                                          \
              .desc_size = sizeof(module_name##_props_t),                                           \
          }                                                                                         \
      ))
 
+/* Register/import a module with a raw descriptor. Prefer ECS_MODULE_IMPORT for typed modules. */
 #define ecs_module(world, ...) ecs_module_init(world, &(ecs_module_desc_t)__VA_ARGS__)
 
 ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *desc);
-ecs_module_id_t ecs_module_find(ecs_world_t *world, const void *key);
+
+/*
+ * Find an already imported module by its id storage.
+ *
+ * For typed modules, pass &ecs_id(module_name). Returns 0 if the
+ * module has not been imported into this world.
+ */
+ecs_module_id_t ecs_module_find(ecs_world_t *world, const ecs_module_id_t *id);
 void ecs_module_enable(ecs_world_t *world, ecs_module_id_t module);
 void ecs_module_disable(ecs_world_t *world, ecs_module_id_t module);
 bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t module);

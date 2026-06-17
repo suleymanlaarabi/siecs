@@ -148,7 +148,7 @@ void module_disabled_import(void) {
     module_physics_props_t props = { .velocity = 3 };
     ecs_module_id_t module = ecs_module(world, {
         .name = "module_physics",
-        .key = &ecs_id(module_physics_module_key),
+        .id = &ecs_id(module_physics),
         .import = ecs_id(module_physics_import_wrapper),
         .desc = &props,
         .desc_size = sizeof(props),
@@ -185,21 +185,24 @@ void module_double_import_is_noop(void) {
     ecs_fini(world);
 }
 
-void module_same_module_two_worlds(void) {
+void module_reimport_after_world_fini(void) {
     module_reset();
 
     ecs_world_t *first_world = ecs_init();
-    ecs_world_t *second_world = ecs_init();
-
     ecs_module_id_t first = ECS_MODULE_IMPORT(first_world, module_physics, { .velocity = 1 });
-    ecs_module_id_t second = ECS_MODULE_IMPORT(second_world, module_physics, { .velocity = 2 });
 
     test_true(first != 0);
+    test_true(ecs_module_is_enabled(first_world, first));
+    ecs_fini(first_world);
+
+    test_int(0, ecs_id(module_physics));
+
+    ecs_world_t *second_world = ecs_init();
+    ecs_module_id_t second = ECS_MODULE_IMPORT(second_world, module_physics, { .velocity = 2 });
+
     test_true(second != 0);
     test_int(2, module_physics_import_calls);
-    test_true(ecs_module_is_enabled(first_world, first));
     test_true(ecs_module_is_enabled(second_world, second));
 
     ecs_fini(second_world);
-    ecs_fini(first_world);
 }

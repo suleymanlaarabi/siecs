@@ -105,8 +105,6 @@ void physics_import(ecs_world_t *world, const physics_props_t *props) {
         .query = { .terms = { ecs_inout(Position), ecs_in(Velocity) } },
         .callback = Move,
     });
-
-    (void)props;
 }
 
 int main(void) {

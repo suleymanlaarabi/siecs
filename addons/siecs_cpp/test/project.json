@@ -25,7 +25,7 @@
         "testcases": [
           "lookup_empty",
           "enable",
-          "two_worlds"
+          "reimport_after_world_fini"
         ]
       }
     ]

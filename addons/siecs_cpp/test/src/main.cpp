@@ -16,7 +16,7 @@ void module_import_double_import(void);
 // Testsuite 'module_state'
 void module_state_lookup_empty(void);
 void module_state_enable(void);
-void module_state_two_worlds(void);
+void module_state_reimport_after_world_fini(void);
 
 bake_test_case module_import_testcases[] = {
     {
@@ -43,8 +43,8 @@ bake_test_case module_state_testcases[] = {
         module_state_enable
     },
     {
-        "two_worlds",
-        module_state_two_worlds
+        "reimport_after_world_fini",
+        module_state_reimport_after_world_fini
     }
 };
 

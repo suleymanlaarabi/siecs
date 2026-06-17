@@ -115,7 +115,7 @@ physics_props_t props = { .gravity = 9.81f };
 
 ecs_module_id_t Physics = ecs_module(world, {
     .name = "physics",
-    .key = &ecs_id(physics_module_key),
+    .id = &ecs_id(physics),
     .import = ecs_id(physics_import_wrapper),
     .desc = &props,
     .desc_size = sizeof(props),
@@ -125,8 +125,8 @@ ecs_module_id_t Physics = ecs_module(world, {
 
 ## Idempotency
 
-Imports are idempotent per world. Importing the same module twice returns the
-same module id and does not register duplicate systems or observers:
+Imports are idempotent for the active world. Importing the same module twice
+returns the same module id and does not register duplicate systems or observers:
 
 ```c
 ecs_module_id_t first = ECS_MODULE_IMPORT(world, physics, { .gravity = 9.81f });
@@ -137,6 +137,10 @@ ecs_module_id_t second = ECS_MODULE_IMPORT(world, physics, { .gravity = 1.0f });
 
 The first props value wins. Later imports with different props values do not
 reconfigure an already imported module.
+
+SIECS stores the imported id in the generated `ecs_id(module_name)` symbol and
+resets it during `ecs_fini()`. A later world can import the module again, but the
+same typed module is not supported in two live worlds at the same time.
 
 ## Performance Model
 
