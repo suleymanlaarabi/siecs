@@ -194,6 +194,9 @@ ECS_MODULE_DEFINE(Name);
 ECS_MODULE_IMPORT(world, Name, { /* settings */ });
 ```
 
+`ECS_MODULE_DECLARE(Name, ...)` generates `Name_props_t` for the typed module
+parameters and declares `Name_import()`.
+
 ```c
 typedef void (*ecs_module_import_t)(ecs_world_t *world, const void *desc);
 

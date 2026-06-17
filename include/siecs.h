@@ -207,17 +207,17 @@ void ecs_fini(ecs_world_t *world);
     ECS_COMPONENT_DEFINE(cname);
 
 #define ECS_MODULE_DECLARE(module_name, ...)                                                       \
-    typedef struct module_name##_desc_t __VA_ARGS__ module_name##_desc_t;                          \
+    typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;                        \
     extern ecs_module_id_t ecs_id(module_name);                                                    \
     extern const char ecs_id(module_name##_module_key);                                            \
     void ecs_id(module_name##_import_wrapper)(ecs_world_t *world, const void *desc);                \
-    void module_name##_import(ecs_world_t *world, const module_name##_desc_t *desc)
+    void module_name##_import(ecs_world_t *world, const module_name##_props_t *props)
 
 #define ECS_MODULE_DEFINE(module_name)                                                             \
     ecs_module_id_t ecs_id(module_name) = 0;                                                       \
     const char ecs_id(module_name##_module_key) = 0;                                                \
     void ecs_id(module_name##_import_wrapper)(ecs_world_t *world, const void *desc) {               \
-        module_name##_import(world, (const module_name##_desc_t *)desc);                           \
+        module_name##_import(world, (const module_name##_props_t *)desc);                          \
     }
 
 #define ECS_MODULE_IMPORT(world, module_name, ...)                                                 \
@@ -227,8 +227,8 @@ void ecs_fini(ecs_world_t *world);
              .name = #module_name,                                                                 \
              .key = &ecs_id(module_name##_module_key),                                             \
              .import = ecs_id(module_name##_import_wrapper),                                       \
-             .desc = &(module_name##_desc_t)__VA_ARGS__,                                           \
-             .desc_size = sizeof(module_name##_desc_t),                                            \
+             .desc = &(module_name##_props_t)__VA_ARGS__,                                          \
+             .desc_size = sizeof(module_name##_props_t),                                           \
          }                                                                                         \
      ))
 

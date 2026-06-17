@@ -95,7 +95,7 @@ ECS_MODULE_DECLARE(physics, {
 
 ECS_MODULE_DEFINE(physics);
 
-void physics_import(ecs_world_t *world, const physics_desc_t *desc) {
+void physics_import(ecs_world_t *world, const physics_props_t *props) {
     ECS_COMPONENT_REGISTER(world, Position);
     ECS_COMPONENT_REGISTER(world, Velocity);
 
@@ -106,7 +106,7 @@ void physics_import(ecs_world_t *world, const physics_desc_t *desc) {
         .callback = Move,
     });
 
-    (void)desc;
+    (void)props;
 }
 
 int main(void) {

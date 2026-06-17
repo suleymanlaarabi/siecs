@@ -19,11 +19,11 @@ ECS_MODULE_DECLARE(physics, {
 });
 ```
 
-This creates a typed descriptor named `physics_desc_t` and declares the import
+This creates typed module properties named `physics_props_t` and declares the import
 function:
 
 ```c
-void physics_import(ecs_world_t *world, const physics_desc_t *desc);
+void physics_import(ecs_world_t *world, const physics_props_t *props);
 ```
 
 ## Define And Import
@@ -33,7 +33,7 @@ Define the module in exactly one C file:
 ```c
 ECS_MODULE_DEFINE(physics);
 
-void physics_import(ecs_world_t *world, const physics_desc_t *desc) {
+void physics_import(ecs_world_t *world, const physics_props_t *props) {
     ECS_COMPONENT_REGISTER(world, Position);
     ECS_COMPONENT_REGISTER(world, Velocity);
 
@@ -46,7 +46,7 @@ void physics_import(ecs_world_t *world, const physics_desc_t *desc) {
         .callback = move_system,
     });
 
-    (void)desc;
+    (void)props;
 }
 ```
 
@@ -58,19 +58,19 @@ ecs_module_id_t Physics = ECS_MODULE_IMPORT(world, physics, {
 });
 ```
 
-The descriptor is passed only to `physics_import()`. Store any runtime settings
+The props are passed only to `physics_import()`. Store any runtime settings
 you need in components, globals owned by your module, or user-managed state.
 
 ## Empty Modules
 
-Modules with no parameters still use an empty descriptor:
+Modules with no parameters still use empty props:
 
 ```c
 ECS_MODULE_DECLARE(rendering, {});
 ECS_MODULE_DEFINE(rendering);
 
-void rendering_import(ecs_world_t *world, const rendering_desc_t *desc) {
-    (void)desc;
+void rendering_import(ecs_world_t *world, const rendering_props_t *props) {
+    (void)props;
     /* Register rendering systems and observers. */
 }
 
@@ -111,14 +111,14 @@ scheduler.
 Import a module disabled with the generic API:
 
 ```c
-physics_desc_t settings = { .gravity = 9.81f };
+physics_props_t props = { .gravity = 9.81f };
 
 ecs_module_id_t Physics = ecs_module(world, {
     .name = "physics",
     .key = &ecs_id(physics_module_key),
     .import = ecs_id(physics_import_wrapper),
-    .desc = &settings,
-    .desc_size = sizeof(settings),
+    .desc = &props,
+    .desc_size = sizeof(props),
     .disabled = true,
 });
 ```
@@ -135,7 +135,7 @@ ecs_module_id_t second = ECS_MODULE_IMPORT(world, physics, { .gravity = 1.0f });
 /* first == second */
 ```
 
-The first descriptor wins. Later imports with different descriptor values do not
+The first props value wins. Later imports with different props values do not
 reconfigure an already imported module.
 
 ## Performance Model

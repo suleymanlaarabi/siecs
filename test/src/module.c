@@ -52,8 +52,8 @@ static void module_render_system(ecs_iter_t *it) {
     (void)it;
 }
 
-void module_render_import(ecs_world_t *world, const module_render_desc_t *desc) {
-    (void)desc;
+void module_render_import(ecs_world_t *world, const module_render_props_t *props) {
+    (void)props;
     module_render_import_calls++;
 
     ecs_system(world, {
@@ -64,9 +64,9 @@ void module_render_import(ecs_world_t *world, const module_render_desc_t *desc) 
     });
 }
 
-void module_physics_import(ecs_world_t *world, const module_physics_desc_t *desc) {
+void module_physics_import(ecs_world_t *world, const module_physics_props_t *props) {
     module_physics_import_calls++;
-    module_last_velocity = desc->velocity;
+    module_last_velocity = props->velocity;
 
     ECS_COMPONENT_REGISTER(world, ModulePosition);
     ECS_COMPONENT_REGISTER(world, ModuleVelocity);
@@ -145,13 +145,13 @@ void module_disabled_import(void) {
     module_reset();
 
     ecs_world_t *world = ecs_init();
-    module_physics_desc_t desc = { .velocity = 3 };
+    module_physics_props_t props = { .velocity = 3 };
     ecs_module_id_t module = ecs_module(world, {
         .name = "module_physics",
         .key = &ecs_id(module_physics_module_key),
         .import = ecs_id(module_physics_import_wrapper),
-        .desc = &desc,
-        .desc_size = sizeof(desc),
+        .desc = &props,
+        .desc_size = sizeof(props),
         .disabled = true,
     });
     ecs_entity_t entity = module_entity(world, 1, 2);
