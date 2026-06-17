@@ -19,13 +19,24 @@ Include the public API with:
 | `ecs_query_id_t` | Query id. |
 | `ecs_system_id_t` | System id. Id `0` is reserved. |
 | `ecs_event_t` | Observer event id. |
+| `ecs_module_id_t` | Module id. Id `0` is reserved. |
+| `ecs_observer_id_t` | Observer id. |
 | `ecs_iter_t` | Query iterator. Users may read `world` and `count`. |
 
 ## World
 
 ```c
 ecs_world_t *ecs_init(void);
+ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features);
 void ecs_fini(ecs_world_t *world);
+```
+
+```c
+typedef struct {
+    bool rest;
+} ecs_world_feat_desc_t;
+
+#define ecs_with_features(...)
 ```
 
 ## Components
@@ -138,7 +149,7 @@ declaration order.
 ```c
 ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);
 bool ecs_iter_next(ecs_iter_t *it);
-void *ecs_field(ecs_iter_t *it, uint16_t query_term);
+void *ecs_field(ecs_iter_t *it, uint16_t field_index);
 ```
 
 ## Observers
@@ -152,7 +163,9 @@ void *ecs_field(ecs_iter_t *it, uint16_t query_term);
 ```c
 #define ecs_observer(world, ...)
 ecs_event_t ecs_event(ecs_world_t *world);
-uint32_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc);
+ecs_observer_id_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc);
+void ecs_observer_enable(ecs_world_t *world, ecs_observer_id_t id);
+void ecs_observer_disable(ecs_world_t *world, ecs_observer_id_t id);
 void ecs_observer_trigger(
     ecs_world_t *world,
     ecs_entity_t entity,
@@ -169,6 +182,41 @@ typedef struct {
     uintptr_t user_data;
 } ecs_observer_desc_t;
 ```
+
+Observers are enabled by default. Disabled observers stay registered but do not
+receive events.
+
+## Modules
+
+```c
+ECS_MODULE_DECLARE(Name, { /* settings */ });
+ECS_MODULE_DEFINE(Name);
+ECS_MODULE_IMPORT(world, Name, { /* settings */ });
+```
+
+```c
+typedef void (*ecs_module_import_t)(ecs_world_t *world, const void *desc);
+
+typedef struct {
+    const char *name;
+    const void *key;
+    ecs_module_import_t import;
+    const void *desc;
+    uint32_t desc_size;
+    bool disabled;
+} ecs_module_desc_t;
+```
+
+```c
+#define ecs_module(world, ...)
+ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *desc);
+void ecs_module_enable(ecs_world_t *world, ecs_module_id_t module);
+void ecs_module_disable(ecs_world_t *world, ecs_module_id_t module);
+bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t module);
+```
+
+Modules capture components, systems, and observers registered during import.
+Enabling and disabling a module affects only captured systems and observers.
 
 ## Relations
 
@@ -214,10 +262,11 @@ typedef struct {
 ```c
 #define ecs_system(world, ...)
 ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc);
-void ecs_progress(ecs_world_t *world);
+bool ecs_progress(ecs_world_t *world);
 void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase);
 void ecs_run_system(ecs_world_t *world, ecs_system_id_t system);
-void ecs_system_enable(ecs_world_t *world, ecs_system_id_t system, bool enabled);
+void ecs_system_enable(ecs_world_t *world, ecs_system_id_t system);
+void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system);
 ```
 
 `after` declares systems that must run first in the same phase. System id `0` is

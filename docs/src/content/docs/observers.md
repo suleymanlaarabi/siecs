@@ -34,6 +34,9 @@ ecs_observer(world, {
 
 `callback` is required.
 
+Observers are enabled by default. Use `ecs_observer_disable()` and
+`ecs_observer_enable()` to toggle an observer without unregistering it.
+
 ## Event Payload
 
 The callback receives `ecs_observer_event_t`:
