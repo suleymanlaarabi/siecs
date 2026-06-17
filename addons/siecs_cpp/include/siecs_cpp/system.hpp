@@ -6,12 +6,10 @@ namespace ecs {
 
 namespace detail {
 
-inline constexpr ecs_query_id_t no_query_id = UINT16_MAX;
-
 template <typename Callback, typename Args>
 static void system_run(ecs_world_t *world, ecs_query_id_t query, void *) {
     Callback callback{};
-    if (query == no_query_id) {
+    if (query == ECS_NO_QUERY) {
         run_once<Callback, Args>(callback, world);
     } else {
         run_query<Callback, Args>(callback, world, query);

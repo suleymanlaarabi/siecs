@@ -4,13 +4,8 @@
 #include "storage/system_index.h"
 #include "utils.h"
 #include "world_internal.h"
-#include <stdint.h>
 #include <string.h>
 #include <time.h>
-
-static bool ecs_system_desc_has_query(const ecs_system_desc_t *desc) {
-    return desc->query.terms[0].id != 0;
-}
 
 ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc) {
     ecs_assert_not_null(world);
@@ -18,11 +13,9 @@ ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *des
     ecs_assert(desc->callback || desc->run, "system requires callback or run function\n");
     ecs_assert(desc->phase < EcsPhaseCount, "invalid system phase: %u\n", desc->phase);
 
-    const bool has_query = ecs_system_desc_has_query(desc);
     ecs_system_t sys = {
         .name = desc->name,
-        .qid = has_query ? ecs_query_init(world, &desc->query) : UINT16_MAX,
-        .has_query = has_query,
+        .qid = desc->query.terms[0].id ? ecs_query_init(world, &desc->query) : ECS_NO_QUERY,
         .callback = desc->callback,
         .run = desc->run,
         .ctx = desc->ctx,
@@ -47,7 +40,7 @@ void ecs_run_system(ecs_world_t *world, ecs_system_id_t system) {
 
     if (sys->run) {
         sys->run(world, sys->qid, sys->ctx);
-    } else if (sys->has_query) {
+    } else if (sys->qid != ECS_NO_QUERY) {
         ecs_iter_t it = ecs_query_iter(world, sys->qid);
         while (ecs_iter_next(&it)) {
             sys->callback(&it);

@@ -7,7 +7,6 @@
 typedef struct {
     const char *name;
     ecs_query_id_t qid;
-    bool has_query;
     void (*callback)(ecs_iter_t *);
     void (*run)(ecs_world_t *world, ecs_query_id_t query, void *ctx);
     void *ctx;

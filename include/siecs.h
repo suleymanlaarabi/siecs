@@ -40,6 +40,8 @@ typedef uint16_t ecs_module_id_t;
 typedef uint16_t ecs_resource_t;
 typedef uint32_t ecs_observer_id_t;
 
+#define ECS_NO_QUERY UINT16_MAX
+
 /*
  * Module import callback.
  *
