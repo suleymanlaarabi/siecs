@@ -25,6 +25,8 @@
           "world_api",
           "system_read",
           "system_write",
+          "system_without_query_runs_once",
+          "system_empty_callback_runs_once",
           "query_read",
           "does_not_create_query_term",
           "field_index_stays_correct"

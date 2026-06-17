@@ -6,10 +6,16 @@ namespace ecs {
 
 namespace detail {
 
+inline constexpr ecs_query_id_t no_query_id = UINT16_MAX;
+
 template <typename Callback, typename Args>
 static void system_run(ecs_world_t *world, ecs_query_id_t query, void *) {
     Callback callback{};
-    run_query<Callback, Args>(callback, world, query);
+    if (query == no_query_id) {
+        run_once<Callback, Args>(callback, world);
+    } else {
+        run_query<Callback, Args>(callback, world, query);
+    }
 }
 
 } // namespace detail
@@ -45,11 +51,6 @@ class system : public query {
 
         using traits = function_traits<callback>;
         using args = typename traits::args_tuple;
-        static_assert(
-            detail::component_arg_count<args>() > 0,
-            "system callbacks must read at least one component"
-        );
-
         detail::append_callback_terms<args>(_world, desc, term_index);
 
         ecs_system_desc_t system_desc = {

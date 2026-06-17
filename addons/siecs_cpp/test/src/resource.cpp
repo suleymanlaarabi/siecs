@@ -85,6 +85,35 @@ void resource_system_write(void) {
     test_assert(world.resource<CppTime>().elapsed == 0.25f);
 }
 
+void resource_system_without_query_runs_once(void) {
+    cpp_resource_system_calls = 0;
+
+    ecs::world world;
+    world.set_resource(CppTime{ .dt = 0.25f, .elapsed = 1.0f });
+
+    world.system("CppResourceNoQuery").each([](ecs::res<CppTime> time) {
+        time->elapsed += time->dt;
+        cpp_resource_system_calls++;
+    });
+
+    world.progress();
+
+    test_int(1, cpp_resource_system_calls);
+    test_assert(world.resource<CppTime>().elapsed == 1.25f);
+}
+
+void resource_system_empty_callback_runs_once(void) {
+    cpp_resource_system_calls = 0;
+
+    ecs::world world;
+
+    world.system("CppEmptyNoQuery").each([] { cpp_resource_system_calls++; });
+
+    world.progress();
+
+    test_int(1, cpp_resource_system_calls);
+}
+
 void resource_query_read(void) {
     cpp_resource_query_calls = 0;
 

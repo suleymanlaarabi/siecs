@@ -16,6 +16,8 @@ void entity_state_disabled_entities_are_skipped(void);
 void resource_world_api(void);
 void resource_system_read(void);
 void resource_system_write(void);
+void resource_system_without_query_runs_once(void);
+void resource_system_empty_callback_runs_once(void);
 void resource_query_read(void);
 void resource_does_not_create_query_term(void);
 void resource_field_index_stays_correct(void);
@@ -53,6 +55,14 @@ bake_test_case resource_testcases[] = {
     {
         "system_write",
         resource_system_write
+    },
+    {
+        "system_without_query_runs_once",
+        resource_system_without_query_runs_once
+    },
+    {
+        "system_empty_callback_runs_once",
+        resource_system_empty_callback_runs_once
     },
     {
         "query_read",
@@ -111,7 +121,7 @@ static bake_test_suite suites[] = {
         "resource",
         NULL,
         NULL,
-        6,
+        8,
         resource_testcases
     },
     {

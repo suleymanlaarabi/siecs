@@ -41,6 +41,7 @@ void system_phase_order(void);
 void system_start_phases_run_once(void);
 void system_after_order(void);
 void system_enable(void);
+void system_without_query_runs_once(void);
 void system_skips_disabled_by_default(void);
 void system_can_run_on_disabled_when_requested(void);
 
@@ -173,6 +174,10 @@ bake_test_case system_testcases[] = {
     {
         "enable",
         system_enable
+    },
+    {
+        "without_query_runs_once",
+        system_without_query_runs_once
     },
     {
         "skips_disabled_by_default",
@@ -309,7 +314,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        7,
+        8,
         system_testcases
     },
     {

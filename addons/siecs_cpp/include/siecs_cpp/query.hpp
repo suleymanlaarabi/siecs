@@ -51,6 +51,7 @@ inline auto make_batch_arg(ecs_iter_t *it, Resources &resources) {
 
 template <typename Args, typename Resources, std::size_t... Is>
 inline auto make_fields(ecs_iter_t *it, Resources &resources, std::index_sequence<Is...>) {
+    (void)it;
     return std::tuple{ make_batch_arg<Args, Is>(it, resources)... };
 }
 
@@ -138,9 +139,6 @@ append_callback_terms(ecs_world_t *world, ecs_query_desc_t &desc, uint16_t &term
 
 template <typename F, typename Args>
 inline void run_query(F &func, ecs_world_t *world, ecs_query_id_t qid) {
-    constexpr std::size_t component_count = component_arg_count<Args>();
-    static_assert(component_count > 0, "query callbacks must read at least one component");
-
     auto resources = make_resources<Args>(world);
     ecs_iter_t it = ecs_query_iter(world, qid);
 
@@ -149,6 +147,25 @@ inline void run_query(F &func, ecs_world_t *world, ecs_query_id_t qid) {
             make_fields<Args>(&it, resources, std::make_index_sequence<std::tuple_size_v<Args>>{});
         call_fields(func, fields, it.count);
     }
+}
+
+template <typename F, typename Args>
+inline void run_once(F &func, ecs_world_t *world) {
+    auto resources = make_resources<Args>(world);
+    auto fields = make_fields<Args>(
+        nullptr,
+        resources,
+        std::make_index_sequence<std::tuple_size_v<Args>>{}
+    );
+    call_fields(func, fields, 1);
+}
+
+template <typename F, typename Args>
+inline void run_strict_query(F &func, ecs_world_t *world, ecs_query_id_t qid) {
+    constexpr std::size_t component_count = component_arg_count<Args>();
+    static_assert(component_count > 0, "query callbacks must read at least one component");
+
+    run_query<F, Args>(func, world, qid);
 }
 
 } // namespace detail
@@ -184,7 +201,7 @@ class query {
 
         ecs_query_id_t qid = ecs_query_init(_world, &desc);
 
-        detail::run_query<F, args>(func, _world, qid);
+        detail::run_strict_query<F, args>(func, _world, qid);
 
         ecs_query_fini(_world, qid);
     }

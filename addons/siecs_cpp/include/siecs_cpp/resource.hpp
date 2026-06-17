@@ -86,6 +86,7 @@ template <typename Arg> inline auto make_resource_arg(ecs_world_t *world) {
 
 template <typename Args, std::size_t... Is>
 inline auto make_resources(ecs_world_t *world, std::index_sequence<Is...>) {
+    (void)world;
     return std::tuple{ make_resource_arg<std::tuple_element_t<Is, Args>>(world)... };
 }
 

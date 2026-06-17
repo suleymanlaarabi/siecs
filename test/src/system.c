@@ -66,6 +66,13 @@ static void order_second(ecs_iter_t *it) {
     system_order[system_order_count++] = 20;
 }
 
+static void no_query_system(ecs_iter_t *it) {
+    test_not_null(it);
+    test_assert(it->world != NULL);
+    test_uint(1, it->count);
+    system_calls++;
+}
+
 static ecs_entity_t create_system_entity(ecs_world_t *world, int value) {
     ecs_entity_t entity = ecs_new(world);
     ecs_set(world, entity, SystemPosition, { value });
@@ -275,6 +282,27 @@ void system_enable(void) {
     ecs_system_disable(world, system);
     ecs_progress(world);
     test_assert(system_calls == 1);
+
+    ecs_fini(world);
+}
+
+void system_without_query_runs_once(void) {
+    reset_system_test_state();
+
+    ecs_world_t *world = ecs_init();
+    test_not_null(world);
+
+    ecs_system(
+        world,
+        {
+            .name = "NoQuery",
+            .phase = EcsOnUpdate,
+            .callback = no_query_system,
+        }
+    );
+
+    ecs_progress(world);
+    test_uint(1, system_calls);
 
     ecs_fini(world);
 }

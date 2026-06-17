@@ -608,9 +608,11 @@ typedef enum {
 /*
  * System descriptor.
  *
- * callback is called once per non-empty iterator batch matching query. phase
- * controls when ecs_progress/ecs_run_phase executes the system. after contains
- * up to four system ids that must run before this system in the same phase.
+ * If query has terms, callback is called once per non-empty iterator batch
+ * matching query. If query has no terms, the system runs once with an empty
+ * iterator. phase controls when ecs_progress/ecs_run_phase executes the system.
+ * after contains up to four system ids that must run before this system in the
+ * same phase.
  */
 typedef struct {
     const char *name;
