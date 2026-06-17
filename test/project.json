@@ -55,6 +55,7 @@
           "after_order",
           "enable",
           "without_query_runs_once",
+          "callback_can_advance_iterator",
           "skips_disabled_by_default",
           "can_run_on_disabled_when_requested"
         ]

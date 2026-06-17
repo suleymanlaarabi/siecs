@@ -40,8 +40,6 @@ typedef uint16_t ecs_module_id_t;
 typedef uint16_t ecs_resource_t;
 typedef uint32_t ecs_observer_id_t;
 
-#define ECS_NO_QUERY UINT16_MAX
-
 /*
  * Module import callback.
  *
@@ -620,8 +618,6 @@ typedef struct {
     const char *name;
     ecs_query_desc_t query;
     void (*callback)(ecs_iter_t *);
-    void (*run)(ecs_world_t *world, ecs_query_id_t query, void *ctx);
-    void *ctx;
     ecs_phase_t phase;
     ecs_system_id_t after[4];
     bool disabled;

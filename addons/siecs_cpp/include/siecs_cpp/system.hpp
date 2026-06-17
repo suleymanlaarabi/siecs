@@ -7,12 +7,12 @@ namespace ecs {
 namespace detail {
 
 template <typename Callback, typename Args>
-static void system_run(ecs_world_t *world, ecs_query_id_t query, void *) {
+static void system_callback(ecs_iter_t *it) {
     Callback callback{};
-    if (query == ECS_NO_QUERY) {
-        run_once<Callback, Args>(callback, world);
+    if constexpr (component_arg_count<Args>() == 0) {
+        run_once<Callback, Args>(callback, it->world);
     } else {
-        run_query<Callback, Args>(callback, world, query);
+        run_batch<Callback, Args>(callback, it);
     }
 }
 
@@ -54,7 +54,7 @@ class system : public query {
         ecs_system_desc_t system_desc = {
             .name = name,
             .query = this->desc,
-            .run = detail::system_run<callback, args>,
+            .callback = detail::system_callback<callback, args>,
             .phase = _phase,
         };
 

@@ -150,7 +150,17 @@ inline void run_query(F &func, ecs_world_t *world, ecs_query_id_t qid) {
 }
 
 template <typename F, typename Args>
+inline void run_batch(F &func, ecs_iter_t *it) {
+    auto resources = make_resources<Args>(it->world);
+    auto fields =
+        make_fields<Args>(it, resources, std::make_index_sequence<std::tuple_size_v<Args>>{});
+    call_fields(func, fields, it->count);
+}
+
+template <typename F, typename Args>
 inline void run_once(F &func, ecs_world_t *world) {
+    static_assert(component_arg_count<Args>() == 0);
+
     auto resources = make_resources<Args>(world);
     auto fields = make_fields<Args>(
         nullptr,

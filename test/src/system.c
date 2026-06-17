@@ -1,8 +1,10 @@
 #include <siecs_test.h>
 
 ECS_COMPONENT_DECLARE(SystemPosition, { int value; });
+ECS_COMPONENT_DECLARE(SystemTag, { int value; });
 
 ECS_COMPONENT_DEFINE(SystemPosition);
+ECS_COMPONENT_DEFINE(SystemTag);
 
 static uint32_t system_calls;
 static uint32_t system_seen;
@@ -71,6 +73,16 @@ static void no_query_system(ecs_iter_t *it) {
     test_assert(it->world != NULL);
     test_uint(1, it->count);
     system_calls++;
+}
+
+static void consume_next_batch_system(ecs_iter_t *it) {
+    system_calls++;
+    system_seen += it->count;
+
+    if (ecs_iter_next(it)) {
+        system_calls++;
+        system_seen += it->count;
+    }
 }
 
 static ecs_entity_t create_system_entity(ecs_world_t *world, int value) {
@@ -303,6 +315,40 @@ void system_without_query_runs_once(void) {
 
     ecs_progress(world);
     test_uint(1, system_calls);
+
+    ecs_fini(world);
+}
+
+void system_callback_can_advance_iterator(void) {
+    reset_system_test_state();
+
+    ecs_world_t *world = ecs_init();
+    test_not_null(world);
+
+    ECS_COMPONENT_REGISTER(world, SystemPosition);
+    ECS_COMPONENT_REGISTER(world, SystemTag);
+
+    ecs_entity_t first = create_system_entity(world, 1);
+    ecs_add(world, first, Disabled);
+
+    ecs_entity_t second = create_system_entity(world, 2);
+    ecs_add(world, second, Disabled);
+    ecs_set(world, second, SystemTag, { 1 });
+
+    ecs_system(
+        world,
+        {
+            .name = "ConsumeNextBatch",
+            .phase = EcsOnUpdate,
+            .query = { .terms = { ecs_in(SystemPosition), ecs_filter(Disabled) } },
+            .callback = consume_next_batch_system,
+        }
+    );
+
+    ecs_progress(world);
+
+    test_uint(2, system_calls);
+    test_uint(2, system_seen);
 
     ecs_fini(world);
 }

@@ -42,6 +42,7 @@ void system_start_phases_run_once(void);
 void system_after_order(void);
 void system_enable(void);
 void system_without_query_runs_once(void);
+void system_callback_can_advance_iterator(void);
 void system_skips_disabled_by_default(void);
 void system_can_run_on_disabled_when_requested(void);
 
@@ -180,6 +181,10 @@ bake_test_case system_testcases[] = {
         system_without_query_runs_once
     },
     {
+        "callback_can_advance_iterator",
+        system_callback_can_advance_iterator
+    },
+    {
         "skips_disabled_by_default",
         system_skips_disabled_by_default
     },
@@ -314,7 +319,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        8,
+        9,
         system_testcases
     },
     {
