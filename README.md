@@ -2,6 +2,7 @@
 
 [![Documentation](https://img.shields.io/badge/docs-siecs-blue?style=for-the-badge&color=blue)](https://suleymanlaarabi.github.io/siecs/)
 [![actions](https://img.shields.io/github/actions/workflow/status/suleymanlaarabi/siecs/ci.yml?branch=main&style=for-the-badge)](https://github.com/suleymanlaarabi/siecs/actions?query=workflow%3ACI)
+[![Discord Chat](https://img.shields.io/discord/633826290415435777.svg?style=for-the-badge&color=%235a64f6)](https://discord.gg/p35WBXpyK4)
 
 `siecs` is an entity component system with a compact C API inspired by the way Flecs lets you describe data, create entities, and run logic over matching component sets.
 
