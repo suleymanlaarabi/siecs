@@ -44,7 +44,7 @@ jobs:
       CC: ${{ matrix.cc }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install compiler
         if: runner.os == 'Linux'
@@ -88,7 +88,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install toolchain
         run: |
