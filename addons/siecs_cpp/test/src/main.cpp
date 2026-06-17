@@ -14,6 +14,7 @@ void entity_state_disabled_entities_are_skipped(void);
 
 // Testsuite 'resource'
 void resource_world_api(void);
+void resource_presence_checks_do_not_register(void);
 void resource_system_read(void);
 void resource_system_write(void);
 void resource_system_without_query_runs_once(void);
@@ -47,6 +48,10 @@ bake_test_case resource_testcases[] = {
     {
         "world_api",
         resource_world_api
+    },
+    {
+        "presence_checks_do_not_register",
+        resource_presence_checks_do_not_register
     },
     {
         "system_read",
@@ -121,7 +126,7 @@ static bake_test_suite suites[] = {
         "resource",
         NULL,
         NULL,
-        8,
+        9,
         resource_testcases
     },
     {

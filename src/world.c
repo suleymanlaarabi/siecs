@@ -289,7 +289,9 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, c
         crec->on_set(world, entity, cid, data);
     }
     ecs_emit(world, table, entity, OnSet, data);
-    memcpy(dst, data, crec->size);
+    if (crec->size != 0) {
+        memcpy(dst, data, crec->size);
+    }
 }
 
 bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {

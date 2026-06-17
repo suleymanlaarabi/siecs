@@ -20,6 +20,8 @@ ecs_resource_t ecs_resource_index_register(
     ecs_resource_index_t *index,
     const ecs_resource_desc_t *desc
 );
+ecs_resource_t ecs_resource_index_find(const ecs_resource_index_t *index, const char *name);
+bool ecs_resource_index_is_registered(const ecs_resource_index_t *index, ecs_resource_t id);
 
 void ecs_resource_index_set(
     ecs_resource_index_t *index,

@@ -18,6 +18,10 @@ struct CppVelocity {
     float x;
 };
 
+struct CppNeverRegisteredResource {
+    int value;
+};
+
 static int cpp_resource_system_calls;
 static int cpp_resource_query_calls;
 
@@ -45,6 +49,15 @@ void resource_world_api(void) {
     world.remove_resource<CppTime>();
     test_false(world.has_resource<CppTime>());
     test_assert(world.try_resource<CppTime>() == nullptr);
+}
+
+void resource_presence_checks_do_not_register(void) {
+    ecs::world world;
+
+    test_false(world.has_resource<CppNeverRegisteredResource>());
+    test_assert(world.try_resource<CppNeverRegisteredResource>() == nullptr);
+    world.remove_resource<CppNeverRegisteredResource>();
+    test_false(world.has_resource<CppNeverRegisteredResource>());
 }
 
 void resource_system_read(void) {

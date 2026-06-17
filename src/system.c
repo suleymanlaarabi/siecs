@@ -57,10 +57,6 @@ void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase) {
     ecs_assert_not_null(world);
     ecs_assert(phase < EcsPhaseCount, "invalid system phase: %u\n", phase);
 
-    if (phase >= EcsPhaseCount) {
-        return;
-    }
-
     ecs_system_index_t *index = &world->system_index;
     if (index->plan_dirty) {
         ecs_system_index_build_plan(index);

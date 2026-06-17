@@ -8,6 +8,16 @@ ecs_resource_t ecs_resource_init(ecs_world_t *world, const ecs_resource_desc_t *
     return ecs_resource_index_register(&world->resource_index, desc);
 }
 
+ecs_resource_t ecs_resource_find(ecs_world_t *world, const char *name) {
+    ecs_assert_not_null(world);
+    return ecs_resource_index_find(&world->resource_index, name);
+}
+
+bool ecs_resource_is_registered_rid(const ecs_world_t *world, ecs_resource_t id) {
+    ecs_assert_not_null(world);
+    return ecs_resource_index_is_registered(&world->resource_index, id);
+}
+
 void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data) {
     ecs_assert_not_null(world);
     ecs_assert_id_valid(id);

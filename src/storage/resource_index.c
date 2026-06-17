@@ -87,6 +87,23 @@ ecs_resource_t ecs_resource_index_register(
     return id;
 }
 
+ecs_resource_t ecs_resource_index_find(const ecs_resource_index_t *index, const char *name) {
+    ecs_assert_not_null(name);
+
+    for (ecs_resource_t id = 1; id < index->count; id++) {
+        if (index->records[id].name && strcmp(index->records[id].name, name) == 0) {
+            return id;
+        }
+    }
+
+    return 0;
+}
+
+bool ecs_resource_index_is_registered(const ecs_resource_index_t *index, ecs_resource_t id) {
+    return id != 0 && id < index->count && id < index->capacity &&
+           index->records[id].name != NULL;
+}
+
 void ecs_resource_index_set(
     ecs_resource_index_t *index,
     ecs_world_t *world,
@@ -94,7 +111,6 @@ void ecs_resource_index_set(
     const void *data
 ) {
     ecs_resource_index_assert_registered(index, id);
-    ecs_resource_index_ensure(index, id);
 
     const ecs_resource_desc_t *record = &index->records[id];
     if (!index->present[id]) {
@@ -114,7 +130,7 @@ void ecs_resource_index_set(
 
 void *ecs_resource_index_get(ecs_resource_index_t *index, ecs_resource_t id) {
     ecs_resource_index_assert_registered(index, id);
-    if (!ecs_resource_index_has(index, id)) {
+    if (!index->present[id]) {
         return NULL;
     }
 
@@ -123,7 +139,7 @@ void *ecs_resource_index_get(ecs_resource_index_t *index, ecs_resource_t id) {
 
 const void *ecs_resource_index_get_const(const ecs_resource_index_t *index, ecs_resource_t id) {
     ecs_resource_index_assert_registered(index, id);
-    if (!ecs_resource_index_has(index, id)) {
+    if (!index->present[id]) {
         return NULL;
     }
 
@@ -132,12 +148,12 @@ const void *ecs_resource_index_get_const(const ecs_resource_index_t *index, ecs_
 
 bool ecs_resource_index_has(const ecs_resource_index_t *index, ecs_resource_t id) {
     ecs_resource_index_assert_registered(index, id);
-    return id != 0 && id < index->capacity && index->present[id];
+    return index->present[id];
 }
 
 void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_world_t *world, ecs_resource_t id) {
     ecs_resource_index_assert_registered(index, id);
-    if (!ecs_resource_index_has(index, id)) {
+    if (!index->present[id]) {
         return;
     }
 

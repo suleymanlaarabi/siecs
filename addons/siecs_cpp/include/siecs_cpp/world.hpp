@@ -103,17 +103,22 @@ class world {
 
     template <typename T> [[nodiscard]] T *try_resource() const {
         using type = std::remove_cv_t<T>;
-        return static_cast<T *>(ecs_try_resource_rid(_world, ecs_cpp_resource_id<type>(_world)));
+        ecs_resource_t id = ecs_cpp_try_resource_id<type>(_world);
+        return id ? static_cast<T *>(ecs_try_resource_rid(_world, id)) : nullptr;
     }
 
     template <typename T> [[nodiscard]] bool has_resource() const {
         using type = std::remove_cv_t<T>;
-        return ecs_has_resource_rid(_world, ecs_cpp_resource_id<type>(_world));
+        ecs_resource_t id = ecs_cpp_try_resource_id<type>(_world);
+        return id && ecs_has_resource_rid(_world, id);
     }
 
     template <typename T> void remove_resource() const {
         using type = std::remove_cv_t<T>;
-        ecs_remove_resource_rid(_world, ecs_cpp_resource_id<type>(_world));
+        ecs_resource_t id = ecs_cpp_try_resource_id<type>(_world);
+        if (id) {
+            ecs_remove_resource_rid(_world, id);
+        }
     }
 
     template <typename T>

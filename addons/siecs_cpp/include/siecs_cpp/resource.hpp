@@ -24,7 +24,6 @@ namespace detail {
 
 template <typename T> struct resource_type {
     static inline ecs_resource_t id;
-    static inline ecs_world_t *world;
 };
 
 template <typename T> struct is_res : std::false_type {};
@@ -50,13 +49,16 @@ struct no_resource {};
 template <typename T> static ecs_resource_t ecs_cpp_resource_id(ecs_world_t *world) {
     using type = std::remove_cv_t<T>;
     ecs_resource_t &rid = detail::resource_type<type>::id;
-    ecs_world_t *&registered_world = detail::resource_type<type>::world;
 
-    if (rid != 0 && registered_world == world) {
+    if (rid != 0 && ecs_resource_is_registered_rid(world, rid)) {
         return rid;
     }
 
     std::string name = std::string(type_name<type>());
+    rid = ecs_resource_find(world, name.c_str());
+    if (rid != 0) {
+        return rid;
+    }
 
     ecs_resource_desc_t desc = {
         .name = name.c_str(),
@@ -66,7 +68,19 @@ template <typename T> static ecs_resource_t ecs_cpp_resource_id(ecs_world_t *wor
     };
 
     rid = ecs_resource_init(world, &desc);
-    registered_world = world;
+    return rid;
+}
+
+template <typename T> static ecs_resource_t ecs_cpp_try_resource_id(ecs_world_t *world) {
+    using type = std::remove_cv_t<T>;
+    ecs_resource_t &rid = detail::resource_type<type>::id;
+
+    if (rid != 0 && ecs_resource_is_registered_rid(world, rid)) {
+        return rid;
+    }
+
+    std::string name = std::string(type_name<type>());
+    rid = ecs_resource_find(world, name.c_str());
     return rid;
 }
 

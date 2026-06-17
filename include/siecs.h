@@ -497,6 +497,8 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, co
 #define ecs_remove_resource(world, rname) ecs_remove_resource_rid(world, ecs_id(rname))
 
 ecs_resource_t ecs_resource_init(ecs_world_t *world, const ecs_resource_desc_t *desc);
+ecs_resource_t ecs_resource_find(ecs_world_t *world, const char *name);
+bool ecs_resource_is_registered_rid(const ecs_world_t *world, ecs_resource_t id);
 void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);
 void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id);
 void *ecs_try_resource_rid(ecs_world_t *world, ecs_resource_t id);

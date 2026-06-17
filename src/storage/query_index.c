@@ -89,8 +89,6 @@ static bool ecs_query_term_is_positive(ecs_query_term_t term) {
 }
 
 static void ecs_query_validate_terms(const ecs_query_term_t *terms, uint16_t term_count) {
-    ecs_assert(term_count != 0, "query must contain at least one term\n");
-
     for (uint16_t i = 0; i < term_count; i++) {
         ecs_assert_id_valid(terms[i].id);
         ecs_assert(
@@ -150,6 +148,11 @@ ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, ui
     ecs_vec_push_u16(&cache->table_ids, table_id);
     for (uint16_t i = 0; i < cache->query.field_count; i++) {
         uint16_t col = ecs_table_get_column_index(table, cache->query.fields[i]);
+        ecs_assert(
+            col < table->type.count && table->type.ids[col] == cache->query.fields[i],
+            "query cache matched table without field component: %d\n",
+            cache->query.fields[i]
+        );
         void **slot = &table->cls[col].data;
         ecs_vec_push(&cache->fields, &slot, sizeof(void **));
     }

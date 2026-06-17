@@ -23,6 +23,7 @@
         "id": "resource",
         "testcases": [
           "world_api",
+          "presence_checks_do_not_register",
           "system_read",
           "system_write",
           "system_without_query_runs_once",
