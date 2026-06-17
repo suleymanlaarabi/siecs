@@ -47,6 +47,18 @@ ECS_COMPONENT_DEFINE(Name);
 ECS_COMPONENT_REGISTER(world, Name);
 ```
 
+Built-in components declared by the public API:
+
+```c
+ECS_COMPONENT_DECLARE(IsA, { ecs_entity_t target; });
+ECS_COMPONENT_DECLARE(Name, { char *value; });
+ECS_COMPONENT_DECLARE(Disabled, { uint8_t value; });
+```
+
+`Disabled` excludes an entity from queries by default. A query can match
+disabled entities by mentioning `Disabled` explicitly, for example with
+`ecs_filter(Disabled)`.
+
 ```c
 #define ecs_component(world, ...)
 ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc);
@@ -145,6 +157,10 @@ ecs_not(Component);
 
 `ecs_field()` returns only `EcsIn`, `EcsOut`, and `EcsInOut` terms in
 declaration order.
+
+Queries implicitly add `ecs_not(Disabled)` unless their descriptor already
+contains a term for `Disabled`. The implicit term is used by plain queries,
+systems, and observers.
 
 ```c
 ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);

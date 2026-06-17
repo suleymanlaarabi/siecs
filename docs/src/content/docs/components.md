@@ -75,6 +75,25 @@ if (ecs_has(world, entity, Position)) {
 
 Removing a component that is not present is a no-op.
 
+## Disabled
+
+`Disabled` is a built-in component. Adding it to an entity excludes that entity
+from queries by default:
+
+```c
+ecs_add(world, entity, Disabled);
+```
+
+Queries, systems, and observers behave as if they had `ecs_not(Disabled)` unless
+their query mentions `Disabled` explicitly. To match disabled entities, add a
+`Disabled` term yourself:
+
+```c
+ecs_query_id_t disabled_positions = ecs_query(world, {
+    .terms = { ecs_in(Position), ecs_filter(Disabled) },
+});
+```
+
 ## Component Requirements
 
 Use `ecs_with()` when adding one component should also add another component:

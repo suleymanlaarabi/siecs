@@ -38,7 +38,19 @@ debugging and traces easier to read.
 The query follows the same rules as queries created with `ecs_query()`: `ecs_in`,
 `ecs_out`, and `ecs_inout` terms are returned through `ecs_field()`,
 `ecs_filter` terms must exist but are not returned, and `ecs_not` terms must not
-exist.
+exist. Entities with the built-in `Disabled` component are skipped by default
+because system queries inherit the implicit `ecs_not(Disabled)` query rule.
+
+To run a system only on disabled entities, mention `Disabled` explicitly:
+
+```c
+ecs_system(world, {
+    .name = "PausedDebug",
+    .phase = EcsOnUpdate,
+    .query = { .terms = { ecs_in(Position), ecs_filter(Disabled) } },
+    .callback = paused_debug_system,
+});
+```
 
 ## Run Systems
 
@@ -128,6 +140,10 @@ ecs_system_disable(world, Damage);
 
 Disabled systems are skipped by `ecs_progress()`, `ecs_run_phase()`, and
 `ecs_run_system()`.
+
+This is separate from the `Disabled` component on entities. A disabled system
+does not run at all; an entity with `Disabled` is simply excluded from normal
+system queries.
 
 ## Mutation During Systems
 

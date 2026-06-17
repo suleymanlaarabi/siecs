@@ -34,6 +34,20 @@ ecs_observer(world, {
 
 `callback` is required.
 
+Observer queries follow the same matching rules as normal queries. Entities with
+the built-in `Disabled` component do not trigger matching observers unless the
+observer query mentions `Disabled` explicitly:
+
+```c
+ecs_observer(world, {
+    .on = OnSet,
+    .query = {
+        .terms = { ecs_in(Position), ecs_filter(Disabled) },
+    },
+    .callback = on_disabled_position_set,
+});
+```
+
 Observers are enabled by default. Use `ecs_observer_disable()` and
 `ecs_observer_enable()` to toggle an observer without unregistering it.
 

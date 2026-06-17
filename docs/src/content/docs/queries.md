@@ -29,6 +29,10 @@ Current descriptor limits:
 | --- | --- |
 | `terms` | 16 |
 
+Queries exclude entities with the built-in `Disabled` component by default. This
+implicit `ecs_not(Disabled)` term is added only when the query does not already
+mention `Disabled`.
+
 ## Iterate
 
 ```c
@@ -67,6 +71,23 @@ Use `ecs_not` to skip entities with a component:
 ```c
 ecs_query_id_t active_positions = ecs_query(world, {
     .terms = { ecs_inout(Position), ecs_not(Disabled) },
+});
+```
+
+The `ecs_not(Disabled)` term is implicit for normal queries, so the previous
+example can usually be written as:
+
+```c
+ecs_query_id_t active_positions = ecs_query(world, {
+    .terms = { ecs_inout(Position) },
+});
+```
+
+To match disabled entities, mention `Disabled` explicitly:
+
+```c
+ecs_query_id_t disabled_positions = ecs_query(world, {
+    .terms = { ecs_inout(Position), ecs_filter(Disabled) },
 });
 ```
 
