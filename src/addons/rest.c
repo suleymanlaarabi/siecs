@@ -80,7 +80,7 @@ sihttp_response_t get_entities(const sihttp_request_t *req) {
     return sihttp_response(
         {
             .status = 200,
-            .body = sijson_stringify(array),
+            .body = strdup(sijson_string(array)),
             .content_type = SIHTTP_CONTENT_JSON,
         }
     );
