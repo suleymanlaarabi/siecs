@@ -558,6 +558,7 @@ void ecs_observer_trigger(
 typedef struct {
     ecs_world_t *world;
     uint32_t count;
+    ecs_entity_t *entities;
     struct ecs_query_cache_s *cache;
     void ***ptrs;
     uint16_t table_idx;
