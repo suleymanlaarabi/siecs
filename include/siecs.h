@@ -498,6 +498,8 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, co
 #define ECS_RESOURCE_REGISTER(world, rname)                                                        \
     ecs_id(rname) = ecs_resource_init(world, &ecs_id(rname##_desc))
 
+#define ECS_RESOURCE(rname, ...) ECS_RESOURCE_DECLARE(rname, __VA_ARGS__); ECS_RESOURCE_DEFINE(rname, __VA_ARGS__)
+
 /* Set or replace a world resource. */
 #define ecs_set_resource(world, rname, ...)                                                        \
     ecs_set_resource_rid(world, ecs_id(rname), &(rname)__VA_ARGS__)
