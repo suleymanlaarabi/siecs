@@ -13,7 +13,7 @@ void RelationOnSet(
     ecs_world_t *world,
     ecs_entity_t entity,
     ecs_component_t target_component,
-    const void *ptr
+    void *ptr
 ) {
     const RelationTarget *target_data = ptr;
     ecs_component_t source_component = target_component + 1;
@@ -51,7 +51,7 @@ void RelationOnRemove(
     ecs_world_t *world,
     ecs_entity_t entity,
     ecs_component_t component,
-    const void *ptr
+    void *ptr
 ) {
     const RelationTarget *target_data = ptr;
     ecs_component_t source_component = component + 1;
@@ -73,7 +73,7 @@ void RelationSourceOnRemove(
     ecs_world_t *world,
     ecs_entity_t _entity,
     ecs_component_t component,
-    const void *ptr
+    void *ptr
 ) {
     RelationSource *source_data = (void *)ptr;
 

@@ -44,11 +44,11 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
         .on_remove = []([[maybe_unused]] ecs_world_t *world,
                         [[maybe_unused]] ecs_entity_t entity,
                         [[maybe_unused]] ecs_component_t component,
-                        const void *ptr) { static_cast<const T *>(ptr)->~T(); },
+                        void *ptr) { static_cast<const T *>(ptr)->~T(); },
         .on_add = []([[maybe_unused]] ecs_world_t *world,
                      [[maybe_unused]] ecs_entity_t entity,
                      [[maybe_unused]] ecs_component_t component,
-                     const void *ptr) { new (const_cast<void *>(ptr)) T(); },
+                     void *ptr) { new (const_cast<void *>(ptr)) T(); },
         .is_relation = false,
         .struct_desc = nullptr,
     };
