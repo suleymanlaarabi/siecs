@@ -13,12 +13,13 @@ void RelationOnSet(
     ecs_world_t *world,
     ecs_entity_t entity,
     ecs_component_t target_component,
-    void *ptr
+    const void *new_value,
+    void *current_value
 ) {
-    const RelationTarget *target_data = ptr;
+    const RelationTarget *target_data = new_value;
     ecs_component_t source_component = target_component + 1;
 
-    const RelationTarget *old_target_data = ecs_get_cid(world, entity, target_component);
+    const RelationTarget *old_target_data = current_value;
 
     ecs_assert_entity_valid(target_data->target);
     ecs_assert_is_alive(world, target_data->target);

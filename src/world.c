@@ -200,7 +200,7 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     ecs_table_t *new_table = ecs_get_table(world, edge);
     migrate_entity_add(world, record, entity, table, new_table, edge, cid);
 
-    const void *component_data = ecs_table_get_component(new_table, cid, record->table_row);
+    void *component_data = ecs_table_get_component(new_table, cid, record->table_row);
     if (crec->on_add) {
         crec->on_add(world, entity, cid, component_data);
     }
@@ -283,10 +283,9 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, c
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
 
-    // on_set sees the new input data, while the table still stores the old data.
-    // Hooks that need both can use ptr for new data and ecs_get_cid for old data.
+    // on_set sees the new input data and the current table slot before copy.
     if (crec->on_set) {
-        crec->on_set(world, entity, cid, data);
+        crec->on_set(world, entity, cid, data, dst);
     }
     ecs_emit(world, table, entity, OnSet, data);
     if (crec->size != 0) {

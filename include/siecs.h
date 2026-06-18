@@ -102,20 +102,34 @@ typedef struct {
 
 typedef void (*ecs_observer_callback_t)(ecs_observer_event_t *event);
 
-/*
- * Component lifecycle hook.
- *
- * on_set receives the new value passed to ecs_set/ecs_set_cid. At that moment,
- * the table still contains the previous value, so ecs_get/ecs_get_cid can be
- * used by the hook to inspect old data.
- *
- * on_remove receives the value that is about to be removed.
- */
-typedef void (*ecs_component_hook_t)(
+/* Called after a component slot is added and zero-initialized. */
+typedef void (*ecs_component_on_add_t)(
     ecs_world_t *world,
     ecs_entity_t entity,
     ecs_component_t component,
-    void *ptr
+    void *value
+);
+
+/*
+ * Called before ecs_set_cid copies new_value into current_value.
+ *
+ * current_value is the component slot currently stored on the entity. Hooks can
+ * inspect the old value there, and may mutate it before the final copy.
+ */
+typedef void (*ecs_component_on_set_t)(
+    ecs_world_t *world,
+    ecs_entity_t entity,
+    ecs_component_t component,
+    const void *new_value,
+    void *current_value
+);
+
+/* Called before a component slot is removed. */
+typedef void (*ecs_component_on_remove_t)(
+    ecs_world_t *world,
+    ecs_entity_t entity,
+    ecs_component_t component,
+    void *value
 );
 
 /*
@@ -128,9 +142,9 @@ typedef void (*ecs_component_hook_t)(
 typedef struct {
     const char *name;
     uint64_t size;
-    ecs_component_hook_t on_set;
-    ecs_component_hook_t on_remove;
-    ecs_component_hook_t on_add;
+    ecs_component_on_set_t on_set;
+    ecs_component_on_remove_t on_remove;
+    ecs_component_on_add_t on_add;
     bool is_relation;
     const sireflect_struct_desc_t *struct_desc;
 } ecs_component_desc_t;
@@ -440,8 +454,9 @@ void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t c
 /*
  * Set a typed component value on an alive entity.
  *
- * Adds the component if needed, then emits OnSet. Component on_set hooks and
- * OnSet observers receive the new value before it is copied into storage.
+ * Adds the component if needed, then emits OnSet. Component on_set hooks receive
+ * the new value and current storage before the copy. OnSet observers receive the
+ * new value before it is copied into storage.
  */
 #define ecs_set(world, entity, cname, ...)                                                         \
     ecs_set_cid(world, entity, ecs_id(cname), &(cname)__VA_ARGS__)

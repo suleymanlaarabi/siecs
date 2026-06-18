@@ -42,7 +42,7 @@ bool ecs_iter_next(ecs_iter_t *it) {
         void ***fields = it->cache->fields.data;
         it->ptrs = &fields[it->table_idx * it->cache->query.field_count];
     }
-    it->entities = it->world->table_index.tables[it->table_idx].entities;
+    it->entities = it->world->table_index.tables[tids[it->table_idx]].entities;
     return true;
 }
 
