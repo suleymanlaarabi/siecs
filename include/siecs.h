@@ -115,7 +115,7 @@ typedef void (*ecs_component_hook_t)(
     ecs_world_t *world,
     ecs_entity_t entity,
     ecs_component_t component,
-    const void *ptr
+    void *ptr
 );
 
 /*
