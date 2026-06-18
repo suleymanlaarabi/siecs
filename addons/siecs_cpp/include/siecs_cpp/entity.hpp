@@ -34,6 +34,12 @@ class entity {
         return *this;
     }
 
+    entity child_of(entity parent) {
+        const ChildOf desc = {.target = parent._entity};
+        ecs_set_cid(_world, _entity, ecs_id(ChildOf), &desc);
+        return *this;
+    }
+
     entity enable() {
         ecs_remove_cid(_world, _entity, ecs_id(Disabled));
         return *this;
