@@ -27,6 +27,8 @@ void resource_does_not_consume_component_ids(void);
 
 // Testsuite 'childof'
 void childof_kill_parent(void);
+void childof_relation_without_cascade_keeps_related_alive(void);
+void childof_relation_remove_updates_source(void);
 
 // Testsuite 'query'
 void query_terms_field_order(void);
@@ -129,6 +131,14 @@ bake_test_case childof_testcases[] = {
     {
         "kill_parent",
         childof_kill_parent
+    },
+    {
+        "relation_without_cascade_keeps_related_alive",
+        childof_relation_without_cascade_keeps_related_alive
+    },
+    {
+        "relation_remove_updates_source",
+        childof_relation_remove_updates_source
     }
 };
 
@@ -305,7 +315,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        1,
+        3,
         childof_testcases
     },
     {

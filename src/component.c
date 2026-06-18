@@ -76,15 +76,23 @@ void RelationSourceOnRemove(
     ecs_component_t component,
     void *ptr
 ) {
+    (void)_entity;
+
     RelationSource *source_data = (void *)ptr;
 
     const ecs_entity_t *entities = source_data->entities.data;
     const uint32_t count = source_data->entities.size;
+    const ecs_component_record_t *crec = ecs_component_index_get(&world->component_index, component);
+    const bool cascade_delete = crec->relation_flags & EcsRelationCascadeDelete;
 
     // Prevent recursive calls to RelationOnRemove when removing relation from child
     source_data->entities.size = UINT32_MAX;
     for (uint32_t i = 0; i < count; i++) {
-        ecs_remove_cid(world, entities[i], component - 1);
+        if (cascade_delete) {
+            ecs_kill(world, entities[i]);
+        } else {
+            ecs_remove_cid(world, entities[i], component - 1);
+        }
     }
 
     ecs_vec_fini(&source_data->entities);
@@ -100,7 +108,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
 
     }
 
-    if (desc->is_relation) {
+    if (desc->relation_flags & EcsRelationTarget) {
         ecs_component_t component = ecs_component_index_create(
             &world->component_index,
             desc->name ? strdup(desc->name) : NULL,
@@ -108,6 +116,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             RelationOnSet,
             RelationOnRemove,
             desc->on_add,
+            desc->relation_flags,
             reflection
         );
 
@@ -125,6 +134,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             NULL,
             RelationSourceOnRemove,
             desc->on_add,
+            (desc->relation_flags & ~EcsRelationTarget) | EcsRelationSource,
             SIREFLECT_INVALID_HANDLE
         );
         ecs_module_record_component(world, component);
@@ -138,6 +148,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             desc->on_set,
             desc->on_remove,
             desc->on_add,
+            0,
             reflection
         );
         ecs_module_record_component(world, component);

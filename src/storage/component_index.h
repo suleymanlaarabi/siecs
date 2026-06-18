@@ -14,6 +14,7 @@ typedef struct {
     ecs_component_on_set_t on_set;
     ecs_component_on_remove_t on_remove;
     ecs_component_on_add_t on_add;
+    uint32_t relation_flags;
     ecs_vec_t tables; // uint16_t
     sireflect_handle_t reflection;
 } ecs_component_record_t;
@@ -32,6 +33,7 @@ ecs_component_t ecs_component_index_create(
     ecs_component_on_set_t on_set,
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
+    uint32_t relation_flags,
     sireflect_handle_t reflection
 );
 

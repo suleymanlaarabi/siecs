@@ -13,6 +13,7 @@ ecs_component_t ecs_component_index_create(
     ecs_component_on_set_t on_set,
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
+    uint32_t relation_flags,
     sireflect_handle_t reflection
 ) {
     ecs_component_record_t record = {
@@ -23,6 +24,7 @@ ecs_component_t ecs_component_index_create(
         .on_set = on_set,
         .on_remove = on_remove,
         .on_add = on_add,
+        .relation_flags = relation_flags,
         .tables = { 0 },
         .reflection = reflection,
     };

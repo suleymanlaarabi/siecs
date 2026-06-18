@@ -27,8 +27,12 @@ Declare and define a relation:
 
 ```c
 ECS_RELATION_DECLARE(Targets);
-ECS_RELATION_DEFINE(Targets);
+ECS_RELATION_DEFINE(Targets, 0);
 ```
+
+`ChildOf` is defined with `EcsRelationCascadeDelete`, so killing a parent also
+kills its children. Custom relations only remove reverse links by default unless
+they opt into that flag.
 
 Register it like a component:
 

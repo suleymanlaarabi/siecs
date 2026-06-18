@@ -68,10 +68,10 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
 typedef struct {
     const char *name;
     uint64_t size;
-    ecs_component_hook_t on_set;
-    ecs_component_hook_t on_remove;
-    ecs_component_hook_t on_add;
-    bool is_relation;
+    ecs_component_on_set_t on_set;
+    ecs_component_on_remove_t on_remove;
+    ecs_component_on_add_t on_add;
+    uint32_t relation_flags;
     const sireflect_struct_desc_t *struct_desc;
 } ecs_component_desc_t;
 ```
@@ -281,11 +281,12 @@ Enabling and disabling a module affects only captured systems and observers.
 
 ```c
 ECS_RELATION_DECLARE(Name);
-ECS_RELATION_DEFINE(Name);
+ECS_RELATION_DEFINE(Name, flags);
 ecs_source(Name);
 ```
 
 `ChildOf` is declared by the public API and registered during world bootstrap.
+It uses `EcsRelationCascadeDelete`.
 
 ## Systems
 

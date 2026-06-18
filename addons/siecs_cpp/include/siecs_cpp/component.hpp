@@ -49,7 +49,7 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
                      [[maybe_unused]] ecs_entity_t entity,
                      [[maybe_unused]] ecs_component_t component,
                      void *ptr) { new (const_cast<void *>(ptr)) T(); },
-        .is_relation = false,
+        .relation_flags = 0,
         .struct_desc = nullptr,
     };
 

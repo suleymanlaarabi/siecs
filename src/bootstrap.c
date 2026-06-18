@@ -4,7 +4,7 @@
 #include "storage/table_index.h"
 #include "world_internal.h"
 
-ECS_RELATION_DEFINE(ChildOf);
+ECS_RELATION_DEFINE(ChildOf, EcsRelationCascadeDelete);
 ECS_COMPONENT_DEFINE(IsA);
 ECS_COMPONENT_DEFINE(Name);
 ECS_COMPONENT_DEFINE(Disabled);

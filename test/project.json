@@ -34,7 +34,11 @@
       },
       {
         "id": "childof",
-        "testcases": ["kill_parent"]
+        "testcases": [
+          "kill_parent",
+          "relation_without_cascade_keeps_related_alive",
+          "relation_remove_updates_source"
+        ]
       },
       {
         "id": "query",

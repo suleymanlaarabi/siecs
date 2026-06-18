@@ -136,16 +136,22 @@ typedef void (*ecs_component_on_remove_t)(
  * Component registration descriptor.
  *
  * name and size are required for normal components. Hooks are optional.
- * Relation fields are used by ECS_RELATION_DEFINE and should normally not be
+ * relation_flags are used by ECS_RELATION_DEFINE and should normally not be
  * filled manually by user code.
  */
+typedef enum {
+    EcsRelationTarget = 1 << 0,
+    EcsRelationSource = 1 << 1,
+    EcsRelationCascadeDelete = 1 << 2,
+} ecs_relation_flags_t;
+
 typedef struct {
     const char *name;
     uint64_t size;
     ecs_component_on_set_t on_set;
     ecs_component_on_remove_t on_remove;
     ecs_component_on_add_t on_add;
-    bool is_relation;
+    uint32_t relation_flags;
     const sireflect_struct_desc_t *struct_desc;
 } ecs_component_desc_t;
 
@@ -331,11 +337,11 @@ bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t module);
  * A relation stores an entity target. The implementation also creates a source
  * component used internally to track reverse links.
  */
-#define ECS_RELATION_DEFINE(cname)                                                                 \
+#define ECS_RELATION_DEFINE(cname, flags)                                                          \
     ecs_component_desc_t ecs_id(cname##_desc) = {                                                  \
         .name = #cname,                                                                            \
         .size = sizeof(cname),                                                                     \
-        .is_relation = true,                                                                       \
+        .relation_flags = EcsRelationTarget | (flags),                                             \
     };                                                                                             \
     ecs_component_t ecs_id(cname) = 0
 
