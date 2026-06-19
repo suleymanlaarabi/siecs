@@ -1,0 +1,11 @@
+[package]
+name = "siecs_derive"
+version = "0.1.0"
+edition = "2021"
+description = "Derive macros for siecs"
+license = "MIT"
+repository = "https://github.com/suleymanlaarabi/siecs"
+
+[lib]
+proc-macro = true
+

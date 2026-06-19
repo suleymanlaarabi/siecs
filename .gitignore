@@ -11,3 +11,6 @@ gcov
 .clang-tidy
 .clangd
 compile_flags.txt
+siecs_rust/target/
+target/
+vendor/
