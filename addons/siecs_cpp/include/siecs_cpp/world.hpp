@@ -44,7 +44,10 @@ class world {
     }
 
   public:
-    world() noexcept : _world(ecs_init()), _ownership(world_ownership::owned) {}
+    world() noexcept : _world(ecs_init()), _ownership(world_ownership::owned) {
+        ecs_cpp_set_component_id<Disabled>(ecs_id(Disabled));
+        ecs_cpp_set_component_id<ChildOf>(ecs_id(ChildOf));
+    }
     explicit world(ecs_world_t *world) noexcept
         : _world(world), _ownership(world_ownership::owned) {}
     world(ecs_world_t *world, world_ownership ownership) noexcept

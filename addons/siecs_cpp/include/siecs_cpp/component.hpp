@@ -1,10 +1,8 @@
 #pragma once
 
 #include "siecs.h"
-#include "type.hpp"
-#include <new>
 #include <string>
-#include <type_traits>
+#include "type.hpp"
 
 namespace ecs {
 
@@ -20,12 +18,16 @@ template <typename T, typename = void> struct is_complete : std::false_type {};
 
 template <typename T> struct is_complete<T, std::void_t<decltype(sizeof(T))>> : std::true_type {};
 
-template <typename T> constexpr size_t sisizeof() {
+template <typename T> consteval size_t sisizeof() {
     if constexpr (is_complete<T>::value) {
         return sizeof(T);
     } else {
         return 0;
     }
+}
+
+template<typename T> static void ecs_cpp_set_component_id(ecs_component_t cid) {
+    detail::component_type<T>::id = cid;
 }
 
 template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *world) {
@@ -56,10 +58,6 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
     cid = ecs_component_init(world, &desc);
 
     return cid;
-}
-
-template <> inline ecs_component_t ecs_cpp_component_id<Disabled>(ecs_world_t *) {
-    return ecs_id(Disabled);
 }
 
 } // namespace ecs

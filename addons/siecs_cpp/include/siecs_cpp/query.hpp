@@ -1,15 +1,9 @@
 #pragma once
-
 #include "siecs.h"
-#include "siecs_cpp/component.hpp"
-#include "siecs_cpp/resource.hpp"
-#include "siecs_cpp/type.hpp"
-#include <cassert>
-#include <cstdint>
+#include "component.hpp"
+#include "resource.hpp"
+#include "function_traits.hpp"
 #include <functional>
-#include <tuple>
-#include <type_traits>
-#include <utility>
 
 namespace ecs {
 

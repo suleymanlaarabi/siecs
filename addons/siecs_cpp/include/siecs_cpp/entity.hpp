@@ -1,5 +1,4 @@
 #pragma once
-#include "component.hpp"
 #include "siecs.h"
 
 namespace ecs {
