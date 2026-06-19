@@ -11,7 +11,7 @@ static EntityStatePosition *entity_state_position(ecs::world &world, ecs::entity
     return static_cast<EntityStatePosition *>(ecs_get_cid(
         world.c_ptr(),
         entity.id(),
-        ecs::ecs_cpp_component_id<EntityStatePosition>(world.c_ptr())
+        ecs::detail::ecs_cpp_component_id<EntityStatePosition>(world.c_ptr())
     ));
 }
 

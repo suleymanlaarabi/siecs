@@ -1,8 +1,8 @@
 #pragma once
-#include "siecs.h"
 #include "component.hpp"
-#include "resource.hpp"
 #include "function_traits.hpp"
+#include "resource.hpp"
+#include "siecs.h"
 #include <functional>
 
 namespace ecs {
@@ -113,7 +113,7 @@ inline void append_terms(
     uint16_t &term_index,
     ecs_term_access_t access
 ) {
-    (append_term(desc, term_index, ecs::ecs_cpp_component_id<T>(world), access), ...);
+    (append_term(desc, term_index, ecs::detail::ecs_cpp_component_id<T>(world), access), ...);
 }
 
 template <typename Args>
@@ -124,7 +124,7 @@ append_callback_terms(ecs_world_t *world, ecs_query_desc_t &desc, uint16_t &term
             append_term(
                 desc,
                 term_index,
-                ecs::ecs_cpp_component_id<std::remove_cvref_t<T>>(world),
+                ecs::detail::ecs_cpp_component_id<std::remove_cvref_t<T>>(world),
                 term_access<T>()
             );
         }
@@ -143,24 +143,19 @@ inline void run_query(F &func, ecs_world_t *world, ecs_query_id_t qid) {
     }
 }
 
-template <typename F, typename Args>
-inline void run_batch(F &func, ecs_iter_t *it) {
+template <typename F, typename Args> inline void run_batch(F &func, ecs_iter_t *it) {
     auto resources = make_resources<Args>(it->world);
     auto fields =
         make_fields<Args>(it, resources, std::make_index_sequence<std::tuple_size_v<Args>>{});
     call_fields(func, fields, it->count);
 }
 
-template <typename F, typename Args>
-inline void run_once(F &func, ecs_world_t *world) {
+template <typename F, typename Args> inline void run_once(F &func, ecs_world_t *world) {
     static_assert(component_arg_count<Args>() == 0);
 
     auto resources = make_resources<Args>(world);
-    auto fields = make_fields<Args>(
-        nullptr,
-        resources,
-        std::make_index_sequence<std::tuple_size_v<Args>>{}
-    );
+    auto fields =
+        make_fields<Args>(nullptr, resources, std::make_index_sequence<std::tuple_size_v<Args>>{});
     call_fields(func, fields, 1);
 }
 

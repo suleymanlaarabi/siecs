@@ -58,7 +58,7 @@ inline ModulePosition *get_module_position(ecs::world &world, ecs::entity entity
     return static_cast<ModulePosition *>(ecs_get_cid(
         world.c_ptr(),
         entity.id(),
-        ecs::ecs_cpp_component_id<ModulePosition>(world.c_ptr())
+        ecs::detail::ecs_cpp_component_id<ModulePosition>(world.c_ptr())
     ));
 }
 

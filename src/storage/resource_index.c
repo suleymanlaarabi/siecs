@@ -1,6 +1,7 @@
 #include "resource_index.h"
 #include "../utils.h"
 #include "siecs.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -8,10 +9,8 @@ static uint64_t ecs_resource_storage_size(const ecs_resource_desc_t *record) {
     return record->size ? record->size : 1;
 }
 
-static void ecs_resource_index_assert_registered(
-    const ecs_resource_index_t *index,
-    ecs_resource_t id
-) {
+static void
+ecs_resource_index_assert_registered(const ecs_resource_index_t *index, ecs_resource_t id) {
     ecs_assert(
         id != 0 && id < index->count && id < index->capacity && index->records[id].name != NULL,
         "invalid resource id: %d\n",
@@ -74,10 +73,8 @@ void ecs_resource_index_fini(ecs_resource_index_t *index, ecs_world_t *world) {
     free(index->present);
 }
 
-ecs_resource_t ecs_resource_index_register(
-    ecs_resource_index_t *index,
-    const ecs_resource_desc_t *desc
-) {
+ecs_resource_t
+ecs_resource_index_register(ecs_resource_index_t *index, const ecs_resource_desc_t *desc) {
     ecs_assert_not_null(desc);
     ecs_assert_not_null(desc->name);
 
@@ -90,7 +87,7 @@ ecs_resource_t ecs_resource_index_register(
 ecs_resource_t ecs_resource_index_find(const ecs_resource_index_t *index, const char *name) {
     ecs_assert_not_null(name);
 
-    for (ecs_resource_t id = 1; id < index->count; id++) {
+    for (uint32_t id = 1; id < index->count; id++) {
         if (index->records[id].name && strcmp(index->records[id].name, name) == 0) {
             return id;
         }
@@ -100,8 +97,7 @@ ecs_resource_t ecs_resource_index_find(const ecs_resource_index_t *index, const 
 }
 
 bool ecs_resource_index_is_registered(const ecs_resource_index_t *index, ecs_resource_t id) {
-    return id != 0 && id < index->count && id < index->capacity &&
-           index->records[id].name != NULL;
+    return id != 0 && id < index->count && id < index->capacity && index->records[id].name != NULL;
 }
 
 void ecs_resource_index_set(

@@ -1,4 +1,5 @@
 #pragma once
+#include "component.hpp"
 #include "siecs.h"
 
 namespace ecs {
@@ -20,21 +21,21 @@ class entity {
     }
 
     template <typename T> entity remove() {
-        ecs_remove_cid(_world, _entity, ecs_cpp_component_id<T>(_world));
+        ecs_remove_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world));
         return *this;
     }
 
     template <typename T> [[nodiscard]] bool has() const {
-        return ecs_has_cid(_world, _entity, ecs_cpp_component_id<T>(_world));
+        return ecs_has_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world));
     }
 
     template <typename T> entity set(const T &value) {
-        ecs_set_cid(_world, _entity, ecs_cpp_component_id<T>(_world), &value);
+        ecs_set_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world), &value);
         return *this;
     }
 
     entity child_of(entity parent) {
-        const ChildOf desc = {.target = parent._entity};
+        const ChildOf desc = { .target = parent._entity };
         ecs_set_cid(_world, _entity, ecs_id(ChildOf), &desc);
         return *this;
     }

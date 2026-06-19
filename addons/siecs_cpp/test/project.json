@@ -34,6 +34,19 @@
         ]
       },
       {
+        "id": "observer",
+        "testcases": [
+          "custom_event",
+          "const_arg",
+          "multi_arg_terms",
+          "does_not_match_missing_component",
+          "resource_read",
+          "resource_write",
+          "resource_does_not_create_query_term",
+          "resource_field_index_stays_correct"
+        ]
+      },
+      {
         "id": "module_import",
         "testcases": [
           "import_without_props",

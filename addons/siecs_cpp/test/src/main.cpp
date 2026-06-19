@@ -23,6 +23,16 @@ void resource_query_read(void);
 void resource_does_not_create_query_term(void);
 void resource_field_index_stays_correct(void);
 
+// Testsuite 'observer'
+void observer_custom_event(void);
+void observer_const_arg(void);
+void observer_multi_arg_terms(void);
+void observer_does_not_match_missing_component(void);
+void observer_resource_read(void);
+void observer_resource_write(void);
+void observer_resource_does_not_create_query_term(void);
+void observer_resource_field_index_stays_correct(void);
+
 // Testsuite 'module_import'
 void module_import_import_without_props(void);
 void module_import_import_with_props(void);
@@ -83,6 +93,41 @@ bake_test_case resource_testcases[] = {
     }
 };
 
+bake_test_case observer_testcases[] = {
+    {
+        "custom_event",
+        observer_custom_event
+    },
+    {
+        "const_arg",
+        observer_const_arg
+    },
+    {
+        "multi_arg_terms",
+        observer_multi_arg_terms
+    },
+    {
+        "does_not_match_missing_component",
+        observer_does_not_match_missing_component
+    },
+    {
+        "resource_read",
+        observer_resource_read
+    },
+    {
+        "resource_write",
+        observer_resource_write
+    },
+    {
+        "resource_does_not_create_query_term",
+        observer_resource_does_not_create_query_term
+    },
+    {
+        "resource_field_index_stays_correct",
+        observer_resource_field_index_stays_correct
+    }
+};
+
 bake_test_case module_import_testcases[] = {
     {
         "import_without_props",
@@ -130,6 +175,13 @@ static bake_test_suite suites[] = {
         resource_testcases
     },
     {
+        "observer",
+        NULL,
+        NULL,
+        8,
+        observer_testcases
+    },
+    {
         "module_import",
         NULL,
         NULL,
@@ -146,5 +198,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs_cpp.test", argc, argv, suites, 4);
+    return bake_test_run("siecs_cpp.test", argc, argv, suites, 5);
 }

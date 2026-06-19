@@ -29,7 +29,7 @@ static CppPosition *cpp_resource_position(ecs::world &world, ecs::entity entity)
     return static_cast<CppPosition *>(ecs_get_cid(
         world.c_ptr(),
         entity.id(),
-        ecs::ecs_cpp_component_id<CppPosition>(world.c_ptr())
+        ecs::detail::ecs_cpp_component_id<CppPosition>(world.c_ptr())
     ));
 }
 
@@ -68,12 +68,11 @@ void resource_system_read(void) {
 
     auto entity = world.entity().set(CppPosition{ .x = 1.0f }).set(CppVelocity{ .x = 2.0f });
 
-    world.system("CppResourceRead").each(
-        [](ecs::res<const CppTime> time, CppPosition &position, const CppVelocity &velocity) {
+    world.system("CppResourceRead")
+        .each([](ecs::res<const CppTime> time, CppPosition &position, const CppVelocity &velocity) {
             position.x += velocity.x * time->dt;
             cpp_resource_system_calls++;
-        }
-    );
+        });
 
     world.progress();
 
@@ -170,13 +169,13 @@ void resource_field_index_stays_correct(void) {
 
     auto entity = world.entity().set(CppPosition{ .x = 1.0f }).set(CppVelocity{ .x = 4.0f });
 
-    world.query().each([](ecs::res<const CppTime> time,
-                          CppPosition &position,
-                          CppVelocity &velocity) {
-        position.x += velocity.x + time->dt;
-        velocity.x = 8.0f;
-        cpp_resource_query_calls++;
-    });
+    world.query().each(
+        [](ecs::res<const CppTime> time, CppPosition &position, CppVelocity &velocity) {
+            position.x += velocity.x + time->dt;
+            velocity.x = 8.0f;
+            cpp_resource_query_calls++;
+        }
+    );
 
     test_int(1, cpp_resource_query_calls);
     test_assert(cpp_resource_position(world, entity)->x == 8.0f);

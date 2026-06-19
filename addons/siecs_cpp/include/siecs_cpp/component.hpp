@@ -1,8 +1,8 @@
 #pragma once
 
 #include "siecs.h"
-#include <string>
 #include "type.hpp"
+#include <string>
 
 namespace ecs {
 
@@ -11,8 +11,6 @@ namespace detail {
 template <typename T> struct component_type {
     static inline ecs_component_t id;
 };
-
-} // namespace detail
 
 template <typename T, typename = void> struct is_complete : std::false_type {};
 
@@ -26,7 +24,7 @@ template <typename T> consteval size_t sisizeof() {
     }
 }
 
-template<typename T> static void ecs_cpp_set_component_id(ecs_component_t cid) {
+template <typename T> static void ecs_cpp_set_component_id(ecs_component_t cid) {
     detail::component_type<T>::id = cid;
 }
 
@@ -59,5 +57,7 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
 
     return cid;
 }
+
+} // namespace detail
 
 } // namespace ecs

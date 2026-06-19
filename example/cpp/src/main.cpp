@@ -31,8 +31,6 @@ struct physics {
     }
 };
 
-struct E {};
-
 int main() {
     ecs::world world;
 
@@ -42,7 +40,10 @@ int main() {
 
     auto parent = world.entity();
 
-    world.observer<E>();
+    world.observe<ecs::OnAdd>().each([](Position &pos) {
+        pos.x = 0;
+        pos.y = 0;
+    });
 
     world.entity().set(Position{ 0, 0 }).set(Velocity{ 10, 10 }).child_of(parent);
 
