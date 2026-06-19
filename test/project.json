@@ -47,7 +47,10 @@
           "out_term_matches_and_returns_field",
           "not_excludes_tables",
           "excludes_disabled_by_default",
-          "can_include_disabled_explicitly"
+          "can_include_disabled_explicitly",
+          "optional_field_present",
+          "optional_field_missing_keeps_field_order",
+          "inout_optional_mutates_when_present"
         ]
       },
       {

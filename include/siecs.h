@@ -166,11 +166,13 @@ typedef struct {
 
 /* Query term access mode. */
 typedef enum {
-    EcsIn,     /* Component must exist and is returned by ecs_field for reading. */
-    EcsOut,    /* Component must exist and is returned by ecs_field for writing. */
-    EcsInOut,  /* Component must exist and is returned by ecs_field for read/write. */
-    EcsFilter, /* Component must exist but is not returned by ecs_field. */
-    EcsNot,    /* Component must not exist and is not returned by ecs_field. */
+    EcsIn,            /* Component must exist and is returned by ecs_field for reading. */
+    EcsOut,           /* Component must exist and is returned by ecs_field for writing. */
+    EcsInOut,         /* Component must exist and is returned by ecs_field for read/write. */
+    EcsInOptional,    /* Component is returned by ecs_field if present, NULL otherwise. */
+    EcsInOutOptional, /* Component is returned by ecs_field if present, NULL otherwise. */
+    EcsFilter,        /* Component must exist but is not returned by ecs_field. */
+    EcsNot,           /* Component must not exist and is not returned by ecs_field. */
 } ecs_term_access_t;
 
 typedef struct {
@@ -181,9 +183,10 @@ typedef struct {
 /*
  * Query descriptor.
  *
- * terms is a zero-terminated component term list. Terms with EcsIn, EcsOut and
- * EcsInOut are returned by ecs_field in declaration order. EcsFilter and EcsNot
- * only affect table matching.
+ * terms is a zero-terminated component term list. Terms with EcsIn, EcsOut,
+ * EcsInOut, EcsInOptional and EcsInOutOptional are returned by ecs_field in
+ * declaration order. Optional fields return NULL for tables without the
+ * component. EcsFilter and EcsNot only affect table matching.
  *
  * A query must contain at least one term.
  */
@@ -198,6 +201,10 @@ typedef struct {
     ecs_query_term_t { ecs_id(cname), EcsOut }
 #define ecs_inout(cname)                                                                           \
     ecs_query_term_t { ecs_id(cname), EcsInOut }
+#define ecs_in_optional(cname)                                                                     \
+    ecs_query_term_t { ecs_id(cname), EcsInOptional }
+#define ecs_inout_optional(cname)                                                                  \
+    ecs_query_term_t { ecs_id(cname), EcsInOutOptional }
 #define ecs_filter(cname)                                                                          \
     ecs_query_term_t { ecs_id(cname), EcsFilter }
 #define ecs_not(cname)                                                                             \
@@ -206,6 +213,8 @@ typedef struct {
 #define ecs_in(cname) ((ecs_query_term_t){ ecs_id(cname), EcsIn })
 #define ecs_out(cname) ((ecs_query_term_t){ ecs_id(cname), EcsOut })
 #define ecs_inout(cname) ((ecs_query_term_t){ ecs_id(cname), EcsInOut })
+#define ecs_in_optional(cname) ((ecs_query_term_t){ ecs_id(cname), EcsInOptional })
+#define ecs_inout_optional(cname) ((ecs_query_term_t){ ecs_id(cname), EcsInOutOptional })
 #define ecs_filter(cname) ((ecs_query_term_t){ ecs_id(cname), EcsFilter })
 #define ecs_not(cname) ((ecs_query_term_t){ ecs_id(cname), EcsNot })
 #endif
@@ -602,8 +611,10 @@ bool ecs_iter_next(ecs_iter_t *it);
 /*
  * Return the component array for a read term in the current iterator batch.
  *
- * field_index is zero-based among EcsIn, EcsOut and EcsInOut terms only.
- * EcsFilter and EcsNot terms affect matching but are not returned as fields.
+ * field_index is zero-based among EcsIn, EcsOut, EcsInOut, EcsInOptional and
+ * EcsInOutOptional terms only. Optional fields return NULL when the current
+ * table does not have the component. EcsFilter and EcsNot terms affect matching
+ * but are not returned as fields.
  */
 static inline void *ecs_field(ecs_iter_t *it, uint16_t field_index) {
     return *it->ptrs[field_index];

@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void *ecs_query_null_field = NULL;
+
 void ecs_query_index_init(ecs_query_index_t *index) {
     ecs_vec_init(&index->queries, sizeof(ecs_query_cache_t));
 }
@@ -80,7 +82,8 @@ ecs_query_copy_terms_with_implicit_disabled(const ecs_query_term_t *terms, uint1
 }
 
 static bool ecs_query_term_is_field(ecs_query_term_t term) {
-    return term.access == EcsIn || term.access == EcsOut || term.access == EcsInOut;
+    return term.access == EcsIn || term.access == EcsOut || term.access == EcsInOut ||
+           term.access == EcsInOptional || term.access == EcsInOutOptional;
 }
 
 static bool ecs_query_term_is_positive(ecs_query_term_t term) {
@@ -93,7 +96,8 @@ static void ecs_query_validate_terms(const ecs_query_term_t *terms, uint16_t ter
         ecs_assert_id_valid(terms[i].id);
         ecs_assert(
             terms[i].access == EcsIn || terms[i].access == EcsOut ||
-                terms[i].access == EcsInOut || terms[i].access == EcsFilter ||
+                terms[i].access == EcsInOut || terms[i].access == EcsInOptional ||
+                terms[i].access == EcsInOutOptional || terms[i].access == EcsFilter ||
                 terms[i].access == EcsNot,
             "invalid query term access: %d\n",
             terms[i].access
@@ -125,12 +129,12 @@ void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
 
     query->fields = NULL;
     if (query->field_count != 0) {
-        query->fields = malloc(sizeof(ecs_component_t) * query->field_count);
+        query->fields = malloc(sizeof(ecs_query_term_t) * query->field_count);
 
         uint16_t field = 0;
         for (uint16_t i = 0; i < query->term_count; i++) {
             if (ecs_query_term_is_field(query->terms[i])) {
-                query->fields[field++] = query->terms[i].id;
+                query->fields[field++] = query->terms[i];
             }
         }
     }
@@ -147,13 +151,18 @@ static void
 ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t table_id) {
     ecs_vec_push_u16(&cache->table_ids, table_id);
     for (uint16_t i = 0; i < cache->query.field_count; i++) {
-        uint16_t col = ecs_table_get_column_index(table, cache->query.fields[i]);
+        const ecs_query_term_t term = cache->query.fields[i];
+        uint16_t col = ecs_table_get_column_index(table, term.id);
+        const bool has_field = col < table->type.count && table->type.ids[col] == term.id;
+        const bool optional = term.access == EcsInOptional || term.access == EcsInOutOptional;
+
         ecs_assert(
-            col < table->type.count && table->type.ids[col] == cache->query.fields[i],
+            has_field || optional,
             "query cache matched table without field component: %d\n",
-            cache->query.fields[i]
+            term.id
         );
-        void **slot = &table->cls[col].data;
+
+        void **slot = has_field ? &table->cls[col].data : &ecs_query_null_field;
         ecs_vec_push(&cache->fields, &slot, sizeof(void **));
     }
 }

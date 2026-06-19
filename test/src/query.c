@@ -152,3 +152,86 @@ void query_can_include_disabled_explicitly(void) {
     ecs_query_fini(world, query);
     ecs_fini(world);
 }
+
+void query_optional_field_present(void) {
+    ecs_world_t *world = query_test_world();
+    query_test_entity(world, 10, 20, 30);
+
+    ecs_query_id_t query =
+        ecs_query(world, { .terms = { ecs_in_optional(QueryPosition), ecs_in(QueryVelocity) } });
+    ecs_iter_t it = ecs_query_iter(world, query);
+
+    test_true(ecs_iter_next(&it));
+
+    QueryPosition *position = ecs_field(&it, 0);
+    QueryVelocity *velocity = ecs_field(&it, 1);
+    test_not_null(position);
+    test_not_null(velocity);
+    test_int(1, it.count);
+    test_int(10, position[0].value);
+    test_int(20, velocity[0].value);
+
+    test_false(ecs_iter_next(&it));
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
+void query_optional_field_missing_keeps_field_order(void) {
+    ecs_world_t *world = query_test_world();
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_set(world, entity, QueryVelocity, { 20 });
+
+    ecs_query_id_t query = ecs_query(
+        world,
+        {
+            .terms = {
+                ecs_in_optional(QueryPosition),
+                ecs_inout(QueryVelocity),
+            },
+        }
+    );
+    ecs_iter_t it = ecs_query_iter(world, query);
+
+    test_true(ecs_iter_next(&it));
+
+    QueryPosition *position = ecs_field(&it, 0);
+    QueryVelocity *velocity = ecs_field(&it, 1);
+
+    test_null(position);
+    test_not_null(velocity);
+    test_int(1, it.count);
+    test_int(20, velocity[0].value);
+    velocity[0].value = 21;
+
+    test_false(ecs_iter_next(&it));
+    test_int(21, ecs_get(world, entity, QueryVelocity)->value);
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
+void query_inout_optional_mutates_when_present(void) {
+    ecs_world_t *world = query_test_world();
+    ecs_entity_t entity = query_test_entity(world, 10, 20, 30);
+
+    ecs_query_id_t query =
+        ecs_query(world, { .terms = { ecs_inout_optional(QueryPosition), ecs_in(QueryVelocity) } });
+    ecs_iter_t it = ecs_query_iter(world, query);
+
+    test_true(ecs_iter_next(&it));
+
+    QueryPosition *position = ecs_field(&it, 0);
+    QueryVelocity *velocity = ecs_field(&it, 1);
+
+    test_not_null(position);
+    test_not_null(velocity);
+    position[0].value += velocity[0].value;
+
+    test_false(ecs_iter_next(&it));
+    test_int(30, ecs_get(world, entity, QueryPosition)->value);
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}

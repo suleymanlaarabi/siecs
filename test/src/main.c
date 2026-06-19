@@ -36,6 +36,9 @@ void query_out_term_matches_and_returns_field(void);
 void query_not_excludes_tables(void);
 void query_excludes_disabled_by_default(void);
 void query_can_include_disabled_explicitly(void);
+void query_optional_field_present(void);
+void query_optional_field_missing_keeps_field_order(void);
+void query_inout_optional_mutates_when_present(void);
 
 // Testsuite 'system'
 void system_run(void);
@@ -162,6 +165,18 @@ bake_test_case query_testcases[] = {
     {
         "can_include_disabled_explicitly",
         query_can_include_disabled_explicitly
+    },
+    {
+        "optional_field_present",
+        query_optional_field_present
+    },
+    {
+        "optional_field_missing_keeps_field_order",
+        query_optional_field_missing_keeps_field_order
+    },
+    {
+        "inout_optional_mutates_when_present",
+        query_inout_optional_mutates_when_present
     }
 };
 
@@ -322,7 +337,7 @@ static bake_test_suite suites[] = {
         "query",
         NULL,
         NULL,
-        5,
+        8,
         query_testcases
     },
     {
