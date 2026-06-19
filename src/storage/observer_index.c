@@ -1,11 +1,11 @@
 #include "observer_index.h"
 #include "../datastructure/vec.h"
-#include "query_index.h"
 #include "../table.h"
+#include "query_index.h"
 #include "siecs.h"
 #include <stdint.h>
 
-#define ECS_BUILTIN_EVENT_COUNT 3 // OnAdd, OnRemove, OnSet
+#define ECS_BUILTIN_EVENT_COUNT 3 // EcsOnAdd, EcsOnRemove, EcsOnSet
 
 void ecs_observer_index_init(ecs_observer_index_t *index) {
     ecs_vec_init(&index->observers, sizeof(ecs_observer_t));

@@ -31,6 +31,8 @@ struct physics {
     }
 };
 
+struct E {};
+
 int main() {
     ecs::world world;
 
@@ -40,10 +42,9 @@ int main() {
 
     auto parent = world.entity();
 
-    world.entity()
-        .set(Position{ 0, 0 })
-        .set(Velocity{ 10, 10 })
-        .child_of(parent);
+    world.observer<E>();
+
+    world.entity().set(Position{ 0, 0 }).set(Velocity{ 10, 10 }).child_of(parent);
 
     world.module<physics>().disable();
     world.module<physics>().enable();

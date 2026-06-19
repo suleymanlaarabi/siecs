@@ -210,9 +210,9 @@ void *ecs_field(ecs_iter_t *it, uint16_t field_index);
 ## Observers
 
 ```c
-#define OnAdd 0
-#define OnRemove 1
-#define OnSet 2
+#define EcsOnAdd 0
+#define EcsOnRemove 1
+#define EcsOnSet 2
 ```
 
 ```c

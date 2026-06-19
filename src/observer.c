@@ -1,8 +1,8 @@
 #include "datastructure/vec.h"
 #include "module.h"
+#include "siecs.h"
 #include "storage/observer_index.h"
 #include "utils.h"
-#include "siecs.h"
 #include "world_internal.h"
 
 ecs_event_t ecs_event(ecs_world_t *world) { return world->observer_index.event_count++; }

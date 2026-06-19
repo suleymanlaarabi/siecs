@@ -87,9 +87,9 @@ typedef struct {
  * Event payload passed to observer callbacks.
  *
  * trigger_data is event-specific:
- * - OnAdd: pointer to the added component storage.
- * - OnRemove: pointer to the component storage before removal.
- * - OnSet: pointer to the new value passed to ecs_set/ecs_set_cid.
+ * - EcsOnAdd: pointer to the added component storage.
+ * - EcsOnRemove: pointer to the component storage before removal.
+ * - EcsOnSet: pointer to the new value passed to ecs_set/ecs_set_cid.
  * - Custom events: pointer passed to ecs_observer_trigger.
  */
 typedef struct {
@@ -290,7 +290,7 @@ void ecs_fini(ecs_world_t *world);
 #define ECS_MODULE_DECLARE(module_name, ...)                                                       \
     typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;                        \
     extern ecs_module_id_t ecs_id(module_name);                                                    \
-    void ecs_id(module_name##_import_wrapper)(ecs_world_t *world, const void *desc);                \
+    void ecs_id(module_name##_import_wrapper)(ecs_world_t * world, const void *desc);              \
     void module_name##_import(ecs_world_t *world, const module_name##_props_t *props)
 
 /*
@@ -300,7 +300,7 @@ void ecs_fini(ecs_world_t *world);
  */
 #define ECS_MODULE_DEFINE(module_name)                                                             \
     ecs_module_id_t ecs_id(module_name) = 0;                                                       \
-    void ecs_id(module_name##_import_wrapper)(ecs_world_t *world, const void *desc) {               \
+    void ecs_id(module_name##_import_wrapper)(ecs_world_t * world, const void *desc) {             \
         module_name##_import(world, (const module_name##_props_t *)desc);                          \
     }
 
@@ -469,8 +469,8 @@ void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t c
 /*
  * Set a typed component value on an alive entity.
  *
- * Adds the component if needed, then emits OnSet. Component on_set hooks receive
- * the new value and current storage before the copy. OnSet observers receive the
+ * Adds the component if needed, then emits EcsOnSet. Component on_set hooks receive
+ * the new value and current storage before the copy. EcsOnSet observers receive the
  * new value before it is copied into storage.
  */
 #define ecs_set(world, entity, cname, ...)                                                         \
@@ -497,17 +497,17 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, co
     extern ecs_resource_desc_t ecs_id(rname##_desc)
 
 #define ECS_RESOURCE_DEFINE(rname, ...)                                                            \
-    ecs_resource_desc_t ecs_id(rname##_desc) = {                                                    \
-        .name = #rname,                                                                            \
-        .size = sizeof(rname),                                                                     \
-        __VA_ARGS__                                                                                \
-    };                                                                                             \
+    ecs_resource_desc_t ecs_id(rname##_desc) = { .name = #rname,                                   \
+                                                 .size = sizeof(rname),                            \
+                                                 __VA_ARGS__ };                                    \
     ecs_resource_t ecs_id(rname) = 0
 
 #define ECS_RESOURCE_REGISTER(world, rname)                                                        \
     ecs_id(rname) = ecs_resource_init(world, &ecs_id(rname##_desc))
 
-#define ECS_RESOURCE(rname, ...) ECS_RESOURCE_DECLARE(rname, __VA_ARGS__); ECS_RESOURCE_DEFINE(rname)
+#define ECS_RESOURCE(rname, ...)                                                                   \
+    ECS_RESOURCE_DECLARE(rname, __VA_ARGS__);                                                      \
+    ECS_RESOURCE_DEFINE(rname)
 
 /* Set or replace a world resource. */
 #define ecs_set_resource(world, rname, ...)                                                        \
@@ -545,9 +545,9 @@ void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id);
 void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require);
 
 /* Builtin observer events. */
-#define OnAdd 0
-#define OnRemove 1
-#define OnSet 2
+#define EcsOnAdd 0
+#define EcsOnRemove 1
+#define EcsOnSet 2
 
 /* Observer descriptor. callback is required. */
 typedef struct {

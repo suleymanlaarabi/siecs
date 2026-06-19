@@ -32,5 +32,5 @@ The current API is centered around:
 3. [Queries](./queries/) for iteration with `ecs_iter_t`.
 4. [Systems](./systems/) for scheduled logic.
 5. [Modules](./modules/) for grouping registrations.
-6. [Observers and events](./observers/) for `OnAdd`, `OnRemove`, `OnSet`, and custom events.
+6. [Observers and events](./observers/) for `EcsOnAdd`, `EcsOnRemove`, `EcsOnSet`, and custom events.
 7. [API reference](./reference/api/) for the public symbols.

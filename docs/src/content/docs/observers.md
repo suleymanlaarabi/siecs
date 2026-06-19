@@ -11,9 +11,9 @@ SIECS currently exposes three built-in events:
 
 | Event | Trigger |
 | --- | --- |
-| `OnAdd` | A component is added to an entity. |
-| `OnRemove` | A component is removed from an entity. |
-| `OnSet` | A component value is set with `ecs_set()` or `ecs_set_cid()`. |
+| `EcsOnAdd` | A component is added to an entity. |
+| `EcsOnRemove` | A component is removed from an entity. |
+| `EcsOnSet` | A component value is set with `ecs_set()` or `ecs_set_cid()`. |
 
 ## Create An Observer
 
@@ -24,7 +24,7 @@ static void on_position_set(ecs_observer_event_t *event) {
 }
 
 ecs_observer(world, {
-    .on = OnSet,
+    .on = EcsOnSet,
     .query = {
         .terms = { ecs_in(Position) },
     },
@@ -40,7 +40,7 @@ observer query mentions `Disabled` explicitly:
 
 ```c
 ecs_observer(world, {
-    .on = OnSet,
+    .on = EcsOnSet,
     .query = {
         .terms = { ecs_in(Position), ecs_filter(Disabled) },
     },
@@ -69,9 +69,9 @@ typedef struct {
 
 | Event | `trigger_data` |
 | --- | --- |
-| `OnAdd` | Pointer to the added component storage. |
-| `OnRemove` | Pointer to the component value before removal. |
-| `OnSet` | Pointer to the new value passed to `ecs_set()` or `ecs_set_cid()`. |
+| `EcsOnAdd` | Pointer to the added component storage. |
+| `EcsOnRemove` | Pointer to the component value before removal. |
+| `EcsOnSet` | Pointer to the new value passed to `ecs_set()` or `ecs_set_cid()`. |
 | Custom event | Pointer passed to `ecs_observer_trigger()`. |
 
 For `OnSet`, the stored component value has not been overwritten yet when hooks

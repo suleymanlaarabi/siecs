@@ -47,9 +47,14 @@ ecs_world_t *ecs_init() {
     return world;
 }
 
-static inline void
-copy_column(const ecs_column_t *restrict from, const uint32_t from_row, ecs_column_t *restrict to, const uint32_t to_row) {
-    if (from->size == 0) return;
+static inline void copy_column(
+    const ecs_column_t *restrict from,
+    const uint32_t from_row,
+    ecs_column_t *restrict to,
+    const uint32_t to_row
+) {
+    if (from->size == 0)
+        return;
     memcpy(
         (uint8_t *)to->data + (from->size * to_row),
         (uint8_t *)from->data + (from->size * from_row),
@@ -125,7 +130,7 @@ static inline void migrate_entity_add(
         copy_column(&from_table->cls[i - 1], old_row, &to_table->cls[i], new_row);
 
     ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
-    if (moved != entity){
+    if (moved != entity) {
         ecs_get_record(world, moved)->table_row = old_row;
     }
     record->table_id = to_table_id;
@@ -191,9 +196,7 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
         // Re-fetch: ecs_table_index_get_or_create may realloc the tables vec
         table = ecs_get_table(world, from_id);
         ecs_id_map_set(&table->add_edge, cid, edge);
-    } else if (
-        ECS_UNLIKELY(edge < table->type.count && table->type.ids[edge] == cid)
-    ) {
+    } else if (ECS_UNLIKELY(edge < table->type.count && table->type.ids[edge] == cid)) {
         return;
     }
 
@@ -204,7 +207,7 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     if (crec->on_add) {
         crec->on_add(world, entity, cid, component_data);
     }
-    ecs_emit(world, new_table, entity, OnAdd, component_data);
+    ecs_emit(world, new_table, entity, EcsOnAdd, component_data);
 }
 
 void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
@@ -240,7 +243,7 @@ void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid
     if (crec->on_remove) {
         crec->on_remove(world, entity, cid, removed_data);
     }
-    ecs_emit(world, table, entity, OnRemove, removed_data);
+    ecs_emit(world, table, entity, EcsOnRemove, removed_data);
 
     migrate_entity_remove(world, record, entity, table, new_table_id, (uint16_t)col_idx);
 }
@@ -287,7 +290,7 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, c
     if (crec->on_set) {
         crec->on_set(world, entity, cid, data, dst);
     }
-    ecs_emit(world, table, entity, OnSet, data);
+    ecs_emit(world, table, entity, EcsOnSet, data);
     if (crec->size != 0) {
         memcpy(dst, data, crec->size);
     }

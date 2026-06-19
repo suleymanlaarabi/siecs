@@ -28,11 +28,14 @@ void observer_enable(void) {
     ecs_entity_t entity = ecs_new(world);
     ecs_set(world, entity, ObserverValue, { 1 });
 
-    ecs_observer_id_t observer = ecs_observer(world, {
-        .on = OnSet,
-        .query = { .terms = { ecs_in(ObserverValue) } },
-        .callback = on_observer_value_set,
-    });
+    ecs_observer_id_t observer = ecs_observer(
+        world,
+        {
+            .on = EcsOnSet,
+            .query = { .terms = { ecs_in(ObserverValue) } },
+            .callback = on_observer_value_set,
+        }
+    );
 
     ecs_set(world, entity, ObserverValue, { 2 });
     test_int(1, observer_calls);
@@ -61,11 +64,14 @@ void observer_skips_disabled_by_default(void) {
     ecs_set(world, entity, ObserverValue, { 1 });
     ecs_add(world, entity, Disabled);
 
-    ecs_observer(world, {
-        .on = OnSet,
-        .query = { .terms = { ecs_in(ObserverValue) } },
-        .callback = on_observer_value_set,
-    });
+    ecs_observer(
+        world,
+        {
+            .on = EcsOnSet,
+            .query = { .terms = { ecs_in(ObserverValue) } },
+            .callback = on_observer_value_set,
+        }
+    );
 
     ecs_set(world, entity, ObserverValue, { 2 });
     test_int(0, observer_calls);
@@ -84,11 +90,14 @@ void observer_can_match_disabled_when_requested(void) {
     ecs_set(world, entity, ObserverValue, { 1 });
     ecs_add(world, entity, Disabled);
 
-    ecs_observer(world, {
-        .on = OnSet,
-        .query = { .terms = { ecs_in(ObserverValue), ecs_filter(Disabled) } },
-        .callback = on_observer_value_set,
-    });
+    ecs_observer(
+        world,
+        {
+            .on = EcsOnSet,
+            .query = { .terms = { ecs_in(ObserverValue), ecs_filter(Disabled) } },
+            .callback = on_observer_value_set,
+        }
+    );
 
     ecs_set(world, entity, ObserverValue, { 2 });
     test_int(1, observer_calls);

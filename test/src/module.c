@@ -7,13 +7,9 @@ ECS_COMPONENT_DECLARE(ModuleVelocity, { int value; });
 ECS_COMPONENT_DEFINE(ModulePosition);
 ECS_COMPONENT_DEFINE(ModuleVelocity);
 
-ECS_MODULE_DECLARE(module_physics, {
-    int velocity;
-});
+ECS_MODULE_DECLARE(module_physics, { int velocity; });
 
-ECS_MODULE_DECLARE(module_render, {
-    int value;
-});
+ECS_MODULE_DECLARE(module_render, { int value; });
 
 ECS_MODULE_DEFINE(module_physics);
 ECS_MODULE_DEFINE(module_render);
@@ -48,20 +44,21 @@ static void module_on_position_set(ecs_observer_event_t *event) {
     module_observer_calls++;
 }
 
-static void module_render_system(ecs_iter_t *it) {
-    (void)it;
-}
+static void module_render_system(ecs_iter_t *it) { (void)it; }
 
 void module_render_import(ecs_world_t *world, const module_render_props_t *props) {
     (void)props;
     module_render_import_calls++;
 
-    ecs_system(world, {
-        .name = "Render",
-        .query = { .terms = { ecs_in(ModulePosition) } },
-        .callback = module_render_system,
-        .phase = EcsOnRender,
-    });
+    ecs_system(
+        world,
+        {
+            .name = "Render",
+            .query = { .terms = { ecs_in(ModulePosition) } },
+            .callback = module_render_system,
+            .phase = EcsOnRender,
+        }
+    );
 }
 
 void module_physics_import(ecs_world_t *world, const module_physics_props_t *props) {
@@ -71,20 +68,26 @@ void module_physics_import(ecs_world_t *world, const module_physics_props_t *pro
     ECS_COMPONENT_REGISTER(world, ModulePosition);
     ECS_COMPONENT_REGISTER(world, ModuleVelocity);
 
-    ecs_system(world, {
-        .name = "Move",
-        .query = { .terms = { ecs_inout(ModulePosition), ecs_in(ModuleVelocity) } },
-        .callback = module_move,
-        .phase = EcsOnUpdate,
-    });
+    ecs_system(
+        world,
+        {
+            .name = "Move",
+            .query = { .terms = { ecs_inout(ModulePosition), ecs_in(ModuleVelocity) } },
+            .callback = module_move,
+            .phase = EcsOnUpdate,
+        }
+    );
 
     ECS_MODULE_IMPORT(world, module_render, { .value = 1 });
 
-    ecs_observer(world, {
-        .on = OnSet,
-        .query = { .terms = { ecs_in(ModulePosition) } },
-        .callback = module_on_position_set,
-    });
+    ecs_observer(
+        world,
+        {
+            .on = EcsOnSet,
+            .query = { .terms = { ecs_in(ModulePosition) } },
+            .callback = module_on_position_set,
+        }
+    );
 }
 
 static ecs_entity_t module_entity(ecs_world_t *world, int position, int velocity) {
@@ -146,14 +149,17 @@ void module_disabled_import(void) {
 
     ecs_world_t *world = ecs_init();
     module_physics_props_t props = { .velocity = 3 };
-    ecs_module_id_t module = ecs_module(world, {
-        .name = "module_physics",
-        .id = &ecs_id(module_physics),
-        .import = ecs_id(module_physics_import_wrapper),
-        .desc = &props,
-        .desc_size = sizeof(props),
-        .disabled = true,
-    });
+    ecs_module_id_t module = ecs_module(
+        world,
+        {
+            .name = "module_physics",
+            .id = &ecs_id(module_physics),
+            .import = ecs_id(module_physics_import_wrapper),
+            .desc = &props,
+            .desc_size = sizeof(props),
+            .disabled = true,
+        }
+    );
     ecs_entity_t entity = module_entity(world, 1, 2);
 
     test_false(ecs_module_is_enabled(world, module));
