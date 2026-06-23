@@ -104,6 +104,43 @@ int main(void) {
 }
 ```
 
+# Rust
+```rust
+use siecs::prelude::*;
+
+#[derive(Component)]
+struct Position {
+    x: f32,
+    y: f32,
+}
+
+#[derive(Component)]
+struct Velocity {
+    x: f32,
+    y: f32,
+}
+
+fn move_system(pos: &mut Position, vel: &Velocity) {
+    pos.x += vel.x;
+    pos.y += vel.y;
+}
+
+fn main() {
+    let mut world = World::new();
+    let entity = world.entity();
+
+    world.set(entity, Position { x: 0.0, y: 0.0 });
+    world.set(entity, Velocity { x: 1.0, y: 1.0 });
+
+    world
+        .system("Move")
+        .phase(Phase::OnUpdate)
+        .each(move_system);
+
+    world.progress();
+}
+```
+
 # C Modules
 Modules can wrap the component and system setup from the C example:
 
