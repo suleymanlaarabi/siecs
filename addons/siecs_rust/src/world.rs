@@ -1,6 +1,6 @@
 use core::ptr::NonNull;
 
-use crate::{raw, Component, Entity};
+use crate::{raw, Component, Entity, Query};
 
 #[derive(Clone)]
 pub struct World {
@@ -48,6 +48,11 @@ impl World {
     #[inline]
     pub fn component_id<T: Component>(&mut self) -> raw::ComponentId {
         T::id(self)
+    }
+
+    #[inline]
+    pub fn query(&mut self) -> Query<'_> {
+        Query::new(self)
     }
 
     #[inline]

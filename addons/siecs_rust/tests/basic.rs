@@ -20,6 +20,18 @@ struct QueryPosition {
 }
 
 #[derive(Component)]
+struct QueryVelocity {
+    x: f32,
+    y: f32,
+}
+
+#[derive(Component)]
+struct QueryPlayer;
+
+#[derive(Component)]
+struct QueryDisabled;
+
+#[derive(Component)]
 struct MultiWorldPosition {
     value: i32,
 }
@@ -152,6 +164,143 @@ fn raw_query_iter_reads_component_field() {
 }
 
 #[test]
+fn query_each_reads_components() {
+    let mut world = World::new();
+    let entity = world.entity();
+    world.set(entity, QueryPosition { x: 3.0, y: 7.0 });
+    world.set(entity, QueryVelocity { x: 2.0, y: 4.0 });
+
+    let mut seen = 0;
+    world
+        .query()
+        .each(|position: &QueryPosition, velocity: &QueryVelocity| {
+            assert_eq!(position.x, 3.0);
+            assert_eq!(position.y, 7.0);
+            assert_eq!(velocity.x, 2.0);
+            assert_eq!(velocity.y, 4.0);
+            seen += 1;
+        });
+
+    assert_eq!(seen, 1);
+}
+
+#[test]
+fn query_each_mutates_inout_component() {
+    let mut world = World::new();
+    let entity = world.entity();
+    world.set(entity, QueryPosition { x: 1.0, y: 2.0 });
+    world.set(entity, QueryVelocity { x: 3.0, y: 4.0 });
+
+    world
+        .query()
+        .each(|position: &mut QueryPosition, velocity: &QueryVelocity| {
+            position.x += velocity.x;
+            position.y += velocity.y;
+        });
+
+    let position = world.get::<QueryPosition>(entity).unwrap();
+    assert_eq!(position.x, 4.0);
+    assert_eq!(position.y, 6.0);
+}
+
+#[test]
+fn query_require_filters_without_field() {
+    let mut world = World::new();
+    let matching = world.entity();
+    let skipped = world.entity();
+
+    world.set(matching, QueryPosition { x: 10.0, y: 0.0 });
+    world.set(skipped, QueryPosition { x: 20.0, y: 0.0 });
+    world.add::<QueryPlayer>(matching);
+
+    let mut sum = 0.0;
+    world
+        .query()
+        .require::<QueryPlayer>()
+        .each(|position: &QueryPosition| {
+            sum += position.x;
+        });
+
+    assert_eq!(sum, 10.0);
+}
+
+#[test]
+fn query_exclude_skips_entities() {
+    let mut world = World::new();
+    let matching = world.entity();
+    let skipped = world.entity();
+
+    world.set(matching, QueryPosition { x: 1.0, y: 0.0 });
+    world.set(skipped, QueryPosition { x: 100.0, y: 0.0 });
+    world.add::<QueryDisabled>(skipped);
+
+    let mut sum = 0.0;
+    world
+        .query()
+        .exclude::<QueryDisabled>()
+        .each(|position: &QueryPosition| {
+            sum += position.x;
+        });
+
+    assert_eq!(sum, 1.0);
+}
+
+#[test]
+fn query_multi_worlds_are_isolated() {
+    let mut world_a = World::new();
+    let mut world_b = World::new();
+
+    let entity_a = world_a.entity();
+    let entity_b = world_b.entity();
+    world_a.set(entity_a, MultiWorldPosition { value: 7 });
+    world_b.set(entity_b, MultiWorldPosition { value: 11 });
+
+    let mut sum_a = 0;
+    world_a.query().each(|position: &MultiWorldPosition| {
+        sum_a += position.value;
+    });
+
+    let mut sum_b = 0;
+    world_b.query().each(|position: &MultiWorldPosition| {
+        sum_b += position.value;
+    });
+
+    assert_eq!(sum_a, 7);
+    assert_eq!(sum_b, 11);
+}
+
+#[test]
+fn query_callback_can_capture_state() {
+    let mut world = World::new();
+    for value in [1, 2, 3] {
+        let entity = world.entity();
+        world.set(entity, MultiWorldPosition { value });
+    }
+
+    let mut values = Vec::new();
+    world.query().each(|position: &MultiWorldPosition| {
+        values.push(position.value);
+    });
+    values.sort();
+
+    assert_eq!(values, [1, 2, 3]);
+}
+
+#[test]
+#[should_panic(expected = "query callback cannot request the same component field more than once")]
+fn query_rejects_duplicate_component_fields() {
+    let mut world = World::new();
+    let entity = world.entity();
+    world.set(entity, MultiWorldPosition { value: 1 });
+
+    world.query().each(
+        |left: &mut MultiWorldPosition, right: &MultiWorldPosition| {
+            left.value += right.value;
+        },
+    );
+}
+
+#[test]
 fn rust_multi_world_reuses_component_id_and_keeps_storage_local() {
     let mut world_a = World::new();
     let mut world_b = World::new();
@@ -166,14 +315,32 @@ fn rust_multi_world_reuses_component_id_and_keeps_storage_local() {
     world_a.set(entity_a, MultiWorldPosition { value: 10 });
     world_b.set(entity_b, MultiWorldPosition { value: 20 });
 
-    assert_eq!(world_a.get::<MultiWorldPosition>(entity_a).unwrap().value, 10);
-    assert_eq!(world_b.get::<MultiWorldPosition>(entity_b).unwrap().value, 20);
+    assert_eq!(
+        world_a.get::<MultiWorldPosition>(entity_a).unwrap().value,
+        10
+    );
+    assert_eq!(
+        world_b.get::<MultiWorldPosition>(entity_b).unwrap().value,
+        20
+    );
 
-    world_a.get_mut::<MultiWorldPosition>(entity_a).unwrap().value = 11;
-    world_b.get_mut::<MultiWorldPosition>(entity_b).unwrap().value = 21;
+    world_a
+        .get_mut::<MultiWorldPosition>(entity_a)
+        .unwrap()
+        .value = 11;
+    world_b
+        .get_mut::<MultiWorldPosition>(entity_b)
+        .unwrap()
+        .value = 21;
 
-    assert_eq!(world_a.get::<MultiWorldPosition>(entity_a).unwrap().value, 11);
-    assert_eq!(world_b.get::<MultiWorldPosition>(entity_b).unwrap().value, 21);
+    assert_eq!(
+        world_a.get::<MultiWorldPosition>(entity_a).unwrap().value,
+        11
+    );
+    assert_eq!(
+        world_b.get::<MultiWorldPosition>(entity_b).unwrap().value,
+        21
+    );
 }
 
 #[test]
@@ -231,5 +398,8 @@ fn rust_multi_world_drop_one_world_keeps_other_valid() {
     drop(world_a);
 
     world_b.set(entity_b, MultiWorldPosition { value: 3 });
-    assert_eq!(world_b.get::<MultiWorldPosition>(entity_b).unwrap().value, 3);
+    assert_eq!(
+        world_b.get::<MultiWorldPosition>(entity_b).unwrap().value,
+        3
+    );
 }
