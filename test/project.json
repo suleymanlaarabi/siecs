@@ -60,7 +60,8 @@
           "can_include_disabled_explicitly",
           "optional_field_present",
           "optional_field_missing_keeps_field_order",
-          "inout_optional_mutates_when_present"
+          "inout_optional_mutates_when_present",
+          "ids_stay_valid_after_temporary_query_fini"
         ]
       },
       {

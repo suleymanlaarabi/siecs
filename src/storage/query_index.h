@@ -18,10 +18,15 @@ typedef struct ecs_query_cache_s {
     ecs_query_t query;
     ecs_vec_t table_ids; // uint16_t
     ecs_vec_t fields;    // void ** slots: &table->cls[col].data
+    uint32_t active_index;
+    uint16_t next_free;
+    bool alive;
 } ecs_query_cache_t;
 
 typedef struct {
     ecs_vec_t queries;
+    ecs_vec_t active_ids; // ecs_query_id_t
+    uint16_t first_free;
 } ecs_query_index_t;
 
 void ecs_query_index_init(ecs_query_index_t *index);

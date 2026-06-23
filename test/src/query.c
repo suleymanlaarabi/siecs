@@ -235,3 +235,27 @@ void query_inout_optional_mutates_when_present(void) {
     ecs_query_fini(world, query);
     ecs_fini(world);
 }
+
+void query_ids_stay_valid_after_temporary_query_fini(void) {
+    ecs_world_t *world = query_test_world();
+    ecs_entity_t entity = query_test_entity(world, 10, 20, 30);
+
+    ecs_query_id_t temporary = ecs_query(world, { .terms = { ecs_in(QueryVelocity) } });
+    ecs_query_id_t persistent = ecs_query(world, { .terms = { ecs_in(QueryPosition) } });
+
+    ecs_query_fini(world, temporary);
+
+    ecs_query_id_t reused = ecs_query(world, { .terms = { ecs_in(QueryMass) } });
+
+    ecs_iter_t it = ecs_query_iter(world, persistent);
+    test_true(ecs_iter_next(&it));
+
+    QueryPosition *position = ecs_field(&it, 0);
+    test_int(1, it.count);
+    test_int(ecs_get(world, entity, QueryPosition)->value, position[0].value);
+    test_false(ecs_iter_next(&it));
+
+    ecs_query_fini(world, reused);
+    ecs_query_fini(world, persistent);
+    ecs_fini(world);
+}

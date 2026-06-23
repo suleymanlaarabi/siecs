@@ -46,6 +46,7 @@ void query_can_include_disabled_explicitly(void);
 void query_optional_field_present(void);
 void query_optional_field_missing_keeps_field_order(void);
 void query_inout_optional_mutates_when_present(void);
+void query_ids_stay_valid_after_temporary_query_fini(void);
 
 // Testsuite 'system'
 void system_run(void);
@@ -207,6 +208,10 @@ bake_test_case query_testcases[] = {
     {
         "inout_optional_mutates_when_present",
         query_inout_optional_mutates_when_present
+    },
+    {
+        "ids_stay_valid_after_temporary_query_fini",
+        query_ids_stay_valid_after_temporary_query_fini
     }
 };
 
@@ -374,7 +379,7 @@ static bake_test_suite suites[] = {
         "query",
         NULL,
         NULL,
-        8,
+        9,
         query_testcases
     },
     {

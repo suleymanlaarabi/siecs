@@ -13,15 +13,20 @@ static void *ecs_query_null_field = NULL;
 
 void ecs_query_index_init(ecs_query_index_t *index) {
     ecs_vec_init(&index->queries, sizeof(ecs_query_cache_t));
+    ecs_vec_init(&index->active_ids, sizeof(ecs_query_id_t));
+    index->first_free = UINT16_MAX;
 }
 
 void ecs_query_index_fini(ecs_query_index_t *index) {
-    for (uint32_t i = 0; i < index->queries.size; i++) {
-        ecs_query_cache_t *cache = ecs_vec_get_mut(&index->queries, i, ecs_query_cache_t);
+    const ecs_query_id_t *active_ids = index->active_ids.data;
+    for (uint32_t i = 0; i < index->active_ids.size; i++) {
+        ecs_query_cache_t *cache =
+            ecs_vec_get_mut(&index->queries, active_ids[i], ecs_query_cache_t);
         ecs_vec_fini(&cache->table_ids);
         ecs_vec_fini(&cache->fields);
         ecs_query_index_destroy(&cache->query);
     }
+    ecs_vec_fini(&index->active_ids);
     ecs_vec_fini(&index->queries);
 }
 
@@ -168,12 +173,27 @@ ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, ui
 }
 
 ecs_query_id_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc) {
-    ecs_query_cache_t *query_cache = ecs_vec_push_empty(&index->queries, sizeof(ecs_query_cache_t));
+    ecs_query_id_t id;
+    ecs_query_cache_t *query_cache;
+
+    if (index->first_free != UINT16_MAX) {
+        id = index->first_free;
+        query_cache = ecs_vec_get_mut(&index->queries, id, ecs_query_cache_t);
+        index->first_free = query_cache->next_free;
+    } else {
+        query_cache = ecs_vec_push_empty(&index->queries, sizeof(ecs_query_cache_t));
+        id = index->queries.size - 1;
+    }
+
     ecs_query_from_desc(desc, &query_cache->query);
     ecs_vec_init(&query_cache->table_ids, sizeof(uint16_t));
     ecs_vec_init(&query_cache->fields, sizeof(void **));
+    query_cache->active_index = index->active_ids.size;
+    query_cache->next_free = UINT16_MAX;
+    query_cache->alive = true;
+    ecs_vec_push_u16(&index->active_ids, id);
 
-    return index->queries.size - 1;
+    return id;
 }
 
 static ecs_component_t ecs_query_first_positive_term(const ecs_query_t *query) {
@@ -216,8 +236,10 @@ void ecs_query_index_add_table(
     const ecs_table_t *table,
     uint16_t table_id
 ) {
-    for (uint32_t i = 0; i < index->queries.size; i++) {
-        ecs_query_cache_t *cache = ecs_vec_get_mut(&index->queries, i, ecs_query_cache_t);
+    const ecs_query_id_t *active_ids = index->active_ids.data;
+    for (uint32_t i = 0; i < index->active_ids.size; i++) {
+        ecs_query_cache_t *cache =
+            ecs_vec_get_mut(&index->queries, active_ids[i], ecs_query_cache_t);
         if (ecs_query_match_table(&cache->query, table)) {
             ecs_query_cache_add_table(cache, table, table_id);
         }
