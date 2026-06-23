@@ -13,3 +13,7 @@ pub use query::Query;
 pub use siecs_derive::Component;
 pub use system::{Phase, System};
 pub use world::World;
+
+pub mod prelude {
+    pub use crate::{Component, Entity, Phase, Query, System, World};
+}
