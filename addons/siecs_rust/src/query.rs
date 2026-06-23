@@ -85,7 +85,7 @@ pub struct Ref<T>(PhantomData<T>);
 pub struct Mut<T>(PhantomData<T>);
 
 #[inline]
-fn append_term(
+pub(crate) fn append_term(
     desc: &mut raw::QueryDesc,
     term_index: &mut u16,
     id: raw::ComponentId,
@@ -112,7 +112,7 @@ fn is_returned_field(access: raw::TermAccess) -> bool {
     )
 }
 
-fn validate_returned_fields(desc: &raw::QueryDesc) {
+pub(crate) fn validate_returned_fields(desc: &raw::QueryDesc) {
     for (left_index, left) in desc.terms.iter().enumerate() {
         if left.id == 0 || !is_returned_field(left.access) {
             continue;

@@ -1,10 +1,13 @@
+use core::ffi::c_char;
 use core::ptr::NonNull;
+use std::ffi::CString;
 
-use crate::{raw, Component, Entity, Query};
+use crate::{raw, Component, Entity, Query, System};
 
 #[derive(Clone)]
 pub struct World {
     raw: NonNull<raw::WorldRaw>,
+    system_names: Vec<CString>,
 }
 
 impl World {
@@ -13,7 +16,10 @@ impl World {
         let raw = unsafe { raw::ecs_init() };
         let raw = NonNull::new(raw).expect("ecs_init returned null");
 
-        Self { raw }
+        Self {
+            raw,
+            system_names: Vec::new(),
+        }
     }
 
     #[inline]
@@ -53,6 +59,52 @@ impl World {
     #[inline]
     pub fn query(&mut self) -> Query<'_> {
         Query::new(self)
+    }
+
+    #[inline]
+    pub fn system(&mut self, name: &str) -> System<'_> {
+        System::new(self, name)
+    }
+
+    #[inline]
+    pub(crate) fn retain_system_name(&mut self, name: &str) -> *const c_char {
+        let name = CString::new(name).expect("system name cannot contain NUL bytes");
+        let ptr = name.as_ptr();
+        self.system_names.push(name);
+        ptr
+    }
+
+    #[inline]
+    pub fn progress(&mut self) -> bool {
+        unsafe { raw::ecs_progress(self.raw.as_ptr()) }
+    }
+
+    #[inline]
+    pub fn run_phase(&mut self, phase: raw::Phase) {
+        unsafe {
+            raw::ecs_run_phase(self.raw.as_ptr(), phase);
+        }
+    }
+
+    #[inline]
+    pub fn run_system(&mut self, system: raw::SystemId) {
+        unsafe {
+            raw::ecs_run_system(self.raw.as_ptr(), system);
+        }
+    }
+
+    #[inline]
+    pub fn enable_system(&mut self, system: raw::SystemId) {
+        unsafe {
+            raw::ecs_system_enable(self.raw.as_ptr(), system);
+        }
+    }
+
+    #[inline]
+    pub fn disable_system(&mut self, system: raw::SystemId) {
+        unsafe {
+            raw::ecs_system_disable(self.raw.as_ptr(), system);
+        }
     }
 
     #[inline]

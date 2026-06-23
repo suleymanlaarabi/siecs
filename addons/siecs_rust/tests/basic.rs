@@ -1,5 +1,6 @@
-use siecs::{raw, Component, World};
+use siecs::{raw, Component, Phase, World};
 use std::mem::{align_of, offset_of, size_of};
+use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 
 #[derive(Component)]
 struct AddPosition {
@@ -36,6 +37,54 @@ struct MultiWorldPosition {
     value: i32,
 }
 
+#[derive(Component)]
+struct SystemPosition {
+    x: i32,
+}
+
+#[derive(Component)]
+struct SystemVelocity {
+    x: i32,
+}
+
+#[derive(Component)]
+struct SystemPlayer;
+
+#[derive(Component)]
+struct SystemDisabled;
+
+static MOVE_CALLS: AtomicUsize = AtomicUsize::new(0);
+static FILTER_CALLS: AtomicUsize = AtomicUsize::new(0);
+static ENABLE_CALLS: AtomicUsize = AtomicUsize::new(0);
+static MULTI_WORLD_CALLS: AtomicUsize = AtomicUsize::new(0);
+static SYSTEM_ORDER: AtomicI32 = AtomicI32::new(0);
+
+fn move_system(position: &mut SystemPosition, velocity: &SystemVelocity) {
+    position.x += velocity.x;
+    MOVE_CALLS.fetch_add(1, Ordering::SeqCst);
+}
+
+fn filter_count_system(position: &SystemPosition) {
+    FILTER_CALLS.fetch_add(position.x as usize, Ordering::SeqCst);
+}
+
+fn enable_count_system(position: &SystemPosition) {
+    ENABLE_CALLS.fetch_add(position.x as usize, Ordering::SeqCst);
+}
+
+fn multi_world_move_system(position: &mut SystemPosition, velocity: &SystemVelocity) {
+    position.x += velocity.x;
+    MULTI_WORLD_CALLS.fetch_add(1, Ordering::SeqCst);
+}
+
+fn pre_update_system(_position: &SystemPosition) {
+    assert_eq!(SYSTEM_ORDER.swap(1, Ordering::SeqCst), 0);
+}
+
+fn on_update_system(_position: &SystemPosition) {
+    assert_eq!(SYSTEM_ORDER.swap(2, Ordering::SeqCst), 1);
+}
+
 #[test]
 fn raw_query_layout_matches_c() {
     assert_eq!(size_of::<raw::TermAccess>(), 4);
@@ -59,6 +108,21 @@ fn raw_query_layout_matches_c() {
     assert_eq!(offset_of!(raw::Iter, ptrs), 32);
     assert_eq!(offset_of!(raw::Iter, table_idx), 40);
     assert_eq!(offset_of!(raw::Iter, table_count), 42);
+}
+
+#[test]
+fn raw_system_layout_matches_c() {
+    assert_eq!(size_of::<raw::Phase>(), 4);
+    assert_eq!(align_of::<raw::Phase>(), 4);
+
+    assert_eq!(size_of::<raw::SystemDesc>(), 160);
+    assert_eq!(align_of::<raw::SystemDesc>(), 8);
+    assert_eq!(offset_of!(raw::SystemDesc, name), 0);
+    assert_eq!(offset_of!(raw::SystemDesc, query), 8);
+    assert_eq!(offset_of!(raw::SystemDesc, callback), 136);
+    assert_eq!(offset_of!(raw::SystemDesc, phase), 144);
+    assert_eq!(offset_of!(raw::SystemDesc, after), 148);
+    assert_eq!(offset_of!(raw::SystemDesc, disabled), 156);
 }
 
 #[test]
@@ -243,6 +307,116 @@ fn query_exclude_skips_entities() {
         });
 
     assert_eq!(sum, 1.0);
+}
+
+#[test]
+fn system_progress_runs_and_mutates_components() {
+    MOVE_CALLS.store(0, Ordering::SeqCst);
+
+    let mut world = World::new();
+    let entity = world.entity();
+    world.set(entity, SystemPosition { x: 1 });
+    world.set(entity, SystemVelocity { x: 4 });
+
+    world.system("Move").each(move_system);
+    assert!(world.progress());
+
+    assert_eq!(MOVE_CALLS.load(Ordering::SeqCst), 1);
+    assert_eq!(world.get::<SystemPosition>(entity).unwrap().x, 5);
+}
+
+#[test]
+fn system_require_and_exclude_filter_entities() {
+    FILTER_CALLS.store(0, Ordering::SeqCst);
+
+    let mut world = World::new();
+    let matching = world.entity();
+    let missing_player = world.entity();
+    let disabled = world.entity();
+
+    world.set(matching, SystemPosition { x: 2 });
+    world.set(missing_player, SystemPosition { x: 10 });
+    world.set(disabled, SystemPosition { x: 100 });
+    world.add::<SystemPlayer>(matching);
+    world.add::<SystemPlayer>(disabled);
+    world.add::<SystemDisabled>(disabled);
+
+    world
+        .system("CountPlayers")
+        .require::<SystemPlayer>()
+        .exclude::<SystemDisabled>()
+        .each(filter_count_system);
+    world.progress();
+
+    assert_eq!(FILTER_CALLS.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn system_enable_disable_controls_execution() {
+    ENABLE_CALLS.store(0, Ordering::SeqCst);
+
+    let mut world = World::new();
+    let entity = world.entity();
+    world.set(entity, SystemPosition { x: 3 });
+
+    let system = world.system("Count").disabled().each(enable_count_system);
+    world.progress();
+    assert_eq!(ENABLE_CALLS.load(Ordering::SeqCst), 0);
+
+    world.enable_system(system);
+    world.progress();
+    assert_eq!(ENABLE_CALLS.load(Ordering::SeqCst), 3);
+
+    world.disable_system(system);
+    world.progress();
+    assert_eq!(ENABLE_CALLS.load(Ordering::SeqCst), 3);
+}
+
+#[test]
+fn system_phase_order_matches_c_order() {
+    SYSTEM_ORDER.store(0, Ordering::SeqCst);
+
+    let mut world = World::new();
+    let entity = world.entity();
+    world.set(entity, SystemPosition { x: 1 });
+
+    world
+        .system("OnUpdate")
+        .phase(Phase::OnUpdate)
+        .each(on_update_system);
+    world
+        .system("PreUpdate")
+        .phase(Phase::PreUpdate)
+        .each(pre_update_system);
+
+    world.progress();
+    assert_eq!(SYSTEM_ORDER.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn system_multi_worlds_are_isolated() {
+    MULTI_WORLD_CALLS.store(0, Ordering::SeqCst);
+
+    let mut world_a = World::new();
+    let mut world_b = World::new();
+    let entity_a = world_a.entity();
+    let entity_b = world_b.entity();
+
+    world_a.set(entity_a, SystemPosition { x: 1 });
+    world_a.set(entity_a, SystemVelocity { x: 2 });
+    world_b.set(entity_b, SystemPosition { x: 10 });
+    world_b.set(entity_b, SystemVelocity { x: 20 });
+
+    world_a.system("MoveA").each(multi_world_move_system);
+    world_b.system("MoveB").each(multi_world_move_system);
+
+    world_a.progress();
+    assert_eq!(world_a.get::<SystemPosition>(entity_a).unwrap().x, 3);
+    assert_eq!(world_b.get::<SystemPosition>(entity_b).unwrap().x, 10);
+
+    world_b.progress();
+    assert_eq!(world_b.get::<SystemPosition>(entity_b).unwrap().x, 30);
+    assert_eq!(MULTI_WORLD_CALLS.load(Ordering::SeqCst), 2);
 }
 
 #[test]
