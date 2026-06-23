@@ -19,8 +19,9 @@ pub type ResourceId = u16;
 pub type ObserverId = u32;
 
 pub use component::{
-    ecs_add_cid, ecs_component_init, ecs_get_cid, ecs_has_cid, ecs_remove_cid, ecs_set_cid,
-    ecs_try_get_cid, ComponentDesc, ComponentOnAdd, ComponentOnRemove, ComponentOnSet,
+    ecs_add_cid, ecs_component_init, ecs_component_register, ecs_get_cid, ecs_has_cid,
+    ecs_remove_cid, ecs_set_cid, ecs_try_get_cid, ComponentDesc, ComponentOnAdd,
+    ComponentOnRemove, ComponentOnSet,
 };
 pub use entity::{ecs_is_alive, ecs_kill, ecs_new};
 pub use query::{

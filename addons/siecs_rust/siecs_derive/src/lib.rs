@@ -11,20 +11,19 @@ pub fn derive_component(input: TokenStream) -> TokenStream {
                 static mut ID: ::siecs::raw::ComponentId = 0;
 
                 unsafe {{
-                    if ID == 0 {{
-                        ID = ::siecs::raw::ecs_component_init(
-                            world.as_raw_mut(),
-                            &::siecs::raw::ComponentDesc {{
-                                name: concat!(stringify!({name}), "\0").as_ptr().cast(),
-                                size: ::core::mem::size_of::<{name}>() as u64,
-                                on_set: None,
-                                on_remove: None,
-                                on_add: None,
-                                relation_flags: 0,
-                                struct_desc: ::core::ptr::null(),
-                            }},
-                        );
-                    }}
+                    ID = ::siecs::raw::ecs_component_register(
+                        world.as_raw_mut(),
+                        ::core::ptr::addr_of_mut!(ID),
+                        &::siecs::raw::ComponentDesc {{
+                            name: concat!(stringify!({name}), "\0").as_ptr().cast(),
+                            size: ::core::mem::size_of::<{name}>() as u64,
+                            on_set: None,
+                            on_remove: None,
+                            on_add: None,
+                            relation_flags: 0,
+                            struct_desc: ::core::ptr::null(),
+                        }},
+                    );
 
                     ID
                 }}

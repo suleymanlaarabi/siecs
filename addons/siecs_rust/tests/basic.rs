@@ -19,6 +19,11 @@ struct QueryPosition {
     y: f32,
 }
 
+#[derive(Component)]
+struct MultiWorldPosition {
+    value: i32,
+}
+
 #[test]
 fn raw_query_layout_matches_c() {
     assert_eq!(size_of::<raw::TermAccess>(), 4);
@@ -144,4 +149,87 @@ fn raw_query_iter_reads_component_field() {
     unsafe {
         raw::ecs_query_fini(world.as_raw_mut(), query);
     }
+}
+
+#[test]
+fn rust_multi_world_reuses_component_id_and_keeps_storage_local() {
+    let mut world_a = World::new();
+    let mut world_b = World::new();
+
+    let id_a = MultiWorldPosition::id(&mut world_a);
+    let id_b = MultiWorldPosition::id(&mut world_b);
+    assert_eq!(id_a, id_b);
+
+    let entity_a = world_a.entity();
+    let entity_b = world_b.entity();
+
+    world_a.set(entity_a, MultiWorldPosition { value: 10 });
+    world_b.set(entity_b, MultiWorldPosition { value: 20 });
+
+    assert_eq!(world_a.get::<MultiWorldPosition>(entity_a).unwrap().value, 10);
+    assert_eq!(world_b.get::<MultiWorldPosition>(entity_b).unwrap().value, 20);
+
+    world_a.get_mut::<MultiWorldPosition>(entity_a).unwrap().value = 11;
+    world_b.get_mut::<MultiWorldPosition>(entity_b).unwrap().value = 21;
+
+    assert_eq!(world_a.get::<MultiWorldPosition>(entity_a).unwrap().value, 11);
+    assert_eq!(world_b.get::<MultiWorldPosition>(entity_b).unwrap().value, 21);
+}
+
+#[test]
+fn rust_multi_world_queries_only_see_their_world_tables() {
+    let mut world_a = World::new();
+    let mut world_b = World::new();
+
+    let entity_a = world_a.entity();
+    let entity_b = world_b.entity();
+    world_a.set(entity_a, MultiWorldPosition { value: 100 });
+    world_b.set(entity_b, MultiWorldPosition { value: 200 });
+
+    let component = MultiWorldPosition::id(&mut world_a);
+    assert_eq!(component, MultiWorldPosition::id(&mut world_b));
+
+    let mut desc = raw::QueryDesc::default();
+    desc.terms[0] = raw::QueryTerm {
+        id: component,
+        access: raw::TermAccess::In,
+    };
+
+    let query_a = unsafe { raw::ecs_query_init(world_a.as_raw_mut(), &desc) as raw::QueryId };
+    let query_b = unsafe { raw::ecs_query_init(world_b.as_raw_mut(), &desc) as raw::QueryId };
+
+    let mut iter_a = unsafe { raw::ecs_query_iter(world_a.as_raw_mut(), query_a) };
+    assert!(unsafe { raw::ecs_iter_next(&mut iter_a) });
+    assert_eq!(iter_a.count, 1);
+    let positions_a = unsafe { raw::ecs_field(&mut iter_a, 0).cast::<MultiWorldPosition>() };
+    assert_eq!(unsafe { (*positions_a).value }, 100);
+    assert!(!unsafe { raw::ecs_iter_next(&mut iter_a) });
+
+    let mut iter_b = unsafe { raw::ecs_query_iter(world_b.as_raw_mut(), query_b) };
+    assert!(unsafe { raw::ecs_iter_next(&mut iter_b) });
+    assert_eq!(iter_b.count, 1);
+    let positions_b = unsafe { raw::ecs_field(&mut iter_b, 0).cast::<MultiWorldPosition>() };
+    assert_eq!(unsafe { (*positions_b).value }, 200);
+    assert!(!unsafe { raw::ecs_iter_next(&mut iter_b) });
+
+    unsafe {
+        raw::ecs_query_fini(world_a.as_raw_mut(), query_a);
+        raw::ecs_query_fini(world_b.as_raw_mut(), query_b);
+    }
+}
+
+#[test]
+fn rust_multi_world_drop_one_world_keeps_other_valid() {
+    let mut world_a = World::new();
+    let mut world_b = World::new();
+
+    let entity_a = world_a.entity();
+    let entity_b = world_b.entity();
+    world_a.set(entity_a, MultiWorldPosition { value: 1 });
+    world_b.set(entity_b, MultiWorldPosition { value: 2 });
+
+    drop(world_a);
+
+    world_b.set(entity_b, MultiWorldPosition { value: 3 });
+    assert_eq!(world_b.get::<MultiWorldPosition>(entity_b).unwrap().value, 3);
 }

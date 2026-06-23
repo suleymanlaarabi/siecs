@@ -22,6 +22,11 @@ pub struct ComponentDesc {
 
 extern "C" {
     pub fn ecs_component_init(world: *mut WorldRaw, desc: *const ComponentDesc) -> ComponentId;
+    pub fn ecs_component_register(
+        world: *mut WorldRaw,
+        id: *mut ComponentId,
+        desc: *const ComponentDesc,
+    ) -> ComponentId;
 
     pub fn ecs_add_cid(world: *mut WorldRaw, entity: EntityId, id: ComponentId);
     pub fn ecs_remove_cid(world: *mut WorldRaw, entity: EntityId, id: ComponentId);
