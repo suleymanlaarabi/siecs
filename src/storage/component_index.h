@@ -4,9 +4,11 @@
 #include "../datastructure/vec.h"
 #include "siecs.h"
 #include "sireflect.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef struct {
+    bool registered;
     char *name;
     uint16_t *required;
     uint32_t required_count;
@@ -26,8 +28,9 @@ typedef struct ecs_component_index_s {
 #endif
 } ecs_component_index_t;
 
-ecs_component_t ecs_component_index_create(
+void ecs_component_index_register(
     ecs_component_index_t *index,
+    ecs_component_t id,
     char *name,
     uint64_t size,
     ecs_component_on_set_t on_set,

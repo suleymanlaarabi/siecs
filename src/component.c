@@ -9,6 +9,64 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct ecs_component_global_name_s {
+    char *name;
+    ecs_component_t id;
+    uint16_t count;
+    struct ecs_component_global_name_s *next;
+} ecs_component_global_name_t;
+
+static ecs_component_t ecs_next_component_id = 1;
+static ecs_component_global_name_t *ecs_component_global_names = NULL;
+
+static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
+    ecs_component_t id = ecs_next_component_id;
+    ecs_next_component_id += count;
+    ecs_assert(ecs_next_component_id > id, "component id overflow\n");
+    return id;
+}
+
+static ecs_component_t ecs_component_global_find_name(const char *name, uint16_t count) {
+    for (ecs_component_global_name_t *cur = ecs_component_global_names; cur; cur = cur->next) {
+        if (strcmp(cur->name, name) == 0) {
+            ecs_assert(
+                cur->count == count,
+                "component name registered with incompatible kind: %s\n",
+                name
+            );
+            return cur->id;
+        }
+    }
+
+    return 0;
+}
+
+static void ecs_component_global_record_name(const char *name, ecs_component_t id, uint16_t count) {
+    ecs_component_global_name_t *record = malloc(sizeof(ecs_component_global_name_t));
+    ecs_assert_not_null(record);
+    record->name = strdup(name);
+    ecs_assert_not_null(record->name);
+    record->id = id;
+    record->count = count;
+    record->next = ecs_component_global_names;
+    ecs_component_global_names = record;
+}
+
+static ecs_component_t ecs_component_global_id(const ecs_component_desc_t *desc, uint16_t count) {
+    if (desc->name) {
+        ecs_component_t named_id = ecs_component_global_find_name(desc->name, count);
+        if (named_id) {
+            return named_id;
+        }
+    }
+
+    ecs_component_t id = ecs_component_alloc_ids(count);
+    if (desc->name) {
+        ecs_component_global_record_name(desc->name, id, count);
+    }
+    return id;
+}
+
 void RelationOnSet(
     ecs_world_t *world,
     ecs_entity_t entity,
@@ -82,7 +140,8 @@ void RelationSourceOnRemove(
 
     const ecs_entity_t *entities = source_data->entities.data;
     const uint32_t count = source_data->entities.size;
-    const ecs_component_record_t *crec = ecs_component_index_get(&world->component_index, component);
+    const ecs_component_record_t *crec =
+        ecs_component_index_get(&world->component_index, component);
     const bool cascade_delete = crec->relation_flags & EcsRelationCascadeDelete;
 
     // Prevent recursive calls to RelationOnRemove when removing relation from child
@@ -98,19 +157,27 @@ void RelationSourceOnRemove(
     ecs_vec_fini(&source_data->entities);
 }
 
-ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc) {
+ecs_component_t
+ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_component_desc_t *desc) {
     ecs_assert_not_null(world);
+    ecs_assert_not_null(id);
+    ecs_assert_not_null(desc);
 
     sireflect_handle_t reflection = SIREFLECT_INVALID_HANDLE;
 
     if (desc->struct_desc) {
         reflection = sireflect_try_register_struct(world->sireflect_registry, desc->struct_desc);
-
     }
 
     if (desc->relation_flags & EcsRelationTarget) {
-        ecs_component_t component = ecs_component_index_create(
+        if (*id == 0) {
+            *id = ecs_component_global_id(desc, 2);
+        }
+
+        ecs_component_t component = *id;
+        ecs_component_index_register(
             &world->component_index,
+            component,
             desc->name ? strdup(desc->name) : NULL,
             desc->size,
             RelationOnSet,
@@ -120,15 +187,17 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
             reflection
         );
 
-        ecs_str_t source_name = {0};
+        ecs_str_t source_name = { 0 };
 
         if (desc->name) {
             source_name = ecs_str_from_cstr("Source");
             ecs_str_cstr_append(&source_name, desc->name);
         }
 
-        ecs_component_t source = ecs_component_index_create(
+        ecs_component_t source = component + 1;
+        ecs_component_index_register(
             &world->component_index,
+            source,
             source_name.data,
             sizeof(RelationSource),
             NULL,
@@ -141,8 +210,14 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
         ecs_module_record_component(world, source);
         return component;
     } else {
-        ecs_component_t component = ecs_component_index_create(
+        if (*id == 0) {
+            *id = ecs_component_global_id(desc, 1);
+        }
+
+        ecs_component_t component = *id;
+        ecs_component_index_register(
             &world->component_index,
+            component,
             desc->name ? strdup(desc->name) : NULL,
             desc->size,
             desc->on_set,
@@ -154,4 +229,9 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
         ecs_module_record_component(world, component);
         return component;
     }
+}
+
+ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc) {
+    ecs_component_t id = 0;
+    return ecs_component_register(world, &id, desc);
 }

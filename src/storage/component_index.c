@@ -6,8 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-ecs_component_t ecs_component_index_create(
+void ecs_component_index_register(
     ecs_component_index_t *index,
+    ecs_component_t id,
     char *name,
     uint64_t size,
     ecs_component_on_set_t on_set,
@@ -16,7 +17,17 @@ ecs_component_t ecs_component_index_create(
     uint32_t relation_flags,
     sireflect_handle_t reflection
 ) {
+    ecs_vec_ensure(&index->components, (uint32_t)id + 1, sizeof(ecs_component_record_t));
+
+    ecs_component_record_t *existing =
+        ecs_vec_get_mut(&index->components, id, ecs_component_record_t);
+    if (existing->registered) {
+        free(name);
+        return;
+    }
+
     ecs_component_record_t record = {
+        .registered = true,
         .name = name,
         .required = NULL,
         .required_count = 0,
@@ -30,13 +41,12 @@ ecs_component_t ecs_component_index_create(
     };
     ecs_vec_init(&record.tables, sizeof(uint16_t));
 
-    ecs_vec_push(&index->components, &record, sizeof(ecs_component_record_t));
+    *existing = record;
 #ifndef NDEBUG
     if (name) {
-        ecs_map_set(&index->component_name_map, name, index->components.size - 1);
+        ecs_map_set(&index->component_name_map, name, id);
     }
 #endif
-    return index->components.size - 1;
 }
 
 void ecs_component_index_init(ecs_component_index_t *index) {
@@ -50,6 +60,9 @@ void ecs_component_index_fini(ecs_component_index_t *index) {
     ecs_component_record_t *records = index->components.data;
 
     for (uint32_t i = 0; i < index->components.size; i++) {
+        if (!records[i].registered) {
+            continue;
+        }
         free(records[i].required);
         free(records[i].name);
         ecs_vec_fini(&records[i].tables);

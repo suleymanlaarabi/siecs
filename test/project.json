@@ -21,6 +21,16 @@
         "testcases": ["reflection", "on_add"]
       },
       {
+        "id": "multi_world",
+        "testcases": [
+          "same_component_registered_in_two_worlds",
+          "worlds_keep_independent_component_storage",
+          "queries_only_see_their_world_tables",
+          "fini_one_world_keeps_other_world_valid",
+          "relations_remain_world_local"
+        ]
+      },
+      {
         "id": "resource",
         "testcases": [
           "set_get",

@@ -16,6 +16,13 @@ void entity_with(void);
 void component_reflection(void);
 void component_on_add(void);
 
+// Testsuite 'multi_world'
+void multi_world_same_component_registered_in_two_worlds(void);
+void multi_world_worlds_keep_independent_component_storage(void);
+void multi_world_queries_only_see_their_world_tables(void);
+void multi_world_fini_one_world_keeps_other_world_valid(void);
+void multi_world_relations_remain_world_local(void);
+
 // Testsuite 'resource'
 void resource_set_get(void);
 void resource_try_get_missing(void);
@@ -96,6 +103,29 @@ bake_test_case component_testcases[] = {
     {
         "on_add",
         component_on_add
+    }
+};
+
+bake_test_case multi_world_testcases[] = {
+    {
+        "same_component_registered_in_two_worlds",
+        multi_world_same_component_registered_in_two_worlds
+    },
+    {
+        "worlds_keep_independent_component_storage",
+        multi_world_worlds_keep_independent_component_storage
+    },
+    {
+        "queries_only_see_their_world_tables",
+        multi_world_queries_only_see_their_world_tables
+    },
+    {
+        "fini_one_world_keeps_other_world_valid",
+        multi_world_fini_one_world_keeps_other_world_valid
+    },
+    {
+        "relations_remain_world_local",
+        multi_world_relations_remain_world_local
     }
 };
 
@@ -320,6 +350,13 @@ static bake_test_suite suites[] = {
         component_testcases
     },
     {
+        "multi_world",
+        NULL,
+        NULL,
+        5,
+        multi_world_testcases
+    },
+    {
         "resource",
         NULL,
         NULL,
@@ -378,5 +415,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 10);
+    return bake_test_run("siecs.test", argc, argv, suites, 11);
 }

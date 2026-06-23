@@ -31,10 +31,6 @@ template <typename T> static void ecs_cpp_set_component_id(ecs_component_t cid) 
 template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *world) {
     ecs_component_t &cid = detail::component_type<T>::id;
 
-    if (cid != 0) {
-        return cid;
-    }
-
     std::string name = std::string(type_name<T>());
 
     ecs_component_desc_t desc = {
@@ -53,7 +49,7 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
         .struct_desc = nullptr,
     };
 
-    cid = ecs_component_init(world, &desc);
+    cid = ecs_component_register(world, &cid, &desc);
 
     return cid;
 }

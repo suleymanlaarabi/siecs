@@ -268,7 +268,7 @@ void ecs_fini(ecs_world_t *world);
  * world. Stores the generated component id in ecs_id(cname).
  */
 #define ECS_COMPONENT_REGISTER(world, cname)                                                       \
-    ecs_id(cname) = ecs_component_init(world, &ecs_id(cname##_desc))
+    ecs_id(cname) = ecs_component_register(world, &ecs_id(cname), &ecs_id(cname##_desc))
 
 /*
  * Declare and define a component type
@@ -386,6 +386,10 @@ ECS_COMPONENT_DECLARE(Disabled, { uint8_t value; });
 
 /* Register a component descriptor and return its component id. */
 ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc);
+
+/* Register a typed component descriptor using stable process-wide id storage. */
+ecs_component_t
+ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_component_desc_t *desc);
 
 /* Create a new alive entity in world. world must not be NULL. */
 ecs_entity_t ecs_new(ecs_world_t *world);
