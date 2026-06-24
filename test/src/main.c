@@ -16,6 +16,9 @@ void entity_with(void);
 void component_reflection(void);
 void component_on_add(void);
 
+// Testsuite 'rest'
+void rest_schema_returns_editor_contract(void);
+
 // Testsuite 'multi_world'
 void multi_world_same_component_registered_in_two_worlds(void);
 void multi_world_worlds_keep_independent_component_storage(void);
@@ -104,6 +107,13 @@ bake_test_case component_testcases[] = {
     {
         "on_add",
         component_on_add
+    }
+};
+
+bake_test_case rest_testcases[] = {
+    {
+        "schema_returns_editor_contract",
+        rest_schema_returns_editor_contract
     }
 };
 
@@ -355,6 +365,13 @@ static bake_test_suite suites[] = {
         component_testcases
     },
     {
+        "rest",
+        NULL,
+        NULL,
+        1,
+        rest_testcases
+    },
+    {
         "multi_world",
         NULL,
         NULL,
@@ -420,5 +437,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 11);
+    return bake_test_run("siecs.test", argc, argv, suites, 12);
 }

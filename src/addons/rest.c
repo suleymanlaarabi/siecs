@@ -16,8 +16,7 @@ void init_rest(ecs_world_t *world) {
 
     sihttp_get(world->server, "/entities", ecs_rest_get_entities);
     sihttp_get(world->server, "/entities/:id", ecs_rest_get_entities);
-    sihttp_get(world->server, "/components", ecs_rest_get_components);
-    sihttp_get(world->server, "/components/:id", ecs_rest_get_components);
+    sihttp_get(world->server, "/schema", ecs_rest_get_schema);
 
     if (world->features.rest) {
         sihttp_server_start(world->server);

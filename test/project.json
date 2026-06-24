@@ -21,6 +21,10 @@
         "testcases": ["reflection", "on_add"]
       },
       {
+        "id": "rest",
+        "testcases": ["schema_returns_editor_contract"]
+      },
+      {
         "id": "multi_world",
         "testcases": [
           "same_component_registered_in_two_worlds",
