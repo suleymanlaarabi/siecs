@@ -1,4 +1,5 @@
 #include "addons/addons.h"
+#include "datastructure/vec.h"
 #include "siecs.h"
 #include "sireflect.h"
 #include "storage/table_index.h"
@@ -12,7 +13,7 @@ ECS_COMPONENT_DEFINE(Disabled);
 void ecs_bootstrap(ecs_world_t *world) {
     // Reserve identifiers used to represent false return values.
     ecs_table_index_get_or_create(world, (ecs_type_t){ 0 });
-    ecs_new(world);
+    ecs_vec_push_u64(&world->entity_index.entities, 0);
     ecs_component(world, { .name = "Invalid" });
 
     // Register the ecs_entity_t struct reflection.
