@@ -220,7 +220,7 @@ typedef struct {
 #endif
 
 /* Create an ECS world. */
-ecs_world_t *ecs_init(void);
+SIECS_API ecs_world_t *ecs_init(void);
 
 /* World feature descriptor. */
 typedef struct {
@@ -231,10 +231,10 @@ typedef struct {
 #define ecs_with_features(...) ecs_init_w_features(&(ecs_world_feat_desc_t)__VA_ARGS__)
 
 /* Initialize a world with the given features. */
-ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features);
+SIECS_API ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features);
 
 /* Destroy a world and all ECS storage owned by it. world must not be NULL. */
-void ecs_fini(ecs_world_t *world);
+SIECS_API void ecs_fini(ecs_world_t *world);
 
 /*
  * Declare a component type and its public component id.
@@ -327,7 +327,7 @@ void ecs_fini(ecs_world_t *world);
 /* Register/import a module with a raw descriptor. Prefer ECS_MODULE_IMPORT for typed modules. */
 #define ecs_module(world, ...) ecs_module_init(world, &(ecs_module_desc_t)__VA_ARGS__)
 
-ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *desc);
+SIECS_API ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *desc);
 
 /*
  * Find an already imported module by its id storage.
@@ -335,10 +335,10 @@ ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *des
  * For typed modules, pass &ecs_id(module_name). Returns 0 if the
  * module has not been imported into this world.
  */
-ecs_module_id_t ecs_module_find(ecs_world_t *world, const ecs_module_id_t *id);
-void ecs_module_enable(ecs_world_t *world, ecs_module_id_t module);
-void ecs_module_disable(ecs_world_t *world, ecs_module_id_t module);
-bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t module);
+SIECS_API ecs_module_id_t ecs_module_find(ecs_world_t *world, const ecs_module_id_t *id);
+SIECS_API void ecs_module_enable(ecs_world_t *world, ecs_module_id_t module);
+SIECS_API void ecs_module_disable(ecs_world_t *world, ecs_module_id_t module);
+SIECS_API bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t module);
 
 /*
  * Define a relation component.
@@ -385,14 +385,14 @@ ECS_COMPONENT_DECLARE(Disabled, { uint8_t value; });
 #define ecs_component(world, ...) ecs_component_init(world, &(ecs_component_desc_t)__VA_ARGS__)
 
 /* Register a component descriptor and return its component id. */
-ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc);
+SIECS_API ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc);
 
 /* Register a typed component descriptor using stable process-wide id storage. */
-ecs_component_t
+SIECS_API ecs_component_t
 ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_component_desc_t *desc);
 
 /* Create a new alive entity in world. world must not be NULL. */
-ecs_entity_t ecs_new(ecs_world_t *world);
+SIECS_API ecs_entity_t ecs_new(ecs_world_t *world);
 
 /*
  * Return whether entity is alive in world.
@@ -400,10 +400,10 @@ ecs_entity_t ecs_new(ecs_world_t *world);
  * entity must be a handle created by this world. Passing arbitrary ids is not a
  * supported validity check.
  */
-int ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity);
+SIECS_API int ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity);
 
 /* Destroy an alive entity and remove all of its components. */
-void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
+SIECS_API void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
 
 /*
  * Create a query from an inline descriptor.
@@ -422,10 +422,10 @@ void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
             for (uint32_t i = 0; i < it.count; i++)
 
 /* Create a query. The query descriptor must read at least one component. */
-uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *query);
+SIECS_API uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *query);
 
 /* Destroy a query id created by ecs_query/ecs_query_init. */
-void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
+SIECS_API void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
 
 /* Add a typed component tag/storage to an alive entity. */
 #define ecs_add(world, entity, cname) ecs_add_cid(world, entity, ecs_id(cname))
@@ -436,7 +436,7 @@ void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
  * If the component is already present, this is currently treated as a no-op by
  * table migration. The component id must be registered in the same world.
  */
-void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+SIECS_API void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
 /* Remove a typed component from an alive entity. */
 #define ecs_remove(world, entity, cname) ecs_remove_cid(world, entity, ecs_id(cname))
@@ -446,13 +446,13 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
  *
  * Removing a component that is not present is a no-op.
  */
-void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+SIECS_API void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
 /* Return whether an alive entity has a typed component. */
 #define ecs_has(world, entity, cname) ecs_has_cid(world, entity, ecs_id(cname))
 
 /* Return whether an alive entity has a component id. */
-bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+SIECS_API bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
 /*
  * Get a typed component pointer from an alive entity.
@@ -468,13 +468,13 @@ bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t 
  * The component is assumed to exist on the entity. Use ecs_try_get_cid when the
  * component may be absent.
  */
-void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+SIECS_API void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
 /* Get a typed component pointer, or NULL if the entity does not have it. */
 #define ecs_try_get(world, entity, cname) ((cname *)ecs_try_get_cid(world, entity, ecs_id(cname)))
 
 /* Get a component pointer by id, or NULL if the entity does not have it. */
-void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid);
+SIECS_API void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid);
 
 /*
  * Set a typed component value on an alive entity.
@@ -492,7 +492,8 @@ void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t c
  * data must point to at least the registered component size. Adds the component
  * if needed.
  */
-void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
+SIECS_API void
+ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
 
 /*
  * Declare and define a resource type.
@@ -538,21 +539,21 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, co
 /* Remove a world resource if it exists. */
 #define ecs_remove_resource(world, rname) ecs_remove_resource_rid(world, ecs_id(rname))
 
-ecs_resource_t ecs_resource_init(ecs_world_t *world, const ecs_resource_desc_t *desc);
-ecs_resource_t ecs_resource_find(ecs_world_t *world, const char *name);
-bool ecs_resource_is_registered_rid(const ecs_world_t *world, ecs_resource_t id);
-void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);
-void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id);
-void *ecs_try_resource_rid(ecs_world_t *world, ecs_resource_t id);
-bool ecs_has_resource_rid(const ecs_world_t *world, ecs_resource_t id);
-void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id);
+SIECS_API ecs_resource_t ecs_resource_init(ecs_world_t *world, const ecs_resource_desc_t *desc);
+SIECS_API ecs_resource_t ecs_resource_find(ecs_world_t *world, const char *name);
+SIECS_API bool ecs_resource_is_registered_rid(const ecs_world_t *world, ecs_resource_t id);
+SIECS_API void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);
+SIECS_API void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id);
+SIECS_API void *ecs_try_resource_rid(ecs_world_t *world, ecs_resource_t id);
+SIECS_API bool ecs_has_resource_rid(const ecs_world_t *world, ecs_resource_t id);
+SIECS_API void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id);
 
 /*
  * Declare that adding component also adds require first.
  *
  * Requirement cycles are debug assertion failures when declared.
  */
-void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require);
+SIECS_API void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require);
 
 /* Builtin observer events. */
 #define EcsOnAdd 0
@@ -571,20 +572,20 @@ typedef struct {
 #define ecs_observer(world, ...) ecs_observer_init(world, &(ecs_observer_desc_t)__VA_ARGS__)
 
 /* Allocate and return a custom event id. */
-ecs_event_t ecs_event(ecs_world_t *world);
+SIECS_API ecs_event_t ecs_event(ecs_world_t *world);
 
 /* Create an observer. desc->callback must not be NULL. */
-ecs_observer_id_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc);
+SIECS_API ecs_observer_id_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc);
 
-void ecs_observer_enable(ecs_world_t *world, ecs_observer_id_t id);
-void ecs_observer_disable(ecs_world_t *world, ecs_observer_id_t id);
+SIECS_API void ecs_observer_enable(ecs_world_t *world, ecs_observer_id_t id);
+SIECS_API void ecs_observer_disable(ecs_world_t *world, ecs_observer_id_t id);
 
 /*
  * Trigger an event for an alive entity.
  *
  * Observers matching the entity's current table and event id will be called.
  */
-void ecs_observer_trigger(
+SIECS_API void ecs_observer_trigger(
     ecs_world_t *world,
     ecs_entity_t entity,
     ecs_event_t event,
@@ -608,7 +609,7 @@ typedef struct {
 } ecs_iter_t;
 
 /* Create a stack iterator for a query id. */
-ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);
+SIECS_API ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);
 
 /*
  * Advance an iterator to the next non-empty batch.
@@ -616,7 +617,7 @@ ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);
  * Returns false when iteration is finished. it->count is the number of entities
  * in the current batch.
  */
-bool ecs_iter_next(ecs_iter_t *it);
+SIECS_API bool ecs_iter_next(ecs_iter_t *it);
 
 /*
  * Return the component array for a read term in the current iterator batch.
@@ -674,21 +675,21 @@ typedef struct {
 #define ecs_system(world, ...) ecs_system_init(world, &(ecs_system_desc_t)__VA_ARGS__)
 
 /* Register a system and return its id. System id 0 is reserved. */
-ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc);
+SIECS_API ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc);
 
 /* Run all enabled systems in phase order. */
-bool ecs_progress(ecs_world_t *world);
+SIECS_API bool ecs_progress(ecs_world_t *world);
 
 /* Run all enabled systems from one phase. */
-void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase);
+SIECS_API void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase);
 
 /* Run one enabled system immediately. */
-void ecs_run_system(ecs_world_t *world, ecs_system_id_t system);
+SIECS_API void ecs_run_system(ecs_world_t *world, ecs_system_id_t system);
 
 /* Enable or disable a system. Disabled systems stay registered but do not run.
  */
-void ecs_system_enable(ecs_world_t *world, ecs_system_id_t system);
-void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system);
+SIECS_API void ecs_system_enable(ecs_world_t *world, ecs_system_id_t system);
+SIECS_API void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system);
 
 #ifdef __cplusplus
 }

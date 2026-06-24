@@ -48,12 +48,15 @@ sihttp_response_t get_entities(const sihttp_request_t *req) {
         ecs_query_each(world, it, i, { ecs_source(ChildOf) }, { ecs_id(ChildOf), EcsNot }) {
             sijson_array_push(array, entity_json(world, it.entities[i]));
         }
+        ecs_query_each(world, it, i, { ecs_source(ChildOf), EcsNot }, { ecs_id(ChildOf), EcsNot }) {
+            sijson_array_push(array, entity_json(world, it.entities[i]));
+        }
     }
 
     return sihttp_response(
         {
             .status = 200,
-            .body = strdup(sijson_string(array)),
+            .body = sijson_stringify(array),
             .content_type = SIHTTP_CONTENT_JSON,
         }
     );

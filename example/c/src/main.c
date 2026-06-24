@@ -30,23 +30,31 @@ void physics_import(ecs_world_t *world, const physics_props_t *props) {
     ECS_COMPONENT_REGISTER(world, Position);
     ECS_COMPONENT_REGISTER(world, Velocity);
 
-    ecs_system(world, {
-        .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
-        .callback = Move,
-        .phase = EcsOnUpdate,
-    });
+    ecs_system(
+        world,
+        {
+            .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
+            .callback = Move,
+            .phase = EcsOnUpdate,
+        }
+    );
 }
 
 int main(void) {
-    ecs_world_t *world = ecs_init();
+    ecs_world_t *world = ecs_with_features({ .rest = true });
 
     ECS_MODULE_IMPORT(world, physics, {});
 
     ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, Position, {0, 0});
-    ecs_set(world, entity, Velocity, {1, 1});
+    ecs_set(world, entity, Position, { 0, 0 });
+    ecs_set(world, entity, Velocity, { 1, 1 });
 
-    while (ecs_progress(world)) {}
+    ecs_set(world, entity, ChildOf, { ecs_new(world) });
+
+    ecs_new(world);
+
+    while (ecs_progress(world)) {
+    }
 
     ecs_fini(world);
 }

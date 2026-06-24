@@ -1,10 +1,11 @@
+#include "module.h"
 #include "siecs.h"
 #include "sihttp.h"
-#include "module.h"
 #include "storage/system_index.h"
 #include "utils.h"
 #include "world_internal.h"
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
 
