@@ -40,40 +40,13 @@ sihttp_response_t get_entities(const sihttp_request_t *req) {
 
     sijson_value_t array = sijson_make_array();
 
-    const uint64_t count = world->entity_index.entities.size;
-    const ecs_entity_record_t *records = world->entity_index.entities.data;
-
     if (id != 0) {
-        ecs_entity_t entity = ecs_entity(id, records[id].generation);
-
-        if (!ecs_has_cid(world, entity, ecs_source(ChildOf))) {
-            return sihttp_response(
-                {
-                    .status = 200,
-                    .body = strdup("[]"),
-                    .content_type = SIHTTP_CONTENT_JSON,
-                }
-            );
-        };
-
-        const RelationSource *source = ecs_get_cid(world, entity, ecs_source(ChildOf));
-
-        ecs_vec_iter(&source->entities, ecs_entity_t, child, {
-            sijson_array_push(array, entity_json(world, *child));
-        });
+        ecs_query_each(world, it, i, { ecs_id(ChildOf) }) {
+            sijson_array_push(array, entity_json(world, it.entities[i]));
+        }
     } else {
-        for (uint64_t i = 1; i < count; i++) {
-            if (records[i].table_id == UINT16_MAX) {
-                continue;
-            }
-
-            ecs_entity_t entity = ecs_entity(i, records[i].generation);
-
-            if (ecs_has(world, entity, ChildOf)) {
-                continue;
-            }
-
-            sijson_array_push(array, entity_json(world, entity));
+        ecs_query_each(world, it, i, { ecs_source(ChildOf) }, { ecs_id(ChildOf), EcsNot }) {
+            sijson_array_push(array, entity_json(world, it.entities[i]));
         }
     }
 

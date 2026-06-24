@@ -415,6 +415,12 @@ void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
  */
 #define ecs_query(world, ...) ecs_query_init(world, &(ecs_query_desc_t)__VA_ARGS__)
 
+#define ecs_query_each(world, it, i, ...)                                                          \
+    for (ecs_query_id_t _q = ecs_query((world), { { __VA_ARGS__ } }); _q;                          \
+         ecs_query_fini((world), _q), _q = 0)                                                      \
+        for (ecs_iter_t it = ecs_query_iter((world), _q); ecs_iter_next(&it);)                     \
+            for (uint32_t i = 0; i < it.count; i++)
+
 /* Create a query. The query descriptor must read at least one component. */
 uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *query);
 
