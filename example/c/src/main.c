@@ -1,4 +1,5 @@
 #include "siecs.h"
+#include <string.h>
 
 ECS_COMPONENT(Position, {
     float x;
@@ -45,13 +46,17 @@ int main(void) {
 
     ECS_MODULE_IMPORT(world, physics, {});
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, Position, { 0, 0 });
-    ecs_set(world, entity, Velocity, { 1, 1 });
+    ecs_entity_t player = ecs_new(world);
+    ecs_set(world, player, Position, { 0, 0 });
+    ecs_set(world, player, Velocity, { 1, 1 });
+    ecs_set(world, player, Name, { .value = strdup("Player") });
 
-    ecs_set(world, entity, ChildOf, { ecs_new(world) });
+    ecs_entity_t child = ecs_new(world);
+    ecs_set(world, child, ChildOf, { player });
+    ecs_set(world, child, Name, { .value = strdup("Child") });
 
-    ecs_new(world);
+    ecs_entity_t enemy = ecs_new(world);
+    ecs_set(world, enemy, Name, { .value = strdup("Enemy") });
 
     while (ecs_progress(world)) {
     }
