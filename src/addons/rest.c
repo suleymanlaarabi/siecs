@@ -1,6 +1,11 @@
 #include "addons/rest_internal.h"
 #include "sihttp.h"
 #include <stdlib.h>
+#include <string.h>
+
+sihttp_response_t health(const sihttp_request_t *) {
+    return sihttp_response({ .body = strdup("OK") });
+}
 
 void init_rest(ecs_world_t *world) {
     sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
@@ -17,6 +22,7 @@ void init_rest(ecs_world_t *world) {
     sihttp_get(world->server, "/schema", ecs_rest_get_schema);
     sihttp_get(world->server, "/entities", ecs_rest_get_entities);
     sihttp_get(world->server, "/entities/:index/children", ecs_rest_get_entity_children);
+    sihttp_get(world->server, "/health", health);
     sihttp_put(
         world->server,
         "/entities/:index/components/:component",
