@@ -22,7 +22,11 @@
       },
       {
         "id": "rest",
-        "testcases": ["schema_returns_editor_contract"]
+        "testcases": [
+          "schema_returns_editor_contract",
+          "entity_detail_returns_editor_state",
+          "entity_children_returns_direct_children"
+        ]
       },
       {
         "id": "multi_world",

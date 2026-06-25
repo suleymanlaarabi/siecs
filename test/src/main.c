@@ -18,6 +18,8 @@ void component_on_add(void);
 
 // Testsuite 'rest'
 void rest_schema_returns_editor_contract(void);
+void rest_entity_detail_returns_editor_state(void);
+void rest_entity_children_returns_direct_children(void);
 
 // Testsuite 'multi_world'
 void multi_world_same_component_registered_in_two_worlds(void);
@@ -114,6 +116,14 @@ bake_test_case rest_testcases[] = {
     {
         "schema_returns_editor_contract",
         rest_schema_returns_editor_contract
+    },
+    {
+        "entity_detail_returns_editor_state",
+        rest_entity_detail_returns_editor_state
+    },
+    {
+        "entity_children_returns_direct_children",
+        rest_entity_children_returns_direct_children
     }
 };
 
@@ -368,7 +378,7 @@ static bake_test_suite suites[] = {
         "rest",
         NULL,
         NULL,
-        1,
+        3,
         rest_testcases
     },
     {

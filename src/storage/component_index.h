@@ -1,6 +1,5 @@
 #ifndef SIECS_STORAGE_COMPONENT_INDEX_H
 #define SIECS_STORAGE_COMPONENT_INDEX_H
-#include "../datastructure/map.h"
 #include "../datastructure/vec.h"
 #include "siecs.h"
 #include "sireflect.h"
@@ -9,7 +8,6 @@
 
 typedef struct {
     bool registered;
-    char *name;
     uint16_t *required;
     uint32_t required_count;
     uint32_t size;
@@ -23,15 +21,11 @@ typedef struct {
 
 typedef struct ecs_component_index_s {
     ecs_vec_t components; // ecs_component_record_t
-#ifndef NDEBUG
-    ecs_map_t component_name_map;
-#endif
 } ecs_component_index_t;
 
 void ecs_component_index_register(
     ecs_component_index_t *index,
     ecs_component_t id,
-    char *name,
     uint64_t size,
     ecs_component_on_set_t on_set,
     ecs_component_on_remove_t on_remove,

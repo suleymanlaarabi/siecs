@@ -33,6 +33,8 @@ static sijson_value_t ecs_rest_component_json(
     const ecs_component_record_t *record
 ) {
     sijson_value_t fields_json = sijson_make_array();
+    const sireflect_type_info_t *type =
+        sireflect_type_info(world->sireflect_registry, record->reflection);
     const sireflect_fields_t *fields =
         sireflect_type_fields(world->sireflect_registry, record->reflection);
     for (size_t i = 0; i < fields->field_count; i++) {
@@ -41,7 +43,7 @@ static sijson_value_t ecs_rest_component_json(
 
     sijson_value_t object = sijson_make_object();
     sijson_object_set(object, "id", sijson_make_number(id));
-    sijson_object_set(object, "name", sijson_make_string(record->name ? record->name : ""));
+    sijson_object_set(object, "name", sijson_make_string(type && type->name ? type->name : ""));
     sijson_object_set(object, "isRelation", sijson_make_bool(record->relation_flags != 0));
     sijson_object_set(object, "type", sijson_make_number(record->reflection));
     sijson_object_set(object, "fields", fields_json);
