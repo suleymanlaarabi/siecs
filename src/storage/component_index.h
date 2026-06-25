@@ -17,6 +17,7 @@ typedef struct {
     uint32_t relation_flags;
     ecs_vec_t tables; // uint16_t
     sireflect_handle_t reflection;
+    const sireflect_struct_desc_t *reflection_desc;
 } ecs_component_record_t;
 
 typedef struct ecs_component_index_s {
@@ -31,7 +32,8 @@ void ecs_component_index_register(
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
     uint32_t relation_flags,
-    sireflect_handle_t reflection
+    sireflect_handle_t reflection,
+    const sireflect_struct_desc_t *reflection_desc
 );
 
 #define ecs_component_index_get(index, id)                                                         \

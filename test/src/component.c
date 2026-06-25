@@ -114,7 +114,6 @@ void component_reflection(void) {
     char *result = sijson_to_json_ptr(Position, data);
 
     test_str("{\"x\":10,\"y\":20}", result);
-    puts(result);
     free(result);
     ecs_fini(world);
 }

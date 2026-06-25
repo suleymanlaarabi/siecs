@@ -12,7 +12,8 @@ void ecs_component_index_register(
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
     uint32_t relation_flags,
-    sireflect_handle_t reflection
+    sireflect_handle_t reflection,
+    const sireflect_struct_desc_t *reflection_desc
 ) {
     ecs_vec_ensure(&index->components, (uint32_t)id + 1, sizeof(ecs_component_record_t));
 
@@ -33,6 +34,7 @@ void ecs_component_index_register(
         .relation_flags = relation_flags,
         .tables = { 0 },
         .reflection = reflection,
+        .reflection_desc = reflection_desc,
     };
     ecs_vec_init(&record.tables, sizeof(uint16_t));
 

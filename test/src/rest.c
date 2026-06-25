@@ -221,3 +221,140 @@ void rest_entity_children_returns_direct_children(void) {
     free(ecs_get(world, grandchild, Name)->value);
     ecs_fini(world);
 }
+
+void rest_set_component_value_updates_entity(void) {
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, RestPosition);
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_set(world, entity, RestPosition, { 1.0f, 2.0f });
+
+    sihttp_response_t res = ecs_rest_set_entity_component(
+        world,
+        entity,
+        ecs_id(RestPosition),
+        "{\"value\":{\"x\":30,\"y\":40}}"
+    );
+
+    test_int(200, res.status);
+    RestPosition *position = ecs_get(world, entity, RestPosition);
+    test_int(30, (int)position->x);
+    test_int(40, (int)position->y);
+
+    sijson_value_t body = sijson_parse(res.body);
+    test_assert(body != NULL);
+    test_int((int)ecs_id(RestPosition), (int)sijson_number(sijson_object_get(body, "id")));
+    test_str("RestPosition", sijson_string(sijson_object_get(body, "name")));
+
+    sijson_value_t value = sijson_object_get(body, "value");
+    test_int(30, (int)sijson_number(sijson_object_get(value, "x")));
+    test_int(40, (int)sijson_number(sijson_object_get(value, "y")));
+
+    free(res.body);
+    ecs_fini(world);
+}
+
+void rest_set_component_value_rejects_missing_field(void) {
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, RestPosition);
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_set(world, entity, RestPosition, { 1.0f, 2.0f });
+
+    sihttp_response_t res = ecs_rest_set_entity_component(
+        world,
+        entity,
+        ecs_id(RestPosition),
+        "{\"value\":{\"x\":30}}"
+    );
+
+    test_int(400, res.status);
+    RestPosition *position = ecs_get(world, entity, RestPosition);
+    test_int(1, (int)position->x);
+    test_int(2, (int)position->y);
+
+    free(res.body);
+    ecs_fini(world);
+}
+
+void rest_set_component_value_rejects_unknown_field(void) {
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, RestPosition);
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_set(world, entity, RestPosition, { 1.0f, 2.0f });
+
+    sihttp_response_t res = ecs_rest_set_entity_component(
+        world,
+        entity,
+        ecs_id(RestPosition),
+        "{\"value\":{\"x\":30,\"y\":40,\"z\":50}}"
+    );
+
+    test_int(400, res.status);
+    RestPosition *position = ecs_get(world, entity, RestPosition);
+    test_int(1, (int)position->x);
+    test_int(2, (int)position->y);
+
+    free(res.body);
+    ecs_fini(world);
+}
+
+void rest_set_component_value_rejects_wrong_type(void) {
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, RestPosition);
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_set(world, entity, RestPosition, { 1.0f, 2.0f });
+
+    sihttp_response_t res = ecs_rest_set_entity_component(
+        world,
+        entity,
+        ecs_id(RestPosition),
+        "{\"value\":{\"x\":\"bad\",\"y\":40}}"
+    );
+
+    test_int(400, res.status);
+    RestPosition *position = ecs_get(world, entity, RestPosition);
+    test_int(1, (int)position->x);
+    test_int(2, (int)position->y);
+
+    free(res.body);
+    ecs_fini(world);
+}
+
+void rest_set_component_value_rejects_missing_component(void) {
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, RestPosition);
+
+    ecs_entity_t entity = ecs_new(world);
+
+    sihttp_response_t res = ecs_rest_set_entity_component(
+        world,
+        entity,
+        ecs_id(RestPosition),
+        "{\"value\":{\"x\":30,\"y\":40}}"
+    );
+
+    test_int(404, res.status);
+
+    free(res.body);
+    ecs_fini(world);
+}
+
+void rest_set_component_value_rejects_non_reflected_component(void) {
+    ecs_world_t *world = ecs_init();
+    ecs_component_t opaque = ecs_component(world, { .name = "RestOpaque", .size = sizeof(int) });
+
+    ecs_entity_t entity = ecs_new(world);
+    int value = 7;
+    ecs_set_cid(world, entity, opaque, &value);
+
+    sihttp_response_t res = ecs_rest_set_entity_component(world, entity, opaque, "{\"value\":10}");
+
+    test_int(404, res.status);
+    test_int(7, *(int *)ecs_get_cid(world, entity, opaque));
+
+    free(res.body);
+    ecs_fini(world);
+}

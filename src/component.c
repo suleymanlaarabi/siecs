@@ -182,7 +182,8 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
             RelationOnRemove,
             desc->on_add,
             desc->relation_flags,
-            reflection
+            reflection,
+            desc->struct_desc
         );
 
         ecs_component_t source = component + 1;
@@ -194,7 +195,8 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
             RelationSourceOnRemove,
             desc->on_add,
             (desc->relation_flags & ~EcsRelationTarget) | EcsRelationSource,
-            SIREFLECT_INVALID_HANDLE
+            SIREFLECT_INVALID_HANDLE,
+            NULL
         );
         ecs_module_record_component(world, component);
         ecs_module_record_component(world, source);
@@ -213,7 +215,8 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
             desc->on_remove,
             desc->on_add,
             0,
-            reflection
+            reflection,
+            desc->struct_desc
         );
         ecs_module_record_component(world, component);
         return component;

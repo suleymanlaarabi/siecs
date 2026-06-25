@@ -20,6 +20,12 @@ void component_on_add(void);
 void rest_schema_returns_editor_contract(void);
 void rest_entity_detail_returns_editor_state(void);
 void rest_entity_children_returns_direct_children(void);
+void rest_set_component_value_updates_entity(void);
+void rest_set_component_value_rejects_missing_field(void);
+void rest_set_component_value_rejects_unknown_field(void);
+void rest_set_component_value_rejects_wrong_type(void);
+void rest_set_component_value_rejects_missing_component(void);
+void rest_set_component_value_rejects_non_reflected_component(void);
 
 // Testsuite 'multi_world'
 void multi_world_same_component_registered_in_two_worlds(void);
@@ -124,6 +130,30 @@ bake_test_case rest_testcases[] = {
     {
         "entity_children_returns_direct_children",
         rest_entity_children_returns_direct_children
+    },
+    {
+        "set_component_value_updates_entity",
+        rest_set_component_value_updates_entity
+    },
+    {
+        "set_component_value_rejects_missing_field",
+        rest_set_component_value_rejects_missing_field
+    },
+    {
+        "set_component_value_rejects_unknown_field",
+        rest_set_component_value_rejects_unknown_field
+    },
+    {
+        "set_component_value_rejects_wrong_type",
+        rest_set_component_value_rejects_wrong_type
+    },
+    {
+        "set_component_value_rejects_missing_component",
+        rest_set_component_value_rejects_missing_component
+    },
+    {
+        "set_component_value_rejects_non_reflected_component",
+        rest_set_component_value_rejects_non_reflected_component
     }
 };
 
@@ -378,7 +408,7 @@ static bake_test_suite suites[] = {
         "rest",
         NULL,
         NULL,
-        3,
+        9,
         rest_testcases
     },
     {

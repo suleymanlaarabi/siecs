@@ -25,7 +25,13 @@
         "testcases": [
           "schema_returns_editor_contract",
           "entity_detail_returns_editor_state",
-          "entity_children_returns_direct_children"
+          "entity_children_returns_direct_children",
+          "set_component_value_updates_entity",
+          "set_component_value_rejects_missing_field",
+          "set_component_value_rejects_unknown_field",
+          "set_component_value_rejects_wrong_type",
+          "set_component_value_rejects_missing_component",
+          "set_component_value_rejects_non_reflected_component"
         ]
       },
       {

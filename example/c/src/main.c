@@ -1,4 +1,5 @@
 #include "siecs.h"
+#include "sijson.h"
 #include <string.h>
 
 ECS_COMPONENT(Position, {
