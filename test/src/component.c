@@ -108,6 +108,57 @@ ECS_COMPONENT_DEFINE(
 ECS_COMPONENT_DEFINE(RequiredA);
 ECS_COMPONENT_DEFINE(RequiredB);
 
+static void register_many_tag_and_data_components(
+    ecs_world_t *world,
+    ecs_component_t tags[15],
+    ecs_component_t data[15],
+    char tag_names[15][32],
+    char data_names[15][32]
+) {
+    for (uint32_t i = 0; i < 15; i++) {
+        snprintf(tag_names[i], 32, "ManyTag%d", i);
+        snprintf(data_names[i], 32, "ManyData%d", i);
+
+        tags[i] = ecs_component(world, { .name = tag_names[i] });
+        data[i] = ecs_component(world, { .name = data_names[i], .size = sizeof(int) });
+    }
+}
+
+static void
+set_many_data(ecs_world_t *world, ecs_entity_t entity, ecs_component_t data[15], int base) {
+    for (uint32_t i = 0; i < 15; i++) {
+        int value = base + (int)i;
+        ecs_set_cid(world, entity, data[i], &value);
+    }
+}
+
+static void add_many_tags(ecs_world_t *world, ecs_entity_t entity, ecs_component_t tags[15]) {
+    for (uint32_t i = 0; i < 15; i++) {
+        ecs_add_cid(world, entity, tags[i]);
+    }
+}
+
+static void expect_many_data(
+    ecs_world_t *world,
+    ecs_entity_t entity,
+    ecs_component_t data[15],
+    int base,
+    uint32_t skip
+) {
+    for (uint32_t i = 0; i < 15; i++) {
+        if (i == skip) {
+            continue;
+        }
+        test_int(base + (int)i, *(int *)ecs_get_cid(world, entity, data[i]));
+    }
+}
+
+static void expect_many_tags(ecs_world_t *world, ecs_entity_t entity, ecs_component_t tags[15]) {
+    for (uint32_t i = 0; i < 15; i++) {
+        test_true(ecs_has_cid(world, entity, tags[i]));
+    }
+}
+
 void component_reflection(void) {
     ecs_world_t *world = ecs_init();
     ECS_COMPONENT_REGISTER(world, Position);
@@ -206,5 +257,78 @@ void component_add_zeroes_reused_component_slot(void) {
     test_true(hook_add_saw_zero);
     test_int(0, ecs_get(world, reused, HookComponent)->value);
 
+    ecs_fini(world);
+}
+
+void component_many_tags_preserve_data_on_migration(void) {
+    ecs_world_t *world = ecs_init();
+    ecs_component_t tags[15];
+    ecs_component_t data[15];
+    char tag_names[15][32];
+    char data_names[15][32];
+    register_many_tag_and_data_components(world, tags, data, tag_names, data_names);
+
+    ecs_entity_t entity = ecs_new(world);
+    set_many_data(world, entity, data, 100);
+
+    for (uint32_t i = 0; i < 14; i++) {
+        ecs_add_cid(world, entity, tags[i]);
+    }
+    expect_many_data(world, entity, data, 100, UINT32_MAX);
+
+    ecs_add_cid(world, entity, tags[14]);
+    expect_many_data(world, entity, data, 100, UINT32_MAX);
+    expect_many_tags(world, entity, tags);
+
+    ecs_remove_cid(world, entity, tags[3]);
+    test_false(ecs_has_cid(world, entity, tags[3]));
+    expect_many_data(world, entity, data, 100, UINT32_MAX);
+
+    ecs_remove_cid(world, entity, data[7]);
+    test_false(ecs_has_cid(world, entity, data[7]));
+    expect_many_data(world, entity, data, 100, 7);
+
+    ecs_fini(world);
+}
+
+void component_many_tags_swap_remove_preserves_moved_entity_data(void) {
+    ecs_world_t *world = ecs_init();
+    ecs_component_t tags[15];
+    ecs_component_t data[15];
+    char tag_names[15][32];
+    char data_names[15][32];
+    register_many_tag_and_data_components(world, tags, data, tag_names, data_names);
+
+    ecs_entity_t first = ecs_new(world);
+    ecs_entity_t moved = ecs_new(world);
+
+    set_many_data(world, first, data, 100);
+    add_many_tags(world, first, tags);
+
+    set_many_data(world, moved, data, 200);
+    add_many_tags(world, moved, tags);
+
+    ecs_remove_cid(world, first, tags[0]);
+
+    expect_many_data(world, moved, data, 200, UINT32_MAX);
+    expect_many_tags(world, moved, tags);
+
+    ecs_query_id_t query = ecs_query(
+        world,
+        {
+            .terms = {
+                (ecs_query_term_t){ data[0], EcsIn },
+                (ecs_query_term_t){ tags[0], EcsFilter },
+            },
+        }
+    );
+    ecs_iter_t it = ecs_query_iter(world, query);
+    test_true(ecs_iter_next(&it));
+    test_int(1, it.count);
+    int *values = ecs_field(&it, 0);
+    test_int(200, values[0]);
+    test_false(ecs_iter_next(&it));
+
+    ecs_query_fini(world, query);
     ecs_fini(world);
 }

@@ -17,6 +17,8 @@ void component_reflection(void);
 void component_on_add(void);
 void component_add_with_required_uses_current_table_edge(void);
 void component_add_zeroes_reused_component_slot(void);
+void component_many_tags_preserve_data_on_migration(void);
+void component_many_tags_swap_remove_preserves_moved_entity_data(void);
 
 // Testsuite 'rest'
 void rest_schema_returns_editor_contract(void);
@@ -125,6 +127,14 @@ bake_test_case component_testcases[] = {
     {
         "add_zeroes_reused_component_slot",
         component_add_zeroes_reused_component_slot
+    },
+    {
+        "many_tags_preserve_data_on_migration",
+        component_many_tags_preserve_data_on_migration
+    },
+    {
+        "many_tags_swap_remove_preserves_moved_entity_data",
+        component_many_tags_swap_remove_preserves_moved_entity_data
     }
 };
 
@@ -411,7 +421,7 @@ static bake_test_suite suites[] = {
         "component",
         NULL,
         NULL,
-        4,
+        6,
         component_testcases
     },
     {

@@ -62,6 +62,19 @@ static inline void copy_column(
     );
 }
 
+static inline void copy_data_column(
+    const ecs_column_t *restrict from,
+    const uint32_t from_row,
+    ecs_column_t *restrict to,
+    const uint32_t to_row
+) {
+    memcpy(
+        (uint8_t *)to->data + (from->size * to_row),
+        (uint8_t *)from->data + (from->size * from_row),
+        from->size
+    );
+}
+
 // Generic migration: move an entity from its current table to an arbitrary
 // target table, without knowing which components were added or removed, or how
 // many. Both type id arrays are sorted ascending, so a sorted merge classifies
@@ -128,10 +141,23 @@ static inline void *migrate_entity_add(
         memset((uint8_t *)added->data + (added->size * new_row), 0, added->size);
     }
 
-    for (uint16_t i = 0; i < k; i++)
-        copy_column(&from_table->cls[i], old_row, &to_table->cls[i], new_row);
-    for (uint16_t i = k + 1; i < to_table->type.count; i++)
-        copy_column(&from_table->cls[i - 1], old_row, &to_table->cls[i], new_row);
+    uint16_t i = 0;
+    for (; i < from_table->data_count; i++) {
+        uint16_t from_col = from_table->data_columns[i];
+        if (from_col >= k) {
+            break;
+        }
+        copy_data_column(&from_table->cls[from_col], old_row, &to_table->cls[from_col], new_row);
+    }
+    for (; i < from_table->data_count; i++) {
+        uint16_t from_col = from_table->data_columns[i];
+        copy_data_column(
+            &from_table->cls[from_col],
+            old_row,
+            &to_table->cls[from_col + 1],
+            new_row
+        );
+    }
 
     ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
     if (moved != entity) {
@@ -155,10 +181,26 @@ static inline void migrate_entity_remove(
     uint32_t old_row = record->table_row;
     uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
-    for (uint16_t i = 0; i < col_idx; i++)
-        copy_column(&from_table->cls[i], old_row, &to_table->cls[i], new_row);
-    for (uint16_t i = col_idx + 1; i < from_table->type.count; i++)
-        copy_column(&from_table->cls[i], old_row, &to_table->cls[i - 1], new_row);
+    uint16_t i = 0;
+    for (; i < from_table->data_count; i++) {
+        uint16_t from_col = from_table->data_columns[i];
+        if (from_col >= col_idx) {
+            break;
+        }
+        copy_data_column(&from_table->cls[from_col], old_row, &to_table->cls[from_col], new_row);
+    }
+    if (i < from_table->data_count && from_table->data_columns[i] == col_idx) {
+        i++;
+    }
+    for (; i < from_table->data_count; i++) {
+        uint16_t from_col = from_table->data_columns[i];
+        copy_data_column(
+            &from_table->cls[from_col],
+            old_row,
+            &to_table->cls[from_col - 1],
+            new_row
+        );
+    }
 
     ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
     if (moved != entity)
@@ -214,6 +256,7 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
 
     if (crec->on_add) {
         crec->on_add(world, entity, cid, component_data);
+        new_table = ecs_get_table(world, record->table_id);
     }
     ecs_emit(world, new_table, entity, EcsOnAdd, component_data);
 }
@@ -248,6 +291,7 @@ void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid
     const ecs_component_record_t *crec = ecs_component_index_get(&world->component_index, cid);
     if (crec->on_remove) {
         crec->on_remove(world, entity, cid, removed_data);
+        table = ecs_get_table(world, from_id);
     }
     ecs_emit(world, table, entity, EcsOnRemove, removed_data);
 
@@ -301,6 +345,8 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, c
     // on_set sees the new input data and the current table slot before copy.
     if (crec->on_set) {
         crec->on_set(world, entity, cid, data, dst);
+        record = ecs_get_record(world, entity);
+        table = ecs_get_table(world, record->table_id);
     }
     ecs_emit(world, table, entity, EcsOnSet, data);
     if (crec->size != 0) {
