@@ -110,7 +110,7 @@ static inline void migrate_entity(
     record->table_row = new_row;
 }
 
-static inline void migrate_entity_add(
+static inline void *migrate_entity_add(
     const ecs_world_t *world,
     ecs_entity_record_t *record,
     const ecs_entity_t entity,
@@ -123,6 +123,10 @@ static inline void migrate_entity_add(
     const uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
     const uint16_t k = ecs_table_get_column_index(to_table, added_id);
+    ecs_column_t *added = &to_table->cls[k];
+    if (added->size != 0) {
+        memset((uint8_t *)added->data + (added->size * new_row), 0, added->size);
+    }
 
     for (uint16_t i = 0; i < k; i++)
         copy_column(&from_table->cls[i], old_row, &to_table->cls[i], new_row);
@@ -135,6 +139,7 @@ static inline void migrate_entity_add(
     }
     record->table_id = to_table_id;
     record->table_row = new_row;
+    return ecs_table_component_at_column(to_table, k, new_row);
 }
 
 static inline void migrate_entity_remove(
@@ -187,6 +192,10 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
 
         from_id = record->table_id;
         table = ecs_get_table(world, from_id);
+        edge = ecs_table_get_add_edge(table, cid);
+        if (ECS_UNLIKELY(edge < table->type.count && table->type.ids[edge] == cid)) {
+            return;
+        }
     }
 
     if (edge == UINT16_MAX) {
@@ -201,9 +210,8 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     }
 
     ecs_table_t *new_table = ecs_get_table(world, edge);
-    migrate_entity_add(world, record, entity, table, new_table, edge, cid);
+    void *component_data = migrate_entity_add(world, record, entity, table, new_table, edge, cid);
 
-    void *component_data = ecs_table_get_component(new_table, cid, record->table_row);
     if (crec->on_add) {
         crec->on_add(world, entity, cid, component_data);
     }
@@ -220,24 +228,22 @@ void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid
     uint16_t from_id = record->table_id;
     ecs_table_t *table = ecs_get_table(world, from_id);
 
-    int col_idx = ecs_table_get_column_index(table, cid);
+    uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
 
-    if (ECS_UNLIKELY(
-            col_idx == UINT16_MAX || col_idx >= table->type.count || table->type.ids[col_idx] != cid
-        )) {
+    if (ECS_UNLIKELY(col_idx == UINT16_MAX)) {
         return;
     }
 
     uint16_t new_table_id = table->cls[col_idx].remove_edge;
     if (new_table_id == UINT16_MAX) {
-        ecs_type_t new_type = ecs_type_with_remove(&table->type, cid);
+        ecs_type_t new_type = ecs_type_with_remove_at(&table->type, col_idx);
         new_table_id = ecs_table_index_get_or_create(world, new_type);
         // Re-fetch: ecs_table_index_get_or_create may realloc the tables vec
         table = ecs_get_table(world, from_id);
         table->cls[col_idx].remove_edge = new_table_id;
     }
 
-    void *removed_data = ecs_table_get_component(table, cid, record->table_row);
+    void *removed_data = ecs_table_component_at_column(table, col_idx, record->table_row);
 
     const ecs_component_record_t *crec = ecs_component_index_get(&world->component_index, cid);
     if (crec->on_remove) {
@@ -256,7 +262,11 @@ void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) 
 
     const ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
-    return ecs_table_get_component(table, cid, record->table_row);
+    return ecs_table_component_at_column(
+        table,
+        ecs_table_get_column_index(table, cid),
+        record->table_row
+    );
 }
 
 void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
@@ -268,8 +278,9 @@ void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t c
     const ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
 
-    if (ecs_table_has(table, cid)) {
-        return ecs_table_get_component(table, cid, record->table_row);
+    uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
+    if (col_idx != UINT16_MAX) {
+        return ecs_table_component_at_column(table, col_idx, record->table_row);
     }
     return NULL;
 }
@@ -281,10 +292,11 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, c
     ecs_assert_is_alive(world, entity);
 
     ecs_add_cid(world, entity, cid);
-    void *dst = ecs_get_cid(world, entity, cid);
     const ecs_component_record_t *crec = ecs_component_index_get(&world->component_index, cid);
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
+    uint16_t col_idx = ecs_table_get_column_index(table, cid);
+    void *dst = ecs_table_component_at_column(table, col_idx, record->table_row);
 
     // on_set sees the new input data and the current table slot before copy.
     if (crec->on_set) {

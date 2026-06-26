@@ -15,6 +15,8 @@ void entity_with(void);
 // Testsuite 'component'
 void component_reflection(void);
 void component_on_add(void);
+void component_add_with_required_uses_current_table_edge(void);
+void component_add_zeroes_reused_component_slot(void);
 
 // Testsuite 'rest'
 void rest_schema_returns_editor_contract(void);
@@ -115,6 +117,14 @@ bake_test_case component_testcases[] = {
     {
         "on_add",
         component_on_add
+    },
+    {
+        "add_with_required_uses_current_table_edge",
+        component_add_with_required_uses_current_table_edge
+    },
+    {
+        "add_zeroes_reused_component_slot",
+        component_add_zeroes_reused_component_slot
     }
 };
 
@@ -401,7 +411,7 @@ static bake_test_suite suites[] = {
         "component",
         NULL,
         NULL,
-        2,
+        4,
         component_testcases
     },
     {

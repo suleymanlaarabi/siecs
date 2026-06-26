@@ -51,10 +51,23 @@ ecs_table_get_add_edge(const ecs_table_t *table, ecs_component_t component_id) {
     return ecs_id_map_at_or_invalid(&table->add_edge, component_id);
 }
 
-static inline bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
+static inline void *
+ecs_table_component_at_column(const ecs_table_t *table, uint16_t column_index, uint32_t row) {
+    ecs_column_t *column = &table->cls[column_index];
+    return column->size != 0 ? (uint8_t *)column->data + (column->size * row) : NULL;
+}
+
+static inline uint16_t
+ecs_table_column_or_invalid(const ecs_table_t *table, ecs_component_t component_id) {
     uint16_t column_index = ecs_table_get_add_edge(table, component_id);
-    return (bool)((column_index < table->type.count) &&
-                  (table->type.ids[column_index] == component_id));
+    if (column_index < table->type.count && table->type.ids[column_index] == component_id) {
+        return column_index;
+    }
+    return UINT16_MAX;
+}
+
+static inline bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
+    return ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
 }
 
 static inline uint16_t

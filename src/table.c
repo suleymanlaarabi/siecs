@@ -79,8 +79,11 @@ ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row) {
 }
 
 void *ecs_table_get_component(ecs_table_t *table, ecs_component_t component_id, uint32_t row) {
-    ecs_column_t *column = &table->cls[ecs_table_get_column_index(table, component_id)];
-    return (uint8_t *)column->data + ((column->size) * row);
+    return ecs_table_component_at_column(
+        table,
+        ecs_table_get_column_index(table, component_id),
+        row
+    );
 }
 
 void ecs_table_add_observer(ecs_table_t *table, uint16_t event, uint16_t observer_id) {

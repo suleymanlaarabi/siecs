@@ -3,42 +3,48 @@
 #include <stdlib.h>
 #include <string.h>
 
-static inline void ecs_type_sort(ecs_type_t *type) {
-    // insertion sort is efficient for nearly sorted arrays
-    for (int i = 1; i < type->count; i++) {
-        uint16_t key = type->ids[i];
-        int j = i - 1;
-        while (j >= 0 && type->ids[j] > key) {
-            type->ids[j + 1] = type->ids[j];
-            j--;
-        }
-        type->ids[j + 1] = key;
-    }
-}
-
 ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id) {
     ecs_type_t new_type = {
         .ids = malloc((type->count + 1) * sizeof(uint16_t)),
         .count = type->count + 1,
     };
-    if (type->count > 0) {
-        memcpy(new_type.ids, type->ids, type->count * sizeof(uint16_t));
+
+    uint16_t i = 0;
+    while (i < type->count && type->ids[i] < id) {
+        new_type.ids[i] = type->ids[i];
+        i++;
     }
-    new_type.ids[type->count] = id;
-    ecs_type_sort(&new_type);
+    new_type.ids[i] = id;
+    if (i < type->count) {
+        memcpy(&new_type.ids[i + 1], &type->ids[i], (type->count - i) * sizeof(uint16_t));
+    }
+
     return new_type;
 }
 
 ecs_type_t ecs_type_with_remove(const ecs_type_t *type, uint16_t id) {
+    for (uint16_t i = 0; i < type->count; i++) {
+        if (type->ids[i] == id) {
+            return ecs_type_with_remove_at(type, i);
+        }
+    }
+    return (ecs_type_t){ 0 };
+}
+
+ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index) {
     ecs_type_t new_type = {
         .ids = malloc((type->count - 1) * sizeof(uint16_t)),
         .count = type->count - 1,
     };
-    int j = 0;
-    for (int i = 0; i < type->count; i++) {
-        if (type->ids[i] != id) {
-            new_type.ids[j++] = type->ids[i];
-        }
+    if (index > 0) {
+        memcpy(new_type.ids, type->ids, index * sizeof(uint16_t));
+    }
+    if (index + 1 < type->count) {
+        memcpy(
+            &new_type.ids[index],
+            &type->ids[index + 1],
+            (type->count - index - 1) * sizeof(uint16_t)
+        );
     }
     return new_type;
 }

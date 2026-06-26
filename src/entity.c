@@ -38,7 +38,7 @@ void ecs_kill(ecs_world_t *world, ecs_entity_t entity) {
                 world,
                 entity,
                 table->type.ids[i],
-                ecs_table_get_component(table, table->type.ids[i], record->table_row)
+                ecs_table_component_at_column(table, (uint16_t)i, record->table_row)
             );
         }
     }

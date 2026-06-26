@@ -10,6 +10,7 @@ typedef struct {
 
 ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
 ecs_type_t ecs_type_with_remove(const ecs_type_t *type, uint16_t id);
+ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
 
 uint64_t ecs_type_bloom(const ecs_type_t *type);
 

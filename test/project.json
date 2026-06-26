@@ -18,7 +18,12 @@
       },
       {
         "id": "component",
-        "testcases": ["reflection", "on_add"]
+        "testcases": [
+          "reflection",
+          "on_add",
+          "add_with_required_uses_current_table_edge",
+          "add_zeroes_reused_component_slot"
+        ]
       },
       {
         "id": "rest",

@@ -13,6 +13,8 @@ ECS_COMPONENT_DECLARE(Position, {
 ECS_COMPONENT_DEFINE(Position);
 
 ECS_COMPONENT_DECLARE(HookComponent, { int value; });
+ECS_COMPONENT_DECLARE(RequiredA, { int value; });
+ECS_COMPONENT_DECLARE(RequiredB, { int value; });
 
 static uint32_t hook_add_calls;
 static uint32_t hook_set_calls;
@@ -103,6 +105,9 @@ ECS_COMPONENT_DEFINE(
     .on_remove = hook_component_on_remove
 );
 
+ECS_COMPONENT_DEFINE(RequiredA);
+ECS_COMPONENT_DEFINE(RequiredB);
+
 void component_reflection(void) {
     ecs_world_t *world = ecs_init();
     ECS_COMPONENT_REGISTER(world, Position);
@@ -161,6 +166,45 @@ void component_on_add(void) {
     test_assert(hook_last_set_order < hook_last_remove_order);
     test_int(9, hook_last_remove_value);
     test_false(ecs_has(world, implicit_entity, HookComponent));
+
+    ecs_fini(world);
+}
+
+void component_add_with_required_uses_current_table_edge(void) {
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, RequiredA);
+    ECS_COMPONENT_REGISTER(world, RequiredB);
+
+    ecs_entity_t warmup = ecs_new(world);
+    ecs_add(world, warmup, RequiredA);
+
+    ecs_with(world, ecs_id(RequiredA), ecs_id(RequiredB));
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_add(world, entity, RequiredA);
+
+    test_true(ecs_has(world, entity, RequiredA));
+    test_true(ecs_has(world, entity, RequiredB));
+
+    ecs_fini(world);
+}
+
+void component_add_zeroes_reused_component_slot(void) {
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, HookComponent);
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_set(world, entity, HookComponent, { 42 });
+    ecs_remove(world, entity, HookComponent);
+
+    reset_hook_state();
+
+    ecs_entity_t reused = ecs_new(world);
+    ecs_add(world, reused, HookComponent);
+
+    test_assert(hook_add_calls == 1);
+    test_true(hook_add_saw_zero);
+    test_int(0, ecs_get(world, reused, HookComponent)->value);
 
     ecs_fini(world);
 }
