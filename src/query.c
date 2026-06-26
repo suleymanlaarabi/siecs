@@ -31,11 +31,7 @@ uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *desc) {
 
 ecs_iter_t ecs_query_iter(ecs_world_t *world, uint16_t query_id) {
     ecs_assert_not_null(world);
-    ecs_assert(
-        query_id < world->query_index.queries.size,
-        "invalid query id: %u\n",
-        query_id
-    );
+    ecs_assert(query_id < world->query_index.queries.size, "invalid query id: %u\n", query_id);
 
     ecs_query_cache_t *cache =
         ecs_vec_get_mut(&world->query_index.queries, query_id, ecs_query_cache_t);

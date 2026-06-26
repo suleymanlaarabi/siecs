@@ -49,31 +49,31 @@ ecs_set_resource(world, Time, {
 });
 ```
 
-Use `ecs_resource()` when the resource must exist:
+Use `ecs_get_resource()` when the resource must exist:
 
 ```c
-Time *time = ecs_resource(world, Time);
+Time *time = ecs_get_resource(world, Time);
 time->elapsed += time->dt;
 ```
 
-Use `ecs_resource_read()` when the caller only needs read access:
+Use `ecs_get_resource_read()` when the caller only needs read access:
 
 ```c
-const Time *time = ecs_resource_read(world, Time);
+const Time *time = ecs_get_resource_read(world, Time);
 ```
 
 If absence is valid, use the nullable helpers:
 
 ```c
-Time *time = ecs_try_resource(world, Time);
+Time *time = ecs_try_get_resource(world, Time);
 if (time != NULL) {
     time->elapsed += time->dt;
 }
 
-const Time *read_time = ecs_try_resource_read(world, Time);
+const Time *read_time = ecs_try_get_resource_read(world, Time);
 ```
 
-`ecs_resource()` and `ecs_resource_read()` assert when the resource does not
+`ecs_get_resource()` and `ecs_get_resource_read()` assert when the resource does not
 exist. The `try` variants return `NULL`.
 
 ## Presence And Removal
@@ -104,7 +104,7 @@ the entity loop:
 
 ```c
 static void move_system(ecs_iter_t *it) {
-    const Time *time = ecs_resource_read(it->world, Time);
+    const Time *time = ecs_get_resource_read(it->world, Time);
     Position *positions = ecs_field(it, 0);
     const Velocity *velocities = ecs_field(it, 1);
 

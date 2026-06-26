@@ -133,7 +133,7 @@ fn raw_create_world_and_entity() {
 
         let entity = raw::ecs_new(world);
         assert_ne!(entity, 0);
-        assert_ne!(raw::ecs_is_alive(world, entity), 0);
+        assert!(raw::ecs_is_alive(world, entity));
 
         raw::ecs_fini(world);
     }

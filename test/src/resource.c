@@ -48,7 +48,7 @@ ECS_RESOURCE_DEFINE(
 static uint32_t resource_system_seen;
 
 static void resource_move_system(ecs_iter_t *it) {
-    const ResourceTime *time = ecs_resource_read(it->world, ResourceTime);
+    const ResourceTime *time = ecs_get_resource_read(it->world, ResourceTime);
     ResourcePosition *position = ecs_field(it, 0);
 
     for (uint32_t i = 0; i < it->count; i++) {
@@ -63,13 +63,13 @@ void resource_set_get(void) {
 
     ecs_set_resource(world, ResourceTime, { .dt = 0.016f, .elapsed = 1.0f });
 
-    ResourceTime *time = ecs_resource(world, ResourceTime);
+    ResourceTime *time = ecs_get_resource(world, ResourceTime);
     test_assert(time->dt == 0.016f);
     test_assert(time->elapsed == 1.0f);
     test_true(ecs_has_resource(world, ResourceTime));
 
     time->elapsed = 2.0f;
-    test_assert(ecs_resource_read(world, ResourceTime)->elapsed == 2.0f);
+    test_assert(ecs_get_resource_read(world, ResourceTime)->elapsed == 2.0f);
 
     ecs_fini(world);
 }
@@ -79,8 +79,8 @@ void resource_try_get_missing(void) {
     ECS_RESOURCE_REGISTER(world, ResourceTime);
 
     test_false(ecs_has_resource(world, ResourceTime));
-    test_assert(ecs_try_resource(world, ResourceTime) == NULL);
-    test_assert(ecs_try_resource_read(world, ResourceTime) == NULL);
+    test_assert(ecs_try_get_resource(world, ResourceTime) == NULL);
+    test_assert(ecs_try_get_resource_read(world, ResourceTime) == NULL);
 
     ecs_fini(world);
 }
@@ -93,7 +93,7 @@ void resource_remove(void) {
     ecs_remove_resource(world, ResourceTime);
 
     test_false(ecs_has_resource(world, ResourceTime));
-    test_assert(ecs_try_resource(world, ResourceTime) == NULL);
+    test_assert(ecs_try_get_resource(world, ResourceTime) == NULL);
 
     ecs_fini(world);
 }
@@ -105,7 +105,7 @@ void resource_replace(void) {
     ecs_set_resource(world, ResourceTime, { .dt = 1.0f, .elapsed = 2.0f });
     ecs_set_resource(world, ResourceTime, { .dt = 3.0f, .elapsed = 4.0f });
 
-    const ResourceTime *time = ecs_resource_read(world, ResourceTime);
+    const ResourceTime *time = ecs_get_resource_read(world, ResourceTime);
     test_assert(time->dt == 3.0f);
     test_assert(time->elapsed == 4.0f);
 

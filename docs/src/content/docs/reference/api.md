@@ -135,10 +135,10 @@ Typed helpers:
 
 ```c
 ecs_set_resource(world, Time, { .dt = 0.016f });
-ecs_resource(world, Time);
-ecs_resource_read(world, Time);
-ecs_try_resource(world, Time);
-ecs_try_resource_read(world, Time);
+ecs_get_resource(world, Time);
+ecs_get_resource_read(world, Time);
+ecs_try_get_resource(world, Time);
+ecs_try_get_resource_read(world, Time);
 ecs_has_resource(world, Time);
 ecs_remove_resource(world, Time);
 ```

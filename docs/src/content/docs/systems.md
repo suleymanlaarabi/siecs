@@ -59,7 +59,7 @@ Resources are unique values stored on the world. In C systems, read them through
 
 ```c
 static void move_system(ecs_iter_t *it) {
-    const Time *time = ecs_resource_read(it->world, Time);
+    const Time *time = ecs_get_resource_read(it->world, Time);
     Position *positions = ecs_field(it, 0);
     const Velocity *velocities = ecs_field(it, 1);
 

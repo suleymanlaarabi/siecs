@@ -17,7 +17,7 @@ ecs_entity_t ecs_new(ecs_world_t *world) {
     return entity;
 }
 
-int ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity) {
+bool ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity) {
     return ecs_entity_index_is_alive(&world->entity_index, entity);
 }
 

@@ -41,7 +41,7 @@ impl World {
 
     #[inline]
     pub fn is_alive(&self, entity: Entity) -> bool {
-        unsafe { raw::ecs_is_alive(self.raw.as_ptr(), entity.id) != 0 }
+        unsafe { raw::ecs_is_alive(self.raw.as_ptr(), entity.id) }
     }
 
     #[inline]
