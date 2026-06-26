@@ -51,6 +51,17 @@ ecs_observer(world, {
 Observers are enabled by default. Use `ecs_observer_disable()` and
 `ecs_observer_enable()` to toggle an observer without unregistering it.
 
+Pass small callback context through `user_data` when needed:
+
+```c
+ecs_observer(world, {
+    .on = EcsOnSet,
+    .query.terms = { ecs_in(Position) },
+    .callback = on_position_set,
+    .user_data = (uintptr_t)counter_ptr,
+});
+```
+
 ## Event Payload
 
 The callback receives `ecs_observer_event_t`:
@@ -76,6 +87,8 @@ typedef struct {
 
 For `OnSet`, the stored component value has not been overwritten yet when hooks
 and observers run.
+
+Component hooks run before matching observers for the same operation.
 
 ## Custom Events
 

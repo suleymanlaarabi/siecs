@@ -80,7 +80,7 @@ typedef struct {
 
 ```c
 ecs_entity_t ecs_new(ecs_world_t *world);
-int ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity);
+bool ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity);
 void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
 ```
 
@@ -129,6 +129,7 @@ ids, separate from component ids.
 ECS_RESOURCE_DECLARE(Time, { float dt; });
 ECS_RESOURCE_DEFINE(Time);
 ECS_RESOURCE_REGISTER(world, Time);
+ECS_RESOURCE(Time, { float dt; });
 ```
 
 Typed helpers:
@@ -147,6 +148,8 @@ Id-based functions:
 
 ```c
 ecs_resource_t ecs_resource_init(ecs_world_t *world, const ecs_resource_desc_t *desc);
+ecs_resource_t ecs_resource_find(ecs_world_t *world, const char *name);
+bool ecs_resource_is_registered_rid(const ecs_world_t *world, ecs_resource_t id);
 void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);
 void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id);
 void *ecs_try_resource_rid(ecs_world_t *world, ecs_resource_t id);
@@ -172,6 +175,8 @@ typedef enum {
     EcsIn,
     EcsOut,
     EcsInOut,
+    EcsInOptional,
+    EcsInOutOptional,
     EcsFilter,
     EcsNot,
 } ecs_term_access_t;
@@ -190,12 +195,15 @@ typedef struct {
 ecs_in(Component);
 ecs_out(Component);
 ecs_inout(Component);
+ecs_in_optional(Component);
+ecs_inout_optional(Component);
 ecs_filter(Component);
 ecs_not(Component);
 ```
 
-`ecs_field()` returns only `EcsIn`, `EcsOut`, and `EcsInOut` terms in
-declaration order.
+`ecs_field()` returns `EcsIn`, `EcsOut`, `EcsInOut`, `EcsInOptional`, and
+`EcsInOutOptional` terms in declaration order. Optional fields return `NULL`
+for batches whose table does not contain the component.
 
 Queries implicitly add `ecs_not(Disabled)` unless their descriptor already
 contains a term for `Disabled`. The implicit term is used by plain queries,
@@ -227,6 +235,16 @@ void ecs_observer_trigger(
     ecs_event_t event,
     const void *trigger_data
 );
+```
+
+```c
+typedef struct {
+    ecs_world_t *world;
+    ecs_entity_t entity;
+    ecs_event_t event;
+    uintptr_t user_data;
+    const void *trigger_data;
+} ecs_observer_event_t;
 ```
 
 ```c
@@ -318,8 +336,6 @@ typedef struct {
     const char *name;
     ecs_query_desc_t query;
     void (*callback)(ecs_iter_t *);
-    void (*run)(ecs_world_t *world, ecs_query_id_t query, void *ctx);
-    void *ctx;
     ecs_phase_t phase;
     ecs_system_id_t after[4];
     bool disabled;

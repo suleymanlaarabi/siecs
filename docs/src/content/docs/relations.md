@@ -59,3 +59,17 @@ ecs_component_t source_id = ecs_source(Targets);
 
 This is exposed for low-level use, but normal application code should prefer the
 relation component itself.
+
+## Lifecycle
+
+When a relation target changes, SIECS removes the source entity from the old
+target reverse list and appends it to the new target reverse list. Removing the
+relation removes the reverse link.
+
+When a target entity is killed:
+
+- relations without `EcsRelationCascadeDelete` remove the relation from sources
+- relations with `EcsRelationCascadeDelete` kill the source entities too
+
+`ChildOf` uses cascade delete because child entities are considered owned by
+their parent.

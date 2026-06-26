@@ -148,17 +148,21 @@ static void on_set_position(
     ecs_world_t *world,
     ecs_entity_t entity,
     ecs_component_t component,
-    const void *ptr
+    const void *new_value,
+    void *current_value
 ) {
-    const Position *new_value = ptr;
+    const Position *incoming = new_value;
+    Position *stored = current_value;
     (void)world;
     (void)entity;
     (void)component;
-    (void)new_value;
+    (void)incoming;
+    (void)stored;
 }
 ```
 
 `on_set` receives the new value passed to `ecs_set()` or `ecs_set_cid()`. The
 stored value is still the previous value until the hook returns.
 
+`on_add` receives zero-initialized storage after the component is added.
 `on_remove` receives the value that is about to be removed.

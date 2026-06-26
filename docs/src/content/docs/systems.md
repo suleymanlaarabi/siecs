@@ -197,8 +197,6 @@ typedef struct {
     const char *name;
     ecs_query_desc_t query;
     void (*callback)(ecs_iter_t *);
-    void (*run)(ecs_world_t *world, ecs_query_id_t query, void *ctx);
-    void *ctx;
     ecs_phase_t phase;
     ecs_system_id_t after[4];
     bool disabled;
@@ -210,8 +208,6 @@ typedef struct {
 | `name` | Optional debug name. |
 | `query` | Components matched by the system. |
 | `callback` | Function called for each non-empty matching batch. |
-| `run` | Optional low-level runner called once for the whole query execution. |
-| `ctx` | User pointer passed to `run`. |
 | `phase` | Phase used by `ecs_progress()` and `ecs_run_phase()`. |
 | `after` | Same-phase systems that must run before this one. |
 | `disabled` | When true, the system is created but not run. |

@@ -5,6 +5,10 @@ description: Minimal SIECS program using typed components.
 
 This page shows the normal user flow and the supported ways to consume SIECS.
 
+If you are new to ECS, read [ECS Theory](../theory/) after this page. The short
+version is: entities are ids, components are data, and systems run over batches
+of entities that match a query.
+
 ## CMake Example
 
 C
@@ -153,6 +157,39 @@ int main(void) {
     return 0;
 }
 ```
+
+## Minimal System
+
+Most applications create systems instead of manually querying every frame:
+
+```c
+ECS_COMPONENT(Velocity, {
+    float x;
+    float y;
+});
+
+static void Move(ecs_iter_t *it) {
+    Position *positions = ecs_field(it, 0);
+    const Velocity *velocities = ecs_field(it, 1);
+
+    for (uint32_t i = 0; i < it->count; i++) {
+        positions[i].x += velocities[i].x;
+        positions[i].y += velocities[i].y;
+    }
+}
+
+ecs_system(world, {
+    .name = "Move",
+    .phase = EcsOnUpdate,
+    .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
+    .callback = Move,
+});
+
+ecs_progress(world);
+```
+
+Systems own persistent queries internally, so they are the usual choice for
+repeated frame logic.
 
 ## Include Path
 

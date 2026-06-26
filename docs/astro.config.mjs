@@ -11,18 +11,33 @@ export default defineConfig({
       sidebar: [
         { label: 'Overview', link: '/' },
         {
-          label: 'Guide',
+          label: 'Start Here',
+          items: ['getting-started', 'theory', 'cookbook'],
+        },
+        {
+          label: 'C API',
           items: [
-            'getting-started',
             'components',
             'resources',
             'entities',
             'queries',
             'systems',
+            'observers',
             'modules',
             'relations',
-            'internals',
           ],
+        },
+        {
+          label: 'Bindings',
+          items: ['cpp', 'rust'],
+        },
+        {
+          label: 'Addons',
+          items: ['rest'],
+        },
+        {
+          label: 'Production',
+          items: ['performance', 'internals'],
         },
         {
           label: 'Reference',

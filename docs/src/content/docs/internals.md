@@ -41,11 +41,24 @@ the provided value.
 Tables cache add and remove edges so repeated migrations do not recompute the
 same destination archetypes.
 
+Tables keep data columns separate from zero-sized tag columns for storage
+operations. Tags still participate in table identity and query matching, but
+they do not require data copies during table growth or migration.
+
 ## Query Cache
 
 Queries store matching table ids and cached field pointers. `ecs_iter_t` exposes
 `world` and `count` publicly, but its query cache fields are implementation
 details and should not be used by user code.
+
+Query ids are stable while alive. Destroyed query slots can be reused by later
+queries.
+
+## Component Ids And Multi-World
+
+Typed component ids are process-global and reused across worlds. Each world
+owns its own component records, tables, queries, resources, systems, observers,
+and modules. Register typed components in every world that uses them.
 
 ## Modules
 

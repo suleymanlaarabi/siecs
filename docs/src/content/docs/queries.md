@@ -20,6 +20,8 @@ The `terms` array is a zero-terminated list of component terms.
 | `ecs_in(T)` | `T` must exist and is returned by `ecs_field()` for reading. |
 | `ecs_out(T)` | `T` must exist and is returned by `ecs_field()` for writing. |
 | `ecs_inout(T)` | `T` must exist and is returned by `ecs_field()` for reading and writing. |
+| `ecs_in_optional(T)` | `T` may be absent and is returned as a nullable read field. |
+| `ecs_inout_optional(T)` | `T` may be absent and is returned as a nullable read/write field. |
 | `ecs_filter(T)` | `T` must exist but is not returned. |
 | `ecs_not(T)` | `T` must not exist. |
 
@@ -52,9 +54,9 @@ while (ecs_iter_next(&it)) {
 `ecs_iter_next()` advances to the next non-empty batch. `it.count` is the number
 of entities in the current batch.
 
-`ecs_field(&it, index)` returns component arrays for `ecs_in`, `ecs_out`, and
-`ecs_inout` terms in declaration order. `ecs_filter` and `ecs_not` do not create
-field indexes.
+`ecs_field(&it, index)` returns component arrays for `ecs_in`, `ecs_out`,
+`ecs_inout`, `ecs_in_optional`, and `ecs_inout_optional` terms in declaration
+order. `ecs_filter` and `ecs_not` do not create field indexes.
 
 In the C++ API, `ecs::res<T>` and `ecs::res<const T>` callback parameters are
 resources, not query terms. They are resolved from the world before table
@@ -102,6 +104,46 @@ ecs_query_id_t disabled_positions = ecs_query(world, {
     .terms = { ecs_inout(Position), ecs_filter(Disabled) },
 });
 ```
+
+## Optional Components
+
+Optional terms let one query handle tables where a component may or may not be
+present:
+
+```c
+ecs_query_id_t q = ecs_query(world, {
+    .terms = { ecs_inout(Position), ecs_in_optional(Velocity) },
+});
+
+ecs_iter_t it = ecs_query_iter(world, q);
+while (ecs_iter_next(&it)) {
+    Position *positions = ecs_field(&it, 0);
+    const Velocity *velocities = ecs_field(&it, 1);
+
+    for (uint32_t i = 0; i < it.count; i++) {
+        if (velocities != NULL) {
+            positions[i].x += velocities[i].x;
+        }
+    }
+}
+```
+
+The optional field pointer is either a component array for the whole batch or
+`NULL` for the whole batch. It does not vary per entity inside the same batch.
+
+## Temporary Query Loop
+
+`ecs_query_each()` is useful for setup, tests, tools, and short one-off scans:
+
+```c
+ecs_query_each(world, it, i, ecs_in(Position)) {
+    const Position *positions = ecs_field(&it, 0);
+    (void)positions[i];
+}
+```
+
+It creates and destroys a temporary query. For repeated frame work, create a
+persistent query once and iterate it with `ecs_query_iter()`.
 
 ## Destroy A Query
 
