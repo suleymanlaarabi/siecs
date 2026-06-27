@@ -1,7 +1,7 @@
 #ifndef ECS_LEXER_H
 #define ECS_LEXER_H
 
-#include "datastructure/vec.h"
+#include "../datastructure/vec.h"
 
 typedef enum {
     EcsTokEnd = '\0',

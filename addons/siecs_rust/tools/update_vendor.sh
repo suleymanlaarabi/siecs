@@ -46,6 +46,11 @@ copy_dependency "sireflect" "https://github.com/suleymanlaarabi/sireflect.git"
 copy_dependency "sijson" "https://github.com/suleymanlaarabi/sijson.git"
 copy_dependency "sihttp" "https://github.com/suleymanlaarabi/sihttp.git"
 
+mkdir -p "$VENDOR_DIR/siecs/deps"
+cp "$VENDOR_DIR/deps/sireflect/include/sireflect.h" "$VENDOR_DIR/siecs/deps/sireflect.h"
+cp "$VENDOR_DIR/deps/sijson/include/sijson.h" "$VENDOR_DIR/siecs/deps/sijson.h"
+cp "$VENDOR_DIR/deps/sihttp/include/sihttp.h" "$VENDOR_DIR/siecs/deps/sihttp.h"
+
 cat > "$VENDOR_DIR/README.md" <<'README'
 # Generated vendor snapshot
 

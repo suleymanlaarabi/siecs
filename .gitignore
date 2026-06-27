@@ -14,3 +14,4 @@ compile_flags.txt
 siecs_rust/target/
 target/
 vendor/
+deps/

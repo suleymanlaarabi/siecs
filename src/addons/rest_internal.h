@@ -2,10 +2,16 @@
 #define SIECS_ADDONS_REST_INTERNAL_H
 
 #include "siecs.h"
+#ifndef SIHTTP_H
 #include "sihttp.h"
+#endif
+#ifndef SIJSON_H
 #include "sijson.h"
+#endif
+#ifndef SIREFLECT_H
 #include "sireflect.h"
-#include "world_internal.h"
+#endif
+#include "../world_internal.h"
 
 sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body);
 sihttp_response_t ecs_rest_error_response(int status, const char *message);

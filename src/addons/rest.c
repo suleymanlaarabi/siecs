@@ -1,5 +1,7 @@
-#include "addons/rest_internal.h"
+#include "rest_internal.h"
+#ifndef SIHTTP_H
 #include "sihttp.h"
+#endif
 #include <stdlib.h>
 #include <string.h>
 

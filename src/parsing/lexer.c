@@ -1,5 +1,5 @@
 #include "lexer.h"
-#include "parsing/scanner.h"
+#include "scanner.h"
 
 #include <string.h>
 

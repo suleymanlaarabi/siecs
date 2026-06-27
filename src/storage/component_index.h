@@ -2,7 +2,9 @@
 #define SIECS_STORAGE_COMPONENT_INDEX_H
 #include "../datastructure/vec.h"
 #include "siecs.h"
+#ifndef SIREFLECT_H
 #include "sireflect.h"
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 

@@ -1,4 +1,4 @@
-#include "addons/rest_internal.h"
+#include "rest_internal.h"
 #include <stdlib.h>
 #include <string.h>
 

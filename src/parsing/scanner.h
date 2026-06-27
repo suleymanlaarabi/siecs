@@ -1,8 +1,8 @@
 #ifndef ECS_PARSING_SCANNER_H
 #define ECS_PARSING_SCANNER_H
 
-#include "datastructure/string.h"
-#include "datastructure/vec.h"
+#include "../datastructure/string.h"
+#include "../datastructure/vec.h"
 #include <ctype.h>
 #include <stdint.h>
 #include <stdlib.h>

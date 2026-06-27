@@ -1,5 +1,5 @@
-#include "addons/rest_internal.h"
-#include "storage/component_index.h"
+#include "rest_internal.h"
+#include "../storage/component_index.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>

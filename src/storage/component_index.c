@@ -1,7 +1,9 @@
 #include "component_index.h"
 #include "../datastructure/vec.h"
 #include "siecs.h"
+#ifndef SIREFLECT_H
 #include "sireflect.h"
+#endif
 #include <stdlib.h>
 
 void ecs_component_index_register(

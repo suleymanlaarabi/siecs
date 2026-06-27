@@ -18,9 +18,9 @@
 #define SIECS_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
-#include <sireflect.h>
-#include <sijson.h>
-#include <sihttp.h>
+#include "../../deps/sireflect.h"
+#include "../../deps/sijson.h"
+#include "../../deps/sihttp.h"
 
 /* Convenience macro for exporting symbols */
 #ifndef siecs_STATIC

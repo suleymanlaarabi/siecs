@@ -1,7 +1,9 @@
 #include "addons/addons.h"
 #include "datastructure/vec.h"
 #include "siecs.h"
+#ifndef SIREFLECT_H
 #include "sireflect.h"
+#endif
 #include "storage/table_index.h"
 #include "world_internal.h"
 

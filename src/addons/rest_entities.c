@@ -1,10 +1,12 @@
-#include "addons/rest_internal.h"
-#include "id.h"
+#include "rest_internal.h"
+#include "../id.h"
 #include "siecs.h"
+#ifndef SIJSON_H
 #include "sijson.h"
-#include "storage/component_index.h"
-#include "table.h"
-#include "world_internal.h"
+#endif
+#include "../storage/component_index.h"
+#include "../table.h"
+#include "../world_internal.h"
 #include <stdint.h>
 #include <stdlib.h>
 
