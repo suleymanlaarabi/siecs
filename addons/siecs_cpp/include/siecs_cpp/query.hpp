@@ -3,6 +3,7 @@
 #include "function_traits.hpp"
 #include "resource.hpp"
 #include "siecs.h"
+#include "siecs_cpp/entity.hpp"
 #include <functional>
 
 namespace ecs {
@@ -94,9 +95,6 @@ inline void append_term(
     ecs_component_t id,
     ecs_term_access_t access
 ) {
-    constexpr uint16_t query_term_capacity =
-        static_cast<uint16_t>(sizeof(desc.terms) / sizeof(desc.terms[0]));
-
     assert(term_index + 1 < query_term_capacity && "too many query terms");
 
     desc.terms[term_index] = {
@@ -190,6 +188,8 @@ class query {
         return std::move(*this);
     }
 
+    ecs_query_id_t build() { return ecs_query_init(_world, &desc); }
+
     template <typename F> void each(F &&func) {
         using traits = function_traits<std::remove_reference_t<F>>;
         using args = typename traits::args_tuple;
@@ -198,14 +198,21 @@ class query {
 
         detail::append_callback_terms<args>(_world, desc, term_index);
 
-        ecs_query_id_t qid = ecs_query_init(_world, &desc);
+        ecs_query_id_t qid = this->build();
 
         detail::run_strict_query<F, args>(func, _world, qid);
 
         ecs_query_fini(_world, qid);
     }
 
-    void first() { return; }
+    entity first() {
+        ecs_query_id_t qid = this->build();
+        ecs_iter_t it = ecs_query_iter(_world, qid);
+        while (ecs_iter_next(&it)) {
+            return entity(_world, it.entities[0]);
+        }
+        return entity::null();
+    }
 };
 
 } // namespace ecs

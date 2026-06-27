@@ -5,8 +5,7 @@ namespace ecs {
 
 namespace detail {
 
-template <typename Callback, typename Args>
-static void system_callback(ecs_iter_t *it) {
+template <typename Callback, typename Args> static void system_callback(ecs_iter_t *it) {
     Callback callback{};
     if constexpr (component_arg_count<Args>() == 0) {
         run_once<Callback, Args>(callback, it->world);
@@ -17,7 +16,7 @@ static void system_callback(ecs_iter_t *it) {
 
 } // namespace detail
 
-class system : public query {
+class system : protected query {
     const char *name;
     ecs_phase_t _phase = EcsOnUpdate;
 
