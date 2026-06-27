@@ -112,3 +112,27 @@ jobs:
 
       - name: Test C++ consumer
         run: ctest --test-dir build-consumer-cpp --output-on-failure
+
+  distr:
+    name: distr up to date
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang make
+
+      - name: Install bake
+        run: |
+          git clone https://github.com/SanderMertens/bake
+          make -C bake/build-$(uname)
+          bake/bake setup
+
+      - name: Check generated distribution
+        env:
+          CC: clang
+        run: make check-distr

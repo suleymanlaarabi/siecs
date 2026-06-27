@@ -1,4 +1,4 @@
-.PHONY: clean test test-c test-c-release test-cpp test-cpp-release test-rust update-rust-vendor
+.PHONY: clean test test-c test-c-release test-cpp test-cpp-release test-rust update-rust-vendor distr check-distr
 
 clean:
 	rm -rf build-consumer-c build-consumer-cpp
@@ -27,3 +27,10 @@ update-rust-vendor:
 
 test-rust:
 	cd addons/siecs_rust && cargo test
+
+distr:
+	bake rebuild . -r
+
+check-distr: distr
+	git diff --exit-code -- distr/siecs.c distr/siecs.h
+	$(CC) -std=c23 -Wall -Wextra -pedantic -c distr/siecs.c -o /tmp/siecs-distr.o

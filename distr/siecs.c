@@ -192,8 +192,8 @@ SIHTTP_API sihttp_server_t *sihttp_server_init(const sihttp_server_desc_t *desc)
         port = desc->port;
         backlog = desc->backlog > 0 ? desc->backlog : SIHTTP_DEFAULT_BACKLOG;
         max_requests_per_poll = desc->max_requests_per_poll > 0
-            ? desc->max_requests_per_poll
-            : SIHTTP_DEFAULT_MAX_REQUESTS_PER_POLL;
+                                    ? desc->max_requests_per_poll
+                                    : SIHTTP_DEFAULT_MAX_REQUESTS_PER_POLL;
     }
 
     server = calloc(1, sizeof(*server));
@@ -687,7 +687,8 @@ static int sihttp_parse_size(const char *value, size_t *out) {
     return 0;
 }
 
-static int sihttp_add_pair(sihttp_pair_t *pairs, size_t *count, const char *name, const char *value) {
+static int
+sihttp_add_pair(sihttp_pair_t *pairs, size_t *count, const char *name, const char *value) {
     if (*count >= SIHTTP_MAX_PARAMS) {
         return -1;
     }
@@ -719,9 +720,7 @@ static void sihttp_parse_query(sihttp_request_internal_t *req, char *query) {
     }
 }
 
-void sihttp_request_internal_init(sihttp_request_internal_t *req) {
-    memset(req, 0, sizeof(*req));
-}
+void sihttp_request_internal_init(sihttp_request_internal_t *req) { memset(req, 0, sizeof(*req)); }
 
 void sihttp_request_internal_fini(sihttp_request_internal_t *req) {
     free(req->storage);
@@ -847,7 +846,8 @@ sihttp_parse_result_t sihttp_request_parse_state(const char *data, size_t len) {
             *colon = '\0';
             name = sihttp_trim(line);
             value = sihttp_trim(colon + 1);
-            if (sihttp_streq_icase(name, "Content-Length") && sihttp_parse_size(value, &content_length) != 0) {
+            if (sihttp_streq_icase(name, "Content-Length") &&
+                sihttp_parse_size(value, &content_length) != 0) {
                 free(copy);
                 result.code = 400;
                 return result;
@@ -2181,11 +2181,8 @@ static bool sijson_assign_number(
 
 static bool sijson_assign_reflected(sireflect_handle_t type, void *ptr, sijson_value_t value);
 
-static bool sijson_assign_field(
-    const sireflect_type_info_t *field_type,
-    void *field_ptr,
-    sijson_value_t value
-);
+static bool
+sijson_assign_field(const sireflect_type_info_t *field_type, void *field_ptr, sijson_value_t value);
 
 static bool sijson_assign_array(
     const sireflect_type_info_t *array_type,
@@ -2595,9 +2592,7 @@ char *sijson_arena_dup_cstr(const char *str) {
     return sijson_arena_dup_range(str, strlen(str));
 }
 
-size_t sijson_arena_mark(void) {
-    return g_arena.used;
-}
+size_t sijson_arena_mark(void) { return g_arena.used; }
 
 void sijson_arena_rewind(size_t mark) {
     if (mark <= g_arena.used) {
@@ -3115,9 +3110,7 @@ void sireflect_error_set(const char *message) {
     sireflect_current_error = sireflect_error_dup(message);
 }
 
-const char *sireflect_error(void) {
-    return sireflect_current_error;
-}
+const char *sireflect_error(void) { return sireflect_current_error; }
 
 #include <string.h>
 
@@ -3248,8 +3241,10 @@ sireflect_handle_t sireflect_registry_get_or_add_array_type(
     size_t element_count
 );
 
-sireflect_handle_t
-sireflect_registry_get_or_add_pointer_type(sireflect_registry_t *reg, sireflect_handle_t pointee_type);
+sireflect_handle_t sireflect_registry_get_or_add_pointer_type(
+    sireflect_registry_t *reg,
+    sireflect_handle_t pointee_type
+);
 
 sireflect_type_info_t *
 sireflect_registry_type_at(sireflect_registry_t *reg, sireflect_handle_t handle);
@@ -3326,8 +3321,7 @@ static inline int sireflect_token_is_qualifier(sireflect_token_t token) {
     return sireflect_token_is_ident(token, "const") || sireflect_token_is_ident(token, "volatile");
 }
 
-static inline void
-sireflect_type_spec_set(sireflect_type_spec_t *type, sireflect_token_t token) {
+static inline void sireflect_type_spec_set(sireflect_type_spec_t *type, sireflect_token_t token) {
     type->start = token.start;
     type->len = token.len;
     type->name[0] = '\0';
@@ -3353,8 +3347,7 @@ static inline void sireflect_type_spec_set2(
     (void)len;
     sireflect_indebug(
         sireflect_assert(len > 0 && (size_t)len < sizeof(type->name), "type specifier is too long");
-    )
-    type->start = NULL;
+    ) type->start = NULL;
     type->len = 0;
     type->has_name = 1;
     type->line = first.line;
@@ -3542,7 +3535,8 @@ static inline void sireflect_parser_next(sireflect_parser_t *parser) {
     const char c = src[start];
 
     if (c == '\0') {
-        parser->current = (sireflect_token_t){ sireflect_token_end, &src[start], 0, start, line, column };
+        parser->current =
+            (sireflect_token_t){ sireflect_token_end, &src[start], 0, start, line, column };
         return;
     }
 
@@ -3553,12 +3547,7 @@ static inline void sireflect_parser_next(sireflect_parser_t *parser) {
         }
 
         parser->current = (sireflect_token_t){
-            sireflect_token_ident,
-            &src[start],
-            parser->pos - start,
-            start,
-            line,
-            column,
+            sireflect_token_ident, &src[start], parser->pos - start, start, line, column,
         };
         return;
     }
@@ -3570,12 +3559,7 @@ static inline void sireflect_parser_next(sireflect_parser_t *parser) {
         }
 
         parser->current = (sireflect_token_t){
-            sireflect_token_integer,
-            &src[start],
-            parser->pos - start,
-            start,
-            line,
-            column,
+            sireflect_token_integer, &src[start], parser->pos - start, start, line, column,
         };
         return;
     }
@@ -3584,10 +3568,12 @@ static inline void sireflect_parser_next(sireflect_parser_t *parser) {
 
     switch (c) {
     case '{':
-        parser->current = (sireflect_token_t){ sireflect_token_lbrace, &src[start], 1, start, line, column };
+        parser->current =
+            (sireflect_token_t){ sireflect_token_lbrace, &src[start], 1, start, line, column };
         return;
     case '}':
-        parser->current = (sireflect_token_t){ sireflect_token_rbrace, &src[start], 1, start, line, column };
+        parser->current =
+            (sireflect_token_t){ sireflect_token_rbrace, &src[start], 1, start, line, column };
         return;
     case '[':
         parser->current =
@@ -3598,21 +3584,26 @@ static inline void sireflect_parser_next(sireflect_parser_t *parser) {
             (sireflect_token_t){ sireflect_token_rbracket, &src[start], 1, start, line, column };
         return;
     case '*':
-        parser->current = (sireflect_token_t){ sireflect_token_star, &src[start], 1, start, line, column };
+        parser->current =
+            (sireflect_token_t){ sireflect_token_star, &src[start], 1, start, line, column };
         return;
     case ',':
-        parser->current = (sireflect_token_t){ sireflect_token_comma, &src[start], 1, start, line, column };
+        parser->current =
+            (sireflect_token_t){ sireflect_token_comma, &src[start], 1, start, line, column };
         return;
     case ';':
         parser->current =
             (sireflect_token_t){ sireflect_token_semicolon, &src[start], 1, start, line, column };
         return;
     default:
-        parser->current = (sireflect_token_t){ sireflect_token_unknown, &src[start], 1, start, line, column };
+        parser->current =
+            (sireflect_token_t){ sireflect_token_unknown, &src[start], 1, start, line, column };
         sireflect_parser_fail_at(
             parser,
             parser->current,
-            "unsupported syntax in reflected struct; supported fields are '<type> <name>;', '<type> <name>, <name>;', '<type> *<name>;', '<type> <name>[N][M];', and '<type> *<name>[N];'"
+            "unsupported syntax in reflected struct; supported fields are '<type> <name>;', "
+            "'<type> <name>, <name>;', '<type> *<name>;', '<type> <name>[N][M];', and '<type> "
+            "*<name>[N];'"
         );
     }
 }
@@ -3689,7 +3680,9 @@ sireflect_fail_unsupported_type_specifier(sireflect_parser_t *parser, sireflect_
     sireflect_parser_fail_at(
         parser,
         token,
-        "unsupported type specifier sequence; supported multi-token types are 'signed char', 'unsigned char', 'unsigned short', 'unsigned int', 'unsigned long', 'long long', and 'unsigned long long'"
+        "unsupported type specifier sequence; supported multi-token types are 'signed char', "
+        "'unsigned char', 'unsigned short', 'unsigned int', 'unsigned long', 'long long', and "
+        "'unsigned long long'"
     );
 }
 
@@ -3811,7 +3804,11 @@ sireflect_parse_array_dimensions(sireflect_parser_t *parser, size_t *counts, siz
         sireflect_parser_next(parser);
 
         if (parser->current.kind != sireflect_token_rbracket) {
-            sireflect_parser_fail_at(parser, parser->current, "expected ']' after array element count");
+            sireflect_parser_fail_at(
+                parser,
+                parser->current,
+                "expected ']' after array element count"
+            );
             return count;
         }
 
@@ -3944,7 +3941,8 @@ static inline sireflect_handle_t sireflect_resolve_field_type(
         snprintf(
             parser->message,
             sizeof(parser->message),
-            "unknown field type '%s' in %s at line %zu, column %zu; register the type before this struct or use a supported primitive alias",
+            "unknown field type '%s' in %s at line %zu, column %zu; register the type before this "
+            "struct or use a supported primitive alias",
             type_name,
             context,
             type.line,
@@ -4066,7 +4064,8 @@ static inline size_t sireflect_parse_declaration(
     return count;
 }
 
-static inline void sireflect_free_parsed_fields(sireflect_field_info_t *fields, size_t field_count) {
+static inline void
+sireflect_free_parsed_fields(sireflect_field_info_t *fields, size_t field_count) {
     if (fields == NULL) {
         return;
     }
@@ -4268,7 +4267,10 @@ sireflect_handle_t sireflect_registry_add_type(
 ) {
     sireflect_assert(reg != NULL, "registry must not be NULL");
     sireflect_assert(name != NULL, "type name must not be NULL");
-    sireflect_assert(size != 0 || kind == sireflect_kind_struct, "non-struct type size must not be zero");
+    sireflect_assert(
+        size != 0 || kind == sireflect_kind_struct,
+        "non-struct type size must not be zero"
+    );
     sireflect_assert(align != 0, "type alignment must not be zero");
 
     sireflect_registry_reserve(reg, reg->type_count + 1);
@@ -4291,10 +4293,15 @@ sireflect_handle_t sireflect_registry_add_type(
     return sireflect_handle_from_index(index);
 }
 
-sireflect_handle_t
-sireflect_registry_get_or_add_pointer_type(sireflect_registry_t *reg, sireflect_handle_t pointee_type) {
+sireflect_handle_t sireflect_registry_get_or_add_pointer_type(
+    sireflect_registry_t *reg,
+    sireflect_handle_t pointee_type
+) {
     sireflect_assert(reg != NULL, "registry must not be NULL");
-    sireflect_assert(pointee_type != SIREFLECT_INVALID_HANDLE, "pointer pointee type must be valid");
+    sireflect_assert(
+        pointee_type != SIREFLECT_INVALID_HANDLE,
+        "pointer pointee type must be valid"
+    );
 
     for (size_t i = 0; i < reg->type_count; i++) {
         const sireflect_type_info_t *type = &reg->types[i];
@@ -4375,7 +4382,15 @@ sireflect_handle_t sireflect_registry_get_or_add_array_type(
     sireflect_registry_add_type(reg, #name, kind, sizeof(name), _Alignof(name), NULL, 0)
 
 #define add_named_type(c_type, reflected_name, kind)                                               \
-    sireflect_registry_add_type(reg, reflected_name, kind, sizeof(c_type), _Alignof(c_type), NULL, 0)
+    sireflect_registry_add_type(                                                                   \
+        reg,                                                                                       \
+        reflected_name,                                                                            \
+        kind,                                                                                      \
+        sizeof(c_type),                                                                            \
+        _Alignof(c_type),                                                                          \
+        NULL,                                                                                      \
+        0                                                                                          \
+    )
 
 static inline void sireflect_register_builtin_types(sireflect_registry_t *reg) {
     add_type(u8, sireflect_kind_u8);
@@ -4504,15 +4519,15 @@ sireflect_try_register_struct(sireflect_registry_t *reg, const sireflect_struct_
     size_t field_count = 0;
 
     if (!sireflect_parse_struct_fields(
-        reg,
-        desc->name,
-        desc->fields,
-        &parsed_fields,
-        &field_count,
-        desc->size,
-        desc->align,
-        false
-    )) {
+            reg,
+            desc->name,
+            desc->fields,
+            &parsed_fields,
+            &field_count,
+            desc->size,
+            desc->align,
+            false
+        )) {
         return SIREFLECT_INVALID_HANDLE;
     }
 
@@ -4546,7 +4561,10 @@ sireflect_register_struct(sireflect_registry_t *reg, const sireflect_struct_desc
             const sireflect_type_info_t *type = sireflect_type_info(reg, existing);
             if (type->kind != sireflect_kind_struct || type->size != desc->size ||
                 type->align != desc->align) {
-                sireflect_assert(type->kind == sireflect_kind_struct, "existing type must be a struct");
+                sireflect_assert(
+                    type->kind == sireflect_kind_struct,
+                    "existing type must be a struct"
+                );
                 sireflect_assert(
                     type->size == desc->size,
                     "existing struct size must match descriptor"
@@ -4735,8 +4753,7 @@ bool sireflect_type_is_pointer(const sireflect_type_info_t *info) {
     return info->kind == sireflect_kind_pointer;
 }
 
-sireflect_handle_t
-sireflect_type_element(const sireflect_registry_t *reg, sireflect_handle_t ref) {
+sireflect_handle_t sireflect_type_element(const sireflect_registry_t *reg, sireflect_handle_t ref) {
     sireflect_error_clear();
 
     const sireflect_type_info_t *type = sireflect_type_info(reg, ref);
@@ -4744,8 +4761,7 @@ sireflect_type_element(const sireflect_registry_t *reg, sireflect_handle_t ref) 
     return type->element_type;
 }
 
-size_t
-sireflect_type_element_count(const sireflect_registry_t *reg, sireflect_handle_t ref) {
+size_t sireflect_type_element_count(const sireflect_registry_t *reg, sireflect_handle_t ref) {
     sireflect_error_clear();
 
     const sireflect_type_info_t *type = sireflect_type_info(reg, ref);
@@ -4753,8 +4769,7 @@ sireflect_type_element_count(const sireflect_registry_t *reg, sireflect_handle_t
     return type->element_count;
 }
 
-sireflect_handle_t
-sireflect_type_pointee(const sireflect_registry_t *reg, sireflect_handle_t ref) {
+sireflect_handle_t sireflect_type_pointee(const sireflect_registry_t *reg, sireflect_handle_t ref) {
     sireflect_error_clear();
 
     const sireflect_type_info_t *type = sireflect_type_info(reg, ref);
@@ -5039,10 +5054,7 @@ void ecs_table_index_fini(ecs_table_index_t *map);
 #define ecs_table_index_at(map, index) (&(map)->tables[index])
 
 struct ecs_world_s;
-uint16_t ecs_table_index_get_or_create(
-    struct ecs_world_s *world,
-    ecs_type_t type
-);
+uint16_t ecs_table_index_get_or_create(struct ecs_world_s *world, ecs_type_t type);
 
 #endif
 
@@ -5178,16 +5190,11 @@ typedef struct {
 void ecs_module_index_init(ecs_module_index_t *index);
 void ecs_module_index_fini(ecs_module_index_t *index);
 
-ecs_module_id_t ecs_module_index_create(
-    ecs_module_index_t *index,
-    ecs_module_id_t *id,
-    const char *name
-);
+ecs_module_id_t
+ecs_module_index_create(ecs_module_index_t *index, ecs_module_id_t *id, const char *name);
 ecs_module_t *ecs_module_index_get(ecs_module_index_t *index, ecs_module_id_t module);
-const ecs_module_t *ecs_module_index_get_const(
-    const ecs_module_index_t *index,
-    ecs_module_id_t module
-);
+const ecs_module_t *
+ecs_module_index_get_const(const ecs_module_index_t *index, ecs_module_id_t module);
 ecs_module_id_t ecs_module_index_find(const ecs_module_index_t *index, const ecs_module_id_t *id);
 
 #endif
@@ -5224,10 +5231,7 @@ typedef struct {
 void ecs_query_index_init(ecs_query_index_t *index);
 void ecs_query_index_fini(ecs_query_index_t *index);
 uint16_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc);
-void ecs_query_index_update_matches(
-    ecs_world_t *world,
-    ecs_query_cache_t *query_cache
-);
+void ecs_query_index_update_matches(ecs_world_t *world, ecs_query_cache_t *query_cache);
 void ecs_query_index_add_table(
     ecs_query_index_t *index,
     const ecs_table_t *table,
@@ -5309,10 +5313,8 @@ typedef struct {
 void ecs_resource_index_init(ecs_resource_index_t *index);
 void ecs_resource_index_fini(ecs_resource_index_t *index, ecs_world_t *world);
 
-ecs_resource_t ecs_resource_index_register(
-    ecs_resource_index_t *index,
-    const ecs_resource_desc_t *desc
-);
+ecs_resource_t
+ecs_resource_index_register(ecs_resource_index_t *index, const ecs_resource_desc_t *desc);
 ecs_resource_t ecs_resource_index_find(const ecs_resource_index_t *index, const char *name);
 bool ecs_resource_index_is_registered(const ecs_resource_index_t *index, ecs_resource_t id);
 
@@ -5475,16 +5477,23 @@ void ecs_module_record_observer(ecs_world_t *world, ecs_observer_id_t observer);
 #define ecs_cid_valid(id) ((id) != 0)
 #define ecs_entity_valid(entity) (ecs_first(entity) != 0)
 
-#define ecs_assert(condition, ...) \
-    if (!(condition)) { \
-        fprintf(stderr, __VA_ARGS__); \
-        abort(); \
+#define ecs_assert(condition, ...)                                                                 \
+    if (!(condition)) {                                                                            \
+        fprintf(stderr, __VA_ARGS__);                                                              \
+        abort();                                                                                   \
     }
 
-#define ecs_assert_id_valid(id) ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
+#define ecs_assert_id_valid(id)                                                                    \
+    ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
 #define ecs_assert_not_null(ptr) ecs_assert((ptr) != NULL, "null pointer: %s\n", #ptr)
-#define ecs_assert_entity_valid(entity) ecs_assert(ecs_entity_valid(entity), "invalid entity: %d, entity must be registered\n", ecs_first(entity))
-#define ecs_assert_is_alive(world, entity) ecs_assert(ecs_is_alive(world, entity), "entity is dead: %d\n", ecs_first(entity))
+#define ecs_assert_entity_valid(entity)                                                            \
+    ecs_assert(                                                                                    \
+        ecs_entity_valid(entity),                                                                  \
+        "invalid entity: %d, entity must be registered\n",                                         \
+        ecs_first(entity)                                                                          \
+    )
+#define ecs_assert_is_alive(world, entity)                                                         \
+    ecs_assert(ecs_is_alive(world, entity), "entity is dead: %d\n", ecs_first(entity))
 
 #else
 #define ecs_assert(condition, ...)
@@ -6889,11 +6898,13 @@ sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body) {
         status = 500;
     }
 
-    return sihttp_response({
-        .status = status,
-        .body = json,
-        .content_type = SIHTTP_CONTENT_JSON,
-    });
+    return sihttp_response(
+        {
+            .status = status,
+            .body = json,
+            .content_type = SIHTTP_CONTENT_JSON,
+        }
+    );
 }
 
 sihttp_response_t ecs_rest_error_response(int status, const char *message) {
@@ -7395,9 +7406,7 @@ void ecs_arena_init(ecs_arena_t *allocator) {
     allocator->capacity = 8;
     allocator->cursor = 0;
 }
-void ecs_arena_fini(ecs_arena_t *allocator) {
-    free(allocator->buf);
-}
+void ecs_arena_fini(ecs_arena_t *allocator) { free(allocator->buf); }
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -7427,9 +7436,9 @@ void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id) {
 #define SIECS_DATASTRUCTURE_MAP_H
 #ifndef NDEBUG
 
-#include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 typedef struct {
     const char *key;
@@ -7594,8 +7603,8 @@ bool ecs_map_has(const ecs_map_t *m, const char *key) { return ecs_map_get(m, ke
 #ifndef ECS_STRING_H
 #define ECS_STRING_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
     char *data; // null terminated string
@@ -8457,9 +8466,7 @@ void ecs_entity_index_init(ecs_entity_index_t *index) {
     index->first_available = UINT32_MAX;
 }
 
-void ecs_entity_index_fini(ecs_entity_index_t *index) {
-    ecs_vec_fini(&index->entities);
-}
+void ecs_entity_index_fini(ecs_entity_index_t *index) { ecs_vec_fini(&index->entities); }
 
 static bool ecs_module_id_valid(const ecs_module_index_t *index, ecs_module_id_t module) {
     return module != 0 && module < index->modules.size;
@@ -8497,11 +8504,8 @@ void ecs_module_index_fini(ecs_module_index_t *index) {
     ecs_vec_fini(&index->modules);
 }
 
-ecs_module_id_t ecs_module_index_create(
-    ecs_module_index_t *index,
-    ecs_module_id_t *id,
-    const char *name
-) {
+ecs_module_id_t
+ecs_module_index_create(ecs_module_index_t *index, ecs_module_id_t *id, const char *name) {
     ecs_module_t module;
     ecs_module_record_init(&module, id, name);
     ecs_vec_push(&index->modules, &module, sizeof(ecs_module_t));
@@ -8513,10 +8517,8 @@ ecs_module_t *ecs_module_index_get(ecs_module_index_t *index, ecs_module_id_t mo
     return ecs_vec_get_mut(&index->modules, module, ecs_module_t);
 }
 
-const ecs_module_t *ecs_module_index_get_const(
-    const ecs_module_index_t *index,
-    ecs_module_id_t module
-) {
+const ecs_module_t *
+ecs_module_index_get_const(const ecs_module_index_t *index, ecs_module_id_t module) {
     ecs_assert(ecs_module_id_valid(index, module), "invalid module id: %u\n", module);
     return ecs_vec_get(&index->modules, module, ecs_module_t);
 }
@@ -8650,10 +8652,7 @@ ecs_query_copy_terms_with_implicit_disabled(const ecs_query_term_t *terms, uint1
     }
 
     const uint16_t query_term_capacity = 16;
-    ecs_assert(
-        *count + 1 < query_term_capacity,
-        "query has no room for implicit Disabled term\n"
-    );
+    ecs_assert(*count + 1 < query_term_capacity, "query has no room for implicit Disabled term\n");
 
     ecs_query_term_t *copy = malloc(sizeof(ecs_query_term_t) * (*count + 1));
     if (*count != 0) {
@@ -8679,10 +8678,9 @@ static void ecs_query_validate_terms(const ecs_query_term_t *terms, uint16_t ter
     for (uint16_t i = 0; i < term_count; i++) {
         ecs_assert_id_valid(terms[i].id);
         ecs_assert(
-            terms[i].access == EcsIn || terms[i].access == EcsOut ||
-                terms[i].access == EcsInOut || terms[i].access == EcsInOptional ||
-                terms[i].access == EcsInOutOptional || terms[i].access == EcsFilter ||
-                terms[i].access == EcsNot,
+            terms[i].access == EcsIn || terms[i].access == EcsOut || terms[i].access == EcsInOut ||
+                terms[i].access == EcsInOptional || terms[i].access == EcsInOutOptional ||
+                terms[i].access == EcsFilter || terms[i].access == EcsNot,
             "invalid query term access: %d\n",
             terms[i].access
         );
@@ -9221,4 +9219,3 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     ecs_observer_index_add_table(&world->observer_index, ecs_table_index_at(map, table_idx));
     return (uint16_t)table_idx;
 }
-
