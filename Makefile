@@ -33,4 +33,4 @@ distr:
 
 check-distr: distr
 	git diff --exit-code -- distr/siecs.c distr/siecs.h
-	$(CC) -std=c23 -Wall -Wextra -pedantic -c distr/siecs.c -o /tmp/siecs-distr.o
+	$(CC) -std=c23 -Wall -Wextra -Wno-missing-field-initializers -pedantic -c distr/siecs.c -o /tmp/siecs-distr.o
