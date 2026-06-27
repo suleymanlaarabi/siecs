@@ -243,7 +243,7 @@ typedef struct {
         .fields = #__VA_ARGS__,                                                                    \
         .size = sizeof(type_name),                                                                 \
         .align = _Alignof(type_name)                                                               \
-    };
+    }
 
 /* Registers a struct declared with SIREFLECT_STRUCT. */
 #define sireflect(reg, name) sireflect_register_struct(reg, &sireflect_desc(name))
