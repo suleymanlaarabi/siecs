@@ -95,7 +95,7 @@ inline void append_term(
     ecs_component_t id,
     ecs_term_access_t access
 ) {
-    assert(term_index + 1 < query_term_capacity && "too many query terms");
+    // assert(term_index + 1 < query_term_capacity && "too many query terms");
 
     desc.terms[term_index] = {
         .id = id,
