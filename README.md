@@ -12,6 +12,11 @@
 - C modules for grouping components, systems, and observers behind one import.
 - Integrated reflection framework with JSON serialization and deserialization.
 
+> [!CAUTION]
+> **Experimental project.**
+>
+> siecs is in active development. Expect breaking changes and incomplete features until the first stable release.
+
 ## Why C?
 
 C is an extremely simple, predictable language that compiles quickly. It also provides a stable and widely supported ABI, making SIECS easy to use from many other languages.
