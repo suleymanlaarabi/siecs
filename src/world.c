@@ -79,6 +79,24 @@ static inline void copy_data_column(
     );
 }
 
+static inline void finish_migration(
+    const ecs_world_t *world,
+    ecs_entity_record_t *record,
+    const ecs_entity_t entity,
+    ecs_table_t *from_table,
+    const uint32_t old_row,
+    const uint16_t to_table_id,
+    const uint32_t new_row
+) {
+    ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
+    if (moved != entity) {
+        ecs_get_record(world, moved)->table_row = old_row;
+    }
+
+    record->table_id = to_table_id;
+    record->table_row = new_row;
+}
+
 // Generic migration: move an entity from its current table to an arbitrary
 // target table, without knowing which components were added or removed, or how
 // many. Both type id arrays are sorted ascending, so a sorted merge classifies
@@ -119,12 +137,7 @@ static inline void migrate_entity(
             memset((uint8_t *)c->data + (c->size * new_row), 0, c->size);
     }
 
-    ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
-    if (moved != entity)
-        ecs_get_record(world, moved)->table_row = old_row;
-
-    record->table_id = to_id;
-    record->table_row = new_row;
+    finish_migration(world, record, entity, from_table, old_row, to_id, new_row);
 }
 
 static inline void *migrate_entity_add(
@@ -163,12 +176,7 @@ static inline void *migrate_entity_add(
         );
     }
 
-    ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
-    if (moved != entity) {
-        ecs_get_record(world, moved)->table_row = old_row;
-    }
-    record->table_id = to_table_id;
-    record->table_row = new_row;
+    finish_migration(world, record, entity, from_table, old_row, to_table_id, new_row);
     return ecs_table_component_at_column(to_table, k, new_row);
 }
 
@@ -206,12 +214,7 @@ static inline void migrate_entity_remove(
         );
     }
 
-    ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
-    if (moved != entity)
-        ecs_get_record(world, moved)->table_row = old_row;
-
-    record->table_id = to_id;
-    record->table_row = new_row;
+    finish_migration(world, record, entity, from_table, old_row, to_id, new_row);
 }
 
 void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
