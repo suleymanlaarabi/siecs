@@ -20,6 +20,8 @@ class entity {
         return *this;
     }
 
+    operator ecs_entity_t() const noexcept { return _entity; }
+
     entity abstract() {
         ecs_add(_world, _entity, Abstract);
         return *this;
@@ -43,6 +45,8 @@ class entity {
         ecs_is_a(_world, _entity, target._entity);
         return *this;
     }
+
+    bool is(entity target) { return ecs_is(_world, _entity, target._entity); }
 
     entity child_of(entity parent) {
         const ChildOf desc = { .target = parent._entity };

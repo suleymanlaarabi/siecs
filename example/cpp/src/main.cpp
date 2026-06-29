@@ -48,6 +48,13 @@ int main() {
         pos.y = 0;
     });
 
+    world.system().each([](Position &pos, const Velocity &vel) {
+        pos.x += vel.x;
+        pos.y += vel.y;
+    });
+
+    struct Enemy {};
+
     world.entity().set(Position{ 0, 0 }).set(Velocity{ 10, 10 }).child_of(parent);
 
     world.module<physics>().disable();

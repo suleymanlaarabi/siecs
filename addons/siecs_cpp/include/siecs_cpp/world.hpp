@@ -8,9 +8,6 @@
 #include "siecs.h"
 #include "system.hpp"
 #include "type.hpp"
-#include <cstdint>
-#include <string>
-#include <utility>
 
 namespace ecs {
 
@@ -81,6 +78,8 @@ class world {
     ~world() noexcept { reset(); }
 
     [[nodiscard]] ecs_world_t *c_ptr() const noexcept { return _world; }
+
+    operator ecs_world_t *() const noexcept { return _world; }
 
     void reset(
         ecs_world_t *world = nullptr,

@@ -62,6 +62,10 @@ static inline void ecs_entity_rebase(
     record->table_row = new_row;
 }
 
+bool ecs_is(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
+    return ecs_get_table(world, ecs_get_record(world, entity)->table_id)->type.base == target;
+}
+
 void ecs_is_a(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
     ecs_assert_not_null(world);
     ecs_assert_entity_valid(entity);

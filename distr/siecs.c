@@ -1,4 +1,5 @@
 #include "siecs.h"
+#include "world_internal.h"
 #ifndef ECS_ADDONS_H
 #define ECS_ADDONS_H
 
@@ -306,10 +307,7 @@ void ecs_table_index_fini(ecs_table_index_t *map);
 #define ecs_table_index_at(map, index) (&(map)->tables[index])
 
 struct ecs_world_s;
-uint16_t ecs_table_index_get_or_create(
-    struct ecs_world_s *world,
-    ecs_type_t type
-);
+uint16_t ecs_table_index_get_or_create(struct ecs_world_s *world, ecs_type_t type);
 
 #endif
 
@@ -445,16 +443,11 @@ typedef struct {
 void ecs_module_index_init(ecs_module_index_t *index);
 void ecs_module_index_fini(ecs_module_index_t *index);
 
-ecs_module_id_t ecs_module_index_create(
-    ecs_module_index_t *index,
-    ecs_module_id_t *id,
-    const char *name
-);
+ecs_module_id_t
+ecs_module_index_create(ecs_module_index_t *index, ecs_module_id_t *id, const char *name);
 ecs_module_t *ecs_module_index_get(ecs_module_index_t *index, ecs_module_id_t module);
-const ecs_module_t *ecs_module_index_get_const(
-    const ecs_module_index_t *index,
-    ecs_module_id_t module
-);
+const ecs_module_t *
+ecs_module_index_get_const(const ecs_module_index_t *index, ecs_module_id_t module);
 ecs_module_id_t ecs_module_index_find(const ecs_module_index_t *index, const ecs_module_id_t *id);
 
 #endif
@@ -589,10 +582,8 @@ typedef struct {
 void ecs_resource_index_init(ecs_resource_index_t *index);
 void ecs_resource_index_fini(ecs_resource_index_t *index, ecs_world_t *world);
 
-ecs_resource_t ecs_resource_index_register(
-    ecs_resource_index_t *index,
-    const ecs_resource_desc_t *desc
-);
+ecs_resource_t
+ecs_resource_index_register(ecs_resource_index_t *index, const ecs_resource_desc_t *desc);
 ecs_resource_t ecs_resource_index_find(const ecs_resource_index_t *index, const char *name);
 bool ecs_resource_index_is_registered(const ecs_resource_index_t *index, ecs_resource_t id);
 
@@ -755,16 +746,23 @@ void ecs_module_record_observer(ecs_world_t *world, ecs_observer_id_t observer);
 #define ecs_cid_valid(id) ((id) != 0)
 #define ecs_entity_valid(entity) (ecs_first(entity) != 0)
 
-#define ecs_assert(condition, ...) \
-    if (!(condition)) { \
-        fprintf(stderr, __VA_ARGS__); \
-        abort(); \
+#define ecs_assert(condition, ...)                                                                 \
+    if (!(condition)) {                                                                            \
+        fprintf(stderr, __VA_ARGS__);                                                              \
+        abort();                                                                                   \
     }
 
-#define ecs_assert_id_valid(id) ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
+#define ecs_assert_id_valid(id)                                                                    \
+    ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
 #define ecs_assert_not_null(ptr) ecs_assert((ptr) != NULL, "null pointer: %s\n", #ptr)
-#define ecs_assert_entity_valid(entity) ecs_assert(ecs_entity_valid(entity), "invalid entity: %d, entity must be registered\n", ecs_first(entity))
-#define ecs_assert_is_alive(world, entity) ecs_assert(ecs_is_alive(world, entity), "entity is dead: %d\n", ecs_first(entity))
+#define ecs_assert_entity_valid(entity)                                                            \
+    ecs_assert(                                                                                    \
+        ecs_entity_valid(entity),                                                                  \
+        "invalid entity: %d, entity must be registered\n",                                         \
+        ecs_first(entity)                                                                          \
+    )
+#define ecs_assert_is_alive(world, entity)                                                         \
+    ecs_assert(ecs_is_alive(world, entity), "entity is dead: %d\n", ecs_first(entity))
 
 #else
 #define ecs_assert(condition, ...)
@@ -2320,11 +2318,13 @@ sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body) {
         status = 500;
     }
 
-    return sihttp_response({
-        .status = status,
-        .body = json,
-        .content_type = SIHTTP_CONTENT_JSON,
-    });
+    return sihttp_response(
+        {
+            .status = status,
+            .body = json,
+            .content_type = SIHTTP_CONTENT_JSON,
+        }
+    );
 }
 
 sihttp_response_t ecs_rest_error_response(int status, const char *message) {
@@ -2816,9 +2816,7 @@ void ecs_arena_init(ecs_arena_t *allocator) {
     allocator->capacity = 8;
     allocator->cursor = 0;
 }
-void ecs_arena_fini(ecs_arena_t *allocator) {
-    free(allocator->buf);
-}
+void ecs_arena_fini(ecs_arena_t *allocator) { free(allocator->buf); }
 
 void ecs_id_map_init(ecs_id_map_t *map) {
     map->capacity = 1;
@@ -2844,9 +2842,9 @@ void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id) {
 #define SIECS_DATASTRUCTURE_MAP_H
 #ifndef NDEBUG
 
-#include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 typedef struct {
     const char *key;
@@ -3011,8 +3009,8 @@ bool ecs_map_has(const ecs_map_t *m, const char *key) { return ecs_map_get(m, ke
 #ifndef ECS_STRING_H
 #define ECS_STRING_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
     char *data; // null terminated string
@@ -3864,9 +3862,7 @@ void ecs_entity_index_init(ecs_entity_index_t *index) {
     index->first_available = UINT32_MAX;
 }
 
-void ecs_entity_index_fini(ecs_entity_index_t *index) {
-    ecs_vec_fini(&index->entities);
-}
+void ecs_entity_index_fini(ecs_entity_index_t *index) { ecs_vec_fini(&index->entities); }
 
 static bool ecs_module_id_valid(const ecs_module_index_t *index, ecs_module_id_t module) {
     return module != 0 && module < index->modules.size;
@@ -3904,11 +3900,8 @@ void ecs_module_index_fini(ecs_module_index_t *index) {
     ecs_vec_fini(&index->modules);
 }
 
-ecs_module_id_t ecs_module_index_create(
-    ecs_module_index_t *index,
-    ecs_module_id_t *id,
-    const char *name
-) {
+ecs_module_id_t
+ecs_module_index_create(ecs_module_index_t *index, ecs_module_id_t *id, const char *name) {
     ecs_module_t module;
     ecs_module_record_init(&module, id, name);
     ecs_vec_push(&index->modules, &module, sizeof(ecs_module_t));
@@ -3920,10 +3913,8 @@ ecs_module_t *ecs_module_index_get(ecs_module_index_t *index, ecs_module_id_t mo
     return ecs_vec_get_mut(&index->modules, module, ecs_module_t);
 }
 
-const ecs_module_t *ecs_module_index_get_const(
-    const ecs_module_index_t *index,
-    ecs_module_id_t module
-) {
+const ecs_module_t *
+ecs_module_index_get_const(const ecs_module_index_t *index, ecs_module_id_t module) {
     ecs_assert(ecs_module_id_valid(index, module), "invalid module id: %u\n", module);
     return ecs_vec_get(&index->modules, module, ecs_module_t);
 }
@@ -4708,4 +4699,3 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     ecs_observer_index_add_table(world, ecs_table_index_at(map, table_idx));
     return (uint16_t)table_idx;
 }
-
