@@ -397,6 +397,118 @@ void query_inout_optional_ignores_shared_inherited_field(void) {
     ecs_fini(world);
 }
 
+void query_is_a_matches_direct_base(void) {
+    ecs_world_t *world = query_test_world();
+
+    ecs_entity_t character = ecs_new(world);
+    ecs_add(world, character, Abstract);
+
+    ecs_entity_t player = ecs_new(world);
+    ecs_is_a(world, player, character);
+
+    ecs_query_id_t query = ecs_query(world, { .is_a = character });
+    ecs_iter_t it = ecs_query_iter(world, query);
+
+    test_true(ecs_iter_next(&it));
+    test_int(1, it.count);
+    test_assert(it.entities[0] == player);
+    test_false(ecs_iter_next(&it));
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
+void query_is_a_excludes_other_bases(void) {
+    ecs_world_t *world = query_test_world();
+
+    ecs_entity_t character = ecs_new(world);
+    ecs_add(world, character, Abstract);
+    ecs_entity_t vehicle = ecs_new(world);
+    ecs_add(world, vehicle, Abstract);
+
+    ecs_entity_t player = ecs_new(world);
+    ecs_is_a(world, player, character);
+    ecs_entity_t car = ecs_new(world);
+    ecs_is_a(world, car, vehicle);
+
+    ecs_query_id_t query = ecs_query(world, { .is_a = character });
+    ecs_iter_t it = ecs_query_iter(world, query);
+
+    test_true(ecs_iter_next(&it));
+    test_int(1, it.count);
+    test_assert(it.entities[0] == player);
+    test_assert(it.entities[0] != car);
+    test_false(ecs_iter_next(&it));
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
+void query_is_a_matches_transitive_base(void) {
+    ecs_world_t *world = query_test_world();
+
+    ecs_entity_t character = ecs_new(world);
+    ecs_add(world, character, Abstract);
+
+    ecs_entity_t player = ecs_new(world);
+    ecs_is_a(world, player, character);
+    ecs_add(world, player, Abstract);
+
+    ecs_entity_t knight = ecs_new(world);
+    ecs_is_a(world, knight, player);
+
+    ecs_query_id_t query = ecs_query(world, { .is_a = character });
+    ecs_iter_t it = ecs_query_iter(world, query);
+
+    test_true(ecs_iter_next(&it));
+    test_int(1, it.count);
+    test_assert(it.entities[0] == knight);
+    test_false(ecs_iter_next(&it));
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
+void query_is_a_with_component_terms(void) {
+    ecs_world_t *world = query_test_world();
+
+    ecs_entity_t character = ecs_new(world);
+    ecs_set(world, character, QueryPosition, { 42 });
+    ecs_add(world, character, Abstract);
+
+    ecs_entity_t player = ecs_new(world);
+    ecs_is_a(world, player, character);
+    ecs_set(world, player, QueryVelocity, { 7 });
+
+    ecs_query_id_t query = ecs_query(
+        world,
+        {
+            .is_a = character,
+            .terms = {
+                ecs_in(QueryPosition),
+                ecs_in(QueryVelocity),
+            },
+        }
+    );
+    ecs_iter_t it = ecs_query_iter(world, query);
+
+    test_true(ecs_iter_next(&it));
+    QueryPosition *position = ecs_field(&it, 0);
+    QueryVelocity *velocity = ecs_field(&it, 1);
+    test_int(1, it.count);
+    test_assert(it.entities[0] == player);
+    test_int(EcsFieldShared, it.field_kinds[0]);
+    test_int(EcsFieldOwned, it.field_kinds[1]);
+    test_assert(position == ecs_get(world, character, QueryPosition));
+    test_assert(velocity == ecs_get(world, player, QueryVelocity));
+    test_int(42, position->value);
+    test_int(7, velocity->value);
+    test_false(ecs_iter_next(&it));
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
 void query_ids_stay_valid_after_temporary_query_fini(void) {
     ecs_world_t *world = query_test_world();
     ecs_entity_t entity = query_test_entity(world, 10, 20, 30);

@@ -252,6 +252,7 @@ bool ecs_table_has(
     const ecs_table_t *table,
     ecs_component_t component_id
 );
+bool ecs_table_is_a(const ecs_world_t *world, const ecs_table_t *table, ecs_entity_t base);
 
 static inline void copy_data_column(
     const ecs_column_t *restrict from,
@@ -466,6 +467,7 @@ ecs_module_id_t ecs_module_index_find(const ecs_module_index_t *index, const ecs
 
 typedef struct {
     uint64_t bloom;
+    ecs_entity_t is_a;
     ecs_query_term_t *terms;
     ecs_query_term_t *fields;
     uint16_t term_count;
@@ -511,6 +513,11 @@ static inline bool ecs_query_match_table(
     if (ECS_LIKELY((query->bloom & table->bloom) != query->bloom)) {
         return false;
     }
+
+    if (query->is_a && !ecs_table_is_a(world, table, query->is_a)) {
+        return false;
+    }
+
     for (uint16_t i = 0; i < query->term_count; i++) {
         ecs_query_term_t term = query->terms[i];
         if (term.access == EcsInOptional || term.access == EcsInOutOptional) {
@@ -1654,6 +1661,25 @@ bool ecs_table_has(
             return true;
         }
         base = base_table->type.base;
+    }
+
+    return false;
+}
+
+bool ecs_table_is_a(const ecs_world_t *world, const ecs_table_t *table, ecs_entity_t base) {
+    if (base == 0) {
+        return true;
+    }
+
+    ecs_entity_t current = table->type.base;
+    while (current != 0) {
+        if (current == base) {
+            return true;
+        }
+
+        const ecs_entity_record_t *record = ecs_get_record(world, current);
+        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+        current = base_table->type.base;
     }
 
     return false;
@@ -4085,10 +4111,15 @@ static void ecs_query_validate_terms(const ecs_query_term_t *terms, uint16_t ter
 
 void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
     query->term_count = ecs_query_count_terms(desc->terms);
-    ecs_assert(query->term_count != 0, "query must contain at least one term\n");
+    ecs_assert(
+        query->term_count != 0 || desc->is_a != 0,
+        "query must contain at least one term or is_a target\n"
+    );
 
     query->terms = ecs_query_copy_terms_with_implicit_excludes(desc->terms, &query->term_count);
     ecs_query_validate_terms(query->terms, query->term_count);
+
+    query->is_a = desc->is_a;
 
     query->field_count = 0;
     for (uint16_t i = 0; i < query->term_count; i++) {

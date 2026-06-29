@@ -74,6 +74,7 @@ bool ecs_table_has(
     const ecs_table_t *table,
     ecs_component_t component_id
 );
+bool ecs_table_is_a(const ecs_world_t *world, const ecs_table_t *table, ecs_entity_t base);
 
 static inline void copy_data_column(
     const ecs_column_t *restrict from,

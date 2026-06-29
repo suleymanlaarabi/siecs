@@ -8,6 +8,7 @@
 
 typedef struct {
     uint64_t bloom;
+    ecs_entity_t is_a;
     ecs_query_term_t *terms;
     ecs_query_term_t *fields;
     uint16_t term_count;
@@ -53,6 +54,11 @@ static inline bool ecs_query_match_table(
     if (ECS_LIKELY((query->bloom & table->bloom) != query->bloom)) {
         return false;
     }
+
+    if (query->is_a && !ecs_table_is_a(world, table, query->is_a)) {
+        return false;
+    }
+
     for (uint16_t i = 0; i < query->term_count; i++) {
         ecs_query_term_t term = query->terms[i];
         if (term.access == EcsInOptional || term.access == EcsInOutOptional) {

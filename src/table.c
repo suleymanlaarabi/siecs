@@ -147,6 +147,25 @@ bool ecs_table_has(
     return false;
 }
 
+bool ecs_table_is_a(const ecs_world_t *world, const ecs_table_t *table, ecs_entity_t base) {
+    if (base == 0) {
+        return true;
+    }
+
+    ecs_entity_t current = table->type.base;
+    while (current != 0) {
+        if (current == base) {
+            return true;
+        }
+
+        const ecs_entity_record_t *record = ecs_get_record(world, current);
+        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+        current = base_table->type.base;
+    }
+
+    return false;
+}
+
 void *ecs_table_field(
     ecs_world_t *world,
     const ecs_table_t *table,

@@ -74,6 +74,10 @@ void query_inherited_field_is_shared(void);
 void query_override_field_is_owned(void);
 void query_inout_does_not_match_shared_inherited_field(void);
 void query_inout_optional_ignores_shared_inherited_field(void);
+void query_is_a_matches_direct_base(void);
+void query_is_a_excludes_other_bases(void);
+void query_is_a_matches_transitive_base(void);
+void query_is_a_with_component_terms(void);
 void query_ids_stay_valid_after_temporary_query_fini(void);
 
 // Testsuite 'system'
@@ -345,6 +349,22 @@ bake_test_case query_testcases[] = {
         query_inout_optional_ignores_shared_inherited_field
     },
     {
+        "is_a_matches_direct_base",
+        query_is_a_matches_direct_base
+    },
+    {
+        "is_a_excludes_other_bases",
+        query_is_a_excludes_other_bases
+    },
+    {
+        "is_a_matches_transitive_base",
+        query_is_a_matches_transitive_base
+    },
+    {
+        "is_a_with_component_terms",
+        query_is_a_with_component_terms
+    },
+    {
         "ids_stay_valid_after_temporary_query_fini",
         query_ids_stay_valid_after_temporary_query_fini
     }
@@ -521,7 +541,7 @@ static bake_test_suite suites[] = {
         "query",
         NULL,
         NULL,
-        15,
+        19,
         query_testcases
     },
     {
