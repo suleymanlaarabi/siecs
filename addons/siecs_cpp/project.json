@@ -14,8 +14,7 @@
     "repositories": {
       "sireflect": "https://github.com/suleymanlaarabi/sireflect",
       "sijson": "https://github.com/suleymanlaarabi/sijson",
-      "sihttp": "https://github.com/suleymanlaarabi/sihttp",
-      "siecs": "https://github.com/suleymanlaarabi/siecs"
+      "sihttp": "https://github.com/suleymanlaarabi/sihttp"
     }
   }
 }

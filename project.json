@@ -4,9 +4,9 @@
   "value": {
     "author": "Suleyman Laarabi",
     "description": "Small ECS library",
+    "public": true,
     "clangd": true,
     "use": ["sireflect", "sijson", "sihttp"],
-    "standalone": true,
     "amalgamate": [
       {
         "path": "distr"

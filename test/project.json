@@ -10,6 +10,13 @@
     "c-standard": "c23",
     "include": ["../src"]
   },
+  "bundle": {
+    "repositories": {
+      "sireflect": "https://github.com/suleymanlaarabi/sireflect",
+      "sijson": "https://github.com/suleymanlaarabi/sijson",
+      "sihttp": "https://github.com/suleymanlaarabi/sihttp"
+    }
+  },
   "test": {
     "testsuites": [
       {
