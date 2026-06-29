@@ -2,6 +2,7 @@
 #define SIECS_STORAGE_ENTITY_INDEX_H
 #include "../datastructure/vec.h"
 #include "../id.h"
+#include "siecs.h"
 #include <stdint.h>
 
 typedef struct {
