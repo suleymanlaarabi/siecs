@@ -95,19 +95,24 @@ fn raw_query_layout_matches_c() {
     assert_eq!(offset_of!(raw::QueryTerm, id), 0);
     assert_eq!(offset_of!(raw::QueryTerm, access), 4);
 
-    assert_eq!(size_of::<raw::QueryDesc>(), 128);
-    assert_eq!(align_of::<raw::QueryDesc>(), 4);
+    assert_eq!(size_of::<raw::QueryDesc>(), 136);
+    assert_eq!(align_of::<raw::QueryDesc>(), 8);
     assert_eq!(offset_of!(raw::QueryDesc, terms), 0);
+    assert_eq!(offset_of!(raw::QueryDesc, is_a), 128);
 
-    assert_eq!(size_of::<raw::Iter>(), 48);
+    assert_eq!(size_of::<raw::FieldKind>(), 4);
+    assert_eq!(align_of::<raw::FieldKind>(), 4);
+
+    assert_eq!(size_of::<raw::Iter>(), 56);
     assert_eq!(align_of::<raw::Iter>(), 8);
     assert_eq!(offset_of!(raw::Iter, world), 0);
     assert_eq!(offset_of!(raw::Iter, count), 8);
     assert_eq!(offset_of!(raw::Iter, entities), 16);
     assert_eq!(offset_of!(raw::Iter, cache), 24);
     assert_eq!(offset_of!(raw::Iter, ptrs), 32);
-    assert_eq!(offset_of!(raw::Iter, table_idx), 40);
-    assert_eq!(offset_of!(raw::Iter, table_count), 42);
+    assert_eq!(offset_of!(raw::Iter, field_kinds), 40);
+    assert_eq!(offset_of!(raw::Iter, table_idx), 48);
+    assert_eq!(offset_of!(raw::Iter, table_count), 50);
 }
 
 #[test]
@@ -115,14 +120,14 @@ fn raw_system_layout_matches_c() {
     assert_eq!(size_of::<raw::Phase>(), 4);
     assert_eq!(align_of::<raw::Phase>(), 4);
 
-    assert_eq!(size_of::<raw::SystemDesc>(), 160);
+    assert_eq!(size_of::<raw::SystemDesc>(), 168);
     assert_eq!(align_of::<raw::SystemDesc>(), 8);
     assert_eq!(offset_of!(raw::SystemDesc, name), 0);
     assert_eq!(offset_of!(raw::SystemDesc, query), 8);
-    assert_eq!(offset_of!(raw::SystemDesc, callback), 136);
-    assert_eq!(offset_of!(raw::SystemDesc, phase), 144);
-    assert_eq!(offset_of!(raw::SystemDesc, after), 148);
-    assert_eq!(offset_of!(raw::SystemDesc, disabled), 156);
+    assert_eq!(offset_of!(raw::SystemDesc, callback), 144);
+    assert_eq!(offset_of!(raw::SystemDesc, phase), 152);
+    assert_eq!(offset_of!(raw::SystemDesc, after), 156);
+    assert_eq!(offset_of!(raw::SystemDesc, disabled), 164);
 }
 
 #[test]

@@ -156,6 +156,7 @@ class world {
     }
 
     [[nodiscard]] ecs::entity entity() const { return ecs::entity(_world, ecs_new(_world)); }
+    [[nodiscard]] ecs::entity instantiate(ecs::entity e) { return this->entity().is_a(e); }
     [[nodiscard]] ecs::query query() const { return ecs::query(_world); }
     [[nodiscard]] ecs::system system(const char *name) const { return ecs::system(_world, name); }
 

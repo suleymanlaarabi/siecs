@@ -1,4 +1,5 @@
 #include "siecs.h"
+#include <cassert>
 #include <cstdint>
 #include <iostream>
 #include <siecs_cpp/siecs_cpp.hpp>
@@ -38,7 +39,20 @@ int main() {
 
     world.import<physics>();
 
-    auto parent = world.entity();
+    struct Enemy;
+
+    ecs::entity human = world.entity().add<Position>().abstract();
+    ecs::entity enemy = world.entity().add<Enemy>().abstract();
+
+    ecs::entity parent = world.entity().is_a(human);
+
+    ecs::entity parent_enemy = world.entity().is_a(enemy);
+
+    assert(parent_enemy.has<Enemy>());
+
+    world.query().require<Enemy>().each([](ecs::entity entity, const Position &pos) {
+
+    });
 
     world.observe<ecs::OnAdd>().each([](Position &pos) {
         pos.x = 0;

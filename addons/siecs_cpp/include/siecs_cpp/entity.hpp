@@ -20,6 +20,11 @@ class entity {
         return *this;
     }
 
+    entity abstract() {
+        ecs_add(_world, _entity, Abstract);
+        return *this;
+    }
+
     template <typename T> entity remove() {
         ecs_remove_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world));
         return *this;

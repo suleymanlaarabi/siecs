@@ -4,7 +4,11 @@
 #include "resource.hpp"
 #include "siecs.h"
 #include "siecs_cpp/entity.hpp"
+#include <cstdint>
 #include <functional>
+#include <tuple>
+#include <type_traits>
+#include <utility>
 
 namespace ecs {
 
@@ -50,30 +54,128 @@ inline auto make_fields(ecs_iter_t *it, Resources &resources, std::index_sequenc
     return std::tuple{ make_batch_arg<Args, Is>(it, resources)... };
 }
 
-template <std::size_t I, typename Tuple>
+template <std::uint8_t SharedMask, std::size_t I, typename Args, typename Tuple>
 inline decltype(auto) row_arg(Tuple &fields, uint32_t row) {
     auto &field = std::get<I>(fields);
 
-    if constexpr (is_res_v<std::remove_reference_t<decltype(field)>>) {
+    using arg = std::tuple_element_t<I, Args>;
+    if constexpr (is_res_v<arg>) {
         (void)row;
         return field;
     } else {
-        return field[row];
+        constexpr std::size_t field_index = field_index_before<Args, I>();
+        if constexpr ((SharedMask & (1U << field_index)) != 0) {
+            (void)row;
+            return field[0];
+        } else {
+            return field[row];
+        }
     }
 }
 
-template <typename F, typename Tuple, std::size_t... Is>
+template <std::size_t I, typename Args, typename Tuple>
+inline decltype(auto) row_arg_stride(Tuple &fields, uint32_t row, const uint32_t *strides) {
+    auto &field = std::get<I>(fields);
+
+    using arg = std::tuple_element_t<I, Args>;
+    if constexpr (is_res_v<arg>) {
+        (void)row;
+        (void)strides;
+        return field;
+    } else {
+        constexpr std::size_t field_index = field_index_before<Args, I>();
+        return field[row * strides[field_index]];
+    }
+}
+
+template <std::uint8_t SharedMask, typename F, typename Args, typename Tuple, std::size_t... Is>
 inline void call_fields_impl(F &func, Tuple &fields, uint32_t count, std::index_sequence<Is...>) {
     for (uint32_t i = 0; i < count; i++) {
-        std::invoke(func, row_arg<Is>(fields, i)...);
+        std::invoke(func, row_arg<SharedMask, Is, Args>(fields, i)...);
     }
 }
 
-template <typename F, typename Tuple>
-inline void call_fields(F &func, Tuple &fields, uint32_t count) {
+template <typename F, typename Args, typename Tuple, std::size_t... Is>
+inline void call_fields_stride_impl(
+    F &func,
+    Tuple &fields,
+    uint32_t count,
+    const uint32_t *strides,
+    std::index_sequence<Is...>
+) {
+    (void)strides;
+    for (uint32_t i = 0; i < count; i++) {
+        std::invoke(func, row_arg_stride<Is, Args>(fields, i, strides)...);
+    }
+}
+
+template <std::uint8_t SharedMask, typename F, typename Args, typename Tuple>
+inline void call_fields_mask(F &func, Tuple &fields, uint32_t count) {
     constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<Tuple>>;
 
-    call_fields_impl(func, fields, count, std::make_index_sequence<N>{});
+    call_fields_impl<SharedMask, F, Args>(func, fields, count, std::make_index_sequence<N>{});
+}
+
+template <typename F, typename Args, typename Tuple>
+inline void call_fields_stride(F &func, Tuple &fields, uint32_t count, std::uint8_t shared_mask) {
+    constexpr std::size_t component_count = component_arg_count<Args>();
+    constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<Tuple>>;
+
+    uint32_t strides[component_count == 0 ? 1 : component_count]{};
+    for (std::size_t i = 0; i < component_count; i++) {
+        strides[i] = (shared_mask & (1U << i)) ? 0U : 1U;
+    }
+
+    call_fields_stride_impl<F, Args>(func, fields, count, strides, std::make_index_sequence<N>{});
+}
+
+template <typename F, typename Args, typename Tuple>
+inline void call_fields(F &func, Tuple &fields, uint32_t count, std::uint8_t shared_mask) {
+    switch (shared_mask) {
+    case 0:
+        call_fields_mask<0, F, Args, Tuple>(func, fields, count);
+        break;
+    case 1U << 0:
+        call_fields_mask<1U << 0, F, Args, Tuple>(func, fields, count);
+        break;
+    case 1U << 1:
+        call_fields_mask<1U << 1, F, Args, Tuple>(func, fields, count);
+        break;
+    case 1U << 2:
+        call_fields_mask<1U << 2, F, Args, Tuple>(func, fields, count);
+        break;
+    case 1U << 3:
+        call_fields_mask<1U << 3, F, Args, Tuple>(func, fields, count);
+        break;
+    case 1U << 4:
+        call_fields_mask<1U << 4, F, Args, Tuple>(func, fields, count);
+        break;
+    case 1U << 5:
+        call_fields_mask<1U << 5, F, Args, Tuple>(func, fields, count);
+        break;
+    case 1U << 6:
+        call_fields_mask<1U << 6, F, Args, Tuple>(func, fields, count);
+        break;
+    case 1U << 7:
+        call_fields_mask<1U << 7, F, Args, Tuple>(func, fields, count);
+        break;
+    default:
+        call_fields_stride<F, Args>(func, fields, count, shared_mask);
+        break;
+    }
+}
+
+template <typename Args> inline std::uint8_t make_shared_mask(const ecs_iter_t *it) {
+    constexpr std::size_t component_count = component_arg_count<Args>();
+    static_assert(component_count <= 8, "query callbacks can read at most 8 components");
+
+    std::uint8_t mask = 0;
+    for (std::size_t i = 0; i < component_count; i++) {
+        if (it->field_kinds[i] == EcsFieldShared) {
+            mask |= static_cast<std::uint8_t>(1U << i);
+        }
+    }
+    return mask;
 }
 
 template <typename T> consteval ecs_term_access_t term_access() {
@@ -137,7 +239,7 @@ inline void run_query(F &func, ecs_world_t *world, ecs_query_id_t qid) {
     while (ecs_iter_next(&it)) {
         auto fields =
             make_fields<Args>(&it, resources, std::make_index_sequence<std::tuple_size_v<Args>>{});
-        call_fields(func, fields, it.count);
+        call_fields<F, Args>(func, fields, it.count, make_shared_mask<Args>(&it));
     }
 }
 
@@ -145,7 +247,7 @@ template <typename F, typename Args> inline void run_batch(F &func, ecs_iter_t *
     auto resources = make_resources<Args>(it->world);
     auto fields =
         make_fields<Args>(it, resources, std::make_index_sequence<std::tuple_size_v<Args>>{});
-    call_fields(func, fields, it->count);
+    call_fields<F, Args>(func, fields, it->count, make_shared_mask<Args>(it));
 }
 
 template <typename F, typename Args> inline void run_once(F &func, ecs_world_t *world) {
@@ -154,7 +256,7 @@ template <typename F, typename Args> inline void run_once(F &func, ecs_world_t *
     auto resources = make_resources<Args>(world);
     auto fields =
         make_fields<Args>(nullptr, resources, std::make_index_sequence<std::tuple_size_v<Args>>{});
-    call_fields(func, fields, 1);
+    call_fields<F, Args>(func, fields, 1, 0);
 }
 
 template <typename F, typename Args>

@@ -23,6 +23,12 @@ void resource_query_read(void);
 void resource_does_not_create_query_term(void);
 void resource_field_index_stays_correct(void);
 
+// Testsuite 'query'
+void query_reads_shared_inherited_field(void);
+void query_mutable_does_not_match_shared_inherited_field(void);
+void query_reads_shared_and_writes_owned_field(void);
+void query_owned_override_wins_over_shared_field(void);
+
 // Testsuite 'observer'
 void observer_custom_event(void);
 void observer_const_arg(void);
@@ -90,6 +96,25 @@ bake_test_case resource_testcases[] = {
     {
         "field_index_stays_correct",
         resource_field_index_stays_correct
+    }
+};
+
+bake_test_case query_testcases[] = {
+    {
+        "reads_shared_inherited_field",
+        query_reads_shared_inherited_field
+    },
+    {
+        "mutable_does_not_match_shared_inherited_field",
+        query_mutable_does_not_match_shared_inherited_field
+    },
+    {
+        "reads_shared_and_writes_owned_field",
+        query_reads_shared_and_writes_owned_field
+    },
+    {
+        "owned_override_wins_over_shared_field",
+        query_owned_override_wins_over_shared_field
     }
 };
 
@@ -175,6 +200,13 @@ static bake_test_suite suites[] = {
         resource_testcases
     },
     {
+        "query",
+        NULL,
+        NULL,
+        4,
+        query_testcases
+    },
+    {
         "observer",
         NULL,
         NULL,
@@ -198,5 +230,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs_cpp.test", argc, argv, suites, 5);
+    return bake_test_run("siecs_cpp.test", argc, argv, suites, 6);
 }

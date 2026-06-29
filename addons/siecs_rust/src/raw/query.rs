@@ -35,6 +35,7 @@ impl Default for QueryTerm {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct QueryDesc {
     pub terms: [QueryTerm; 16],
+    pub is_a: EntityId,
 }
 
 impl Default for QueryDesc {
@@ -42,8 +43,17 @@ impl Default for QueryDesc {
     fn default() -> Self {
         Self {
             terms: [QueryTerm::default(); 16],
+            is_a: 0,
         }
     }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FieldKind {
+    None,
+    Owned,
+    Shared,
 }
 
 #[repr(C)]
@@ -57,7 +67,8 @@ pub struct Iter {
     pub count: u32,
     pub entities: *mut EntityId,
     pub cache: *mut QueryCache,
-    pub ptrs: *mut *mut *mut c_void,
+    pub ptrs: *mut *mut c_void,
+    pub field_kinds: *mut FieldKind,
     pub table_idx: u16,
     pub table_count: u16,
 }
@@ -71,7 +82,11 @@ extern "C" {
 
 #[inline]
 pub unsafe fn ecs_field(it: *mut Iter, field_index: u16) -> *mut c_void {
-    let ptrs = (*it).ptrs;
+    let field = *(*it).ptrs.add(field_index as usize);
 
-    *(*ptrs.add(field_index as usize))
+    if *(*it).field_kinds.add(field_index as usize) == FieldKind::Owned {
+        *(field as *mut *mut c_void)
+    } else {
+        field
+    }
 }

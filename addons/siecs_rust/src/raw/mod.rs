@@ -26,8 +26,8 @@ pub use component::{
 };
 pub use entity::{ecs_is_alive, ecs_kill, ecs_new};
 pub use query::{
-    ecs_field, ecs_iter_next, ecs_query_fini, ecs_query_init, ecs_query_iter, Iter, QueryDesc,
-    QueryTerm, TermAccess,
+    ecs_field, ecs_iter_next, ecs_query_fini, ecs_query_init, ecs_query_iter, FieldKind, Iter,
+    QueryDesc, QueryTerm, TermAccess,
 };
 pub use system::{
     ecs_progress, ecs_run_phase, ecs_run_system, ecs_system_disable, ecs_system_enable,

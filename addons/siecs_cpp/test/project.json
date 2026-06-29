@@ -34,6 +34,15 @@
         ]
       },
       {
+        "id": "query",
+        "testcases": [
+          "reads_shared_inherited_field",
+          "mutable_does_not_match_shared_inherited_field",
+          "reads_shared_and_writes_owned_field",
+          "owned_override_wins_over_shared_field"
+        ]
+      },
+      {
         "id": "observer",
         "testcases": [
           "custom_event",
