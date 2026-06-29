@@ -130,7 +130,7 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     map->slots[slot_idx].hash = hash_fingerprint;
     map->slots[slot_idx].table_index = table_idx;
 
-    ecs_query_index_add_table(&world->query_index, ecs_table_index_at(map, table_idx), table_idx);
-    ecs_observer_index_add_table(&world->observer_index, ecs_table_index_at(map, table_idx));
+    ecs_query_index_add_table(world, ecs_table_index_at(map, table_idx), table_idx);
+    ecs_observer_index_add_table(world, ecs_table_index_at(map, table_idx));
     return (uint16_t)table_idx;
 }

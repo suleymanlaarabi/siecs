@@ -367,7 +367,7 @@ bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t 
     ecs_assert_is_alive(world, entity);
 
     uint16_t tid = ecs_get_record(world, entity)->table_id;
-    return ecs_table_has(ecs_get_table(world, tid), id);
+    return ecs_table_has(world, ecs_get_table(world, tid), id);
 }
 
 #ifndef NDEBUG

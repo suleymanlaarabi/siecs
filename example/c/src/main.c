@@ -1,5 +1,6 @@
 #include "siecs.h"
 #include "sijson.h"
+#include <assert.h>
 #include <string.h>
 
 ECS_COMPONENT(Position, {
@@ -47,20 +48,13 @@ int main(void) {
 
     ECS_MODULE_IMPORT(world, physics, {});
 
+    ecs_entity_t human = ecs_new(world);
+    ecs_set(world, human, Position, { 0, 0 });
+
     ecs_entity_t player = ecs_new(world);
-    ecs_set(world, player, Position, { 0, 0 });
-    ecs_set(world, player, Velocity, { 1, 1 });
-    ecs_set(world, player, Name, { .value = strdup("Player") });
+    ecs_is_a(world, player, human);
 
-    ecs_entity_t child = ecs_new(world);
-    ecs_set(world, child, ChildOf, { player });
-    ecs_set(world, child, Name, { .value = strdup("Child") });
-
-    ecs_entity_t enemy = ecs_new(world);
-    ecs_set(world, enemy, Name, { .value = strdup("Enemy") });
-
-    while (ecs_progress(world)) {
-    }
+    assert(ecs_has(world, player, Position));
 
     ecs_fini(world);
 }

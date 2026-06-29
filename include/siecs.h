@@ -463,6 +463,8 @@ SIECS_API ecs_entity_t ecs_new(ecs_world_t *world);
  */
 SIECS_API bool ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity);
 
+SIECS_API void ecs_is_a(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target);
+
 /* Destroy an alive entity and remove all of its components. */
 SIECS_API void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
 

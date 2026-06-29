@@ -11,6 +11,10 @@
 // Testsuite 'entity'
 void entity_create(void);
 void entity_with(void);
+void entity_is_a_moves_entity_to_type_with_base(void);
+void entity_is_a_keeps_local_component_data(void);
+void entity_is_a_same_target_is_noop(void);
+void entity_is_a_different_target_creates_different_table(void);
 
 // Testsuite 'component'
 void component_reflection(void);
@@ -111,6 +115,22 @@ bake_test_case entity_testcases[] = {
     {
         "with",
         entity_with
+    },
+    {
+        "is_a_moves_entity_to_type_with_base",
+        entity_is_a_moves_entity_to_type_with_base
+    },
+    {
+        "is_a_keeps_local_component_data",
+        entity_is_a_keeps_local_component_data
+    },
+    {
+        "is_a_same_target_is_noop",
+        entity_is_a_same_target_is_noop
+    },
+    {
+        "is_a_different_target_creates_different_table",
+        entity_is_a_different_target_creates_different_table
     }
 };
 
@@ -429,7 +449,7 @@ static bake_test_suite suites[] = {
         "entity",
         NULL,
         NULL,
-        2,
+        6,
         entity_testcases
     },
     {

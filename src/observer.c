@@ -12,7 +12,7 @@ ecs_observer_id_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_
     ecs_assert(desc->callback != NULL, "Observer callback cannot be NULL");
     ecs_observer_id_t oid = ecs_observer_index_create(&world->observer_index, desc);
     ecs_observer_index_match_tables(
-        &world->observer_index,
+        world,
         world->table_index.tables,
         world->table_index.table_count,
         oid

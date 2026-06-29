@@ -70,9 +70,11 @@ ecs_table_column_or_invalid(const ecs_table_t *table, ecs_component_t component_
     return UINT16_MAX;
 }
 
-static inline bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
-    return ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
-}
+bool ecs_table_has(
+    const ecs_world_t *world,
+    const ecs_table_t *table,
+    ecs_component_t component_id
+);
 
 static inline uint16_t
 ecs_table_get_column_index(const ecs_table_t *table, ecs_component_t component_id) {

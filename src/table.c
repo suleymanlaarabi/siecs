@@ -3,6 +3,7 @@
 #include "./type.h"
 #include "datastructure/idmap.h"
 #include "datastructure/vec.h"
+#include "world_internal.h"
 #include <stdlib.h>
 
 void ecs_table_init(
@@ -119,4 +120,19 @@ void ecs_table_fini(ecs_table_t *table) {
     free(table->cls);
     free(table->data_columns);
     ecs_type_fini(&table->type);
+}
+
+bool ecs_table_has(
+    const ecs_world_t *world,
+    const ecs_table_t *table,
+    ecs_component_t component_id
+) {
+    bool result = ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
+
+    if (!result && table->base_table_id != UINT16_MAX) {
+        result =
+            ecs_table_has(world, &world->table_index.tables[table->base_table_id], component_id);
+    }
+
+    return result;
 }

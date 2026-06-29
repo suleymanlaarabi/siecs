@@ -112,16 +112,7 @@ void rest_schema_returns_editor_contract(void) {
     test_assert(string_type != NULL);
     test_str("string", sijson_string(sijson_object_get(string_type, "editor")));
 
-    sijson_value_t isa = rest_find_by_name(components, "IsA");
-    test_assert(isa != NULL);
-    sijson_value_t target = rest_find_by_name(sijson_object_get(isa, "fields"), "target");
-    test_assert(target != NULL);
-
-    sijson_value_t entity_type =
-        rest_find_type(types, sijson_number(sijson_object_get(target, "type")));
-    test_assert(entity_type != NULL);
-    test_str("entity", sijson_string(sijson_object_get(entity_type, "editor")));
-
+    test_assert(rest_find_by_name(components, "IsA") == NULL);
     test_assert(rest_find_by_name(components, "ChildOf") == NULL);
     rest_assert_no_extra_schema_fields(schema);
 

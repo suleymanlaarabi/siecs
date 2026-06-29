@@ -5,6 +5,7 @@
 #include "../utils.h"
 #include "../world_internal.h"
 #include "component_index.h"
+#include "siecs.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -229,7 +230,7 @@ void ecs_query_index_update_matches(ecs_world_t *world, ecs_query_cache_t *query
         ecs_vec_iter(tables_vec, uint16_t, table_index, {
             const ecs_table_t *table = &world->table_index.tables[*table_index];
 
-            if (ecs_query_match_table(&query_cache->query, table)) {
+            if (ecs_query_match_table(world, &query_cache->query, table)) {
                 ecs_query_cache_add_table(query_cache, table, *table_index);
             }
         });
@@ -238,23 +239,19 @@ void ecs_query_index_update_matches(ecs_world_t *world, ecs_query_cache_t *query
         const ecs_table_t *tables = world->table_index.tables;
 
         for (uint16_t i = 0; i < table_count; i++) {
-            if (ecs_query_match_table(&query_cache->query, &tables[i])) {
+            if (ecs_query_match_table(world, &query_cache->query, &tables[i])) {
                 ecs_query_cache_add_table(query_cache, &tables[i], i);
             }
         }
     }
 }
 
-void ecs_query_index_add_table(
-    ecs_query_index_t *index,
-    const ecs_table_t *table,
-    uint16_t table_id
-) {
-    const ecs_query_id_t *active_ids = index->active_ids.data;
-    for (uint32_t i = 0; i < index->active_ids.size; i++) {
+void ecs_query_index_add_table(ecs_world_t *world, const ecs_table_t *table, uint16_t table_id) {
+    const ecs_query_id_t *active_ids = world->query_index.active_ids.data;
+    for (uint32_t i = 0; i < world->query_index.active_ids.size; i++) {
         ecs_query_cache_t *cache =
-            ecs_vec_get_mut(&index->queries, active_ids[i], ecs_query_cache_t);
-        if (ecs_query_match_table(&cache->query, table)) {
+            ecs_vec_get_mut(&world->query_index.queries, active_ids[i], ecs_query_cache_t);
+        if (ecs_query_match_table(world, &cache->query, table)) {
             ecs_query_cache_add_table(cache, table, table_id);
         }
     }
