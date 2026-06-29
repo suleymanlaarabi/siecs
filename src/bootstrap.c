@@ -34,7 +34,5 @@ void ecs_bootstrap(ecs_world_t *world) {
     ECS_COMPONENT_REGISTER(world, Disabled);
     ECS_COMPONENT_REGISTER(world, Abstract);
 
-    ecs_with(world, ecs_id(Abstract), ecs_id(Disabled));
-
     init_rest(world);
 }

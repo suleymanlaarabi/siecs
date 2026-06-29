@@ -1,6 +1,7 @@
 #include "siecs.h"
 #include "sijson.h"
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
 ECS_COMPONENT(Position, {
@@ -13,40 +14,10 @@ ECS_COMPONENT(Velocity, {
     float y;
 });
 
-void Move(ecs_iter_t *it) {
-    Position *positions = ecs_field(it, 0);
-    Velocity *velocities = ecs_field(it, 1);
-
-    for (uint32_t i = 0; i < it->count; i++) {
-        positions[i].x += velocities[i].x;
-        positions[i].y += velocities[i].y;
-    }
-}
-
-ECS_MODULE_DECLARE(physics, {});
-
-ECS_MODULE_DEFINE(physics);
-
-void physics_import(ecs_world_t *world, const physics_props_t *props) {
-    (void)props;
-
-    ECS_COMPONENT_REGISTER(world, Position);
-    ECS_COMPONENT_REGISTER(world, Velocity);
-
-    ecs_system(
-        world,
-        {
-            .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
-            .callback = Move,
-            .phase = EcsOnUpdate,
-        }
-    );
-}
-
 int main(void) {
     ecs_world_t *world = ecs_with_features({ .rest = true });
 
-    ECS_MODULE_IMPORT(world, physics, {});
+    ECS_COMPONENT_REGISTER(world, Position);
 
     ecs_entity_t animal = ecs_new(world);
     ecs_set(world, animal, Position, { 0, 0 });
@@ -59,7 +30,24 @@ int main(void) {
     ecs_entity_t player = ecs_new(world);
     ecs_is_a(world, player, human);
 
-    assert(ecs_has(world, player, Position));
+    ecs_query_id_t qid = ecs_query(
+        world,
+        {
+            .terms = { { ecs_id(Position), .access = EcsIn } },
+        }
+    );
+
+    ecs_iter_t it = ecs_query_iter(world, qid);
+
+    int count = 0;
+
+    while (ecs_iter_next(&it)) {
+        count += it.count;
+    }
+
+    printf("%d\n", it.count);
+
+    assert(count == 1);
 
     ecs_fini(world);
 }

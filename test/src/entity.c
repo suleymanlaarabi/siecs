@@ -1,5 +1,5 @@
-#include <siecs_test.h>
 #include "world_internal.h"
+#include <siecs_test.h>
 
 ECS_COMPONENT_DECLARE(Transform, { int value; });
 ECS_COMPONENT_DECLARE(Renderable, { int value; });
@@ -44,6 +44,7 @@ void entity_is_a_moves_entity_to_type_with_base(void) {
 
     ecs_entity_t base = ecs_new(world);
     ecs_add(world, base, Transform);
+    ecs_add(world, base, Abstract);
 
     ecs_entity_t entity = ecs_new(world);
     ecs_add(world, entity, Renderable);
@@ -67,10 +68,10 @@ void entity_is_a_keeps_local_component_data(void) {
 
     ecs_entity_t base = ecs_new(world);
     ecs_add(world, base, Transform);
+    ecs_add(world, base, Abstract);
 
     ecs_entity_t entity = ecs_new(world);
     ecs_set(world, entity, Renderable, { 42 });
-
     ecs_is_a(world, entity, base);
 
     test_true(ecs_has(world, entity, Renderable));
@@ -87,9 +88,11 @@ void entity_is_a_same_target_is_noop(void) {
 
     ecs_entity_t base = ecs_new(world);
     ecs_add(world, base, Transform);
+    ecs_add(world, base, Abstract);
 
     ecs_entity_t entity = ecs_new(world);
     ecs_set(world, entity, Renderable, { 7 });
+    ecs_add(world, entity, Abstract);
 
     ecs_is_a(world, entity, base);
     ecs_entity_record_t before = *ecs_get_record(world, entity);
@@ -112,9 +115,11 @@ void entity_is_a_different_target_creates_different_table(void) {
 
     ecs_entity_t base_a = ecs_new(world);
     ecs_add(world, base_a, Transform);
+    ecs_add(world, base_a, Abstract);
 
     ecs_entity_t base_b = ecs_new(world);
     ecs_add(world, base_b, Transform);
+    ecs_add(world, base_b, Abstract);
 
     ecs_entity_t entity_a = ecs_new(world);
     ecs_add(world, entity_a, Renderable);

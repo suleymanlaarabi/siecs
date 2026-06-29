@@ -153,6 +153,51 @@ void query_can_include_disabled_explicitly(void) {
     ecs_fini(world);
 }
 
+void query_excludes_abstract_by_default(void) {
+    ecs_world_t *world = query_test_world();
+    ecs_entity_t entity = query_test_entity(world, 1, 2, 3);
+    ecs_entity_t abstract = query_test_entity(world, 10, 20, 30);
+    ecs_add(world, abstract, Abstract);
+
+    ecs_query_id_t query = ecs_query(world, { .terms = { ecs_in(QueryPosition) } });
+
+    ecs_iter_t it = ecs_query_iter(world, query);
+    test_true(ecs_iter_next(&it));
+
+    QueryPosition *position = ecs_field(&it, 0);
+    test_int(1, it.count);
+    test_assert(it.entities[0] == entity);
+    test_int(ecs_get(world, entity, QueryPosition)->value, position[0].value);
+    test_false(ecs_iter_next(&it));
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
+void query_can_include_abstract_explicitly(void) {
+    ecs_world_t *world = query_test_world();
+    ecs_entity_t entity = query_test_entity(world, 1, 2, 3);
+    ecs_entity_t abstract = query_test_entity(world, 10, 20, 30);
+    ecs_add(world, abstract, Abstract);
+
+    ecs_query_id_t query =
+        ecs_query(world, { .terms = { ecs_in(QueryPosition), ecs_filter(Abstract) } });
+
+    ecs_iter_t it = ecs_query_iter(world, query);
+    test_true(ecs_iter_next(&it));
+
+    QueryPosition *position = ecs_field(&it, 0);
+    test_int(1, it.count);
+    test_assert(it.entities[0] == abstract);
+    test_int(ecs_get(world, abstract, QueryPosition)->value, position[0].value);
+    test_int(1, ecs_has(world, abstract, Abstract));
+    test_int(0, ecs_has(world, entity, Abstract));
+    test_false(ecs_iter_next(&it));
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
 void query_optional_field_present(void) {
     ecs_world_t *world = query_test_world();
     query_test_entity(world, 10, 20, 30);
@@ -241,6 +286,7 @@ void query_inherited_field_is_shared(void) {
 
     ecs_entity_t base = ecs_new(world);
     ecs_set(world, base, QueryPosition, { 42 });
+    ecs_add(world, base, Abstract);
 
     ecs_entity_t entity = ecs_new(world);
     ecs_is_a(world, entity, base);
@@ -271,6 +317,7 @@ void query_override_field_is_owned(void) {
 
     ecs_entity_t base = ecs_new(world);
     ecs_set(world, base, QueryPosition, { 42 });
+    ecs_add(world, base, Abstract);
 
     ecs_entity_t entity = ecs_new(world);
     ecs_is_a(world, entity, base);
@@ -305,6 +352,7 @@ void query_inout_does_not_match_shared_inherited_field(void) {
 
     ecs_entity_t base = ecs_new(world);
     ecs_set(world, base, QueryPosition, { 42 });
+    ecs_add(world, base, Abstract);
 
     ecs_entity_t entity = ecs_new(world);
     ecs_is_a(world, entity, base);
@@ -325,6 +373,7 @@ void query_inout_optional_ignores_shared_inherited_field(void) {
 
     ecs_entity_t base = ecs_new(world);
     ecs_set(world, base, QueryPosition, { 42 });
+    ecs_add(world, base, Abstract);
 
     ecs_entity_t entity = ecs_new(world);
     ecs_is_a(world, entity, base);

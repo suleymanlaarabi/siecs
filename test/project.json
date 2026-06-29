@@ -96,6 +96,8 @@
           "not_excludes_tables",
           "excludes_disabled_by_default",
           "can_include_disabled_explicitly",
+          "excludes_abstract_by_default",
+          "can_include_abstract_explicitly",
           "optional_field_present",
           "optional_field_missing_keeps_field_order",
           "inout_optional_mutates_when_present",

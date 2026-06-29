@@ -130,6 +130,10 @@ bool ecs_table_has(
         return true;
     }
 
+    if (component_id == ecs_id(Abstract)) {
+        return false;
+    }
+
     ecs_entity_t base = table->type.base;
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(world, base);

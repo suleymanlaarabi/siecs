@@ -394,10 +394,12 @@ void component_table_resolves_recursive_base_components(void) {
 
     ecs_entity_t grandparent = ecs_new(world);
     ecs_set(world, grandparent, Position, { 10, 20 });
+    ecs_add(world, grandparent, Abstract);
 
     ecs_entity_t parent = ecs_new(world);
     ecs_set(world, parent, Velocity, { 30, 40 });
     ecs_is_a(world, parent, grandparent);
+    ecs_add(world, parent, Abstract);
 
     ecs_entity_t child = ecs_new(world);
     ecs_is_a(world, child, parent);
