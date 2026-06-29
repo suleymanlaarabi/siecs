@@ -41,6 +41,10 @@ void ecs_query_index_add_table(ecs_world_t *world, const ecs_table_t *table, uin
 void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query);
 void ecs_query_index_destroy(ecs_query_t *query);
 
+static inline bool ecs_query_term_requires_owned(ecs_query_term_t term) {
+    return term.access == EcsOut || term.access == EcsInOut || term.access == EcsInOutOptional;
+}
+
 static inline bool ecs_query_match_table(
     const ecs_world_t *world,
     const ecs_query_t *query,
@@ -55,6 +59,10 @@ static inline bool ecs_query_match_table(
             continue;
         } else if (term.access == EcsNot) {
             if (ecs_table_has(world, table, term.id)) {
+                return false;
+            }
+        } else if (ecs_query_term_requires_owned(term)) {
+            if (ecs_table_column_or_invalid(table, term.id) == UINT16_MAX) {
                 return false;
             }
         } else if (!ecs_table_has(world, table, term.id)) {

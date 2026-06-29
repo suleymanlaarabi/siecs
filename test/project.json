@@ -101,6 +101,8 @@
           "inout_optional_mutates_when_present",
           "inherited_field_is_shared",
           "override_field_is_owned",
+          "inout_does_not_match_shared_inherited_field",
+          "inout_optional_ignores_shared_inherited_field",
           "ids_stay_valid_after_temporary_query_fini"
         ]
       },

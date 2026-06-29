@@ -300,6 +300,54 @@ void query_override_field_is_owned(void) {
     ecs_fini(world);
 }
 
+void query_inout_does_not_match_shared_inherited_field(void) {
+    ecs_world_t *world = query_test_world();
+
+    ecs_entity_t base = ecs_new(world);
+    ecs_set(world, base, QueryPosition, { 42 });
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_is_a(world, entity, base);
+
+    ecs_query_id_t query = ecs_query(world, { .terms = { ecs_inout(QueryPosition) } });
+    ecs_iter_t it = ecs_query_iter(world, query);
+
+    while (ecs_iter_next(&it)) {
+        test_assert(it.entities[0] != entity);
+    }
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
+void query_inout_optional_ignores_shared_inherited_field(void) {
+    ecs_world_t *world = query_test_world();
+
+    ecs_entity_t base = ecs_new(world);
+    ecs_set(world, base, QueryPosition, { 42 });
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_is_a(world, entity, base);
+
+    ecs_query_id_t query = ecs_query(world, { .terms = { ecs_inout_optional(QueryPosition) } });
+    ecs_iter_t it = ecs_query_iter(world, query);
+
+    bool found_entity = false;
+    while (ecs_iter_next(&it)) {
+        if (it.entities[0] == entity) {
+            test_int(1, it.count);
+            test_int(EcsFieldNone, it.field_kinds[0]);
+            test_assert(ecs_field(&it, 0) == NULL);
+            found_entity = true;
+        }
+    }
+
+    test_true(found_entity);
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
 void query_ids_stay_valid_after_temporary_query_fini(void) {
     ecs_world_t *world = query_test_world();
     ecs_entity_t entity = query_test_entity(world, 10, 20, 30);

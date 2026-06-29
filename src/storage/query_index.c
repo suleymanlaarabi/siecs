@@ -173,18 +173,32 @@ ecs_query_cache_add_table(
     const uint32_t base = (uint32_t)(table_count - 1) * field_count;
     for (uint16_t i = 0; i < cache->query.field_count; i++) {
         const ecs_query_term_t term = cache->query.fields[i];
-        bool is_shared = false;
-        void *field = ecs_table_field(world, table, term.id, &is_shared);
+        void *field = NULL;
+        ecs_field_kind_t field_kind = EcsFieldNone;
+
+        if (ecs_query_term_requires_owned(term)) {
+            uint16_t column = ecs_table_column_or_invalid(table, term.id);
+            if (column != UINT16_MAX) {
+                field = &table->cls[column].data;
+                field_kind = EcsFieldOwned;
+            }
+        } else {
+            bool is_shared = false;
+            field = ecs_table_field(world, table, term.id, &is_shared);
+            if (field || is_shared) {
+                field_kind = is_shared ? EcsFieldShared : EcsFieldOwned;
+            }
+        }
 
         ecs_assert(
-            field || is_shared || term.access == EcsInOptional || term.access == EcsInOutOptional,
+            field_kind != EcsFieldNone || term.access == EcsInOptional ||
+                term.access == EcsInOutOptional,
             "query cache matched table without field component: %d\n",
             term.id
         );
 
         cache->fields_ptr[base + i] = field;
-        cache->fields_kind[base + i] =
-            (field || is_shared) ? (is_shared ? EcsFieldShared : EcsFieldOwned) : EcsFieldNone;
+        cache->fields_kind[base + i] = field_kind;
     }
 }
 
