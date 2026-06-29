@@ -725,8 +725,6 @@ void ecs_bootstrap(ecs_world_t *world) {
     ECS_COMPONENT_REGISTER(world, Disabled);
     ECS_COMPONENT_REGISTER(world, Abstract);
 
-    ecs_with(world, ecs_id(Abstract), ecs_id(Disabled));
-
     init_rest(world);
 }
 
@@ -1642,6 +1640,10 @@ bool ecs_table_has(
 ) {
     if (ecs_table_column_or_invalid(table, component_id) != UINT16_MAX) {
         return true;
+    }
+
+    if (component_id == ecs_id(Abstract)) {
+        return false;
     }
 
     ecs_entity_t base = table->type.base;
@@ -4015,21 +4017,37 @@ ecs_query_has_term(const ecs_query_term_t *terms, uint16_t term_count, ecs_compo
 }
 
 static ecs_query_term_t *
-ecs_query_copy_terms_with_implicit_disabled(const ecs_query_term_t *terms, uint16_t *count) {
-    const ecs_component_t disabled = ecs_id(Disabled);
+ecs_query_copy_terms_with_implicit_excludes(const ecs_query_term_t *terms, uint16_t *count) {
+    const ecs_component_t excludes[] = {
+        ecs_id(Disabled),
+        ecs_id(Abstract),
+    };
+    const uint16_t explicit_count = *count;
+    uint16_t exclude_count = 0;
 
-    if (!disabled || ecs_query_has_term(terms, *count, disabled)) {
+    for (uint32_t i = 0; i < sizeof(excludes) / sizeof(excludes[0]); i++) {
+        if (excludes[i] && !ecs_query_has_term(terms, explicit_count, excludes[i])) {
+            exclude_count++;
+        }
+    }
+
+    if (exclude_count == 0) {
         return ecs_query_copy_terms(terms, *count);
     }
 
-    ecs_assert(*count + 1 < 16, "query has no room for implicit Disabled term\n");
+    ecs_assert(*count + exclude_count < 16, "query has no room for implicit exclude terms\n");
 
-    ecs_query_term_t *copy = malloc(sizeof(ecs_query_term_t) * (*count + 1));
+    ecs_query_term_t *copy = malloc(sizeof(ecs_query_term_t) * (*count + exclude_count));
     if (*count != 0) {
         memcpy(copy, terms, sizeof(ecs_query_term_t) * *count);
     }
-    copy[*count] = (ecs_query_term_t){ .id = disabled, .access = EcsNot };
-    *count += 1;
+
+    for (uint32_t i = 0; i < sizeof(excludes) / sizeof(excludes[0]); i++) {
+        if (excludes[i] && !ecs_query_has_term(terms, explicit_count, excludes[i])) {
+            copy[*count] = (ecs_query_term_t){ .id = excludes[i], .access = EcsNot };
+            *count += 1;
+        }
+    }
 
     return copy;
 }
@@ -4069,7 +4087,7 @@ void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
     query->term_count = ecs_query_count_terms(desc->terms);
     ecs_assert(query->term_count != 0, "query must contain at least one term\n");
 
-    query->terms = ecs_query_copy_terms_with_implicit_disabled(desc->terms, &query->term_count);
+    query->terms = ecs_query_copy_terms_with_implicit_excludes(desc->terms, &query->term_count);
     ecs_query_validate_terms(query->terms, query->term_count);
 
     query->field_count = 0;
@@ -4099,8 +4117,7 @@ void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
     }
 }
 
-static void
-ecs_query_cache_add_table(
+static void ecs_query_cache_add_table(
     ecs_world_t *world,
     ecs_query_cache_t *cache,
     const ecs_table_t *table,
