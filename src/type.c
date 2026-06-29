@@ -7,6 +7,7 @@ ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id) {
     ecs_type_t new_type = {
         .ids = malloc((type->count + 1) * sizeof(uint16_t)),
         .count = type->count + 1,
+        .base = type->base,
     };
 
     uint16_t i = 0;
@@ -28,13 +29,14 @@ ecs_type_t ecs_type_with_remove(const ecs_type_t *type, uint16_t id) {
             return ecs_type_with_remove_at(type, i);
         }
     }
-    return (ecs_type_t){ 0 };
+    return (ecs_type_t){ .base = type->base };
 }
 
 ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index) {
     ecs_type_t new_type = {
         .ids = malloc((type->count - 1) * sizeof(uint16_t)),
         .count = type->count - 1,
+        .base = type->base,
     };
     if (index > 0) {
         memcpy(new_type.ids, type->ids, index * sizeof(uint16_t));
@@ -45,6 +47,18 @@ ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index) {
             &type->ids[index + 1],
             (type->count - index - 1) * sizeof(uint16_t)
         );
+    }
+    return new_type;
+}
+
+ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base) {
+    ecs_type_t new_type = {
+        .ids = type->count == 0 ? NULL : malloc(type->count * sizeof(uint16_t)),
+        .count = type->count,
+        .base = base,
+    };
+    if (type->count != 0) {
+        memcpy(new_type.ids, type->ids, type->count * sizeof(uint16_t));
     }
     return new_type;
 }
