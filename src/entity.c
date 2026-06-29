@@ -22,19 +22,6 @@ bool ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity) {
     return ecs_entity_index_is_alive(&world->entity_index, entity);
 }
 
-static inline void copy_data_column(
-    const ecs_column_t *restrict from,
-    uint32_t from_row,
-    ecs_column_t *restrict to,
-    uint32_t to_row
-) {
-    memcpy(
-        (uint8_t *)to->data + (from->size * to_row),
-        (uint8_t *)from->data + (from->size * from_row),
-        from->size
-    );
-}
-
 #ifndef NDEBUG
 static inline bool
 ecs_would_create_base_cycle(const ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {

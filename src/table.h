@@ -76,6 +76,19 @@ bool ecs_table_has(
     ecs_component_t component_id
 );
 
+static inline void copy_data_column(
+    const ecs_column_t *restrict from,
+    uint32_t from_row,
+    ecs_column_t *restrict to,
+    uint32_t to_row
+) {
+    memcpy(
+        (uint8_t *)to->data + (from->size * to_row),
+        (uint8_t *)from->data + (from->size * from_row),
+        from->size
+    );
+}
+
 static inline uint16_t
 ecs_table_get_column_index(const ecs_table_t *table, ecs_component_t component_id) {
     return ecs_id_map_at(&table->add_edge, component_id);

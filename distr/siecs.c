@@ -248,8 +248,23 @@ ecs_table_column_or_invalid(const ecs_table_t *table, ecs_component_t component_
     return UINT16_MAX;
 }
 
-static inline bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
-    return ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
+bool ecs_table_has(
+    const ecs_world_t *world,
+    const ecs_table_t *table,
+    ecs_component_t component_id
+);
+
+static inline void copy_data_column(
+    const ecs_column_t *restrict from,
+    uint32_t from_row,
+    ecs_column_t *restrict to,
+    uint32_t to_row
+) {
+    memcpy(
+        (uint8_t *)to->data + (from->size * to_row),
+        (uint8_t *)from->data + (from->size * from_row),
+        from->size
+    );
 }
 
 static inline uint16_t
@@ -474,17 +489,17 @@ void ecs_query_index_init(ecs_query_index_t *index);
 void ecs_query_index_fini(ecs_query_index_t *index);
 uint16_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc);
 void ecs_query_index_update_matches(ecs_world_t *world, ecs_query_cache_t *query_cache);
-void ecs_query_index_add_table(
-    ecs_query_index_t *index,
-    const ecs_table_t *table,
-    uint16_t table_id
-);
+void ecs_query_index_add_table(ecs_world_t *world, const ecs_table_t *table, uint16_t table_id);
 
 // Reusable query helpers shared with the observer index.
 void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query);
 void ecs_query_index_destroy(ecs_query_t *query);
 
-static inline bool ecs_query_match_table(const ecs_query_t *query, const ecs_table_t *table) {
+static inline bool ecs_query_match_table(
+    const ecs_world_t *world,
+    const ecs_query_t *query,
+    const ecs_table_t *table
+) {
     if (ECS_LIKELY((query->bloom & table->bloom) != query->bloom)) {
         return false;
     }
@@ -493,10 +508,10 @@ static inline bool ecs_query_match_table(const ecs_query_t *query, const ecs_tab
         if (term.access == EcsInOptional || term.access == EcsInOutOptional) {
             continue;
         } else if (term.access == EcsNot) {
-            if (ecs_table_has(table, term.id)) {
+            if (ecs_table_has(world, table, term.id)) {
                 return false;
             }
-        } else if (!ecs_table_has(table, term.id)) {
+        } else if (!ecs_table_has(world, table, term.id)) {
             return false;
         }
     }
@@ -527,14 +542,14 @@ uint16_t ecs_observer_index_create(ecs_observer_index_t *index, const ecs_observ
 
 // Cache a freshly created observer onto every existing table it matches.
 void ecs_observer_index_match_tables(
-    ecs_observer_index_t *index,
+    ecs_world_t *world,
     ecs_table_t *tables,
     uint16_t table_count,
     uint16_t observer_id
 );
 
 // Cache every existing observer that matches a freshly created table.
-void ecs_observer_index_add_table(ecs_observer_index_t *index, ecs_table_t *table);
+void ecs_observer_index_add_table(ecs_world_t *world, ecs_table_t *table);
 
 #endif
 
@@ -672,7 +687,6 @@ struct ecs_table_s *ecs_iter_table(ecs_iter_t *it);
 #endif
 
 ECS_RELATION_DEFINE(ChildOf, EcsRelationCascadeDelete);
-ECS_COMPONENT_DEFINE(IsA);
 ECS_COMPONENT_DEFINE(Name);
 ECS_COMPONENT_DEFINE(Disabled);
 
@@ -694,7 +708,6 @@ void ecs_bootstrap(ecs_world_t *world) {
     );
 
     ECS_COMPONENT_REGISTER(world, ChildOf);
-    ECS_COMPONENT_REGISTER(world, IsA);
     ECS_COMPONENT_REGISTER(world, Name);
     ECS_COMPONENT_REGISTER(world, Disabled);
 
@@ -967,7 +980,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
 }
 
 #include <stdint.h>
-#include <stdio.h>
+#include <string.h>
 
 ecs_entity_t ecs_new(ecs_world_t *world) {
     ecs_assert_not_null(world);
@@ -981,6 +994,77 @@ ecs_entity_t ecs_new(ecs_world_t *world) {
 
 bool ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity) {
     return ecs_entity_index_is_alive(&world->entity_index, entity);
+}
+
+#ifndef NDEBUG
+static inline bool
+ecs_would_create_base_cycle(const ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
+    while (target != 0) {
+        if (target == entity) {
+            return true;
+        }
+        const ecs_entity_record_t *target_record = ecs_get_record(world, target);
+        const ecs_table_t *target_table = ecs_get_table(world, target_record->table_id);
+        target = target_table->type.base;
+    }
+    return false;
+}
+#endif
+
+static inline void ecs_entity_rebase(
+    ecs_world_t *world,
+    ecs_entity_record_t *record,
+    ecs_entity_t entity,
+    ecs_table_t *from_table,
+    uint16_t to_table_id
+) {
+    ecs_table_t *to_table = ecs_get_table(world, to_table_id);
+    uint32_t old_row = record->table_row;
+    uint32_t new_row = ecs_table_add_entity(to_table, entity);
+
+    for (uint16_t i = 0; i < from_table->data_count; i++) {
+        uint16_t col = from_table->data_columns[i];
+        copy_data_column(&from_table->cls[col], old_row, &to_table->cls[col], new_row);
+    }
+
+    ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
+    if (moved != entity) {
+        ecs_get_record(world, moved)->table_row = old_row;
+    }
+
+    record->table_id = to_table_id;
+    record->table_row = new_row;
+}
+
+void ecs_is_a(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
+    ecs_assert_not_null(world);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_entity_valid(target);
+    ecs_assert_is_alive(world, entity);
+    ecs_assert_is_alive(world, target);
+    ecs_assert(entity != target, "entity cannot inherit itself: %d\n", ecs_first(entity));
+    ecs_assert(
+        !ecs_would_create_base_cycle(world, entity, target),
+        "cyclic inheritance: %d inherits from %d\n",
+        ecs_first(entity),
+        ecs_first(target)
+    );
+
+    ecs_entity_record_t *record = ecs_get_record(world, entity);
+    uint16_t from_table_id = record->table_id;
+    ecs_table_t *from_table = ecs_get_table(world, from_table_id);
+    if (from_table->type.base == target) {
+        return;
+    }
+
+    ecs_type_t new_type = ecs_type_with_base(&from_table->type, target);
+    uint16_t to_table_id = ecs_table_index_get_or_create(world, new_type);
+    if (to_table_id == from_table_id) {
+        return;
+    }
+
+    from_table = ecs_get_table(world, from_table_id);
+    ecs_entity_rebase(world, record, entity, from_table, to_table_id);
 }
 
 void ecs_kill(ecs_world_t *world, ecs_entity_t entity) {
@@ -1131,7 +1215,7 @@ ecs_observer_id_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_
     ecs_assert(desc->callback != NULL, "Observer callback cannot be NULL");
     ecs_observer_id_t oid = ecs_observer_index_create(&world->observer_index, desc);
     ecs_observer_index_match_tables(
-        &world->observer_index,
+        world,
         world->table_index.tables,
         world->table_index.table_count,
         oid
@@ -1540,6 +1624,21 @@ void ecs_table_fini(ecs_table_t *table) {
     ecs_type_fini(&table->type);
 }
 
+bool ecs_table_has(
+    const ecs_world_t *world,
+    const ecs_table_t *table,
+    ecs_component_t component_id
+) {
+    bool result = ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
+
+    if (!result && table->base_table_id != UINT16_MAX) {
+        result =
+            ecs_table_has(world, &world->table_index.tables[table->base_table_id], component_id);
+    }
+
+    return result;
+}
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1684,19 +1783,6 @@ static inline void copy_column(
 ) {
     if (from->size == 0)
         return;
-    memcpy(
-        (uint8_t *)to->data + (from->size * to_row),
-        (uint8_t *)from->data + (from->size * from_row),
-        from->size
-    );
-}
-
-static inline void copy_data_column(
-    const ecs_column_t *restrict from,
-    const uint32_t from_row,
-    ecs_column_t *restrict to,
-    const uint32_t to_row
-) {
     memcpy(
         (uint8_t *)to->data + (from->size * to_row),
         (uint8_t *)from->data + (from->size * from_row),
@@ -1992,7 +2078,7 @@ bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t 
     ecs_assert_is_alive(world, entity);
 
     uint16_t tid = ecs_get_record(world, entity)->table_id;
-    return ecs_table_has(ecs_get_table(world, tid), id);
+    return ecs_table_has(world, ecs_get_table(world, tid), id);
 }
 
 #ifndef NDEBUG
@@ -3802,6 +3888,7 @@ ecs_module_id_t ecs_module_index_find(const ecs_module_index_t *index, const ecs
     return 0;
 }
 
+#include "world_internal.h"
 #include <stdint.h>
 
 #define ECS_BUILTIN_EVENT_COUNT 3 // EcsOnAdd, EcsOnRemove, EcsOnSet
@@ -3830,23 +3917,24 @@ uint16_t ecs_observer_index_create(ecs_observer_index_t *index, const ecs_observ
 }
 
 void ecs_observer_index_match_tables(
-    ecs_observer_index_t *index,
+    ecs_world_t *world,
     ecs_table_t *tables,
     uint16_t table_count,
     uint16_t observer_id
 ) {
-    ecs_observer_t *obs = ecs_vec_get_mut(&index->observers, observer_id, ecs_observer_t);
+    ecs_observer_t *obs =
+        ecs_vec_get_mut(&world->observer_index.observers, observer_id, ecs_observer_t);
     for (uint16_t i = 0; i < table_count; i++) {
-        if (ecs_query_match_table(&obs->query, &tables[i])) {
+        if (ecs_query_match_table(world, &obs->query, &tables[i])) {
             ecs_table_add_observer(&tables[i], obs->event, observer_id);
         }
     }
 }
 
-void ecs_observer_index_add_table(ecs_observer_index_t *index, ecs_table_t *table) {
-    for (uint32_t i = 0; i < index->observers.size; i++) {
-        ecs_observer_t *obs = ecs_vec_get_mut(&index->observers, i, ecs_observer_t);
-        if (ecs_query_match_table(&obs->query, table)) {
+void ecs_observer_index_add_table(ecs_world_t *world, ecs_table_t *table) {
+    for (uint32_t i = 0; i < world->observer_index.observers.size; i++) {
+        ecs_observer_t *obs = ecs_vec_get_mut(&world->observer_index.observers, i, ecs_observer_t);
+        if (ecs_query_match_table(world, &obs->query, table)) {
             ecs_table_add_observer(table, obs->event, i);
         }
     }
@@ -4076,7 +4164,7 @@ void ecs_query_index_update_matches(ecs_world_t *world, ecs_query_cache_t *query
         ecs_vec_iter(tables_vec, uint16_t, table_index, {
             const ecs_table_t *table = &world->table_index.tables[*table_index];
 
-            if (ecs_query_match_table(&query_cache->query, table)) {
+            if (ecs_query_match_table(world, &query_cache->query, table)) {
                 ecs_query_cache_add_table(query_cache, table, *table_index);
             }
         });
@@ -4085,23 +4173,19 @@ void ecs_query_index_update_matches(ecs_world_t *world, ecs_query_cache_t *query
         const ecs_table_t *tables = world->table_index.tables;
 
         for (uint16_t i = 0; i < table_count; i++) {
-            if (ecs_query_match_table(&query_cache->query, &tables[i])) {
+            if (ecs_query_match_table(world, &query_cache->query, &tables[i])) {
                 ecs_query_cache_add_table(query_cache, &tables[i], i);
             }
         }
     }
 }
 
-void ecs_query_index_add_table(
-    ecs_query_index_t *index,
-    const ecs_table_t *table,
-    uint16_t table_id
-) {
-    const ecs_query_id_t *active_ids = index->active_ids.data;
-    for (uint32_t i = 0; i < index->active_ids.size; i++) {
+void ecs_query_index_add_table(ecs_world_t *world, const ecs_table_t *table, uint16_t table_id) {
+    const ecs_query_id_t *active_ids = world->query_index.active_ids.data;
+    for (uint32_t i = 0; i < world->query_index.active_ids.size; i++) {
         ecs_query_cache_t *cache =
-            ecs_vec_get_mut(&index->queries, active_ids[i], ecs_query_cache_t);
-        if (ecs_query_match_table(&cache->query, table)) {
+            ecs_vec_get_mut(&world->query_index.queries, active_ids[i], ecs_query_cache_t);
+        if (ecs_query_match_table(world, &cache->query, table)) {
             ecs_query_cache_add_table(cache, table, table_id);
         }
     }
@@ -4505,8 +4589,8 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     map->slots[slot_idx].hash = hash_fingerprint;
     map->slots[slot_idx].table_index = table_idx;
 
-    ecs_query_index_add_table(&world->query_index, ecs_table_index_at(map, table_idx), table_idx);
-    ecs_observer_index_add_table(&world->observer_index, ecs_table_index_at(map, table_idx));
+    ecs_query_index_add_table(world, ecs_table_index_at(map, table_idx), table_idx);
+    ecs_observer_index_add_table(world, ecs_table_index_at(map, table_idx));
     return (uint16_t)table_idx;
 }
 

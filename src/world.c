@@ -66,19 +66,6 @@ static inline void copy_column(
     );
 }
 
-static inline void copy_data_column(
-    const ecs_column_t *restrict from,
-    const uint32_t from_row,
-    ecs_column_t *restrict to,
-    const uint32_t to_row
-) {
-    memcpy(
-        (uint8_t *)to->data + (from->size * to_row),
-        (uint8_t *)from->data + (from->size * from_row),
-        from->size
-    );
-}
-
 static inline void finish_migration(
     const ecs_world_t *world,
     ecs_entity_record_t *record,
