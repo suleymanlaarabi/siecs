@@ -1,9 +1,9 @@
 #include "observer_index.h"
 #include "../datastructure/vec.h"
 #include "../table.h"
+#include "../world_internal.h"
 #include "query_index.h"
 #include "siecs.h"
-#include "world_internal.h"
 #include <stdint.h>
 
 #define ECS_BUILTIN_EVENT_COUNT 3 // EcsOnAdd, EcsOnRemove, EcsOnSet

@@ -3935,7 +3935,6 @@ ecs_module_id_t ecs_module_index_find(const ecs_module_index_t *index, const ecs
     return 0;
 }
 
-#include "world_internal.h"
 #include <stdint.h>
 
 #define ECS_BUILTIN_EVENT_COUNT 3 // EcsOnAdd, EcsOnRemove, EcsOnSet
