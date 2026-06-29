@@ -121,10 +121,6 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     uint16_t table_idx = map->table_count++;
     ecs_table_t new_table;
     ecs_table_init(&new_table, type, component_index, table_idx);
-    new_table.base_table_id = UINT16_MAX;
-    if (type.base) {
-        new_table.base_table_id = ecs_get_record(world, type.base)->table_id;
-    }
     map->tables[table_idx] = new_table;
 
     map->slots[slot_idx].hash = hash_fingerprint;

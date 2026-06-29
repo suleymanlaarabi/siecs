@@ -48,8 +48,11 @@ int main(void) {
 
     ECS_MODULE_IMPORT(world, physics, {});
 
+    ecs_entity_t animal = ecs_new(world);
+    ecs_set(world, animal, Position, { 0, 0 });
+
     ecs_entity_t human = ecs_new(world);
-    ecs_set(world, human, Position, { 0, 0 });
+    ecs_is_a(world, human, animal);
 
     ecs_entity_t player = ecs_new(world);
     ecs_is_a(world, player, human);

@@ -41,7 +41,7 @@
           "many_tags_swap_remove_preserves_moved_entity_data",
           "same_local_type_with_different_base_creates_different_tables",
           "type_add_remove_preserves_base",
-          "table_stores_base_table_id"
+          "table_resolves_recursive_base_components"
         ]
       },
       {

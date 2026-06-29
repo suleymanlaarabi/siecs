@@ -171,6 +171,7 @@ ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, ui
     for (uint16_t i = 0; i < cache->query.field_count; i++) {
         const ecs_query_term_t term = cache->query.fields[i];
         uint16_t col = ecs_table_get_column_index(table, term.id);
+
         const bool has_field = col < table->type.count && table->type.ids[col] == term.id;
 
         ecs_assert(

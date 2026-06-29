@@ -15,6 +15,13 @@ ECS_COMPONENT_DECLARE(Position, {
 
 ECS_COMPONENT_DEFINE(Position);
 
+ECS_COMPONENT_DECLARE(Velocity, {
+    float x;
+    float y;
+});
+
+ECS_COMPONENT_DEFINE(Velocity);
+
 ECS_COMPONENT_DECLARE(HookComponent, { int value; });
 ECS_COMPONENT_DECLARE(RequiredA, { int value; });
 ECS_COMPONENT_DECLARE(RequiredB, { int value; });
@@ -380,18 +387,32 @@ void component_type_add_remove_preserves_base(void) {
     ecs_fini(world);
 }
 
-void component_table_stores_base_table_id(void) {
+void component_table_resolves_recursive_base_components(void) {
     ecs_world_t *world = ecs_init();
     ECS_COMPONENT_REGISTER(world, Position);
+    ECS_COMPONENT_REGISTER(world, Velocity);
 
-    ecs_entity_t base = ecs_new(world);
-    ecs_set(world, base, Position, { 10, 20 });
+    ecs_entity_t grandparent = ecs_new(world);
+    ecs_set(world, grandparent, Position, { 10, 20 });
 
-    uint16_t table_id =
-        ecs_table_index_get_or_create(world, component_type_with_position_and_base(base));
-    const ecs_entity_record_t *base_record = ecs_get_record(world, base);
+    ecs_entity_t parent = ecs_new(world);
+    ecs_set(world, parent, Velocity, { 30, 40 });
+    ecs_is_a(world, parent, grandparent);
 
-    test_assert(base_record->table_id == world->table_index.tables[table_id].base_table_id);
+    ecs_entity_t child = ecs_new(world);
+    ecs_is_a(world, child, parent);
+
+    const ecs_entity_record_t *child_record = ecs_get_record(world, child);
+    const ecs_table_t *child_table = ecs_get_table(world, child_record->table_id);
+    Position *position = ecs_table_field(world, child_table, ecs_id(Position));
+    Velocity *velocity = ecs_table_field(world, child_table, ecs_id(Velocity));
+
+    test_true(ecs_has(world, child, Position));
+    test_true(ecs_has(world, child, Velocity));
+    test_assert(position == ecs_get(world, grandparent, Position));
+    test_assert(velocity == ecs_get(world, parent, Velocity));
+    test_int(10, position->x);
+    test_int(40, velocity->y);
 
     ecs_fini(world);
 }

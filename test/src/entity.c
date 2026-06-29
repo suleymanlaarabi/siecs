@@ -51,11 +51,9 @@ void entity_is_a_moves_entity_to_type_with_base(void) {
     ecs_is_a(world, entity, base);
 
     ecs_entity_record_t *entity_record = ecs_get_record(world, entity);
-    ecs_entity_record_t *base_record = ecs_get_record(world, base);
     ecs_table_t *table = ecs_get_table(world, entity_record->table_id);
 
     test_assert(table->type.base == base);
-    test_assert(table->base_table_id == base_record->table_id);
     test_true(ecs_has(world, entity, Renderable));
 
     ecs_fini(world);

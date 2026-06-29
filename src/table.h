@@ -25,7 +25,6 @@ typedef struct ecs_table_s {
     ecs_column_t *cls;
     uint16_t *data_columns;
     ecs_type_t type;
-    uint16_t base_table_id;
     uint64_t bloom;
     ecs_vec_t observers_by_event; // ecs_vec_t per event id; each holds uint16_t observer ids.
 } ecs_table_t;
@@ -93,5 +92,7 @@ static inline uint16_t
 ecs_table_get_column_index(const ecs_table_t *table, ecs_component_t component_id) {
     return ecs_id_map_at(&table->add_edge, component_id);
 }
+
+void *ecs_table_field(ecs_world_t *world, const ecs_table_t *table, ecs_component_t component_id);
 
 #endif

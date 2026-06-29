@@ -25,7 +25,7 @@ void component_many_tags_preserve_data_on_migration(void);
 void component_many_tags_swap_remove_preserves_moved_entity_data(void);
 void component_same_local_type_with_different_base_creates_different_tables(void);
 void component_type_add_remove_preserves_base(void);
-void component_table_stores_base_table_id(void);
+void component_table_resolves_recursive_base_components(void);
 
 // Testsuite 'rest'
 void rest_schema_returns_editor_contract(void);
@@ -168,8 +168,8 @@ bake_test_case component_testcases[] = {
         component_type_add_remove_preserves_base
     },
     {
-        "table_stores_base_table_id",
-        component_table_stores_base_table_id
+        "table_resolves_recursive_base_components",
+        component_table_resolves_recursive_base_components
     }
 };
 

@@ -19,7 +19,6 @@ void ecs_table_init(
     table->entities = malloc(sizeof(ecs_entity_t) * table->entity_capacity);
     table->cls = type.count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.count);
     table->data_columns = type.count == 0 ? NULL : malloc(sizeof(uint16_t) * type.count);
-    table->base_table_id = UINT16_MAX;
     table->bloom = ecs_type_bloom(&type);
 
     ecs_vec_init(&table->observers_by_event, sizeof(ecs_vec_t));
@@ -127,12 +126,41 @@ bool ecs_table_has(
     const ecs_table_t *table,
     ecs_component_t component_id
 ) {
-    bool result = ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
-
-    if (!result && table->base_table_id != UINT16_MAX) {
-        result =
-            ecs_table_has(world, &world->table_index.tables[table->base_table_id], component_id);
+    if (ecs_table_column_or_invalid(table, component_id) != UINT16_MAX) {
+        return true;
     }
 
-    return result;
+    ecs_entity_t base = table->type.base;
+    while (base != 0) {
+        const ecs_entity_record_t *record = ecs_get_record(world, base);
+        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+        if (ecs_table_column_or_invalid(base_table, component_id) != UINT16_MAX) {
+            return true;
+        }
+        base = base_table->type.base;
+    }
+
+    return false;
+}
+
+void *ecs_table_field(ecs_world_t *world, const ecs_table_t *table, ecs_component_t component_id) {
+    uint16_t cidx = ecs_table_column_or_invalid(table, component_id);
+    if (cidx != UINT16_MAX) {
+        return table->cls[cidx].data;
+    }
+
+    ecs_entity_t base = table->type.base;
+    while (base != 0) {
+        const ecs_entity_record_t *record = ecs_get_record(world, base);
+        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+
+        cidx = ecs_table_column_or_invalid(base_table, component_id);
+        if (cidx != UINT16_MAX) {
+            return ecs_table_component_at_column(base_table, cidx, record->table_row);
+        }
+
+        base = base_table->type.base;
+    }
+
+    return NULL;
 }
