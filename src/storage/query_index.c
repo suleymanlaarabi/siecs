@@ -23,7 +23,8 @@ void ecs_query_index_fini(ecs_query_index_t *index) {
         ecs_query_cache_t *cache =
             ecs_vec_get_mut(&index->queries, active_ids[i], ecs_query_cache_t);
         ecs_vec_fini(&cache->table_ids);
-        ecs_vec_fini(&cache->fields);
+        free(cache->fields_ptr);
+        free(cache->fields_kind);
         ecs_query_index_destroy(&cache->query);
     }
     ecs_vec_fini(&index->active_ids);
@@ -70,11 +71,7 @@ ecs_query_copy_terms_with_implicit_disabled(const ecs_query_term_t *terms, uint1
         return ecs_query_copy_terms(terms, *count);
     }
 
-    const uint16_t query_term_capacity = 16;
-    ecs_assert(
-        *count + 1 < query_term_capacity,
-        "query has no room for implicit Disabled term\n"
-    );
+    ecs_assert(*count + 1 < 16, "query has no room for implicit Disabled term\n");
 
     ecs_query_term_t *copy = malloc(sizeof(ecs_query_term_t) * (*count + 1));
     if (*count != 0) {
@@ -100,10 +97,9 @@ static void ecs_query_validate_terms(const ecs_query_term_t *terms, uint16_t ter
     for (uint16_t i = 0; i < term_count; i++) {
         ecs_assert_id_valid(terms[i].id);
         ecs_assert(
-            terms[i].access == EcsIn || terms[i].access == EcsOut ||
-                terms[i].access == EcsInOut || terms[i].access == EcsInOptional ||
-                terms[i].access == EcsInOutOptional || terms[i].access == EcsFilter ||
-                terms[i].access == EcsNot,
+            terms[i].access == EcsIn || terms[i].access == EcsOut || terms[i].access == EcsInOut ||
+                terms[i].access == EcsInOptional || terms[i].access == EcsInOutOptional ||
+                terms[i].access == EcsFilter || terms[i].access == EcsNot,
             "invalid query term access: %d\n",
             terms[i].access
         );
@@ -155,20 +151,36 @@ void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
 static void
 ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t table_id) {
     ecs_vec_push_u16(&cache->table_ids, table_id);
+    const uint16_t table_count = cache->table_ids.size;
+    const uint16_t field_count = cache->query.field_count;
+
+    if (table_count > cache->field_table_capacity) {
+        uint16_t capacity = cache->field_table_capacity ? cache->field_table_capacity : 4;
+        while (capacity < table_count) {
+            capacity *= 2;
+        }
+
+        const uint32_t slot_count = (uint32_t)capacity * field_count;
+        cache->fields_ptr = realloc(cache->fields_ptr, sizeof(void **) * slot_count);
+        cache->fields_kind = realloc(cache->fields_kind, sizeof(ecs_field_kind_t) * slot_count);
+        cache->field_table_capacity = capacity;
+    }
+
+    const uint32_t base = (uint32_t)(table_count - 1) * field_count;
     for (uint16_t i = 0; i < cache->query.field_count; i++) {
         const ecs_query_term_t term = cache->query.fields[i];
         uint16_t col = ecs_table_get_column_index(table, term.id);
         const bool has_field = col < table->type.count && table->type.ids[col] == term.id;
-        const bool optional = term.access == EcsInOptional || term.access == EcsInOutOptional;
 
         ecs_assert(
-            has_field || optional,
+            has_field || term.access == EcsInOptional || term.access == EcsInOutOptional,
             "query cache matched table without field component: %d\n",
             term.id
         );
 
         void **slot = has_field ? &table->cls[col].data : &ecs_query_null_field;
-        ecs_vec_push(&cache->fields, &slot, sizeof(void **));
+        cache->fields_ptr[base + i] = slot;
+        cache->fields_kind[base + i] = has_field ? EcsFieldOwned : EcsFieldNone;
     }
 }
 
@@ -187,7 +199,9 @@ ecs_query_id_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_
 
     ecs_query_from_desc(desc, &query_cache->query);
     ecs_vec_init(&query_cache->table_ids, sizeof(uint16_t));
-    ecs_vec_init(&query_cache->fields, sizeof(void **));
+    query_cache->fields_ptr = NULL;
+    query_cache->fields_kind = NULL;
+    query_cache->field_table_capacity = 0;
     query_cache->active_index = index->active_ids.size;
     query_cache->next_free = UINT16_MAX;
     query_cache->alive = true;

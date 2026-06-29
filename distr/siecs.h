@@ -27,23 +27,23 @@
 #define SIECS_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
-#include "sireflect.h"
-#include "sijson.h"
 #include "sihttp.h"
+#include "sijson.h"
+#include "sireflect.h"
 
 /* Convenience macro for exporting symbols */
 #ifndef siecs_STATIC
 #if defined(siecs_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
-  #define SIECS_API __declspec(dllexport)
+#define SIECS_API __declspec(dllexport)
 #elif defined(siecs_EXPORTS)
-  #define SIECS_API __attribute__((__visibility__("default")))
+#define SIECS_API __attribute__((__visibility__("default")))
 #elif defined(_MSC_VER)
-  #define SIECS_API __declspec(dllimport)
+#define SIECS_API __declspec(dllimport)
 #else
-  #define SIECS_API
+#define SIECS_API
 #endif
 #else
-  #define SIECS_API
+#define SIECS_API
 #endif
 
 #endif
@@ -470,13 +470,13 @@ SIECS_API bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t m
 ECS_RELATION_DECLARE(ChildOf);
 
 /* Builtin component for inheritance relationships. */
-ECS_COMPONENT_DECLARE(IsA, { ecs_entity_t target; });
+ECS_RELATION_DECLARE(IsA);
 
 /* Builtin component for entity names. */
 ECS_COMPONENT_DECLARE(Name, { char *value; });
 
 /* Builtin component excluded from queries by default. */
-ECS_COMPONENT_DECLARE(Disabled, { uint8_t value; });
+ECS_COMPONENT_DECLARE(Disabled, {});
 
 /*
  * Register a component from an inline descriptor.
@@ -869,4 +869,3 @@ SIECS_API void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system);
 #endif
 
 #endif
-

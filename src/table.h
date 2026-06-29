@@ -3,6 +3,7 @@
 #include "datastructure/idmap.h"
 #include "datastructure/vec.h"
 #include "id.h"
+#include "siecs.h"
 #include "type.h"
 #include <stdbool.h>
 #include <stdint.h>

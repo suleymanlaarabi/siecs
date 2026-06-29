@@ -4,6 +4,7 @@
 #include "utils.h"
 #include "world_internal.h"
 #include <stdint.h>
+#include <stdlib.h>
 
 static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query_id_t qid) {
     ecs_query_cache_t *cache = ecs_vec_get_mut(&index->queries, qid, ecs_query_cache_t);
@@ -55,8 +56,7 @@ bool ecs_iter_next(ecs_iter_t *it) {
     if (it->cache->query.field_count == 0) {
         it->ptrs = NULL;
     } else {
-        void ***fields = it->cache->fields.data;
-        it->ptrs = &fields[it->table_idx * it->cache->query.field_count];
+        it->ptrs = &it->cache->fields_ptr[it->table_idx * it->cache->query.field_count];
     }
     it->entities = it->world->table_index.tables[tids[it->table_idx]].entities;
     return true;
@@ -75,8 +75,12 @@ void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid) {
     ecs_assert(cache->alive, "query id is not alive: %u\n", qid);
 
     ecs_query_index_destroy(&cache->query);
-    ecs_vec_fini(&cache->fields);
+    free(cache->fields_ptr);
+    free(cache->fields_kind);
     ecs_vec_fini(&cache->table_ids);
+    cache->fields_ptr = NULL;
+    cache->fields_kind = NULL;
+    cache->field_table_capacity = 0;
 
     ecs_query_index_remove_active_id(&world->query_index, qid);
     cache->next_free = world->query_index.first_free;

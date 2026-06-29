@@ -14,10 +14,18 @@ typedef struct {
     uint16_t field_count;
 } ecs_query_t;
 
+typedef enum {
+    EcsFieldNone,
+    EcsFieldOwned,
+    EcsFieldShared,
+} ecs_field_kind_t;
+
 typedef struct ecs_query_cache_s {
     ecs_query_t query;
     ecs_vec_t table_ids; // uint16_t
-    ecs_vec_t fields;    // void ** slots: &table->cls[col].data
+    void ***fields_ptr;  // void ** slots: &table->cls[col].data
+    ecs_field_kind_t *fields_kind;
+    uint16_t field_table_capacity;
     uint32_t active_index;
     uint16_t next_free;
     bool alive;
@@ -32,10 +40,7 @@ typedef struct {
 void ecs_query_index_init(ecs_query_index_t *index);
 void ecs_query_index_fini(ecs_query_index_t *index);
 uint16_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc);
-void ecs_query_index_update_matches(
-    ecs_world_t *world,
-    ecs_query_cache_t *query_cache
-);
+void ecs_query_index_update_matches(ecs_world_t *world, ecs_query_cache_t *query_cache);
 void ecs_query_index_add_table(
     ecs_query_index_t *index,
     const ecs_table_t *table,
