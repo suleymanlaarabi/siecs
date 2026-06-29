@@ -44,5 +44,8 @@ int main(void) {
 
     assert(count == 1);
 
+    while (ecs_progress(world)) {
+    }
+
     ecs_fini(world);
 }

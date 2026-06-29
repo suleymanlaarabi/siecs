@@ -34,5 +34,6 @@ sihttp_response_t ecs_rest_get_entity(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_get_entity_children(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req);
+sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req);
 
 #endif

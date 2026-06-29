@@ -1,6 +1,7 @@
-#include "rest_internal.h"
 #include "../id.h"
+#include "rest_internal.h"
 #include "siecs.h"
+#include <string.h>
 #ifndef SIJSON_H
 #include "sijson.h"
 #endif
@@ -153,4 +154,13 @@ sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req) {
     }
 
     return ecs_rest_set_entity_component(world, entity, (ecs_component_t)component, req->body);
+}
+
+sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req) {
+    ecs_entity_t entity = ecs_new(req->state->world);
+    return sihttp_response(
+        {
+            .body = sijson_stringify(ecs_rest_entity_json(req->state->world, entity)),
+        }
+    );
 }

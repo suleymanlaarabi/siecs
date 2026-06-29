@@ -143,9 +143,6 @@ static inline uint16_t ecs_id_map_at_or_invalid(const ecs_id_map_t *map, uint16_
 #define ecs_first(id) ((uint32_t)((id) >> 32))
 #define ecs_second(id) ((uint32_t)((id) & 0xffffffff))
 
-typedef uint64_t ecs_entity_t;
-typedef uint16_t ecs_component_t;
-
 #endif
 
 #ifndef SIECS_TYPE_H
@@ -2278,6 +2275,7 @@ sihttp_response_t ecs_rest_get_entity(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_get_entity_children(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req);
+sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req);
 
 #endif
 
@@ -2303,6 +2301,7 @@ void init_rest(ecs_world_t *world) {
 
     sihttp_get(world->server, "/schema", ecs_rest_get_schema);
     sihttp_get(world->server, "/entities", ecs_rest_get_entities);
+    sihttp_post(world->server, "/entities", ecs_rest_post_entities);
     sihttp_get(world->server, "/entities/:index/children", ecs_rest_get_entity_children);
     sihttp_get(world->server, "/health", health);
     sihttp_put(
@@ -2487,6 +2486,15 @@ sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req) {
     }
 
     return ecs_rest_set_entity_component(world, entity, (ecs_component_t)component, req->body);
+}
+
+sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req) {
+    ecs_entity_t entity = ecs_new(req->state->world);
+    return sihttp_response(
+        {
+            .body = sijson_stringify(ecs_rest_entity_json(req->state->world, entity)),
+        }
+    );
 }
 
 #ifndef SIJSON_H

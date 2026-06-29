@@ -23,6 +23,7 @@ void init_rest(ecs_world_t *world) {
 
     sihttp_get(world->server, "/schema", ecs_rest_get_schema);
     sihttp_get(world->server, "/entities", ecs_rest_get_entities);
+    sihttp_post(world->server, "/entities", ecs_rest_post_entities);
     sihttp_get(world->server, "/entities/:index/children", ecs_rest_get_entity_children);
     sihttp_get(world->server, "/health", health);
     sihttp_put(
