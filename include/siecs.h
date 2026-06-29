@@ -434,6 +434,9 @@ ECS_COMPONENT_DECLARE(Name, { char *value; });
 /* Builtin component excluded from queries by default. */
 ECS_COMPONENT_DECLARE(Disabled, {});
 
+/* Builtin component for abstract entity. */
+ECS_COMPONENT_DECLARE(Abstract, {});
+
 /*
  * Register a component from an inline descriptor.
  *
@@ -529,6 +532,7 @@ SIECS_API void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_compo
 
 /* Return whether an alive entity has a component id. */
 SIECS_API bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+bool ecs_has_cid_owned(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 
 /*
  * Get a typed component pointer from an alive entity.

@@ -271,6 +271,10 @@ ecs_table_get_column_index(const ecs_table_t *table, ecs_component_t component_i
     return ecs_id_map_at(&table->add_edge, component_id);
 }
 
+static inline bool ecs_table_has_owned(const ecs_table_t *table, ecs_component_t component_id) {
+    return ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
+}
+
 void *ecs_table_field(
     ecs_world_t *world,
     const ecs_table_t *table,
@@ -697,6 +701,7 @@ struct ecs_table_s *ecs_iter_table(ecs_iter_t *it);
 ECS_RELATION_DEFINE(ChildOf, EcsRelationCascadeDelete);
 ECS_COMPONENT_DEFINE(Name);
 ECS_COMPONENT_DEFINE(Disabled);
+ECS_COMPONENT_DEFINE(Abstract);
 
 void ecs_bootstrap(ecs_world_t *world) {
     // Reserve identifiers used to represent false return values.
@@ -718,6 +723,9 @@ void ecs_bootstrap(ecs_world_t *world) {
     ECS_COMPONENT_REGISTER(world, ChildOf);
     ECS_COMPONENT_REGISTER(world, Name);
     ECS_COMPONENT_REGISTER(world, Disabled);
+    ECS_COMPONENT_REGISTER(world, Abstract);
+
+    ecs_with(world, ecs_id(Abstract), ecs_id(Disabled));
 
     init_rest(world);
 }
@@ -1054,6 +1062,10 @@ void ecs_is_a(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
         ecs_first(entity),
         ecs_first(target)
     );
+    ecs_assert(
+        ecs_has_cid_owned(world, target, ecs_id(Abstract)),
+        "An entity can only inherit from an abstract entity."
+    );
 
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     uint16_t from_table_id = record->table_id;
@@ -1304,8 +1316,7 @@ bool ecs_iter_next(ecs_iter_t *it) {
         it->field_kinds = NULL;
     } else {
         it->ptrs = &it->cache->fields_ptr[it->table_idx * it->cache->query.field_count];
-        it->field_kinds =
-            &it->cache->fields_kind[it->table_idx * it->cache->query.field_count];
+        it->field_kinds = &it->cache->fields_kind[it->table_idx * it->cache->query.field_count];
     }
     it->entities = it->world->table_index.tables[tids[it->table_idx]].entities;
     return true;
@@ -1777,6 +1788,9 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
 #include "sireflect.h"
 #endif
 
+#define ecs_assert_can_be_updated(world, entity, ...)                                              \
+    ecs_assert(!ecs_has_cid_owned(world, entity, ecs_id(Abstract)), __VA_ARGS__)
+
 ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world_t *world = malloc(sizeof(ecs_world_t));
     ecs_entity_index_init(&world->entity_index);
@@ -1963,6 +1977,7 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(world, entity);
+    ecs_assert_can_be_updated(world, entity, "An abstract entity cannot be updated.");
 
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     uint16_t from_id = record->table_id;
@@ -2109,6 +2124,15 @@ bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t 
 
     uint16_t tid = ecs_get_record(world, entity)->table_id;
     return ecs_table_has(world, ecs_get_table(world, tid), id);
+}
+
+bool ecs_has_cid_owned(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
+    ecs_assert_not_null(world);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
+    uint16_t tid = ecs_get_record(world, entity)->table_id;
+    return ecs_table_has_owned(ecs_get_table(world, tid), id);
 }
 
 #ifndef NDEBUG

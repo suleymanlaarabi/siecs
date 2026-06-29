@@ -23,6 +23,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define ecs_assert_can_be_updated(world, entity, ...)                                              \
+    ecs_assert(!ecs_has_cid_owned(world, entity, ecs_id(Abstract)), __VA_ARGS__)
+
 ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world_t *world = malloc(sizeof(ecs_world_t));
     ecs_entity_index_init(&world->entity_index);
@@ -209,6 +212,7 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(world, entity);
+    ecs_assert_can_be_updated(world, entity, "An abstract entity cannot be updated.");
 
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     uint16_t from_id = record->table_id;
@@ -355,6 +359,15 @@ bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t 
 
     uint16_t tid = ecs_get_record(world, entity)->table_id;
     return ecs_table_has(world, ecs_get_table(world, tid), id);
+}
+
+bool ecs_has_cid_owned(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
+    ecs_assert_not_null(world);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
+    uint16_t tid = ecs_get_record(world, entity)->table_id;
+    return ecs_table_has_owned(ecs_get_table(world, tid), id);
 }
 
 #ifndef NDEBUG

@@ -75,6 +75,10 @@ void ecs_is_a(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
         ecs_first(entity),
         ecs_first(target)
     );
+    ecs_assert(
+        ecs_has_cid_owned(world, target, ecs_id(Abstract)),
+        "An entity can only inherit from an abstract entity."
+    );
 
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     uint16_t from_table_id = record->table_id;
