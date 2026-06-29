@@ -58,8 +58,7 @@ bool ecs_iter_next(ecs_iter_t *it) {
         it->field_kinds = NULL;
     } else {
         it->ptrs = &it->cache->fields_ptr[it->table_idx * it->cache->query.field_count];
-        it->field_kinds =
-            &it->cache->fields_kind[it->table_idx * it->cache->query.field_count];
+        it->field_kinds = &it->cache->fields_kind[it->table_idx * it->cache->query.field_count];
     }
     it->entities = it->world->table_index.tables[tids[it->table_idx]].entities;
     return true;
