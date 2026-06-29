@@ -18,6 +18,7 @@ void ecs_table_init(
     table->entities = malloc(sizeof(ecs_entity_t) * table->entity_capacity);
     table->cls = type.count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.count);
     table->data_columns = type.count == 0 ? NULL : malloc(sizeof(uint16_t) * type.count);
+    table->base_table_id = UINT16_MAX;
     table->bloom = ecs_type_bloom(&type);
 
     ecs_vec_init(&table->observers_by_event, sizeof(ecs_vec_t));

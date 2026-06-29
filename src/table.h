@@ -25,6 +25,7 @@ typedef struct ecs_table_s {
     ecs_column_t *cls;
     uint16_t *data_columns;
     ecs_type_t type;
+    uint16_t base_table_id;
     uint64_t bloom;
     ecs_vec_t observers_by_event; // ecs_vec_t per event id; each holds uint16_t observer ids.
 } ecs_table_t;

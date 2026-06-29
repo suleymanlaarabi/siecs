@@ -1,5 +1,8 @@
 #include "siecs.h"
 #include "sijson.h"
+#include "storage/table_index.h"
+#include "type.h"
+#include "world_internal.h"
 #include <siecs_test.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -330,5 +333,65 @@ void component_many_tags_swap_remove_preserves_moved_entity_data(void) {
     test_false(ecs_iter_next(&it));
 
     ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
+static ecs_type_t component_type_with_position_and_base(ecs_entity_t base) {
+    ecs_type_t empty = { 0 };
+    ecs_type_t with_position = ecs_type_with_add(&empty, ecs_id(Position));
+    ecs_type_t with_base = ecs_type_with_base(&with_position, base);
+    ecs_type_fini(&with_position);
+    return with_base;
+}
+
+void component_same_local_type_with_different_base_creates_different_tables(void) {
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, Position);
+
+    ecs_entity_t base_a = ecs_new(world);
+    ecs_entity_t base_b = ecs_new(world);
+
+    uint16_t table_a =
+        ecs_table_index_get_or_create(world, component_type_with_position_and_base(base_a));
+    uint16_t table_b =
+        ecs_table_index_get_or_create(world, component_type_with_position_and_base(base_b));
+
+    test_assert(table_a != table_b);
+    test_assert(base_a == world->table_index.tables[table_a].type.base);
+    test_assert(base_b == world->table_index.tables[table_b].type.base);
+
+    ecs_fini(world);
+}
+
+void component_type_add_remove_preserves_base(void) {
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, Position);
+
+    ecs_entity_t base = ecs_new(world);
+    ecs_type_t empty = { .base = base };
+    ecs_type_t added = ecs_type_with_add(&empty, ecs_id(Position));
+    ecs_type_t removed = ecs_type_with_remove_at(&added, 0);
+
+    test_assert(base == added.base);
+    test_assert(base == removed.base);
+
+    ecs_type_fini(&added);
+    ecs_type_fini(&removed);
+    ecs_fini(world);
+}
+
+void component_table_stores_base_table_id(void) {
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, Position);
+
+    ecs_entity_t base = ecs_new(world);
+    ecs_set(world, base, Position, { 10, 20 });
+
+    uint16_t table_id =
+        ecs_table_index_get_or_create(world, component_type_with_position_and_base(base));
+    const ecs_entity_record_t *base_record = ecs_get_record(world, base);
+
+    test_assert(base_record->table_id == world->table_index.tables[table_id].base_table_id);
+
     ecs_fini(world);
 }

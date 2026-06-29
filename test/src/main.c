@@ -19,6 +19,9 @@ void component_add_with_required_uses_current_table_edge(void);
 void component_add_zeroes_reused_component_slot(void);
 void component_many_tags_preserve_data_on_migration(void);
 void component_many_tags_swap_remove_preserves_moved_entity_data(void);
+void component_same_local_type_with_different_base_creates_different_tables(void);
+void component_type_add_remove_preserves_base(void);
+void component_table_stores_base_table_id(void);
 
 // Testsuite 'rest'
 void rest_schema_returns_editor_contract(void);
@@ -135,6 +138,18 @@ bake_test_case component_testcases[] = {
     {
         "many_tags_swap_remove_preserves_moved_entity_data",
         component_many_tags_swap_remove_preserves_moved_entity_data
+    },
+    {
+        "same_local_type_with_different_base_creates_different_tables",
+        component_same_local_type_with_different_base_creates_different_tables
+    },
+    {
+        "type_add_remove_preserves_base",
+        component_type_add_remove_preserves_base
+    },
+    {
+        "table_stores_base_table_id",
+        component_table_stores_base_table_id
     }
 };
 
@@ -421,7 +436,7 @@ static bake_test_suite suites[] = {
         "component",
         NULL,
         NULL,
-        6,
+        9,
         component_testcases
     },
     {

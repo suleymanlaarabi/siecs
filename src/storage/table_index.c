@@ -17,6 +17,10 @@ static inline uint32_t ecs_type_hash(ecs_type_t type) {
         h ^= (uint32_t)type.ids[i];
         h *= 16777619u;
     }
+    h ^= (uint32_t)type.base;
+    h *= 16777619u;
+    h ^= (uint32_t)(type.base >> 32);
+    h *= 16777619u;
 
     h ^= h >> 16;
     h *= 0x85ebca6bu;
@@ -95,9 +99,7 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     while (map->slots[slot_idx].table_index != ECS_TABLE_SLOT_EMPTY) {
         if (ECS_LIKELY(map->slots[slot_idx].hash == hash_fingerprint)) {
             const ecs_table_t *table = ecs_table_index_at(map, map->slots[slot_idx].table_index);
-            if (ECS_LIKELY(
-                    ecs_type_equals(table->type.ids, table->type.count, type.ids, type.count)
-                )) {
+            if (ECS_LIKELY(ecs_type_equals(&table->type, &type))) {
                 ecs_type_fini(&type);
                 return (uint16_t)map->slots[slot_idx].table_index;
             }
@@ -119,6 +121,10 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     uint16_t table_idx = map->table_count++;
     ecs_table_t new_table;
     ecs_table_init(&new_table, type, component_index, table_idx);
+    new_table.base_table_id = UINT16_MAX;
+    if (type.base) {
+        new_table.base_table_id = ecs_get_record(world, type.base)->table_id;
+    }
     map->tables[table_idx] = new_table;
 
     map->slots[slot_idx].hash = hash_fingerprint;
