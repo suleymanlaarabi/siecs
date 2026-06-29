@@ -156,11 +156,13 @@ typedef uint16_t ecs_component_t;
 typedef struct {
     uint16_t *ids;
     uint16_t count;
+    ecs_entity_t base;
 } ecs_type_t;
 
 ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
 ecs_type_t ecs_type_with_remove(const ecs_type_t *type, uint16_t id);
 ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
+ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
 
 uint64_t ecs_type_bloom(const ecs_type_t *type);
 
@@ -169,13 +171,14 @@ int ecs_type_find(const ecs_type_t *type, uint16_t id);
 
 void ecs_type_fini(ecs_type_t *type);
 
-static inline int
-ecs_type_equals(const uint16_t *a_ids, uint16_t a_count, const uint16_t *b_ids, uint16_t b_count) {
-    if (a_count != b_count)
+static inline int ecs_type_equals(const ecs_type_t *a, const ecs_type_t *b) {
+    if (a->base != b->base)
         return 0;
-    if (a_count == 0)
+    if (a->count != b->count)
+        return 0;
+    if (a->count == 0)
         return 1;
-    return memcmp(a_ids, b_ids, (size_t)a_count * sizeof(uint16_t)) == 0;
+    return memcmp(a->ids, b->ids, (size_t)a->count * sizeof(uint16_t)) == 0;
 }
 
 #endif
@@ -200,6 +203,7 @@ typedef struct ecs_table_s {
     ecs_column_t *cls;
     uint16_t *data_columns;
     ecs_type_t type;
+    uint16_t base_table_id;
     uint64_t bloom;
     ecs_vec_t observers_by_event; // ecs_vec_t per event id; each holds uint16_t observer ids.
 } ecs_table_t;
@@ -443,10 +447,18 @@ typedef struct {
     uint16_t field_count;
 } ecs_query_t;
 
+typedef enum {
+    EcsFieldNone,
+    EcsFieldOwned,
+    EcsFieldShared,
+} ecs_field_kind_t;
+
 typedef struct ecs_query_cache_s {
     ecs_query_t query;
     ecs_vec_t table_ids; // uint16_t
-    ecs_vec_t fields;    // void ** slots: &table->cls[col].data
+    void ***fields_ptr;  // void ** slots: &table->cls[col].data
+    ecs_field_kind_t *fields_kind;
+    uint16_t field_table_capacity;
     uint32_t active_index;
     uint16_t next_free;
     bool alive;
@@ -461,10 +473,7 @@ typedef struct {
 void ecs_query_index_init(ecs_query_index_t *index);
 void ecs_query_index_fini(ecs_query_index_t *index);
 uint16_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc);
-void ecs_query_index_update_matches(
-    ecs_world_t *world,
-    ecs_query_cache_t *query_cache
-);
+void ecs_query_index_update_matches(ecs_world_t *world, ecs_query_cache_t *query_cache);
 void ecs_query_index_add_table(
     ecs_query_index_t *index,
     const ecs_table_t *table,
@@ -957,6 +966,7 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
     return ecs_component_register(world, &id, desc);
 }
 
+#include <stdint.h>
 #include <stdio.h>
 
 ecs_entity_t ecs_new(ecs_world_t *world) {
@@ -1153,6 +1163,9 @@ void ecs_observer_trigger(
     ecs_emit(world, table, entity, event, trigger_data);
 }
 
+#include <stdint.h>
+#include <stdlib.h>
+
 static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query_id_t qid) {
     ecs_query_cache_t *cache = ecs_vec_get_mut(&index->queries, qid, ecs_query_cache_t);
     uint32_t active_index = cache->active_index;
@@ -1203,8 +1216,7 @@ bool ecs_iter_next(ecs_iter_t *it) {
     if (it->cache->query.field_count == 0) {
         it->ptrs = NULL;
     } else {
-        void ***fields = it->cache->fields.data;
-        it->ptrs = &fields[it->table_idx * it->cache->query.field_count];
+        it->ptrs = &it->cache->fields_ptr[it->table_idx * it->cache->query.field_count];
     }
     it->entities = it->world->table_index.tables[tids[it->table_idx]].entities;
     return true;
@@ -1223,8 +1235,12 @@ void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid) {
     ecs_assert(cache->alive, "query id is not alive: %u\n", qid);
 
     ecs_query_index_destroy(&cache->query);
-    ecs_vec_fini(&cache->fields);
+    free(cache->fields_ptr);
+    free(cache->fields_kind);
     ecs_vec_fini(&cache->table_ids);
+    cache->fields_ptr = NULL;
+    cache->fields_kind = NULL;
+    cache->field_table_capacity = 0;
 
     ecs_query_index_remove_active_id(&world->query_index, qid);
     cache->next_free = world->query_index.first_free;
@@ -1288,6 +1304,9 @@ void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id) {
 #ifndef SIHTTP_H
 #include "sihttp.h"
 #endif
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
@@ -1403,6 +1422,8 @@ void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system) {
     world->system_index.plan_dirty = true;
 }
 
+#include <stdlib.h>
+
 void ecs_table_init(
     ecs_table_t *table,
     ecs_type_t type,
@@ -1416,6 +1437,7 @@ void ecs_table_init(
     table->entities = malloc(sizeof(ecs_entity_t) * table->entity_capacity);
     table->cls = type.count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.count);
     table->data_columns = type.count == 0 ? NULL : malloc(sizeof(uint16_t) * type.count);
+    table->base_table_id = UINT16_MAX;
     table->bloom = ecs_type_bloom(&type);
 
     ecs_vec_init(&table->observers_by_event, sizeof(ecs_vec_t));
@@ -1518,10 +1540,15 @@ void ecs_table_fini(ecs_table_t *table) {
     ecs_type_fini(&table->type);
 }
 
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
 ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id) {
     ecs_type_t new_type = {
         .ids = malloc((type->count + 1) * sizeof(uint16_t)),
         .count = type->count + 1,
+        .base = type->base,
     };
 
     uint16_t i = 0;
@@ -1543,13 +1570,14 @@ ecs_type_t ecs_type_with_remove(const ecs_type_t *type, uint16_t id) {
             return ecs_type_with_remove_at(type, i);
         }
     }
-    return (ecs_type_t){ 0 };
+    return (ecs_type_t){ .base = type->base };
 }
 
 ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index) {
     ecs_type_t new_type = {
         .ids = malloc((type->count - 1) * sizeof(uint16_t)),
         .count = type->count - 1,
+        .base = type->base,
     };
     if (index > 0) {
         memcpy(new_type.ids, type->ids, index * sizeof(uint16_t));
@@ -1560,6 +1588,18 @@ ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index) {
             &type->ids[index + 1],
             (type->count - index - 1) * sizeof(uint16_t)
         );
+    }
+    return new_type;
+}
+
+ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base) {
+    ecs_type_t new_type = {
+        .ids = type->count == 0 ? NULL : malloc(type->count * sizeof(uint16_t)),
+        .count = type->count,
+        .base = base,
+    };
+    if (type->count != 0) {
+        memcpy(new_type.ids, type->ids, type->count * sizeof(uint16_t));
     }
     return new_type;
 }
@@ -1604,6 +1644,9 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
 #ifndef SIREFLECT_H
 #include "sireflect.h"
 #endif
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world_t *world = malloc(sizeof(ecs_world_t));
@@ -1661,6 +1704,24 @@ static inline void copy_data_column(
     );
 }
 
+static inline void finish_migration(
+    const ecs_world_t *world,
+    ecs_entity_record_t *record,
+    const ecs_entity_t entity,
+    ecs_table_t *from_table,
+    const uint32_t old_row,
+    const uint16_t to_table_id,
+    const uint32_t new_row
+) {
+    ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
+    if (moved != entity) {
+        ecs_get_record(world, moved)->table_row = old_row;
+    }
+
+    record->table_id = to_table_id;
+    record->table_row = new_row;
+}
+
 // Generic migration: move an entity from its current table to an arbitrary
 // target table, without knowing which components were added or removed, or how
 // many. Both type id arrays are sorted ascending, so a sorted merge classifies
@@ -1701,12 +1762,7 @@ static inline void migrate_entity(
             memset((uint8_t *)c->data + (c->size * new_row), 0, c->size);
     }
 
-    ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
-    if (moved != entity)
-        ecs_get_record(world, moved)->table_row = old_row;
-
-    record->table_id = to_id;
-    record->table_row = new_row;
+    finish_migration(world, record, entity, from_table, old_row, to_id, new_row);
 }
 
 static inline void *migrate_entity_add(
@@ -1745,12 +1801,7 @@ static inline void *migrate_entity_add(
         );
     }
 
-    ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
-    if (moved != entity) {
-        ecs_get_record(world, moved)->table_row = old_row;
-    }
-    record->table_id = to_table_id;
-    record->table_row = new_row;
+    finish_migration(world, record, entity, from_table, old_row, to_table_id, new_row);
     return ecs_table_component_at_column(to_table, k, new_row);
 }
 
@@ -1788,12 +1839,7 @@ static inline void migrate_entity_remove(
         );
     }
 
-    ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
-    if (moved != entity)
-        ecs_get_record(world, moved)->table_row = old_row;
-
-    record->table_id = to_id;
-    record->table_row = new_row;
+    finish_migration(world, record, entity, from_table, old_row, to_id, new_row);
 }
 
 void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
@@ -2066,6 +2112,8 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req);
 #ifndef SIHTTP_H
 #include "sihttp.h"
 #endif
+#include <stdlib.h>
+#include <string.h>
 
 sihttp_response_t health(const sihttp_request_t *) {
     return sihttp_response({ .body = strdup("OK") });
@@ -2099,6 +2147,9 @@ void init_rest(ecs_world_t *world) {
     }
 }
 
+#include <stdlib.h>
+#include <string.h>
+
 sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body) {
     char *json = sijson_stringify(body);
     if (!json) {
@@ -2125,6 +2176,8 @@ sihttp_response_t ecs_rest_error_response(int status, const char *message) {
 #ifndef SIJSON_H
 #include "sijson.h"
 #endif
+#include <stdint.h>
+#include <stdlib.h>
 
 static bool entity_from_index(ecs_world_t *world, int64_t index, ecs_entity_t *out) {
     if (index <= 0 || (uint64_t)index >= world->entity_index.entities.size) {
@@ -2274,6 +2327,9 @@ sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req) {
 #ifndef SIJSON_H
 #include "sijson.h"
 #endif
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 static void ensure_sijson_entity_type(void) {
     sireflect_register_struct(
@@ -2403,6 +2459,9 @@ sihttp_response_t ecs_rest_set_entity_component(
 }
 
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 typedef struct {
     bool *items;
@@ -2597,6 +2656,8 @@ static inline void ecs_arena_reset(ecs_arena_t *allocator) { allocator->cursor =
 
 #endif
 
+#include <stdlib.h>
+
 void ecs_arena_init(ecs_arena_t *allocator) {
     allocator->buf = malloc(8);
     allocator->capacity = 8;
@@ -2605,6 +2666,10 @@ void ecs_arena_init(ecs_arena_t *allocator) {
 void ecs_arena_fini(ecs_arena_t *allocator) {
     free(allocator->buf);
 }
+
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 void ecs_id_map_init(ecs_id_map_t *map) {
     map->capacity = 1;
@@ -2835,6 +2900,8 @@ bool ecs_str_cmp(const ecs_str_t *a, const ecs_str_t *b);
 #endif
 
 #include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
 
 void ecs_str_init(ecs_str_t *str) {
     str->data = NULL;
@@ -3016,6 +3083,9 @@ bool ecs_str_cmp(const ecs_str_t *a, const ecs_str_t *b) {
         return true;
     return memcmp(a->data, b->data, a->len) == 0;
 }
+
+#include <stdlib.h>
+#include <string.h>
 
 void ecs_vec_init(ecs_vec_t *vec, uint32_t element_size) {
     vec->data = malloc(element_size); // Start with 1 elements
@@ -3280,6 +3350,8 @@ static inline void ecs_scanner_advance_n(ecs_scanner_t *scanner, uint64_t count)
 }
 
 #endif
+
+#include <string.h>
 
 static inline void ecs_lexer_push(ecs_vec_t *tokens, ecs_token_type_t type) {
     ecs_token_t *token = ecs_vec_push_empty(tokens, sizeof(ecs_token_t));
@@ -3581,6 +3653,8 @@ void ecs_lexer_lex(const char *str, ecs_vec_t *tokens) {
     ecs_lexer_push(tokens, EcsTokEnd);
 }
 
+#include <string.h>
+
 void ecs_scanner_init(ecs_scanner_t *scanner, const char *str) {
     scanner->str = str;
     scanner->pos = 0;
@@ -3590,6 +3664,7 @@ void ecs_scanner_init(ecs_scanner_t *scanner, const char *str) {
 #ifndef SIREFLECT_H
 #include "sireflect.h"
 #endif
+#include <stdlib.h>
 
 void ecs_component_index_register(
     ecs_component_index_t *index,
@@ -3727,6 +3802,8 @@ ecs_module_id_t ecs_module_index_find(const ecs_module_index_t *index, const ecs
     return 0;
 }
 
+#include <stdint.h>
+
 #define ECS_BUILTIN_EVENT_COUNT 3 // EcsOnAdd, EcsOnRemove, EcsOnSet
 
 void ecs_observer_index_init(ecs_observer_index_t *index) {
@@ -3775,6 +3852,10 @@ void ecs_observer_index_add_table(ecs_observer_index_t *index, ecs_table_t *tabl
     }
 }
 
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
 static void *ecs_query_null_field = NULL;
 
 void ecs_query_index_init(ecs_query_index_t *index) {
@@ -3789,7 +3870,8 @@ void ecs_query_index_fini(ecs_query_index_t *index) {
         ecs_query_cache_t *cache =
             ecs_vec_get_mut(&index->queries, active_ids[i], ecs_query_cache_t);
         ecs_vec_fini(&cache->table_ids);
-        ecs_vec_fini(&cache->fields);
+        free(cache->fields_ptr);
+        free(cache->fields_kind);
         ecs_query_index_destroy(&cache->query);
     }
     ecs_vec_fini(&index->active_ids);
@@ -3836,11 +3918,7 @@ ecs_query_copy_terms_with_implicit_disabled(const ecs_query_term_t *terms, uint1
         return ecs_query_copy_terms(terms, *count);
     }
 
-    const uint16_t query_term_capacity = 16;
-    ecs_assert(
-        *count + 1 < query_term_capacity,
-        "query has no room for implicit Disabled term\n"
-    );
+    ecs_assert(*count + 1 < 16, "query has no room for implicit Disabled term\n");
 
     ecs_query_term_t *copy = malloc(sizeof(ecs_query_term_t) * (*count + 1));
     if (*count != 0) {
@@ -3866,10 +3944,9 @@ static void ecs_query_validate_terms(const ecs_query_term_t *terms, uint16_t ter
     for (uint16_t i = 0; i < term_count; i++) {
         ecs_assert_id_valid(terms[i].id);
         ecs_assert(
-            terms[i].access == EcsIn || terms[i].access == EcsOut ||
-                terms[i].access == EcsInOut || terms[i].access == EcsInOptional ||
-                terms[i].access == EcsInOutOptional || terms[i].access == EcsFilter ||
-                terms[i].access == EcsNot,
+            terms[i].access == EcsIn || terms[i].access == EcsOut || terms[i].access == EcsInOut ||
+                terms[i].access == EcsInOptional || terms[i].access == EcsInOutOptional ||
+                terms[i].access == EcsFilter || terms[i].access == EcsNot,
             "invalid query term access: %d\n",
             terms[i].access
         );
@@ -3921,20 +3998,36 @@ void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
 static void
 ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t table_id) {
     ecs_vec_push_u16(&cache->table_ids, table_id);
+    const uint16_t table_count = cache->table_ids.size;
+    const uint16_t field_count = cache->query.field_count;
+
+    if (table_count > cache->field_table_capacity) {
+        uint16_t capacity = cache->field_table_capacity ? cache->field_table_capacity : 4;
+        while (capacity < table_count) {
+            capacity *= 2;
+        }
+
+        const uint32_t slot_count = (uint32_t)capacity * field_count;
+        cache->fields_ptr = realloc(cache->fields_ptr, sizeof(void **) * slot_count);
+        cache->fields_kind = realloc(cache->fields_kind, sizeof(ecs_field_kind_t) * slot_count);
+        cache->field_table_capacity = capacity;
+    }
+
+    const uint32_t base = (uint32_t)(table_count - 1) * field_count;
     for (uint16_t i = 0; i < cache->query.field_count; i++) {
         const ecs_query_term_t term = cache->query.fields[i];
         uint16_t col = ecs_table_get_column_index(table, term.id);
         const bool has_field = col < table->type.count && table->type.ids[col] == term.id;
-        const bool optional = term.access == EcsInOptional || term.access == EcsInOutOptional;
 
         ecs_assert(
-            has_field || optional,
+            has_field || term.access == EcsInOptional || term.access == EcsInOutOptional,
             "query cache matched table without field component: %d\n",
             term.id
         );
 
         void **slot = has_field ? &table->cls[col].data : &ecs_query_null_field;
-        ecs_vec_push(&cache->fields, &slot, sizeof(void **));
+        cache->fields_ptr[base + i] = slot;
+        cache->fields_kind[base + i] = has_field ? EcsFieldOwned : EcsFieldNone;
     }
 }
 
@@ -3953,7 +4046,9 @@ ecs_query_id_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_
 
     ecs_query_from_desc(desc, &query_cache->query);
     ecs_vec_init(&query_cache->table_ids, sizeof(uint16_t));
-    ecs_vec_init(&query_cache->fields, sizeof(void **));
+    query_cache->fields_ptr = NULL;
+    query_cache->fields_kind = NULL;
+    query_cache->field_table_capacity = 0;
     query_cache->active_index = index->active_ids.size;
     query_cache->next_free = UINT16_MAX;
     query_cache->alive = true;
@@ -4011,6 +4106,10 @@ void ecs_query_index_add_table(
         }
     }
 }
+
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 static uint64_t ecs_resource_storage_size(const ecs_resource_desc_t *record) {
     return record->size ? record->size : 1;
@@ -4170,6 +4269,9 @@ void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_world_t *world, 
     index->present[id] = false;
 }
 
+#include <stdint.h>
+#include <stdlib.h>
+
 static bool ecs_system_id_valid(const ecs_system_index_t *index, ecs_system_id_t system) {
     return system != 0 && system < index->systems.size;
 }
@@ -4277,6 +4379,9 @@ void ecs_system_index_fini(ecs_system_index_t *index) {
     ecs_vec_fini(&index->systems);
 }
 
+#include <stdint.h>
+#include <stdlib.h>
+
 #define INITIAL_SLOT_SHIFT 12
 #define LOAD_FACTOR 0.75
 #define ECS_TABLE_SLOT_EMPTY UINT16_MAX
@@ -4287,6 +4392,10 @@ static inline uint32_t ecs_type_hash(ecs_type_t type) {
         h ^= (uint32_t)type.ids[i];
         h *= 16777619u;
     }
+    h ^= (uint32_t)type.base;
+    h *= 16777619u;
+    h ^= (uint32_t)(type.base >> 32);
+    h *= 16777619u;
 
     h ^= h >> 16;
     h *= 0x85ebca6bu;
@@ -4365,9 +4474,7 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     while (map->slots[slot_idx].table_index != ECS_TABLE_SLOT_EMPTY) {
         if (ECS_LIKELY(map->slots[slot_idx].hash == hash_fingerprint)) {
             const ecs_table_t *table = ecs_table_index_at(map, map->slots[slot_idx].table_index);
-            if (ECS_LIKELY(
-                    ecs_type_equals(table->type.ids, table->type.count, type.ids, type.count)
-                )) {
+            if (ECS_LIKELY(ecs_type_equals(&table->type, &type))) {
                 ecs_type_fini(&type);
                 return (uint16_t)map->slots[slot_idx].table_index;
             }
@@ -4389,6 +4496,10 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     uint16_t table_idx = map->table_count++;
     ecs_table_t new_table;
     ecs_table_init(&new_table, type, component_index, table_idx);
+    new_table.base_table_id = UINT16_MAX;
+    if (type.base) {
+        new_table.base_table_id = ecs_get_record(world, type.base)->table_id;
+    }
     map->tables[table_idx] = new_table;
 
     map->slots[slot_idx].hash = hash_fingerprint;
