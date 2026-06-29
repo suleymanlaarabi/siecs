@@ -34,6 +34,11 @@ class entity {
         return *this;
     }
 
+    entity is_a(entity target) {
+        ecs_is_a(_world, _entity, target._entity);
+        return *this;
+    }
+
     entity child_of(entity parent) {
         const ChildOf desc = { .target = parent._entity };
         ecs_set_cid(_world, _entity, ecs_id(ChildOf), &desc);
