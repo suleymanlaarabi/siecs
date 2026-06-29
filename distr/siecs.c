@@ -203,7 +203,6 @@ typedef struct ecs_table_s {
     ecs_column_t *cls;
     uint16_t *data_columns;
     ecs_type_t type;
-    uint16_t base_table_id;
     uint64_t bloom;
     ecs_vec_t observers_by_event; // ecs_vec_t per event id; each holds uint16_t observer ids.
 } ecs_table_t;
@@ -271,6 +270,13 @@ static inline uint16_t
 ecs_table_get_column_index(const ecs_table_t *table, ecs_component_t component_id) {
     return ecs_id_map_at(&table->add_edge, component_id);
 }
+
+void *ecs_table_field(
+    ecs_world_t *world,
+    const ecs_table_t *table,
+    ecs_component_t component_id,
+    bool *is_shared
+);
 
 #endif
 
@@ -462,16 +468,10 @@ typedef struct {
     uint16_t field_count;
 } ecs_query_t;
 
-typedef enum {
-    EcsFieldNone,
-    EcsFieldOwned,
-    EcsFieldShared,
-} ecs_field_kind_t;
-
 typedef struct ecs_query_cache_s {
     ecs_query_t query;
     ecs_vec_t table_ids; // uint16_t
-    void ***fields_ptr;  // void ** slots: &table->cls[col].data
+    void **fields_ptr;
     ecs_field_kind_t *fields_kind;
     uint16_t field_table_capacity;
     uint32_t active_index;
@@ -495,6 +495,10 @@ void ecs_query_index_add_table(ecs_world_t *world, const ecs_table_t *table, uin
 void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query);
 void ecs_query_index_destroy(ecs_query_t *query);
 
+static inline bool ecs_query_term_requires_owned(ecs_query_term_t term) {
+    return term.access == EcsOut || term.access == EcsInOut || term.access == EcsInOutOptional;
+}
+
 static inline bool ecs_query_match_table(
     const ecs_world_t *world,
     const ecs_query_t *query,
@@ -509,6 +513,10 @@ static inline bool ecs_query_match_table(
             continue;
         } else if (term.access == EcsNot) {
             if (ecs_table_has(world, table, term.id)) {
+                return false;
+            }
+        } else if (ecs_query_term_requires_owned(term)) {
+            if (ecs_table_column_or_invalid(table, term.id) == UINT16_MAX) {
                 return false;
             }
         } else if (!ecs_table_has(world, table, term.id)) {
@@ -1299,8 +1307,11 @@ bool ecs_iter_next(ecs_iter_t *it) {
     } while (it->count == 0);
     if (it->cache->query.field_count == 0) {
         it->ptrs = NULL;
+        it->field_kinds = NULL;
     } else {
         it->ptrs = &it->cache->fields_ptr[it->table_idx * it->cache->query.field_count];
+        it->field_kinds =
+            &it->cache->fields_kind[it->table_idx * it->cache->query.field_count];
     }
     it->entities = it->world->table_index.tables[tids[it->table_idx]].entities;
     return true;
@@ -1521,7 +1532,6 @@ void ecs_table_init(
     table->entities = malloc(sizeof(ecs_entity_t) * table->entity_capacity);
     table->cls = type.count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.count);
     table->data_columns = type.count == 0 ? NULL : malloc(sizeof(uint16_t) * type.count);
-    table->base_table_id = UINT16_MAX;
     table->bloom = ecs_type_bloom(&type);
 
     ecs_vec_init(&table->observers_by_event, sizeof(ecs_vec_t));
@@ -1629,14 +1639,51 @@ bool ecs_table_has(
     const ecs_table_t *table,
     ecs_component_t component_id
 ) {
-    bool result = ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
-
-    if (!result && table->base_table_id != UINT16_MAX) {
-        result =
-            ecs_table_has(world, &world->table_index.tables[table->base_table_id], component_id);
+    if (ecs_table_column_or_invalid(table, component_id) != UINT16_MAX) {
+        return true;
     }
 
-    return result;
+    ecs_entity_t base = table->type.base;
+    while (base != 0) {
+        const ecs_entity_record_t *record = ecs_get_record(world, base);
+        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+        if (ecs_table_column_or_invalid(base_table, component_id) != UINT16_MAX) {
+            return true;
+        }
+        base = base_table->type.base;
+    }
+
+    return false;
+}
+
+void *ecs_table_field(
+    ecs_world_t *world,
+    const ecs_table_t *table,
+    ecs_component_t component_id,
+    bool *is_shared
+) {
+    uint16_t cidx = ecs_table_column_or_invalid(table, component_id);
+    if (cidx != UINT16_MAX) {
+        *is_shared = false;
+        return &table->cls[cidx].data;
+    }
+
+    ecs_entity_t base = table->type.base;
+    while (base != 0) {
+        const ecs_entity_record_t *record = ecs_get_record(world, base);
+        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+
+        cidx = ecs_table_column_or_invalid(base_table, component_id);
+        if (cidx != UINT16_MAX) {
+            *is_shared = true;
+            return ecs_table_component_at_column(base_table, cidx, record->table_row);
+        }
+
+        base = base_table->type.base;
+    }
+
+    *is_shared = false;
+    return NULL;
 }
 
 #include <stdint.h>
@@ -3944,8 +3991,6 @@ void ecs_observer_index_add_table(ecs_world_t *world, ecs_table_t *table) {
 #include <stdlib.h>
 #include <string.h>
 
-static void *ecs_query_null_field = NULL;
-
 void ecs_query_index_init(ecs_query_index_t *index) {
     ecs_vec_init(&index->queries, sizeof(ecs_query_cache_t));
     ecs_vec_init(&index->active_ids, sizeof(ecs_query_id_t));
@@ -4084,7 +4129,12 @@ void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
 }
 
 static void
-ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t table_id) {
+ecs_query_cache_add_table(
+    ecs_world_t *world,
+    ecs_query_cache_t *cache,
+    const ecs_table_t *table,
+    uint16_t table_id
+) {
     ecs_vec_push_u16(&cache->table_ids, table_id);
     const uint16_t table_count = cache->table_ids.size;
     const uint16_t field_count = cache->query.field_count;
@@ -4096,7 +4146,7 @@ ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, ui
         }
 
         const uint32_t slot_count = (uint32_t)capacity * field_count;
-        cache->fields_ptr = realloc(cache->fields_ptr, sizeof(void **) * slot_count);
+        cache->fields_ptr = realloc(cache->fields_ptr, sizeof(void *) * slot_count);
         cache->fields_kind = realloc(cache->fields_kind, sizeof(ecs_field_kind_t) * slot_count);
         cache->field_table_capacity = capacity;
     }
@@ -4104,18 +4154,32 @@ ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, ui
     const uint32_t base = (uint32_t)(table_count - 1) * field_count;
     for (uint16_t i = 0; i < cache->query.field_count; i++) {
         const ecs_query_term_t term = cache->query.fields[i];
-        uint16_t col = ecs_table_get_column_index(table, term.id);
-        const bool has_field = col < table->type.count && table->type.ids[col] == term.id;
+        void *field = NULL;
+        ecs_field_kind_t field_kind = EcsFieldNone;
+
+        if (ecs_query_term_requires_owned(term)) {
+            uint16_t column = ecs_table_column_or_invalid(table, term.id);
+            if (column != UINT16_MAX) {
+                field = &table->cls[column].data;
+                field_kind = EcsFieldOwned;
+            }
+        } else {
+            bool is_shared = false;
+            field = ecs_table_field(world, table, term.id, &is_shared);
+            if (field || is_shared) {
+                field_kind = is_shared ? EcsFieldShared : EcsFieldOwned;
+            }
+        }
 
         ecs_assert(
-            has_field || term.access == EcsInOptional || term.access == EcsInOutOptional,
+            field_kind != EcsFieldNone || term.access == EcsInOptional ||
+                term.access == EcsInOutOptional,
             "query cache matched table without field component: %d\n",
             term.id
         );
 
-        void **slot = has_field ? &table->cls[col].data : &ecs_query_null_field;
-        cache->fields_ptr[base + i] = slot;
-        cache->fields_kind[base + i] = has_field ? EcsFieldOwned : EcsFieldNone;
+        cache->fields_ptr[base + i] = field;
+        cache->fields_kind[base + i] = field_kind;
     }
 }
 
@@ -4165,7 +4229,7 @@ void ecs_query_index_update_matches(ecs_world_t *world, ecs_query_cache_t *query
             const ecs_table_t *table = &world->table_index.tables[*table_index];
 
             if (ecs_query_match_table(world, &query_cache->query, table)) {
-                ecs_query_cache_add_table(query_cache, table, *table_index);
+                ecs_query_cache_add_table(world, query_cache, table, *table_index);
             }
         });
     } else {
@@ -4174,7 +4238,7 @@ void ecs_query_index_update_matches(ecs_world_t *world, ecs_query_cache_t *query
 
         for (uint16_t i = 0; i < table_count; i++) {
             if (ecs_query_match_table(world, &query_cache->query, &tables[i])) {
-                ecs_query_cache_add_table(query_cache, &tables[i], i);
+                ecs_query_cache_add_table(world, query_cache, &tables[i], i);
             }
         }
     }
@@ -4186,7 +4250,7 @@ void ecs_query_index_add_table(ecs_world_t *world, const ecs_table_t *table, uin
         ecs_query_cache_t *cache =
             ecs_vec_get_mut(&world->query_index.queries, active_ids[i], ecs_query_cache_t);
         if (ecs_query_match_table(world, &cache->query, table)) {
-            ecs_query_cache_add_table(cache, table, table_id);
+            ecs_query_cache_add_table(world, cache, table, table_id);
         }
     }
 }
@@ -4546,6 +4610,51 @@ static void ecs_table_index_grow_tables(ecs_table_index_t *map) {
     map->tables = realloc(map->tables, sizeof(ecs_table_t) * map->table_capacity);
 }
 
+static bool ecs_table_index_inherits_component_before(
+    const ecs_world_t *world,
+    const ecs_table_t *table,
+    ecs_entity_t stop_base,
+    ecs_component_t component
+) {
+    ecs_entity_t base = table->type.base;
+    while (base != 0 && base != stop_base) {
+        const ecs_entity_record_t *record = ecs_get_record(world, base);
+        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+        if (ecs_table_column_or_invalid(base_table, component) != UINT16_MAX) {
+            return true;
+        }
+        base = base_table->type.base;
+    }
+    return false;
+}
+
+static void ecs_table_index_register_inherited_components(
+    ecs_world_t *world,
+    ecs_table_t *table,
+    uint16_t table_id
+) {
+    ecs_entity_t base = table->type.base;
+    while (base != 0) {
+        const ecs_entity_record_t *record = ecs_get_record(world, base);
+        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+
+        for (uint16_t i = 0; i < base_table->type.count; i++) {
+            ecs_component_t component = base_table->type.ids[i];
+            if (ecs_table_column_or_invalid(table, component) != UINT16_MAX ||
+                ecs_table_index_inherits_component_before(world, table, base, component)) {
+                continue;
+            }
+
+            table->bloom |= 1ull << (component % 64);
+            ecs_component_record_t *record =
+                ecs_component_index_get_mut(&world->component_index, component);
+            ecs_vec_push_u16(&record->tables, table_id);
+        }
+
+        base = base_table->type.base;
+    }
+}
+
 uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     const ecs_component_index_t *component_index = &world->component_index;
     ecs_table_index_t *map = &world->table_index;
@@ -4580,11 +4689,8 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     uint16_t table_idx = map->table_count++;
     ecs_table_t new_table;
     ecs_table_init(&new_table, type, component_index, table_idx);
-    new_table.base_table_id = UINT16_MAX;
-    if (type.base) {
-        new_table.base_table_id = ecs_get_record(world, type.base)->table_id;
-    }
     map->tables[table_idx] = new_table;
+    ecs_table_index_register_inherited_components(world, &map->tables[table_idx], table_idx);
 
     map->slots[slot_idx].hash = hash_fingerprint;
     map->slots[slot_idx].table_index = table_idx;
