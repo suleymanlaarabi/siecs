@@ -467,10 +467,7 @@ SIECS_API bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t m
 #define ECS_RELATION_DECLARE(name) ECS_COMPONENT_DECLARE(name, { ecs_entity_t target; })
 
 /* Builtin relation for parent/child relationships. */
-ECS_RELATION_DECLARE(ChildOf);
-
-/* Builtin component for inheritance relationships. */
-ECS_COMPONENT_DECLARE(IsA, { ecs_entity_t target; });
+ECS_RELATION_DECLARE(ChildOf)
 
 /* Builtin component for entity names. */
 ECS_COMPONENT_DECLARE(Name, { char *value; });
