@@ -236,6 +236,70 @@ void query_inout_optional_mutates_when_present(void) {
     ecs_fini(world);
 }
 
+void query_inherited_field_is_shared(void) {
+    ecs_world_t *world = query_test_world();
+
+    ecs_entity_t base = ecs_new(world);
+    ecs_set(world, base, QueryPosition, { 42 });
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_is_a(world, entity, base);
+
+    ecs_query_id_t query = ecs_query(world, { .terms = { ecs_in(QueryPosition) } });
+    ecs_iter_t it = ecs_query_iter(world, query);
+
+    bool found_shared = false;
+    while (ecs_iter_next(&it)) {
+        QueryPosition *position = ecs_field(&it, 0);
+        if (it.field_kinds[0] == EcsFieldShared) {
+            test_int(1, it.count);
+            test_assert(it.entities[0] == entity);
+            test_assert(position == ecs_get(world, base, QueryPosition));
+            test_int(42, position->value);
+            found_shared = true;
+        }
+    }
+
+    test_true(found_shared);
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
+void query_override_field_is_owned(void) {
+    ecs_world_t *world = query_test_world();
+
+    ecs_entity_t base = ecs_new(world);
+    ecs_set(world, base, QueryPosition, { 42 });
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_is_a(world, entity, base);
+    ecs_set(world, entity, QueryPosition, { 100 });
+
+    ecs_query_id_t query = ecs_query(world, { .terms = { ecs_inout(QueryPosition) } });
+    ecs_iter_t it = ecs_query_iter(world, query);
+
+    bool found_owned_override = false;
+    while (ecs_iter_next(&it)) {
+        QueryPosition *position = ecs_field(&it, 0);
+        if (it.entities[0] == entity) {
+            test_int(1, it.count);
+            test_int(EcsFieldOwned, it.field_kinds[0]);
+            test_assert(position == ecs_get(world, entity, QueryPosition));
+            test_int(100, position->value);
+            position->value = 101;
+            found_owned_override = true;
+        }
+    }
+
+    test_true(found_owned_override);
+    test_int(101, ecs_get(world, entity, QueryPosition)->value);
+    test_int(42, ecs_get(world, base, QueryPosition)->value);
+
+    ecs_query_fini(world, query);
+    ecs_fini(world);
+}
+
 void query_ids_stay_valid_after_temporary_query_fini(void) {
     ecs_world_t *world = query_test_world();
     ecs_entity_t entity = query_test_entity(world, 10, 20, 30);

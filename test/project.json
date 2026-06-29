@@ -99,6 +99,8 @@
           "optional_field_present",
           "optional_field_missing_keeps_field_order",
           "inout_optional_mutates_when_present",
+          "inherited_field_is_shared",
+          "override_field_is_owned",
           "ids_stay_valid_after_temporary_query_fini"
         ]
       },

@@ -68,6 +68,8 @@ void query_can_include_disabled_explicitly(void);
 void query_optional_field_present(void);
 void query_optional_field_missing_keeps_field_order(void);
 void query_inout_optional_mutates_when_present(void);
+void query_inherited_field_is_shared(void);
+void query_override_field_is_owned(void);
 void query_ids_stay_valid_after_temporary_query_fini(void);
 
 // Testsuite 'system'
@@ -315,6 +317,14 @@ bake_test_case query_testcases[] = {
         query_inout_optional_mutates_when_present
     },
     {
+        "inherited_field_is_shared",
+        query_inherited_field_is_shared
+    },
+    {
+        "override_field_is_owned",
+        query_override_field_is_owned
+    },
+    {
         "ids_stay_valid_after_temporary_query_fini",
         query_ids_stay_valid_after_temporary_query_fini
     }
@@ -491,7 +501,7 @@ static bake_test_suite suites[] = {
         "query",
         NULL,
         NULL,
-        9,
+        11,
         query_testcases
     },
     {

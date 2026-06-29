@@ -93,6 +93,11 @@ ecs_table_get_column_index(const ecs_table_t *table, ecs_component_t component_i
     return ecs_id_map_at(&table->add_edge, component_id);
 }
 
-void *ecs_table_field(ecs_world_t *world, const ecs_table_t *table, ecs_component_t component_id);
+void *ecs_table_field(
+    ecs_world_t *world,
+    const ecs_table_t *table,
+    ecs_component_t component_id,
+    bool *is_shared
+);
 
 #endif

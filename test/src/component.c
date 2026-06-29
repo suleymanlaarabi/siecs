@@ -404,11 +404,15 @@ void component_table_resolves_recursive_base_components(void) {
 
     const ecs_entity_record_t *child_record = ecs_get_record(world, child);
     const ecs_table_t *child_table = ecs_get_table(world, child_record->table_id);
-    Position *position = ecs_table_field(world, child_table, ecs_id(Position));
-    Velocity *velocity = ecs_table_field(world, child_table, ecs_id(Velocity));
+    bool position_shared = false;
+    bool velocity_shared = false;
+    Position *position = ecs_table_field(world, child_table, ecs_id(Position), &position_shared);
+    Velocity *velocity = ecs_table_field(world, child_table, ecs_id(Velocity), &velocity_shared);
 
     test_true(ecs_has(world, child, Position));
     test_true(ecs_has(world, child, Velocity));
+    test_true(position_shared);
+    test_true(velocity_shared);
     test_assert(position == ecs_get(world, grandparent, Position));
     test_assert(velocity == ecs_get(world, parent, Velocity));
     test_int(10, position->x);

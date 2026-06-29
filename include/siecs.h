@@ -711,12 +711,19 @@ SIECS_API void ecs_observer_trigger(
  *
  * entities points to the current batch after ecs_iter_next returns true.
  */
+typedef enum {
+    EcsFieldNone,
+    EcsFieldOwned,
+    EcsFieldShared,
+} ecs_field_kind_t;
+
 typedef struct {
     ecs_world_t *world;
     uint32_t count;
     ecs_entity_t *entities;
     struct ecs_query_cache_s *cache;
-    void ***ptrs;
+    void **ptrs;
+    ecs_field_kind_t *field_kinds;
     uint16_t table_idx;
     uint16_t table_count;
 } ecs_iter_t;
@@ -749,7 +756,8 @@ SIECS_API bool ecs_iter_next(ecs_iter_t *it);
  * but are not returned as fields.
  */
 static inline void *ecs_field(ecs_iter_t *it, uint16_t field_index) {
-    return *it->ptrs[field_index];
+    void *field = it->ptrs[field_index];
+    return it->field_kinds[field_index] == EcsFieldOwned ? *(void **)field : field;
 }
 
 /* System phases run in enum order when ecs_progress is called. */

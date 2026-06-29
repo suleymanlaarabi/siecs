@@ -143,10 +143,16 @@ bool ecs_table_has(
     return false;
 }
 
-void *ecs_table_field(ecs_world_t *world, const ecs_table_t *table, ecs_component_t component_id) {
+void *ecs_table_field(
+    ecs_world_t *world,
+    const ecs_table_t *table,
+    ecs_component_t component_id,
+    bool *is_shared
+) {
     uint16_t cidx = ecs_table_column_or_invalid(table, component_id);
     if (cidx != UINT16_MAX) {
-        return table->cls[cidx].data;
+        *is_shared = false;
+        return &table->cls[cidx].data;
     }
 
     ecs_entity_t base = table->type.base;
@@ -156,11 +162,13 @@ void *ecs_table_field(ecs_world_t *world, const ecs_table_t *table, ecs_componen
 
         cidx = ecs_table_column_or_invalid(base_table, component_id);
         if (cidx != UINT16_MAX) {
+            *is_shared = true;
             return ecs_table_component_at_column(base_table, cidx, record->table_row);
         }
 
         base = base_table->type.base;
     }
 
+    *is_shared = false;
     return NULL;
 }

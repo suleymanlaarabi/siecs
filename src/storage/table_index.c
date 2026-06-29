@@ -87,6 +87,51 @@ static void ecs_table_index_grow_tables(ecs_table_index_t *map) {
     map->tables = realloc(map->tables, sizeof(ecs_table_t) * map->table_capacity);
 }
 
+static bool ecs_table_index_inherits_component_before(
+    const ecs_world_t *world,
+    const ecs_table_t *table,
+    ecs_entity_t stop_base,
+    ecs_component_t component
+) {
+    ecs_entity_t base = table->type.base;
+    while (base != 0 && base != stop_base) {
+        const ecs_entity_record_t *record = ecs_get_record(world, base);
+        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+        if (ecs_table_column_or_invalid(base_table, component) != UINT16_MAX) {
+            return true;
+        }
+        base = base_table->type.base;
+    }
+    return false;
+}
+
+static void ecs_table_index_register_inherited_components(
+    ecs_world_t *world,
+    ecs_table_t *table,
+    uint16_t table_id
+) {
+    ecs_entity_t base = table->type.base;
+    while (base != 0) {
+        const ecs_entity_record_t *record = ecs_get_record(world, base);
+        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+
+        for (uint16_t i = 0; i < base_table->type.count; i++) {
+            ecs_component_t component = base_table->type.ids[i];
+            if (ecs_table_column_or_invalid(table, component) != UINT16_MAX ||
+                ecs_table_index_inherits_component_before(world, table, base, component)) {
+                continue;
+            }
+
+            table->bloom |= 1ull << (component % 64);
+            ecs_component_record_t *record =
+                ecs_component_index_get_mut(&world->component_index, component);
+            ecs_vec_push_u16(&record->tables, table_id);
+        }
+
+        base = base_table->type.base;
+    }
+}
+
 uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     const ecs_component_index_t *component_index = &world->component_index;
     ecs_table_index_t *map = &world->table_index;
@@ -122,6 +167,7 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     ecs_table_t new_table;
     ecs_table_init(&new_table, type, component_index, table_idx);
     map->tables[table_idx] = new_table;
+    ecs_table_index_register_inherited_components(world, &map->tables[table_idx], table_idx);
 
     map->slots[slot_idx].hash = hash_fingerprint;
     map->slots[slot_idx].table_index = table_idx;

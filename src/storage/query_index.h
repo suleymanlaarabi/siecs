@@ -14,16 +14,10 @@ typedef struct {
     uint16_t field_count;
 } ecs_query_t;
 
-typedef enum {
-    EcsFieldNone,
-    EcsFieldOwned,
-    EcsFieldShared,
-} ecs_field_kind_t;
-
 typedef struct ecs_query_cache_s {
     ecs_query_t query;
     ecs_vec_t table_ids; // uint16_t
-    void ***fields_ptr;  // void ** slots: &table->cls[col].data
+    void **fields_ptr;
     ecs_field_kind_t *fields_kind;
     uint16_t field_table_capacity;
     uint32_t active_index;
