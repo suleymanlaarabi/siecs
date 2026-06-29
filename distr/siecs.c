@@ -987,9 +987,6 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
     return ecs_component_register(world, &id, desc);
 }
 
-#include <stdint.h>
-#include <string.h>
-
 ecs_entity_t ecs_new(ecs_world_t *world) {
     ecs_assert_not_null(world);
     ecs_table_t *table = ecs_get_table(world, 0);
@@ -1255,9 +1252,6 @@ void ecs_observer_trigger(
     ecs_emit(world, table, entity, event, trigger_data);
 }
 
-#include <stdint.h>
-#include <stdlib.h>
-
 static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query_id_t qid) {
     ecs_query_cache_t *cache = ecs_vec_get_mut(&index->queries, qid, ecs_query_cache_t);
     uint32_t active_index = cache->active_index;
@@ -1399,9 +1393,7 @@ void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id) {
 #ifndef SIHTTP_H
 #include "sihttp.h"
 #endif
-#include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 #include <time.h>
 
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
@@ -1516,8 +1508,6 @@ void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system) {
     sys->enabled = false;
     world->system_index.plan_dirty = true;
 }
-
-#include <stdlib.h>
 
 void ecs_table_init(
     ecs_table_t *table,
@@ -1686,10 +1676,6 @@ void *ecs_table_field(
     return NULL;
 }
 
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
 ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id) {
     ecs_type_t new_type = {
         .ids = malloc((type->count + 1) * sizeof(uint16_t)),
@@ -1790,9 +1776,6 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
 #ifndef SIREFLECT_H
 #include "sireflect.h"
 #endif
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
 
 ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world_t *world = malloc(sizeof(ecs_world_t));
@@ -2245,8 +2228,6 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req);
 #ifndef SIHTTP_H
 #include "sihttp.h"
 #endif
-#include <stdlib.h>
-#include <string.h>
 
 sihttp_response_t health(const sihttp_request_t *) {
     return sihttp_response({ .body = strdup("OK") });
@@ -2280,9 +2261,6 @@ void init_rest(ecs_world_t *world) {
     }
 }
 
-#include <stdlib.h>
-#include <string.h>
-
 sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body) {
     char *json = sijson_stringify(body);
     if (!json) {
@@ -2309,8 +2287,6 @@ sihttp_response_t ecs_rest_error_response(int status, const char *message) {
 #ifndef SIJSON_H
 #include "sijson.h"
 #endif
-#include <stdint.h>
-#include <stdlib.h>
 
 static bool entity_from_index(ecs_world_t *world, int64_t index, ecs_entity_t *out) {
     if (index <= 0 || (uint64_t)index >= world->entity_index.entities.size) {
@@ -2460,9 +2436,6 @@ sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req) {
 #ifndef SIJSON_H
 #include "sijson.h"
 #endif
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
 
 static void ensure_sijson_entity_type(void) {
     sireflect_register_struct(
@@ -2592,9 +2565,6 @@ sihttp_response_t ecs_rest_set_entity_component(
 }
 
 #include <stdbool.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
 
 typedef struct {
     bool *items;
@@ -2789,8 +2759,6 @@ static inline void ecs_arena_reset(ecs_arena_t *allocator) { allocator->cursor =
 
 #endif
 
-#include <stdlib.h>
-
 void ecs_arena_init(ecs_arena_t *allocator) {
     allocator->buf = malloc(8);
     allocator->capacity = 8;
@@ -2799,10 +2767,6 @@ void ecs_arena_init(ecs_arena_t *allocator) {
 void ecs_arena_fini(ecs_arena_t *allocator) {
     free(allocator->buf);
 }
-
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
 
 void ecs_id_map_init(ecs_id_map_t *map) {
     map->capacity = 1;
@@ -3033,8 +2997,6 @@ bool ecs_str_cmp(const ecs_str_t *a, const ecs_str_t *b);
 #endif
 
 #include <ctype.h>
-#include <stdlib.h>
-#include <string.h>
 
 void ecs_str_init(ecs_str_t *str) {
     str->data = NULL;
@@ -3216,9 +3178,6 @@ bool ecs_str_cmp(const ecs_str_t *a, const ecs_str_t *b) {
         return true;
     return memcmp(a->data, b->data, a->len) == 0;
 }
-
-#include <stdlib.h>
-#include <string.h>
 
 void ecs_vec_init(ecs_vec_t *vec, uint32_t element_size) {
     vec->data = malloc(element_size); // Start with 1 elements
@@ -3483,8 +3442,6 @@ static inline void ecs_scanner_advance_n(ecs_scanner_t *scanner, uint64_t count)
 }
 
 #endif
-
-#include <string.h>
 
 static inline void ecs_lexer_push(ecs_vec_t *tokens, ecs_token_type_t type) {
     ecs_token_t *token = ecs_vec_push_empty(tokens, sizeof(ecs_token_t));
@@ -3786,8 +3743,6 @@ void ecs_lexer_lex(const char *str, ecs_vec_t *tokens) {
     ecs_lexer_push(tokens, EcsTokEnd);
 }
 
-#include <string.h>
-
 void ecs_scanner_init(ecs_scanner_t *scanner, const char *str) {
     scanner->str = str;
     scanner->pos = 0;
@@ -3797,7 +3752,6 @@ void ecs_scanner_init(ecs_scanner_t *scanner, const char *str) {
 #ifndef SIREFLECT_H
 #include "sireflect.h"
 #endif
-#include <stdlib.h>
 
 void ecs_component_index_register(
     ecs_component_index_t *index,
@@ -3935,8 +3889,6 @@ ecs_module_id_t ecs_module_index_find(const ecs_module_index_t *index, const ecs
     return 0;
 }
 
-#include <stdint.h>
-
 #define ECS_BUILTIN_EVENT_COUNT 3 // EcsOnAdd, EcsOnRemove, EcsOnSet
 
 void ecs_observer_index_init(ecs_observer_index_t *index) {
@@ -3985,10 +3937,6 @@ void ecs_observer_index_add_table(ecs_world_t *world, ecs_table_t *table) {
         }
     }
 }
-
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
 
 void ecs_query_index_init(ecs_query_index_t *index) {
     ecs_vec_init(&index->queries, sizeof(ecs_query_cache_t));
@@ -4254,10 +4202,6 @@ void ecs_query_index_add_table(ecs_world_t *world, const ecs_table_t *table, uin
     }
 }
 
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
 static uint64_t ecs_resource_storage_size(const ecs_resource_desc_t *record) {
     return record->size ? record->size : 1;
 }
@@ -4416,9 +4360,6 @@ void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_world_t *world, 
     index->present[id] = false;
 }
 
-#include <stdint.h>
-#include <stdlib.h>
-
 static bool ecs_system_id_valid(const ecs_system_index_t *index, ecs_system_id_t system) {
     return system != 0 && system < index->systems.size;
 }
@@ -4525,9 +4466,6 @@ void ecs_system_index_fini(ecs_system_index_t *index) {
 
     ecs_vec_fini(&index->systems);
 }
-
-#include <stdint.h>
-#include <stdlib.h>
 
 #define INITIAL_SLOT_SHIFT 12
 #define LOAD_FACTOR 0.75
