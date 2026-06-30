@@ -15,7 +15,7 @@ ECS_COMPONENT(Velocity, {
 });
 
 int main(void) {
-    ecs_world_t *world = ecs_with_features({ .rest = true });
+    ecs_world_t *world = ecs_with_features({ .rest = true, .target_fps = 240 });
 
     ECS_COMPONENT_REGISTER(world, Position);
 

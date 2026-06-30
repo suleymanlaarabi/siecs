@@ -269,6 +269,9 @@ SIECS_API ecs_world_t *ecs_init(void);
 typedef struct {
     /* Start the REST explorer server when the rest addon is built in. */
     bool rest;
+
+    /* Target frames per second for the world's update loop. */
+    uint16_t target_fps;
 } ecs_world_feat_desc_t;
 
 /* Create a world with the given features. */

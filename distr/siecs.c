@@ -1473,16 +1473,27 @@ void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase) {
         ecs_run_system(world, system);
     }
 }
-
-static inline void sleep_ms(long ms) {
+static inline double now_sec(void) {
     struct timespec ts;
-    ts.tv_sec = ms / 1000;
-    ts.tv_nsec = (ms % 1000) * 1000000L;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1000000000.0;
+}
+
+static inline void sleep_sec(double seconds) {
+    if (seconds <= 0.0)
+        return;
+
+    struct timespec ts;
+    ts.tv_sec = (time_t)seconds;
+    ts.tv_nsec = (long)((seconds - (double)ts.tv_sec) * 1000000000.0);
+
     nanosleep(&ts, NULL);
 }
 
 bool ecs_progress(ecs_world_t *world) {
     ecs_assert_not_null(world);
+
+    double frame_start = now_sec();
 
     if (!world->did_start) {
         ecs_run_phase(world, EcsPreStart);
@@ -1497,7 +1508,14 @@ bool ecs_progress(ecs_world_t *world) {
     if (world->features.rest) {
         sihttp_server_poll(world->server);
     }
-    sleep_ms(5);
+
+    if (world->features.target_fps) {
+        double target_dt = 1.0 / (double)world->features.target_fps;
+        double elapsed = now_sec() - frame_start;
+        double remaining = target_dt - elapsed;
+
+        sleep_sec(remaining);
+    }
 
     return !world->exit;
 }
