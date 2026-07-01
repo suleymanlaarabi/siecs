@@ -354,8 +354,7 @@ SIECS_API void ecs_fini(ecs_world_t *world);
  * world. Stores the generated component id in ecs_id(cname).
  */
 #define ECS_COMPONENT_REGISTER(world, cname)                                   \
-  ecs_id(cname) =                                                              \
-      ecs_component_register(world, &ecs_id(cname), &ecs_id(cname##_desc))
+  ecs_component_register(world, &ecs_id(cname), &ecs_id(cname##_desc))
 
 /*
  * Declare and define a component type in one translation unit.

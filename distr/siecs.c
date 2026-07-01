@@ -896,15 +896,15 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
 
     sireflect_handle_t reflection = SIREFLECT_INVALID_HANDLE;
 
-    if (desc->struct_desc) {
+    if (ECS_LIKELY(desc->struct_desc)) {
         reflection = sireflect_try_register_struct(world->sireflect_registry, desc->struct_desc);
 
-        if (reflection == SIREFLECT_INVALID_HANDLE) {
+        if (ECS_UNLIKELY(reflection == SIREFLECT_INVALID_HANDLE)) {
             puts(sireflect_error());
         }
     }
 
-    if (desc->relation_flags & EcsRelationTarget) {
+    if (ECS_UNLIKELY(desc->relation_flags & EcsRelationTarget)) {
         *id = ecs_component_alloc_ids(2);
 
         ecs_component_t component = *id;

@@ -6,12 +6,10 @@
 #include <siecs_cpp/siecs_cpp.hpp>
 
 struct Position {
-    float x, y;
+    reflected(float x; float y;)
 };
 
-struct Velocity {
-    float x, y;
-};
+struct Velocity : Position {};
 
 struct Time {
     float delta;
