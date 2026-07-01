@@ -73,39 +73,10 @@ inline decltype(auto) row_arg(Tuple &fields, uint32_t row) {
     }
 }
 
-template <std::size_t I, typename Args, typename Tuple>
-inline decltype(auto) row_arg_stride(Tuple &fields, uint32_t row, const uint32_t *strides) {
-    auto &field = std::get<I>(fields);
-
-    using arg = std::tuple_element_t<I, Args>;
-    if constexpr (is_res_v<arg>) {
-        (void)row;
-        (void)strides;
-        return field;
-    } else {
-        constexpr std::size_t field_index = field_index_before<Args, I>();
-        return field[row * strides[field_index]];
-    }
-}
-
 template <std::uint8_t SharedMask, typename F, typename Args, typename Tuple, std::size_t... Is>
 inline void call_fields_impl(F &func, Tuple &fields, uint32_t count, std::index_sequence<Is...>) {
     for (uint32_t i = 0; i < count; i++) {
         std::invoke(func, row_arg<SharedMask, Is, Args>(fields, i)...);
-    }
-}
-
-template <typename F, typename Args, typename Tuple, std::size_t... Is>
-inline void call_fields_stride_impl(
-    F &func,
-    Tuple &fields,
-    uint32_t count,
-    const uint32_t *strides,
-    std::index_sequence<Is...>
-) {
-    (void)strides;
-    for (uint32_t i = 0; i < count; i++) {
-        std::invoke(func, row_arg_stride<Is, Args>(fields, i, strides)...);
     }
 }
 
@@ -116,53 +87,30 @@ inline void call_fields_mask(F &func, Tuple &fields, uint32_t count) {
     call_fields_impl<SharedMask, F, Args>(func, fields, count, std::make_index_sequence<N>{});
 }
 
-template <typename F, typename Args, typename Tuple>
-inline void call_fields_stride(F &func, Tuple &fields, uint32_t count, std::uint8_t shared_mask) {
-    constexpr std::size_t component_count = component_arg_count<Args>();
-    constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<Tuple>>;
-
-    uint32_t strides[component_count == 0 ? 1 : component_count]{};
-    for (std::size_t i = 0; i < component_count; i++) {
-        strides[i] = (shared_mask & (1U << i)) ? 0U : 1U;
+template <std::uint16_t Mask, std::uint16_t MaxMask, typename F, typename Args, typename Tuple>
+inline void call_fields_dispatch(F &func, Tuple &fields, uint32_t count, std::uint8_t shared_mask) {
+    if constexpr (Mask < MaxMask) {
+        if (shared_mask == Mask) {
+            call_fields_mask<static_cast<std::uint8_t>(Mask), F, Args, Tuple>(func, fields, count);
+        } else {
+            call_fields_dispatch<Mask + 1, MaxMask, F, Args, Tuple>(
+                func,
+                fields,
+                count,
+                shared_mask
+            );
+        }
     }
-
-    call_fields_stride_impl<F, Args>(func, fields, count, strides, std::make_index_sequence<N>{});
 }
 
 template <typename F, typename Args, typename Tuple>
 inline void call_fields(F &func, Tuple &fields, uint32_t count, std::uint8_t shared_mask) {
-    switch (shared_mask) {
-    case 0:
-        call_fields_mask<0, F, Args, Tuple>(func, fields, count);
-        break;
-    case 1U << 0:
-        call_fields_mask<1U << 0, F, Args, Tuple>(func, fields, count);
-        break;
-    case 1U << 1:
-        call_fields_mask<1U << 1, F, Args, Tuple>(func, fields, count);
-        break;
-    case 1U << 2:
-        call_fields_mask<1U << 2, F, Args, Tuple>(func, fields, count);
-        break;
-    case 1U << 3:
-        call_fields_mask<1U << 3, F, Args, Tuple>(func, fields, count);
-        break;
-    case 1U << 4:
-        call_fields_mask<1U << 4, F, Args, Tuple>(func, fields, count);
-        break;
-    case 1U << 5:
-        call_fields_mask<1U << 5, F, Args, Tuple>(func, fields, count);
-        break;
-    case 1U << 6:
-        call_fields_mask<1U << 6, F, Args, Tuple>(func, fields, count);
-        break;
-    case 1U << 7:
-        call_fields_mask<1U << 7, F, Args, Tuple>(func, fields, count);
-        break;
-    default:
-        call_fields_stride<F, Args>(func, fields, count, shared_mask);
-        break;
-    }
+    constexpr std::size_t component_count = component_arg_count<Args>();
+    static_assert(component_count <= 8, "query callbacks can read at most 8 components");
+
+    constexpr std::uint16_t max_mask = 1U << component_count;
+
+    call_fields_dispatch<0, max_mask, F, Args, Tuple>(func, fields, count, shared_mask);
 }
 
 template <typename Args> inline std::uint8_t make_shared_mask(const ecs_iter_t *it) {
