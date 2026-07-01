@@ -1,6 +1,7 @@
 #include "datastructure/vec.h"
 #include "module.h"
 #include "siecs.h"
+#include <stdio.h>
 #ifndef SIREFLECT_H
 #include "sireflect.h"
 #endif
@@ -127,6 +128,10 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
 
     if (desc->struct_desc) {
         reflection = sireflect_try_register_struct(world->sireflect_registry, desc->struct_desc);
+
+        if (reflection == SIREFLECT_INVALID_HANDLE) {
+            puts(sireflect_error());
+        }
     }
 
     if (desc->relation_flags & EcsRelationTarget) {
