@@ -1,5 +1,6 @@
 #include "datastructure/vec.h"
 #include "module.h"
+#include "siecs.h"
 #ifndef SIREFLECT_H
 #include "sireflect.h"
 #endif
@@ -18,53 +19,11 @@ typedef struct ecs_component_global_name_s {
 } ecs_component_global_name_t;
 
 static ecs_component_t ecs_next_component_id = 1;
-static ecs_component_global_name_t *ecs_component_global_names = NULL;
 
 static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
     ecs_component_t id = ecs_next_component_id;
     ecs_next_component_id += count;
     ecs_assert(ecs_next_component_id > id, "component id overflow\n");
-    return id;
-}
-
-static ecs_component_t ecs_component_global_find_name(const char *name, uint16_t count) {
-    for (ecs_component_global_name_t *cur = ecs_component_global_names; cur; cur = cur->next) {
-        if (strcmp(cur->name, name) == 0) {
-            ecs_assert(
-                cur->count == count,
-                "component name registered with incompatible kind: %s\n",
-                name
-            );
-            return cur->id;
-        }
-    }
-
-    return 0;
-}
-
-static void ecs_component_global_record_name(const char *name, ecs_component_t id, uint16_t count) {
-    ecs_component_global_name_t *record = malloc(sizeof(ecs_component_global_name_t));
-    ecs_assert_not_null(record);
-    record->name = strdup(name);
-    ecs_assert_not_null(record->name);
-    record->id = id;
-    record->count = count;
-    record->next = ecs_component_global_names;
-    ecs_component_global_names = record;
-}
-
-static ecs_component_t ecs_component_global_id(const ecs_component_desc_t *desc, uint16_t count) {
-    if (desc->name) {
-        ecs_component_t named_id = ecs_component_global_find_name(desc->name, count);
-        if (named_id) {
-            return named_id;
-        }
-    }
-
-    ecs_component_t id = ecs_component_alloc_ids(count);
-    if (desc->name) {
-        ecs_component_global_record_name(desc->name, id, count);
-    }
     return id;
 }
 
@@ -172,7 +131,7 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
 
     if (desc->relation_flags & EcsRelationTarget) {
         if (*id == 0) {
-            *id = ecs_component_global_id(desc, 2);
+            *id = ecs_component_alloc_ids(2);
         }
 
         ecs_component_t component = *id;
@@ -192,7 +151,8 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
         ecs_component_index_register(
             &world->component_index,
             source,
-            sizeof(RelationSource),
+            desc->relation_flags & EcsRelationOneToOne ? sizeof(RelationTarget)
+                                                       : sizeof(RelationSource),
             NULL,
             RelationSourceOnRemove,
             desc->on_add,
@@ -205,7 +165,7 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
         return component;
     } else {
         if (*id == 0) {
-            *id = ecs_component_global_id(desc, 1);
+            *id = ecs_component_alloc_ids(1);
         }
 
         ecs_component_t component = *id;

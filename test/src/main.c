@@ -52,7 +52,6 @@ void resource_remove(void);
 void resource_replace(void);
 void resource_from_system_c(void);
 void resource_hooks(void);
-void resource_does_not_consume_component_ids(void);
 
 // Testsuite 'childof'
 void childof_kill_parent(void);
@@ -269,10 +268,6 @@ bake_test_case resource_testcases[] = {
     {
         "hooks",
         resource_hooks
-    },
-    {
-        "does_not_consume_component_ids",
-        resource_does_not_consume_component_ids
     }
 };
 
@@ -527,7 +522,7 @@ static bake_test_suite suites[] = {
         "resource",
         NULL,
         NULL,
-        7,
+        6,
         resource_testcases
     },
     {

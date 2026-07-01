@@ -163,19 +163,3 @@ void resource_hooks(void) {
 
     ecs_fini(world);
 }
-
-void resource_does_not_consume_component_ids(void) {
-    ecs_component_t component_without_resource;
-    ecs_component_t component_after_resource;
-
-    ecs_world_t *world = ecs_init();
-    component_without_resource = ecs_component(world, { .name = "ResourceComponentIdProbe", .size = 0 });
-    ecs_fini(world);
-
-    world = ecs_init();
-    ECS_RESOURCE_REGISTER(world, ResourceTime);
-    component_after_resource = ecs_component(world, { .name = "ResourceComponentIdProbe", .size = 0 });
-    ecs_fini(world);
-
-    test_uint(component_without_resource, component_after_resource);
-}
