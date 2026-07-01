@@ -46,6 +46,14 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
         .align = 1,
     };
 
+    if constexpr (requires {
+                      { T::fields } -> std::convertible_to<const char *>;
+                  }) {
+        reflection.fields = T::fields;
+        reflection.size = sisizeof<T>();
+        reflection.align = _Alignof(T);
+    }
+
     ecs_component_desc_t desc = {
         .name = reflection.name,
         .size = sisizeof<T>(),
@@ -66,6 +74,12 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
 
     return cid;
 }
+
+#define fields_str(...) #__VA_ARGS__
+
+#define reflected(...)                                                                             \
+    static constexpr const char *fields = fields_str({ __VA_ARGS__ });                             \
+    __VA_ARGS__
 
 } // namespace detail
 
