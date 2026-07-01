@@ -1,7 +1,11 @@
 #pragma once
 
 #include "siecs.h"
+#include "sireflect.h"
 #include "type.hpp"
+#include <cstddef>
+#include <cstdio>
+#include <string.h>
 #include <string>
 
 namespace ecs {
@@ -9,7 +13,7 @@ namespace ecs {
 namespace detail {
 
 template <typename T> struct component_type {
-    static inline ecs_component_t id;
+    static inline ecs_component_t id = 0;
 };
 
 template <typename T, typename = void> struct is_complete : std::false_type {};
@@ -31,7 +35,18 @@ template <typename T> static void ecs_cpp_set_component_id(ecs_component_t cid) 
 template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *world) {
     ecs_component_t &cid = detail::component_type<T>::id;
 
-    std::string name = std::string(type_name<T>());
+    if (cid != 0) {
+        return cid;
+    }
+
+    static sireflect_struct_desc_t reflection = {};
+
+    static auto name = std::string(type_name<T>());
+
+    reflection.name = name.c_str();
+    reflection.size = 0;
+    reflection.align = 1;
+    reflection.fields = "{}";
 
     ecs_component_desc_t desc = {
         .name = name.c_str(),
@@ -46,10 +61,10 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
                      [[maybe_unused]] ecs_component_t component,
                      void *ptr) { new (const_cast<void *>(ptr)) T(); },
         .relation_flags = 0,
-        .struct_desc = nullptr,
+        .struct_desc = &reflection,
     };
 
-    cid = ecs_component_register(world, &cid, &desc);
+    cid = ecs_component_init(world, &desc);
 
     return cid;
 }

@@ -741,6 +741,7 @@ void ecs_module_record_observer(ecs_world_t *world, ecs_observer_id_t observer);
 
 #endif
 
+#include <stdio.h>
 #ifndef SIREFLECT_H
 #include "sireflect.h"
 #endif
@@ -893,6 +894,10 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
 
     if (desc->struct_desc) {
         reflection = sireflect_try_register_struct(world->sireflect_registry, desc->struct_desc);
+
+        if (reflection == SIREFLECT_INVALID_HANDLE) {
+            puts(sireflect_error());
+        }
     }
 
     if (desc->relation_flags & EcsRelationTarget) {
@@ -1369,7 +1374,6 @@ void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id) {
 #ifndef SIHTTP_H
 #include "sihttp.h"
 #endif
-#include <stdio.h>
 #include <time.h>
 
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX

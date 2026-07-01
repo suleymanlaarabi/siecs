@@ -1,6 +1,7 @@
 #include "siecs.h"
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <iostream>
 #include <siecs_cpp/siecs_cpp.hpp>
 
@@ -16,48 +17,21 @@ struct Time {
     float delta;
 };
 
-struct physics {
-    void import(ecs::world &world) {
-        world.component<Position>();
-        world.component<Velocity>();
-
-        world.system("Move")
-            .phase(EcsOnUpdate)
-            .each([](Position &pos, const Velocity &vel, ecs::res<const Time> time) {
-                pos.x += vel.x * time->delta;
-                pos.y += vel.y * time->delta;
-
-                std::cout << pos.x << "\n";
-            });
-    }
-};
-
 int main() {
     ecs::world world;
 
-    world.set_resource(Time(16));
+    for (int i = 0; i < 10; i++) {
+        world.entity().add<Position>().add<Velocity>();
+    }
 
-    world.import<physics>();
+    auto enemy = world.entity().add<Position>().add<Velocity>().abstract();
 
-    ecs::entity human = world.entity().add<Position>().abstract();
+    world.entity("enemy").is_a(enemy);
 
-    ecs::entity parent = world.entity().is_a(human);
+    int count = 0;
+    world.query().each([&](Position &pos, const Velocity &vel) { count += 1; });
 
-    world.observe<ecs::OnAdd>().each([](Position &pos) {
-        pos.x = 0;
-        pos.y = 0;
-    });
-
-    world.system().each([](Position &pos, const Velocity &vel) {
-        pos.x += vel.x;
-        pos.y += vel.y;
-    });
-
-    struct Enemy {};
-
-    world.entity().set(Position{ 0, 0 }).set(Velocity{ 10, 10 }).child_of(parent);
-
-    world.module<physics>().disable();
-    world.module<physics>().enable();
-    world.progress();
+    assert(count == 10);
+    while (world.progress()) {
+    };
 }
