@@ -890,6 +890,10 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
 
+    if (*id != 0) {
+        return *id;
+    }
+
     sireflect_handle_t reflection = SIREFLECT_INVALID_HANDLE;
 
     if (desc->struct_desc) {
@@ -901,9 +905,7 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
     }
 
     if (desc->relation_flags & EcsRelationTarget) {
-        if (*id == 0) {
-            *id = ecs_component_alloc_ids(2);
-        }
+        *id = ecs_component_alloc_ids(2);
 
         ecs_component_t component = *id;
         ecs_component_index_register(
@@ -935,9 +937,7 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
         ecs_module_record_component(world, source);
         return component;
     } else {
-        if (*id == 0) {
-            *id = ecs_component_alloc_ids(1);
-        }
+        *id = ecs_component_alloc_ids(1);
 
         ecs_component_t component = *id;
         ecs_component_index_register(
@@ -2409,6 +2409,10 @@ sijson_value_t ecs_rest_entity_detail_json(ecs_world_t *world, ecs_entity_t enti
             void *ptr = ecs_table_get_component(table, cid, record->table_row);
             sijson_array_push(components, ecs_rest_entity_component_json(world, cid, ptr));
         }
+    }
+
+    if (table->type.base) {
+        sijson_object_set(detail, "isA", ecs_rest_entity_detail_json(world, table->type.base));
     }
 
     sijson_object_set(detail, "children", ecs_rest_entity_children_json(world, entity));

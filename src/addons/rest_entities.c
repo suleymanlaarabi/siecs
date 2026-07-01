@@ -98,6 +98,10 @@ sijson_value_t ecs_rest_entity_detail_json(ecs_world_t *world, ecs_entity_t enti
         }
     }
 
+    if (table->type.base) {
+        sijson_object_set(detail, "isA", ecs_rest_entity_detail_json(world, table->type.base));
+    }
+
     sijson_object_set(detail, "children", ecs_rest_entity_children_json(world, entity));
     sijson_object_set(detail, "components", components);
     return detail;
