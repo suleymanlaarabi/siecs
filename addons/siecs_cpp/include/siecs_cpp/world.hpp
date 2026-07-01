@@ -8,6 +8,7 @@
 #include "siecs.h"
 #include "system.hpp"
 #include "type.hpp"
+#include <cstring>
 
 namespace ecs {
 
@@ -42,8 +43,11 @@ class world {
     }
 
   public:
-    world() noexcept : _world(ecs_init()), _ownership(world_ownership::owned) {
+    world() noexcept : _world(nullptr), _ownership(world_ownership::owned) {
+        ecs_world_feat_desc_t desc{ .rest = true, .target_fps = 120 };
+        _world = ecs_init_w_features(&desc);
         detail::ecs_cpp_set_component_id<Disabled>(ecs_id(Disabled));
+        detail::ecs_cpp_set_component_id<Name>(ecs_id(Name));
         detail::ecs_cpp_set_component_id<ChildOf>(ecs_id(ChildOf));
         detail::ecs_cpp_set_event_id<OnAdd>(EcsOnAdd);
         detail::ecs_cpp_set_event_id<OnAdd>(EcsOnSet);
@@ -154,14 +158,20 @@ class world {
         ecs_observer_trigger(_world, entity.id(), event<T>(), data);
     }
 
-    [[nodiscard]] ecs::entity entity() const { return ecs::entity(_world, ecs_new(_world)); }
+    [[nodiscard]] ecs::entity entity(const char *name = nullptr) const {
+        auto e = ecs::entity(_world, ecs_new(_world));
+        if (name) {
+            e.set<Name>({ .value = strdup(name) });
+        }
+        return e;
+    }
     [[nodiscard]] ecs::entity instantiate(ecs::entity e) { return this->entity().is_a(e); }
     [[nodiscard]] ecs::query query() const { return ecs::query(_world); }
     [[nodiscard]] ecs::system system(const char *name = "unamed") const {
         return ecs::system(_world, name);
     }
 
-    void progress() { ecs_progress(_world); }
+    bool progress() { return ecs_progress(_world); }
 };
 
 } // namespace ecs
