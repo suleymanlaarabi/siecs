@@ -124,6 +124,10 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
 
+    if (*id != 0) {
+        return *id;
+    }
+
     sireflect_handle_t reflection = SIREFLECT_INVALID_HANDLE;
 
     if (desc->struct_desc) {
@@ -135,9 +139,7 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
     }
 
     if (desc->relation_flags & EcsRelationTarget) {
-        if (*id == 0) {
-            *id = ecs_component_alloc_ids(2);
-        }
+        *id = ecs_component_alloc_ids(2);
 
         ecs_component_t component = *id;
         ecs_component_index_register(
@@ -169,9 +171,7 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
         ecs_module_record_component(world, source);
         return component;
     } else {
-        if (*id == 0) {
-            *id = ecs_component_alloc_ids(1);
-        }
+        *id = ecs_component_alloc_ids(1);
 
         ecs_component_t component = *id;
         ecs_component_index_register(
