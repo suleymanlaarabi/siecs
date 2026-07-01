@@ -39,17 +39,15 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
         return cid;
     }
 
-    static sireflect_struct_desc_t reflection = {};
-
-    static auto name = std::string(type_name<T>());
-
-    reflection.name = name.c_str();
-    reflection.size = 0;
-    reflection.align = 1;
-    reflection.fields = "{}";
+    static sireflect_struct_desc_t reflection = {
+        .name = strdup(std::string(type_name<T>()).c_str()),
+        .fields = "{}",
+        .size = 0,
+        .align = 1,
+    };
 
     ecs_component_desc_t desc = {
-        .name = name.c_str(),
+        .name = reflection.name,
         .size = sisizeof<T>(),
         .on_set = nullptr,
         .on_remove = []([[maybe_unused]] ecs_world_t *world,
