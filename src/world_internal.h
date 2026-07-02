@@ -1,5 +1,6 @@
 #ifndef SIECS_WORLD_INTERNAL_H
 #define SIECS_WORLD_INTERNAL_H
+#include "datastructure/arena.h"
 #include "datastructure/vec.h"
 #include "siecs.h"
 #ifndef SIHTTP_H
@@ -30,6 +31,7 @@ typedef struct ecs_world_s {
     sireflect_registry_t *sireflect_registry;
     sihttp_server_t *server;
     ecs_world_feat_desc_t features;
+    ecs_arena_t arena_allocator;
     bool did_start;
     bool exit;
 } ecs_world_t;

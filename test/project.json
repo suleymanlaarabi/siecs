@@ -36,6 +36,7 @@
           "reflection",
           "on_add",
           "add_with_required_uses_current_table_edge",
+          "add_with_required_uses_cached_multi_add_edge",
           "add_zeroes_reused_component_slot",
           "many_tags_preserve_data_on_migration",
           "many_tags_swap_remove_preserves_moved_entity_data",

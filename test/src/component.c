@@ -236,16 +236,47 @@ void component_add_with_required_uses_current_table_edge(void) {
     ECS_COMPONENT_REGISTER(world, RequiredA);
     ECS_COMPONENT_REGISTER(world, RequiredB);
 
+    ecs_with(world, ecs_id(RequiredA), ecs_id(RequiredB));
+
     ecs_entity_t warmup = ecs_new(world);
     ecs_add(world, warmup, RequiredA);
-
-    ecs_with(world, ecs_id(RequiredA), ecs_id(RequiredB));
 
     ecs_entity_t entity = ecs_new(world);
     ecs_add(world, entity, RequiredA);
 
     test_true(ecs_has(world, entity, RequiredA));
     test_true(ecs_has(world, entity, RequiredB));
+
+    ecs_fini(world);
+}
+
+void component_add_with_required_uses_cached_multi_add_edge(void) {
+    reset_hook_state();
+
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, RequiredA);
+    ECS_COMPONENT_REGISTER(world, RequiredB);
+    ECS_COMPONENT_REGISTER(world, HookComponent);
+
+    ecs_with(world, ecs_id(RequiredA), ecs_id(RequiredB));
+    ecs_with(world, ecs_id(RequiredB), ecs_id(HookComponent));
+
+    ecs_entity_t first = ecs_new(world);
+    ecs_add(world, first, RequiredA);
+
+    ecs_entity_t second = ecs_new(world);
+    ecs_add(world, second, RequiredA);
+
+    test_true(ecs_has(world, first, RequiredA));
+    test_true(ecs_has(world, first, RequiredB));
+    test_true(ecs_has(world, first, HookComponent));
+    test_true(ecs_has(world, second, RequiredA));
+    test_true(ecs_has(world, second, RequiredB));
+    test_true(ecs_has(world, second, HookComponent));
+    test_int(0, ecs_get(world, first, HookComponent)->value);
+    test_int(0, ecs_get(world, second, HookComponent)->value);
+    test_assert(hook_add_calls == 2);
+    test_true(hook_add_saw_component);
 
     ecs_fini(world);
 }

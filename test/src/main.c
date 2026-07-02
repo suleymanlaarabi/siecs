@@ -20,6 +20,7 @@ void entity_is_a_different_target_creates_different_table(void);
 void component_reflection(void);
 void component_on_add(void);
 void component_add_with_required_uses_current_table_edge(void);
+void component_add_with_required_uses_cached_multi_add_edge(void);
 void component_add_zeroes_reused_component_slot(void);
 void component_many_tags_preserve_data_on_migration(void);
 void component_many_tags_swap_remove_preserves_moved_entity_data(void);
@@ -155,6 +156,10 @@ bake_test_case component_testcases[] = {
     {
         "add_with_required_uses_current_table_edge",
         component_add_with_required_uses_current_table_edge
+    },
+    {
+        "add_with_required_uses_cached_multi_add_edge",
+        component_add_with_required_uses_cached_multi_add_edge
     },
     {
         "add_zeroes_reused_component_slot",
@@ -501,7 +506,7 @@ static bake_test_suite suites[] = {
         "component",
         NULL,
         NULL,
-        9,
+        10,
         component_testcases
     },
     {

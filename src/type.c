@@ -80,6 +80,19 @@ int ecs_type_find(const ecs_type_t *type, uint16_t id) {
     return -1;
 }
 
+void ecs_type_add(ecs_type_t *type, uint16_t id) {
+    type->ids = realloc(type->ids, (type->count + 1) * sizeof(uint16_t));
+
+    uint16_t i = type->count;
+    while (i > 0 && type->ids[i - 1] > id) {
+        type->ids[i] = type->ids[i - 1];
+        i--;
+    }
+
+    type->ids[i] = id;
+    type->count++;
+}
+
 void ecs_type_fini(ecs_type_t *type) {
     if (type->ids) {
         free(type->ids);
