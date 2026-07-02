@@ -13,6 +13,7 @@ void init_rest(ecs_world_t *world) {
     sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
 
     state->world = world;
+    world->server_state = state;
 
     world->server = sihttp_server(
         {

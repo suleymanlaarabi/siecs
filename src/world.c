@@ -31,6 +31,7 @@ ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     world->did_start = false;
     world->exit = false;
     world->server = NULL;
+    world->server_state = NULL;
 
     world->sireflect_registry = sireflect_registry_init();
 
@@ -46,9 +47,9 @@ ecs_world_t *ecs_init() {
 
 void ecs_fini(ecs_world_t *world) {
     ecs_resource_index_fini(&world->resource_index, world);
+    ecs_table_index_fini(world, &world->table_index);
     ecs_entity_index_fini(&world->entity_index);
     ecs_component_index_fini(&world->component_index);
-    ecs_table_index_fini(&world->table_index);
     ecs_query_index_fini(&world->query_index);
     ecs_observer_index_fini(&world->observer_index);
     ecs_system_index_fini(&world->system_index);
@@ -60,6 +61,7 @@ void ecs_fini(ecs_world_t *world) {
         sihttp_server_stop(world->server);
     }
     sihttp_server_fini(world->server);
+    free(world->server_state);
 
     free(world);
 }

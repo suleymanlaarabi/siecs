@@ -63,9 +63,9 @@ void ecs_table_index_init(ecs_table_index_t *map) {
     ecs_table_index_init_slots(map);
 }
 
-void ecs_table_index_fini(ecs_table_index_t *map) {
+void ecs_table_index_fini(ecs_world_t *world, ecs_table_index_t *map) {
     for (uint16_t i = 0; i < map->table_count; i++) {
-        ecs_table_fini(&map->tables[i]);
+        ecs_table_fini(world, &map->tables[i]);
     }
     free(map->tables);
     free(map->slots);

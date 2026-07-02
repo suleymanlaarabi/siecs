@@ -213,7 +213,7 @@ void ecs_table_init(
     const struct ecs_component_index_s *component_index,
     uint16_t table_id
 );
-void ecs_table_fini(ecs_table_t *table);
+void ecs_table_fini(ecs_world_t *world, ecs_table_t *table);
 uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity);
 // if the entity is not the last one, the last entity will be moved to the removed entity's
 // position, and the moved entity will be returned
@@ -285,6 +285,8 @@ void *ecs_table_field(
 
 #include <stdint.h>
 
+struct ecs_world_s;
+
 typedef struct {
     uint16_t table_index; // UINT16_MAX for empty
     uint16_t hash;
@@ -299,11 +301,10 @@ typedef struct {
 } ecs_table_index_t;
 
 void ecs_table_index_init(ecs_table_index_t *map);
-void ecs_table_index_fini(ecs_table_index_t *map);
+void ecs_table_index_fini(struct ecs_world_s *world, ecs_table_index_t *map);
 
 #define ecs_table_index_at(map, index) (&(map)->tables[index])
 
-struct ecs_world_s;
 uint16_t ecs_table_index_get_or_create(
     struct ecs_world_s *world,
     ecs_type_t type
@@ -677,6 +678,7 @@ typedef struct ecs_world_s {
     ecs_module_id_t active_module;
     sireflect_registry_t *sireflect_registry;
     sihttp_server_t *server;
+    sihttp_app_state_t *server_state;
     ecs_world_feat_desc_t features;
     ecs_arena_t arena_allocator;
     bool did_start;
@@ -2109,7 +2111,40 @@ void ecs_table_add_observer(ecs_table_t *table, uint16_t event, uint16_t observe
     ecs_vec_push_u16(list, observer_id);
 }
 
-void ecs_table_fini(ecs_table_t *table) {
+static void ecs_table_fini_component_values(ecs_world_t *world, ecs_table_t *table) {
+    for (uint16_t c = 0; c < table->type.count; c++) {
+        ecs_component_t component = table->type.ids[c];
+        const ecs_component_record_t *crec =
+            ecs_component_index_get(&world->component_index, component);
+
+        if (crec->relation_flags & EcsRelationSource) {
+            if (!(crec->relation_flags & EcsRelationOneToOne)) {
+                for (uint32_t row = 0; row < table->entity_count; row++) {
+                    RelationSource *source = ecs_table_component_at_column(table, c, row);
+                    ecs_vec_fini(&source->entities);
+                }
+            }
+            continue;
+        }
+
+        if ((crec->relation_flags & EcsRelationTarget) || !crec->on_remove) {
+            continue;
+        }
+
+        for (uint32_t row = 0; row < table->entity_count; row++) {
+            crec->on_remove(
+                world,
+                table->entities[row],
+                component,
+                ecs_table_component_at_column(table, c, row)
+            );
+        }
+    }
+}
+
+void ecs_table_fini(ecs_world_t *world, ecs_table_t *table) {
+    ecs_table_fini_component_values(world, table);
+
     for (uint16_t i = 0; i < table->type.count; i++) {
         free(table->cls[i].data);
     }
@@ -2532,6 +2567,7 @@ ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     world->did_start = false;
     world->exit = false;
     world->server = NULL;
+    world->server_state = NULL;
 
     world->sireflect_registry = sireflect_registry_init();
 
@@ -2547,9 +2583,9 @@ ecs_world_t *ecs_init() {
 
 void ecs_fini(ecs_world_t *world) {
     ecs_resource_index_fini(&world->resource_index, world);
+    ecs_table_index_fini(world, &world->table_index);
     ecs_entity_index_fini(&world->entity_index);
     ecs_component_index_fini(&world->component_index);
-    ecs_table_index_fini(&world->table_index);
     ecs_query_index_fini(&world->query_index);
     ecs_observer_index_fini(&world->observer_index);
     ecs_system_index_fini(&world->system_index);
@@ -2561,6 +2597,7 @@ void ecs_fini(ecs_world_t *world) {
         sihttp_server_stop(world->server);
     }
     sihttp_server_fini(world->server);
+    free(world->server_state);
 
     free(world);
 }
@@ -2615,6 +2652,7 @@ void init_rest(ecs_world_t *world) {
     sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
 
     state->world = world;
+    world->server_state = state;
 
     world->server = sihttp_server(
         {
@@ -4903,9 +4941,9 @@ void ecs_table_index_init(ecs_table_index_t *map) {
     ecs_table_index_init_slots(map);
 }
 
-void ecs_table_index_fini(ecs_table_index_t *map) {
+void ecs_table_index_fini(ecs_world_t *world, ecs_table_index_t *map) {
     for (uint16_t i = 0; i < map->table_count; i++) {
-        ecs_table_fini(&map->tables[i]);
+        ecs_table_fini(world, &map->tables[i]);
     }
     free(map->tables);
     free(map->slots);

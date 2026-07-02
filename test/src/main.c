@@ -45,6 +45,8 @@ void multi_world_worlds_keep_independent_component_storage(void);
 void multi_world_queries_only_see_their_world_tables(void);
 void multi_world_fini_one_world_keeps_other_world_valid(void);
 void multi_world_relations_remain_world_local(void);
+void multi_world_resource_ids_are_not_overwritten_by_other_world(void);
+void multi_world_typed_resource_macros_use_their_world_records(void);
 
 // Testsuite 'resource'
 void resource_set_get(void);
@@ -95,6 +97,7 @@ void system_can_run_on_disabled_when_requested(void);
 void observer_enable(void);
 void observer_skips_disabled_by_default(void);
 void observer_can_match_disabled_when_requested(void);
+void observer_on_remove_runs_when_entity_is_killed(void);
 
 // Testsuite 'module'
 void module_import_registers_runtime(void);
@@ -246,6 +249,14 @@ bake_test_case multi_world_testcases[] = {
     {
         "relations_remain_world_local",
         multi_world_relations_remain_world_local
+    },
+    {
+        "resource_ids_are_not_overwritten_by_other_world",
+        multi_world_resource_ids_are_not_overwritten_by_other_world
+    },
+    {
+        "typed_resource_macros_use_their_world_records",
+        multi_world_typed_resource_macros_use_their_world_records
     }
 };
 
@@ -421,6 +432,10 @@ bake_test_case observer_testcases[] = {
     {
         "can_match_disabled_when_requested",
         observer_can_match_disabled_when_requested
+    },
+    {
+        "on_remove_runs_when_entity_is_killed",
+        observer_on_remove_runs_when_entity_is_killed
     }
 };
 
@@ -520,7 +535,7 @@ static bake_test_suite suites[] = {
         "multi_world",
         NULL,
         NULL,
-        5,
+        7,
         multi_world_testcases
     },
     {
@@ -555,7 +570,7 @@ static bake_test_suite suites[] = {
         "observer",
         NULL,
         NULL,
-        3,
+        4,
         observer_testcases
     },
     {

@@ -6,10 +6,12 @@ ECS_COMPONENT_DEFINE(ObserverValue);
 
 static uint32_t observer_calls;
 static int observer_last_value;
+static ecs_entity_t observer_last_entity;
 
 static void reset_observer_state(void) {
     observer_calls = 0;
     observer_last_value = 0;
+    observer_last_entity = 0;
 }
 
 static void on_observer_value_set(ecs_observer_event_t *event) {
@@ -17,6 +19,15 @@ static void on_observer_value_set(ecs_observer_event_t *event) {
 
     observer_calls++;
     observer_last_value = value->value;
+    observer_last_entity = event->entity;
+}
+
+static void on_observer_value_remove(ecs_observer_event_t *event) {
+    const ObserverValue *value = event->trigger_data;
+
+    observer_calls++;
+    observer_last_value = value->value;
+    observer_last_entity = event->entity;
 }
 
 void observer_enable(void) {
@@ -102,6 +113,33 @@ void observer_can_match_disabled_when_requested(void) {
     ecs_set(world, entity, ObserverValue, { 2 });
     test_int(1, observer_calls);
     test_int(2, observer_last_value);
+
+    ecs_fini(world);
+}
+
+void observer_on_remove_runs_when_entity_is_killed(void) {
+    reset_observer_state();
+
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, ObserverValue);
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_set(world, entity, ObserverValue, { 7 });
+
+    ecs_observer(
+        world,
+        {
+            .on = EcsOnRemove,
+            .query = { .terms = { ecs_in(ObserverValue) } },
+            .callback = on_observer_value_remove,
+        }
+    );
+
+    ecs_kill(world, entity);
+
+    test_int(1, observer_calls);
+    test_int(7, observer_last_value);
+    test_assert(observer_last_entity == entity);
 
     ecs_fini(world);
 }

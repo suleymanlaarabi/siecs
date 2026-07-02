@@ -37,7 +37,7 @@ void ecs_table_init(
     const struct ecs_component_index_s *component_index,
     uint16_t table_id
 );
-void ecs_table_fini(ecs_table_t *table);
+void ecs_table_fini(ecs_world_t *world, ecs_table_t *table);
 uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity);
 // if the entity is not the last one, the last entity will be moved to the removed entity's
 // position, and the moved entity will be returned

@@ -6,6 +6,12 @@ ECS_COMPONENT_DEFINE(MultiWorldPosition);
 ECS_RELATION_DECLARE(MultiWorldTarget);
 ECS_RELATION_DEFINE(MultiWorldTarget, 0);
 
+ECS_RESOURCE_DECLARE(MultiWorldResourceA, { int value; });
+ECS_RESOURCE_DEFINE(MultiWorldResourceA);
+
+ECS_RESOURCE_DECLARE(MultiWorldResourceB, { int value; });
+ECS_RESOURCE_DEFINE(MultiWorldResourceB);
+
 static void multi_world_register_all(ecs_world_t *world) {
     ECS_COMPONENT_REGISTER(world, MultiWorldPosition);
     ECS_COMPONENT_REGISTER(world, MultiWorldTarget);
@@ -141,6 +147,47 @@ void multi_world_relations_remain_world_local(void) {
     test_true(ecs_is_alive(b, source_b));
     test_true(ecs_has(b, source_b, MultiWorldTarget));
     test_true(ecs_has_cid(b, target_b, ecs_source(MultiWorldTarget)));
+
+    ecs_fini(a);
+    ecs_fini(b);
+}
+
+void multi_world_resource_ids_are_not_overwritten_by_other_world(void) {
+    ecs_world_t *a = ecs_init();
+    ecs_world_t *b = ecs_init();
+
+    ECS_RESOURCE_REGISTER(a, MultiWorldResourceA);
+    ecs_resource_t resource_a_in_a = ecs_id(MultiWorldResourceA);
+    ECS_RESOURCE_REGISTER(a, MultiWorldResourceB);
+    ecs_resource_t resource_b_in_a = ecs_id(MultiWorldResourceB);
+
+    ECS_RESOURCE_REGISTER(b, MultiWorldResourceB);
+    ECS_RESOURCE_REGISTER(b, MultiWorldResourceA);
+
+    test_int(resource_a_in_a, ecs_id(MultiWorldResourceA));
+    test_int(resource_b_in_a, ecs_id(MultiWorldResourceB));
+
+    ecs_fini(a);
+    ecs_fini(b);
+}
+
+void multi_world_typed_resource_macros_use_their_world_records(void) {
+    ecs_world_t *a = ecs_init();
+    ecs_world_t *b = ecs_init();
+
+    ECS_RESOURCE_REGISTER(a, MultiWorldResourceA);
+    ecs_resource_t resource_a_in_a = ecs_id(MultiWorldResourceA);
+    ECS_RESOURCE_REGISTER(a, MultiWorldResourceB);
+    ecs_resource_t resource_b_in_a = ecs_id(MultiWorldResourceB);
+
+    ECS_RESOURCE_REGISTER(b, MultiWorldResourceB);
+    ECS_RESOURCE_REGISTER(b, MultiWorldResourceA);
+
+    ecs_set_resource(a, MultiWorldResourceA, { 11 });
+
+    test_true(ecs_has_resource_rid(a, resource_a_in_a));
+    test_false(ecs_has_resource_rid(a, resource_b_in_a));
+    test_int(11, ((MultiWorldResourceA *)ecs_resource_rid(a, resource_a_in_a))->value);
 
     ecs_fini(a);
     ecs_fini(b);

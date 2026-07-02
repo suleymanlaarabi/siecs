@@ -106,7 +106,40 @@ void ecs_table_add_observer(ecs_table_t *table, uint16_t event, uint16_t observe
     ecs_vec_push_u16(list, observer_id);
 }
 
-void ecs_table_fini(ecs_table_t *table) {
+static void ecs_table_fini_component_values(ecs_world_t *world, ecs_table_t *table) {
+    for (uint16_t c = 0; c < table->type.count; c++) {
+        ecs_component_t component = table->type.ids[c];
+        const ecs_component_record_t *crec =
+            ecs_component_index_get(&world->component_index, component);
+
+        if (crec->relation_flags & EcsRelationSource) {
+            if (!(crec->relation_flags & EcsRelationOneToOne)) {
+                for (uint32_t row = 0; row < table->entity_count; row++) {
+                    RelationSource *source = ecs_table_component_at_column(table, c, row);
+                    ecs_vec_fini(&source->entities);
+                }
+            }
+            continue;
+        }
+
+        if ((crec->relation_flags & EcsRelationTarget) || !crec->on_remove) {
+            continue;
+        }
+
+        for (uint32_t row = 0; row < table->entity_count; row++) {
+            crec->on_remove(
+                world,
+                table->entities[row],
+                component,
+                ecs_table_component_at_column(table, c, row)
+            );
+        }
+    }
+}
+
+void ecs_table_fini(ecs_world_t *world, ecs_table_t *table) {
+    ecs_table_fini_component_values(world, table);
+
     for (uint16_t i = 0; i < table->type.count; i++) {
         free(table->cls[i].data);
     }
