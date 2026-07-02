@@ -2,6 +2,7 @@
 #include "siecs.h"
 #include "storage/component_index.h"
 #include "table.h"
+#include "table_migration.h"
 #include "type.h"
 #include "utils.h"
 #include "world_internal.h"
@@ -130,4 +131,16 @@ void ecs_kill(ecs_world_t *world, ecs_entity_t entity) {
     }
 
     ecs_entity_index_kill(&world->entity_index, ecs_first(entity));
+}
+
+void ecs_clone_w_entity(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
+    const ecs_entity_record_t *target_record = ecs_get_record(world, target);
+    ecs_table_t *target_table = ecs_get_table(world, target_record->table_id);
+
+    ecs_entity_record_t *entity_record = ecs_get_record(world, entity);
+    ecs_table_t *entity_table = ecs_get_table(world, entity_record->table_id);
+
+    ecs_table_add_entity(target_table, entity);
+
+    ecs_migrate_to_table(world, entity_record, entity, entity_table, target_record->table_id);
 }
