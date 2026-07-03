@@ -18,6 +18,7 @@ void ecs_resource_index_fini(ecs_resource_index_t *index, ecs_world_t *world);
 
 ecs_resource_t ecs_resource_index_register(
     ecs_resource_index_t *index,
+    ecs_resource_t id,
     const ecs_resource_desc_t *desc
 );
 ecs_resource_t ecs_resource_index_find(const ecs_resource_index_t *index, const char *name);

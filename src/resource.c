@@ -3,9 +3,27 @@
 #include "utils.h"
 #include "world_internal.h"
 
+static ecs_resource_t ecs_next_resource_id = 1;
+
+static ecs_resource_t ecs_resource_alloc_id(void) {
+    ecs_resource_t id = ecs_next_resource_id++;
+    ecs_assert(ecs_next_resource_id > id, "resource id overflow\n");
+    return id;
+}
+
 ecs_resource_t ecs_resource_init(ecs_world_t *world, const ecs_resource_desc_t *desc) {
     ecs_assert_not_null(world);
-    return ecs_resource_index_register(&world->resource_index, desc);
+    return ecs_resource_index_register(&world->resource_index, ecs_resource_alloc_id(), desc);
+}
+
+ecs_resource_t
+ecs_resource_register(ecs_world_t *world, ecs_resource_t *id, const ecs_resource_desc_t *desc) {
+    ecs_assert_not_null(world);
+    ecs_assert_not_null(id);
+    if (*id == 0) {
+        *id = ecs_resource_alloc_id();
+    }
+    return ecs_resource_index_register(&world->resource_index, *id, desc);
 }
 
 ecs_resource_t ecs_resource_find(ecs_world_t *world, const char *name) {

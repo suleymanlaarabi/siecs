@@ -657,7 +657,7 @@ ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const v
     ecs_resource_t ecs_id(rname) = 0
 
 #define ECS_RESOURCE_REGISTER(world, rname)                                                        \
-    ecs_id(rname) = ecs_resource_init(world, &ecs_id(rname##_desc))
+    ecs_resource_register(world, &ecs_id(rname), &ecs_id(rname##_desc))
 
 #define ECS_RESOURCE(rname, ...)                                                                   \
     ECS_RESOURCE_DECLARE(rname, __VA_ARGS__);                                                      \
@@ -695,6 +695,8 @@ ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const v
 #define ecs_try_resource_read(world, rname) ecs_try_get_resource_read(world, rname)
 
 SIECS_API ecs_resource_t ecs_resource_init(ecs_world_t *world, const ecs_resource_desc_t *desc);
+SIECS_API ecs_resource_t
+ecs_resource_register(ecs_world_t *world, ecs_resource_t *id, const ecs_resource_desc_t *desc);
 SIECS_API ecs_resource_t ecs_resource_find(ecs_world_t *world, const char *name);
 SIECS_API bool ecs_resource_is_registered_rid(const ecs_world_t *world, ecs_resource_t id);
 SIECS_API void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);

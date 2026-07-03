@@ -74,13 +74,19 @@ void ecs_resource_index_fini(ecs_resource_index_t *index, ecs_world_t *world) {
 }
 
 ecs_resource_t
-ecs_resource_index_register(ecs_resource_index_t *index, const ecs_resource_desc_t *desc) {
+ecs_resource_index_register(ecs_resource_index_t *index, ecs_resource_t id, const ecs_resource_desc_t *desc) {
     ecs_assert_not_null(desc);
     ecs_assert_not_null(desc->name);
+    ecs_assert_id_valid(id);
 
-    ecs_resource_t id = (ecs_resource_t)index->count++;
     ecs_resource_index_ensure(index, id);
+    if (index->records[id].name != NULL) {
+        return id;
+    }
     index->records[id] = *desc;
+    if (id >= index->count) {
+        index->count = (uint64_t)id + 1;
+    }
     return id;
 }
 
