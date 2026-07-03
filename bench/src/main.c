@@ -2,11 +2,7 @@
 #include <bench.h>
 #include <stdint.h>
 
-static void register_components(
-    ecs_world_t *world,
-    ecs_component_t *cids,
-    uint32_t cid_count
-) {
+static void register_components(ecs_world_t *world, ecs_component_t *cids, uint32_t cid_count) {
     for (uint32_t i = 0; i < cid_count; i++) {
         cids[i] = ecs_component(world, {});
     }
@@ -142,7 +138,7 @@ BENCH_SETUP(add_duplicate_component, {
 });
 
 BENCH_SETUP(add_many_components_wide_no_required, {
-    arg(cid_count, 500);
+    arg(cid_count, 800);
     arg(entity_count, 1000);
     arg(iter_count, 20);
 

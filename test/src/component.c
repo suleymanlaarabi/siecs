@@ -39,6 +39,7 @@ static bool hook_remove_saw_component;
 static int hook_last_set_old;
 static int hook_last_set_new;
 static int hook_last_remove_value;
+static uint32_t add_observer_calls;
 
 static void reset_hook_state(void) {
     hook_add_calls = 0;
@@ -54,6 +55,12 @@ static void reset_hook_state(void) {
     hook_last_set_old = 0;
     hook_last_set_new = 0;
     hook_last_remove_value = 0;
+    add_observer_calls = 0;
+}
+
+static void on_component_add_observer(ecs_observer_event_t *event) {
+    (void)event;
+    add_observer_calls++;
 }
 
 static void hook_component_on_add(
@@ -277,6 +284,61 @@ void component_add_with_required_uses_cached_multi_add_edge(void) {
     test_int(0, ecs_get(world, second, HookComponent)->value);
     test_assert(hook_add_calls == 2);
     test_true(hook_add_saw_component);
+
+    ecs_fini(world);
+}
+
+void component_add_with_required_emits_each_on_add_once(void) {
+    reset_hook_state();
+
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, RequiredA);
+    ECS_COMPONENT_REGISTER(world, RequiredB);
+    ECS_COMPONENT_REGISTER(world, HookComponent);
+
+    ecs_with(world, ecs_id(RequiredA), ecs_id(RequiredB));
+    ecs_with(world, ecs_id(RequiredB), ecs_id(HookComponent));
+
+    ecs_observer(
+        world,
+        {
+            .on = EcsOnAdd,
+            .query = { .terms = { ecs_in(RequiredA) } },
+            .callback = on_component_add_observer,
+        }
+    );
+
+    ecs_add(world, ecs_new(world), RequiredA);
+
+    test_int(3, add_observer_calls);
+
+    ecs_fini(world);
+}
+
+void component_add_with_required_accepts_sixteen_component_plan(void) {
+    ecs_world_t *world = ecs_init();
+    ecs_component_t components[16];
+    char names[16][32];
+
+    for (uint32_t i = 0; i < 16; i++) {
+        snprintf(names[i], 32, "RequiredChain%d", i);
+        components[i] = ecs_component(world, { .name = names[i] });
+    }
+
+    for (uint32_t i = 1; i < 16; i++) {
+        ecs_with(world, components[i], components[i - 1]);
+    }
+
+    ecs_entity_t first = ecs_new(world);
+    ecs_add_cid(world, first, components[15]);
+
+    ecs_entity_t second = ecs_new(world);
+    ecs_add_cid(world, second, components[15]);
+
+    for (uint32_t i = 0; i < 16; i++) {
+        test_true(ecs_has_cid(world, first, components[i]));
+        test_true(ecs_has_cid(world, second, components[i]));
+    }
 
     ecs_fini(world);
 }

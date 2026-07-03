@@ -6,31 +6,13 @@
 #include "type.h"
 #include <stdint.h>
 
-typedef struct {
-    ecs_type_t type;
-    ecs_component_t inline_added[32];
-    ecs_component_t *added;
-    uint16_t added_count;
-    uint16_t added_capacity;
-} ecs_add_plan_t;
+#define ECS_ADD_PLAN_MAX_COMPONENTS 16
 
-void ecs_add_plan_init(ecs_add_plan_t *plan);
-void ecs_add_plan_fini(ecs_add_plan_t *plan);
-
-void ecs_add_plan_build_type(
+ecs_type_t ecs_type_with_requirements(
     ecs_world_t *world,
     ecs_table_t *from_table,
     ecs_component_t cid,
-    const ecs_component_record_t *crec,
-    ecs_add_plan_t *plan
-);
-
-void ecs_add_plan_build_added_only(
-    ecs_world_t *world,
-    ecs_table_t *from_table,
-    ecs_component_t cid,
-    const ecs_component_record_t *crec,
-    ecs_add_plan_t *plan
+    const ecs_component_record_t *crec
 );
 
 #ifndef NDEBUG

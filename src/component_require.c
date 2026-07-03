@@ -2,24 +2,15 @@
 #include "world_internal.h"
 #include <stdbool.h>
 #include <stdlib.h>
-#include <string.h>
 
-void ecs_add_plan_init(ecs_add_plan_t *plan) {
-    plan->type = (ecs_type_t){ 0 };
-    plan->added = plan->inline_added;
-    plan->added_count = 0;
-    plan->added_capacity = 32;
-}
-
-void ecs_add_plan_fini(ecs_add_plan_t *plan) {
-    if (plan->added != plan->inline_added) {
-        free(plan->added);
-    }
-}
+typedef struct {
+    ecs_component_t ids[ECS_ADD_PLAN_MAX_COMPONENTS];
+    uint16_t count;
+} ecs_add_plan_t;
 
 static inline bool ecs_add_plan_has(const ecs_add_plan_t *plan, ecs_component_t id) {
-    for (uint16_t i = 0; i < plan->added_count; i++) {
-        if (plan->added[i] == id) {
+    for (uint16_t i = 0; i < plan->count; i++) {
+        if (plan->ids[i] == id) {
             return true;
         }
     }
@@ -27,20 +18,15 @@ static inline bool ecs_add_plan_has(const ecs_add_plan_t *plan, ecs_component_t 
 }
 
 static inline void ecs_add_plan_push(ecs_add_plan_t *plan, ecs_component_t id) {
-    if (plan->added_count == plan->added_capacity) {
-        const uint16_t old_capacity = plan->added_capacity;
-        plan->added_capacity *= 2;
-        if (plan->added == plan->inline_added) {
-            plan->added = malloc(sizeof(ecs_component_t) * plan->added_capacity);
-            memcpy(plan->added, plan->inline_added, sizeof(ecs_component_t) * old_capacity);
-        } else {
-            plan->added = realloc(plan->added, sizeof(ecs_component_t) * plan->added_capacity);
-        }
+#ifndef NDEBUG
+    if (plan->count == ECS_ADD_PLAN_MAX_COMPONENTS) {
+        abort();
     }
-    plan->added[plan->added_count++] = id;
+#endif
+    plan->ids[plan->count++] = id;
 }
 
-static void ecs_add_plan_collect_requirements(
+static inline void ecs_add_plan_collect_requirements(
     ecs_world_t *world,
     ecs_table_t *from_table,
     ecs_add_plan_t *plan,
@@ -73,36 +59,29 @@ static inline void ecs_sort_component_ids(ecs_component_t *ids, uint16_t count) 
     }
 }
 
-void ecs_add_plan_build_type(
+ecs_type_t ecs_type_with_requirements(
     ecs_world_t *world,
     ecs_table_t *from_table,
     ecs_component_t cid,
-    const ecs_component_record_t *crec,
-    ecs_add_plan_t *plan
+    const ecs_component_record_t *crec
 ) {
-    ecs_add_plan_init(plan);
-    ecs_add_plan_collect_requirements(world, from_table, plan, crec);
-    ecs_add_plan_push(plan, cid);
-
-    ecs_component_t inline_sorted[32];
-    ecs_component_t *sorted = plan->added_count <= 32
-                                  ? inline_sorted
-                                  : malloc(sizeof(ecs_component_t) * plan->added_count);
-    memcpy(sorted, plan->added, sizeof(ecs_component_t) * plan->added_count);
-    ecs_sort_component_ids(sorted, plan->added_count);
+    ecs_add_plan_t plan = { 0 };
+    ecs_add_plan_collect_requirements(world, from_table, &plan, crec);
+    ecs_add_plan_push(&plan, cid);
+    ecs_sort_component_ids(plan.ids, plan.count);
 
     ecs_type_t type = {
-        .ids = malloc(sizeof(ecs_component_t) * (from_table->type.count + plan->added_count)),
-        .count = from_table->type.count + plan->added_count,
+        .ids = malloc(sizeof(ecs_component_t) * (from_table->type.count + plan.count)),
+        .count = from_table->type.count + plan.count,
         .base = from_table->type.base,
     };
 
     uint16_t from_i = 0;
     uint16_t add_i = 0;
     uint16_t out_i = 0;
-    while (from_i < from_table->type.count && add_i < plan->added_count) {
+    while (from_i < from_table->type.count && add_i < plan.count) {
         ecs_component_t from_id = from_table->type.ids[from_i];
-        ecs_component_t add_id = sorted[add_i];
+        ecs_component_t add_id = plan.ids[add_i];
         if (from_id < add_id) {
             type.ids[out_i++] = from_id;
             from_i++;
@@ -114,27 +93,11 @@ void ecs_add_plan_build_type(
     while (from_i < from_table->type.count) {
         type.ids[out_i++] = from_table->type.ids[from_i++];
     }
-    while (add_i < plan->added_count) {
-        type.ids[out_i++] = sorted[add_i++];
+    while (add_i < plan.count) {
+        type.ids[out_i++] = plan.ids[add_i++];
     }
 
-    if (sorted != inline_sorted) {
-        free(sorted);
-    }
-
-    plan->type = type;
-}
-
-void ecs_add_plan_build_added_only(
-    ecs_world_t *world,
-    ecs_table_t *from_table,
-    ecs_component_t cid,
-    const ecs_component_record_t *crec,
-    ecs_add_plan_t *plan
-) {
-    ecs_add_plan_init(plan);
-    ecs_add_plan_collect_requirements(world, from_table, plan, crec);
-    ecs_add_plan_push(plan, cid);
+    return type;
 }
 
 #ifndef NDEBUG

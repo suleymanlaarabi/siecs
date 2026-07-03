@@ -16,6 +16,33 @@
 #define ecs_assert_can_be_updated(world, entity, ...)                                              \
     ecs_assert(!ecs_has_cid_owned(world, entity, ecs_id(Abstract)), __VA_ARGS__)
 
+static void ecs_emit_added_components(
+    ecs_world_t *world,
+    ecs_table_t *from_table,
+    ecs_table_t *to_table,
+    ecs_entity_t entity,
+    uint32_t row
+) {
+    uint16_t from_i = 0;
+    for (uint16_t to_i = 0; to_i < to_table->type.count; to_i++) {
+        ecs_component_t added = to_table->type.ids[to_i];
+        while (from_i < from_table->type.count && from_table->type.ids[from_i] < added) {
+            from_i++;
+        }
+        if (from_i < from_table->type.count && from_table->type.ids[from_i] == added) {
+            continue;
+        }
+
+        void *data = ecs_table_component_at_column(to_table, to_i, row);
+        const ecs_component_record_t *crec =
+            ecs_component_index_get(&world->component_index, added);
+        if (crec->on_add) {
+            crec->on_add(world, entity, added, data);
+        }
+        ecs_emit(world, to_table, entity, EcsOnAdd, data);
+    }
+}
+
 void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_not_null(world);
     ecs_assert_id_valid(cid);
@@ -53,47 +80,26 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
         return;
     }
 
-    ecs_add_plan_t plan = { 0 };
-    ecs_add_plan_t *add_plan = NULL;
-
     if (edge == UINT16_MAX) {
-        ecs_add_plan_build_type(world, table, cid, crec, &plan);
-        add_plan = &plan;
-        edge = ecs_table_index_get_or_create(world, plan.type);
+        ecs_type_t new_type = ecs_type_with_requirements(world, table, cid, crec);
+        edge = ecs_table_index_get_or_create(world, new_type);
 
         table = ecs_get_table(world, from_id);
         ecs_id_map_set(&table->add_edge, cid, edge);
     }
 
     ecs_table_t *new_table = ecs_get_table(world, edge);
-
-    if (!add_plan && new_table->type.count > table->type.count + 1) {
-        ecs_add_plan_build_added_only(world, table, cid, crec, &plan);
-        add_plan = &plan;
-    }
+    bool add_many = new_table->type.count > table->type.count + 1;
 
     void *component_data =
-        add_plan && add_plan->added_count > 1
-            ? ecs_migrate_add_many(world, record, entity, table, new_table, edge, cid)
-            : ecs_migrate_add(world, record, entity, table, new_table, edge, cid);
+        add_many ? ecs_migrate_add_many(world, record, entity, table, new_table, edge, cid)
+                 : ecs_migrate_add(world, record, entity, table, new_table, edge, cid);
 
-    if (add_plan) {
-        for (uint16_t i = 0; i < add_plan->added_count; i++) {
-            ecs_component_t added = add_plan->added[i];
-            const ecs_component_record_t *added_rec =
-                ecs_component_index_get(&world->component_index, added);
-            void *added_data = ecs_table_component_at_column(
-                new_table,
-                ecs_table_get_column_index(new_table, added),
-                record->table_row
-            );
-            if (added_rec->on_add) {
-                added_rec->on_add(world, entity, added, added_data);
-            }
-            ecs_emit(world, new_table, entity, EcsOnAdd, added_data);
-        }
-        ecs_add_plan_fini(add_plan);
-    } else if (crec->on_add) {
+    if (add_many) {
+        ecs_emit_added_components(world, table, new_table, entity, record->table_row);
+        return;
+    }
+    if (crec->on_add) {
         crec->on_add(world, entity, cid, component_data);
     }
 

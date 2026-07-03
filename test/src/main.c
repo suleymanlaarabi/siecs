@@ -21,6 +21,8 @@ void component_reflection(void);
 void component_on_add(void);
 void component_add_with_required_uses_current_table_edge(void);
 void component_add_with_required_uses_cached_multi_add_edge(void);
+void component_add_with_required_emits_each_on_add_once(void);
+void component_add_with_required_accepts_sixteen_component_plan(void);
 void component_add_zeroes_reused_component_slot(void);
 void component_many_tags_preserve_data_on_migration(void);
 void component_many_tags_swap_remove_preserves_moved_entity_data(void);
@@ -163,6 +165,14 @@ bake_test_case component_testcases[] = {
     {
         "add_with_required_uses_cached_multi_add_edge",
         component_add_with_required_uses_cached_multi_add_edge
+    },
+    {
+        "add_with_required_emits_each_on_add_once",
+        component_add_with_required_emits_each_on_add_once
+    },
+    {
+        "add_with_required_accepts_sixteen_component_plan",
+        component_add_with_required_accepts_sixteen_component_plan
     },
     {
         "add_zeroes_reused_component_slot",
@@ -521,7 +531,7 @@ static bake_test_suite suites[] = {
         "component",
         NULL,
         NULL,
-        10,
+        12,
         component_testcases
     },
     {
