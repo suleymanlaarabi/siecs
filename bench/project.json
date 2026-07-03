@@ -1,0 +1,19 @@
+{
+  "id": "bench",
+  "type": "application",
+  "value": {
+    "author": "Jane Doe",
+    "description": "Space travel for married couples",
+    "use": ["siecs"]
+  },
+  "lang.c": {
+    "cflags": ["-DNDEBUG"]
+  },
+  "bundle": {
+    "repositories": {
+      "sireflect": "https://github.com/suleymanlaarabi/sireflect",
+      "sijson": "https://github.com/suleymanlaarabi/sijson",
+      "sihttp": "https://github.com/suleymanlaarabi/sihttp"
+    }
+  }
+}
