@@ -46,10 +46,7 @@ test-rust:
 	@cd addons/siecs_rust && cargo test >/dev/null
 
 distr:
-	@cp include/siecs/bake_config.h /tmp/siecs-bake_config.h
-	@bake rebuild . -r >/dev/null
-	@cp /tmp/siecs-bake_config.h include/siecs/bake_config.h
-	@sh tools/make_distr_standalone.sh
+	@sh tools/rebuild_distr.sh
 
 check-distr: distr
 	git diff --exit-code -- distr/siecs.c distr/siecs.h include/siecs/bake_config.h
