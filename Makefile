@@ -61,8 +61,13 @@ test-rust:
 distr:
 	@sh tools/rebuild_distr.sh
 
-check-distr: distr
-	git diff --exit-code -- distr/siecs.c distr/siecs.h include/siecs/bake_config.h
+check-distr:
+	tmp_dir=$$(mktemp -d /tmp/siecs-check-distr.XXXXXX); \
+	trap 'rm -rf "$$tmp_dir"' EXIT; \
+	sh tools/rebuild_distr.sh "$$tmp_dir"; \
+	diff -u distr/siecs.c "$$tmp_dir/distr/siecs.c"; \
+	diff -u distr/siecs.h "$$tmp_dir/distr/siecs.h"; \
+	diff -u include/siecs/bake_config.h "$$tmp_dir/include/siecs/bake_config.h"
 
 check-distr-standalone:
 	tmp_dir=$$(mktemp -d /tmp/siecs-distr.XXXXXX); \

@@ -2,6 +2,7 @@
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+out_root=${1:-$repo_root}
 work_dir=$(mktemp -d /tmp/siecs-distr-build.XXXXXX)
 host_bake_home=$(bake env | sed -n 's/^BAKE_HOME=//p')
 export BAKE_HOME="$work_dir/.bake"
@@ -21,6 +22,14 @@ cp -R "$host_bake_home/include/." "$BAKE_HOME/include/"
 cp "$host_bake_home"/lib/libbake_*.so "$BAKE_HOME/lib/"
 for pkg in bake.amalgamate bake.lang.c bake.lang.cpp bake.test bake.util; do
     cp -R "$host_bake_home/meta/$pkg" "$BAKE_HOME/meta/$pkg"
+done
+mkdir -p "$BAKE_HOME/src"
+for pkg in sireflect sijson sihttp; do
+    if [ -d "$host_bake_home/src/$pkg" ]; then
+        cp -R "$host_bake_home/src/$pkg" "$BAKE_HOME/src/$pkg"
+    elif [ -d "$host_bake_home/src/$pkg.git" ]; then
+        cp -R "$host_bake_home/src/$pkg.git" "$BAKE_HOME/src/$pkg.git"
+    fi
 done
 
 sh tools/install_bake_deps.sh >/dev/null
@@ -92,5 +101,7 @@ build_standalone_deps() {
 build_standalone_deps
 sh tools/make_distr_standalone.sh
 
-cp distr/siecs.c "$repo_root/distr/siecs.c"
-cp distr/siecs.h "$repo_root/distr/siecs.h"
+mkdir -p "$out_root/distr" "$out_root/include/siecs"
+cp distr/siecs.c "$out_root/distr/siecs.c"
+cp distr/siecs.h "$out_root/distr/siecs.h"
+cp include/siecs/bake_config.h "$out_root/include/siecs/bake_config.h"
