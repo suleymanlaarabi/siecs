@@ -3,7 +3,7 @@ title: Rust API
 description: Rust bindings for SIECS worlds, components, queries, and systems.
 ---
 
-The Rust addon lives in `addons/siecs_rust`. It exposes safe wrappers for common
+The Rust addon lives in `bindings/siecs_rust`. It exposes safe wrappers for common
 world, entity, component, query, and system workflows, plus a `raw` module for
 direct FFI access.
 

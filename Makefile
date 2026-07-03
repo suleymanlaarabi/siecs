@@ -13,7 +13,7 @@ bench:
 	@bake run bench --cfg release
 
 clean-rust:
-	@cd addons/siecs_rust && cargo clean >/dev/null
+	@cd bindings/siecs_rust && cargo clean >/dev/null
 
 clean:
 	@rm -rf build-consumer-c build-consumer-cpp >/dev/null
@@ -53,10 +53,10 @@ test-cpp-release:
 	@bash -o pipefail -c "bake run test/cpp --cfg release 2>&1 | $(QUIET_BAKE)"
 
 update-rust-vendor:
-	@addons/siecs_rust/tools/update_vendor.sh
+	@bindings/siecs_rust/tools/update_vendor.sh
 
 test-rust:
-	@cd addons/siecs_rust && cargo test
+	@cd bindings/siecs_rust && cargo test
 
 distr:
 	@sh tools/rebuild_distr.sh
