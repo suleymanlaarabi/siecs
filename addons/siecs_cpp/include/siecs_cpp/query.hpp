@@ -238,6 +238,11 @@ class query {
         return std::move(*this);
     }
 
+    query &&is_a(ecs_entity_t target) {
+        desc.is_a = target;
+        return std::move(*this);
+    }
+
     ecs_query_id_t build() { return ecs_query_init(_world, &desc); }
 
     template <typename F> void each(F &&func) {

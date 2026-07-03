@@ -15,6 +15,8 @@ struct Time {
     float delta;
 };
 
+struct IsKind {};
+
 int main() {
     ecs::world world;
 
@@ -27,7 +29,7 @@ int main() {
     world.entity("enemy").is_a(enemy);
 
     int count = 0;
-    world.query().each([&](Position &pos, const Velocity &vel) { count += 1; });
+    world.query().is_a(enemy).each([&](Position &pos, const Velocity &vel) { count += 1; });
 
     assert(count == 10);
     while (world.progress()) {

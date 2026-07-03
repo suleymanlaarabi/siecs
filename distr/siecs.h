@@ -914,7 +914,7 @@ typedef struct {
  * declaration order. Optional fields return NULL for tables without the
  * component. EcsFilter and EcsNot only affect table matching.
  *
- * A query must contain at least one term.
+ * A query must contain at least one term or an is_a target.
  */
 typedef struct {
     ecs_query_term_t terms[16];
