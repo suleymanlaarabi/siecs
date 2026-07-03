@@ -7,6 +7,7 @@
 #include "utils.h"
 #include "world_internal.h"
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 ecs_entity_t ecs_new(ecs_world_t *world) {
@@ -109,20 +110,54 @@ void ecs_kill(ecs_world_t *world, ecs_entity_t entity) {
 
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
+    uint16_t component_count = table->type.count;
+    ecs_component_t *components = NULL;
 
-    for (int i = 0; i < table->type.count; i++) {
-        const ecs_component_record_t *crec =
-            ecs_component_index_get(&world->component_index, table->type.ids[i]);
-
-        if (crec->on_remove) {
-            crec->on_remove(
-                world,
-                entity,
-                table->type.ids[i],
-                ecs_table_component_at_column(table, (uint16_t)i, record->table_row)
-            );
+    if (component_count != 0) {
+        components = malloc(sizeof(ecs_component_t) * component_count);
+        ecs_assert_not_null(components);
+        for (uint16_t i = 0; i < component_count; i++) {
+            components[i] = table->type.ids[i];
         }
     }
+
+    for (uint16_t i = 0; i < component_count && ecs_is_alive(world, entity); i++) {
+        ecs_component_t component = components[i];
+        record = ecs_get_record(world, entity);
+        table = ecs_get_table(world, record->table_id);
+
+        uint16_t col_idx = ecs_table_column_or_invalid(table, component);
+        if (col_idx == UINT16_MAX) {
+            continue;
+        }
+
+        void *removed_data = ecs_table_component_at_column(table, col_idx, record->table_row);
+        const ecs_component_record_t *crec =
+            ecs_component_index_get(&world->component_index, component);
+
+        if (crec->on_remove) {
+            crec->on_remove(world, entity, component, removed_data);
+            if (!ecs_is_alive(world, entity)) {
+                break;
+            }
+            record = ecs_get_record(world, entity);
+            table = ecs_get_table(world, record->table_id);
+            col_idx = ecs_table_column_or_invalid(table, component);
+            if (col_idx == UINT16_MAX) {
+                continue;
+            }
+            removed_data = ecs_table_component_at_column(table, col_idx, record->table_row);
+        }
+        ecs_emit(world, table, entity, EcsOnRemove, removed_data);
+    }
+
+    free(components);
+    if (!ecs_is_alive(world, entity)) {
+        return;
+    }
+
+    record = ecs_get_record(world, entity);
+    table = ecs_get_table(world, record->table_id);
 
     // Remove from table
     ecs_entity_t moved = ecs_table_remove_entity(table, record->table_row);
