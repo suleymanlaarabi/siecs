@@ -1,9 +1,9 @@
 #pragma once
-#include "component.hpp"
-#include "function_traits.hpp"
-#include "resource.hpp"
+#include "siecs/cpp/component.hpp"
+#include "siecs/cpp/function_traits.hpp"
+#include "siecs/cpp/resource.hpp"
 #include "siecs.h"
-#include "siecs_cpp/entity.hpp"
+#include "siecs/cpp/entity.hpp"
 #include <cstdint>
 #include <functional>
 #include <tuple>

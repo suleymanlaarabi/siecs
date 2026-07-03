@@ -54,13 +54,12 @@ Your code only needs the public header:
 The standalone files embed SIECS and its public C dependencies, so this path
 does not require Bake.
 
-For C++ projects, include `addons/siecs_cpp/include` and link the SIECS C
-runtime. Bake is currently the easiest supported C++ setup because it wires the
-C runtime and dependency include paths for you.
+For C++ projects, include the same `siecs.h` header from C++ and link the SIECS
+C runtime. The standalone distribution embeds the C++ API in `siecs.h`.
 
 # C++
 ```cpp
-#include <siecs_cpp/siecs_cpp.hpp>
+#include <siecs.h>
 
 struct Position {
     float x, y;
@@ -236,15 +235,14 @@ C++
   "type": "application",
   "value": {
     "language": "cpp",
-    "use": ["siecs_cpp", "siecs"]
+    "use": ["siecs"]
   },
   "lang.cpp": {
     "cpp-standard": "c++23"
   },
   "bundle": {
     "repositories": {
-      "siecs": "https://github.com/suleymanlaarabi/siecs",
-      "siecs_cpp": "https://github.com/suleymanlaarabi/siecs"
+      "siecs": "https://github.com/suleymanlaarabi/siecs"
     }
   }
 }

@@ -3,13 +3,13 @@ title: C++ API
 description: Type-safe C++23 wrapper around the SIECS C runtime.
 ---
 
-The C++ addon is a thin C++23 layer over the C runtime. Include:
+The C++ API is a thin C++23 layer over the C runtime. Include:
 
 ```cpp
-#include <siecs_cpp/siecs_cpp.hpp>
+#include <siecs.h>
 ```
 
-use `siecs_cpp` with Bake.
+Use the `siecs` package with Bake.
 
 ## World And Entities
 

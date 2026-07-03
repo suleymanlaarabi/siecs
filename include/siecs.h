@@ -861,4 +861,8 @@ SIECS_API void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system);
 }
 #endif
 
+#if defined(__cplusplus) && !defined(SIECS_NO_CPP)
+#include "siecs/cpp.hpp"
+#endif
+
 #endif

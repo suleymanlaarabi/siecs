@@ -1,7 +1,7 @@
 #pragma once
 
 #include "siecs.h"
-#include "siecs_cpp/type.hpp"
+#include "siecs/cpp/type.hpp"
 #include <cassert>
 #include <string>
 #include <tuple>

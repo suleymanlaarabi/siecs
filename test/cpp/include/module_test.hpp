@@ -1,7 +1,7 @@
 #ifndef SIECS_CPP_MODULE_TEST_HPP
 #define SIECS_CPP_MODULE_TEST_HPP
 
-#include <siecs_cpp/siecs_cpp.hpp>
+#include <siecs.h>
 
 struct ModulePosition {
     int value;

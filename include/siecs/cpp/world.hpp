@@ -1,13 +1,13 @@
 #pragma once
-#include "component.hpp"
-#include "entity.hpp"
-#include "module.hpp"
-#include "observer.hpp"
-#include "query.hpp"
-#include "resource.hpp"
+#include "siecs/cpp/component.hpp"
+#include "siecs/cpp/entity.hpp"
+#include "siecs/cpp/module.hpp"
+#include "siecs/cpp/observer.hpp"
+#include "siecs/cpp/query.hpp"
+#include "siecs/cpp/resource.hpp"
 #include "siecs.h"
-#include "system.hpp"
-#include "type.hpp"
+#include "siecs/cpp/system.hpp"
+#include "siecs/cpp/type.hpp"
 #include <cstring>
 
 namespace ecs {

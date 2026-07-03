@@ -5,7 +5,7 @@
     "public": false,
     "clangd": true,
     "language": "cpp",
-    "use": ["siecs_cpp", "siecs"]
+    "use": ["siecs"]
   },
   "lang.cpp": {
     "cpp-standard": "c++23"

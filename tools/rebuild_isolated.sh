@@ -39,9 +39,9 @@ copy_package() {
             mkdir -p "$work_dir/example"
             cp -R "$repo_root/example/c" "$work_dir/example/"
             ;;
-        addons/siecs_cpp/test)
-            mkdir -p "$work_dir/addons"
-            cp -R "$repo_root/addons/siecs_cpp" "$work_dir/addons/"
+        test/cpp)
+            mkdir -p "$work_dir/test"
+            cp -R "$repo_root/test/cpp" "$work_dir/test/"
             ;;
         *)
             cp -R "$repo_root/$package" "$work_dir/"

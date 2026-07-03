@@ -1,11 +1,11 @@
 {
-  "id": "siecs_cpp.test",
+  "id": "siecs.cpp.test",
   "type": "application",
   "value": {
     "language": "cpp",
     "public": false,
     "clangd": true,
-    "use": ["siecs_cpp", "siecs"]
+    "use": ["siecs"]
   },
   "lang.cpp": {
     "cpp-standard": "c++23"

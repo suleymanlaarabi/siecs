@@ -1,4 +1,4 @@
-#include <siecs_cpp/siecs_cpp.hpp>
+#include <siecs.h>
 #include <test.h>
 
 struct CppQueryPosition {

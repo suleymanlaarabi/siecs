@@ -2,7 +2,7 @@
 
 #include "siecs.h"
 #include "sireflect.h"
-#include "type.hpp"
+#include "siecs/cpp/type.hpp"
 #include <cstddef>
 #include <cstdio>
 #include <string.h>

@@ -1551,5 +1551,1025 @@ SIECS_API void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system);
 }
 #endif
 
+#if defined(__cplusplus) && !defined(SIECS_NO_CPP)
+#ifndef SIECS_PUBLIC_CPP_HPP
+#define SIECS_PUBLIC_CPP_HPP
+
+#pragma once
+#pragma once
+
+#pragma once
+#include <string_view>
+
+namespace ecs {
+
+template <class T> consteval std::string_view type_name() {
+    constexpr std::string_view func = __PRETTY_FUNCTION__;
+    constexpr std::string_view key = "T = ";
+
+    constexpr auto start = func.find(key) + key.size();
+    constexpr auto end_semi = func.find(';', start);
+    constexpr auto end_bracket = func.find(']', start);
+
+    constexpr auto end = end_semi == std::string_view::npos ? end_bracket : end_semi;
+
+    return func.substr(start, end - start);
+}
+
+} // namespace ecs
+
+#include <cstddef>
+#include <cstdio>
+#include <string.h>
+#include <string>
+
+namespace ecs {
+
+namespace detail {
+
+template <typename T> struct component_type {
+    static inline ecs_component_t id = 0;
+};
+
+template <typename T, typename = void> struct is_complete : std::false_type {};
+
+template <typename T> struct is_complete<T, std::void_t<decltype(sizeof(T))>> : std::true_type {};
+
+template <typename T> consteval size_t sisizeof() {
+    if constexpr (is_complete<T>::value) {
+        return sizeof(T);
+    } else {
+        return 0;
+    }
+}
+
+template <typename T> static void ecs_cpp_set_component_id(ecs_component_t cid) {
+    detail::component_type<T>::id = cid;
+}
+
+template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *world) {
+    ecs_component_t &cid = detail::component_type<T>::id;
+
+    if (cid != 0) {
+        return cid;
+    }
+
+    static sireflect_struct_desc_t reflection = {
+        .name = strdup(std::string(type_name<T>()).c_str()),
+        .fields = "{}",
+        .size = 0,
+        .align = 1,
+    };
+
+    if constexpr (requires {
+                      { T::fields } -> std::convertible_to<const char *>;
+                  }) {
+        reflection.fields = T::fields;
+        reflection.size = sisizeof<T>();
+        reflection.align = _Alignof(T);
+    }
+
+    ecs_component_desc_t desc = {
+        .name = reflection.name,
+        .size = sisizeof<T>(),
+        .on_set = nullptr,
+        .on_remove = []([[maybe_unused]] ecs_world_t *world,
+                        [[maybe_unused]] ecs_entity_t entity,
+                        [[maybe_unused]] ecs_component_t component,
+                        void *ptr) { static_cast<const T *>(ptr)->~T(); },
+        .on_add = []([[maybe_unused]] ecs_world_t *world,
+                     [[maybe_unused]] ecs_entity_t entity,
+                     [[maybe_unused]] ecs_component_t component,
+                     void *ptr) { new (const_cast<void *>(ptr)) T(); },
+        .relation_flags = 0,
+        .struct_desc = &reflection,
+    };
+
+    cid = ecs_component_init(world, &desc);
+
+    return cid;
+}
+
+#define fields_str(...) #__VA_ARGS__
+
+#define reflected(...)                                                                             \
+    static constexpr const char *fields = fields_str({ __VA_ARGS__ });                             \
+    __VA_ARGS__
+
+} // namespace detail
+
+} // namespace ecs
+
+#pragma once
+
+namespace ecs {
+
+class entity {
+    ecs_entity_t _entity;
+    ecs_world_t *_world;
+
+  public:
+    static ecs::entity null() { return entity(nullptr, 0); }
+
+    entity(ecs_world_t *world, ecs_entity_t entity) : _entity(entity), _world(world) {}
+
+    [[nodiscard]] ecs_entity_t id() const noexcept { return _entity; }
+
+    template <typename T> entity add() {
+        ecs_add_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world));
+        return *this;
+    }
+
+    operator ecs_entity_t() const noexcept { return _entity; }
+
+    entity abstract() {
+        ecs_add(_world, _entity, Abstract);
+        return *this;
+    }
+
+    template <typename T> entity remove() {
+        ecs_remove_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world));
+        return *this;
+    }
+
+    template <typename T> [[nodiscard]] bool has() const {
+        return ecs_has_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world));
+    }
+
+    template <typename T> entity set(const T &value) {
+        ecs_set_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world), &value);
+        return *this;
+    }
+
+    entity is_a(entity target) {
+        ecs_is_a(_world, _entity, target._entity);
+        return *this;
+    }
+
+    bool is(entity target) { return ecs_is(_world, _entity, target._entity); }
+
+    entity child_of(entity parent) {
+        const ChildOf desc = { .target = parent._entity };
+        ecs_set_cid(_world, _entity, ecs_id(ChildOf), &desc);
+        return *this;
+    }
+
+    entity enable() {
+        ecs_remove_cid(_world, _entity, ecs_id(Disabled));
+        return *this;
+    }
+
+    entity disable() {
+        ecs_add_cid(_world, _entity, ecs_id(Disabled));
+        return *this;
+    }
+
+    [[nodiscard]] bool is_enabled() const {
+        return !ecs_has_cid(_world, _entity, ecs_id(Disabled));
+    }
+
+    [[nodiscard]] bool is_disabled() const {
+        return ecs_has_cid(_world, _entity, ecs_id(Disabled));
+    }
+};
+
+} // namespace ecs
+
+#pragma once
+
+#include <cassert>
+#include <concepts>
+
+namespace ecs {
+
+class world;
+
+template <typename T> class module_ref {
+    ecs_world_t *_world = nullptr;
+    ecs_module_id_t _id = 0;
+
+  public:
+    constexpr module_ref() noexcept = default;
+    constexpr module_ref(ecs_world_t *world, ecs_module_id_t id) noexcept
+        : _world(world), _id(id) {}
+
+    [[nodiscard]] constexpr ecs_module_id_t id() const noexcept { return _id; }
+    [[nodiscard]] constexpr explicit operator bool() const noexcept { return _id != 0; }
+
+    void enable() const noexcept {
+        assert(_world != nullptr);
+        assert(_id != 0);
+        ecs_module_enable(_world, _id);
+    }
+
+    void disable() const noexcept {
+        assert(_world != nullptr);
+        assert(_id != 0);
+        ecs_module_disable(_world, _id);
+    }
+
+    [[nodiscard]] bool is_enabled() const noexcept {
+        assert(_world != nullptr);
+        assert(_id != 0);
+        return ecs_module_is_enabled(_world, _id);
+    }
+};
+
+namespace detail {
+
+template <typename T> struct module_type {
+    static inline ecs_module_id_t id;
+};
+
+template <typename T>
+concept module_importable = requires(T module, ecs::world &world) {
+    { module.import(world) } -> std::same_as<void>;
+};
+
+template <typename T, typename... Args>
+concept module_list_initializable =
+    requires(Args &&...args) { T{ static_cast<Args &&>(args)... }; };
+
+} // namespace detail
+
+} // namespace ecs
+
+#pragma once
+
+#pragma once
+#include <tuple>
+#include <type_traits>
+#include <utility>
+
+namespace ecs {
+
+    template <typename T> struct function_traits;
+
+    // function pointer
+    template <typename R, typename... Args> struct function_traits<R (*)(Args...)> {
+        using return_type = R;
+        using args_tuple = std::tuple<Args...>;
+    };
+
+    // function reference
+    template <typename R, typename... Args> struct function_traits<R (&)(Args...)> {
+        using return_type = R;
+        using args_tuple = std::tuple<Args...>;
+    };
+
+    // member function pointer const
+    template <typename C, typename R, typename... Args>
+    struct function_traits<R (C::*)(Args...) const> {
+        using return_type = R;
+        using args_tuple = std::tuple<Args...>;
+    };
+
+    // member function pointer non-const
+    template <typename C, typename R, typename... Args> struct function_traits<R (C::*)(Args...)> {
+        using return_type = R;
+        using args_tuple = std::tuple<Args...>;
+    };
+
+    // lambda / functor
+    template <typename F>
+    struct function_traits : function_traits<decltype(&std::remove_reference_t<F>::operator())> {};
+
+    template <typename Tuple, typename Fn, std::size_t... I>
+    constexpr void for_each_type_impl(Fn &&fn, std::index_sequence<I...>) {
+        (fn.template operator()<std::tuple_element_t<I, Tuple>>(), ...);
+    }
+
+    template <typename Tuple, typename Fn> constexpr void for_each_type(Fn &&fn) {
+        constexpr std::size_t N = std::tuple_size_v<Tuple>;
+        for_each_type_impl<Tuple>(std::forward<Fn>(fn), std::make_index_sequence<N>{});
+    }
+
+}
+
+#pragma once
+#pragma once
+
+#include <cassert>
+#include <string>
+#include <tuple>
+#include <type_traits>
+
+namespace ecs {
+
+template <typename T> class res {
+    T *_ptr = nullptr;
+
+  public:
+    explicit res(T *ptr) noexcept : _ptr(ptr) { assert(ptr != nullptr); }
+
+    [[nodiscard]] T *operator->() const noexcept { return _ptr; }
+    [[nodiscard]] T &operator*() const noexcept { return *_ptr; }
+    [[nodiscard]] T *get() const noexcept { return _ptr; }
+};
+
+namespace detail {
+
+template <typename T> struct resource_type {
+    static inline ecs_resource_t id;
+};
+
+template <typename T> struct is_res : std::false_type {};
+template <typename T> struct is_res<ecs::res<T>> : std::true_type {};
+
+template <typename T> inline constexpr bool is_res_v = is_res<std::remove_cvref_t<T>>::value;
+
+template <typename T> struct res_value;
+template <typename T> struct res_value<ecs::res<T>> {
+    using type = T;
+};
+
+template <typename T>
+using res_value_t = typename res_value<std::remove_cvref_t<T>>::type;
+
+template <typename T>
+using resource_value_t = std::remove_cv_t<res_value_t<T>>;
+
+struct no_resource {};
+
+} // namespace detail
+
+template <typename T> static ecs_resource_t ecs_cpp_resource_id(ecs_world_t *world) {
+    using type = std::remove_cv_t<T>;
+    ecs_resource_t &rid = detail::resource_type<type>::id;
+
+    if (rid != 0 && ecs_resource_is_registered_rid(world, rid)) {
+        return rid;
+    }
+
+    std::string name = std::string(type_name<type>());
+    rid = ecs_resource_find(world, name.c_str());
+    if (rid != 0) {
+        return rid;
+    }
+
+    ecs_resource_desc_t desc = {
+        .name = name.c_str(),
+        .size = sizeof(type),
+        .on_set = nullptr,
+        .on_remove = nullptr,
+    };
+
+    rid = ecs_resource_init(world, &desc);
+    return rid;
+}
+
+template <typename T> static ecs_resource_t ecs_cpp_try_resource_id(ecs_world_t *world) {
+    using type = std::remove_cv_t<T>;
+    ecs_resource_t &rid = detail::resource_type<type>::id;
+
+    if (rid != 0 && ecs_resource_is_registered_rid(world, rid)) {
+        return rid;
+    }
+
+    std::string name = std::string(type_name<type>());
+    rid = ecs_resource_find(world, name.c_str());
+    return rid;
+}
+
+namespace detail {
+
+template <typename Arg> inline auto make_resource_arg(ecs_world_t *world) {
+    if constexpr (is_res_v<Arg>) {
+        using value_type = res_value_t<Arg>;
+        using resource_type = std::remove_cv_t<value_type>;
+
+        ecs_resource_t id = ecs::ecs_cpp_resource_id<resource_type>(world);
+        return ecs::res<value_type>(static_cast<value_type *>(ecs_resource_rid(world, id)));
+    } else {
+        return no_resource{};
+    }
+}
+
+template <typename Args, std::size_t... Is>
+inline auto make_resources(ecs_world_t *world, std::index_sequence<Is...>) {
+    (void)world;
+    return std::tuple{ make_resource_arg<std::tuple_element_t<Is, Args>>(world)... };
+}
+
+template <typename Args> inline auto make_resources(ecs_world_t *world) {
+    constexpr std::size_t N = std::tuple_size_v<Args>;
+    return make_resources<Args>(world, std::make_index_sequence<N>{});
+}
+
+} // namespace detail
+
+} // namespace ecs
+
+#include <cstdint>
+#include <functional>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+
+namespace ecs {
+
+namespace detail {
+
+template <typename T> consteval ecs_term_access_t term_access();
+
+template <typename Args, std::size_t I, std::size_t... Is>
+consteval std::size_t field_index_before_impl(std::index_sequence<Is...>) {
+    return ((Is < I && !is_res_v<std::tuple_element_t<Is, Args>> ? 1U : 0U) + ... + 0U);
+}
+
+template <typename Args, std::size_t I> consteval std::size_t field_index_before() {
+    return field_index_before_impl<Args, I>(std::make_index_sequence<std::tuple_size_v<Args>>{});
+}
+
+template <typename Args, std::size_t... Is>
+consteval std::size_t component_arg_count_impl(std::index_sequence<Is...>) {
+    return ((!is_res_v<std::tuple_element_t<Is, Args>> ? 1U : 0U) + ... + 0U);
+}
+
+template <typename Args> consteval std::size_t component_arg_count() {
+    return component_arg_count_impl<Args>(std::make_index_sequence<std::tuple_size_v<Args>>{});
+}
+
+template <typename Args, std::size_t I, typename Resources>
+inline auto make_batch_arg(ecs_iter_t *it, Resources &resources) {
+    using arg = std::tuple_element_t<I, Args>;
+
+    if constexpr (is_res_v<arg>) {
+        return std::get<I>(resources);
+    } else {
+        using value_type = std::remove_reference_t<arg>;
+        return static_cast<value_type *>(
+            ecs_field(it, static_cast<uint16_t>(field_index_before<Args, I>()))
+        );
+    }
+}
+
+template <typename Args, typename Resources, std::size_t... Is>
+inline auto make_fields(ecs_iter_t *it, Resources &resources, std::index_sequence<Is...>) {
+    (void)it;
+    return std::tuple{ make_batch_arg<Args, Is>(it, resources)... };
+}
+
+template <std::uint8_t SharedMask, std::size_t I, typename Args, typename Tuple>
+inline decltype(auto) row_arg(Tuple &fields, uint32_t row) {
+    auto &field = std::get<I>(fields);
+
+    using arg = std::tuple_element_t<I, Args>;
+    if constexpr (is_res_v<arg>) {
+        (void)row;
+        return field;
+    } else {
+        constexpr std::size_t field_index = field_index_before<Args, I>();
+        if constexpr ((SharedMask & (1U << field_index)) != 0) {
+            (void)row;
+            return field[0];
+        } else {
+            return field[row];
+        }
+    }
+}
+
+template <std::uint8_t SharedMask, typename F, typename Args, typename Tuple, std::size_t... Is>
+inline void call_fields_impl(F &func, Tuple &fields, uint32_t count, std::index_sequence<Is...>) {
+    for (uint32_t i = 0; i < count; i++) {
+        std::invoke(func, row_arg<SharedMask, Is, Args>(fields, i)...);
+    }
+}
+
+template <std::uint8_t SharedMask, typename F, typename Args, typename Tuple>
+inline void call_fields_mask(F &func, Tuple &fields, uint32_t count) {
+    constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<Tuple>>;
+
+    call_fields_impl<SharedMask, F, Args>(func, fields, count, std::make_index_sequence<N>{});
+}
+
+template <std::uint16_t Mask, std::uint16_t MaxMask, typename F, typename Args, typename Tuple>
+inline void call_fields_dispatch(F &func, Tuple &fields, uint32_t count, std::uint8_t shared_mask) {
+    if constexpr (Mask < MaxMask) {
+        if (shared_mask == Mask) {
+            call_fields_mask<static_cast<std::uint8_t>(Mask), F, Args, Tuple>(func, fields, count);
+        } else {
+            call_fields_dispatch<Mask + 1, MaxMask, F, Args, Tuple>(
+                func,
+                fields,
+                count,
+                shared_mask
+            );
+        }
+    }
+}
+
+template <typename F, typename Args, typename Tuple>
+inline void call_fields(F &func, Tuple &fields, uint32_t count, std::uint8_t shared_mask) {
+    constexpr std::size_t component_count = component_arg_count<Args>();
+    static_assert(component_count <= 8, "query callbacks can read at most 8 components");
+
+    constexpr std::uint16_t max_mask = 1U << component_count;
+
+    call_fields_dispatch<0, max_mask, F, Args, Tuple>(func, fields, count, shared_mask);
+}
+
+template <typename Args> inline std::uint8_t make_shared_mask(const ecs_iter_t *it) {
+    constexpr std::size_t component_count = component_arg_count<Args>();
+    static_assert(component_count <= 8, "query callbacks can read at most 8 components");
+
+    std::uint8_t mask = 0;
+    for (std::size_t i = 0; i < component_count; i++) {
+        if (it->field_kinds[i] == EcsFieldShared) {
+            mask |= static_cast<std::uint8_t>(1U << i);
+        }
+    }
+    return mask;
+}
+
+template <typename T> consteval ecs_term_access_t term_access() {
+    static_assert(
+        std::is_lvalue_reference_v<T>,
+        "query callback arguments must be lvalue references"
+    );
+
+    if constexpr (std::is_const_v<std::remove_reference_t<T>>) {
+        return EcsIn;
+    } else {
+        return EcsInOut;
+    }
+}
+
+inline void append_term(
+    ecs_query_desc_t &desc,
+    uint16_t &term_index,
+    ecs_component_t id,
+    ecs_term_access_t access
+) {
+    // assert(term_index + 1 < query_term_capacity && "too many query terms");
+
+    desc.terms[term_index] = {
+        .id = id,
+        .access = access,
+    };
+    term_index += 1;
+}
+
+template <typename... T>
+inline void append_terms(
+    ecs_world_t *world,
+    ecs_query_desc_t &desc,
+    uint16_t &term_index,
+    ecs_term_access_t access
+) {
+    (append_term(desc, term_index, ecs::detail::ecs_cpp_component_id<T>(world), access), ...);
+}
+
+template <typename Args>
+inline void
+append_callback_terms(ecs_world_t *world, ecs_query_desc_t &desc, uint16_t &term_index) {
+    for_each_type<Args>([&]<typename T>() {
+        if constexpr (!is_res_v<T>) {
+            append_term(
+                desc,
+                term_index,
+                ecs::detail::ecs_cpp_component_id<std::remove_cvref_t<T>>(world),
+                term_access<T>()
+            );
+        }
+    });
+}
+
+template <typename F, typename Args>
+inline void run_query(F &func, ecs_world_t *world, ecs_query_id_t qid) {
+    auto resources = make_resources<Args>(world);
+    ecs_iter_t it = ecs_query_iter(world, qid);
+
+    while (ecs_iter_next(&it)) {
+        auto fields =
+            make_fields<Args>(&it, resources, std::make_index_sequence<std::tuple_size_v<Args>>{});
+        call_fields<F, Args>(func, fields, it.count, make_shared_mask<Args>(&it));
+    }
+}
+
+template <typename F, typename Args> inline void run_batch(F &func, ecs_iter_t *it) {
+    auto resources = make_resources<Args>(it->world);
+    auto fields =
+        make_fields<Args>(it, resources, std::make_index_sequence<std::tuple_size_v<Args>>{});
+    call_fields<F, Args>(func, fields, it->count, make_shared_mask<Args>(it));
+}
+
+template <typename F, typename Args> inline void run_once(F &func, ecs_world_t *world) {
+    static_assert(component_arg_count<Args>() == 0);
+
+    auto resources = make_resources<Args>(world);
+    auto fields =
+        make_fields<Args>(nullptr, resources, std::make_index_sequence<std::tuple_size_v<Args>>{});
+    call_fields<F, Args>(func, fields, 1, 0);
+}
+
+template <typename F, typename Args>
+inline void run_strict_query(F &func, ecs_world_t *world, ecs_query_id_t qid) {
+    constexpr std::size_t component_count = component_arg_count<Args>();
+    static_assert(component_count > 0, "query callbacks must read at least one component");
+
+    run_query<F, Args>(func, world, qid);
+}
+
+} // namespace detail
+
+class world;
+
+class query {
+  protected:
+    ecs_query_desc_t desc{};
+    uint16_t term_index = 0;
+    ecs_world_t *_world = nullptr;
+
+  public:
+    explicit query(ecs_world_t *world) noexcept : _world(world) {}
+
+    template <typename... T> query &&require() {
+        detail::append_terms<T...>(_world, desc, term_index, EcsFilter);
+        return std::move(*this);
+    }
+
+    template <typename... T> query &&exclude() {
+        detail::append_terms<T...>(_world, desc, term_index, EcsNot);
+        return std::move(*this);
+    }
+
+    query &&is_a(ecs_entity_t target) {
+        desc.is_a = target;
+        return std::move(*this);
+    }
+
+    ecs_query_id_t build() { return ecs_query_init(_world, &desc); }
+
+    template <typename F> void each(F &&func) {
+        using traits = function_traits<std::remove_reference_t<F>>;
+        using args = typename traits::args_tuple;
+        constexpr std::size_t component_count = detail::component_arg_count<args>();
+        static_assert(component_count > 0, "query callbacks must read at least one component");
+
+        detail::append_callback_terms<args>(_world, desc, term_index);
+
+        ecs_query_id_t qid = this->build();
+
+        detail::run_strict_query<F, args>(func, _world, qid);
+
+        ecs_query_fini(_world, qid);
+    }
+
+    entity first() {
+        ecs_query_id_t qid = this->build();
+        ecs_iter_t it = ecs_query_iter(_world, qid);
+        while (ecs_iter_next(&it)) {
+            return entity(_world, it.entities[0]);
+        }
+        return entity::null();
+    }
+};
+
+} // namespace ecs
+
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+
+namespace ecs {
+
+struct OnAdd {};
+struct OnSet {};
+struct OnRemove {};
+
+namespace detail {
+
+template <typename T> struct event_type {
+    static inline ecs_event_t id = UINT16_MAX;
+};
+
+template <typename T> static ecs_event_t ecs_cpp_event_id(ecs_world_t *world) {
+    ecs_event_t &eid = detail::event_type<T>::id;
+
+    if (eid != UINT16_MAX) {
+        return eid;
+    }
+
+    eid = ecs_event(world);
+
+    return eid;
+}
+
+template <typename T> static void ecs_cpp_set_event_id(ecs_event_t eid) {
+    detail::event_type<T>::id = eid;
+}
+
+template <typename T> decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event) {
+    using raw = std::remove_cvref_t<T>;
+    void *ptr = ecs_get_cid(event->world, event->entity, ecs_cpp_component_id<raw>(event->world));
+
+    if constexpr (std::is_const_v<std::remove_reference_t<T>>) {
+        return *static_cast<const raw *>(ptr);
+    } else {
+        return *static_cast<raw *>(ptr);
+    }
+}
+
+template <typename Args, std::size_t I, typename Resources>
+decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event, Resources &resources) {
+    using arg = std::tuple_element_t<I, Args>;
+
+    if constexpr (is_res_v<arg>) {
+        (void)event;
+        return std::get<I>(resources);
+    } else {
+        return ecs_cpp_observer_arg<arg>(event);
+    }
+}
+
+template <typename Func, typename Args, std::size_t... Is>
+void ecs_cpp_observer_callback_impl(ecs_observer_event_t *event, std::index_sequence<Is...>) {
+    Func func{};
+    auto resources = make_resources<Args>(event->world);
+    std::invoke(func, ecs_cpp_observer_arg<Args, Is>(event, resources)...);
+}
+
+template <typename Func, typename Tuple>
+void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
+    ecs_cpp_observer_callback_impl<Func, Tuple>(
+        event,
+        std::make_index_sequence<std::tuple_size_v<Tuple>>{}
+    );
+}
+
+} // namespace detail
+
+template <typename T> class observer : public query {
+
+  public:
+    observer(ecs_world_t *world) : query(world) {};
+
+    template <typename F> ecs_observer_id_t each(F &&) {
+        using callback = std::remove_cvref_t<F>;
+        static_assert(
+            std::is_empty_v<callback> && std::is_default_constructible_v<callback>,
+            "observer callbacks must be stateless with the current C API"
+        );
+
+        using traits = function_traits<callback>;
+        using args = typename traits::args_tuple;
+        static_assert(
+            detail::component_arg_count<args>() > 0,
+            "observer callbacks must read at least one component"
+        );
+
+        ecs::detail::append_callback_terms<args>(_world, this->desc, term_index);
+
+        ecs_observer_desc_t observer_desc = {
+            .on = detail::ecs_cpp_event_id<T>(_world),
+            .query = this->desc,
+            .callback = detail::ecs_cpp_observer_callback<callback, args>,
+        };
+
+        return ecs_observer_init(_world, &observer_desc);
+    }
+};
+
+} // namespace ecs
+
+#pragma once
+
+namespace ecs {
+
+namespace detail {
+
+template <typename Callback, typename Args> static void system_callback(ecs_iter_t *it) {
+    Callback callback{};
+    if constexpr (component_arg_count<Args>() == 0) {
+        run_once<Callback, Args>(callback, it->world);
+    } else {
+        run_batch<Callback, Args>(callback, it);
+    }
+}
+
+} // namespace detail
+
+class system : protected query {
+    const char *name;
+    ecs_phase_t _phase = EcsOnUpdate;
+
+  public:
+    system(ecs_world_t *_world, const char *name) : query(_world), name(name) {}
+
+    template <typename... T> system require() {
+        query::require<T...>();
+        return *this;
+    }
+
+    template <typename... T> system exclude() {
+        query::exclude<T...>();
+        return *this;
+    }
+
+    system phase(ecs_phase_t _phase) {
+        this->_phase = _phase;
+        return *this;
+    }
+
+    template <typename F> ecs_system_id_t each(F &&) {
+        using callback = std::remove_cvref_t<F>;
+        static_assert(
+            std::is_empty_v<callback> && std::is_default_constructible_v<callback>,
+            "system callbacks must be stateless with the current C API"
+        );
+
+        using traits = function_traits<callback>;
+        using args = typename traits::args_tuple;
+        detail::append_callback_terms<args>(_world, desc, term_index);
+
+        ecs_system_desc_t system_desc = {
+            .name = name,
+            .query = this->desc,
+            .callback = detail::system_callback<callback, args>,
+            .phase = _phase,
+        };
+
+        return ecs_system_init(_world, &system_desc);
+    }
+};
+
+} // namespace ecs
+
+#include <cstring>
+
+namespace ecs {
+
+enum class world_ownership : uint8_t {
+    owned,
+    borrowed,
+};
+
+class world {
+    ecs_world_t *_world = nullptr;
+    world_ownership _ownership = world_ownership::owned;
+
+    template <typename T> static void import_module_callback(ecs_world_t *raw, const void *ptr) {
+        ecs::world world = ecs::world::borrow(raw);
+        T &module = *static_cast<T *>(const_cast<void *>(ptr));
+        module.import(world);
+    }
+
+    template <typename T> [[nodiscard]] module_ref<T> import_module(T &module) const {
+        static const std::string name = std::string(type_name<T>());
+
+        ecs_module_desc_t desc = {
+            .name = name.c_str(),
+            .id = &detail::module_type<T>::id,
+            .import = import_module_callback<T>,
+            .desc = &module,
+            .desc_size = sizeof(T),
+            .disabled = false,
+        };
+
+        return module_ref<T>(_world, ecs_module_init(_world, &desc));
+    }
+
+  public:
+    world() noexcept : _world(nullptr), _ownership(world_ownership::owned) {
+        ecs_world_feat_desc_t desc{ .rest = true, .target_fps = 120 };
+        _world = ecs_init_w_features(&desc);
+        detail::ecs_cpp_set_component_id<Disabled>(ecs_id(Disabled));
+        detail::ecs_cpp_set_component_id<Name>(ecs_id(Name));
+        detail::ecs_cpp_set_component_id<ChildOf>(ecs_id(ChildOf));
+        detail::ecs_cpp_set_event_id<OnAdd>(EcsOnAdd);
+        detail::ecs_cpp_set_event_id<OnAdd>(EcsOnSet);
+        detail::ecs_cpp_set_event_id<OnAdd>(EcsOnRemove);
+    }
+    explicit world(ecs_world_t *world) noexcept
+        : _world(world), _ownership(world_ownership::owned) {}
+    world(ecs_world_t *world, world_ownership ownership) noexcept
+        : _world(world), _ownership(ownership) {}
+
+    [[nodiscard]] static world borrow(ecs_world_t *world) noexcept {
+        return ecs::world(world, world_ownership::borrowed);
+    }
+
+    world(const world &) = delete;
+    world &operator=(const world &) = delete;
+
+    world(world &&other) noexcept
+        : _world(std::exchange(other._world, nullptr)),
+          _ownership(std::exchange(other._ownership, world_ownership::owned)) {}
+
+    world &operator=(world &&other) noexcept {
+        if (this != &other) {
+            reset();
+            _world = std::exchange(other._world, nullptr);
+            _ownership = std::exchange(other._ownership, world_ownership::owned);
+        }
+
+        return *this;
+    }
+
+    ~world() noexcept { reset(); }
+
+    [[nodiscard]] ecs_world_t *c_ptr() const noexcept { return _world; }
+
+    operator ecs_world_t *() const noexcept { return _world; }
+
+    void reset(
+        ecs_world_t *world = nullptr,
+        world_ownership ownership = world_ownership::owned
+    ) noexcept {
+        if (_world != nullptr && _ownership == world_ownership::owned) {
+            ecs_fini(_world);
+        }
+
+        _world = world;
+        _ownership = ownership;
+    }
+
+    template <typename T> ecs_component_t component() const {
+        return detail::ecs_cpp_component_id<T>(_world);
+    }
+
+    template <typename T> void set_resource(T &&value) const {
+        using type = std::remove_cvref_t<T>;
+        ecs_set_resource_rid(_world, ecs_cpp_resource_id<type>(_world), &value);
+    }
+
+    template <typename T> [[nodiscard]] T &resource() const {
+        using type = std::remove_cv_t<T>;
+        return *static_cast<T *>(ecs_resource_rid(_world, ecs_cpp_resource_id<type>(_world)));
+    }
+
+    template <typename T> [[nodiscard]] T *try_resource() const {
+        using type = std::remove_cv_t<T>;
+        ecs_resource_t id = ecs_cpp_try_resource_id<type>(_world);
+        return id ? static_cast<T *>(ecs_try_resource_rid(_world, id)) : nullptr;
+    }
+
+    template <typename T> [[nodiscard]] bool has_resource() const {
+        using type = std::remove_cv_t<T>;
+        ecs_resource_t id = ecs_cpp_try_resource_id<type>(_world);
+        return id && ecs_has_resource_rid(_world, id);
+    }
+
+    template <typename T> void remove_resource() const {
+        using type = std::remove_cv_t<T>;
+        ecs_resource_t id = ecs_cpp_try_resource_id<type>(_world);
+        if (id) {
+            ecs_remove_resource_rid(_world, id);
+        }
+    }
+
+    template <typename T>
+        requires detail::module_importable<T>
+    module_ref<T> import(T module) const {
+        return import_module<T>(module);
+    }
+
+    template <typename T, typename... Args>
+        requires detail::module_importable<T> && detail::module_list_initializable<T, Args...>
+    module_ref<T> import(Args &&...args) const {
+        T module{ std::forward<Args>(args)... };
+        return import_module<T>(module);
+    }
+
+    template <typename T> [[nodiscard]] module_ref<T> module() const noexcept {
+        return module_ref<T>(_world, ecs_module_find(_world, &detail::module_type<T>::id));
+    }
+
+    template <typename T> observer<T> observe() const { return observer<T>(_world); }
+
+    template <typename T> [[nodiscard]] ecs_event_t event() const {
+        return detail::ecs_cpp_event_id<T>(_world);
+    }
+
+    template <typename T> void trigger(ecs::entity entity, const void *data = nullptr) const {
+        ecs_observer_trigger(_world, entity.id(), event<T>(), data);
+    }
+
+    [[nodiscard]] ecs::entity entity(const char *name = nullptr) const {
+        auto e = ecs::entity(_world, ecs_new(_world));
+        if (name) {
+            e.set<Name>({ .value = strdup(name) });
+        }
+        return e;
+    }
+    [[nodiscard]] ecs::entity instantiate(ecs::entity e) { return this->entity().is_a(e); }
+    [[nodiscard]] ecs::query query() const { return ecs::query(_world); }
+    [[nodiscard]] ecs::system system(const char *name = "unamed") const {
+        return ecs::system(_world, name);
+    }
+
+    bool progress() { return ecs_progress(_world); }
+};
+
+} // namespace ecs
+
+#endif
+
+#endif
+
 #endif
 

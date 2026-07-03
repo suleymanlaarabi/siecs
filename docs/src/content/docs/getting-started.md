@@ -57,12 +57,14 @@ not need Bake for this C setup.
 
 ## C++ Setup
 
-The C++ API is header-only, but it wraps the C runtime. Add
-`addons/siecs_cpp/include`, compile/link the SIECS C library, and expose the
-dependency headers used by SIECS.
+The C++ API is header-only and is exposed by the same public header:
 
-Bake is currently the easiest supported C++ setup because it wires the C
-runtime and dependency include paths for you.
+```cpp
+#include <siecs.h>
+```
+
+It still wraps the C runtime, so compile/link the SIECS C library with your
+C++ application.
 
 ## Bake Example
 
@@ -95,15 +97,14 @@ C++
   "type": "application",
   "value": {
     "language": "cpp",
-    "use": ["siecs_cpp", "siecs"]
+    "use": ["siecs"]
   },
   "lang.cpp": {
     "cpp-standard": "c++23"
   },
   "bundle": {
     "repositories": {
-      "siecs": "https://github.com/suleymanlaarabi/siecs",
-      "siecs_cpp": "https://github.com/suleymanlaarabi/siecs"
+      "siecs": "https://github.com/suleymanlaarabi/siecs"
     }
   }
 }

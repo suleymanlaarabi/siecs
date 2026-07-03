@@ -1,5 +1,5 @@
 #pragma once
-#include "query.hpp"
+#include "siecs/cpp/query.hpp"
 
 namespace ecs {
 

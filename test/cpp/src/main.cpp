@@ -230,5 +230,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs_cpp.test", argc, argv, suites, 6);
+    return bake_test_run("siecs.cpp.test", argc, argv, suites, 6);
 }
