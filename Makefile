@@ -26,6 +26,7 @@ test-c-release:
 	@bash -o pipefail -c "bake run test --cfg release 2>&1 | $(QUIET_BAKE)"
 
 test-leaks:
+	@bake rebuild . -r --cfg sanitize >/dev/null
 	@bake rebuild test -r --cfg sanitize >/dev/null
 	@bake rebuild example/c -r --cfg sanitize >/dev/null
 	@bash -o pipefail -c "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 LSAN_OPTIONS=exitcode=23 bake run example/c --cfg sanitize 2>&1 | $(QUIET_BAKE)"
