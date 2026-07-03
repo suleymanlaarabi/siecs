@@ -17,6 +17,7 @@ shift
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 work_dir=$(mktemp -d /tmp/siecs-bake-build.XXXXXX)
+export BAKE_HOME="$work_dir/.bake"
 
 cleanup() {
     rm -rf "$work_dir"
@@ -39,8 +40,8 @@ copy_package() {
             cp -R "$repo_root/example/c" "$work_dir/example/"
             ;;
         addons/siecs_cpp/test)
-            mkdir -p "$work_dir/addons/siecs_cpp"
-            cp -R "$repo_root/addons/siecs_cpp/test" "$work_dir/addons/siecs_cpp/"
+            mkdir -p "$work_dir/addons"
+            cp -R "$repo_root/addons/siecs_cpp" "$work_dir/addons/"
             ;;
         *)
             cp -R "$repo_root/$package" "$work_dir/"

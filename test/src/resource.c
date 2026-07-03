@@ -118,7 +118,6 @@ void resource_from_system_c(void) {
     ecs_world_t *world = ecs_init();
     ECS_RESOURCE_REGISTER(world, ResourceTime);
     ECS_COMPONENT_REGISTER(world, ResourcePosition);
-
     ecs_set_resource(world, ResourceTime, { .dt = 0.5f, .elapsed = 0.0f });
 
     ecs_entity_t entity = ecs_new(world);

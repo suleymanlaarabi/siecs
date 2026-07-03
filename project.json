@@ -6,7 +6,6 @@
     "description": "Small ECS library",
     "public": true,
     "clangd": true,
-    "standalone": true,
     "use": ["sireflect", "sijson", "sihttp"],
     "amalgamate": [
       {

@@ -4,8 +4,9 @@ set -eu
 install_dep() {
     id=$1
     repo=$2
+    bake_home=${BAKE_HOME:-$HOME/bake}
 
-    if [ -d "$HOME/bake/src/$id" ] || [ -d "$HOME/bake/src/$id.git" ]; then
+    if [ -d "$bake_home/src/$id" ] || [ -d "$bake_home/src/$id.git" ]; then
         return
     fi
 

@@ -4,11 +4,10 @@
   "value": {
     "public": false,
     "clangd": true,
-    "use": ["siecs", "sijson", "sireflect", "sihttp"]
+    "use": ["siecs"]
   },
   "lang.c": {
-    "c-standard": "c23",
-    "include": ["../../src"]
+    "c-standard": "c23"
   },
   "bundle": {
     "repositories": {

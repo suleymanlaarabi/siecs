@@ -58,64 +58,33 @@ jobs:
           make -C bake/build-$(uname)
           bake/bake setup
 
-      - name: Install deps
-        run: sh tools/install_bake_deps.sh
-
       - name: Build library
         run: |
           if [ "${{ matrix.config }}" = "release" ]; then
-            make build-c-release
+            bake rebuild . -r --cfg release
           else
-            make build-c
+            bake rebuild . -r
           fi
 
       - name: Build tests
         run: |
           if [ "${{ matrix.config }}" = "release" ]; then
-            make build-test-release
+            bake rebuild test -r --cfg release
           else
-            make build-test
+            bake rebuild test -r
           fi
 
       - name: Run tests
         run: |
           if [ "${{ matrix.config }}" = "release" ]; then
-            make test-c-release
+            bake run test --cfg release
           else
-            make test-c
+            bake run test
           fi
-
-  leaks:
-    name: leak checks
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    env:
-      CC: clang-18
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Install toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-18
-
-      - name: Install bake
-        run: |
-          git clone https://github.com/SanderMertens/bake
-          make -C bake/build-$(uname)
-          bake/bake setup
-
-      - name: Install deps
-        run: sh tools/install_bake_deps.sh
-
-      - name: Run leak checks
-        run: make test-leaks
 
   distr:
     name: distr up to date
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:

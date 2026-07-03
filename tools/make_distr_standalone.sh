@@ -17,6 +17,11 @@ strip_dep_includes() {
         -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]sireflect\.h[">]/d' \
         -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]sijson\.h[">]/d' \
         -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]sihttp\.h[">]/d' \
+        -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]sijson_internal\.h[">]/d' \
+        -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]sihttp_buffer\.h[">]/d' \
+        -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]sihttp_internal\.h[">]/d' \
+        -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]sihttp_route\.h[">]/d' \
+        -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<][^">]*\/bake_config\.h[">]/d' \
         "$1"
 }
 
@@ -24,6 +29,15 @@ strip_dep_includes() {
     printf '/* Embedded public dependency headers for standalone distribution. */\n'
     printf '#ifndef _POSIX_C_SOURCE\n'
     printf '#define _POSIX_C_SOURCE 200809L\n'
+    printf '#endif\n'
+    printf '#ifndef SIREFLECT_API\n'
+    printf '#define SIREFLECT_API\n'
+    printf '#endif\n'
+    printf '#ifndef SIJSON_API\n'
+    printf '#define SIJSON_API\n'
+    printf '#endif\n'
+    printf '#ifndef SIHTTP_API\n'
+    printf '#define SIHTTP_API\n'
     printf '#endif\n'
     strip_dep_includes "$deps_dir/sireflect.h"
     strip_dep_includes "$deps_dir/sijson.h"
@@ -42,6 +56,7 @@ strip_dep_includes() {
         -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]sireflect\.h[">]/d' \
         -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]sijson\.h[">]/d' \
         -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]sihttp\.h[">]/d' \
+        -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<][^">]*\/bake_config\.h[">]/d' \
         "$out_dir/siecs.c"
 } > "$tmp_c"
 
