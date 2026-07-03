@@ -1,4 +1,4 @@
-#include "component_require.h"
+#include "table_migration.h"
 #include "world_internal.h"
 #include <stdbool.h>
 #include <stdlib.h>

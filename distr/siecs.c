@@ -5746,8 +5746,8 @@ ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_
     return ecs_component_register(world, &id, desc);
 }
 
-#ifndef SIECS_COMPONENT_REQUIRE_H
-#define SIECS_COMPONENT_REQUIRE_H
+#ifndef SIECS_TABLE_MIGRATION_H
+#define SIECS_TABLE_MIGRATION_H
 #include <stdint.h>
 
 #define ECS_ADD_PLAN_MAX_COMPONENTS 16
@@ -5766,12 +5766,6 @@ bool ecs_component_requires(
     ecs_component_t require
 );
 #endif
-
-#endif
-
-#ifndef SIECS_TABLE_MIGRATION_H
-#define SIECS_TABLE_MIGRATION_H
-#include <stdint.h>
 
 void ecs_migrate_to_table(
     ecs_world_t *world,

@@ -1,5 +1,4 @@
 #include "compiler.h"
-#include "component_require.h"
 #include "datastructure/idmap.h"
 #include "siecs.h"
 #include "storage/component_index.h"
