@@ -9,7 +9,7 @@ The C++ addon is a thin C++23 layer over the C runtime. Include:
 #include <siecs_cpp/siecs_cpp.hpp>
 ```
 
-Link `siecs::siecs_cpp` when using CMake, or use `siecs_cpp` with Bake.
+use `siecs_cpp` with Bake.
 
 ## World And Entities
 

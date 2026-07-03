@@ -182,49 +182,6 @@ int main(void) {
 }
 ```
 
-
-## CMake Example
-
-C
-```cmake
-cmake_minimum_required(VERSION 3.21)
-
-project(my_app LANGUAGES C)
-
-include(FetchContent)
-
-FetchContent_Declare(
-  siecs
-  GIT_REPOSITORY https://github.com/suleymanlaarabi/siecs.git
-  GIT_TAG main
-)
-
-FetchContent_MakeAvailable(siecs)
-
-add_executable(my_app main.c)
-target_link_libraries(my_app PRIVATE siecs::siecs)
-```
-
-C++
-```cmake
-cmake_minimum_required(VERSION 3.21)
-
-project(my_app LANGUAGES C CXX)
-
-include(FetchContent)
-
-FetchContent_Declare(
-  siecs
-  GIT_REPOSITORY https://github.com/suleymanlaarabi/siecs.git
-  GIT_TAG main
-)
-
-FetchContent_MakeAvailable(siecs)
-
-add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE siecs::siecs_cpp)
-```
-
 ## Bake Example
 
 C
