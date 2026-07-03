@@ -42,6 +42,10 @@ ecs_is_a(world, instance, base);
 type records `base` as its inheritance target. Local component data already on
 the instance is kept.
 
+An entity has one base at a time. Calling `ecs_is_a()` again with the same base
+is a no-op. Calling it with another abstract base replaces the inheritance
+target in the entity type and moves the entity to the matching archetype table.
+
 The target must be alive, abstract, and different from the instance. Cycles are
 rejected, so an entity cannot inherit from itself or from one of its descendants.
 
@@ -127,6 +131,15 @@ to an array with one element per entity.
 
 When a field is owned by the matched entities, `it.field_kinds[index]` is
 `EcsFieldOwned`. The pointer is a normal component array indexed with `i`.
+
+The inheritance rules for query fields are:
+
+| Term | Inherited component behavior |
+| --- | --- |
+| `ecs_in(T)` | Matches owned or inherited `T`; inherited fields are `EcsFieldShared`. |
+| `ecs_out(T)` and `ecs_inout(T)` | Match only entities that own `T` locally. |
+| `ecs_in_optional(T)` | May return an inherited shared field when `T` exists on a base. |
+| `ecs_inout_optional(T)` | Ignores inherited shared fields and returns `NULL` unless `T` is owned locally. |
 
 ## Writable Queries
 

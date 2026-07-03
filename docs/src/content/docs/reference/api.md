@@ -206,7 +206,8 @@ typedef struct {
 } ecs_query_desc_t;
 ```
 
-`is_a` restricts the query to entities that inherit from the given target.
+`is_a` restricts the query to entities that inherit from the given target. The
+match is transitive through the inheritance chain.
 
 ```c
 ecs_in(Component);

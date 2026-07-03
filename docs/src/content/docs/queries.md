@@ -17,11 +17,11 @@ The `terms` array is a zero-terminated list of component terms.
 
 | Term | Meaning |
 | --- | --- |
-| `ecs_in(T)` | `T` must exist and is returned by `ecs_field()` for reading. |
-| `ecs_out(T)` | `T` must exist and is returned by `ecs_field()` for writing. |
-| `ecs_inout(T)` | `T` must exist and is returned by `ecs_field()` for reading and writing. |
+| `ecs_in(T)` | `T` must exist locally or through inheritance and is returned by `ecs_field()` for reading. |
+| `ecs_out(T)` | `T` must exist locally and is returned by `ecs_field()` for writing. |
+| `ecs_inout(T)` | `T` must exist locally and is returned by `ecs_field()` for reading and writing. |
 | `ecs_in_optional(T)` | `T` may be absent and is returned as a nullable read field. |
-| `ecs_inout_optional(T)` | `T` may be absent and is returned as a nullable read/write field. |
+| `ecs_inout_optional(T)` | Local `T` may be absent and is returned as a nullable read/write field. |
 | `ecs_filter(T)` | `T` must exist but is not returned. |
 | `ecs_not(T)` | `T` must not exist. |
 

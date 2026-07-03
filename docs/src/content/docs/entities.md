@@ -11,6 +11,9 @@ ecs_entity_t entity = ecs_new(world);
 
 New entities start alive and have no user components.
 
+For abstract entities, bases, and inherited components, see
+[Inheritance](./inheritance/).
+
 ## Liveness
 
 Use `ecs_is_alive()` with entity handles created by the same world:
