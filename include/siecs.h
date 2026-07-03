@@ -783,6 +783,10 @@ static inline void *ecs_field(ecs_iter_t *it, uint16_t field_index) {
     return it->field_kinds[field_index] == EcsFieldOwned ? *(void **)field : field;
 }
 
+static inline bool ecs_field_is_shared(ecs_iter_t *it, uint16_t field_index) {
+    return it->field_kinds[field_index] == EcsFieldShared;
+}
+
 /* System phases run in enum order when ecs_progress is called. */
 typedef enum {
     EcsPreStart,
