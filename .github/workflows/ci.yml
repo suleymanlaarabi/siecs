@@ -58,6 +58,12 @@ jobs:
           make -C bake/build-$(uname)
           bake/bake setup
 
+      - name: Install bake dependencies
+        run: |
+          bake clone https://github.com/suleymanlaarabi/sireflect --to-env
+          bake clone https://github.com/suleymanlaarabi/sijson --to-env
+          bake clone https://github.com/suleymanlaarabi/sihttp --to-env
+
       - name: Build library
         run: |
           if [ "${{ matrix.config }}" = "release" ]; then
@@ -135,6 +141,12 @@ jobs:
           make -C bake/build-$(uname)
           bake/bake setup
 
+      - name: Install bake dependencies
+        run: |
+          bake clone https://github.com/suleymanlaarabi/sireflect --to-env
+          bake clone https://github.com/suleymanlaarabi/sijson --to-env
+          bake clone https://github.com/suleymanlaarabi/sihttp --to-env
+
       - name: Run leak checks
         run: make test-leaks
 
@@ -156,6 +168,12 @@ jobs:
           git clone https://github.com/SanderMertens/bake
           make -C bake/build-$(uname)
           bake/bake setup
+
+      - name: Install bake dependencies
+        run: |
+          bake clone https://github.com/suleymanlaarabi/sireflect --to-env
+          bake clone https://github.com/suleymanlaarabi/sijson --to-env
+          bake clone https://github.com/suleymanlaarabi/sihttp --to-env
 
       - name: Check generated distribution
         env:
