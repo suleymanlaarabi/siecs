@@ -13,15 +13,21 @@ ecs_world_t *world = ecs_with_features({ .rest = true });
 The server listens on port `4040` and is polled by `ecs_progress()` when the
 feature is enabled.
 
-## Entity Explorer
-
-The entity routes expose tree-friendly data for an editor:
+## Routes
 
 | Route | Purpose |
 | --- | --- |
-| `GET /entities` | Root entities and entities without a parent. |
-| `GET /entities/:id` | Direct children for an entity id. |
-| `GET /entity/:id` | Entity detail, including component values when reflected. |
+| `GET /health` | Returns `OK` when the server is reachable. |
+| `GET /schema` | Lists reflected component schemas and editor field types. |
+| `GET /entities` | Lists root entities and entities without a parent. |
+| `POST /entities` | Creates a new entity and returns its list item payload. |
+| `GET /entities/:index` | Returns one entity detail by entity index. |
+| `GET /entities/:index/children` | Returns direct children for an entity index. |
+| `PUT /entities/:index/components/:component` | Replaces one reflected component value on an entity. |
+
+## Entity Explorer
+
+The entity routes expose tree-friendly data for an editor:
 
 Entity list items are intentionally small:
 
@@ -34,10 +40,29 @@ type EntityListItem = {
 };
 ```
 
+Entity detail adds parent, inherited base, children, and reflected component
+values when they exist:
+
+```ts
+type EntityDetail = EntityListItem & {
+  parent?: EntityListItem;
+  isA?: EntityDetail;
+  children: EntityListItem[];
+  components: EntityComponent[];
+};
+```
+
 ## Component Schema
 
 The schema routes are for editor forms. They describe reflected components and
-fields using compact type information rather than dumping reflection internals.
+fields using compact type information rather than dumping reflection internals:
+
+```ts
+type Schema = {
+  components: Component[];
+  types: EditorType[];
+};
+```
 
 ```ts
 type ComponentField = {
@@ -52,10 +77,27 @@ type Component = {
   type: number;
   fields: ComponentField[];
 };
+
+type EditorType = {
+  id: number;
+  name: string;
+  editor: "boolean" | "number" | "object" | "string" | "entity" | "unsupported";
+};
 ```
 
 Unreflected components are not editable from the explorer because the server
 does not know their field layout.
+
+Entity detail serializes reflected component values with the component id and
+component name:
+
+```ts
+type EntityComponent = {
+  id: number;
+  name: string;
+  value: unknown;
+};
+```
 
 ## Mutating Component Values
 
@@ -63,12 +105,18 @@ Component mutation is component-level: the client submits the full component
 value for one entity and one component. This keeps the server simple and avoids
 partial-update ambiguity for structs.
 
-Editor clients should:
+The update route accepts the full JSON value for the reflected component:
 
-1. Fetch the entity detail.
-2. Fetch the reflected component schema.
-3. Render form controls from field types.
-4. Submit the full component value after editing.
+```http
+PUT /entities/12/components/4
+Content-Type: application/json
+
+{ "x": 10, "y": 20 }
+```
+
+Editor clients should fetch `/schema`, fetch `/entities/:index`, render form
+controls from reflected field types, then submit the full component value after
+editing.
 
 ## Production Notes
 

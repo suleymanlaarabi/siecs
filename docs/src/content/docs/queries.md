@@ -35,6 +35,16 @@ Queries exclude entities with the built-in `Disabled` component by default. This
 implicit `ecs_not(Disabled)` term is added only when the query does not already
 mention `Disabled`.
 
+Use `is_a` when a query should only match entities that inherit from a specific
+base entity:
+
+```c
+ecs_query_id_t enemies = ecs_query(world, {
+    .is_a = enemy_base,
+    .terms = { ecs_in(Position) },
+});
+```
+
 ## Iterate
 
 ```c

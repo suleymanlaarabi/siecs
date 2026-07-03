@@ -95,8 +95,14 @@ C++
 
 ## Manual Source Build
 
-For custom build systems, compile the C sources from `src/` and expose these
-include directories:
+For custom build systems, compile the C sources from this repository's `src/`
+directory and also compile the public C dependencies used by SIECS:
+
+- `sireflect`: `https://github.com/suleymanlaarabi/sireflect`
+- `sijson`: `https://github.com/suleymanlaarabi/sijson`
+- `sihttp`: `https://github.com/suleymanlaarabi/sihttp`
+
+Expose these include directories to your application:
 
 - `include`
 - `sireflect/include`
@@ -115,6 +121,8 @@ Use these compile definitions for static builds:
 - `sireflect_STATIC`
 - `sijson_STATIC`
 - `sihttp_STATIC`
+
+On Linux, link `pthread`.
 
 The C++ API is header-only. Add `addons/siecs_cpp/include` and link the C
 library.

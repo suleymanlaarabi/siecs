@@ -139,6 +139,34 @@ ecs_set_cid(world, entity, position_id, &(Position){ .x = 1.0f, .y = 2.0f });
 Position *position = ecs_get_cid(world, entity, position_id);
 ```
 
+## Reflection And JSON
+
+Typed component macros register reflection metadata through `sireflect` and
+`sijson`:
+
+```c
+ECS_COMPONENT(Position, {
+    float x;
+    float y;
+});
+```
+
+That metadata is used by the REST explorer to list component schemas and
+serialize reflected component values. Components registered only with a raw
+descriptor are reflected only when `struct_desc` points to a valid
+`sireflect_struct_desc_t` produced by the reflection layer:
+
+```c
+ecs_component_t position_id = ecs_component(world, {
+    .name = "Position",
+    .size = sizeof(Position),
+    .struct_desc = position_reflection_desc,
+});
+```
+
+If a component has no reflection metadata, SIECS can still store and query it,
+but the REST explorer cannot show or edit its fields.
+
 ## Hooks
 
 Component descriptors can provide lifecycle hooks:

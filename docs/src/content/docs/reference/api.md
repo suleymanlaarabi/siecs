@@ -34,10 +34,14 @@ void ecs_fini(ecs_world_t *world);
 ```c
 typedef struct {
     bool rest;
+    uint16_t target_fps;
 } ecs_world_feat_desc_t;
 
 #define ecs_with_features(...)
 ```
+
+`rest` starts the REST explorer server when the addon is built in. `target_fps`
+caps `ecs_progress()` by sleeping for the remaining frame time when non-zero.
 
 ## Components
 
@@ -50,14 +54,18 @@ ECS_COMPONENT_REGISTER(world, Name);
 Built-in components declared by the public API:
 
 ```c
-ECS_COMPONENT_DECLARE(IsA, { ecs_entity_t target; });
+ECS_RELATION_DECLARE(ChildOf);
 ECS_COMPONENT_DECLARE(Name, { char *value; });
-ECS_COMPONENT_DECLARE(Disabled, { uint8_t value; });
+ECS_COMPONENT_DECLARE(Disabled, {});
+ECS_COMPONENT_DECLARE(Abstract, {});
 ```
 
 `Disabled` excludes an entity from queries by default. A query can match
 disabled entities by mentioning `Disabled` explicitly, for example with
 `ecs_filter(Disabled)`.
+
+`Abstract` marks an entity as a prefab-like base that should not receive direct
+component add, set, or remove operations from normal application code.
 
 ```c
 #define ecs_component(world, ...)
@@ -82,7 +90,12 @@ typedef struct {
 ecs_entity_t ecs_new(ecs_world_t *world);
 bool ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity);
 void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
+void ecs_is_a(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target);
+bool ecs_is(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target);
 ```
+
+`ecs_is_a()` creates an inheritance link from `entity` to `target`.
+`ecs_is()` checks whether an entity is or inherits from `target`.
 
 ## Component Access
 
@@ -147,6 +160,7 @@ ecs_remove_resource(world, Time);
 Id-based functions:
 
 ```c
+ecs_resource_t ecs_resource_register(ecs_world_t *world, ecs_resource_t *id, const ecs_resource_desc_t *desc);
 ecs_resource_t ecs_resource_init(ecs_world_t *world, const ecs_resource_desc_t *desc);
 ecs_resource_t ecs_resource_find(ecs_world_t *world, const char *name);
 bool ecs_resource_is_registered_rid(const ecs_world_t *world, ecs_resource_t id);
@@ -188,8 +202,11 @@ typedef struct {
 
 typedef struct {
     ecs_query_term_t terms[16];
+    ecs_entity_t is_a;
 } ecs_query_desc_t;
 ```
+
+`is_a` restricts the query to entities that inherit from the given target.
 
 ```c
 ecs_in(Component);
