@@ -20,6 +20,7 @@ export default defineConfig({
             'components',
             'resources',
             'entities',
+            'inheritance',
             'queries',
             'systems',
             'observers',
