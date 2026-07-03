@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 use core::mem::{needs_drop, size_of, MaybeUninit};
 
 use crate::query::{append_term, validate_returned_fields, QueryEach};
-use crate::{raw, Component, World};
+use crate::{raw, Component, Entity, World};
 
 pub use raw::Phase;
 
@@ -33,6 +33,12 @@ impl<'world> System<'world> {
     #[inline]
     pub fn exclude<T: Component>(mut self) -> Self {
         self.append_component::<T>(raw::TermAccess::Not);
+        self
+    }
+
+    #[inline]
+    pub fn is_a(mut self, base: Entity) -> Self {
+        self.desc.query.is_a = base.id();
         self
     }
 

@@ -1,6 +1,9 @@
 use core::marker::PhantomData;
+use core::ops::Deref;
 
-use crate::{raw, Component, World};
+use crate::{raw, Component, Entity, World};
+
+pub use raw::FieldKind;
 
 pub struct Query<'world> {
     world: &'world mut World,
@@ -27,6 +30,12 @@ impl<'world> Query<'world> {
     #[inline]
     pub fn exclude<T: Component>(mut self) -> Self {
         self.append_component::<T>(raw::TermAccess::Not);
+        self
+    }
+
+    #[inline]
+    pub fn is_a(mut self, base: Entity) -> Self {
+        self.desc.is_a = base.id();
         self
     }
 
@@ -84,6 +93,68 @@ pub struct Ref<T>(PhantomData<T>);
 #[doc(hidden)]
 pub struct Mut<T>(PhantomData<T>);
 
+#[doc(hidden)]
+pub struct OptRef<T>(PhantomData<T>);
+
+#[doc(hidden)]
+pub struct OptMut<T>(PhantomData<T>);
+
+#[doc(hidden)]
+pub struct FieldRef<T>(PhantomData<T>);
+
+#[doc(hidden)]
+pub struct OptFieldRef<T>(PhantomData<T>);
+
+pub struct Field<'a, T> {
+    value: &'a T,
+    kind: raw::FieldKind,
+}
+
+impl<T> Clone for Field<'_, T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for Field<'_, T> {}
+
+impl<'a, T> Field<'a, T> {
+    #[inline]
+    pub(crate) const fn new(value: &'a T, kind: raw::FieldKind) -> Self {
+        Self { value, kind }
+    }
+
+    #[inline]
+    pub const fn get(&self) -> &'a T {
+        self.value
+    }
+
+    #[inline]
+    pub const fn kind(&self) -> raw::FieldKind {
+        self.kind
+    }
+
+    #[inline]
+    pub const fn is_owned(&self) -> bool {
+        matches!(self.kind, raw::FieldKind::Owned)
+    }
+
+    #[inline]
+    pub const fn is_shared(&self) -> bool {
+        matches!(self.kind, raw::FieldKind::Shared)
+    }
+}
+
+impl<T> Deref for Field<'_, T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.value
+    }
+}
+
 #[inline]
 pub(crate) fn append_term(
     desc: &mut raw::QueryDesc,
@@ -131,19 +202,24 @@ pub(crate) fn validate_returned_fields(desc: &raw::QueryDesc) {
     }
 }
 
-#[inline]
-unsafe fn field<T>(iter: &mut raw::Iter, field_index: u16) -> *mut T {
-    let ptr = raw::ecs_field(iter, field_index).cast::<T>();
-    debug_assert!(!ptr.is_null());
-    ptr
-}
-
 macro_rules! marker_ty {
     (ref $component:ident) => {
         Ref<$component>
     };
     (mut $component:ident) => {
         Mut<$component>
+    };
+    (opt_ref $component:ident) => {
+        OptRef<$component>
+    };
+    (opt_mut $component:ident) => {
+        OptMut<$component>
+    };
+    (field_ref $component:ident) => {
+        FieldRef<$component>
+    };
+    (opt_field_ref $component:ident) => {
+        OptFieldRef<$component>
     };
 }
 
@@ -154,6 +230,18 @@ macro_rules! marker_arg {
     (mut $component:ident) => {
         &mut $component
     };
+    (opt_ref $component:ident) => {
+        Option<&$component>
+    };
+    (opt_mut $component:ident) => {
+        Option<&mut $component>
+    };
+    (field_ref $component:ident) => {
+        Field<'_, $component>
+    };
+    (opt_field_ref $component:ident) => {
+        Option<Field<'_, $component>>
+    };
 }
 
 macro_rules! term_access {
@@ -163,14 +251,63 @@ macro_rules! term_access {
     (mut) => {
         raw::TermAccess::InOut
     };
+    (opt_ref) => {
+        raw::TermAccess::InOptional
+    };
+    (opt_mut) => {
+        raw::TermAccess::InOutOptional
+    };
+    (field_ref) => {
+        raw::TermAccess::In
+    };
+    (opt_field_ref) => {
+        raw::TermAccess::InOptional
+    };
 }
 
 macro_rules! row_arg {
     (ref $field:ident $row:ident) => {
-        &*$field.add($row)
+        if $field.1 == raw::FieldKind::Shared {
+            &*$field.0
+        } else {
+            &*$field.0.add($row)
+        }
     };
     (mut $field:ident $row:ident) => {
-        &mut *$field.add($row)
+        &mut *$field.0.add($row)
+    };
+    (opt_ref $field:ident $row:ident) => {
+        if $field.0.is_null() {
+            None
+        } else if $field.1 == raw::FieldKind::Shared {
+            Some(&*$field.0)
+        } else {
+            Some(&*$field.0.add($row))
+        }
+    };
+    (opt_mut $field:ident $row:ident) => {
+        if $field.0.is_null() {
+            None
+        } else {
+            Some(&mut *$field.0.add($row))
+        }
+    };
+    (field_ref $field:ident $row:ident) => {
+        Field::new(row_arg!(ref $field $row), $field.1)
+    };
+    (opt_field_ref $field:ident $row:ident) => {
+        if $field.0.is_null() {
+            None
+        } else {
+            Some(Field::new(
+                if $field.1 == raw::FieldKind::Shared {
+                    &*$field.0
+                } else {
+                    &*$field.0.add($row)
+                },
+                $field.1,
+            ))
+        }
     };
 }
 
@@ -192,7 +329,10 @@ macro_rules! impl_query_each {
             #[inline]
             unsafe fn run(&mut self, iter: &mut raw::Iter) {
                 $(
-                    let $field = field::<$component>(iter, $index);
+                    let $field = (
+                        raw::ecs_field(iter, $index).cast::<$component>(),
+                        raw::ecs_field_kind(iter, $index),
+                    );
                 )+
 
                 for row in 0..iter.count as usize {
@@ -216,10 +356,38 @@ macro_rules! impl_query_each_perms_inner {
     (($($acc:tt)*) ($component:ident $field:ident $index:expr)) => {
         impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, ref),) ());
         impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, mut),) ());
+        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, opt_ref),) ());
+        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, opt_mut),) ());
+        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, field_ref),) ());
+        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, opt_field_ref),) ());
     };
     (($($acc:tt)*) ($component:ident $field:ident $index:expr, $($rest:tt)+)) => {
         impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, ref),) ($($rest)+));
         impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, mut),) ($($rest)+));
+        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, opt_ref),) ($($rest)+));
+        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, opt_mut),) ($($rest)+));
+        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, field_ref),) ($($rest)+));
+        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, opt_field_ref),) ($($rest)+));
+    };
+}
+
+macro_rules! impl_query_each_rw_perms {
+    ($($component:ident $field:ident $index:expr),+ $(,)?) => {
+        impl_query_each_rw_perms_inner!(() ($($component $field $index),+));
+    };
+}
+
+macro_rules! impl_query_each_rw_perms_inner {
+    (($($acc:tt)*) ()) => {
+        impl_query_each!($($acc)*);
+    };
+    (($($acc:tt)*) ($component:ident $field:ident $index:expr)) => {
+        impl_query_each_rw_perms_inner!(($($acc)* ($component, $field, $index, ref),) ());
+        impl_query_each_rw_perms_inner!(($($acc)* ($component, $field, $index, mut),) ());
+    };
+    (($($acc:tt)*) ($component:ident $field:ident $index:expr, $($rest:tt)+)) => {
+        impl_query_each_rw_perms_inner!(($($acc)* ($component, $field, $index, ref),) ($($rest)+));
+        impl_query_each_rw_perms_inner!(($($acc)* ($component, $field, $index, mut),) ($($rest)+));
     };
 }
 
@@ -227,7 +395,7 @@ impl_query_each_perms!(A a 0);
 impl_query_each_perms!(A a 0, B b 1);
 impl_query_each_perms!(A a 0, B b 1, C c 2);
 impl_query_each_perms!(A a 0, B b 1, C c 2, D d 3);
-impl_query_each_perms!(A a 0, B b 1, C c 2, D d 3, E e 4);
-impl_query_each_perms!(A a 0, B b 1, C c 2, D d 3, E e 4, G g 5);
-impl_query_each_perms!(A a 0, B b 1, C c 2, D d 3, E e 4, G g 5, H h 6);
-impl_query_each_perms!(A a 0, B b 1, C c 2, D d 3, E e 4, G g 5, H h 6, I i 7);
+impl_query_each_rw_perms!(A a 0, B b 1, C c 2, D d 3, E e 4);
+impl_query_each_rw_perms!(A a 0, B b 1, C c 2, D d 3, E e 4, G g 5);
+impl_query_each_rw_perms!(A a 0, B b 1, C c 2, D d 3, E e 4, G g 5, H h 6);
+impl_query_each_rw_perms!(A a 0, B b 1, C c 2, D d 3, E e 4, G g 5, H h 6, I i 7);

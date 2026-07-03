@@ -90,3 +90,13 @@ pub unsafe fn ecs_field(it: *mut Iter, field_index: u16) -> *mut c_void {
         field
     }
 }
+
+#[inline]
+pub unsafe fn ecs_field_kind(it: *const Iter, field_index: u16) -> FieldKind {
+    *(*it).field_kinds.add(field_index as usize)
+}
+
+#[inline]
+pub unsafe fn ecs_field_is_shared(it: *const Iter, field_index: u16) -> bool {
+    ecs_field_kind(it, field_index) == FieldKind::Shared
+}

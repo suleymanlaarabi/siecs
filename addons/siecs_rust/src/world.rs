@@ -45,6 +45,18 @@ impl World {
     }
 
     #[inline]
+    pub fn is(&mut self, entity: Entity, target: Entity) -> bool {
+        unsafe { raw::ecs_is(self.raw.as_ptr(), entity.id, target.id) }
+    }
+
+    #[inline]
+    pub fn is_a(&mut self, entity: Entity, base: Entity) {
+        unsafe {
+            raw::ecs_is_a(self.raw.as_ptr(), entity.id, base.id);
+        }
+    }
+
+    #[inline]
     pub fn kill(&mut self, entity: Entity) {
         unsafe {
             raw::ecs_kill(self.raw.as_ptr(), entity.id);
@@ -133,6 +145,13 @@ impl World {
     }
 
     #[inline]
+    pub fn has_owned<T: Component>(&mut self, entity: Entity) -> bool {
+        let id = T::id(self);
+
+        unsafe { raw::ecs_has_cid_owned(self.raw.as_ptr(), entity.id, id) }
+    }
+
+    #[inline]
     pub fn set<T: Component>(&mut self, entity: Entity, value: T) {
         let id = T::id(self);
 
@@ -157,6 +176,10 @@ impl World {
     #[inline]
     pub fn get_mut<T: Component>(&mut self, entity: Entity) -> Option<&mut T> {
         let id = T::id(self);
+        if !unsafe { raw::ecs_has_cid_owned(self.raw.as_ptr(), entity.id, id) } {
+            return None;
+        }
+
         let ptr = unsafe { raw::ecs_try_get_cid(self.raw.as_ptr(), entity.id, id) };
 
         unsafe { ptr.cast::<T>().as_mut() }

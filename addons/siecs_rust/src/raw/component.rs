@@ -31,6 +31,7 @@ extern "C" {
     pub fn ecs_add_cid(world: *mut WorldRaw, entity: EntityId, id: ComponentId);
     pub fn ecs_remove_cid(world: *mut WorldRaw, entity: EntityId, id: ComponentId);
     pub fn ecs_has_cid(world: *const WorldRaw, entity: EntityId, id: ComponentId) -> bool;
+    pub fn ecs_has_cid_owned(world: *const WorldRaw, entity: EntityId, id: ComponentId) -> bool;
     pub fn ecs_get_cid(world: *mut WorldRaw, entity: EntityId, id: ComponentId) -> *mut c_void;
     pub fn ecs_try_get_cid(world: *mut WorldRaw, entity: EntityId, id: ComponentId) -> *mut c_void;
     pub fn ecs_set_cid(

@@ -56,7 +56,7 @@ update-rust-vendor:
 	@addons/siecs_rust/tools/update_vendor.sh
 
 test-rust:
-	@cd addons/siecs_rust && cargo test >/dev/null
+	@cd addons/siecs_rust && cargo test
 
 distr:
 	@sh tools/rebuild_distr.sh

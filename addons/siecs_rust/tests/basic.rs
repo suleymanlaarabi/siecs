@@ -1,4 +1,4 @@
-use siecs::{raw, Component, Phase, World};
+use siecs::{raw, Abstract, Component, Field, FieldKind, Phase, World};
 use std::mem::{align_of, offset_of, size_of};
 use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 
@@ -52,6 +52,19 @@ struct SystemPlayer;
 
 #[derive(Component)]
 struct SystemDisabled;
+
+#[derive(Component)]
+struct InheritPosition {
+    value: i32,
+}
+
+#[derive(Component)]
+struct InheritVelocity {
+    value: i32,
+}
+
+#[derive(Component)]
+struct InheritPlayer;
 
 static MOVE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static FILTER_CALLS: AtomicUsize = AtomicUsize::new(0);
@@ -196,6 +209,203 @@ fn derived_component_set_get_mut() {
     position.x = 4.0;
 
     assert_eq!(world.get::<SetPosition>(entity).unwrap().x, 4.0);
+}
+
+#[test]
+fn world_inherits_component_from_abstract_base() {
+    let mut world = World::new();
+    let base = world.entity();
+    world.set(base, InheritPosition { value: 42 });
+    world.add::<Abstract>(base);
+
+    let entity = world.entity();
+    world.is_a(entity, base);
+
+    assert!(world.is(entity, base));
+    assert!(world.has::<InheritPosition>(entity));
+    assert!(!world.has_owned::<InheritPosition>(entity));
+    assert!(world.get::<InheritPosition>(entity).is_none());
+    assert!(world.get_mut::<InheritPosition>(entity).is_none());
+
+    world.set(entity, InheritPosition { value: 100 });
+    assert!(world.has_owned::<InheritPosition>(entity));
+    assert_eq!(world.get_mut::<InheritPosition>(entity).unwrap().value, 100);
+    assert_eq!(world.get::<InheritPosition>(base).unwrap().value, 42);
+}
+
+#[test]
+fn query_is_a_matches_transitive_base() {
+    let mut world = World::new();
+    let character = world.entity();
+    world.add::<Abstract>(character);
+
+    let player = world.entity();
+    world.is_a(player, character);
+    world.add::<Abstract>(player);
+
+    let knight = world.entity();
+    world.is_a(knight, player);
+    world.set(knight, InheritVelocity { value: 7 });
+
+    let mut seen = 0;
+    world
+        .query()
+        .is_a(character)
+        .each(|velocity: &InheritVelocity| {
+            assert_eq!(velocity.value, 7);
+            seen += 1;
+        });
+
+    assert_eq!(seen, 1);
+}
+
+#[test]
+fn query_field_reports_shared_for_inherited_component() {
+    let mut world = World::new();
+    let base = world.entity();
+    world.set(base, InheritPosition { value: 42 });
+    world.add::<Abstract>(base);
+
+    let entity = world.entity();
+    world.is_a(entity, base);
+
+    let mut seen = 0;
+    world
+        .query()
+        .is_a(base)
+        .each(|position: Field<'_, InheritPosition>| {
+            assert_eq!(position.kind(), FieldKind::Shared);
+            assert!(position.is_shared());
+            assert!(!position.is_owned());
+            assert_eq!(position.value, 42);
+            seen += 1;
+        });
+
+    assert_eq!(seen, 1);
+}
+
+#[test]
+fn query_inout_does_not_match_inherited_shared_component() {
+    let mut world = World::new();
+    let base = world.entity();
+    world.set(base, InheritPosition { value: 42 });
+    world.add::<Abstract>(base);
+
+    let entity = world.entity();
+    world.is_a(entity, base);
+
+    let mut seen = 0;
+    world
+        .query()
+        .is_a(base)
+        .each(|position: &mut InheritPosition| {
+            position.value += 1;
+            seen += 1;
+        });
+
+    assert_eq!(seen, 0);
+    assert_eq!(world.get::<InheritPosition>(base).unwrap().value, 42);
+}
+
+#[test]
+fn query_optional_reads_absent_owned_and_inherited_components() {
+    let mut world = World::new();
+    let base = world.entity();
+    world.set(base, InheritPosition { value: 10 });
+    world.add::<Abstract>(base);
+
+    let absent = world.entity();
+    world.add::<InheritPlayer>(absent);
+
+    let owned = world.entity();
+    world.add::<InheritPlayer>(owned);
+    world.set(owned, InheritPosition { value: 20 });
+
+    let inherited = world.entity();
+    world.add::<InheritPlayer>(inherited);
+    world.is_a(inherited, base);
+
+    let mut values = Vec::new();
+    world
+        .query()
+        .require::<InheritPlayer>()
+        .each(|position: Option<&InheritPosition>| {
+            values.push(position.map(|position| position.value));
+        });
+    values.sort();
+
+    assert_eq!(values, [None, Some(10), Some(20)]);
+}
+
+#[test]
+fn query_optional_mut_ignores_inherited_shared_component() {
+    let mut world = World::new();
+    let base = world.entity();
+    world.set(base, InheritPosition { value: 10 });
+    world.add::<Abstract>(base);
+
+    let owned = world.entity();
+    world.add::<InheritPlayer>(owned);
+    world.set(owned, InheritPosition { value: 20 });
+
+    let inherited = world.entity();
+    world.add::<InheritPlayer>(inherited);
+    world.is_a(inherited, base);
+
+    let mut seen_none = 0;
+    let mut seen_some = 0;
+    world
+        .query()
+        .require::<InheritPlayer>()
+        .each(|position: Option<&mut InheritPosition>| {
+            if let Some(position) = position {
+                position.value += 1;
+                seen_some += 1;
+            } else {
+                seen_none += 1;
+            }
+        });
+
+    assert_eq!(seen_some, 1);
+    assert_eq!(seen_none, 1);
+    assert_eq!(world.get::<InheritPosition>(owned).unwrap().value, 21);
+    assert_eq!(world.get::<InheritPosition>(base).unwrap().value, 10);
+}
+
+#[test]
+fn query_optional_field_reports_owned_shared_and_none() {
+    let mut world = World::new();
+    let base = world.entity();
+    world.set(base, InheritPosition { value: 10 });
+    world.add::<Abstract>(base);
+
+    let absent = world.entity();
+    world.add::<InheritPlayer>(absent);
+
+    let owned = world.entity();
+    world.add::<InheritPlayer>(owned);
+    world.set(owned, InheritPosition { value: 20 });
+
+    let inherited = world.entity();
+    world.add::<InheritPlayer>(inherited);
+    world.is_a(inherited, base);
+
+    let mut values = Vec::new();
+    world.query().require::<InheritPlayer>().each(
+        |position: Option<Field<'_, InheritPosition>>| {
+            values.push(position.map(|position| (position.kind(), position.value)));
+        },
+    );
+    values.sort_by_key(|value| value.map(|(_, position)| position));
+
+    assert_eq!(
+        values,
+        [
+            None,
+            Some((FieldKind::Shared, 10)),
+            Some((FieldKind::Owned, 20)),
+        ]
+    );
 }
 
 #[test]

@@ -7,13 +7,13 @@ pub mod raw;
 pub mod system;
 pub mod world;
 
-pub use component::Component;
+pub use component::{Abstract, Component};
 pub use entity::Entity;
-pub use query::Query;
+pub use query::{Field, FieldKind, Query};
 pub use siecs_derive::Component;
 pub use system::{Phase, System};
 pub use world::World;
 
 pub mod prelude {
-    pub use crate::{Component, Entity, Phase, Query, System, World};
+    pub use crate::{Abstract, Component, Entity, Field, FieldKind, Phase, Query, System, World};
 }

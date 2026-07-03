@@ -21,13 +21,13 @@ pub type ObserverId = u32;
 
 pub use component::{
     ecs_add_cid, ecs_component_init, ecs_component_register, ecs_get_cid, ecs_has_cid,
-    ecs_remove_cid, ecs_set_cid, ecs_try_get_cid, ComponentDesc, ComponentOnAdd, ComponentOnRemove,
-    ComponentOnSet,
+    ecs_has_cid_owned, ecs_remove_cid, ecs_set_cid, ecs_try_get_cid, ComponentDesc, ComponentOnAdd,
+    ComponentOnRemove, ComponentOnSet,
 };
-pub use entity::{ecs_is_alive, ecs_kill, ecs_new};
+pub use entity::{ecs_is, ecs_is_a, ecs_is_alive, ecs_kill, ecs_new};
 pub use query::{
-    ecs_field, ecs_iter_next, ecs_query_fini, ecs_query_init, ecs_query_iter, FieldKind, Iter,
-    QueryDesc, QueryTerm, TermAccess,
+    ecs_field, ecs_field_is_shared, ecs_field_kind, ecs_iter_next, ecs_query_fini, ecs_query_init,
+    ecs_query_iter, FieldKind, Iter, QueryDesc, QueryTerm, TermAccess,
 };
 pub use system::{
     ecs_progress, ecs_run_phase, ecs_run_system, ecs_system_disable, ecs_system_enable,
