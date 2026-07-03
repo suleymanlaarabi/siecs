@@ -35,6 +35,29 @@ SIECS is designed to remain extensible at runtime. Important parts of the system
 * More control over what actually exists at runtime.
 * Components and behaviors can be added, discovered and manipulated dynamically.
 
+# Quick Start Without Bake
+
+For a small C project, the fastest path is the standalone distribution. Copy
+`distr/siecs.h` and `distr/siecs.c` into your project, then compile them with
+your application:
+
+```sh
+cc -std=c23 -I. main.c siecs.c -pthread -o my_app
+```
+
+Your code only needs the public header:
+
+```c
+#include <siecs.h>
+```
+
+The standalone files embed SIECS and its public C dependencies, so this path
+does not require Bake.
+
+For C++ projects, include `addons/siecs_cpp/include` and link the SIECS C
+runtime. Bake is currently the easiest supported C++ setup because it wires the
+C runtime and dependency include paths for you.
+
 # C++
 ```cpp
 #include <siecs_cpp/siecs_cpp.hpp>
@@ -183,6 +206,9 @@ int main(void) {
 ```
 
 ## Bake Example
+
+Bake is supported for users who already use Bake or want the same setup as the
+repository tests.
 
 C
 ```json

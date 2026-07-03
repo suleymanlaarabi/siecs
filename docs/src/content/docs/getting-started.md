@@ -9,7 +9,65 @@ If you are new to ECS, read [ECS Theory](../theory/) after this page. The short
 version is: entities are ids, components are data, and systems run over batches
 of entities that match a query.
 
+## Quick Start Without Bake
+
+For a small C project, use the standalone distribution:
+
+1. Copy `distr/siecs.h` and `distr/siecs.c` into your project.
+2. Include the public header from your code.
+3. Compile your file together with `siecs.c`.
+
+```c
+#include <siecs.h>
+
+ECS_COMPONENT_DECLARE(Position, {
+    float x;
+    float y;
+});
+
+ECS_COMPONENT_DEFINE(Position);
+
+int main(void) {
+    ecs_world_t *world = ecs_init();
+    ECS_COMPONENT_REGISTER(world, Position);
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_set(world, entity, Position, {
+        .x = 10.0f,
+        .y = 20.0f,
+    });
+
+    Position *position = ecs_get(world, entity, Position);
+    position->x += 1.0f;
+
+    ecs_fini(world);
+    return 0;
+}
+```
+
+If the file above is `main.c` and `siecs.h` / `siecs.c` are in the same
+directory:
+
+```sh
+cc -std=c23 -I. main.c siecs.c -pthread -o my_app
+```
+
+The standalone distribution embeds SIECS and its public C dependencies. You do
+not need Bake for this C setup.
+
+## C++ Setup
+
+The C++ API is header-only, but it wraps the C runtime. Add
+`addons/siecs_cpp/include`, compile/link the SIECS C library, and expose the
+dependency headers used by SIECS.
+
+Bake is currently the easiest supported C++ setup because it wires the C
+runtime and dependency include paths for you.
+
 ## Bake Example
+
+Use Bake if your project already uses Bake or if you want the same setup as the
+repository tests.
 
 C
 ```json
@@ -82,12 +140,9 @@ Use these compile definitions for static builds:
 
 On Linux, link `pthread`.
 
-The C++ API is header-only. Add `addons/siecs_cpp/include` and link the C
-library.
-
 ## Minimal Program
 
-The runtime flow is:
+The runtime flow from the standalone example is:
 
 1. Create a world.
 2. Register component types.
