@@ -161,3 +161,8 @@ jobs:
         env:
           CC: clang
         run: make check-distr
+
+      - name: Check standalone distribution
+        env:
+          CC: clang
+        run: make check-distr-standalone

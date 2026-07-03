@@ -2,7 +2,7 @@ BAKE_HOME := $(shell bake env | sed -n 's/^BAKE_HOME=//p')
 DEPS_INCLUDE := -I$(BAKE_HOME)/include
 QUIET_BAKE = grep -Ev '^\[[[:space:]]*(test|build|run|runall|[0-9]+%)|^cmd:|^path:'
 
-.PHONY: clean bench clean-rust test test-c test-c-release test-cpp test-cpp-release test-leaks test-rust update-rust-vendor distr check-distr
+.PHONY: clean bench clean-rust test test-c test-c-release test-cpp test-cpp-release test-leaks test-rust update-rust-vendor distr check-distr check-distr-standalone
 
 bench:
 	@bake rebuild --cfg release >/dev/null
@@ -49,7 +49,15 @@ distr:
 	@cp include/siecs/bake_config.h /tmp/siecs-bake_config.h
 	@bake rebuild . -r >/dev/null
 	@cp /tmp/siecs-bake_config.h include/siecs/bake_config.h
+	@sh tools/make_distr_standalone.sh
 
 check-distr: distr
 	git diff --exit-code -- distr/siecs.c distr/siecs.h include/siecs/bake_config.h
-	$(CC) -std=c23 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic $(DEPS_INCLUDE) -c distr/siecs.c -o /tmp/siecs-distr.o
+
+check-distr-standalone:
+	tmp_dir=$$(mktemp -d /tmp/siecs-distr.XXXXXX); \
+	trap 'rm -rf "$$tmp_dir"' EXIT; \
+	cp distr/siecs.c "$$tmp_dir/siecs.c"; \
+	cp distr/siecs.h "$$tmp_dir/siecs.h"; \
+	cd "$$tmp_dir"; \
+	$(CC) -std=c23 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic -c siecs.c -o siecs-distr.o
