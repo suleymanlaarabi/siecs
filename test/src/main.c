@@ -95,6 +95,9 @@ void system_without_query_runs_once(void);
 void system_callback_can_advance_iterator(void);
 void system_skips_disabled_by_default(void);
 void system_can_run_on_disabled_when_requested(void);
+void system_defers_structural_changes_until_iteration_end(void);
+void system_flushes_between_ordered_systems(void);
+void system_manual_defer_coalesces_to_final_state(void);
 
 // Testsuite 'observer'
 void observer_enable(void);
@@ -432,6 +435,18 @@ bake_test_case system_testcases[] = {
     {
         "can_run_on_disabled_when_requested",
         system_can_run_on_disabled_when_requested
+    },
+    {
+        "defers_structural_changes_until_iteration_end",
+        system_defers_structural_changes_until_iteration_end
+    },
+    {
+        "flushes_between_ordered_systems",
+        system_flushes_between_ordered_systems
+    },
+    {
+        "manual_defer_coalesces_to_final_state",
+        system_manual_defer_coalesces_to_final_state
     }
 };
 
@@ -578,7 +593,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        9,
+        12,
         system_testcases
     },
     {

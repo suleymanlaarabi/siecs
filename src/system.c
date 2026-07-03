@@ -42,6 +42,7 @@ void ecs_run_system(ecs_world_t *world, ecs_system_id_t system) {
         return;
     }
 
+    ecs_defer_begin(world);
     if (sys->qid != ECS_SYSTEM_NO_QUERY) {
         ecs_iter_t it = ecs_query_iter(world, sys->qid);
         while (ecs_iter_next(&it)) {
@@ -54,6 +55,7 @@ void ecs_run_system(ecs_world_t *world, ecs_system_id_t system) {
         };
         sys->callback(&it);
     }
+    ecs_defer_end(world);
 }
 
 void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase) {

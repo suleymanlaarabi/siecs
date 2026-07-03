@@ -1,4 +1,5 @@
 #include "compiler.h"
+#include "command_buffer.h"
 #include "datastructure/idmap.h"
 #include "siecs.h"
 #include "storage/component_index.h"
@@ -42,7 +43,7 @@ static void ecs_emit_added_components(
     }
 }
 
-void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
+void ecs_add_cid_now(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_not_null(world);
     ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
@@ -105,7 +106,22 @@ void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     ecs_emit(world, new_table, entity, EcsOnAdd, component_data);
 }
 
-void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
+void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
+    ecs_assert_not_null(world);
+    ecs_assert_id_valid(cid);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+    ecs_assert_can_be_updated(world, entity, "An abstract entity cannot be updated.");
+
+    if (ecs_is_deferred(world)) {
+        ecs_command_buffer_add(world, entity, cid);
+        return;
+    }
+
+    ecs_add_cid_now(world, entity, cid);
+}
+
+void ecs_remove_cid_now(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_not_null(world);
     ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
@@ -141,6 +157,20 @@ void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid
     ecs_migrate_remove(world, record, entity, table, new_table_id, (uint16_t)col_idx);
 }
 
+void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
+    ecs_assert_not_null(world);
+    ecs_assert_id_valid(cid);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
+    if (ecs_is_deferred(world)) {
+        ecs_command_buffer_remove(world, entity, cid);
+        return;
+    }
+
+    ecs_remove_cid_now(world, entity, cid);
+}
+
 void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_not_null(world);
     ecs_assert_id_valid(cid);
@@ -172,13 +202,13 @@ void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t c
     return NULL;
 }
 
-void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, const void *data) {
+void ecs_set_cid_now(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, const void *data) {
     ecs_assert_not_null(world);
     ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(world, entity);
 
-    ecs_add_cid(world, entity, cid);
+    ecs_add_cid_now(world, entity, cid);
     const ecs_component_record_t *crec = ecs_component_index_get(&world->component_index, cid);
     ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
@@ -194,6 +224,20 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, c
     if (crec->size != 0) {
         memcpy(dst, data, crec->size);
     }
+}
+
+void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, const void *data) {
+    ecs_assert_not_null(world);
+    ecs_assert_id_valid(cid);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
+    if (ecs_is_deferred(world)) {
+        ecs_command_buffer_set(world, entity, cid, data);
+        return;
+    }
+
+    ecs_set_cid_now(world, entity, cid, data);
 }
 
 bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {

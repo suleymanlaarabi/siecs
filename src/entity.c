@@ -1,3 +1,4 @@
+#include "command_buffer.h"
 #include "datastructure/vec.h"
 #include "siecs.h"
 #include "storage/component_index.h"
@@ -76,7 +77,7 @@ bool ecs_is(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
     return ecs_is(world, base, target);
 }
 
-void ecs_is_a(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
+void ecs_is_a_now(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
     ecs_assert_not_null(world);
     ecs_assert_entity_valid(entity);
     ecs_assert_entity_valid(target);
@@ -111,7 +112,22 @@ void ecs_is_a(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
     ecs_entity_rebase(world, record, entity, from_table, to_table_id);
 }
 
-void ecs_kill(ecs_world_t *world, ecs_entity_t entity) {
+void ecs_is_a(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
+    ecs_assert_not_null(world);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_entity_valid(target);
+    ecs_assert_is_alive(world, entity);
+    ecs_assert_is_alive(world, target);
+
+    if (ecs_is_deferred(world)) {
+        ecs_command_buffer_set_base(world, entity, target);
+        return;
+    }
+
+    ecs_is_a_now(world, entity, target);
+}
+
+void ecs_kill_now(ecs_world_t *world, ecs_entity_t entity) {
     ecs_assert_not_null(world);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(world, entity);
@@ -174,6 +190,19 @@ void ecs_kill(ecs_world_t *world, ecs_entity_t entity) {
     }
 
     ecs_entity_index_kill(&world->entity_index, ecs_first(entity));
+}
+
+void ecs_kill(ecs_world_t *world, ecs_entity_t entity) {
+    ecs_assert_not_null(world);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
+    if (ecs_is_deferred(world)) {
+        ecs_command_buffer_kill(world, entity);
+        return;
+    }
+
+    ecs_kill_now(world, entity);
 }
 
 void ecs_clone_w_entity(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {

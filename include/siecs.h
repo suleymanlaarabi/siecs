@@ -472,6 +472,15 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
 /* Create a new alive entity in world. world must not be NULL. */
 SIECS_API ecs_entity_t ecs_new(ecs_world_t *world);
 
+/* Begin deferring ECS mutations into the world's command buffer. */
+SIECS_API void ecs_defer_begin(ecs_world_t *world);
+
+/* End a defer scope. The outermost end flushes the command buffer. */
+SIECS_API void ecs_defer_end(ecs_world_t *world);
+
+/* Return whether mutations are currently being deferred or flushed. */
+SIECS_API bool ecs_is_deferred(const ecs_world_t *world);
+
 /*
  * Return whether entity is alive in world.
  *

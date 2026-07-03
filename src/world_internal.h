@@ -1,5 +1,6 @@
 #ifndef SIECS_WORLD_INTERNAL_H
 #define SIECS_WORLD_INTERNAL_H
+#include "command_buffer.h"
 #include "datastructure/arena.h"
 #include "datastructure/vec.h"
 #include "siecs.h"
@@ -33,6 +34,9 @@ typedef struct ecs_world_s {
     sihttp_app_state_t *server_state;
     ecs_world_feat_desc_t features;
     ecs_arena_t arena_allocator;
+    ecs_command_buffer_t commands;
+    uint32_t defer_depth;
+    bool flushing_commands;
     bool did_start;
     bool exit;
 } ecs_world_t;

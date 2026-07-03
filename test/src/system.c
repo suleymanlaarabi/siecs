@@ -2,14 +2,21 @@
 
 ECS_COMPONENT_DECLARE(SystemPosition, { int value; });
 ECS_COMPONENT_DECLARE(SystemTag, { int value; });
+ECS_COMPONENT_DECLARE(SystemBatchA, { int value; });
+ECS_COMPONENT_DECLARE(SystemBatchB, { int value; });
+ECS_COMPONENT_DECLARE(SystemBatchC, { int value; });
 
 ECS_COMPONENT_DEFINE(SystemPosition);
 ECS_COMPONENT_DEFINE(SystemTag);
+ECS_COMPONENT_DEFINE(SystemBatchA);
+ECS_COMPONENT_DEFINE(SystemBatchB);
+ECS_COMPONENT_DEFINE(SystemBatchC);
 
 static uint32_t system_calls;
 static uint32_t system_seen;
 static uint32_t system_order_count;
 static int system_order[8];
+static ecs_entity_t system_entity;
 
 static void reset_system_test_state(void) {
     system_calls = 0;
@@ -83,6 +90,24 @@ static void consume_next_batch_system(ecs_iter_t *it) {
         system_calls++;
         system_seen += it->count;
     }
+}
+
+static void remove_position_system(ecs_iter_t *it) {
+    for (uint32_t i = 0; i < it->count; i++) {
+        ecs_remove(it->world, it->entities[i], SystemPosition);
+        system_seen++;
+    }
+    system_calls++;
+}
+
+static void add_tag_to_global_entity(ecs_iter_t *it) {
+    ecs_add(it->world, system_entity, SystemTag);
+    system_calls++;
+}
+
+static void count_tag_system(ecs_iter_t *it) {
+    system_seen += it->count;
+    system_calls++;
 }
 
 static ecs_entity_t create_system_entity(ecs_world_t *world, int value) {
@@ -409,6 +434,113 @@ void system_can_run_on_disabled_when_requested(void) {
     test_int(1, system_seen);
     test_int(0, ecs_get(world, enabled, SystemPosition)->value);
     test_int(1, ecs_get(world, disabled, SystemPosition)->value);
+
+    ecs_fini(world);
+}
+
+void system_defers_structural_changes_until_iteration_end(void) {
+    reset_system_test_state();
+
+    ecs_world_t *world = ecs_init();
+    test_not_null(world);
+
+    ECS_COMPONENT_REGISTER(world, SystemPosition);
+
+    ecs_entity_t first = create_system_entity(world, 1);
+    ecs_entity_t second = create_system_entity(world, 2);
+    ecs_entity_t third = create_system_entity(world, 3);
+
+    ecs_system(
+        world,
+        {
+            .name = "RemovePosition",
+            .phase = EcsOnUpdate,
+            .query = { .terms = { ecs_inout(SystemPosition) } },
+            .callback = remove_position_system,
+        }
+    );
+
+    ecs_progress(world);
+
+    test_uint(1, system_calls);
+    test_uint(3, system_seen);
+    test_assert(!ecs_has(world, first, SystemPosition));
+    test_assert(!ecs_has(world, second, SystemPosition));
+    test_assert(!ecs_has(world, third, SystemPosition));
+
+    ecs_fini(world);
+}
+
+void system_flushes_between_ordered_systems(void) {
+    reset_system_test_state();
+
+    ecs_world_t *world = ecs_init();
+    test_not_null(world);
+
+    ECS_COMPONENT_REGISTER(world, SystemPosition);
+    ECS_COMPONENT_REGISTER(world, SystemTag);
+
+    system_entity = create_system_entity(world, 1);
+    ecs_system_id_t writer = ecs_system(
+        world,
+        {
+            .name = "AddTag",
+            .phase = EcsOnUpdate,
+            .query = { .terms = { ecs_in(SystemPosition) } },
+            .callback = add_tag_to_global_entity,
+        }
+    );
+    ecs_system(
+        world,
+        {
+            .name = "CountTag",
+            .phase = EcsOnUpdate,
+            .query = { .terms = { ecs_in(SystemTag) } },
+            .callback = count_tag_system,
+            .after = { writer },
+        }
+    );
+
+    ecs_progress(world);
+
+    test_uint(2, system_calls);
+    test_uint(1, system_seen);
+    test_assert(ecs_has(world, system_entity, SystemTag));
+
+    ecs_fini(world);
+}
+
+void system_manual_defer_coalesces_to_final_state(void) {
+    ecs_world_t *world = ecs_init();
+    test_not_null(world);
+
+    ECS_COMPONENT_REGISTER(world, SystemBatchA);
+    ECS_COMPONENT_REGISTER(world, SystemBatchB);
+    ECS_COMPONENT_REGISTER(world, SystemBatchC);
+
+    ecs_entity_t entity = ecs_new(world);
+
+    ecs_defer_begin(world);
+    ecs_add(world, entity, SystemBatchA);
+    ecs_remove(world, entity, SystemBatchA);
+    ecs_set(world, entity, SystemBatchB, { 10 });
+    ecs_defer_begin(world);
+    ecs_set(world, entity, SystemBatchC, { 20 });
+    ecs_defer_end(world);
+
+    test_assert(ecs_is_deferred(world));
+    test_assert(!ecs_has(world, entity, SystemBatchA));
+    test_assert(!ecs_has(world, entity, SystemBatchB));
+    test_assert(!ecs_has(world, entity, SystemBatchC));
+
+    ecs_defer_end(world);
+
+    test_assert(!ecs_is_deferred(world));
+    test_assert(!ecs_has(world, entity, SystemBatchA));
+    test_assert(ecs_has(world, entity, SystemBatchB));
+    test_assert(ecs_has(world, entity, SystemBatchC));
+    test_int(10, ecs_get(world, entity, SystemBatchB)->value);
+    test_int(20, ecs_get(world, entity, SystemBatchC)->value);
 
     ecs_fini(world);
 }

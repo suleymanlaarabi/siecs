@@ -26,8 +26,11 @@ ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_module_index_init(&world->module_index);
     ecs_resource_index_init(&world->resource_index);
     ecs_arena_init(&world->arena_allocator);
+    ecs_command_buffer_init(&world->commands);
     world->active_module = 0;
     world->features = *features;
+    world->defer_depth = 0;
+    world->flushing_commands = false;
     world->did_start = false;
     world->exit = false;
     world->server = NULL;
@@ -54,6 +57,7 @@ void ecs_fini(ecs_world_t *world) {
     ecs_observer_index_fini(&world->observer_index);
     ecs_system_index_fini(&world->system_index);
     ecs_module_index_fini(&world->module_index);
+    ecs_command_buffer_fini(&world->commands);
     ecs_arena_fini(&world->arena_allocator);
     sireflect_registry_fini(world->sireflect_registry);
 

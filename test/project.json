@@ -128,7 +128,10 @@
           "without_query_runs_once",
           "callback_can_advance_iterator",
           "skips_disabled_by_default",
-          "can_run_on_disabled_when_requested"
+          "can_run_on_disabled_when_requested",
+          "defers_structural_changes_until_iteration_end",
+          "flushes_between_ordered_systems",
+          "manual_defer_coalesces_to_final_state"
         ]
       },
       {
