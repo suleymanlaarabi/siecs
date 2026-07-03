@@ -1,3 +1,4 @@
+#include "siecs.h"
 #include "world_internal.h"
 #include <siecs_test.h>
 
@@ -135,6 +136,24 @@ void entity_is_a_different_target_creates_different_table(void) {
     test_assert(record_a->table_id != record_b->table_id);
     test_assert(ecs_get_table(world, record_a->table_id)->type.base == base_a);
     test_assert(ecs_get_table(world, record_b->table_id)->type.base == base_b);
+
+    ecs_fini(world);
+}
+
+void entity_is_with_multiple_depth(void) {
+    ecs_world_t *world = ecs_init();
+
+    ecs_entity_t base = ecs_new(world);
+    ecs_add(world, base, Abstract);
+
+    ecs_entity_t base2 = ecs_new(world);
+    ecs_is_a(world, base2, base);
+    ecs_add(world, base2, Abstract);
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_is_a(world, entity, base2);
+
+    test_assert(ecs_is(world, entity, base) == true);
 
     ecs_fini(world);
 }

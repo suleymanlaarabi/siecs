@@ -6214,7 +6214,14 @@ static inline void ecs_entity_rebase(
 }
 
 bool ecs_is(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {
-    return ecs_get_table(world, ecs_get_record(world, entity)->table_id)->type.base == target;
+    ecs_entity_t base = ecs_get_table(world, ecs_get_record(world, entity)->table_id)->type.base;
+    if (base == target) {
+        return true;
+    }
+    if (base == 0) {
+        return false;
+    }
+    return ecs_is(world, base, target);
 }
 
 void ecs_is_a(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target) {

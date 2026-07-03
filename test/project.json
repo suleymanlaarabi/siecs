@@ -27,7 +27,8 @@
           "is_a_moves_entity_to_type_with_base",
           "is_a_keeps_local_component_data",
           "is_a_same_target_is_noop",
-          "is_a_different_target_creates_different_table"
+          "is_a_different_target_creates_different_table",
+          "is_with_multiple_depth"
         ]
       },
       {

@@ -15,6 +15,7 @@ void entity_is_a_moves_entity_to_type_with_base(void);
 void entity_is_a_keeps_local_component_data(void);
 void entity_is_a_same_target_is_noop(void);
 void entity_is_a_different_target_creates_different_table(void);
+void entity_is_with_multiple_depth(void);
 
 // Testsuite 'component'
 void component_reflection(void);
@@ -146,6 +147,10 @@ bake_test_case entity_testcases[] = {
     {
         "is_a_different_target_creates_different_table",
         entity_is_a_different_target_creates_different_table
+    },
+    {
+        "is_with_multiple_depth",
+        entity_is_with_multiple_depth
     }
 };
 
@@ -524,7 +529,7 @@ static bake_test_suite suites[] = {
         "entity",
         NULL,
         NULL,
-        6,
+        7,
         entity_testcases
     },
     {
