@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 use core::ops::Deref;
 
-use crate::{raw, Component, EachCtx, Entity, World};
+use crate::{raw, Component, EachCtx, Entity, Res, ResMut, Resource, World};
 
 pub use raw::FieldKind;
 
@@ -45,6 +45,8 @@ impl<'world> Query<'world> {
         F: QueryEach<Marker>,
     {
         F::append_terms(self.world, &mut self.desc, &mut self.term_index);
+        let mut resource_access = ResourceAccess::default();
+        F::validate_resources(self.world, &mut resource_access);
         validate_returned_fields(&self.desc);
 
         let query = QueryHandle {
@@ -70,6 +72,7 @@ impl<'world> Query<'world> {
 #[doc(hidden)]
 pub trait QueryEach<Marker> {
     fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16);
+    fn validate_resources(_world: &mut World, _access: &mut ResourceAccess) {}
     unsafe fn run(&mut self, iter: &mut raw::Iter);
 }
 
@@ -104,6 +107,12 @@ pub struct FieldRef<T>(PhantomData<T>);
 
 #[doc(hidden)]
 pub struct OptFieldRef<T>(PhantomData<T>);
+
+#[doc(hidden)]
+pub struct QueryRes<T>(PhantomData<T>);
+
+#[doc(hidden)]
+pub struct QueryResMut<T>(PhantomData<T>);
 
 pub struct Field<'a, T> {
     value: &'a T,
@@ -200,6 +209,80 @@ pub(crate) fn validate_returned_fields(desc: &raw::QueryDesc) {
             );
         }
     }
+}
+
+#[doc(hidden)]
+#[derive(Default)]
+pub struct ResourceAccess {
+    reads: [raw::ResourceId; 16],
+    read_count: usize,
+    writes: [raw::ResourceId; 16],
+    write_count: usize,
+}
+
+impl ResourceAccess {
+    #[inline]
+    pub(crate) fn read<T: Resource>(&mut self, world: &mut World) {
+        let id = T::id(world);
+        self.assert_not_written(id);
+        self.push_read(id);
+    }
+
+    #[inline]
+    pub(crate) fn write<T: Resource>(&mut self, world: &mut World) {
+        let id = T::id(world);
+        self.assert_not_read(id);
+        self.assert_not_written(id);
+        self.push_write(id);
+    }
+
+    #[inline]
+    fn push_read(&mut self, id: raw::ResourceId) {
+        assert!(
+            self.read_count < self.reads.len(),
+            "too many resource params"
+        );
+        self.reads[self.read_count] = id;
+        self.read_count += 1;
+    }
+
+    #[inline]
+    fn push_write(&mut self, id: raw::ResourceId) {
+        assert!(
+            self.write_count < self.writes.len(),
+            "too many resource params"
+        );
+        self.writes[self.write_count] = id;
+        self.write_count += 1;
+    }
+
+    #[inline]
+    fn assert_not_read(&self, id: raw::ResourceId) {
+        assert!(
+            !self.reads[..self.read_count].contains(&id),
+            "callback cannot request mutable and immutable access to the same resource"
+        );
+    }
+
+    #[inline]
+    fn assert_not_written(&self, id: raw::ResourceId) {
+        assert!(
+            !self.writes[..self.write_count].contains(&id),
+            "callback cannot request mutable access to the same resource more than once"
+        );
+    }
+}
+
+#[inline]
+pub(crate) fn resource_ref<'a, T: Resource>(world: *mut raw::WorldRaw) -> Res<'a, T> {
+    let id = unsafe { T::id_raw(world) };
+    unsafe { Res::new(&*raw::ecs_resource_rid(world, id).cast::<T>()) }
+}
+
+#[inline]
+pub(crate) fn resource_mut<'a, T: Resource>(world: *mut raw::WorldRaw) -> ResMut<'a, T> {
+    let id = unsafe { T::id_raw(world) };
+    unsafe { ResMut::new(&mut *raw::ecs_resource_rid(world, id).cast::<T>()) }
 }
 
 macro_rules! marker_ty {
@@ -309,6 +392,212 @@ macro_rules! row_arg {
             ))
         }
     };
+}
+
+impl<F, R> QueryEach<fn(QueryRes<R>)> for F
+where
+    F: FnMut(Res<'_, R>),
+    R: Resource,
+{
+    #[inline]
+    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+
+    #[inline]
+    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
+        access.read::<R>(world);
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, iter: &mut raw::Iter) {
+        for _row in 0..iter.count as usize {
+            self(resource_ref::<R>(iter.world));
+        }
+    }
+}
+
+impl<F, R> QueryEach<fn(QueryResMut<R>)> for F
+where
+    F: FnMut(ResMut<'_, R>),
+    R: Resource,
+{
+    #[inline]
+    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+
+    #[inline]
+    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
+        access.write::<R>(world);
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, iter: &mut raw::Iter) {
+        for _row in 0..iter.count as usize {
+            self(resource_mut::<R>(iter.world));
+        }
+    }
+}
+
+impl<F, A, B> QueryEach<fn(QueryRes<A>, QueryResMut<B>)> for F
+where
+    F: FnMut(Res<'_, A>, ResMut<'_, B>),
+    A: Resource,
+    B: Resource,
+{
+    #[inline]
+    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+
+    #[inline]
+    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
+        access.read::<A>(world);
+        access.write::<B>(world);
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, iter: &mut raw::Iter) {
+        for _row in 0..iter.count as usize {
+            self(resource_ref::<A>(iter.world), resource_mut::<B>(iter.world));
+        }
+    }
+}
+
+impl<F, A, B> QueryEach<fn(QueryResMut<A>, QueryResMut<B>)> for F
+where
+    F: FnMut(ResMut<'_, A>, ResMut<'_, B>),
+    A: Resource,
+    B: Resource,
+{
+    #[inline]
+    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+
+    #[inline]
+    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
+        access.write::<A>(world);
+        access.write::<B>(world);
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, iter: &mut raw::Iter) {
+        for _row in 0..iter.count as usize {
+            self(resource_mut::<A>(iter.world), resource_mut::<B>(iter.world));
+        }
+    }
+}
+
+impl<F, A, R> QueryEach<fn(Entity, Ref<A>, QueryRes<R>)> for F
+where
+    F: FnMut(Entity, &A, Res<'_, R>),
+    A: Component,
+    R: Resource,
+{
+    #[inline]
+    fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+        let id = A::id(world);
+        append_term(desc, term_index, id, raw::TermAccess::In);
+    }
+
+    #[inline]
+    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
+        access.read::<R>(world);
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, iter: &mut raw::Iter) {
+        let field = (
+            raw::ecs_field(iter, 0).cast::<A>(),
+            raw::ecs_field_kind(iter, 0),
+        );
+
+        for row in 0..iter.count as usize {
+            self(
+                Entity::from_raw(*iter.entities.add(row)),
+                row_arg!(ref field row),
+                resource_ref::<R>(iter.world),
+            );
+        }
+    }
+}
+
+impl<F, A, B, R> QueryEach<fn(Entity, FieldRef<A>, OptFieldRef<B>, QueryRes<R>)> for F
+where
+    F: FnMut(Entity, Field<'_, A>, Option<Field<'_, B>>, Res<'_, R>),
+    A: Component,
+    B: Component,
+    R: Resource,
+{
+    #[inline]
+    fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+        let id = A::id(world);
+        append_term(desc, term_index, id, raw::TermAccess::In);
+        let id = B::id(world);
+        append_term(desc, term_index, id, raw::TermAccess::InOptional);
+    }
+
+    #[inline]
+    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
+        access.read::<R>(world);
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, iter: &mut raw::Iter) {
+        let a = (
+            raw::ecs_field(iter, 0).cast::<A>(),
+            raw::ecs_field_kind(iter, 0),
+        );
+        let b = (
+            raw::ecs_field(iter, 1).cast::<B>(),
+            raw::ecs_field_kind(iter, 1),
+        );
+
+        for row in 0..iter.count as usize {
+            self(
+                Entity::from_raw(*iter.entities.add(row)),
+                row_arg!(field_ref a row),
+                row_arg!(opt_field_ref b row),
+                resource_ref::<R>(iter.world),
+            );
+        }
+    }
+}
+
+impl<F, A, B, R> QueryEach<fn(EachCtx<'_>, Mut<A>, Ref<B>, QueryRes<R>)> for F
+where
+    F: FnMut(EachCtx<'_>, &mut A, &B, Res<'_, R>),
+    A: Component,
+    B: Component,
+    R: Resource,
+{
+    #[inline]
+    fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+        let id = A::id(world);
+        append_term(desc, term_index, id, raw::TermAccess::InOut);
+        let id = B::id(world);
+        append_term(desc, term_index, id, raw::TermAccess::In);
+    }
+
+    #[inline]
+    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
+        access.read::<R>(world);
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, iter: &mut raw::Iter) {
+        let a = (
+            raw::ecs_field(iter, 0).cast::<A>(),
+            raw::ecs_field_kind(iter, 0),
+        );
+        let b = (
+            raw::ecs_field(iter, 1).cast::<B>(),
+            raw::ecs_field_kind(iter, 1),
+        );
+
+        for row in 0..iter.count as usize {
+            self(
+                EachCtx::new(iter, row),
+                row_arg!(mut a row),
+                row_arg!(ref b row),
+                resource_ref::<R>(iter.world),
+            );
+        }
+    }
 }
 
 macro_rules! impl_query_each {
@@ -424,11 +713,17 @@ macro_rules! impl_query_each_rw_perms_inner {
     };
 }
 
-impl_query_each_perms!(A a 0);
-impl_query_each_perms!(A a 0, B b 1);
-impl_query_each_perms!(A a 0, B b 1, C c 2);
-impl_query_each_perms!(A a 0, B b 1, C c 2, D d 3);
-impl_query_each_rw_perms!(A a 0, B b 1, C c 2, D d 3, E e 4);
-impl_query_each_rw_perms!(A a 0, B b 1, C c 2, D d 3, E e 4, G g 5);
-impl_query_each_rw_perms!(A a 0, B b 1, C c 2, D d 3, E e 4, G g 5, H h 6);
-impl_query_each_rw_perms!(A a 0, B b 1, C c 2, D d 3, E e 4, G g 5, H h 6, I i 7);
+macro_rules! impl_query_each_perms_tuple {
+    ($(($index:tt, $component:ident, $field:ident)),+ $(,)?) => {
+        impl_query_each_perms!($($component $field $index),+);
+    };
+}
+
+macro_rules! impl_query_each_rw_perms_tuple {
+    ($(($index:tt, $component:ident, $field:ident)),+ $(,)?) => {
+        impl_query_each_rw_perms!($($component $field $index),+);
+    };
+}
+
+variadics_please::all_tuples_enumerated!(impl_query_each_perms_tuple, 1, 4, A, a);
+variadics_please::all_tuples_enumerated!(impl_query_each_rw_perms_tuple, 5, 8, A, a);

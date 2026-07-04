@@ -717,6 +717,15 @@ typedef struct {
 /* Allocate and return a custom event id for ecs_observer_trigger. */
 SIECS_API ecs_event_t ecs_event(ecs_world_t *world);
 
+/*
+ * Register a process-wide typed event id in this world.
+ *
+ * If *id is UINT16_MAX, allocates a new custom event id and stores it in *id.
+ * Otherwise, reserves the existing id in this world so future ecs_event calls
+ * cannot collide with the typed event.
+ */
+SIECS_API ecs_event_t ecs_event_register(ecs_world_t *world, ecs_event_t *id);
+
 /* Create an observer. desc->callback must not be NULL. */
 SIECS_API ecs_observer_id_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc);
 

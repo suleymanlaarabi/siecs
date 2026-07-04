@@ -59,5 +59,8 @@ fn derive_relation_flags_compile_and_register() {
     );
 
     assert!(world.has::<RelationComponent>(entity));
-    assert_eq!(world.get::<RelationComponent>(entity).unwrap().target, target.id());
+    assert_eq!(
+        world.get::<RelationComponent>(entity).unwrap().target,
+        target.id()
+    );
 }

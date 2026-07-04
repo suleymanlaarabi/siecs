@@ -1,4 +1,7 @@
-use siecs::{raw, Abstract, Component, Field, FieldKind, Phase, World};
+use siecs::{
+    raw, Abstract, Component, EachCtx, Entity, Field, FieldKind, Phase, Res, ResMut, Resource,
+    World,
+};
 use std::mem::{align_of, offset_of, size_of};
 use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 
@@ -66,6 +69,16 @@ struct InheritVelocity {
 #[derive(Component)]
 struct InheritPlayer;
 
+#[derive(Resource)]
+struct QueryScale {
+    value: i32,
+}
+
+#[derive(Resource)]
+struct DeltaTime {
+    ticks: i32,
+}
+
 static MOVE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static FILTER_CALLS: AtomicUsize = AtomicUsize::new(0);
 static ENABLE_CALLS: AtomicUsize = AtomicUsize::new(0);
@@ -105,6 +118,16 @@ fn after_first_system(_position: &SystemPosition) {
 
 fn after_second_system(_position: &SystemPosition) {
     assert_eq!(SYSTEM_AFTER_ORDER.swap(2, Ordering::SeqCst), 1);
+}
+
+fn resource_move_system(
+    ctx: EachCtx,
+    position: &mut SystemPosition,
+    velocity: &SystemVelocity,
+    dt: Res<DeltaTime>,
+) {
+    assert_ne!(ctx.entity().id(), 0);
+    position.x += velocity.x * dt.ticks;
 }
 
 #[test]
@@ -418,6 +441,43 @@ fn query_optional_field_reports_owned_shared_and_none() {
 }
 
 #[test]
+fn query_each_accepts_entity_fields_and_resources_without_explicit_lifetimes() {
+    let mut world = World::new();
+    world.set_resource(QueryScale { value: 3 });
+
+    let first = world.entity();
+    world.set(first, QueryPosition { x: 2.0, y: 0.0 });
+    world.set(first, QueryVelocity { x: 5.0, y: 0.0 });
+
+    let second = world.entity();
+    world.set(second, QueryPosition { x: 7.0, y: 0.0 });
+
+    let mut rows = Vec::new();
+    world.query().each(
+        |entity: Entity,
+         position: Field<QueryPosition>,
+         velocity: Option<Field<QueryVelocity>>,
+         scale: Res<QueryScale>| {
+            rows.push((
+                entity,
+                position.kind(),
+                (position.x as i32) * scale.value,
+                velocity.map(|velocity| velocity.x as i32),
+            ));
+        },
+    );
+    rows.sort_by_key(|(_, _, position, _)| *position);
+
+    assert_eq!(
+        rows,
+        [
+            (first, FieldKind::Owned, 6, Some(5)),
+            (second, FieldKind::Owned, 21, None),
+        ]
+    );
+}
+
+#[test]
 fn raw_query_iter_reads_component_field() {
     let mut world = World::new();
     let entity = world.entity();
@@ -547,6 +607,21 @@ fn system_progress_runs_and_mutates_components() {
 
     assert_eq!(MOVE_CALLS.load(Ordering::SeqCst), 1);
     assert_eq!(world.get::<SystemPosition>(entity).unwrap().x, 5);
+}
+
+#[test]
+fn system_each_accepts_each_ctx_and_resources_without_explicit_lifetimes() {
+    let mut world = World::new();
+    world.set_resource(DeltaTime { ticks: 4 });
+
+    let entity = world.entity();
+    world.set(entity, SystemPosition { x: 1 });
+    world.set(entity, SystemVelocity { x: 3 });
+
+    world.system("ResourceMove").each(resource_move_system);
+    world.progress();
+
+    assert_eq!(world.get::<SystemPosition>(entity).unwrap().x, 13);
 }
 
 #[test]
@@ -714,6 +789,19 @@ fn query_rejects_duplicate_component_fields() {
             left.value += right.value;
         },
     );
+}
+
+#[test]
+#[should_panic(
+    expected = "callback cannot request mutable and immutable access to the same resource"
+)]
+fn query_rejects_duplicate_resource_access() {
+    let mut world = World::new();
+    world.set_resource(QueryScale { value: 1 });
+
+    world
+        .query()
+        .each(|_read: Res<QueryScale>, _write: ResMut<QueryScale>| {});
 }
 
 #[test]

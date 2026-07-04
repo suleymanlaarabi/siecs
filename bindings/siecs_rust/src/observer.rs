@@ -1,8 +1,10 @@
 use core::marker::PhantomData;
 use core::mem::{needs_drop, size_of, MaybeUninit};
 
-use crate::query::{append_term, validate_returned_fields};
-use crate::{raw, Component, Entity, World, WorldRef};
+use crate::query::{
+    append_term, resource_mut, resource_ref, validate_returned_fields, ResourceAccess,
+};
+use crate::{raw, Component, Entity, Res, ResMut, Resource, World, WorldRef};
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 #[repr(transparent)]
@@ -40,12 +42,107 @@ impl From<raw::ObserverId> for ObserverId {
     }
 }
 
-#[allow(non_upper_case_globals)]
-pub const OnAdd: EventId = EventId(raw::ECS_ON_ADD);
-#[allow(non_upper_case_globals)]
-pub const OnRemove: EventId = EventId(raw::ECS_ON_REMOVE);
-#[allow(non_upper_case_globals)]
-pub const OnSet: EventId = EventId(raw::ECS_ON_SET);
+/// Typed SIECS event.
+///
+/// Safe observers can only receive this event's associated payload type.
+///
+/// ```compile_fail
+/// use siecs::{Component, Event, World};
+///
+/// #[derive(Component)]
+/// struct Target;
+/// #[derive(Event)]
+/// struct Damage { amount: i32 }
+/// #[derive(Event)]
+/// struct Heal { amount: i32 }
+///
+/// fn wrong_payload(data: &Heal, _target: &Target) {
+///     let _ = data.amount;
+/// }
+///
+/// let mut world = World::new();
+/// world.observe::<Damage>().each(wrong_payload);
+/// ```
+///
+/// ```compile_fail
+/// use siecs::{Event, World};
+///
+/// #[derive(Event)]
+/// struct Damage { amount: i32 }
+/// #[derive(Event)]
+/// struct Heal { amount: i32 }
+///
+/// let mut world = World::new();
+/// let entity = world.entity();
+/// world.trigger_ref::<Damage>(entity, &Heal { amount: 10 });
+/// ```
+pub trait Event: Sized + 'static {
+    type Payload: Sized + 'static;
+
+    unsafe fn id_raw(world: *mut raw::WorldRaw) -> raw::EventId;
+
+    #[inline]
+    unsafe fn payload_raw<'a>(event: *mut raw::ObserverEvent) -> &'a Self::Payload {
+        let ptr = (*event).trigger_data.cast::<Self::Payload>();
+        assert!(!ptr.is_null(), "event trigger data is null");
+        &*ptr
+    }
+
+    #[inline]
+    fn id(world: &mut World) -> EventId {
+        unsafe { Self::id_raw(world.as_raw_mut()).into() }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct OnAdd<T: Component>(PhantomData<T>);
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct OnRemove<T: Component>(PhantomData<T>);
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct OnSet<T: Component>(PhantomData<T>);
+
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct RawEvent;
+
+macro_rules! builtin_event {
+    ($ty:ident, $id:expr) => {
+        impl<T: Component> Event for $ty<T> {
+            type Payload = T;
+
+            #[inline]
+            unsafe fn id_raw(_world: *mut raw::WorldRaw) -> raw::EventId {
+                $id
+            }
+
+            #[inline]
+            unsafe fn payload_raw<'a>(event: *mut raw::ObserverEvent) -> &'a Self::Payload {
+                let data = (*event).trigger_data.cast::<T>();
+                if let Some(value) = data.as_ref() {
+                    return value;
+                }
+                if size_of::<T>() == 0 {
+                    &*core::ptr::NonNull::<T>::dangling().as_ptr()
+                } else {
+                    let id = T::id_raw((*event).world);
+                    &*raw::ecs_get_cid((*event).world, (*event).entity, id).cast::<T>()
+                }
+            }
+        }
+    };
+}
+
+builtin_event!(OnAdd, raw::ECS_ON_ADD);
+builtin_event!(OnRemove, raw::ECS_ON_REMOVE);
+builtin_event!(OnSet, raw::ECS_ON_SET);
+
+impl Event for RawEvent {
+    type Payload = ();
+
+    #[inline]
+    unsafe fn id_raw(_world: *mut raw::WorldRaw) -> raw::EventId {
+        0
+    }
+}
 
 #[derive(Clone, Copy)]
 pub struct ObserverEvent<'a> {
@@ -78,18 +175,19 @@ impl<'a> ObserverEvent<'a> {
     }
 
     #[inline]
-    pub fn data<T>(self) -> Option<&'a T> {
+    pub unsafe fn data_unchecked<T>(self) -> Option<&'a T> {
         unsafe { (*self.raw).trigger_data.cast::<T>().as_ref() }
     }
 }
 
-pub struct Observer<'world> {
+pub struct Observer<'world, E: Event> {
     world: &'world mut World,
     desc: raw::ObserverDesc,
     term_index: u16,
+    _event: PhantomData<E>,
 }
 
-impl<'world> Observer<'world> {
+impl<'world, E: Event> Observer<'world, E> {
     #[inline]
     pub(crate) fn new(world: &'world mut World, event: EventId) -> Self {
         Self {
@@ -99,6 +197,7 @@ impl<'world> Observer<'world> {
                 ..raw::ObserverDesc::default()
             },
             term_index: 0,
+            _event: PhantomData,
         }
     }
 
@@ -117,7 +216,7 @@ impl<'world> Observer<'world> {
     #[inline]
     pub fn each<F, Marker>(mut self, func: F) -> ObserverId
     where
-        F: ObserverEach<Marker> + 'static,
+        F: ObserverEach<E, Marker> + 'static,
     {
         assert!(
             size_of::<F>() == 0 && !needs_drop::<F>(),
@@ -126,9 +225,11 @@ impl<'world> Observer<'world> {
         let _ = func;
 
         F::append_terms(self.world, &mut self.desc.query, &mut self.term_index);
+        let mut resource_access = ResourceAccess::default();
+        F::validate_resources(self.world, &mut resource_access);
         validate_returned_fields(&self.desc.query);
 
-        self.desc.callback = Some(observer_callback::<F, Marker>);
+        self.desc.callback = Some(observer_callback::<E, F, Marker>);
 
         unsafe { raw::ecs_observer_init(self.world.as_raw_mut(), &self.desc).into() }
     }
@@ -141,14 +242,16 @@ impl<'world> Observer<'world> {
 }
 
 #[doc(hidden)]
-pub trait ObserverEach<Marker> {
+pub trait ObserverEach<E: Event, Marker> {
     fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16);
+    fn validate_resources(_world: &mut World, _access: &mut ResourceAccess) {}
     unsafe fn run(&mut self, event: *mut raw::ObserverEvent);
 }
 
-unsafe extern "C" fn observer_callback<F, Marker>(event: *mut raw::ObserverEvent)
+unsafe extern "C" fn observer_callback<E, F, Marker>(event: *mut raw::ObserverEvent)
 where
-    F: ObserverEach<Marker> + 'static,
+    E: Event,
+    F: ObserverEach<E, Marker> + 'static,
 {
     debug_assert!(!event.is_null());
     debug_assert_eq!(size_of::<F>(), 0);
@@ -159,10 +262,19 @@ where
 }
 
 #[doc(hidden)]
+pub struct ObserverPayload;
+
+#[doc(hidden)]
 pub struct ObserverRef<T>(PhantomData<T>);
 
 #[doc(hidden)]
 pub struct ObserverMut<T>(PhantomData<T>);
+
+#[doc(hidden)]
+pub struct ObserverRes<T>(PhantomData<T>);
+
+#[doc(hidden)]
+pub struct ObserverResMut<T>(PhantomData<T>);
 
 macro_rules! observer_marker_ty {
     (ref $component:ident) => {
@@ -193,20 +305,44 @@ macro_rules! observer_access {
 
 macro_rules! observer_arg {
     (ref $event:ident $component:ident) => {{
-        let id = $component::id_raw((*$event).world);
-        &*raw::ecs_get_cid((*$event).world, (*$event).entity, id).cast::<$component>()
+        if size_of::<$component>() == 0 {
+            &*core::ptr::NonNull::<$component>::dangling().as_ptr()
+        } else {
+            let id = $component::id_raw((*$event).world);
+            &*raw::ecs_get_cid((*$event).world, (*$event).entity, id).cast::<$component>()
+        }
     }};
     (mut $event:ident $component:ident) => {{
-        let id = $component::id_raw((*$event).world);
-        &mut *raw::ecs_get_cid((*$event).world, (*$event).entity, id).cast::<$component>()
+        if size_of::<$component>() == 0 {
+            &mut *core::ptr::NonNull::<$component>::dangling().as_ptr()
+        } else {
+            let id = $component::id_raw((*$event).world);
+            &mut *raw::ecs_get_cid((*$event).world, (*$event).entity, id).cast::<$component>()
+        }
+    }};
+}
+
+macro_rules! observer_data_arg {
+    ($event:ident $event_ty:ident) => {{
+        <$event_ty as Event>::payload_raw($event)
+    }};
+}
+
+macro_rules! observer_res_arg {
+    (ref $event:ident $resource:ident) => {{
+        resource_ref::<$resource>((*$event).world)
+    }};
+    (mut $event:ident $resource:ident) => {{
+        resource_mut::<$resource>((*$event).world)
     }};
 }
 
 macro_rules! impl_observer_each {
     ($(($component:ident, $kind:ident)),+ $(,)?) => {
-        impl<F, $($component),+> ObserverEach<fn($(observer_marker_ty!($kind $component)),+)> for F
+        impl<E, F, $($component),+> ObserverEach<E, fn(ObserverPayload, $(observer_marker_ty!($kind $component)),+)> for F
         where
-            F: FnMut($(observer_marker_arg!($kind $component)),+),
+            E: Event,
+            F: FnMut(&<E as Event>::Payload, $(observer_marker_arg!($kind $component)),+),
             $($component: Component),+
         {
             #[inline]
@@ -219,13 +355,14 @@ macro_rules! impl_observer_each {
 
             #[inline]
             unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
-                self($(observer_arg!($kind event $component)),+);
+                self(observer_data_arg!(event E), $(observer_arg!($kind event $component)),+);
             }
         }
 
-        impl<F, $($component),+> ObserverEach<fn(ObserverEvent<'_>, $(observer_marker_ty!($kind $component)),+)> for F
+        impl<E, F, $($component),+> ObserverEach<E, fn(ObserverEvent<'_>, ObserverPayload, $(observer_marker_ty!($kind $component)),+)> for F
         where
-            F: FnMut(ObserverEvent<'_>, $(observer_marker_arg!($kind $component)),+),
+            E: Event,
+            F: FnMut(ObserverEvent<'_>, &<E as Event>::Payload, $(observer_marker_arg!($kind $component)),+),
             $($component: Component),+
         {
             #[inline]
@@ -238,10 +375,193 @@ macro_rules! impl_observer_each {
 
             #[inline]
             unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
-                self(ObserverEvent::from_raw(event), $(observer_arg!($kind event $component)),+);
+                self(ObserverEvent::from_raw(event), observer_data_arg!(event E), $(observer_arg!($kind event $component)),+);
+            }
+        }
+
+        impl<E, F, ResA, ResB, $($component),+>
+            ObserverEach<E, fn(ObserverPayload, $(observer_marker_ty!($kind $component)),+, ObserverRes<ResA>, ObserverResMut<ResB>)> for F
+        where
+            E: Event,
+            F: FnMut(&<E as Event>::Payload, $(observer_marker_arg!($kind $component)),+, Res<'_, ResA>, ResMut<'_, ResB>),
+            ResA: Resource,
+            ResB: Resource,
+            $($component: Component),+
+        {
+            #[inline]
+            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+                $(
+                    let id = $component::id(world);
+                    append_term(desc, term_index, id, observer_access!($kind));
+                )+
+            }
+
+            #[inline]
+            fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
+                access.read::<ResA>(world);
+                access.write::<ResB>(world);
+            }
+
+            #[inline]
+            unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
+                self(
+                    observer_data_arg!(event E),
+                    $(observer_arg!($kind event $component)),+,
+                    observer_res_arg!(ref event ResA),
+                    observer_res_arg!(mut event ResB),
+                );
             }
         }
     };
+}
+
+impl<E, F> ObserverEach<E, fn(ObserverPayload)> for F
+where
+    E: Event,
+    F: FnMut(&<E as Event>::Payload),
+{
+    #[inline]
+    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+
+    #[inline]
+    unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
+        self(observer_data_arg!(event E));
+    }
+}
+
+impl<E, F> ObserverEach<E, fn(ObserverEvent<'_>)> for F
+where
+    E: Event,
+    F: FnMut(ObserverEvent<'_>),
+{
+    #[inline]
+    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+
+    #[inline]
+    unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
+        self(ObserverEvent::from_raw(event));
+    }
+}
+
+impl<E, F> ObserverEach<E, fn(ObserverEvent<'_>, ObserverPayload)> for F
+where
+    E: Event,
+    F: FnMut(ObserverEvent<'_>, &<E as Event>::Payload),
+{
+    #[inline]
+    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+
+    #[inline]
+    unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
+        self(ObserverEvent::from_raw(event), observer_data_arg!(event E));
+    }
+}
+
+impl<F, A> ObserverEach<RawEvent, fn(ObserverEvent<'_>, ObserverRef<A>)> for F
+where
+    F: FnMut(ObserverEvent<'_>, &A),
+    A: Component,
+{
+    #[inline]
+    fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+        let id = A::id(world);
+        append_term(desc, term_index, id, raw::TermAccess::In);
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
+        self(ObserverEvent::from_raw(event), observer_arg!(ref event A));
+    }
+}
+
+impl<F, A> ObserverEach<RawEvent, fn(ObserverEvent<'_>, ObserverMut<A>)> for F
+where
+    F: FnMut(ObserverEvent<'_>, &mut A),
+    A: Component,
+{
+    #[inline]
+    fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+        let id = A::id(world);
+        append_term(desc, term_index, id, raw::TermAccess::InOut);
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
+        self(ObserverEvent::from_raw(event), observer_arg!(mut event A));
+    }
+}
+
+impl<E, F, ResA> ObserverEach<E, fn(ObserverPayload, ObserverRes<ResA>)> for F
+where
+    E: Event,
+    F: FnMut(&<E as Event>::Payload, Res<'_, ResA>),
+    ResA: Resource,
+{
+    #[inline]
+    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+
+    #[inline]
+    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
+        access.read::<ResA>(world);
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
+        self(
+            observer_data_arg!(event E),
+            observer_res_arg!(ref event ResA),
+        );
+    }
+}
+
+impl<E, F, ResA> ObserverEach<E, fn(ObserverPayload, ObserverResMut<ResA>)> for F
+where
+    E: Event,
+    F: FnMut(&<E as Event>::Payload, ResMut<'_, ResA>),
+    ResA: Resource,
+{
+    #[inline]
+    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+
+    #[inline]
+    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
+        access.write::<ResA>(world);
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
+        self(
+            observer_data_arg!(event E),
+            observer_res_arg!(mut event ResA),
+        );
+    }
+}
+
+impl<E, F, ResA, ResB> ObserverEach<E, fn(ObserverPayload, ObserverRes<ResA>, ObserverResMut<ResB>)>
+    for F
+where
+    E: Event,
+    F: FnMut(&<E as Event>::Payload, Res<'_, ResA>, ResMut<'_, ResB>),
+    ResA: Resource,
+    ResB: Resource,
+{
+    #[inline]
+    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+
+    #[inline]
+    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
+        access.read::<ResA>(world);
+        access.write::<ResB>(world);
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
+        self(
+            observer_data_arg!(event E),
+            observer_res_arg!(ref event ResA),
+            observer_res_arg!(mut event ResB),
+        );
+    }
 }
 
 macro_rules! impl_observer_each_perms {

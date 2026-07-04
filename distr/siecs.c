@@ -6984,6 +6984,22 @@ void ecs_module_record_observer(ecs_world_t *world, ecs_observer_id_t observer) 
 
 ecs_event_t ecs_event(ecs_world_t *world) { return world->observer_index.event_count++; }
 
+ecs_event_t ecs_event_register(ecs_world_t *world, ecs_event_t *id) {
+    ecs_assert_not_null(world);
+    ecs_assert_not_null(id);
+
+    if (*id == UINT16_MAX) {
+        *id = ecs_event(world);
+        return *id;
+    }
+
+    if (world->observer_index.event_count <= *id) {
+        world->observer_index.event_count = *id + 1;
+    }
+
+    return *id;
+}
+
 ecs_observer_id_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc) {
     ecs_assert_not_null(world);
     ecs_assert(desc->callback != NULL, "Observer callback cannot be NULL");

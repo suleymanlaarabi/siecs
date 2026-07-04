@@ -1,10 +1,11 @@
 use core::ffi::c_char;
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 
 use crate::{
-    raw, Component, Entity, EventId, Observer, ObserverId, Query, Resource, System, SystemId,
+    raw, ChildOf, Component, Disabled, Entity, Event, EventId, Name, Observer, ObserverId, OnAdd,
+    OnRemove, OnSet, Query, RawEvent, Resource, System, SystemId,
 };
 
 pub struct World {
@@ -130,8 +131,34 @@ impl World {
     }
 
     #[inline]
-    pub fn observer(&mut self, event: EventId) -> Observer<'_> {
+    pub fn observe_raw(&mut self, event: EventId) -> Observer<'_, RawEvent> {
         Observer::new(self, event)
+    }
+
+    #[inline]
+    pub fn observer(&mut self, event: EventId) -> Observer<'_, RawEvent> {
+        self.observe_raw(event)
+    }
+
+    #[inline]
+    pub fn observe<E: Event>(&mut self) -> Observer<'_, E> {
+        let event = E::id(self);
+        Observer::new(self, event)
+    }
+
+    #[inline]
+    pub fn on_add<T: Component>(&mut self) -> Observer<'_, OnAdd<T>> {
+        self.observe::<OnAdd<T>>().require::<T>()
+    }
+
+    #[inline]
+    pub fn on_remove<T: Component>(&mut self) -> Observer<'_, OnRemove<T>> {
+        self.observe::<OnRemove<T>>().require::<T>()
+    }
+
+    #[inline]
+    pub fn on_set<T: Component>(&mut self) -> Observer<'_, OnSet<T>> {
+        self.observe::<OnSet<T>>().require::<T>()
     }
 
     #[inline]
@@ -280,6 +307,58 @@ impl World {
     }
 
     #[inline]
+    pub fn disable(&mut self, entity: Entity) {
+        self.add::<Disabled>(entity);
+    }
+
+    #[inline]
+    pub fn enable(&mut self, entity: Entity) {
+        self.remove::<Disabled>(entity);
+    }
+
+    #[inline]
+    pub fn is_disabled(&mut self, entity: Entity) -> bool {
+        self.has::<Disabled>(entity)
+    }
+
+    #[inline]
+    pub fn is_enabled(&mut self, entity: Entity) -> bool {
+        !self.is_disabled(entity)
+    }
+
+    #[inline]
+    pub fn child_of(&mut self, entity: Entity, parent: Entity) {
+        self.set(entity, ChildOf::new(parent));
+    }
+
+    #[inline]
+    pub fn parent(&mut self, entity: Entity) -> Option<Entity> {
+        self.get::<ChildOf>(entity)
+            .map(|child_of| child_of.parent())
+    }
+
+    #[inline]
+    pub fn set_name(&mut self, entity: Entity, name: &str) {
+        let name = CString::new(name).expect("entity name cannot contain NUL bytes");
+        self.set(
+            entity,
+            Name {
+                value: name.into_raw(),
+            },
+        );
+    }
+
+    #[inline]
+    pub fn name(&mut self, entity: Entity) -> Option<&str> {
+        let name = self.get::<Name>(entity)?;
+        if name.value.is_null() {
+            return None;
+        }
+
+        unsafe { CStr::from_ptr(name.value).to_str().ok() }
+    }
+
+    #[inline]
     pub fn set_resource<T: Resource>(&mut self, value: T) {
         let id = T::id(self);
         unsafe { raw::ecs_set_resource_rid(self.raw.as_ptr(), id, (&value as *const T).cast()) }
@@ -300,13 +379,21 @@ impl World {
     #[inline]
     pub fn try_resource<T: Resource>(&mut self) -> Option<&T> {
         let id = T::id(self);
-        unsafe { raw::ecs_try_resource_rid(self.raw.as_ptr(), id).cast::<T>().as_ref() }
+        unsafe {
+            raw::ecs_try_resource_rid(self.raw.as_ptr(), id)
+                .cast::<T>()
+                .as_ref()
+        }
     }
 
     #[inline]
     pub fn try_resource_mut<T: Resource>(&mut self) -> Option<&mut T> {
         let id = T::id(self);
-        unsafe { raw::ecs_try_resource_rid(self.raw.as_ptr(), id).cast::<T>().as_mut() }
+        unsafe {
+            raw::ecs_try_resource_rid(self.raw.as_ptr(), id)
+                .cast::<T>()
+                .as_mut()
+        }
     }
 
     #[inline]
@@ -322,12 +409,17 @@ impl World {
     }
 
     #[inline]
-    pub fn event(&mut self) -> EventId {
+    pub fn alloc_event(&mut self) -> EventId {
         unsafe { raw::ecs_event(self.raw.as_ptr()).into() }
     }
 
     #[inline]
-    pub fn trigger<T>(&mut self, entity: Entity, event: EventId, value: &T) {
+    pub fn event<E: Event>(&mut self) -> EventId {
+        E::id(self)
+    }
+
+    #[inline]
+    pub unsafe fn trigger_raw<T>(&mut self, entity: Entity, event: EventId, value: &T) {
         unsafe {
             raw::ecs_observer_trigger(
                 self.raw.as_ptr(),
@@ -336,6 +428,25 @@ impl World {
                 (value as *const T).cast(),
             );
         }
+    }
+
+    #[inline]
+    pub unsafe fn trigger_id<T>(&mut self, entity: Entity, event: EventId, value: &T) {
+        unsafe { self.trigger_raw(entity, event, value) }
+    }
+
+    #[inline]
+    pub fn trigger<E>(&mut self, entity: Entity, value: E)
+    where
+        E: Event<Payload = E>,
+    {
+        self.trigger_ref::<E>(entity, &value);
+    }
+
+    #[inline]
+    pub fn trigger_ref<E: Event>(&mut self, entity: Entity, value: &E::Payload) {
+        let event = E::id(self);
+        unsafe { self.trigger_raw(entity, event, value) };
     }
 }
 

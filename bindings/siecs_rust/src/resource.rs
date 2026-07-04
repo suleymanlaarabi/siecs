@@ -1,3 +1,5 @@
+use core::ops::{Deref, DerefMut};
+
 use crate::{raw, World};
 
 pub trait Resource: Sized + 'static {
@@ -24,5 +26,65 @@ impl From<raw::ResourceId> for ResourceId {
     #[inline]
     fn from(id: raw::ResourceId) -> Self {
         Self(id)
+    }
+}
+
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct Res<'a, T: Resource> {
+    value: &'a T,
+}
+
+impl<'a, T: Resource> Res<'a, T> {
+    #[inline]
+    pub(crate) const fn new(value: &'a T) -> Self {
+        Self { value }
+    }
+
+    #[inline]
+    pub const fn get(self) -> &'a T {
+        self.value
+    }
+}
+
+impl<T: Resource> Deref for Res<'_, T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.value
+    }
+}
+
+#[repr(transparent)]
+pub struct ResMut<'a, T: Resource> {
+    value: &'a mut T,
+}
+
+impl<'a, T: Resource> ResMut<'a, T> {
+    #[inline]
+    pub(crate) fn new(value: &'a mut T) -> Self {
+        Self { value }
+    }
+
+    #[inline]
+    pub fn get(self) -> &'a mut T {
+        self.value
+    }
+}
+
+impl<T: Resource> Deref for ResMut<'_, T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.value
+    }
+}
+
+impl<T: Resource> DerefMut for ResMut<'_, T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.value
     }
 }

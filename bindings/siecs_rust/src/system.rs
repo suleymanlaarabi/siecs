@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 use core::mem::{needs_drop, size_of, MaybeUninit};
 
-use crate::query::{append_term, validate_returned_fields, QueryEach};
+use crate::query::{append_term, validate_returned_fields, QueryEach, ResourceAccess};
 use crate::{raw, Component, Entity, World, WorldRef};
 
 pub use raw::Phase;
@@ -147,6 +147,8 @@ impl<'world> System<'world> {
         let _ = func;
 
         F::append_terms(self.world, &mut self.desc.query, &mut self.term_index);
+        let mut resource_access = ResourceAccess::default();
+        F::validate_resources(self.world, &mut resource_access);
         validate_returned_fields(&self.desc.query);
 
         self.desc.name = self.world.retain_system_name(&self.name);

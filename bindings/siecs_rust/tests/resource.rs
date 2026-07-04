@@ -19,10 +19,7 @@ unsafe extern "C" fn resource_on_set(_world: *mut raw::WorldRaw, ptr: *const cor
     RESOURCE_SET.fetch_add(1, Ordering::SeqCst);
 }
 
-unsafe extern "C" fn resource_on_remove(
-    _world: *mut raw::WorldRaw,
-    ptr: *const core::ffi::c_void,
-) {
+unsafe extern "C" fn resource_on_remove(_world: *mut raw::WorldRaw, ptr: *const core::ffi::c_void) {
     assert_eq!((*ptr.cast::<HookedResource>()).value, 7);
     RESOURCE_REMOVE.fetch_add(1, Ordering::SeqCst);
 }

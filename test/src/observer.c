@@ -143,3 +143,26 @@ void observer_on_remove_runs_when_entity_is_killed(void) {
 
     ecs_fini(world);
 }
+
+void observer_event_register_reserves_static_ids(void) {
+    ecs_event_t event_a = UINT16_MAX;
+    ecs_event_t event_b = UINT16_MAX;
+
+    ecs_world_t *first = ecs_init();
+    ecs_event_t first_a = ecs_event_register(first, &event_a);
+    ecs_event_t first_b = ecs_event_register(first, &event_b);
+    test_assert(first_a != first_b);
+    ecs_fini(first);
+
+    ecs_world_t *second = ecs_init();
+    ecs_event_t second_b = ecs_event_register(second, &event_b);
+    ecs_event_t second_a = ecs_event_register(second, &event_a);
+    ecs_event_t next = ecs_event(second);
+
+    test_int(first_a, second_a);
+    test_int(first_b, second_b);
+    test_assert(next > first_a);
+    test_assert(next > first_b);
+
+    ecs_fini(second);
+}

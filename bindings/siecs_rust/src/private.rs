@@ -4,10 +4,12 @@ use crate::raw;
 
 pub struct StaticComponentId(UnsafeCell<raw::ComponentId>);
 pub struct StaticResourceId(UnsafeCell<raw::ResourceId>);
+pub struct StaticEventId(UnsafeCell<raw::EventId>);
 pub struct StaticModuleId(UnsafeCell<raw::ModuleId>);
 
 unsafe impl Sync for StaticComponentId {}
 unsafe impl Sync for StaticResourceId {}
+unsafe impl Sync for StaticEventId {}
 unsafe impl Sync for StaticModuleId {}
 
 impl StaticComponentId {
@@ -30,6 +32,18 @@ impl StaticResourceId {
 
     #[inline]
     pub fn as_mut_ptr(&self) -> *mut raw::ResourceId {
+        self.0.get()
+    }
+}
+
+impl StaticEventId {
+    #[inline]
+    pub const fn new() -> Self {
+        Self(UnsafeCell::new(raw::EventId::MAX))
+    }
+
+    #[inline]
+    pub fn as_mut_ptr(&self) -> *mut raw::EventId {
         self.0.get()
     }
 }

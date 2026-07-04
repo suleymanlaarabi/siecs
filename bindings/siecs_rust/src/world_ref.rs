@@ -1,6 +1,7 @@
 use core::marker::PhantomData;
+use std::ffi::{CStr, CString};
 
-use crate::{raw, Component, Entity, Resource};
+use crate::{raw, ChildOf, Component, Disabled, Entity, Event, EventId, Name, Resource};
 
 #[derive(Clone, Copy)]
 pub struct WorldRef<'world> {
@@ -103,6 +104,58 @@ impl<'world> WorldRef<'world> {
     }
 
     #[inline]
+    pub fn disable(&self, entity: Entity) {
+        self.add::<Disabled>(entity);
+    }
+
+    #[inline]
+    pub fn enable(&self, entity: Entity) {
+        self.remove::<Disabled>(entity);
+    }
+
+    #[inline]
+    pub fn is_disabled(&self, entity: Entity) -> bool {
+        self.has::<Disabled>(entity)
+    }
+
+    #[inline]
+    pub fn is_enabled(&self, entity: Entity) -> bool {
+        !self.is_disabled(entity)
+    }
+
+    #[inline]
+    pub fn child_of(&self, entity: Entity, parent: Entity) {
+        self.set(entity, ChildOf::new(parent));
+    }
+
+    #[inline]
+    pub fn parent(&self, entity: Entity) -> Option<Entity> {
+        self.get::<ChildOf>(entity)
+            .map(|child_of| child_of.parent())
+    }
+
+    #[inline]
+    pub fn set_name(&self, entity: Entity, name: &str) {
+        let name = CString::new(name).expect("entity name cannot contain NUL bytes");
+        self.set(
+            entity,
+            Name {
+                value: name.into_raw(),
+            },
+        );
+    }
+
+    #[inline]
+    pub fn name(&self, entity: Entity) -> Option<&'world str> {
+        let name = self.get::<Name>(entity)?;
+        if name.value.is_null() {
+            return None;
+        }
+
+        unsafe { CStr::from_ptr(name.value).to_str().ok() }
+    }
+
+    #[inline]
     pub fn set_resource<T: Resource>(&self, value: T) {
         let id = unsafe { T::id_raw(self.raw) };
         unsafe { raw::ecs_set_resource_rid(self.raw, id, (&value as *const T).cast()) }
@@ -142,5 +195,35 @@ impl<'world> WorldRef<'world> {
     pub fn remove_resource<T: Resource>(&self) {
         let id = unsafe { T::id_raw(self.raw) };
         unsafe { raw::ecs_remove_resource_rid(self.raw, id) }
+    }
+
+    #[inline]
+    pub fn event<E: Event>(&self) -> EventId {
+        unsafe { E::id_raw(self.raw).into() }
+    }
+
+    #[inline]
+    pub unsafe fn trigger_raw<T>(&self, entity: Entity, event: EventId, value: &T) {
+        unsafe {
+            raw::ecs_observer_trigger(
+                self.raw,
+                entity.id(),
+                event.raw(),
+                (value as *const T).cast(),
+            );
+        }
+    }
+
+    #[inline]
+    pub fn trigger<E>(&self, entity: Entity, value: E)
+    where
+        E: Event<Payload = E>,
+    {
+        self.trigger_ref::<E>(entity, &value);
+    }
+
+    #[inline]
+    pub fn trigger_ref<E: Event>(&self, entity: Entity, value: &E::Payload) {
+        unsafe { self.trigger_raw(entity, self.event::<E>(), value) }
     }
 }

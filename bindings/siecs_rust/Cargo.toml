@@ -12,6 +12,7 @@ members = ["siecs_derive"]
 
 [dependencies]
 siecs_derive = { path = "siecs_derive", version = "0.1.0" }
+variadics_please = "2.0.0"
 
 [build-dependencies]
 cc = "1"

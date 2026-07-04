@@ -104,6 +104,7 @@ void observer_enable(void);
 void observer_skips_disabled_by_default(void);
 void observer_can_match_disabled_when_requested(void);
 void observer_on_remove_runs_when_entity_is_killed(void);
+void observer_event_register_reserves_static_ids(void);
 
 // Testsuite 'module'
 void module_import_registers_runtime(void);
@@ -466,6 +467,10 @@ bake_test_case observer_testcases[] = {
     {
         "on_remove_runs_when_entity_is_killed",
         observer_on_remove_runs_when_entity_is_killed
+    },
+    {
+        "event_register_reserves_static_ids",
+        observer_event_register_reserves_static_ids
     }
 };
 
@@ -600,7 +605,7 @@ static bake_test_suite suites[] = {
         "observer",
         NULL,
         NULL,
-        4,
+        5,
         observer_testcases
     },
     {

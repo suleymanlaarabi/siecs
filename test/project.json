@@ -140,7 +140,8 @@
           "enable",
           "skips_disabled_by_default",
           "can_match_disabled_when_requested",
-          "on_remove_runs_when_entity_is_killed"
+          "on_remove_runs_when_entity_is_killed",
+          "event_register_reserves_static_ids"
         ]
       },
       {

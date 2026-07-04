@@ -1,8 +1,6 @@
 use core::ffi::c_void;
 
-use super::{
-    query::QueryDesc, world::WorldRaw, EntityId, EventId, ObserverId,
-};
+use super::{query::QueryDesc, world::WorldRaw, EntityId, EventId, ObserverId};
 
 pub const ECS_ON_ADD: EventId = 0;
 pub const ECS_ON_REMOVE: EventId = 1;
@@ -42,6 +40,7 @@ impl Default for ObserverDesc {
 
 extern "C" {
     pub fn ecs_event(world: *mut WorldRaw) -> EventId;
+    pub fn ecs_event_register(world: *mut WorldRaw, id: *mut EventId) -> EventId;
     pub fn ecs_observer_init(world: *mut WorldRaw, desc: *const ObserverDesc) -> ObserverId;
     pub fn ecs_observer_enable(world: *mut WorldRaw, id: ObserverId);
     pub fn ecs_observer_disable(world: *mut WorldRaw, id: ObserverId);

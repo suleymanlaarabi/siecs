@@ -89,6 +89,36 @@ pub fn derive_resource(input: TokenStream) -> TokenStream {
     .into()
 }
 
+#[proc_macro_derive(Event, attributes(event))]
+pub fn derive_event(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let ident = input.ident;
+    let attrs = EventAttrs::parse(&input.attrs);
+    let _name = attrs.name.unwrap_or_else(|| ident.to_string());
+
+    quote! {
+        impl #ident {
+            #[inline]
+            pub fn id(world: &mut ::siecs::World) -> ::siecs::EventId {
+                <Self as ::siecs::Event>::id(world)
+            }
+        }
+
+        impl ::siecs::Event for #ident {
+            type Payload = #ident;
+
+            #[inline]
+            unsafe fn id_raw(world: *mut ::siecs::raw::WorldRaw) -> ::siecs::raw::EventId {
+                static ID: ::siecs::private::StaticEventId =
+                    ::siecs::private::StaticEventId::new();
+
+                ::siecs::raw::ecs_event_register(world, ID.as_mut_ptr())
+            }
+        }
+    }
+    .into()
+}
+
 #[derive(Default)]
 struct ComponentAttrs {
     name: Option<String>,
@@ -157,6 +187,32 @@ struct ResourceAttrs {
     name: Option<String>,
     on_set: Option<Path>,
     on_remove: Option<Path>,
+}
+
+#[derive(Default)]
+struct EventAttrs {
+    name: Option<String>,
+}
+
+impl EventAttrs {
+    fn parse(attrs: &[Attribute]) -> Self {
+        let mut out = Self::default();
+
+        for attr in attrs.iter().filter(|attr| attr.path().is_ident("event")) {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("name") {
+                    let value = meta.value()?.parse::<LitStr>()?;
+                    out.name = Some(value.value());
+                    return Ok(());
+                }
+
+                Err(meta.error("unsupported event attribute"))
+            })
+            .expect("invalid event attribute");
+        }
+
+        out
+    }
 }
 
 impl ResourceAttrs {
