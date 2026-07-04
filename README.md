@@ -15,7 +15,7 @@
 > [!CAUTION]
 > **Experimental project.**
 >
-> siecs is in active development. Expect breaking changes and incomplete features until the first stable release.
+> Siecs is under active development and has not yet been thoroughly tested. Expect breaking changes, bugs, and incomplete features until the first stable release.
 
 ## Why C?
 
