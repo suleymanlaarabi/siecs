@@ -48,6 +48,7 @@ void ecs_run_system(ecs_world_t *world, ecs_system_id_t system) {
     if (sys->qid != ECS_SYSTEM_NO_QUERY) {
         ecs_iter_t it = ecs_query_iter(world, sys->qid);
         it.user_data = sys->user_data;
+        it.delta_time = world->delta_time;
         while (ecs_iter_next(&it)) {
             sys->callback(&it);
         }
@@ -101,13 +102,6 @@ bool ecs_progress(ecs_world_t *world) {
 
     double frame_start = now_sec();
 
-    if (!world->did_start) {
-        ecs_run_phase(world, EcsPreStart);
-        ecs_run_phase(world, EcsStart);
-        ecs_run_phase(world, EcsPostStart);
-        world->did_start = true;
-    }
-
     if (world->last_time == 0.0) {
         world->delta_time = 0.0;
     } else {
@@ -116,9 +110,17 @@ bool ecs_progress(ecs_world_t *world) {
 
     world->last_time = frame_start;
 
+    if (!world->did_start) {
+        ecs_run_phase(world, EcsPreStart);
+        ecs_run_phase(world, EcsStart);
+        ecs_run_phase(world, EcsPostStart);
+        world->did_start = true;
+    }
+
     for (ecs_phase_t phase = EcsOnLoad; phase < EcsPhaseCount; phase++) {
         ecs_run_phase(world, phase);
     }
+
     if (world->features.rest) {
         sihttp_server_poll(world->server);
     }
