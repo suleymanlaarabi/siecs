@@ -69,3 +69,5 @@ void ecs_fini(ecs_world_t *world) {
 
     free(world);
 }
+
+void ecs_quit(ecs_world_t *world) { world->exit = true; }

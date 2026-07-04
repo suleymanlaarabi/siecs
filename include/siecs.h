@@ -315,6 +315,9 @@ SIECS_API ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features
 /* Destroy a world and all ECS storage owned by it. world must not be NULL. */
 SIECS_API void ecs_fini(ecs_world_t *world);
 
+/* Request that future ecs_progress calls return false. */
+SIECS_API void ecs_quit(ecs_world_t *world);
+
 /*
  * Declare a component type and its public component id.
  *
@@ -629,7 +632,8 @@ SIECS_API void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_com
  */
 SIECS_API void
 ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
-SIECS_API void ecs_move_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, void *data);
+SIECS_API void
+ecs_move_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, void *data);
 
 /*
  * Declare and define a resource type.

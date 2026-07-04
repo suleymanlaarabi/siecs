@@ -126,6 +126,11 @@ static void count_tag_system(ecs_iter_t *it) {
     system_calls++;
 }
 
+static void quit_system(ecs_iter_t *it) {
+    ecs_quit(it->world);
+    system_calls++;
+}
+
 static ecs_entity_t create_system_entity(ecs_world_t *world, int value) {
     ecs_entity_t entity = ecs_new(world);
     ecs_set(world, entity, SystemPosition, { value });
@@ -584,6 +589,27 @@ void system_manual_defer_coalesces_to_final_state(void) {
     test_assert(ecs_has(world, entity, SystemBatchC));
     test_int(10, ecs_get(world, entity, SystemBatchB)->value);
     test_int(20, ecs_get(world, entity, SystemBatchC)->value);
+
+    ecs_fini(world);
+}
+
+void system_quit_makes_progress_return_false(void) {
+    reset_system_test_state();
+
+    ecs_world_t *world = ecs_init();
+    test_not_null(world);
+
+    ecs_system(
+        world,
+        {
+            .name = "Quit",
+            .phase = EcsOnUpdate,
+            .callback = quit_system,
+        }
+    );
+
+    test_false(ecs_progress(world));
+    test_uint(1, system_calls);
 
     ecs_fini(world);
 }

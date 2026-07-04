@@ -134,7 +134,8 @@
           "can_run_on_disabled_when_requested",
           "defers_structural_changes_until_iteration_end",
           "flushes_between_ordered_systems",
-          "manual_defer_coalesces_to_final_state"
+          "manual_defer_coalesces_to_final_state",
+          "quit_makes_progress_return_false"
         ]
       },
       {

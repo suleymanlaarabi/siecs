@@ -8096,6 +8096,8 @@ void ecs_fini(ecs_world_t *world) {
     free(world);
 }
 
+void ecs_quit(ecs_world_t *world) { world->exit = true; }
+
 #ifndef SIECS_ADDONS_REST_INTERNAL_H
 #define SIECS_ADDONS_REST_INTERNAL_H
 
