@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 use core::mem::{needs_drop, size_of, MaybeUninit};
 
-use crate::query::{append_term, validate_returned_fields, QueryEach, ResourceAccess};
+use crate::query::{append_term, validate_returned_fields, ParamError, QueryEach, ResourceAccess};
 use crate::{raw, Component, Entity, World, WorldRef};
 
 pub use raw::Phase;
@@ -136,7 +136,15 @@ impl<'world> System<'world> {
     }
 
     #[inline]
-    pub fn each<F, Marker>(mut self, func: F) -> SystemId
+    pub fn each<F, Marker>(self, func: F) -> SystemId
+    where
+        F: QueryEach<Marker> + 'static,
+    {
+        self.try_each(func).unwrap_or_else(|err| panic!("{err}"))
+    }
+
+    #[inline]
+    pub fn try_each<F, Marker>(mut self, func: F) -> Result<SystemId, ParamError>
     where
         F: QueryEach<Marker> + 'static,
     {
@@ -146,21 +154,22 @@ impl<'world> System<'world> {
         );
         let _ = func;
 
-        F::append_terms(self.world, &mut self.desc.query, &mut self.term_index);
+        F::append_terms(self.world, &mut self.desc.query, &mut self.term_index)?;
         let mut resource_access = ResourceAccess::default();
-        F::validate_resources(self.world, &mut resource_access);
-        validate_returned_fields(&self.desc.query);
+        F::validate_resources(self.world, &mut resource_access)?;
+        validate_returned_fields(&self.desc.query)?;
 
         self.desc.name = self.world.retain_system_name(&self.name);
         self.desc.callback = Some(system_callback::<F, Marker>);
 
-        unsafe { raw::ecs_system_init(self.world.as_raw_mut(), &self.desc).into() }
+        Ok(unsafe { raw::ecs_system_init(self.world.as_raw_mut(), &self.desc).into() })
     }
 
     #[inline]
     fn append_component<T: Component>(&mut self, access: raw::TermAccess) {
         let id = T::id(self.world);
-        append_term(&mut self.desc.query, &mut self.term_index, id, access);
+        append_term(&mut self.desc.query, &mut self.term_index, id, access)
+            .expect("too many query terms");
     }
 }
 

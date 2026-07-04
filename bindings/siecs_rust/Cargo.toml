@@ -4,8 +4,21 @@ version = "0.1.0"
 edition = "2021"
 links = "siecs"
 description = "Rust bindings for SIECS"
+readme = "README.md"
 license = "MIT"
 repository = "https://github.com/suleymanlaarabi/siecs"
+homepage = "https://github.com/suleymanlaarabi/siecs"
+documentation = "https://docs.rs/siecs"
+keywords = ["ecs", "entity-component-system", "ffi", "gamedev"]
+categories = ["data-structures", "game-development", "ecs", "game-engines"]
+include = [
+    "Cargo.toml",
+    "README.md",
+    "build.rs",
+    "src/**",
+    "tests/**",
+    "vendor/**",
+]
 
 [workspace]
 members = ["siecs_derive"]

@@ -2,7 +2,7 @@ BAKE_HOME := $(shell bake env | sed -n 's/^BAKE_HOME=//p')
 DEPS_INCLUDE := -I$(BAKE_HOME)/include
 QUIET_BAKE = grep -Ev '^\[[[:space:]]*(test|build|run|runall|[0-9]+%)|^cmd:|^path:'
 
-.PHONY: clean bench clean-rust test test-c test-c-release test-cpp test-cpp-release test-leaks test-rust update-rust-vendor distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release act-ci act-docs act
+.PHONY: clean bench clean-rust test test-c test-c-release test-cpp test-cpp-release test-leaks test-rust update-rust-vendor distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release act-ci act-rust act-docs act
 
 ACT ?= act
 ACT_PLATFORM ?= ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
@@ -90,6 +90,10 @@ check-distr-cpp-standalone:
 
 act-ci:
 	@$(ACT) push -W .github/workflows/ci-act.yml -P $(ACT_PLATFORM)
+	@$(ACT) push -W .github/workflows/rust.yml -P $(ACT_PLATFORM)
+
+act-rust:
+	@$(ACT) push -W .github/workflows/rust.yml -P $(ACT_PLATFORM)
 
 act-docs:
 	@$(ACT) push -W .github/workflows/docs.yml -P $(ACT_PLATFORM)

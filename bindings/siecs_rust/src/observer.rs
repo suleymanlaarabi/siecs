@@ -2,7 +2,7 @@ use core::marker::PhantomData;
 use core::mem::{needs_drop, size_of, MaybeUninit};
 
 use crate::query::{
-    append_term, resource_mut, resource_ref, validate_returned_fields, ResourceAccess,
+    append_term, resource_mut, resource_ref, validate_returned_fields, ParamError, ResourceAccess,
 };
 use crate::{raw, Component, Entity, Res, ResMut, Resource, World, WorldRef};
 
@@ -14,6 +14,42 @@ impl EventId {
     #[inline]
     pub const fn raw(self) -> raw::EventId {
         self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[repr(transparent)]
+pub struct TypedEvent<P> {
+    id: raw::EventId,
+    _payload: PhantomData<fn() -> P>,
+}
+
+impl<P> TypedEvent<P> {
+    #[inline]
+    pub(crate) const fn new(id: raw::EventId) -> Self {
+        Self {
+            id,
+            _payload: PhantomData,
+        }
+    }
+
+    #[inline]
+    pub const fn raw(self) -> raw::EventId {
+        self.id
+    }
+
+    #[inline]
+    pub const fn id(self) -> EventId {
+        EventId(self.id)
+    }
+}
+
+impl<P: 'static> Event for TypedEvent<P> {
+    type Payload = P;
+
+    #[inline]
+    unsafe fn id_raw(_world: *mut raw::WorldRaw) -> raw::EventId {
+        panic!("typed event handles must be passed with World::observe_typed")
     }
 }
 
@@ -214,7 +250,15 @@ impl<'world, E: Event> Observer<'world, E> {
     }
 
     #[inline]
-    pub fn each<F, Marker>(mut self, func: F) -> ObserverId
+    pub fn each<F, Marker>(self, func: F) -> ObserverId
+    where
+        F: ObserverEach<E, Marker> + 'static,
+    {
+        self.try_each(func).unwrap_or_else(|err| panic!("{err}"))
+    }
+
+    #[inline]
+    pub fn try_each<F, Marker>(mut self, func: F) -> Result<ObserverId, ParamError>
     where
         F: ObserverEach<E, Marker> + 'static,
     {
@@ -224,27 +268,65 @@ impl<'world, E: Event> Observer<'world, E> {
         );
         let _ = func;
 
-        F::append_terms(self.world, &mut self.desc.query, &mut self.term_index);
+        F::append_terms(self.world, &mut self.desc.query, &mut self.term_index)?;
         let mut resource_access = ResourceAccess::default();
-        F::validate_resources(self.world, &mut resource_access);
-        validate_returned_fields(&self.desc.query);
+        F::validate_resources(self.world, &mut resource_access)?;
+        validate_returned_fields(&self.desc.query)?;
 
         self.desc.callback = Some(observer_callback::<E, F, Marker>);
 
-        unsafe { raw::ecs_observer_init(self.world.as_raw_mut(), &self.desc).into() }
+        Ok(unsafe { raw::ecs_observer_init(self.world.as_raw_mut(), &self.desc).into() })
+    }
+
+    #[inline]
+    pub fn each_boxed<F, Marker>(self, func: F) -> ObserverId
+    where
+        F: ObserverEach<E, Marker> + 'static,
+    {
+        self.try_each_boxed(func)
+            .unwrap_or_else(|err| panic!("{err}"))
+    }
+
+    #[inline]
+    pub fn try_each_boxed<F, Marker>(mut self, func: F) -> Result<ObserverId, ParamError>
+    where
+        F: ObserverEach<E, Marker> + 'static,
+    {
+        F::append_terms(self.world, &mut self.desc.query, &mut self.term_index)?;
+        let mut resource_access = ResourceAccess::default();
+        F::validate_resources(self.world, &mut resource_access)?;
+        validate_returned_fields(&self.desc.query)?;
+
+        let ptr = Box::into_raw(Box::new(func));
+        self.desc.user_data = ptr as usize;
+        self.desc.callback = Some(observer_boxed_callback::<E, F, Marker>);
+
+        let id = unsafe { raw::ecs_observer_init(self.world.as_raw_mut(), &self.desc).into() };
+        self.world.retain_observer_callback(ptr);
+        Ok(id)
     }
 
     #[inline]
     fn append_component<T: Component>(&mut self, access: raw::TermAccess) {
         let id = T::id(self.world);
-        append_term(&mut self.desc.query, &mut self.term_index, id, access);
+        append_term(&mut self.desc.query, &mut self.term_index, id, access)
+            .expect("too many query terms");
     }
 }
 
 #[doc(hidden)]
 pub trait ObserverEach<E: Event, Marker> {
-    fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16);
-    fn validate_resources(_world: &mut World, _access: &mut ResourceAccess) {}
+    fn append_terms(
+        world: &mut World,
+        desc: &mut raw::QueryDesc,
+        term_index: &mut u16,
+    ) -> Result<(), ParamError>;
+    fn validate_resources(
+        _world: &mut World,
+        _access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
     unsafe fn run(&mut self, event: *mut raw::ObserverEvent);
 }
 
@@ -261,6 +343,18 @@ where
     F::run(&mut func, event);
 }
 
+unsafe extern "C" fn observer_boxed_callback<E, F, Marker>(event: *mut raw::ObserverEvent)
+where
+    E: Event,
+    F: ObserverEach<E, Marker> + 'static,
+{
+    debug_assert!(!event.is_null());
+
+    let func = (*event).user_data as *mut F;
+    debug_assert!(!func.is_null());
+    F::run(&mut *func, event);
+}
+
 #[doc(hidden)]
 pub struct ObserverPayload;
 
@@ -271,10 +365,22 @@ pub struct ObserverRef<T>(PhantomData<T>);
 pub struct ObserverMut<T>(PhantomData<T>);
 
 #[doc(hidden)]
+pub struct ObserverOptRef<T>(PhantomData<T>);
+
+#[doc(hidden)]
+pub struct ObserverOptMut<T>(PhantomData<T>);
+
+#[doc(hidden)]
 pub struct ObserverRes<T>(PhantomData<T>);
 
 #[doc(hidden)]
 pub struct ObserverResMut<T>(PhantomData<T>);
+
+#[doc(hidden)]
+pub struct ObserverOptRes<T>(PhantomData<T>);
+
+#[doc(hidden)]
+pub struct ObserverOptResMut<T>(PhantomData<T>);
 
 macro_rules! observer_marker_ty {
     (ref $component:ident) => {
@@ -282,6 +388,12 @@ macro_rules! observer_marker_ty {
     };
     (mut $component:ident) => {
         ObserverMut<$component>
+    };
+    (opt_ref $component:ident) => {
+        ObserverOptRef<$component>
+    };
+    (opt_mut $component:ident) => {
+        ObserverOptMut<$component>
     };
 }
 
@@ -292,6 +404,12 @@ macro_rules! observer_marker_arg {
     (mut $component:ident) => {
         &mut $component
     };
+    (opt_ref $component:ident) => {
+        Option<&$component>
+    };
+    (opt_mut $component:ident) => {
+        Option<&mut $component>
+    };
 }
 
 macro_rules! observer_access {
@@ -300,6 +418,12 @@ macro_rules! observer_access {
     };
     (mut) => {
         raw::TermAccess::InOut
+    };
+    (opt_ref) => {
+        raw::TermAccess::InOptional
+    };
+    (opt_mut) => {
+        raw::TermAccess::InOutOptional
     };
 }
 
@@ -320,6 +444,34 @@ macro_rules! observer_arg {
             &mut *raw::ecs_get_cid((*$event).world, (*$event).entity, id).cast::<$component>()
         }
     }};
+    (opt_ref $event:ident $component:ident) => {{
+        if size_of::<$component>() == 0 {
+            Some(&*core::ptr::NonNull::<$component>::dangling().as_ptr())
+        } else {
+            let id = $component::id_raw((*$event).world);
+            if raw::ecs_has_cid((*$event).world, (*$event).entity, id) {
+                raw::ecs_get_cid((*$event).world, (*$event).entity, id)
+                    .cast::<$component>()
+                    .as_ref()
+            } else {
+                None
+            }
+        }
+    }};
+    (opt_mut $event:ident $component:ident) => {{
+        if size_of::<$component>() == 0 {
+            Some(&mut *core::ptr::NonNull::<$component>::dangling().as_ptr())
+        } else {
+            let id = $component::id_raw((*$event).world);
+            if raw::ecs_has_cid_owned((*$event).world, (*$event).entity, id) {
+                raw::ecs_try_get_cid((*$event).world, (*$event).entity, id)
+                    .cast::<$component>()
+                    .as_mut()
+            } else {
+                None
+            }
+        }
+    }};
 }
 
 macro_rules! observer_data_arg {
@@ -335,6 +487,20 @@ macro_rules! observer_res_arg {
     (mut $event:ident $resource:ident) => {{
         resource_mut::<$resource>((*$event).world)
     }};
+    (opt_ref $event:ident $resource:ident) => {{
+        let id = $resource::id_raw((*$event).world);
+        raw::ecs_try_resource_rid((*$event).world, id)
+            .cast::<$resource>()
+            .as_ref()
+            .map(Res::new)
+    }};
+    (opt_mut $event:ident $resource:ident) => {{
+        let id = $resource::id_raw((*$event).world);
+        raw::ecs_try_resource_rid((*$event).world, id)
+            .cast::<$resource>()
+            .as_mut()
+            .map(ResMut::new)
+    }};
 }
 
 macro_rules! impl_observer_each {
@@ -346,11 +512,12 @@ macro_rules! impl_observer_each {
             $($component: Component),+
         {
             #[inline]
-            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) -> Result<(), ParamError> {
                 $(
                     let id = $component::id(world);
-                    append_term(desc, term_index, id, observer_access!($kind));
+                    append_term(desc, term_index, id, observer_access!($kind))?;
                 )+
+                Ok(())
             }
 
             #[inline]
@@ -366,11 +533,12 @@ macro_rules! impl_observer_each {
             $($component: Component),+
         {
             #[inline]
-            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) -> Result<(), ParamError> {
                 $(
                     let id = $component::id(world);
-                    append_term(desc, term_index, id, observer_access!($kind));
+                    append_term(desc, term_index, id, observer_access!($kind))?;
                 )+
+                Ok(())
             }
 
             #[inline]
@@ -389,17 +557,19 @@ macro_rules! impl_observer_each {
             $($component: Component),+
         {
             #[inline]
-            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) -> Result<(), ParamError> {
                 $(
                     let id = $component::id(world);
-                    append_term(desc, term_index, id, observer_access!($kind));
+                    append_term(desc, term_index, id, observer_access!($kind))?;
                 )+
+                Ok(())
             }
 
             #[inline]
-            fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
-                access.read::<ResA>(world);
-                access.write::<ResB>(world);
+            fn validate_resources(world: &mut World, access: &mut ResourceAccess) -> Result<(), ParamError> {
+                access.read::<ResA>(world)?;
+                access.write::<ResB>(world)?;
+                Ok(())
             }
 
             #[inline]
@@ -421,7 +591,13 @@ where
     F: FnMut(&<E as Event>::Payload),
 {
     #[inline]
-    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+    fn append_terms(
+        _world: &mut World,
+        _desc: &mut raw::QueryDesc,
+        _term_index: &mut u16,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
 
     #[inline]
     unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
@@ -435,7 +611,13 @@ where
     F: FnMut(ObserverEvent<'_>),
 {
     #[inline]
-    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+    fn append_terms(
+        _world: &mut World,
+        _desc: &mut raw::QueryDesc,
+        _term_index: &mut u16,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
 
     #[inline]
     unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
@@ -449,11 +631,40 @@ where
     F: FnMut(ObserverEvent<'_>, &<E as Event>::Payload),
 {
     #[inline]
-    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+    fn append_terms(
+        _world: &mut World,
+        _desc: &mut raw::QueryDesc,
+        _term_index: &mut u16,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
 
     #[inline]
     unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
         self(ObserverEvent::from_raw(event), observer_data_arg!(event E));
+    }
+}
+
+impl<E, F> ObserverEach<E, fn(Entity, ObserverPayload)> for F
+where
+    E: Event,
+    F: FnMut(Entity, &<E as Event>::Payload),
+{
+    #[inline]
+    fn append_terms(
+        _world: &mut World,
+        _desc: &mut raw::QueryDesc,
+        _term_index: &mut u16,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
+        self(
+            Entity::from_raw((*event).entity),
+            observer_data_arg!(event E),
+        );
     }
 }
 
@@ -463,9 +674,13 @@ where
     A: Component,
 {
     #[inline]
-    fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+    fn append_terms(
+        world: &mut World,
+        desc: &mut raw::QueryDesc,
+        term_index: &mut u16,
+    ) -> Result<(), ParamError> {
         let id = A::id(world);
-        append_term(desc, term_index, id, raw::TermAccess::In);
+        append_term(desc, term_index, id, raw::TermAccess::In)
     }
 
     #[inline]
@@ -480,9 +695,13 @@ where
     A: Component,
 {
     #[inline]
-    fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+    fn append_terms(
+        world: &mut World,
+        desc: &mut raw::QueryDesc,
+        term_index: &mut u16,
+    ) -> Result<(), ParamError> {
         let id = A::id(world);
-        append_term(desc, term_index, id, raw::TermAccess::InOut);
+        append_term(desc, term_index, id, raw::TermAccess::InOut)
     }
 
     #[inline]
@@ -498,11 +717,20 @@ where
     ResA: Resource,
 {
     #[inline]
-    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+    fn append_terms(
+        _world: &mut World,
+        _desc: &mut raw::QueryDesc,
+        _term_index: &mut u16,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
 
     #[inline]
-    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
-        access.read::<ResA>(world);
+    fn validate_resources(
+        world: &mut World,
+        access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        access.read::<ResA>(world)
     }
 
     #[inline]
@@ -521,11 +749,20 @@ where
     ResA: Resource,
 {
     #[inline]
-    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+    fn append_terms(
+        _world: &mut World,
+        _desc: &mut raw::QueryDesc,
+        _term_index: &mut u16,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
 
     #[inline]
-    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
-        access.write::<ResA>(world);
+    fn validate_resources(
+        world: &mut World,
+        access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        access.write::<ResA>(world)
     }
 
     #[inline]
@@ -533,6 +770,70 @@ where
         self(
             observer_data_arg!(event E),
             observer_res_arg!(mut event ResA),
+        );
+    }
+}
+
+impl<E, F, ResA> ObserverEach<E, fn(ObserverPayload, ObserverOptRes<ResA>)> for F
+where
+    E: Event,
+    F: FnMut(&<E as Event>::Payload, Option<Res<'_, ResA>>),
+    ResA: Resource,
+{
+    #[inline]
+    fn append_terms(
+        _world: &mut World,
+        _desc: &mut raw::QueryDesc,
+        _term_index: &mut u16,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
+
+    #[inline]
+    fn validate_resources(
+        world: &mut World,
+        access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        access.optional_read::<ResA>(world)
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
+        self(
+            observer_data_arg!(event E),
+            observer_res_arg!(opt_ref event ResA),
+        );
+    }
+}
+
+impl<E, F, ResA> ObserverEach<E, fn(ObserverPayload, ObserverOptResMut<ResA>)> for F
+where
+    E: Event,
+    F: FnMut(&<E as Event>::Payload, Option<ResMut<'_, ResA>>),
+    ResA: Resource,
+{
+    #[inline]
+    fn append_terms(
+        _world: &mut World,
+        _desc: &mut raw::QueryDesc,
+        _term_index: &mut u16,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
+
+    #[inline]
+    fn validate_resources(
+        world: &mut World,
+        access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        access.optional_write::<ResA>(world)
+    }
+
+    #[inline]
+    unsafe fn run(&mut self, event: *mut raw::ObserverEvent) {
+        self(
+            observer_data_arg!(event E),
+            observer_res_arg!(opt_mut event ResA),
         );
     }
 }
@@ -546,12 +847,22 @@ where
     ResB: Resource,
 {
     #[inline]
-    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+    fn append_terms(
+        _world: &mut World,
+        _desc: &mut raw::QueryDesc,
+        _term_index: &mut u16,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
 
     #[inline]
-    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
-        access.read::<ResA>(world);
-        access.write::<ResB>(world);
+    fn validate_resources(
+        world: &mut World,
+        access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        access.read::<ResA>(world)?;
+        access.write::<ResB>(world)?;
+        Ok(())
     }
 
     #[inline]
@@ -577,10 +888,14 @@ macro_rules! impl_observer_each_perms_inner {
     (($($acc:tt)*) ($component:ident)) => {
         impl_observer_each_perms_inner!(($($acc)* ($component, ref),) ());
         impl_observer_each_perms_inner!(($($acc)* ($component, mut),) ());
+        impl_observer_each_perms_inner!(($($acc)* ($component, opt_ref),) ());
+        impl_observer_each_perms_inner!(($($acc)* ($component, opt_mut),) ());
     };
     (($($acc:tt)*) ($component:ident, $($rest:tt)+)) => {
         impl_observer_each_perms_inner!(($($acc)* ($component, ref),) ($($rest)+));
         impl_observer_each_perms_inner!(($($acc)* ($component, mut),) ($($rest)+));
+        impl_observer_each_perms_inner!(($($acc)* ($component, opt_ref),) ($($rest)+));
+        impl_observer_each_perms_inner!(($($acc)* ($component, opt_mut),) ($($rest)+));
     };
 }
 

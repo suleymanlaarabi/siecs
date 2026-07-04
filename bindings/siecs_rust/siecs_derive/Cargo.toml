@@ -5,6 +5,14 @@ edition = "2021"
 description = "Derive macros for siecs"
 license = "MIT"
 repository = "https://github.com/suleymanlaarabi/siecs"
+homepage = "https://github.com/suleymanlaarabi/siecs"
+documentation = "https://docs.rs/siecs"
+keywords = ["ecs", "derive", "proc-macro"]
+categories = ["development-tools::procedural-macro-helpers"]
+include = [
+    "Cargo.toml",
+    "src/**",
+]
 
 [lib]
 proc-macro = true

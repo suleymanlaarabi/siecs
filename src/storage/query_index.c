@@ -131,10 +131,6 @@ static void ecs_query_validate_terms(const ecs_query_term_t *terms, uint16_t ter
 
 void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
     query->term_count = ecs_query_count_terms(desc->terms);
-    ecs_assert(
-        query->term_count != 0 || desc->is_a != 0,
-        "query must contain at least one term or is_a target\n"
-    );
 
     query->terms = ecs_query_copy_terms_with_implicit_excludes(desc->terms, &query->term_count);
     ecs_query_validate_terms(query->terms, query->term_count);

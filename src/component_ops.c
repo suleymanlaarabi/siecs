@@ -179,11 +179,25 @@ void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) 
 
     const ecs_entity_record_t *record = ecs_get_record(world, entity);
     ecs_table_t *table = ecs_get_table(world, record->table_id);
-    return ecs_table_component_at_column(
-        table,
-        ecs_table_get_column_index(table, cid),
-        record->table_row
-    );
+    uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
+    if (col_idx != UINT16_MAX) {
+        return ecs_table_component_at_column(table, col_idx, record->table_row);
+    }
+
+    ecs_entity_t base = table->type.base;
+    while (base != 0) {
+        const ecs_entity_record_t *base_record = ecs_get_record(world, base);
+        ecs_table_t *base_table = ecs_get_table(world, base_record->table_id);
+
+        col_idx = ecs_table_column_or_invalid(base_table, cid);
+        if (col_idx != UINT16_MAX) {
+            return ecs_table_component_at_column(base_table, col_idx, base_record->table_row);
+        }
+
+        base = base_table->type.base;
+    }
+
+    return NULL;
 }
 
 void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid) {

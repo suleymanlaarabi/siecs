@@ -18,8 +18,9 @@ pub use entity::Entity;
 pub use module::{Module, ModuleId};
 pub use observer::{
     Event, EventId, Observer, ObserverEvent, ObserverId, OnAdd, OnRemove, OnSet, RawEvent,
+    TypedEvent,
 };
-pub use query::{Field, FieldKind, Query};
+pub use query::{Field, FieldKind, ParamError, Query};
 pub use resource::{Res, ResMut, Resource, ResourceId};
 pub use siecs_derive::{Component, Event, Resource};
 pub use system::{EachCtx, Phase, System, SystemId};
@@ -30,7 +31,7 @@ pub mod prelude {
     pub use crate::{
         Abstract, ChildOf, Component, DeferGuard, Disabled, EachCtx, Entity, Event, EventId, Field,
         FieldKind, Module, ModuleId, Name, Observer, ObserverEvent, ObserverId, OnAdd, OnRemove,
-        OnSet, Phase, Query, RawEvent, Res, ResMut, Resource, ResourceId, System, SystemId, World,
-        WorldFeatures, WorldRef,
+        OnSet, ParamError, Phase, Query, RawEvent, Res, ResMut, Resource, ResourceId, System,
+        SystemId, TypedEvent, World, WorldFeatures, WorldRef,
     };
 }

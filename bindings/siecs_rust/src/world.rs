@@ -5,12 +5,18 @@ use std::ffi::{CStr, CString};
 
 use crate::{
     raw, ChildOf, Component, Disabled, Entity, Event, EventId, Name, Observer, ObserverId, OnAdd,
-    OnRemove, OnSet, Query, RawEvent, Resource, System, SystemId,
+    OnRemove, OnSet, Query, RawEvent, Resource, System, SystemId, TypedEvent,
 };
 
 pub struct World {
     raw: NonNull<raw::WorldRaw>,
     system_names: Vec<CString>,
+    observer_callbacks: Vec<BoxedObserverCallback>,
+}
+
+struct BoxedObserverCallback {
+    ptr: usize,
+    drop_fn: unsafe fn(usize),
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -56,6 +62,7 @@ impl World {
         Self {
             raw,
             system_names: Vec::new(),
+            observer_callbacks: Vec::new(),
         }
     }
 
@@ -71,6 +78,7 @@ impl World {
         Self {
             raw,
             system_names: Vec::new(),
+            observer_callbacks: Vec::new(),
         }
     }
 
@@ -167,6 +175,18 @@ impl World {
         let ptr = name.as_ptr();
         self.system_names.push(name);
         ptr
+    }
+
+    #[inline]
+    pub(crate) fn retain_observer_callback<F: 'static>(&mut self, ptr: *mut F) {
+        unsafe fn drop_box<F>(ptr: usize) {
+            drop(unsafe { Box::from_raw(ptr as *mut F) });
+        }
+
+        self.observer_callbacks.push(BoxedObserverCallback {
+            ptr: ptr as usize,
+            drop_fn: drop_box::<F>,
+        });
     }
 
     #[inline]
@@ -414,8 +434,21 @@ impl World {
     }
 
     #[inline]
+    pub fn alloc_typed_event<P>(&mut self) -> TypedEvent<P> {
+        TypedEvent::new(unsafe { raw::ecs_event(self.raw.as_ptr()) })
+    }
+
+    #[inline]
     pub fn event<E: Event>(&mut self) -> EventId {
         E::id(self)
+    }
+
+    #[inline]
+    pub fn observe_typed<P: 'static>(
+        &mut self,
+        event: TypedEvent<P>,
+    ) -> Observer<'_, TypedEvent<P>> {
+        Observer::new(self, event.id())
     }
 
     #[inline]
@@ -433,6 +466,11 @@ impl World {
     #[inline]
     pub unsafe fn trigger_id<T>(&mut self, entity: Entity, event: EventId, value: &T) {
         unsafe { self.trigger_raw(entity, event, value) }
+    }
+
+    #[inline]
+    pub fn trigger_typed<P>(&mut self, entity: Entity, event: TypedEvent<P>, value: &P) {
+        unsafe { self.trigger_raw(entity, event.id(), value) };
     }
 
     #[inline]
@@ -462,6 +500,11 @@ impl Drop for World {
     fn drop(&mut self) {
         unsafe {
             raw::ecs_fini(self.raw.as_ptr());
+        }
+        for callback in self.observer_callbacks.drain(..) {
+            unsafe {
+                (callback.drop_fn)(callback.ptr);
+            }
         }
     }
 }

@@ -5,6 +5,37 @@ use crate::{raw, Component, EachCtx, Entity, Res, ResMut, Resource, World};
 
 pub use raw::FieldKind;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ParamError {
+    DuplicateComponentField,
+    ResourceReadWriteConflict,
+    DuplicateMutableResource,
+    MissingRequiredResource,
+    TooManyTerms,
+    TooManyResources,
+}
+
+impl core::fmt::Display for ParamError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::DuplicateComponentField => {
+                "query callback cannot request the same component field more than once"
+            }
+            Self::ResourceReadWriteConflict => {
+                "callback cannot request mutable and immutable access to the same resource"
+            }
+            Self::DuplicateMutableResource => {
+                "callback cannot request mutable access to the same resource more than once"
+            }
+            Self::MissingRequiredResource => "callback requested a missing required resource",
+            Self::TooManyTerms => "too many query terms",
+            Self::TooManyResources => "too many resource params",
+        })
+    }
+}
+
+impl std::error::Error for ParamError {}
+
 pub struct Query<'world> {
     world: &'world mut World,
     desc: raw::QueryDesc,
@@ -40,14 +71,22 @@ impl<'world> Query<'world> {
     }
 
     #[inline]
-    pub fn each<F, Marker>(mut self, mut func: F)
+    pub fn each<F, Marker>(self, func: F)
     where
         F: QueryEach<Marker>,
     {
-        F::append_terms(self.world, &mut self.desc, &mut self.term_index);
+        self.try_each(func).unwrap_or_else(|err| panic!("{err}"));
+    }
+
+    #[inline]
+    pub fn try_each<F, Marker>(mut self, mut func: F) -> Result<(), ParamError>
+    where
+        F: QueryEach<Marker>,
+    {
+        F::append_terms(self.world, &mut self.desc, &mut self.term_index)?;
         let mut resource_access = ResourceAccess::default();
-        F::validate_resources(self.world, &mut resource_access);
-        validate_returned_fields(&self.desc);
+        F::validate_resources(self.world, &mut resource_access)?;
+        validate_returned_fields(&self.desc)?;
 
         let query = QueryHandle {
             world: self.world.as_raw_mut(),
@@ -60,19 +99,31 @@ impl<'world> Query<'world> {
                 func.run(&mut iter);
             }
         }
+
+        Ok(())
     }
 
     #[inline]
     fn append_component<T: Component>(&mut self, access: raw::TermAccess) {
         let id = T::id(self.world);
-        append_term(&mut self.desc, &mut self.term_index, id, access);
+        append_term(&mut self.desc, &mut self.term_index, id, access)
+            .expect("too many query terms");
     }
 }
 
 #[doc(hidden)]
 pub trait QueryEach<Marker> {
-    fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16);
-    fn validate_resources(_world: &mut World, _access: &mut ResourceAccess) {}
+    fn append_terms(
+        world: &mut World,
+        desc: &mut raw::QueryDesc,
+        term_index: &mut u16,
+    ) -> Result<(), ParamError>;
+    fn validate_resources(
+        _world: &mut World,
+        _access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
     unsafe fn run(&mut self, iter: &mut raw::Iter);
 }
 
@@ -170,14 +221,14 @@ pub(crate) fn append_term(
     term_index: &mut u16,
     id: raw::ComponentId,
     access: raw::TermAccess,
-) {
-    assert!(
-        (*term_index as usize) + 1 < desc.terms.len(),
-        "too many query terms"
-    );
+) -> Result<(), ParamError> {
+    if (*term_index as usize) + 1 >= desc.terms.len() {
+        return Err(ParamError::TooManyTerms);
+    }
 
     desc.terms[*term_index as usize] = raw::QueryTerm { id, access };
     *term_index += 1;
+    Ok(())
 }
 
 #[inline]
@@ -192,7 +243,7 @@ fn is_returned_field(access: raw::TermAccess) -> bool {
     )
 }
 
-pub(crate) fn validate_returned_fields(desc: &raw::QueryDesc) {
+pub(crate) fn validate_returned_fields(desc: &raw::QueryDesc) -> Result<(), ParamError> {
     for (left_index, left) in desc.terms.iter().enumerate() {
         if left.id == 0 || !is_returned_field(left.access) {
             continue;
@@ -203,12 +254,13 @@ pub(crate) fn validate_returned_fields(desc: &raw::QueryDesc) {
                 break;
             }
 
-            assert!(
-                !is_returned_field(right.access) || left.id != right.id,
-                "query callback cannot request the same component field more than once"
-            );
+            if is_returned_field(right.access) && left.id == right.id {
+                return Err(ParamError::DuplicateComponentField);
+            }
         }
     }
+
+    Ok(())
 }
 
 #[doc(hidden)]
@@ -222,54 +274,81 @@ pub struct ResourceAccess {
 
 impl ResourceAccess {
     #[inline]
-    pub(crate) fn read<T: Resource>(&mut self, world: &mut World) {
+    pub(crate) fn read<T: Resource>(&mut self, world: &mut World) -> Result<(), ParamError> {
         let id = T::id(world);
-        self.assert_not_written(id);
-        self.push_read(id);
+        if !unsafe { raw::ecs_has_resource_rid(world.as_raw(), id) } {
+            return Err(ParamError::MissingRequiredResource);
+        }
+        self.assert_not_written(id)?;
+        self.push_read(id)
     }
 
     #[inline]
-    pub(crate) fn write<T: Resource>(&mut self, world: &mut World) {
+    pub(crate) fn write<T: Resource>(&mut self, world: &mut World) -> Result<(), ParamError> {
         let id = T::id(world);
-        self.assert_not_read(id);
-        self.assert_not_written(id);
-        self.push_write(id);
+        if !unsafe { raw::ecs_has_resource_rid(world.as_raw(), id) } {
+            return Err(ParamError::MissingRequiredResource);
+        }
+        self.assert_not_read(id)?;
+        self.assert_not_written(id)?;
+        self.push_write(id)
     }
 
     #[inline]
-    fn push_read(&mut self, id: raw::ResourceId) {
-        assert!(
-            self.read_count < self.reads.len(),
-            "too many resource params"
-        );
+    pub(crate) fn optional_read<T: Resource>(
+        &mut self,
+        world: &mut World,
+    ) -> Result<(), ParamError> {
+        let id = T::id(world);
+        self.assert_not_written(id)?;
+        self.push_read(id)
+    }
+
+    #[inline]
+    pub(crate) fn optional_write<T: Resource>(
+        &mut self,
+        world: &mut World,
+    ) -> Result<(), ParamError> {
+        let id = T::id(world);
+        self.assert_not_read(id)?;
+        self.assert_not_written(id)?;
+        self.push_write(id)
+    }
+
+    #[inline]
+    fn push_read(&mut self, id: raw::ResourceId) -> Result<(), ParamError> {
+        if self.read_count >= self.reads.len() {
+            return Err(ParamError::TooManyResources);
+        }
         self.reads[self.read_count] = id;
         self.read_count += 1;
+        Ok(())
     }
 
     #[inline]
-    fn push_write(&mut self, id: raw::ResourceId) {
-        assert!(
-            self.write_count < self.writes.len(),
-            "too many resource params"
-        );
+    fn push_write(&mut self, id: raw::ResourceId) -> Result<(), ParamError> {
+        if self.write_count >= self.writes.len() {
+            return Err(ParamError::TooManyResources);
+        }
         self.writes[self.write_count] = id;
         self.write_count += 1;
+        Ok(())
     }
 
     #[inline]
-    fn assert_not_read(&self, id: raw::ResourceId) {
-        assert!(
-            !self.reads[..self.read_count].contains(&id),
-            "callback cannot request mutable and immutable access to the same resource"
-        );
+    fn assert_not_read(&self, id: raw::ResourceId) -> Result<(), ParamError> {
+        if self.reads[..self.read_count].contains(&id) {
+            return Err(ParamError::ResourceReadWriteConflict);
+        }
+        Ok(())
     }
 
     #[inline]
-    fn assert_not_written(&self, id: raw::ResourceId) {
-        assert!(
-            !self.writes[..self.write_count].contains(&id),
-            "callback cannot request mutable access to the same resource more than once"
-        );
+    fn assert_not_written(&self, id: raw::ResourceId) -> Result<(), ParamError> {
+        if self.writes[..self.write_count].contains(&id) {
+            return Err(ParamError::DuplicateMutableResource);
+        }
+        Ok(())
     }
 }
 
@@ -400,11 +479,20 @@ where
     R: Resource,
 {
     #[inline]
-    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+    fn append_terms(
+        _world: &mut World,
+        _desc: &mut raw::QueryDesc,
+        _term_index: &mut u16,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
 
     #[inline]
-    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
-        access.read::<R>(world);
+    fn validate_resources(
+        world: &mut World,
+        access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        access.read::<R>(world)
     }
 
     #[inline]
@@ -421,11 +509,20 @@ where
     R: Resource,
 {
     #[inline]
-    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+    fn append_terms(
+        _world: &mut World,
+        _desc: &mut raw::QueryDesc,
+        _term_index: &mut u16,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
 
     #[inline]
-    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
-        access.write::<R>(world);
+    fn validate_resources(
+        world: &mut World,
+        access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        access.write::<R>(world)
     }
 
     #[inline]
@@ -443,12 +540,22 @@ where
     B: Resource,
 {
     #[inline]
-    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+    fn append_terms(
+        _world: &mut World,
+        _desc: &mut raw::QueryDesc,
+        _term_index: &mut u16,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
 
     #[inline]
-    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
-        access.read::<A>(world);
-        access.write::<B>(world);
+    fn validate_resources(
+        world: &mut World,
+        access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        access.read::<A>(world)?;
+        access.write::<B>(world)?;
+        Ok(())
     }
 
     #[inline]
@@ -466,12 +573,22 @@ where
     B: Resource,
 {
     #[inline]
-    fn append_terms(_world: &mut World, _desc: &mut raw::QueryDesc, _term_index: &mut u16) {}
+    fn append_terms(
+        _world: &mut World,
+        _desc: &mut raw::QueryDesc,
+        _term_index: &mut u16,
+    ) -> Result<(), ParamError> {
+        Ok(())
+    }
 
     #[inline]
-    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
-        access.write::<A>(world);
-        access.write::<B>(world);
+    fn validate_resources(
+        world: &mut World,
+        access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        access.write::<A>(world)?;
+        access.write::<B>(world)?;
+        Ok(())
     }
 
     #[inline]
@@ -489,14 +606,21 @@ where
     R: Resource,
 {
     #[inline]
-    fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+    fn append_terms(
+        world: &mut World,
+        desc: &mut raw::QueryDesc,
+        term_index: &mut u16,
+    ) -> Result<(), ParamError> {
         let id = A::id(world);
-        append_term(desc, term_index, id, raw::TermAccess::In);
+        append_term(desc, term_index, id, raw::TermAccess::In)
     }
 
     #[inline]
-    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
-        access.read::<R>(world);
+    fn validate_resources(
+        world: &mut World,
+        access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        access.read::<R>(world)
     }
 
     #[inline]
@@ -524,16 +648,23 @@ where
     R: Resource,
 {
     #[inline]
-    fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+    fn append_terms(
+        world: &mut World,
+        desc: &mut raw::QueryDesc,
+        term_index: &mut u16,
+    ) -> Result<(), ParamError> {
         let id = A::id(world);
-        append_term(desc, term_index, id, raw::TermAccess::In);
+        append_term(desc, term_index, id, raw::TermAccess::In)?;
         let id = B::id(world);
-        append_term(desc, term_index, id, raw::TermAccess::InOptional);
+        append_term(desc, term_index, id, raw::TermAccess::InOptional)
     }
 
     #[inline]
-    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
-        access.read::<R>(world);
+    fn validate_resources(
+        world: &mut World,
+        access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        access.read::<R>(world)
     }
 
     #[inline]
@@ -566,16 +697,23 @@ where
     R: Resource,
 {
     #[inline]
-    fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+    fn append_terms(
+        world: &mut World,
+        desc: &mut raw::QueryDesc,
+        term_index: &mut u16,
+    ) -> Result<(), ParamError> {
         let id = A::id(world);
-        append_term(desc, term_index, id, raw::TermAccess::InOut);
+        append_term(desc, term_index, id, raw::TermAccess::InOut)?;
         let id = B::id(world);
-        append_term(desc, term_index, id, raw::TermAccess::In);
+        append_term(desc, term_index, id, raw::TermAccess::In)
     }
 
     #[inline]
-    fn validate_resources(world: &mut World, access: &mut ResourceAccess) {
-        access.read::<R>(world);
+    fn validate_resources(
+        world: &mut World,
+        access: &mut ResourceAccess,
+    ) -> Result<(), ParamError> {
+        access.read::<R>(world)
     }
 
     #[inline]
@@ -608,11 +746,12 @@ macro_rules! impl_query_each {
             $($component: Component),+
         {
             #[inline]
-            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) -> Result<(), ParamError> {
                 $(
                     let id = $component::id(world);
-                    append_term(desc, term_index, id, term_access!($kind));
+                    append_term(desc, term_index, id, term_access!($kind))?;
                 )+
+                Ok(())
             }
 
             #[inline]
@@ -640,11 +779,12 @@ macro_rules! impl_query_each_ctx {
             $($component: Component),+
         {
             #[inline]
-            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) -> Result<(), ParamError> {
                 $(
                     let id = $component::id(world);
-                    append_term(desc, term_index, id, term_access!($kind));
+                    append_term(desc, term_index, id, term_access!($kind))?;
                 )+
+                Ok(())
             }
 
             #[inline]
