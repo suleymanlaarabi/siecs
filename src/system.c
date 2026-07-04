@@ -56,6 +56,7 @@ void ecs_run_system(ecs_world_t *world, ecs_system_id_t system) {
             .world = world,
             .count = 1,
             .user_data = sys->user_data,
+            .delta_time = world->delta_time,
         };
         sys->callback(&it);
     }
@@ -77,6 +78,7 @@ void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase) {
         ecs_run_system(world, system);
     }
 }
+
 static inline double now_sec(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -105,6 +107,14 @@ bool ecs_progress(ecs_world_t *world) {
         ecs_run_phase(world, EcsPostStart);
         world->did_start = true;
     }
+
+    if (world->last_time == 0.0) {
+        world->delta_time = 0.0;
+    } else {
+        world->delta_time = frame_start - world->last_time;
+    }
+
+    world->last_time = frame_start;
 
     for (ecs_phase_t phase = EcsOnLoad; phase < EcsPhaseCount; phase++) {
         ecs_run_phase(world, phase);

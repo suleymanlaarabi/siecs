@@ -39,6 +39,8 @@ typedef struct ecs_world_s {
     bool flushing_commands;
     bool did_start;
     bool exit;
+    double delta_time;
+    double last_time;
 } ecs_world_t;
 
 struct sihttp_app_state_s {

@@ -35,6 +35,8 @@ ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     world->exit = false;
     world->server = NULL;
     world->server_state = NULL;
+    world->delta_time = 0;
+    world->last_time = 0;
 
     world->sireflect_registry = sireflect_registry_init();
 
