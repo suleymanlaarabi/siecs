@@ -233,11 +233,11 @@ void ecs_set_cid_now(ecs_world_t *world, ecs_entity_t entity, ecs_component_t ci
         crec->on_set(world, entity, cid, data, dst);
         record = ecs_get_record(world, entity);
         table = ecs_get_table(world, record->table_id);
+        col_idx = ecs_table_get_column_index(table, cid);
+        dst = ecs_table_component_at_column(table, col_idx, record->table_row);
     }
     ecs_emit(world, table, entity, EcsOnSet, data);
-    if (crec->size != 0) {
-        memcpy(dst, data, crec->size);
-    }
+    ecs_component_value_copy(crec, dst, data, 1);
 }
 
 void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, const void *data) {
@@ -252,6 +252,49 @@ void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, c
     }
 
     ecs_set_cid_now(world, entity, cid, data);
+}
+
+void ecs_move_cid_now(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, void *data) {
+    ecs_assert_not_null(world);
+    ecs_assert_id_valid(cid);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
+    bool had_value = ecs_has_cid_owned(world, entity, cid);
+    ecs_add_cid_now(world, entity, cid);
+    const ecs_component_record_t *crec = ecs_component_index_get(&world->component_index, cid);
+    ecs_entity_record_t *record = ecs_get_record(world, entity);
+    ecs_table_t *table = ecs_get_table(world, record->table_id);
+    uint16_t col_idx = ecs_table_get_column_index(table, cid);
+    void *dst = ecs_table_component_at_column(table, col_idx, record->table_row);
+
+    if (crec->on_set) {
+        crec->on_set(world, entity, cid, data, dst);
+        record = ecs_get_record(world, entity);
+        table = ecs_get_table(world, record->table_id);
+        col_idx = ecs_table_get_column_index(table, cid);
+        dst = ecs_table_component_at_column(table, col_idx, record->table_row);
+    }
+    ecs_emit(world, table, entity, EcsOnSet, data);
+    if (had_value || crec->ops.ctor) {
+        ecs_component_value_move(crec, dst, data, 1);
+    } else {
+        ecs_component_value_move_ctor(crec, dst, data, 1);
+    }
+}
+
+void ecs_move_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid, void *data) {
+    ecs_assert_not_null(world);
+    ecs_assert_id_valid(cid);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(world, entity);
+
+    if (ecs_is_deferred(world)) {
+        ecs_command_buffer_move(world, entity, cid, data);
+        return;
+    }
+
+    ecs_move_cid_now(world, entity, cid, data);
 }
 
 bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {

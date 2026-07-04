@@ -145,6 +145,7 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
             &world->component_index,
             component,
             desc->size,
+            desc->ops,
             RelationOnSet,
             RelationOnRemove,
             desc->on_add,
@@ -159,6 +160,7 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
             source,
             desc->relation_flags & EcsRelationOneToOne ? sizeof(RelationTarget)
                                                        : sizeof(RelationSource),
+            (ecs_type_ops_t){ 0 },
             NULL,
             RelationSourceOnRemove,
             desc->on_add,
@@ -179,6 +181,7 @@ ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_compon
             &world->component_index,
             component,
             desc->size,
+            desc->ops,
             desc->on_set,
             desc->on_remove,
             desc->on_add,

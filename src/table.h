@@ -38,10 +38,11 @@ void ecs_table_init(
     uint16_t table_id
 );
 void ecs_table_fini(ecs_world_t *world, ecs_table_t *table);
-uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity);
+uint32_t ecs_table_add_entity(ecs_world_t *world, ecs_table_t *table, ecs_entity_t entity);
 // if the entity is not the last one, the last entity will be moved to the removed entity's
 // position, and the moved entity will be returned
-ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row);
+ecs_entity_t
+ecs_table_remove_entity(ecs_world_t *world, ecs_table_t *table, uint32_t row, bool row_values_live);
 
 void *ecs_table_get_component(ecs_table_t *table, ecs_component_t component_id, uint32_t row);
 
@@ -75,19 +76,6 @@ bool ecs_table_has(
     ecs_component_t component_id
 );
 bool ecs_table_is_a(const ecs_world_t *world, const ecs_table_t *table, ecs_entity_t base);
-
-static inline void copy_data_column(
-    const ecs_column_t *restrict from,
-    uint32_t from_row,
-    ecs_column_t *restrict to,
-    uint32_t to_row
-) {
-    memcpy(
-        (uint8_t *)to->data + (from->size * to_row),
-        (uint8_t *)from->data + (from->size * from_row),
-        from->size
-    );
-}
 
 static inline uint16_t
 ecs_table_get_column_index(const ecs_table_t *table, ecs_component_t component_id) {

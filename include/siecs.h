@@ -43,6 +43,9 @@ typedef uint16_t ecs_module_id_t;
 typedef uint16_t ecs_resource_t;
 typedef uint32_t ecs_observer_id_t;
 
+#define ECS_QUERY_TERM_CAPACITY 64
+#define ECS_SYSTEM_AFTER_CAPACITY 16
+
 /*
  * Module import callback.
  *
@@ -136,6 +139,31 @@ typedef void (*ecs_component_on_remove_t)(
 );
 
 /*
+ * Value lifecycle operations for non-trivial component/resource storage.
+ *
+ * ctor initializes count values at dst. dtor destroys count live values at ptr.
+ * copy_ctor initializes dst from live src values. copy replaces live dst values
+ * from live src values. move_ctor initializes dst by consuming live src values.
+ * move replaces live dst values by consuming live src values.
+ *
+ * Any NULL operation falls back to plain C storage behavior: zero initialize for
+ * ctor, no-op for dtor, and memcpy for copy/move operations.
+ */
+typedef void (*ecs_type_ctor_t)(void *dst, uint32_t count);
+typedef void (*ecs_type_dtor_t)(void *ptr, uint32_t count);
+typedef void (*ecs_type_copy_t)(void *dst, const void *src, uint32_t count);
+typedef void (*ecs_type_move_t)(void *dst, void *src, uint32_t count);
+
+typedef struct {
+    ecs_type_ctor_t ctor;
+    ecs_type_dtor_t dtor;
+    ecs_type_copy_t copy_ctor;
+    ecs_type_copy_t copy;
+    ecs_type_move_t move_ctor;
+    ecs_type_move_t move;
+} ecs_type_ops_t;
+
+/*
  * Relation behavior flags used by ECS_RELATION_DEFINE.
  *
  * EcsRelationTarget marks the relation component stored on the source entity.
@@ -163,6 +191,7 @@ typedef enum {
 typedef struct {
     const char *name;
     uint64_t size;
+    ecs_type_ops_t ops;
     ecs_component_on_set_t on_set;
     ecs_component_on_remove_t on_remove;
     ecs_component_on_add_t on_add;
@@ -187,6 +216,7 @@ typedef void (*ecs_resource_hook_t)(ecs_world_t *world, const void *ptr);
 typedef struct {
     const char *name;
     uint64_t size;
+    ecs_type_ops_t ops;
     ecs_resource_hook_t on_set;
     ecs_resource_hook_t on_remove;
 } ecs_resource_desc_t;
@@ -227,7 +257,7 @@ typedef struct {
  * A query must contain at least one term or an is_a target.
  */
 typedef struct {
-    ecs_query_term_t terms[16];
+    ecs_query_term_t terms[ECS_QUERY_TERM_CAPACITY];
     ecs_entity_t is_a;
 } ecs_query_desc_t;
 
@@ -526,7 +556,7 @@ SIECS_API void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
             for (uint32_t i = 0; i < it.count; i++)
 
 /* Create a query. The query descriptor must read at least one component. */
-SIECS_API uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *query);
+SIECS_API ecs_query_id_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *query);
 
 /* Destroy a query id created by ecs_query/ecs_query_init. */
 SIECS_API void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
@@ -599,6 +629,7 @@ SIECS_API void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_com
  */
 SIECS_API void
 ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
+SIECS_API void ecs_move_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, void *data);
 
 /*
  * Declare and define a resource type.
@@ -668,6 +699,7 @@ ecs_resource_register(ecs_world_t *world, ecs_resource_t *id, const ecs_resource
 SIECS_API ecs_resource_t ecs_resource_find(ecs_world_t *world, const char *name);
 SIECS_API bool ecs_resource_is_registered_rid(const ecs_world_t *world, ecs_resource_t id);
 SIECS_API void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);
+SIECS_API void ecs_move_resource_rid(ecs_world_t *world, ecs_resource_t id, void *data);
 SIECS_API void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id);
 SIECS_API void *ecs_try_resource_rid(ecs_world_t *world, ecs_resource_t id);
 SIECS_API bool ecs_has_resource_rid(const ecs_world_t *world, ecs_resource_t id);
@@ -765,6 +797,7 @@ typedef struct {
     struct ecs_query_cache_s *cache;
     void **ptrs;
     ecs_field_kind_t *field_kinds;
+    uintptr_t user_data;
     uint16_t table_idx;
     uint16_t table_count;
 } ecs_iter_t;
@@ -840,8 +873,10 @@ typedef struct {
     const char *name;
     ecs_query_desc_t query;
     void (*callback)(ecs_iter_t *);
+    uintptr_t user_data;
+    void (*user_data_dtor)(uintptr_t user_data);
     ecs_phase_t phase;
-    ecs_system_id_t after[4];
+    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
     bool disabled;
 } ecs_system_desc_t;
 

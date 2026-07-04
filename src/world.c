@@ -57,7 +57,7 @@ void ecs_fini(ecs_world_t *world) {
     ecs_observer_index_fini(&world->observer_index);
     ecs_system_index_fini(&world->system_index);
     ecs_module_index_fini(&world->module_index);
-    ecs_command_buffer_fini(&world->commands);
+    ecs_command_buffer_fini(world, &world->commands);
     ecs_arena_fini(&world->arena_allocator);
     sireflect_registry_fini(world->sireflect_registry);
 

@@ -10,7 +10,7 @@ typedef struct ecs_world_s ecs_world_t;
 
 typedef struct {
     ecs_component_t id;
-    const void *data;
+    void *data;
 } ecs_deferred_set_t;
 
 typedef struct {
@@ -30,7 +30,7 @@ typedef struct ecs_command_buffer_s {
 } ecs_command_buffer_t;
 
 void ecs_command_buffer_init(ecs_command_buffer_t *buffer);
-void ecs_command_buffer_fini(ecs_command_buffer_t *buffer);
+void ecs_command_buffer_fini(ecs_world_t *world, ecs_command_buffer_t *buffer);
 
 void ecs_command_buffer_add(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 void ecs_command_buffer_remove(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
@@ -40,6 +40,7 @@ void ecs_command_buffer_set(
     ecs_component_t id,
     const void *data
 );
+void ecs_command_buffer_move(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, void *data);
 void ecs_command_buffer_kill(ecs_world_t *world, ecs_entity_t entity);
 void ecs_command_buffer_set_base(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target);
 void ecs_command_buffer_flush(ecs_world_t *world);
@@ -47,6 +48,7 @@ void ecs_command_buffer_flush(ecs_world_t *world);
 void ecs_add_cid_now(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 void ecs_remove_cid_now(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
 void ecs_set_cid_now(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
+void ecs_move_cid_now(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, void *data);
 void ecs_kill_now(ecs_world_t *world, ecs_entity_t entity);
 void ecs_is_a_now(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target);
 

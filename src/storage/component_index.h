@@ -13,6 +13,7 @@ typedef struct {
     uint16_t *required;
     uint32_t required_count;
     uint32_t size;
+    ecs_type_ops_t ops;
     ecs_component_on_set_t on_set;
     ecs_component_on_remove_t on_remove;
     ecs_component_on_add_t on_add;
@@ -30,6 +31,7 @@ void ecs_component_index_register(
     ecs_component_index_t *index,
     ecs_component_t id,
     uint64_t size,
+    ecs_type_ops_t ops,
     ecs_component_on_set_t on_set,
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
@@ -45,5 +47,32 @@ void ecs_component_index_register(
 
 void ecs_component_index_init(ecs_component_index_t *index);
 void ecs_component_index_fini(ecs_component_index_t *index);
+
+void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count);
+void ecs_component_value_dtor(const ecs_component_record_t *record, void *ptr, uint32_t count);
+void ecs_component_value_copy_ctor(
+    const ecs_component_record_t *record,
+    void *dst,
+    const void *src,
+    uint32_t count
+);
+void ecs_component_value_copy(
+    const ecs_component_record_t *record,
+    void *dst,
+    const void *src,
+    uint32_t count
+);
+void ecs_component_value_move_ctor(
+    const ecs_component_record_t *record,
+    void *dst,
+    void *src,
+    uint32_t count
+);
+void ecs_component_value_move(
+    const ecs_component_record_t *record,
+    void *dst,
+    void *src,
+    uint32_t count
+);
 
 #endif

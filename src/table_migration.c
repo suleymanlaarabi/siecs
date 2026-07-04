@@ -3,24 +3,51 @@
 #include <stdint.h>
 #include <string.h>
 
-static inline void copy_column(
-    const ecs_column_t *restrict from,
+static inline void move_column(
+    ecs_world_t *world,
+    const ecs_table_t *from_table,
+    const uint16_t from_col,
     const uint32_t from_row,
-    ecs_column_t *restrict to,
+    ecs_table_t *to_table,
+    const uint16_t to_col,
     const uint32_t to_row
 ) {
-    if (from->size == 0) {
-        return;
-    }
-    memcpy(
-        (uint8_t *)to->data + (from->size * to_row),
-        (uint8_t *)from->data + (from->size * from_row),
-        from->size
-    );
+    ecs_component_t component = from_table->type.ids[from_col];
+    const ecs_component_record_t *record =
+        ecs_component_index_get(&world->component_index, component);
+    void *src = ecs_table_component_at_column(from_table, from_col, from_row);
+    void *dst = ecs_table_component_at_column(to_table, to_col, to_row);
+    ecs_component_value_move_ctor(record, dst, src, 1);
+}
+
+static inline void ctor_column(
+    ecs_world_t *world,
+    const ecs_table_t *table,
+    const uint16_t col,
+    const uint32_t row
+) {
+    ecs_component_t component = table->type.ids[col];
+    const ecs_component_record_t *record =
+        ecs_component_index_get(&world->component_index, component);
+    void *dst = ecs_table_component_at_column(table, col, row);
+    ecs_component_value_ctor(record, dst, 1);
+}
+
+static inline void dtor_column(
+    ecs_world_t *world,
+    const ecs_table_t *table,
+    const uint16_t col,
+    const uint32_t row
+) {
+    ecs_component_t component = table->type.ids[col];
+    const ecs_component_record_t *record =
+        ecs_component_index_get(&world->component_index, component);
+    void *ptr = ecs_table_component_at_column(table, col, row);
+    ecs_component_value_dtor(record, ptr, 1);
 }
 
 static inline void finish_migration(
-    const ecs_world_t *world,
+    ecs_world_t *world,
     ecs_entity_record_t *record,
     const ecs_entity_t entity,
     ecs_table_t *from_table,
@@ -28,7 +55,7 @@ static inline void finish_migration(
     const uint16_t to_table_id,
     const uint32_t new_row
 ) {
-    ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row);
+    ecs_entity_t moved = ecs_table_remove_entity(world, from_table, old_row, false);
     if (moved != entity) {
         ecs_get_record(world, moved)->table_row = old_row;
     }
@@ -47,38 +74,36 @@ void ecs_migrate_to_table(
     ecs_table_t *to_table = ecs_get_table(world, to_table_id);
 
     uint32_t old_row = record->table_row;
-    uint32_t new_row = ecs_table_add_entity(to_table, entity);
+    uint32_t new_row = ecs_table_add_entity(world, to_table, entity);
 
     uint16_t fi = 0, ti = 0;
     while (fi < from_table->type.count && ti < to_table->type.count) {
         uint16_t fid = from_table->type.ids[fi];
         uint16_t tid = to_table->type.ids[ti];
         if (fid == tid) {
-            copy_column(&from_table->cls[fi], old_row, &to_table->cls[ti], new_row);
+            move_column(world, from_table, fi, old_row, to_table, ti, new_row);
             fi++;
             ti++;
         } else if (fid < tid) {
+            dtor_column(world, from_table, fi, old_row);
             fi++;
         } else {
-            ecs_column_t *c = &to_table->cls[ti];
-            if (c->size != 0) {
-                memset((uint8_t *)c->data + (c->size * new_row), 0, c->size);
-            }
+            ctor_column(world, to_table, ti, new_row);
             ti++;
         }
     }
+    for (; fi < from_table->type.count; fi++) {
+        dtor_column(world, from_table, fi, old_row);
+    }
     for (; ti < to_table->type.count; ti++) {
-        ecs_column_t *c = &to_table->cls[ti];
-        if (c->size != 0) {
-            memset((uint8_t *)c->data + (c->size * new_row), 0, c->size);
-        }
+        ctor_column(world, to_table, ti, new_row);
     }
 
     finish_migration(world, record, entity, from_table, old_row, to_table_id, new_row);
 }
 
 void *ecs_migrate_add(
-    const ecs_world_t *world,
+    ecs_world_t *world,
     ecs_entity_record_t *record,
     const ecs_entity_t entity,
     ecs_table_t *from_table,
@@ -87,13 +112,10 @@ void *ecs_migrate_add(
     const ecs_component_t added_id
 ) {
     const uint32_t old_row = record->table_row;
-    const uint32_t new_row = ecs_table_add_entity(to_table, entity);
+    const uint32_t new_row = ecs_table_add_entity(world, to_table, entity);
 
     const uint16_t k = ecs_table_get_column_index(to_table, added_id);
-    ecs_column_t *added = &to_table->cls[k];
-    if (added->size != 0) {
-        memset((uint8_t *)added->data + (added->size * new_row), 0, added->size);
-    }
+    ctor_column(world, to_table, k, new_row);
 
     uint16_t i = 0;
     for (; i < from_table->data_count; i++) {
@@ -101,16 +123,11 @@ void *ecs_migrate_add(
         if (from_col >= k) {
             break;
         }
-        copy_data_column(&from_table->cls[from_col], old_row, &to_table->cls[from_col], new_row);
+        move_column(world, from_table, from_col, old_row, to_table, from_col, new_row);
     }
     for (; i < from_table->data_count; i++) {
         uint16_t from_col = from_table->data_columns[i];
-        copy_data_column(
-            &from_table->cls[from_col],
-            old_row,
-            &to_table->cls[from_col + 1],
-            new_row
-        );
+        move_column(world, from_table, from_col, old_row, to_table, from_col + 1, new_row);
     }
 
     finish_migration(world, record, entity, from_table, old_row, to_table_id, new_row);
@@ -118,7 +135,7 @@ void *ecs_migrate_add(
 }
 
 void *ecs_migrate_add_many(
-    const ecs_world_t *world,
+    ecs_world_t *world,
     ecs_entity_record_t *record,
     const ecs_entity_t entity,
     ecs_table_t *from_table,
@@ -127,7 +144,7 @@ void *ecs_migrate_add_many(
     const ecs_component_t requested_id
 ) {
     const uint32_t old_row = record->table_row;
-    const uint32_t new_row = ecs_table_add_entity(to_table, entity);
+    const uint32_t new_row = ecs_table_add_entity(world, to_table, entity);
 
     uint16_t from_data = 0;
     for (uint16_t to_data = 0; to_data < to_table->data_count; to_data++) {
@@ -146,19 +163,13 @@ void *ecs_migrate_add_many(
         if (from_data < from_table->data_count) {
             const uint16_t from_col = from_table->data_columns[from_data];
             if (from_table->type.ids[from_col] == to_id) {
-                copy_data_column(
-                    &from_table->cls[from_col],
-                    old_row,
-                    &to_table->cls[to_col],
-                    new_row
-                );
+                move_column(world, from_table, from_col, old_row, to_table, to_col, new_row);
                 from_data++;
                 continue;
             }
         }
 
-        ecs_column_t *column = &to_table->cls[to_col];
-        memset((uint8_t *)column->data + (column->size * new_row), 0, column->size);
+        ctor_column(world, to_table, to_col, new_row);
     }
 
     finish_migration(world, record, entity, from_table, old_row, to_table_id, new_row);
@@ -180,7 +191,7 @@ void ecs_migrate_remove(
     ecs_table_t *to_table = ecs_get_table(world, to_table_id);
 
     uint32_t old_row = record->table_row;
-    uint32_t new_row = ecs_table_add_entity(to_table, entity);
+    uint32_t new_row = ecs_table_add_entity(world, to_table, entity);
 
     uint16_t i = 0;
     for (; i < from_table->data_count; i++) {
@@ -188,19 +199,15 @@ void ecs_migrate_remove(
         if (from_col >= col_idx) {
             break;
         }
-        copy_data_column(&from_table->cls[from_col], old_row, &to_table->cls[from_col], new_row);
+        move_column(world, from_table, from_col, old_row, to_table, from_col, new_row);
     }
     if (i < from_table->data_count && from_table->data_columns[i] == col_idx) {
+        dtor_column(world, from_table, col_idx, old_row);
         i++;
     }
     for (; i < from_table->data_count; i++) {
         uint16_t from_col = from_table->data_columns[i];
-        copy_data_column(
-            &from_table->cls[from_col],
-            old_row,
-            &to_table->cls[from_col - 1],
-            new_row
-        );
+        move_column(world, from_table, from_col, old_row, to_table, from_col - 1, new_row);
     }
 
     finish_migration(world, record, entity, from_table, old_row, to_table_id, new_row);

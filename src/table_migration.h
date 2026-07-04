@@ -6,7 +6,7 @@
 #include "table.h"
 #include <stdint.h>
 
-#define ECS_ADD_PLAN_MAX_COMPONENTS 16
+#define ECS_ADD_PLAN_MAX_COMPONENTS 64
 
 ecs_type_t ecs_type_with_requirements(
     ecs_world_t *world,
@@ -32,7 +32,7 @@ void ecs_migrate_to_table(
 );
 
 void *ecs_migrate_add(
-    const ecs_world_t *world,
+    ecs_world_t *world,
     ecs_entity_record_t *record,
     ecs_entity_t entity,
     ecs_table_t *from_table,
@@ -42,7 +42,7 @@ void *ecs_migrate_add(
 );
 
 void *ecs_migrate_add_many(
-    const ecs_world_t *world,
+    ecs_world_t *world,
     ecs_entity_record_t *record,
     ecs_entity_t entity,
     ecs_table_t *from_table,

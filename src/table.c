@@ -3,8 +3,10 @@
 #include "./type.h"
 #include "datastructure/idmap.h"
 #include "datastructure/vec.h"
+#include "utils.h"
 #include "world_internal.h"
 #include <stdlib.h>
+#include <string.h>
 
 void ecs_table_init(
     ecs_table_t *table,
@@ -44,24 +46,27 @@ void ecs_table_init(
     }
 }
 
-static inline void ecs_table_grow(ecs_table_t *table) {
+static inline void ecs_table_grow(ecs_world_t *world, ecs_table_t *table) {
     uint64_t new_capacity = table->entity_capacity * (uint64_t)2;
     table->entities = realloc(table->entities, sizeof(ecs_entity_t) * new_capacity);
     for (uint16_t i = 0; i < table->data_count; i++) {
-        ecs_column_t *column = &table->cls[table->data_columns[i]];
-        column->data = realloc(column->data, column->size * new_capacity);
-        memset(
-            (uint8_t *)column->data + (column->size * table->entity_capacity),
-            0,
-            column->size * (new_capacity - table->entity_capacity)
-        );
+        uint16_t column_index = table->data_columns[i];
+        ecs_column_t *column = &table->cls[column_index];
+        const ecs_component_record_t *record =
+            ecs_component_index_get(&world->component_index, table->type.ids[column_index]);
+
+        void *new_data = calloc(new_capacity, column->size);
+        ecs_assert_not_null(new_data);
+        ecs_component_value_move_ctor(record, new_data, column->data, table->entity_count);
+        free(column->data);
+        column->data = new_data;
     }
     table->entity_capacity = new_capacity;
 }
 
-uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
+uint32_t ecs_table_add_entity(ecs_world_t *world, ecs_table_t *table, ecs_entity_t entity) {
     if (ECS_UNLIKELY(table->entity_count >= table->entity_capacity)) {
-        ecs_table_grow(table);
+        ecs_table_grow(world, table);
     }
     uint32_t row = table->entity_count++;
     table->entities[row] = entity;
@@ -70,17 +75,31 @@ uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
 
 // if the entity is not the last one, the last entity will be moved to the removed entity's
 // position, and the moved entity will be returned
-ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row) {
+ecs_entity_t
+ecs_table_remove_entity(ecs_world_t *world, ecs_table_t *table, uint32_t row, bool row_values_live) {
     ecs_entity_t removed_entity = table->entities[row];
     uint32_t last_row = table->entity_count - 1;
+    if (row_values_live) {
+        for (uint16_t i = 0; i < table->data_count; i++) {
+            uint16_t column_index = table->data_columns[i];
+            ecs_column_t *column = &table->cls[column_index];
+            const ecs_component_record_t *record =
+                ecs_component_index_get(&world->component_index, table->type.ids[column_index]);
+            void *ptr = (char *)column->data + (column->size * row);
+            ecs_component_value_dtor(record, ptr, 1);
+        }
+    }
     if (row != last_row) {
         ecs_entity_t moved_entity = table->entities[last_row];
         table->entities[row] = moved_entity;
         for (uint16_t i = 0; i < table->data_count; i++) {
-            ecs_column_t *column = &table->cls[table->data_columns[i]];
-            const void *src = (char *)column->data + (column->size * last_row);
+            uint16_t column_index = table->data_columns[i];
+            ecs_column_t *column = &table->cls[column_index];
+            const ecs_component_record_t *record =
+                ecs_component_index_get(&world->component_index, table->type.ids[column_index]);
+            void *src = (char *)column->data + (column->size * last_row);
             void *dst = (char *)column->data + (column->size * row);
-            memcpy(dst, src, column->size);
+            ecs_component_value_move_ctor(record, dst, src, 1);
         }
         table->entity_count -= 1;
         return moved_entity;
@@ -122,17 +141,16 @@ static void ecs_table_fini_component_values(ecs_world_t *world, ecs_table_t *tab
             continue;
         }
 
-        if ((crec->relation_flags & EcsRelationTarget) || !crec->on_remove) {
+        if (crec->relation_flags & EcsRelationTarget) {
             continue;
         }
 
         for (uint32_t row = 0; row < table->entity_count; row++) {
-            crec->on_remove(
-                world,
-                table->entities[row],
-                component,
-                ecs_table_component_at_column(table, c, row)
-            );
+            void *ptr = ecs_table_component_at_column(table, c, row);
+            if (crec->on_remove) {
+                crec->on_remove(world, table->entities[row], component, ptr);
+            }
+            ecs_component_value_dtor(crec, ptr, 1);
         }
     }
 }
