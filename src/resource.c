@@ -44,6 +44,14 @@ void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *dat
     ecs_resource_index_set(&world->resource_index, world, id, data);
 }
 
+void ecs_move_resource_rid(ecs_world_t *world, ecs_resource_t id, void *data) {
+    ecs_assert_not_null(world);
+    ecs_assert_id_valid(id);
+    ecs_assert_not_null(data);
+
+    ecs_resource_index_move(&world->resource_index, world, id, data);
+}
+
 void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id) {
     ecs_assert_not_null(world);
     ecs_assert_id_valid(id);

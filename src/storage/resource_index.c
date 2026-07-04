@@ -9,6 +9,74 @@ static uint64_t ecs_resource_storage_size(const ecs_resource_desc_t *record) {
     return record->size ? record->size : 1;
 }
 
+static void ecs_resource_value_copy_ctor(
+    const ecs_resource_desc_t *record,
+    void *dst,
+    const void *src
+) {
+    if (record->size == 0) {
+        return;
+    }
+    if (record->ops.copy_ctor) {
+        record->ops.copy_ctor(dst, src, 1);
+        return;
+    }
+    memcpy(dst, src, record->size);
+}
+
+static void ecs_resource_value_copy(const ecs_resource_desc_t *record, void *dst, const void *src) {
+    if (record->size == 0) {
+        return;
+    }
+    if (record->ops.copy) {
+        record->ops.copy(dst, src, 1);
+        return;
+    }
+    memcpy(dst, src, record->size);
+}
+
+static void ecs_resource_value_move_ctor(ecs_resource_desc_t *record, void *dst, void *src) {
+    if (record->size == 0) {
+        return;
+    }
+    if (record->ops.move_ctor) {
+        record->ops.move_ctor(dst, src, 1);
+        return;
+    }
+    if (record->ops.copy_ctor) {
+        record->ops.copy_ctor(dst, src, 1);
+        if (record->ops.dtor) {
+            record->ops.dtor(src, 1);
+        }
+        return;
+    }
+    memcpy(dst, src, record->size);
+}
+
+static void ecs_resource_value_move(ecs_resource_desc_t *record, void *dst, void *src) {
+    if (record->size == 0) {
+        return;
+    }
+    if (record->ops.move) {
+        record->ops.move(dst, src, 1);
+        return;
+    }
+    if (record->ops.copy) {
+        record->ops.copy(dst, src, 1);
+        if (record->ops.dtor) {
+            record->ops.dtor(src, 1);
+        }
+        return;
+    }
+    memcpy(dst, src, record->size);
+}
+
+static void ecs_resource_value_dtor(const ecs_resource_desc_t *record, void *ptr) {
+    if (record->size != 0 && record->ops.dtor) {
+        record->ops.dtor(ptr, 1);
+    }
+}
+
 static void
 ecs_resource_index_assert_registered(const ecs_resource_index_t *index, ecs_resource_t id) {
     ecs_assert(
@@ -65,6 +133,7 @@ void ecs_resource_index_fini(ecs_resource_index_t *index, ecs_world_t *world) {
         if (record->on_remove) {
             record->on_remove(world, index->data[id]);
         }
+        ecs_resource_value_dtor(record, index->data[id]);
         free(index->data[id]);
     }
 
@@ -115,6 +184,7 @@ void ecs_resource_index_set(
     ecs_resource_index_assert_registered(index, id);
 
     const ecs_resource_desc_t *record = &index->records[id];
+    bool was_present = index->present[id];
     if (!index->present[id]) {
         index->data[id] = calloc(1, ecs_resource_storage_size(record));
         ecs_assert_not_null(index->data[id]);
@@ -126,7 +196,40 @@ void ecs_resource_index_set(
     }
 
     if (record->size != 0) {
-        memcpy(index->data[id], data, record->size);
+        if (was_present) {
+            ecs_resource_value_copy(record, index->data[id], data);
+        } else {
+            ecs_resource_value_copy_ctor(record, index->data[id], data);
+        }
+    }
+}
+
+void ecs_resource_index_move(
+    ecs_resource_index_t *index,
+    ecs_world_t *world,
+    ecs_resource_t id,
+    void *data
+) {
+    ecs_resource_index_assert_registered(index, id);
+
+    ecs_resource_desc_t *record = &index->records[id];
+    bool was_present = index->present[id];
+    if (!index->present[id]) {
+        index->data[id] = calloc(1, ecs_resource_storage_size(record));
+        ecs_assert_not_null(index->data[id]);
+        index->present[id] = true;
+    }
+
+    if (record->on_set) {
+        record->on_set(world, data);
+    }
+
+    if (record->size != 0) {
+        if (was_present) {
+            ecs_resource_value_move(record, index->data[id], data);
+        } else {
+            ecs_resource_value_move_ctor(record, index->data[id], data);
+        }
     }
 }
 
@@ -163,6 +266,7 @@ void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_world_t *world, 
     if (record->on_remove) {
         record->on_remove(world, index->data[id]);
     }
+    ecs_resource_value_dtor(record, index->data[id]);
 
     free(index->data[id]);
     index->data[id] = NULL;
