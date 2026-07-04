@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use siecs::{
     raw, Abstract, Commands, Component, Entity, Field, FieldKind, ParamError, Query, Res, ResMut,
-    Resource, SystemDescBuilder, SystemParam, World,
+    Resource, SystemDescBuilder, SystemParam, With, Without, World,
 };
 
 #[derive(Component)]
@@ -20,6 +20,12 @@ struct Velocity {
 
 #[derive(Component)]
 struct Marker;
+
+#[derive(Component)]
+struct Player;
+
+#[derive(Component)]
+struct Sleeping;
 
 #[derive(Component)]
 struct DropComponent {
@@ -123,6 +129,89 @@ fn direct_query_optional_and_entity_items() {
 }
 
 #[test]
+fn direct_query_with_filter_requires_marker() {
+    let mut world = World::new();
+    let player = world.entity();
+    let non_player = world.entity();
+
+    world.set(player, Position { x: 1.0, y: 0.0 });
+    world.add::<Player>(player);
+    world.set(non_player, Position { x: 10.0, y: 0.0 });
+
+    let mut seen = Vec::new();
+    let mut query = world.query_filtered::<(Entity, &Position), With<Player>>();
+    for (entity, position) in &mut query {
+        seen.push((entity, position.x as i32));
+    }
+
+    assert_eq!(seen, vec![(player, 1)]);
+}
+
+#[test]
+fn direct_query_without_filter_excludes_marker_without_returning_a_field() {
+    let mut world = World::new();
+    let awake = world.entity();
+    let sleeping = world.entity();
+
+    world.set(awake, Position { x: 1.0, y: 0.0 });
+    world.set(sleeping, Position { x: 2.0, y: 0.0 });
+    world.add::<Sleeping>(sleeping);
+
+    let mut seen = Vec::new();
+    let mut query = world.query_filtered::<(Entity, &Position), Without<Sleeping>>();
+    for (entity, position) in &mut query {
+        seen.push((entity, position.x as i32));
+    }
+
+    assert_eq!(seen, vec![(awake, 1)]);
+
+    let mut without_only = world.query_filtered::<Entity, Without<Sleeping>>();
+    assert!((&mut without_only)
+        .into_iter()
+        .any(|entity| entity == awake));
+}
+
+#[test]
+fn direct_query_tuple_filter_combines_with_and_without() {
+    let mut world = World::new();
+    let awake_player = world.entity();
+    let sleeping_player = world.entity();
+    let awake_non_player = world.entity();
+
+    world.set(awake_player, Position { x: 1.0, y: 0.0 });
+    world.add::<Player>(awake_player);
+
+    world.set(sleeping_player, Position { x: 2.0, y: 0.0 });
+    world.add::<Player>(sleeping_player);
+    world.add::<Sleeping>(sleeping_player);
+
+    world.set(awake_non_player, Position { x: 3.0, y: 0.0 });
+
+    let mut seen = Vec::new();
+    let mut query =
+        world.query_filtered::<(Entity, &Position), (With<Player>, Without<Sleeping>)>();
+    for (entity, position) in &mut query {
+        seen.push((entity, position.x as i32));
+    }
+
+    assert_eq!(seen, vec![(awake_player, 1)]);
+}
+
+#[test]
+fn filter_on_same_component_as_read_field_is_allowed() {
+    let mut world = World::new();
+    let entity = world.entity();
+    world.set(entity, Position { x: 1.0, y: 0.0 });
+
+    let mut query = world
+        .try_query_filtered::<&Position, With<Position>>()
+        .expect("filter term must not count as a returned field");
+    let positions = (&mut query).into_iter().count();
+
+    assert_eq!(positions, 1);
+}
+
+#[test]
 fn direct_query_field_reports_owned_and_shared() {
     let mut world = World::new();
     let base = world.entity();
@@ -163,6 +252,28 @@ fn query_state_is_reusable() {
     assert_eq!(sum, 3.0);
 }
 
+#[test]
+fn filtered_query_state_is_reusable() {
+    let mut world = World::new();
+    let first = world.entity();
+    let second = world.entity();
+
+    world.set(first, Position { x: 1.0, y: 0.0 });
+    world.add::<Player>(first);
+    world.set(second, Position { x: 2.0, y: 0.0 });
+
+    let mut state = world.query_state_filtered::<&Position, With<Player>>();
+    let mut sum = 0.0;
+    state.each(&mut world, |position| sum += position.x);
+    assert_eq!(sum, 1.0);
+
+    world.add::<Player>(second);
+
+    let mut sum = 0.0;
+    state.each(&mut world, |position| sum += position.x);
+    assert_eq!(sum, 3.0);
+}
+
 fn move_system(
     mut query: Query<(&mut Position, &Velocity)>,
     time: Res<DeltaTime>,
@@ -182,6 +293,27 @@ fn plain_move_system(mut query: Query<(&mut Position, &Velocity)>) {
     }
 }
 
+fn filtered_player_move_system(mut query: Query<(&mut Position, &Velocity), With<Player>>) {
+    for (position, velocity) in &mut query {
+        position.x += velocity.x;
+        position.y += velocity.y;
+    }
+}
+
+fn multi_query_system(
+    mut moving: Query<(&mut Position, &Velocity), With<Player>>,
+    mut sleeping: Query<Entity, With<Sleeping>>,
+    mut stats: ResMut<Stats>,
+) {
+    for (position, velocity) in &mut moving {
+        position.x += velocity.x;
+        position.y += velocity.y;
+        stats.moves += 1;
+    }
+
+    stats.custom = (&mut sleeping).into_iter().count();
+}
+
 #[test]
 fn system_accepts_bevy_style_query_function() {
     let mut world = World::new();
@@ -195,6 +327,55 @@ fn system_accepts_bevy_style_query_function() {
     let position = world.get::<Position>(entity).unwrap();
     assert_eq!(position.x, 4.0);
     assert_eq!(position.y, 7.0);
+}
+
+#[test]
+fn system_query_supports_filters() {
+    let mut world = World::new();
+    let player = world.entity();
+    let non_player = world.entity();
+
+    world.set(player, Position { x: 1.0, y: 2.0 });
+    world.set(player, Velocity { x: 3.0, y: 5.0 });
+    world.add::<Player>(player);
+
+    world.set(non_player, Position { x: 10.0, y: 20.0 });
+    world.set(non_player, Velocity { x: 30.0, y: 50.0 });
+
+    world.system("PlayerMove", filtered_player_move_system);
+    world.progress();
+
+    let position = world.get::<Position>(player).unwrap();
+    assert_eq!(position.x, 4.0);
+    assert_eq!(position.y, 7.0);
+
+    let position = world.get::<Position>(non_player).unwrap();
+    assert_eq!(position.x, 10.0);
+    assert_eq!(position.y, 20.0);
+}
+
+#[test]
+fn system_supports_multiple_queries() {
+    let mut world = World::new();
+    let player = world.entity();
+    let sleeping = world.entity();
+
+    world.set(player, Position { x: 1.0, y: 2.0 });
+    world.set(player, Velocity { x: 3.0, y: 5.0 });
+    world.add::<Player>(player);
+
+    world.set(sleeping, Position { x: 10.0, y: 20.0 });
+    world.add::<Sleeping>(sleeping);
+    world.set_resource(Stats::default());
+
+    world.system("MultiQuery", multi_query_system);
+    world.progress();
+
+    let position = world.get::<Position>(player).unwrap();
+    assert_eq!(position.x, 4.0);
+    assert_eq!(position.y, 7.0);
+    assert_eq!(world.resource::<Stats>().moves, 1);
+    assert_eq!(world.resource::<Stats>().custom, 1);
 }
 
 #[test]
@@ -285,6 +466,12 @@ fn access_conflicts_are_reported_once_at_registration() {
 
     let err = match world.try_query::<(&mut Position, &Position)>() {
         Ok(_) => panic!("duplicate component access should be rejected"),
+        Err(err) => err,
+    };
+    assert_eq!(err, ParamError::DuplicateComponentField);
+
+    let err = match world.try_query_filtered::<(&mut Position, &Position), With<Player>>() {
+        Ok(_) => panic!("duplicate component access with a filter should be rejected"),
         Err(err) => err,
     };
     assert_eq!(err, ParamError::DuplicateComponentField);

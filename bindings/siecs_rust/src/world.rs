@@ -7,7 +7,8 @@ use std::ffi::{CStr, CString};
 use crate::system::IntoSystem;
 use crate::{
     raw, ChildOf, Component, Disabled, Entity, Event, EventId, Name, Observer, ObserverId, OnAdd,
-    OnRemove, OnSet, Query, QueryParam, QueryState, RawEvent, Resource, SystemId, TypedEvent,
+    OnRemove, OnSet, Query, QueryFilter, QueryParam, QueryState, RawEvent, Resource, SystemId,
+    TypedEvent,
 };
 
 pub struct World {
@@ -141,12 +142,36 @@ impl World {
     }
 
     #[inline]
+    pub fn query_filtered<P: QueryParam, F: QueryFilter>(&mut self) -> Query<P, F> {
+        Query::new(self).unwrap_or_else(|err| panic!("{err}"))
+    }
+
+    #[inline]
+    pub fn try_query_filtered<P: QueryParam, F: QueryFilter>(
+        &mut self,
+    ) -> Result<Query<P, F>, crate::ParamError> {
+        Query::new(self)
+    }
+
+    #[inline]
     pub fn query_state<P: QueryParam>(&mut self) -> QueryState<P> {
         QueryState::new(self).unwrap_or_else(|err| panic!("{err}"))
     }
 
     #[inline]
     pub fn try_query_state<P: QueryParam>(&mut self) -> Result<QueryState<P>, crate::ParamError> {
+        QueryState::new(self)
+    }
+
+    #[inline]
+    pub fn query_state_filtered<P: QueryParam, F: QueryFilter>(&mut self) -> QueryState<P, F> {
+        QueryState::new(self).unwrap_or_else(|err| panic!("{err}"))
+    }
+
+    #[inline]
+    pub fn try_query_state_filtered<P: QueryParam, F: QueryFilter>(
+        &mut self,
+    ) -> Result<QueryState<P, F>, crate::ParamError> {
         QueryState::new(self)
     }
 

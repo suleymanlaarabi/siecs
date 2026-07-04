@@ -36,17 +36,30 @@ impl core::fmt::Display for ParamError {
 
 impl std::error::Error for ParamError {}
 
-pub struct QueryState<P: QueryParam> {
+pub struct QueryState<P: QueryParam, F: QueryFilter = ()> {
     world: *mut raw::WorldRaw,
     id: raw::QueryId,
     param_state: P::State,
+    fini_on_drop: bool,
+    _filter: PhantomData<fn() -> F>,
 }
 
-impl<P: QueryParam> QueryState<P> {
+impl<P: QueryParam, F: QueryFilter> QueryState<P, F> {
     #[inline]
     pub(crate) fn new(world: &mut World) -> Result<Self, ParamError> {
+        Self::new_with_drop(world, true)
+    }
+
+    #[inline]
+    pub(crate) fn new_system(world: &mut World) -> Result<Self, ParamError> {
+        Self::new_with_drop(world, false)
+    }
+
+    #[inline]
+    fn new_with_drop(world: &mut World, fini_on_drop: bool) -> Result<Self, ParamError> {
         let mut terms = QueryTerms::default();
         let param_state = P::init_state(world, &mut terms)?;
+        F::init_filter(world, &mut terms)?;
         validate_returned_fields(&terms.desc)?;
 
         let world = world.as_raw_mut();
@@ -56,6 +69,8 @@ impl<P: QueryParam> QueryState<P> {
             world,
             id,
             param_state,
+            fini_on_drop,
+            _filter: PhantomData,
         })
     }
 
@@ -65,14 +80,14 @@ impl<P: QueryParam> QueryState<P> {
     }
 
     #[inline]
-    pub fn query(&mut self, world: &mut World) -> Query<P> {
+    pub fn query(&mut self, world: &mut World) -> Query<P, F> {
         Query::from_state(world.as_raw_mut(), self)
     }
 
     #[inline]
-    pub fn each<F>(&mut self, world: &mut World, mut func: F)
+    pub fn each<Func>(&mut self, world: &mut World, mut func: Func)
     where
-        F: for<'item> FnMut(P::Item<'item>),
+        Func: for<'item> FnMut(P::Item<'item>),
     {
         for item in &mut self.query(world) {
             func(item);
@@ -80,30 +95,34 @@ impl<P: QueryParam> QueryState<P> {
     }
 }
 
-impl<P: QueryParam> Drop for QueryState<P> {
+impl<P: QueryParam, F: QueryFilter> Drop for QueryState<P, F> {
     #[inline]
     fn drop(&mut self) {
+        if !self.fini_on_drop {
+            return;
+        }
+
         unsafe {
             raw::ecs_query_fini(self.world, self.id);
         }
     }
 }
 
-pub struct Query<P: QueryParam> {
+pub struct Query<P: QueryParam, F: QueryFilter = ()> {
     world: *mut raw::WorldRaw,
-    state: QueryStateRef<P>,
+    state: QueryStateRef<P, F>,
 }
 
-enum QueryStateRef<P: QueryParam> {
-    Owned(QueryState<P>),
-    Borrowed(*mut QueryState<P>),
+enum QueryStateRef<P: QueryParam, F: QueryFilter> {
+    Owned(QueryState<P, F>),
+    Borrowed(*mut QueryState<P, F>),
     Iter {
         iter: *mut raw::Iter,
         param_state: *const P::State,
     },
 }
 
-impl<P: QueryParam> Query<P> {
+impl<P: QueryParam, F: QueryFilter> Query<P, F> {
     #[inline]
     pub(crate) fn new(world: &mut World) -> Result<Self, ParamError> {
         let state = QueryState::new(world)?;
@@ -114,7 +133,7 @@ impl<P: QueryParam> Query<P> {
     }
 
     #[inline]
-    fn from_state(world: *mut raw::WorldRaw, state: &mut QueryState<P>) -> Self {
+    pub(crate) fn from_state(world: *mut raw::WorldRaw, state: &mut QueryState<P, F>) -> Self {
         Self {
             world,
             state: QueryStateRef::Borrowed(state),
@@ -152,7 +171,7 @@ impl<P: QueryParam> Query<P> {
     }
 }
 
-impl<'query, P: QueryParam> IntoIterator for &'query mut Query<P> {
+impl<'query, P: QueryParam, F: QueryFilter> IntoIterator for &'query mut Query<P, F> {
     type IntoIter = QueryIter<'query, P>;
     type Item = P::Item<'query>;
 
@@ -341,7 +360,121 @@ impl QueryTerms {
         )?;
         Ok(index)
     }
+
+    #[inline]
+    pub fn require<T: Component>(&mut self, world: &mut World) -> Result<(), ParamError> {
+        let id = T::id(world);
+        match self.term_requirement(id) {
+            TermRequirement::Required => return Ok(()),
+            TermRequirement::Excluded => return Err(ParamError::DuplicateComponentField),
+            TermRequirement::Missing => {}
+        }
+
+        append_term(
+            &mut self.desc,
+            &mut self.term_index,
+            id,
+            raw::TermAccess::Filter,
+        )
+    }
+
+    #[inline]
+    pub fn exclude<T: Component>(&mut self, world: &mut World) -> Result<(), ParamError> {
+        let id = T::id(world);
+        match self.term_requirement(id) {
+            TermRequirement::Excluded => return Ok(()),
+            TermRequirement::Required => return Err(ParamError::DuplicateComponentField),
+            TermRequirement::Missing => {}
+        }
+
+        append_term(
+            &mut self.desc,
+            &mut self.term_index,
+            id,
+            raw::TermAccess::Not,
+        )
+    }
+
+    #[inline]
+    fn term_requirement(&self, id: raw::ComponentId) -> TermRequirement {
+        let mut index = 0;
+        while index < self.term_index as usize {
+            let term = self.desc.terms[index];
+            if term.id == id {
+                return if term.access == raw::TermAccess::Not {
+                    TermRequirement::Excluded
+                } else {
+                    TermRequirement::Required
+                };
+            }
+            index += 1;
+        }
+
+        TermRequirement::Missing
+    }
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TermRequirement {
+    Missing,
+    Required,
+    Excluded,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct With<T: Component>(PhantomData<fn() -> T>);
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Without<T: Component>(PhantomData<fn() -> T>);
+
+pub unsafe trait QueryFilter {
+    fn init_filter(world: &mut World, terms: &mut QueryTerms) -> Result<(), ParamError>;
+}
+
+unsafe impl QueryFilter for () {
+    #[inline]
+    fn init_filter(_world: &mut World, _terms: &mut QueryTerms) -> Result<(), ParamError> {
+        Ok(())
+    }
+}
+
+unsafe impl<T: Component> QueryFilter for With<T> {
+    #[inline]
+    fn init_filter(world: &mut World, terms: &mut QueryTerms) -> Result<(), ParamError> {
+        terms.require::<T>(world)
+    }
+}
+
+unsafe impl<T: Component> QueryFilter for Without<T> {
+    #[inline]
+    fn init_filter(world: &mut World, terms: &mut QueryTerms) -> Result<(), ParamError> {
+        terms.exclude::<T>(world)
+    }
+}
+
+macro_rules! impl_query_filter_tuple {
+    ($($name:ident),+ $(,)?) => {
+        unsafe impl<$($name),+> QueryFilter for ($($name,)+)
+        where
+            $($name: QueryFilter),+
+        {
+            #[inline]
+            fn init_filter(world: &mut World, terms: &mut QueryTerms) -> Result<(), ParamError> {
+                $($name::init_filter(world, terms)?;)+
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_query_filter_tuple!(A);
+impl_query_filter_tuple!(A, B);
+impl_query_filter_tuple!(A, B, C);
+impl_query_filter_tuple!(A, B, C, D);
+impl_query_filter_tuple!(A, B, C, D, E);
+impl_query_filter_tuple!(A, B, C, D, E, F);
+impl_query_filter_tuple!(A, B, C, D, E, F, G);
+impl_query_filter_tuple!(A, B, C, D, E, F, G, H);
 
 #[inline]
 pub(crate) fn append_term(

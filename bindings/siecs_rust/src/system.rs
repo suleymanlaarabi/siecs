@@ -1,8 +1,8 @@
 use core::marker::PhantomData;
 
 use crate::query::{
-    resource_mut, resource_ref, validate_returned_fields, ParamError, QueryParam, QueryTerms,
-    ResourceAccess,
+    resource_mut, resource_ref, validate_returned_fields, ParamError, QueryFilter, QueryParam,
+    QueryState, QueryTerms, ResourceAccess,
 };
 use crate::{raw, Component, Entity, Query, Res, ResMut, Resource, World, WorldRef};
 
@@ -136,6 +136,7 @@ pub struct SystemDescBuilder {
     desc: raw::SystemDesc,
     terms: QueryTerms,
     resources: ResourceAccess,
+    has_main_query: bool,
 }
 
 impl SystemDescBuilder {
@@ -145,6 +146,7 @@ impl SystemDescBuilder {
             desc: raw::SystemDesc::default(),
             terms: QueryTerms::default(),
             resources: ResourceAccess::default(),
+            has_main_query: false,
         }
     }
 
@@ -161,6 +163,16 @@ impl SystemDescBuilder {
     #[inline]
     pub fn query_terms(&mut self) -> &mut QueryTerms {
         &mut self.terms
+    }
+
+    #[inline]
+    fn take_main_query(&mut self) -> bool {
+        if self.has_main_query {
+            false
+        } else {
+            self.has_main_query = true;
+            true
+        }
     }
 
     #[inline]
@@ -187,16 +199,30 @@ pub unsafe trait SystemParam {
     ) -> Self::Item<'world>;
 }
 
-unsafe impl<P: QueryParam> SystemParam for Query<P> {
-    type State = P::State;
-    type Item<'world> = Query<P>;
+pub enum SystemQueryState<P: QueryParam, F: QueryFilter> {
+    Main { param_state: P::State },
+    Secondary { state: QueryState<P, F> },
+}
+
+unsafe impl<P: QueryParam, F: QueryFilter> SystemParam for Query<P, F> {
+    type State = SystemQueryState<P, F>;
+    type Item<'world> = Query<P, F>;
 
     #[inline]
     fn init_state(
         world: &mut World,
         desc: &mut SystemDescBuilder,
     ) -> Result<Self::State, ParamError> {
-        P::init_state(world, desc.query_terms())
+        if desc.take_main_query() {
+            let terms = desc.query_terms();
+            let param_state = P::init_state(world, terms)?;
+            F::init_filter(world, terms)?;
+            Ok(SystemQueryState::Main { param_state })
+        } else {
+            Ok(SystemQueryState::Secondary {
+                state: QueryState::new_system(world)?,
+            })
+        }
     }
 
     #[inline]
@@ -204,7 +230,12 @@ unsafe impl<P: QueryParam> SystemParam for Query<P> {
         state: &'world mut Self::State,
         ctx: SystemContext<'world>,
     ) -> Self::Item<'world> {
-        Query::from_iter(ctx.world, ctx.iter, state)
+        match state {
+            SystemQueryState::Main { param_state } => {
+                Query::from_iter(ctx.world, ctx.iter, param_state)
+            }
+            SystemQueryState::Secondary { state } => Query::from_state(ctx.world, state),
+        }
     }
 }
 
