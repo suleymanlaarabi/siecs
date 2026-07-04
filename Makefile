@@ -33,10 +33,10 @@ build-test-release:
 	@bake rebuild test -r --cfg release >/dev/null
 
 test-c:
-	@bash -o pipefail -c "bake run test 2>&1 | $(QUIET_BAKE)"
+	@bash -o pipefail -c "bake test test 2>&1 | $(QUIET_BAKE)"
 
 test-c-release:
-	@bash -o pipefail -c "bake run test --cfg release 2>&1 | $(QUIET_BAKE)"
+	@bash -o pipefail -c "bake test test --cfg release 2>&1 | $(QUIET_BAKE)"
 
 test-leaks:
 	@sh tools/rebuild_isolated.sh . --cfg sanitize >/dev/null
@@ -46,11 +46,11 @@ test-leaks:
 
 test-cpp:
 	@bake rebuild test/cpp -r >/dev/null
-	@bash -o pipefail -c "bake run test/cpp 2>&1 | $(QUIET_BAKE)"
+	@bash -o pipefail -c "bake test test/cpp 2>&1 | $(QUIET_BAKE)"
 
 test-cpp-release:
 	@bake rebuild test/cpp -r --cfg release >/dev/null
-	@bash -o pipefail -c "bake run test/cpp --cfg release 2>&1 | $(QUIET_BAKE)"
+	@bash -o pipefail -c "bake test test/cpp --cfg release 2>&1 | $(QUIET_BAKE)"
 
 update-rust-vendor:
 	@bindings/siecs_rust/tools/update_vendor.sh

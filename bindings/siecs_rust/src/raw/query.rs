@@ -34,7 +34,7 @@ impl Default for QueryTerm {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct QueryDesc {
-    pub terms: [QueryTerm; 16],
+    pub terms: [QueryTerm; 64],
     pub is_a: EntityId,
 }
 
@@ -42,7 +42,7 @@ impl Default for QueryDesc {
     #[inline]
     fn default() -> Self {
         Self {
-            terms: [QueryTerm::default(); 16],
+            terms: [QueryTerm::default(); 64],
             is_a: 0,
         }
     }
@@ -69,12 +69,13 @@ pub struct Iter {
     pub cache: *mut QueryCache,
     pub ptrs: *mut *mut c_void,
     pub field_kinds: *mut FieldKind,
+    pub user_data: usize,
     pub table_idx: u16,
     pub table_count: u16,
 }
 
 extern "C" {
-    pub fn ecs_query_init(world: *mut WorldRaw, query: *const QueryDesc) -> u32;
+    pub fn ecs_query_init(world: *mut WorldRaw, query: *const QueryDesc) -> QueryId;
     pub fn ecs_query_fini(world: *mut WorldRaw, query: QueryId);
     pub fn ecs_query_iter(world: *mut WorldRaw, query_id: QueryId) -> Iter;
     pub fn ecs_iter_next(it: *mut Iter) -> bool;

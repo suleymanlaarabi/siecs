@@ -11,8 +11,20 @@ struct Counter {
     value: i32,
 }
 
+#[derive(Resource)]
+struct DropResource {
+    value: String,
+}
+
 static RESOURCE_SET: AtomicUsize = AtomicUsize::new(0);
 static RESOURCE_REMOVE: AtomicUsize = AtomicUsize::new(0);
+static DROP_RESOURCE_DROPS: AtomicUsize = AtomicUsize::new(0);
+
+impl Drop for DropResource {
+    fn drop(&mut self) {
+        DROP_RESOURCE_DROPS.fetch_add(1, Ordering::SeqCst);
+    }
+}
 
 unsafe extern "C" fn resource_on_set(_world: *mut raw::WorldRaw, ptr: *const core::ffi::c_void) {
     assert_eq!((*ptr.cast::<HookedResource>()).value, 7);
@@ -71,4 +83,25 @@ fn resource_hooks_fire() {
 
     assert_eq!(RESOURCE_SET.load(Ordering::SeqCst), 1);
     assert_eq!(RESOURCE_REMOVE.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn resource_drop_runs_on_replace_and_remove() {
+    DROP_RESOURCE_DROPS.store(0, Ordering::SeqCst);
+
+    let mut world = World::new();
+    world.set_resource(DropResource {
+        value: "first".to_string(),
+    });
+    assert_eq!(world.resource::<DropResource>().value, "first");
+    assert_eq!(DROP_RESOURCE_DROPS.load(Ordering::SeqCst), 0);
+
+    world.set_resource(DropResource {
+        value: "second".to_string(),
+    });
+    assert_eq!(world.resource::<DropResource>().value, "second");
+    assert_eq!(DROP_RESOURCE_DROPS.load(Ordering::SeqCst), 1);
+
+    world.remove_resource::<DropResource>();
+    assert_eq!(DROP_RESOURCE_DROPS.load(Ordering::SeqCst), 2);
 }

@@ -733,6 +733,9 @@ typedef uint16_t ecs_module_id_t;
 typedef uint16_t ecs_resource_t;
 typedef uint32_t ecs_observer_id_t;
 
+#define ECS_QUERY_TERM_CAPACITY 64
+#define ECS_SYSTEM_AFTER_CAPACITY 16
+
 /*
  * Module import callback.
  *
@@ -826,6 +829,31 @@ typedef void (*ecs_component_on_remove_t)(
 );
 
 /*
+ * Value lifecycle operations for non-trivial component/resource storage.
+ *
+ * ctor initializes count values at dst. dtor destroys count live values at ptr.
+ * copy_ctor initializes dst from live src values. copy replaces live dst values
+ * from live src values. move_ctor initializes dst by consuming live src values.
+ * move replaces live dst values by consuming live src values.
+ *
+ * Any NULL operation falls back to plain C storage behavior: zero initialize for
+ * ctor, no-op for dtor, and memcpy for copy/move operations.
+ */
+typedef void (*ecs_type_ctor_t)(void *dst, uint32_t count);
+typedef void (*ecs_type_dtor_t)(void *ptr, uint32_t count);
+typedef void (*ecs_type_copy_t)(void *dst, const void *src, uint32_t count);
+typedef void (*ecs_type_move_t)(void *dst, void *src, uint32_t count);
+
+typedef struct {
+    ecs_type_ctor_t ctor;
+    ecs_type_dtor_t dtor;
+    ecs_type_copy_t copy_ctor;
+    ecs_type_copy_t copy;
+    ecs_type_move_t move_ctor;
+    ecs_type_move_t move;
+} ecs_type_ops_t;
+
+/*
  * Relation behavior flags used by ECS_RELATION_DEFINE.
  *
  * EcsRelationTarget marks the relation component stored on the source entity.
@@ -853,6 +881,7 @@ typedef enum {
 typedef struct {
     const char *name;
     uint64_t size;
+    ecs_type_ops_t ops;
     ecs_component_on_set_t on_set;
     ecs_component_on_remove_t on_remove;
     ecs_component_on_add_t on_add;
@@ -877,6 +906,7 @@ typedef void (*ecs_resource_hook_t)(ecs_world_t *world, const void *ptr);
 typedef struct {
     const char *name;
     uint64_t size;
+    ecs_type_ops_t ops;
     ecs_resource_hook_t on_set;
     ecs_resource_hook_t on_remove;
 } ecs_resource_desc_t;
@@ -917,7 +947,7 @@ typedef struct {
  * A query must contain at least one term or an is_a target.
  */
 typedef struct {
-    ecs_query_term_t terms[16];
+    ecs_query_term_t terms[ECS_QUERY_TERM_CAPACITY];
     ecs_entity_t is_a;
 } ecs_query_desc_t;
 
@@ -1216,7 +1246,7 @@ SIECS_API void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
             for (uint32_t i = 0; i < it.count; i++)
 
 /* Create a query. The query descriptor must read at least one component. */
-SIECS_API uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *query);
+SIECS_API ecs_query_id_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *query);
 
 /* Destroy a query id created by ecs_query/ecs_query_init. */
 SIECS_API void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
@@ -1289,6 +1319,7 @@ SIECS_API void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_com
  */
 SIECS_API void
 ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
+SIECS_API void ecs_move_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, void *data);
 
 /*
  * Declare and define a resource type.
@@ -1358,6 +1389,7 @@ ecs_resource_register(ecs_world_t *world, ecs_resource_t *id, const ecs_resource
 SIECS_API ecs_resource_t ecs_resource_find(ecs_world_t *world, const char *name);
 SIECS_API bool ecs_resource_is_registered_rid(const ecs_world_t *world, ecs_resource_t id);
 SIECS_API void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);
+SIECS_API void ecs_move_resource_rid(ecs_world_t *world, ecs_resource_t id, void *data);
 SIECS_API void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id);
 SIECS_API void *ecs_try_resource_rid(ecs_world_t *world, ecs_resource_t id);
 SIECS_API bool ecs_has_resource_rid(const ecs_world_t *world, ecs_resource_t id);
@@ -1455,6 +1487,7 @@ typedef struct {
     struct ecs_query_cache_s *cache;
     void **ptrs;
     ecs_field_kind_t *field_kinds;
+    uintptr_t user_data;
     uint16_t table_idx;
     uint16_t table_count;
 } ecs_iter_t;
@@ -1530,8 +1563,10 @@ typedef struct {
     const char *name;
     ecs_query_desc_t query;
     void (*callback)(ecs_iter_t *);
+    uintptr_t user_data;
+    void (*user_data_dtor)(uintptr_t user_data);
     ecs_phase_t phase;
-    ecs_system_id_t after[4];
+    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
     bool disabled;
 } ecs_system_desc_t;
 
@@ -1598,8 +1633,12 @@ template <class T> consteval std::string_view type_name() {
 
 #include <cstddef>
 #include <cstdio>
+#include <memory>
+#include <new>
 #include <string.h>
 #include <string>
+#include <type_traits>
+#include <utility>
 
 namespace ecs {
 
@@ -1623,6 +1662,81 @@ template <typename T> consteval size_t sisizeof() {
 
 template <typename T> static void ecs_cpp_set_component_id(ecs_component_t cid) {
     detail::component_type<T>::id = cid;
+}
+
+template <typename T> static void value_ctor(void *ptr, uint32_t count) {
+    T *values = static_cast<T *>(ptr);
+    for (uint32_t i = 0; i < count; i++) {
+        std::construct_at(&values[i]);
+    }
+}
+
+template <typename T> static void value_dtor(void *ptr, uint32_t count) {
+    T *values = static_cast<T *>(ptr);
+    for (uint32_t i = 0; i < count; i++) {
+        std::destroy_at(&values[i]);
+    }
+}
+
+template <typename T> static void value_copy_ctor(void *dst, const void *src, uint32_t count) {
+    T *out = static_cast<T *>(dst);
+    const T *in = static_cast<const T *>(src);
+    for (uint32_t i = 0; i < count; i++) {
+        std::construct_at(&out[i], in[i]);
+    }
+}
+
+template <typename T> static void value_copy(void *dst, const void *src, uint32_t count) {
+    T *out = static_cast<T *>(dst);
+    const T *in = static_cast<const T *>(src);
+    for (uint32_t i = 0; i < count; i++) {
+        if constexpr (std::is_copy_assignable_v<T>) {
+            out[i] = in[i];
+        } else {
+            std::destroy_at(&out[i]);
+            std::construct_at(&out[i], in[i]);
+        }
+    }
+}
+
+template <typename T> static void value_move_ctor(void *dst, void *src, uint32_t count) {
+    T *out = static_cast<T *>(dst);
+    T *in = static_cast<T *>(src);
+    for (uint32_t i = 0; i < count; i++) {
+        std::construct_at(&out[i], std::move(in[i]));
+        std::destroy_at(&in[i]);
+    }
+}
+
+template <typename T> static void value_move(void *dst, void *src, uint32_t count) {
+    T *out = static_cast<T *>(dst);
+    T *in = static_cast<T *>(src);
+    for (uint32_t i = 0; i < count; i++) {
+        if constexpr (std::is_move_assignable_v<T>) {
+            out[i] = std::move(in[i]);
+        } else {
+            std::destroy_at(&out[i]);
+            std::construct_at(&out[i], std::move(in[i]));
+        }
+        std::destroy_at(&in[i]);
+    }
+}
+
+template <typename T> consteval ecs_type_ops_t value_ops() {
+    if constexpr (!is_complete<T>::value) {
+        return {};
+    } else if constexpr (sizeof(T) == 0 || std::is_trivially_copyable_v<T>) {
+        return {};
+    } else {
+        return {
+            .ctor = std::is_default_constructible_v<T> ? value_ctor<T> : nullptr,
+            .dtor = std::is_destructible_v<T> ? value_dtor<T> : nullptr,
+            .copy_ctor = std::is_copy_constructible_v<T> ? value_copy_ctor<T> : nullptr,
+            .copy = std::is_copy_constructible_v<T> ? value_copy<T> : nullptr,
+            .move_ctor = std::is_move_constructible_v<T> ? value_move_ctor<T> : nullptr,
+            .move = std::is_move_constructible_v<T> ? value_move<T> : nullptr,
+        };
+    }
 }
 
 template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *world) {
@@ -1650,15 +1764,10 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
     ecs_component_desc_t desc = {
         .name = reflection.name,
         .size = sisizeof<T>(),
+        .ops = value_ops<T>(),
         .on_set = nullptr,
-        .on_remove = []([[maybe_unused]] ecs_world_t *world,
-                        [[maybe_unused]] ecs_entity_t entity,
-                        [[maybe_unused]] ecs_component_t component,
-                        void *ptr) { static_cast<const T *>(ptr)->~T(); },
-        .on_add = []([[maybe_unused]] ecs_world_t *world,
-                     [[maybe_unused]] ecs_entity_t entity,
-                     [[maybe_unused]] ecs_component_t component,
-                     void *ptr) { new (const_cast<void *>(ptr)) T(); },
+        .on_remove = nullptr,
+        .on_add = nullptr,
         .relation_flags = 0,
         .struct_desc = &reflection,
     };
@@ -1716,6 +1825,14 @@ class entity {
 
     template <typename T> entity set(const T &value) {
         ecs_set_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world), &value);
+        return *this;
+    }
+
+    template <typename T> entity set(T &&value)
+        requires(!std::is_lvalue_reference_v<T>)
+    {
+        using type = std::remove_cvref_t<T>;
+        ecs_move_cid(_world, _entity, detail::ecs_cpp_component_id<type>(_world), &value);
         return *this;
     }
 
@@ -1928,6 +2045,7 @@ template <typename T> static ecs_resource_t ecs_cpp_resource_id(ecs_world_t *wor
     ecs_resource_desc_t desc = {
         .name = name.c_str(),
         .size = sizeof(type),
+        .ops = detail::value_ops<type>(),
         .on_set = nullptr,
         .on_remove = nullptr,
     };
@@ -2028,7 +2146,7 @@ inline auto make_fields(ecs_iter_t *it, Resources &resources, std::index_sequenc
     return std::tuple{ make_batch_arg<Args, Is>(it, resources)... };
 }
 
-template <std::uint8_t SharedMask, std::size_t I, typename Args, typename Tuple>
+template <std::size_t I, typename Args, typename Tuple>
 inline decltype(auto) row_arg(Tuple &fields, uint32_t row) {
     auto &field = std::get<I>(fields);
 
@@ -2037,64 +2155,57 @@ inline decltype(auto) row_arg(Tuple &fields, uint32_t row) {
         (void)row;
         return field;
     } else {
-        constexpr std::size_t field_index = field_index_before<Args, I>();
-        if constexpr ((SharedMask & (1U << field_index)) != 0) {
-            (void)row;
-            return field[0];
-        } else {
-            return field[row];
-        }
+        return field[row];
     }
 }
 
-template <std::uint8_t SharedMask, typename F, typename Args, typename Tuple, std::size_t... Is>
-inline void call_fields_impl(F &func, Tuple &fields, uint32_t count, std::index_sequence<Is...>) {
+template <std::size_t I, typename Args, typename Tuple>
+inline decltype(auto) row_arg_shared(Tuple &fields) {
+    auto &field = std::get<I>(fields);
+    using arg = std::tuple_element_t<I, Args>;
+    if constexpr (is_res_v<arg>) {
+        return field;
+    } else {
+        return field[0];
+    }
+}
+
+template <typename F, typename Args, typename Tuple, std::size_t... Is>
+inline void call_fields_impl(
+    F &func,
+    Tuple &fields,
+    uint32_t count,
+    std::uint64_t shared_mask,
+    std::index_sequence<Is...>
+) {
+    (void)shared_mask;
     for (uint32_t i = 0; i < count; i++) {
-        std::invoke(func, row_arg<SharedMask, Is, Args>(fields, i)...);
-    }
-}
-
-template <std::uint8_t SharedMask, typename F, typename Args, typename Tuple>
-inline void call_fields_mask(F &func, Tuple &fields, uint32_t count) {
-    constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<Tuple>>;
-
-    call_fields_impl<SharedMask, F, Args>(func, fields, count, std::make_index_sequence<N>{});
-}
-
-template <std::uint16_t Mask, std::uint16_t MaxMask, typename F, typename Args, typename Tuple>
-inline void call_fields_dispatch(F &func, Tuple &fields, uint32_t count, std::uint8_t shared_mask) {
-    if constexpr (Mask < MaxMask) {
-        if (shared_mask == Mask) {
-            call_fields_mask<static_cast<std::uint8_t>(Mask), F, Args, Tuple>(func, fields, count);
-        } else {
-            call_fields_dispatch<Mask + 1, MaxMask, F, Args, Tuple>(
-                func,
-                fields,
-                count,
-                shared_mask
-            );
-        }
+        std::invoke(
+            func,
+            ((shared_mask & (1ULL << field_index_before<Args, Is>()))
+                 ? row_arg_shared<Is, Args>(fields)
+                 : row_arg<Is, Args>(fields, i))...
+        );
     }
 }
 
 template <typename F, typename Args, typename Tuple>
-inline void call_fields(F &func, Tuple &fields, uint32_t count, std::uint8_t shared_mask) {
+inline void call_fields(F &func, Tuple &fields, uint32_t count, std::uint64_t shared_mask) {
+    constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<Tuple>>;
     constexpr std::size_t component_count = component_arg_count<Args>();
-    static_assert(component_count <= 8, "query callbacks can read at most 8 components");
+    static_assert(component_count <= 64, "query callbacks can read at most 64 components");
 
-    constexpr std::uint16_t max_mask = 1U << component_count;
-
-    call_fields_dispatch<0, max_mask, F, Args, Tuple>(func, fields, count, shared_mask);
+    call_fields_impl<F, Args>(func, fields, count, shared_mask, std::make_index_sequence<N>{});
 }
 
-template <typename Args> inline std::uint8_t make_shared_mask(const ecs_iter_t *it) {
+template <typename Args> inline std::uint64_t make_shared_mask(const ecs_iter_t *it) {
     constexpr std::size_t component_count = component_arg_count<Args>();
-    static_assert(component_count <= 8, "query callbacks can read at most 8 components");
+    static_assert(component_count <= 64, "query callbacks can read at most 64 components");
 
-    std::uint8_t mask = 0;
+    std::uint64_t mask = 0;
     for (std::size_t i = 0; i < component_count; i++) {
         if (it->field_kinds[i] == EcsFieldShared) {
-            mask |= static_cast<std::uint8_t>(1U << i);
+            mask |= 1ULL << i;
         }
     }
     return mask;
@@ -2361,12 +2472,16 @@ namespace ecs {
 namespace detail {
 
 template <typename Callback, typename Args> static void system_callback(ecs_iter_t *it) {
-    Callback callback{};
+    Callback &callback = *reinterpret_cast<Callback *>(it->user_data);
     if constexpr (component_arg_count<Args>() == 0) {
         run_once<Callback, Args>(callback, it->world);
     } else {
         run_batch<Callback, Args>(callback, it);
     }
+}
+
+template <typename Callback> static void system_callback_dtor(uintptr_t user_data) {
+    delete reinterpret_cast<Callback *>(user_data);
 }
 
 } // namespace detail
@@ -2393,21 +2508,20 @@ class system : protected query {
         return *this;
     }
 
-    template <typename F> ecs_system_id_t each(F &&) {
+    template <typename F> ecs_system_id_t each(F &&func) {
         using callback = std::remove_cvref_t<F>;
-        static_assert(
-            std::is_empty_v<callback> && std::is_default_constructible_v<callback>,
-            "system callbacks must be stateless with the current C API"
-        );
 
         using traits = function_traits<callback>;
         using args = typename traits::args_tuple;
         detail::append_callback_terms<args>(_world, desc, term_index);
+        callback *state = new callback(std::forward<F>(func));
 
         ecs_system_desc_t system_desc = {
             .name = name,
             .query = this->desc,
             .callback = detail::system_callback<callback, args>,
+            .user_data = reinterpret_cast<uintptr_t>(state),
+            .user_data_dtor = detail::system_callback_dtor<callback>,
             .phase = _phase,
         };
 
@@ -2512,7 +2626,11 @@ class world {
 
     template <typename T> void set_resource(T &&value) const {
         using type = std::remove_cvref_t<T>;
-        ecs_set_resource_rid(_world, ecs_cpp_resource_id<type>(_world), &value);
+        if constexpr (std::is_lvalue_reference_v<T>) {
+            ecs_set_resource_rid(_world, ecs_cpp_resource_id<type>(_world), &value);
+        } else {
+            ecs_move_resource_rid(_world, ecs_cpp_resource_id<type>(_world), &value);
+        }
     }
 
     template <typename T> [[nodiscard]] T &resource() const {

@@ -30,6 +30,7 @@ pub fn derive_component(input: TokenStream) -> TokenStream {
             unsafe fn id_raw(world: *mut ::siecs::raw::WorldRaw) -> ::siecs::raw::ComponentId {
                 static ID: ::siecs::private::StaticComponentId =
                     ::siecs::private::StaticComponentId::new();
+                let _id_lock = ::siecs::private::id_registration_lock();
 
                 ::siecs::raw::ecs_component_register(
                     world,
@@ -37,6 +38,7 @@ pub fn derive_component(input: TokenStream) -> TokenStream {
                     &::siecs::raw::ComponentDesc {
                         name: concat!(#name, "\0").as_ptr().cast(),
                         size: ::core::mem::size_of::<#ident>() as u64,
+                        ops: ::siecs::private::type_ops::<#ident>(),
                         on_set: #on_set,
                         on_remove: #on_remove,
                         on_add: #on_add,
@@ -72,6 +74,7 @@ pub fn derive_resource(input: TokenStream) -> TokenStream {
             unsafe fn id_raw(world: *mut ::siecs::raw::WorldRaw) -> ::siecs::raw::ResourceId {
                 static ID: ::siecs::private::StaticResourceId =
                     ::siecs::private::StaticResourceId::new();
+                let _id_lock = ::siecs::private::id_registration_lock();
 
                 ::siecs::raw::ecs_resource_register(
                     world,
@@ -79,6 +82,7 @@ pub fn derive_resource(input: TokenStream) -> TokenStream {
                     &::siecs::raw::ResourceDesc {
                         name: concat!(#name, "\0").as_ptr().cast(),
                         size: ::core::mem::size_of::<#ident>() as u64,
+                        ops: ::siecs::private::type_ops::<#ident>(),
                         on_set: #on_set,
                         on_remove: #on_remove,
                     },
@@ -111,6 +115,7 @@ pub fn derive_event(input: TokenStream) -> TokenStream {
             unsafe fn id_raw(world: *mut ::siecs::raw::WorldRaw) -> ::siecs::raw::EventId {
                 static ID: ::siecs::private::StaticEventId =
                     ::siecs::private::StaticEventId::new();
+                let _id_lock = ::siecs::private::id_registration_lock();
 
                 ::siecs::raw::ecs_event_register(world, ID.as_mut_ptr())
             }
@@ -133,7 +138,10 @@ impl ComponentAttrs {
     fn parse(attrs: &[Attribute]) -> Self {
         let mut out = Self::default();
 
-        for attr in attrs.iter().filter(|attr| attr.path().is_ident("component")) {
+        for attr in attrs
+            .iter()
+            .filter(|attr| attr.path().is_ident("component"))
+        {
             attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("name") {
                     let value = meta.value()?.parse::<LitStr>()?;

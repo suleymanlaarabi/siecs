@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 use core::ops::Deref;
 
-use crate::{raw, Component, EachCtx, Entity, Res, ResMut, Resource, World};
+use crate::{raw, Component, Entity, Res, ResMut, Resource, World};
 
 pub use raw::FieldKind;
 
@@ -19,7 +19,7 @@ impl core::fmt::Display for ParamError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(match self {
             Self::DuplicateComponentField => {
-                "query callback cannot request the same component field more than once"
+                "query cannot request the same component field more than once"
             }
             Self::ResourceReadWriteConflict => {
                 "callback cannot request mutable and immutable access to the same resource"
@@ -36,103 +36,51 @@ impl core::fmt::Display for ParamError {
 
 impl std::error::Error for ParamError {}
 
-pub struct Query<'world> {
-    world: &'world mut World,
-    desc: raw::QueryDesc,
-    term_index: u16,
-}
-
-impl<'world> Query<'world> {
-    #[inline]
-    pub(crate) fn new(world: &'world mut World) -> Self {
-        Self {
-            world,
-            desc: raw::QueryDesc::default(),
-            term_index: 0,
-        }
-    }
-
-    #[inline]
-    pub fn require<T: Component>(mut self) -> Self {
-        self.append_component::<T>(raw::TermAccess::Filter);
-        self
-    }
-
-    #[inline]
-    pub fn exclude<T: Component>(mut self) -> Self {
-        self.append_component::<T>(raw::TermAccess::Not);
-        self
-    }
-
-    #[inline]
-    pub fn is_a(mut self, base: Entity) -> Self {
-        self.desc.is_a = base.id();
-        self
-    }
-
-    #[inline]
-    pub fn each<F, Marker>(self, func: F)
-    where
-        F: QueryEach<Marker>,
-    {
-        self.try_each(func).unwrap_or_else(|err| panic!("{err}"));
-    }
-
-    #[inline]
-    pub fn try_each<F, Marker>(mut self, mut func: F) -> Result<(), ParamError>
-    where
-        F: QueryEach<Marker>,
-    {
-        F::append_terms(self.world, &mut self.desc, &mut self.term_index)?;
-        let mut resource_access = ResourceAccess::default();
-        F::validate_resources(self.world, &mut resource_access)?;
-        validate_returned_fields(&self.desc)?;
-
-        let query = QueryHandle {
-            world: self.world.as_raw_mut(),
-            id: unsafe { raw::ecs_query_init(self.world.as_raw_mut(), &self.desc) as raw::QueryId },
-        };
-        let mut iter = unsafe { raw::ecs_query_iter(query.world, query.id) };
-
-        while unsafe { raw::ecs_iter_next(&mut iter) } {
-            unsafe {
-                func.run(&mut iter);
-            }
-        }
-
-        Ok(())
-    }
-
-    #[inline]
-    fn append_component<T: Component>(&mut self, access: raw::TermAccess) {
-        let id = T::id(self.world);
-        append_term(&mut self.desc, &mut self.term_index, id, access)
-            .expect("too many query terms");
-    }
-}
-
-#[doc(hidden)]
-pub trait QueryEach<Marker> {
-    fn append_terms(
-        world: &mut World,
-        desc: &mut raw::QueryDesc,
-        term_index: &mut u16,
-    ) -> Result<(), ParamError>;
-    fn validate_resources(
-        _world: &mut World,
-        _access: &mut ResourceAccess,
-    ) -> Result<(), ParamError> {
-        Ok(())
-    }
-    unsafe fn run(&mut self, iter: &mut raw::Iter);
-}
-
-struct QueryHandle {
+pub struct QueryState<P: QueryParam> {
     world: *mut raw::WorldRaw,
     id: raw::QueryId,
+    param_state: P::State,
 }
 
-impl Drop for QueryHandle {
+impl<P: QueryParam> QueryState<P> {
+    #[inline]
+    pub(crate) fn new(world: &mut World) -> Result<Self, ParamError> {
+        let mut terms = QueryTerms::default();
+        let param_state = P::init_state(world, &mut terms)?;
+        validate_returned_fields(&terms.desc)?;
+
+        let world = world.as_raw_mut();
+        let id = unsafe { raw::ecs_query_init(world, &terms.desc) as raw::QueryId };
+
+        Ok(Self {
+            world,
+            id,
+            param_state,
+        })
+    }
+
+    #[inline]
+    pub fn id(&self) -> raw::QueryId {
+        self.id
+    }
+
+    #[inline]
+    pub fn query(&mut self, world: &mut World) -> Query<P> {
+        Query::from_state(world.as_raw_mut(), self)
+    }
+
+    #[inline]
+    pub fn each<F>(&mut self, world: &mut World, mut func: F)
+    where
+        F: for<'item> FnMut(P::Item<'item>),
+    {
+        for item in &mut self.query(world) {
+            func(item);
+        }
+    }
+}
+
+impl<P: QueryParam> Drop for QueryState<P> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -141,29 +89,152 @@ impl Drop for QueryHandle {
     }
 }
 
-#[doc(hidden)]
-pub struct Ref<T>(PhantomData<T>);
+pub struct Query<P: QueryParam> {
+    world: *mut raw::WorldRaw,
+    state: QueryStateRef<P>,
+}
 
-#[doc(hidden)]
-pub struct Mut<T>(PhantomData<T>);
+enum QueryStateRef<P: QueryParam> {
+    Owned(QueryState<P>),
+    Borrowed(*mut QueryState<P>),
+    Iter {
+        iter: *mut raw::Iter,
+        param_state: *const P::State,
+    },
+}
 
-#[doc(hidden)]
-pub struct OptRef<T>(PhantomData<T>);
+impl<P: QueryParam> Query<P> {
+    #[inline]
+    pub(crate) fn new(world: &mut World) -> Result<Self, ParamError> {
+        let state = QueryState::new(world)?;
+        Ok(Self {
+            world: world.as_raw_mut(),
+            state: QueryStateRef::Owned(state),
+        })
+    }
 
-#[doc(hidden)]
-pub struct OptMut<T>(PhantomData<T>);
+    #[inline]
+    fn from_state(world: *mut raw::WorldRaw, state: &mut QueryState<P>) -> Self {
+        Self {
+            world,
+            state: QueryStateRef::Borrowed(state),
+        }
+    }
 
-#[doc(hidden)]
-pub struct FieldRef<T>(PhantomData<T>);
+    #[inline]
+    pub(crate) unsafe fn from_iter(
+        world: *mut raw::WorldRaw,
+        iter: *mut raw::Iter,
+        param_state: &P::State,
+    ) -> Self {
+        Self {
+            world,
+            state: QueryStateRef::Iter { iter, param_state },
+        }
+    }
 
-#[doc(hidden)]
-pub struct OptFieldRef<T>(PhantomData<T>);
+    #[inline]
+    fn query_id(&self) -> Option<raw::QueryId> {
+        match &self.state {
+            QueryStateRef::Owned(state) => Some(state.id),
+            QueryStateRef::Borrowed(state) => Some(unsafe { (**state).id }),
+            QueryStateRef::Iter { .. } => None,
+        }
+    }
 
-#[doc(hidden)]
-pub struct QueryRes<T>(PhantomData<T>);
+    #[inline]
+    fn param_state(&self) -> &P::State {
+        match &self.state {
+            QueryStateRef::Owned(state) => &state.param_state,
+            QueryStateRef::Borrowed(state) => unsafe { &(**state).param_state },
+            QueryStateRef::Iter { param_state, .. } => unsafe { &**param_state },
+        }
+    }
+}
 
-#[doc(hidden)]
-pub struct QueryResMut<T>(PhantomData<T>);
+impl<'query, P: QueryParam> IntoIterator for &'query mut Query<P> {
+    type IntoIter = QueryIter<'query, P>;
+    type Item = P::Item<'query>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        match &self.state {
+            QueryStateRef::Iter { iter, .. } => QueryIter {
+                state: self.param_state(),
+                iter: QueryIterSource::Borrowed(*iter),
+                fetch: None,
+                row: 0,
+            },
+            _ => {
+                let id = self.query_id().expect("query state missing");
+                let iter = unsafe { raw::ecs_query_iter(self.world, id) };
+                QueryIter {
+                    state: self.param_state(),
+                    iter: QueryIterSource::Owned(iter),
+                    fetch: None,
+                    row: 0,
+                }
+            }
+        }
+    }
+}
+
+pub struct QueryIter<'query, P: QueryParam + 'query> {
+    state: &'query P::State,
+    iter: QueryIterSource,
+    fetch: Option<P::Fetch<'query>>,
+    row: usize,
+}
+
+enum QueryIterSource {
+    Owned(raw::Iter),
+    Borrowed(*mut raw::Iter),
+}
+
+impl QueryIterSource {
+    #[inline]
+    fn as_mut_ptr(&mut self) -> *mut raw::Iter {
+        match self {
+            Self::Owned(iter) => iter,
+            Self::Borrowed(iter) => *iter,
+        }
+    }
+
+    #[inline]
+    fn is_owned(&self) -> bool {
+        matches!(self, Self::Owned(_))
+    }
+}
+
+impl<'query, P: QueryParam + 'query> Iterator for QueryIter<'query, P> {
+    type Item = P::Item<'query>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(fetch) = self.fetch.as_mut() {
+                let iter = unsafe { &*self.iter.as_mut_ptr() };
+                if self.row < iter.count as usize {
+                    let row = self.row;
+                    self.row += 1;
+                    return Some(unsafe { P::item(fetch, row) });
+                }
+            }
+
+            if !self.iter.is_owned() && self.fetch.is_some() {
+                return None;
+            }
+
+            let iter = self.iter.as_mut_ptr();
+            if self.iter.is_owned() && !unsafe { raw::ecs_iter_next(iter) } {
+                return None;
+            }
+
+            self.fetch = Some(unsafe { P::fetch(self.state, iter) });
+            self.row = 0;
+        }
+    }
+}
 
 pub struct Field<'a, T> {
     value: &'a T,
@@ -212,6 +283,63 @@ impl<T> Deref for Field<'_, T> {
     #[inline]
     fn deref(&self) -> &Self::Target {
         self.value
+    }
+}
+
+#[doc(hidden)]
+#[derive(Default)]
+pub struct QueryTerms {
+    pub(crate) desc: raw::QueryDesc,
+    term_index: u16,
+}
+
+impl QueryTerms {
+    #[inline]
+    pub fn read<T: Component>(&mut self, world: &mut World) -> Result<u16, ParamError> {
+        let index = self.term_index;
+        append_term(
+            &mut self.desc,
+            &mut self.term_index,
+            T::id(world),
+            raw::TermAccess::In,
+        )?;
+        Ok(index)
+    }
+
+    #[inline]
+    pub fn write<T: Component>(&mut self, world: &mut World) -> Result<u16, ParamError> {
+        let index = self.term_index;
+        append_term(
+            &mut self.desc,
+            &mut self.term_index,
+            T::id(world),
+            raw::TermAccess::InOut,
+        )?;
+        Ok(index)
+    }
+
+    #[inline]
+    pub fn optional_read<T: Component>(&mut self, world: &mut World) -> Result<u16, ParamError> {
+        let index = self.term_index;
+        append_term(
+            &mut self.desc,
+            &mut self.term_index,
+            T::id(world),
+            raw::TermAccess::InOptional,
+        )?;
+        Ok(index)
+    }
+
+    #[inline]
+    pub fn optional_write<T: Component>(&mut self, world: &mut World) -> Result<u16, ParamError> {
+        let index = self.term_index;
+        append_term(
+            &mut self.desc,
+            &mut self.term_index,
+            T::id(world),
+            raw::TermAccess::InOutOptional,
+        )?;
+        Ok(index)
     }
 }
 
@@ -353,517 +481,271 @@ impl ResourceAccess {
 }
 
 #[inline]
-pub(crate) fn resource_ref<'a, T: Resource>(world: *mut raw::WorldRaw) -> Res<'a, T> {
+pub(crate) fn resource_ref<T: Resource>(world: *mut raw::WorldRaw) -> Res<T> {
     let id = unsafe { T::id_raw(world) };
     unsafe { Res::new(&*raw::ecs_resource_rid(world, id).cast::<T>()) }
 }
 
 #[inline]
-pub(crate) fn resource_mut<'a, T: Resource>(world: *mut raw::WorldRaw) -> ResMut<'a, T> {
+pub(crate) fn resource_mut<T: Resource>(world: *mut raw::WorldRaw) -> ResMut<T> {
     let id = unsafe { T::id_raw(world) };
     unsafe { ResMut::new(&mut *raw::ecs_resource_rid(world, id).cast::<T>()) }
 }
 
-macro_rules! marker_ty {
-    (ref $component:ident) => {
-        Ref<$component>
-    };
-    (mut $component:ident) => {
-        Mut<$component>
-    };
-    (opt_ref $component:ident) => {
-        OptRef<$component>
-    };
-    (opt_mut $component:ident) => {
-        OptMut<$component>
-    };
-    (field_ref $component:ident) => {
-        FieldRef<$component>
-    };
-    (opt_field_ref $component:ident) => {
-        OptFieldRef<$component>
-    };
+pub unsafe trait QueryParam {
+    type State;
+    type Fetch<'world>;
+    type Item<'world>;
+
+    fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError>;
+    unsafe fn fetch<'world>(
+        state: &'world Self::State,
+        iter: *mut raw::Iter,
+    ) -> Self::Fetch<'world>;
+    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world>;
 }
 
-macro_rules! marker_arg {
-    (ref $component:ident) => {
-        &$component
-    };
-    (mut $component:ident) => {
-        &mut $component
-    };
-    (opt_ref $component:ident) => {
-        Option<&$component>
-    };
-    (opt_mut $component:ident) => {
-        Option<&mut $component>
-    };
-    (field_ref $component:ident) => {
-        Field<'_, $component>
-    };
-    (opt_field_ref $component:ident) => {
-        Option<Field<'_, $component>>
-    };
+#[doc(hidden)]
+pub struct ComponentFetch<'world, T> {
+    ptr: *mut T,
+    kind: raw::FieldKind,
+    _marker: PhantomData<&'world mut T>,
 }
 
-macro_rules! term_access {
-    (ref) => {
-        raw::TermAccess::In
-    };
-    (mut) => {
-        raw::TermAccess::InOut
-    };
-    (opt_ref) => {
-        raw::TermAccess::InOptional
-    };
-    (opt_mut) => {
-        raw::TermAccess::InOutOptional
-    };
-    (field_ref) => {
-        raw::TermAccess::In
-    };
-    (opt_field_ref) => {
-        raw::TermAccess::InOptional
-    };
+#[inline]
+unsafe fn field_fetch<'world, T>(iter: *mut raw::Iter, index: u16) -> ComponentFetch<'world, T> {
+    ComponentFetch {
+        ptr: raw::ecs_field(iter, index).cast::<T>(),
+        kind: raw::ecs_field_kind(iter, index),
+        _marker: PhantomData,
+    }
 }
 
-macro_rules! row_arg {
-    (ref $field:ident $row:ident) => {
-        if $field.1 == raw::FieldKind::Shared {
-            &*$field.0
-        } else {
-            &*$field.0.add($row)
-        }
-    };
-    (mut $field:ident $row:ident) => {
-        &mut *$field.0.add($row)
-    };
-    (opt_ref $field:ident $row:ident) => {
-        if $field.0.is_null() {
+#[inline]
+unsafe fn field_ref<'world, T>(fetch: &ComponentFetch<'world, T>, row: usize) -> &'world T {
+    if fetch.kind == raw::FieldKind::Shared {
+        &*fetch.ptr
+    } else {
+        &*fetch.ptr.add(row)
+    }
+}
+
+unsafe impl<T: Component> QueryParam for &T {
+    type State = u16;
+    type Fetch<'world> = ComponentFetch<'world, T>;
+    type Item<'world> = &'world T;
+
+    #[inline]
+    fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
+        terms.read::<T>(world)
+    }
+
+    #[inline]
+    unsafe fn fetch<'world>(
+        state: &'world Self::State,
+        iter: *mut raw::Iter,
+    ) -> Self::Fetch<'world> {
+        field_fetch(iter, *state)
+    }
+
+    #[inline]
+    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
+        field_ref(fetch, row)
+    }
+}
+
+unsafe impl<T: Component> QueryParam for &mut T {
+    type State = u16;
+    type Fetch<'world> = ComponentFetch<'world, T>;
+    type Item<'world> = &'world mut T;
+
+    #[inline]
+    fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
+        terms.write::<T>(world)
+    }
+
+    #[inline]
+    unsafe fn fetch<'world>(
+        state: &'world Self::State,
+        iter: *mut raw::Iter,
+    ) -> Self::Fetch<'world> {
+        field_fetch(iter, *state)
+    }
+
+    #[inline]
+    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
+        &mut *fetch.ptr.add(row)
+    }
+}
+
+unsafe impl<T: Component> QueryParam for Option<&T> {
+    type State = u16;
+    type Fetch<'world> = ComponentFetch<'world, T>;
+    type Item<'world> = Option<&'world T>;
+
+    #[inline]
+    fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
+        terms.optional_read::<T>(world)
+    }
+
+    #[inline]
+    unsafe fn fetch<'world>(
+        state: &'world Self::State,
+        iter: *mut raw::Iter,
+    ) -> Self::Fetch<'world> {
+        field_fetch(iter, *state)
+    }
+
+    #[inline]
+    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
+        if fetch.ptr.is_null() {
             None
-        } else if $field.1 == raw::FieldKind::Shared {
-            Some(&*$field.0)
         } else {
-            Some(&*$field.0.add($row))
+            Some(field_ref(fetch, row))
         }
-    };
-    (opt_mut $field:ident $row:ident) => {
-        if $field.0.is_null() {
+    }
+}
+
+unsafe impl<T: Component> QueryParam for Option<&mut T> {
+    type State = u16;
+    type Fetch<'world> = ComponentFetch<'world, T>;
+    type Item<'world> = Option<&'world mut T>;
+
+    #[inline]
+    fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
+        terms.optional_write::<T>(world)
+    }
+
+    #[inline]
+    unsafe fn fetch<'world>(
+        state: &'world Self::State,
+        iter: *mut raw::Iter,
+    ) -> Self::Fetch<'world> {
+        field_fetch(iter, *state)
+    }
+
+    #[inline]
+    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
+        if fetch.ptr.is_null() {
             None
         } else {
-            Some(&mut *$field.0.add($row))
+            Some(&mut *fetch.ptr.add(row))
         }
-    };
-    (field_ref $field:ident $row:ident) => {
-        Field::new(row_arg!(ref $field $row), $field.1)
-    };
-    (opt_field_ref $field:ident $row:ident) => {
-        if $field.0.is_null() {
+    }
+}
+
+unsafe impl QueryParam for Entity {
+    type State = ();
+    type Fetch<'world> = *mut raw::EntityId;
+    type Item<'world> = Entity;
+
+    #[inline]
+    fn init_state(_world: &mut World, _terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
+        Ok(())
+    }
+
+    #[inline]
+    unsafe fn fetch<'world>(
+        _state: &'world Self::State,
+        iter: *mut raw::Iter,
+    ) -> Self::Fetch<'world> {
+        (*iter).entities
+    }
+
+    #[inline]
+    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
+        Entity::from_raw(*fetch.add(row))
+    }
+}
+
+unsafe impl<T: Component> QueryParam for Field<'_, T> {
+    type State = u16;
+    type Fetch<'world> = ComponentFetch<'world, T>;
+    type Item<'world> = Field<'world, T>;
+
+    #[inline]
+    fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
+        terms.read::<T>(world)
+    }
+
+    #[inline]
+    unsafe fn fetch<'world>(
+        state: &'world Self::State,
+        iter: *mut raw::Iter,
+    ) -> Self::Fetch<'world> {
+        field_fetch(iter, *state)
+    }
+
+    #[inline]
+    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
+        Field::new(field_ref(fetch, row), fetch.kind)
+    }
+}
+
+unsafe impl<T: Component> QueryParam for Option<Field<'_, T>> {
+    type State = u16;
+    type Fetch<'world> = ComponentFetch<'world, T>;
+    type Item<'world> = Option<Field<'world, T>>;
+
+    #[inline]
+    fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
+        terms.optional_read::<T>(world)
+    }
+
+    #[inline]
+    unsafe fn fetch<'world>(
+        state: &'world Self::State,
+        iter: *mut raw::Iter,
+    ) -> Self::Fetch<'world> {
+        field_fetch(iter, *state)
+    }
+
+    #[inline]
+    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
+        if fetch.ptr.is_null() {
             None
         } else {
-            Some(Field::new(
-                if $field.1 == raw::FieldKind::Shared {
-                    &*$field.0
-                } else {
-                    &*$field.0.add($row)
-                },
-                $field.1,
-            ))
-        }
-    };
-}
-
-impl<F, R> QueryEach<fn(QueryRes<R>)> for F
-where
-    F: FnMut(Res<'_, R>),
-    R: Resource,
-{
-    #[inline]
-    fn append_terms(
-        _world: &mut World,
-        _desc: &mut raw::QueryDesc,
-        _term_index: &mut u16,
-    ) -> Result<(), ParamError> {
-        Ok(())
-    }
-
-    #[inline]
-    fn validate_resources(
-        world: &mut World,
-        access: &mut ResourceAccess,
-    ) -> Result<(), ParamError> {
-        access.read::<R>(world)
-    }
-
-    #[inline]
-    unsafe fn run(&mut self, iter: &mut raw::Iter) {
-        for _row in 0..iter.count as usize {
-            self(resource_ref::<R>(iter.world));
+            Some(Field::new(field_ref(fetch, row), fetch.kind))
         }
     }
 }
 
-impl<F, R> QueryEach<fn(QueryResMut<R>)> for F
-where
-    F: FnMut(ResMut<'_, R>),
-    R: Resource,
-{
-    #[inline]
-    fn append_terms(
-        _world: &mut World,
-        _desc: &mut raw::QueryDesc,
-        _term_index: &mut u16,
-    ) -> Result<(), ParamError> {
-        Ok(())
-    }
-
-    #[inline]
-    fn validate_resources(
-        world: &mut World,
-        access: &mut ResourceAccess,
-    ) -> Result<(), ParamError> {
-        access.write::<R>(world)
-    }
-
-    #[inline]
-    unsafe fn run(&mut self, iter: &mut raw::Iter) {
-        for _row in 0..iter.count as usize {
-            self(resource_mut::<R>(iter.world));
-        }
-    }
-}
-
-impl<F, A, B> QueryEach<fn(QueryRes<A>, QueryResMut<B>)> for F
-where
-    F: FnMut(Res<'_, A>, ResMut<'_, B>),
-    A: Resource,
-    B: Resource,
-{
-    #[inline]
-    fn append_terms(
-        _world: &mut World,
-        _desc: &mut raw::QueryDesc,
-        _term_index: &mut u16,
-    ) -> Result<(), ParamError> {
-        Ok(())
-    }
-
-    #[inline]
-    fn validate_resources(
-        world: &mut World,
-        access: &mut ResourceAccess,
-    ) -> Result<(), ParamError> {
-        access.read::<A>(world)?;
-        access.write::<B>(world)?;
-        Ok(())
-    }
-
-    #[inline]
-    unsafe fn run(&mut self, iter: &mut raw::Iter) {
-        for _row in 0..iter.count as usize {
-            self(resource_ref::<A>(iter.world), resource_mut::<B>(iter.world));
-        }
-    }
-}
-
-impl<F, A, B> QueryEach<fn(QueryResMut<A>, QueryResMut<B>)> for F
-where
-    F: FnMut(ResMut<'_, A>, ResMut<'_, B>),
-    A: Resource,
-    B: Resource,
-{
-    #[inline]
-    fn append_terms(
-        _world: &mut World,
-        _desc: &mut raw::QueryDesc,
-        _term_index: &mut u16,
-    ) -> Result<(), ParamError> {
-        Ok(())
-    }
-
-    #[inline]
-    fn validate_resources(
-        world: &mut World,
-        access: &mut ResourceAccess,
-    ) -> Result<(), ParamError> {
-        access.write::<A>(world)?;
-        access.write::<B>(world)?;
-        Ok(())
-    }
-
-    #[inline]
-    unsafe fn run(&mut self, iter: &mut raw::Iter) {
-        for _row in 0..iter.count as usize {
-            self(resource_mut::<A>(iter.world), resource_mut::<B>(iter.world));
-        }
-    }
-}
-
-impl<F, A, R> QueryEach<fn(Entity, Ref<A>, QueryRes<R>)> for F
-where
-    F: FnMut(Entity, &A, Res<'_, R>),
-    A: Component,
-    R: Resource,
-{
-    #[inline]
-    fn append_terms(
-        world: &mut World,
-        desc: &mut raw::QueryDesc,
-        term_index: &mut u16,
-    ) -> Result<(), ParamError> {
-        let id = A::id(world);
-        append_term(desc, term_index, id, raw::TermAccess::In)
-    }
-
-    #[inline]
-    fn validate_resources(
-        world: &mut World,
-        access: &mut ResourceAccess,
-    ) -> Result<(), ParamError> {
-        access.read::<R>(world)
-    }
-
-    #[inline]
-    unsafe fn run(&mut self, iter: &mut raw::Iter) {
-        let field = (
-            raw::ecs_field(iter, 0).cast::<A>(),
-            raw::ecs_field_kind(iter, 0),
-        );
-
-        for row in 0..iter.count as usize {
-            self(
-                Entity::from_raw(*iter.entities.add(row)),
-                row_arg!(ref field row),
-                resource_ref::<R>(iter.world),
-            );
-        }
-    }
-}
-
-impl<F, A, B, R> QueryEach<fn(Entity, FieldRef<A>, OptFieldRef<B>, QueryRes<R>)> for F
-where
-    F: FnMut(Entity, Field<'_, A>, Option<Field<'_, B>>, Res<'_, R>),
-    A: Component,
-    B: Component,
-    R: Resource,
-{
-    #[inline]
-    fn append_terms(
-        world: &mut World,
-        desc: &mut raw::QueryDesc,
-        term_index: &mut u16,
-    ) -> Result<(), ParamError> {
-        let id = A::id(world);
-        append_term(desc, term_index, id, raw::TermAccess::In)?;
-        let id = B::id(world);
-        append_term(desc, term_index, id, raw::TermAccess::InOptional)
-    }
-
-    #[inline]
-    fn validate_resources(
-        world: &mut World,
-        access: &mut ResourceAccess,
-    ) -> Result<(), ParamError> {
-        access.read::<R>(world)
-    }
-
-    #[inline]
-    unsafe fn run(&mut self, iter: &mut raw::Iter) {
-        let a = (
-            raw::ecs_field(iter, 0).cast::<A>(),
-            raw::ecs_field_kind(iter, 0),
-        );
-        let b = (
-            raw::ecs_field(iter, 1).cast::<B>(),
-            raw::ecs_field_kind(iter, 1),
-        );
-
-        for row in 0..iter.count as usize {
-            self(
-                Entity::from_raw(*iter.entities.add(row)),
-                row_arg!(field_ref a row),
-                row_arg!(opt_field_ref b row),
-                resource_ref::<R>(iter.world),
-            );
-        }
-    }
-}
-
-impl<F, A, B, R> QueryEach<fn(EachCtx<'_>, Mut<A>, Ref<B>, QueryRes<R>)> for F
-where
-    F: FnMut(EachCtx<'_>, &mut A, &B, Res<'_, R>),
-    A: Component,
-    B: Component,
-    R: Resource,
-{
-    #[inline]
-    fn append_terms(
-        world: &mut World,
-        desc: &mut raw::QueryDesc,
-        term_index: &mut u16,
-    ) -> Result<(), ParamError> {
-        let id = A::id(world);
-        append_term(desc, term_index, id, raw::TermAccess::InOut)?;
-        let id = B::id(world);
-        append_term(desc, term_index, id, raw::TermAccess::In)
-    }
-
-    #[inline]
-    fn validate_resources(
-        world: &mut World,
-        access: &mut ResourceAccess,
-    ) -> Result<(), ParamError> {
-        access.read::<R>(world)
-    }
-
-    #[inline]
-    unsafe fn run(&mut self, iter: &mut raw::Iter) {
-        let a = (
-            raw::ecs_field(iter, 0).cast::<A>(),
-            raw::ecs_field_kind(iter, 0),
-        );
-        let b = (
-            raw::ecs_field(iter, 1).cast::<B>(),
-            raw::ecs_field_kind(iter, 1),
-        );
-
-        for row in 0..iter.count as usize {
-            self(
-                EachCtx::new(iter, row),
-                row_arg!(mut a row),
-                row_arg!(ref b row),
-                resource_ref::<R>(iter.world),
-            );
-        }
-    }
-}
-
-macro_rules! impl_query_each {
-    ($(($component:ident, $field:ident, $index:expr, $kind:ident)),+ $(,)?) => {
-        impl<F, $($component),+> QueryEach<fn($(marker_ty!($kind $component)),+)> for F
+macro_rules! impl_query_param_tuple {
+    ($($name:ident $field:ident $index:tt),+ $(,)?) => {
+        unsafe impl<$($name),+> QueryParam for ($($name,)+)
         where
-            F: FnMut($(marker_arg!($kind $component)),+),
-            $($component: Component),+
+            $($name: QueryParam),+
         {
+            type State = ($($name::State,)+);
+            type Fetch<'world> = ($($name::Fetch<'world>,)+);
+            type Item<'world> = ($($name::Item<'world>,)+);
+
             #[inline]
-            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) -> Result<(), ParamError> {
-                $(
-                    let id = $component::id(world);
-                    append_term(desc, term_index, id, term_access!($kind))?;
-                )+
-                Ok(())
+            fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
+                Ok(($($name::init_state(world, terms)?,)+))
             }
 
             #[inline]
-            unsafe fn run(&mut self, iter: &mut raw::Iter) {
-                $(
-                    let $field = (
-                        raw::ecs_field(iter, $index).cast::<$component>(),
-                        raw::ecs_field_kind(iter, $index),
-                    );
-                )+
+            unsafe fn fetch<'world>(
+                state: &'world Self::State,
+                iter: *mut raw::Iter,
+            ) -> Self::Fetch<'world> {
+                ($($name::fetch(&state.$index, iter),)+)
+            }
 
-                for row in 0..iter.count as usize {
-                    self($(row_arg!($kind $field row)),+);
-                }
+            #[inline]
+            unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
+                ($($name::item(&mut fetch.$index, row),)+)
             }
         }
     };
 }
 
-macro_rules! impl_query_each_ctx {
-    ($(($component:ident, $field:ident, $index:expr, $kind:ident)),+ $(,)?) => {
-        impl<F, $($component),+> QueryEach<fn(EachCtx<'_>, $(marker_ty!($kind $component)),+)> for F
-        where
-            F: FnMut(EachCtx<'_>, $(marker_arg!($kind $component)),+),
-            $($component: Component),+
-        {
-            #[inline]
-            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) -> Result<(), ParamError> {
-                $(
-                    let id = $component::id(world);
-                    append_term(desc, term_index, id, term_access!($kind))?;
-                )+
-                Ok(())
-            }
-
-            #[inline]
-            unsafe fn run(&mut self, iter: &mut raw::Iter) {
-                $(
-                    let $field = (
-                        raw::ecs_field(iter, $index).cast::<$component>(),
-                        raw::ecs_field_kind(iter, $index),
-                    );
-                )+
-
-                for row in 0..iter.count as usize {
-                    self(EachCtx::new(iter, row), $(row_arg!($kind $field row)),+);
-                }
-            }
-        }
-    };
-}
-
-macro_rules! impl_query_each_perms {
-    ($($component:ident $field:ident $index:expr),+ $(,)?) => {
-        impl_query_each_perms_inner!(() ($($component $field $index),+));
-    };
-}
-
-macro_rules! impl_query_each_perms_inner {
-    (($($acc:tt)*) ()) => {
-        impl_query_each!($($acc)*);
-        impl_query_each_ctx!($($acc)*);
-    };
-    (($($acc:tt)*) ($component:ident $field:ident $index:expr)) => {
-        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, ref),) ());
-        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, mut),) ());
-        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, opt_ref),) ());
-        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, opt_mut),) ());
-        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, field_ref),) ());
-        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, opt_field_ref),) ());
-    };
-    (($($acc:tt)*) ($component:ident $field:ident $index:expr, $($rest:tt)+)) => {
-        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, ref),) ($($rest)+));
-        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, mut),) ($($rest)+));
-        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, opt_ref),) ($($rest)+));
-        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, opt_mut),) ($($rest)+));
-        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, field_ref),) ($($rest)+));
-        impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, opt_field_ref),) ($($rest)+));
-    };
-}
-
-macro_rules! impl_query_each_rw_perms {
-    ($($component:ident $field:ident $index:expr),+ $(,)?) => {
-        impl_query_each_rw_perms_inner!(() ($($component $field $index),+));
-    };
-}
-
-macro_rules! impl_query_each_rw_perms_inner {
-    (($($acc:tt)*) ()) => {
-        impl_query_each!($($acc)*);
-    };
-    (($($acc:tt)*) ($component:ident $field:ident $index:expr)) => {
-        impl_query_each_rw_perms_inner!(($($acc)* ($component, $field, $index, ref),) ());
-        impl_query_each_rw_perms_inner!(($($acc)* ($component, $field, $index, mut),) ());
-    };
-    (($($acc:tt)*) ($component:ident $field:ident $index:expr, $($rest:tt)+)) => {
-        impl_query_each_rw_perms_inner!(($($acc)* ($component, $field, $index, ref),) ($($rest)+));
-        impl_query_each_rw_perms_inner!(($($acc)* ($component, $field, $index, mut),) ($($rest)+));
-    };
-}
-
-macro_rules! impl_query_each_perms_tuple {
-    ($(($index:tt, $component:ident, $field:ident)),+ $(,)?) => {
-        impl_query_each_perms!($($component $field $index),+);
-    };
-}
-
-macro_rules! impl_query_each_rw_perms_tuple {
-    ($(($index:tt, $component:ident, $field:ident)),+ $(,)?) => {
-        impl_query_each_rw_perms!($($component $field $index),+);
-    };
-}
-
-variadics_please::all_tuples_enumerated!(impl_query_each_perms_tuple, 1, 4, A, a);
-variadics_please::all_tuples_enumerated!(impl_query_each_rw_perms_tuple, 5, 8, A, a);
+impl_query_param_tuple!(A a 0);
+impl_query_param_tuple!(A a 0, B b 1);
+impl_query_param_tuple!(A a 0, B b 1, C c 2);
+impl_query_param_tuple!(A a 0, B b 1, C c 2, D d 3);
+impl_query_param_tuple!(A a 0, B b 1, C c 2, D d 3, E e 4);
+impl_query_param_tuple!(A a 0, B b 1, C c 2, D d 3, E e 4, F f 5);
+impl_query_param_tuple!(A a 0, B b 1, C c 2, D d 3, E e 4, F f 5, G g 6);
+impl_query_param_tuple!(A a 0, B b 1, C c 2, D d 3, E e 4, F f 5, G g 6, H h 7);

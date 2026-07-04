@@ -14,11 +14,27 @@ pub type ComponentOnSet =
     Option<unsafe extern "C" fn(*mut WorldRaw, EntityId, ComponentId, *const c_void, *mut c_void)>;
 pub type ComponentOnRemove =
     Option<unsafe extern "C" fn(*mut WorldRaw, EntityId, ComponentId, *mut c_void)>;
+pub type TypeCtor = Option<unsafe extern "C" fn(*mut c_void, u32)>;
+pub type TypeDtor = Option<unsafe extern "C" fn(*mut c_void, u32)>;
+pub type TypeCopy = Option<unsafe extern "C" fn(*mut c_void, *const c_void, u32)>;
+pub type TypeMove = Option<unsafe extern "C" fn(*mut c_void, *mut c_void, u32)>;
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct TypeOps {
+    pub ctor: TypeCtor,
+    pub dtor: TypeDtor,
+    pub copy_ctor: TypeCopy,
+    pub copy: TypeCopy,
+    pub move_ctor: TypeMove,
+    pub move_: TypeMove,
+}
 
 #[repr(C)]
 pub struct ComponentDesc {
     pub name: *const c_char,
     pub size: u64,
+    pub ops: TypeOps,
     pub on_set: ComponentOnSet,
     pub on_remove: ComponentOnRemove,
     pub on_add: ComponentOnAdd,
@@ -46,5 +62,6 @@ extern "C" {
         id: ComponentId,
         data: *const c_void,
     );
+    pub fn ecs_move_cid(world: *mut WorldRaw, entity: EntityId, id: ComponentId, data: *mut c_void);
     pub fn ecs_with(world: *mut WorldRaw, component: ComponentId, require: ComponentId);
 }

@@ -24,9 +24,10 @@ pub type ObserverId = u32;
 
 pub use component::{
     ecs_add_cid, ecs_component_init, ecs_component_register, ecs_get_cid, ecs_has_cid,
-    ecs_has_cid_owned, ecs_remove_cid, ecs_set_cid, ecs_try_get_cid, ecs_with, ComponentDesc,
-    ComponentOnAdd, ComponentOnRemove, ComponentOnSet, ECS_RELATION_CASCADE_DELETE,
-    ECS_RELATION_ONE_TO_MANY, ECS_RELATION_ONE_TO_ONE, ECS_RELATION_SOURCE, ECS_RELATION_TARGET,
+    ecs_has_cid_owned, ecs_move_cid, ecs_remove_cid, ecs_set_cid, ecs_try_get_cid, ecs_with,
+    ComponentDesc, ComponentOnAdd, ComponentOnRemove, ComponentOnSet, TypeOps,
+    ECS_RELATION_CASCADE_DELETE, ECS_RELATION_ONE_TO_MANY, ECS_RELATION_ONE_TO_ONE,
+    ECS_RELATION_SOURCE, ECS_RELATION_TARGET,
 };
 pub use entity::{ecs_is, ecs_is_a, ecs_is_alive, ecs_kill, ecs_new};
 pub use module::{
@@ -43,13 +44,13 @@ pub use query::{
     ecs_query_iter, FieldKind, Iter, QueryDesc, QueryTerm, TermAccess,
 };
 pub use resource::{
-    ecs_has_resource_rid, ecs_remove_resource_rid, ecs_resource_find, ecs_resource_init,
-    ecs_resource_is_registered_rid, ecs_resource_register, ecs_resource_rid, ecs_set_resource_rid,
-    ecs_try_resource_rid, ResourceDesc, ResourceHook,
+    ecs_has_resource_rid, ecs_move_resource_rid, ecs_remove_resource_rid, ecs_resource_find,
+    ecs_resource_init, ecs_resource_is_registered_rid, ecs_resource_register, ecs_resource_rid,
+    ecs_set_resource_rid, ecs_try_resource_rid, ResourceDesc, ResourceHook,
 };
 pub use system::{
     ecs_progress, ecs_run_phase, ecs_run_system, ecs_system_disable, ecs_system_enable,
-    ecs_system_init, Phase, SystemCallback, SystemDesc,
+    ecs_system_init, Phase, SystemCallback, SystemDesc, SystemUserDataDtor,
 };
 pub use world::{
     ecs_defer_begin, ecs_defer_end, ecs_fini, ecs_init, ecs_init_w_features, ecs_is_deferred,

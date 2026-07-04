@@ -9,15 +9,16 @@ license = "MIT"
 repository = "https://github.com/suleymanlaarabi/siecs"
 homepage = "https://github.com/suleymanlaarabi/siecs"
 documentation = "https://docs.rs/siecs"
-keywords = ["ecs", "entity-component-system", "ffi", "gamedev"]
-categories = ["data-structures", "game-development", "ecs", "game-engines"]
+keywords = ["ecs", "entity-component", "ffi", "gamedev"]
+categories = ["data-structures", "game-development"]
 include = [
     "Cargo.toml",
     "README.md",
     "build.rs",
     "src/**",
     "tests/**",
-    "vendor/**",
+    "vendor/siecs.c",
+    "vendor/siecs.h",
 ]
 
 [workspace]
@@ -25,7 +26,6 @@ members = ["siecs_derive"]
 
 [dependencies]
 siecs_derive = { path = "siecs_derive", version = "0.1.0" }
-variadics_please = "2.0.0"
 
 [build-dependencies]
 cc = "1"

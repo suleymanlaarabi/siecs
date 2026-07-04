@@ -1,11 +1,13 @@
 use core::ffi::c_char;
+use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use std::ffi::{CStr, CString};
 
+use crate::system::IntoSystem;
 use crate::{
     raw, ChildOf, Component, Disabled, Entity, Event, EventId, Name, Observer, ObserverId, OnAdd,
-    OnRemove, OnSet, Query, RawEvent, Resource, System, SystemId, TypedEvent,
+    OnRemove, OnSet, Query, QueryParam, QueryState, RawEvent, Resource, SystemId, TypedEvent,
 };
 
 pub struct World {
@@ -129,13 +131,44 @@ impl World {
     }
 
     #[inline]
-    pub fn query(&mut self) -> Query<'_> {
+    pub fn query<P: QueryParam>(&mut self) -> Query<P> {
+        Query::new(self).unwrap_or_else(|err| panic!("{err}"))
+    }
+
+    #[inline]
+    pub fn try_query<P: QueryParam>(&mut self) -> Result<Query<P>, crate::ParamError> {
         Query::new(self)
     }
 
     #[inline]
-    pub fn system(&mut self, name: &str) -> System<'_> {
-        System::new(self, name)
+    pub fn query_state<P: QueryParam>(&mut self) -> QueryState<P> {
+        QueryState::new(self).unwrap_or_else(|err| panic!("{err}"))
+    }
+
+    #[inline]
+    pub fn try_query_state<P: QueryParam>(&mut self) -> Result<QueryState<P>, crate::ParamError> {
+        QueryState::new(self)
+    }
+
+    #[inline]
+    pub fn system<F, Marker>(&mut self, name: &str, system: F) -> SystemId
+    where
+        F: IntoSystem<Marker>,
+    {
+        self.try_system(name, system)
+            .unwrap_or_else(|err| panic!("{err}"))
+    }
+
+    #[inline]
+    pub fn try_system<F, Marker>(
+        &mut self,
+        name: &str,
+        system: F,
+    ) -> Result<SystemId, crate::ParamError>
+    where
+        F: IntoSystem<Marker>,
+    {
+        system.into_system(name, self)
     }
 
     #[inline]
@@ -295,13 +328,14 @@ impl World {
     #[inline]
     pub fn set<T: Component>(&mut self, entity: Entity, value: T) {
         let id = T::id(self);
+        let mut value = ManuallyDrop::new(value);
 
         unsafe {
-            raw::ecs_set_cid(
+            raw::ecs_move_cid(
                 self.raw.as_ptr(),
                 entity.id,
                 id,
-                (&value as *const T).cast(),
+                (&mut *value as *mut T).cast(),
             );
         }
     }
@@ -381,7 +415,8 @@ impl World {
     #[inline]
     pub fn set_resource<T: Resource>(&mut self, value: T) {
         let id = T::id(self);
-        unsafe { raw::ecs_set_resource_rid(self.raw.as_ptr(), id, (&value as *const T).cast()) }
+        let mut value = ManuallyDrop::new(value);
+        unsafe { raw::ecs_move_resource_rid(self.raw.as_ptr(), id, (&mut *value as *mut T).cast()) }
     }
 
     #[inline]

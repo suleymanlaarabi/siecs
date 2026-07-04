@@ -20,6 +20,7 @@ pub enum Phase {
 }
 
 pub type SystemCallback = unsafe extern "C" fn(*mut Iter);
+pub type SystemUserDataDtor = unsafe extern "C" fn(usize);
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -27,8 +28,10 @@ pub struct SystemDesc {
     pub name: *const c_char,
     pub query: QueryDesc,
     pub callback: Option<SystemCallback>,
+    pub user_data: usize,
+    pub user_data_dtor: Option<SystemUserDataDtor>,
     pub phase: Phase,
-    pub after: [SystemId; 4],
+    pub after: [SystemId; 16],
     pub disabled: bool,
 }
 
@@ -39,8 +42,10 @@ impl Default for SystemDesc {
             name: core::ptr::null(),
             query: QueryDesc::default(),
             callback: None,
+            user_data: 0,
+            user_data_dtor: None,
             phase: Phase::OnUpdate,
-            after: [0; 4],
+            after: [0; 16],
             disabled: false,
         }
     }

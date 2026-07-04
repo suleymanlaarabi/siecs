@@ -450,7 +450,7 @@ macro_rules! observer_arg {
         } else {
             let id = $component::id_raw((*$event).world);
             if raw::ecs_has_cid((*$event).world, (*$event).entity, id) {
-                raw::ecs_get_cid((*$event).world, (*$event).entity, id)
+                raw::ecs_try_get_cid((*$event).world, (*$event).entity, id)
                     .cast::<$component>()
                     .as_ref()
             } else {
@@ -551,7 +551,7 @@ macro_rules! impl_observer_each {
             ObserverEach<E, fn(ObserverPayload, $(observer_marker_ty!($kind $component)),+, ObserverRes<ResA>, ObserverResMut<ResB>)> for F
         where
             E: Event,
-            F: FnMut(&<E as Event>::Payload, $(observer_marker_arg!($kind $component)),+, Res<'_, ResA>, ResMut<'_, ResB>),
+                F: FnMut(&<E as Event>::Payload, $(observer_marker_arg!($kind $component)),+, Res<ResA>, ResMut<ResB>),
             ResA: Resource,
             ResB: Resource,
             $($component: Component),+
@@ -713,7 +713,7 @@ where
 impl<E, F, ResA> ObserverEach<E, fn(ObserverPayload, ObserverRes<ResA>)> for F
 where
     E: Event,
-    F: FnMut(&<E as Event>::Payload, Res<'_, ResA>),
+    F: FnMut(&<E as Event>::Payload, Res<ResA>),
     ResA: Resource,
 {
     #[inline]
@@ -745,7 +745,7 @@ where
 impl<E, F, ResA> ObserverEach<E, fn(ObserverPayload, ObserverResMut<ResA>)> for F
 where
     E: Event,
-    F: FnMut(&<E as Event>::Payload, ResMut<'_, ResA>),
+    F: FnMut(&<E as Event>::Payload, ResMut<ResA>),
     ResA: Resource,
 {
     #[inline]
@@ -777,7 +777,7 @@ where
 impl<E, F, ResA> ObserverEach<E, fn(ObserverPayload, ObserverOptRes<ResA>)> for F
 where
     E: Event,
-    F: FnMut(&<E as Event>::Payload, Option<Res<'_, ResA>>),
+    F: FnMut(&<E as Event>::Payload, Option<Res<ResA>>),
     ResA: Resource,
 {
     #[inline]
@@ -809,7 +809,7 @@ where
 impl<E, F, ResA> ObserverEach<E, fn(ObserverPayload, ObserverOptResMut<ResA>)> for F
 where
     E: Event,
-    F: FnMut(&<E as Event>::Payload, Option<ResMut<'_, ResA>>),
+    F: FnMut(&<E as Event>::Payload, Option<ResMut<ResA>>),
     ResA: Resource,
 {
     #[inline]
@@ -842,7 +842,7 @@ impl<E, F, ResA, ResB> ObserverEach<E, fn(ObserverPayload, ObserverRes<ResA>, Ob
     for F
 where
     E: Event,
-    F: FnMut(&<E as Event>::Payload, Res<'_, ResA>, ResMut<'_, ResB>),
+    F: FnMut(&<E as Event>::Payload, Res<ResA>, ResMut<ResB>),
     ResA: Resource,
     ResB: Resource,
 {

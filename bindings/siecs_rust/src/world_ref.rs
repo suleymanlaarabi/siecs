@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use core::mem::ManuallyDrop;
 use std::ffi::{CStr, CString};
 
 use crate::{raw, ChildOf, Component, Disabled, Entity, Event, EventId, Name, Resource};
@@ -80,8 +81,9 @@ impl<'world> WorldRef<'world> {
     #[inline]
     pub fn set<T: Component>(&self, entity: Entity, value: T) {
         let id = unsafe { T::id_raw(self.raw) };
+        let mut value = ManuallyDrop::new(value);
         unsafe {
-            raw::ecs_set_cid(self.raw, entity.id(), id, (&value as *const T).cast());
+            raw::ecs_move_cid(self.raw, entity.id(), id, (&mut *value as *mut T).cast());
         }
     }
 

@@ -1,8 +1,10 @@
 use core::marker::PhantomData;
-use core::mem::{needs_drop, size_of, MaybeUninit};
 
-use crate::query::{append_term, validate_returned_fields, ParamError, QueryEach, ResourceAccess};
-use crate::{raw, Component, Entity, World, WorldRef};
+use crate::query::{
+    resource_mut, resource_ref, validate_returned_fields, ParamError, QueryParam, QueryTerms,
+    ResourceAccess,
+};
+use crate::{raw, Component, Entity, Query, Res, ResMut, Resource, World, WorldRef};
 
 pub use raw::Phase;
 
@@ -32,6 +34,7 @@ pub struct EachCtx<'a> {
 
 impl<'a> EachCtx<'a> {
     #[inline]
+    #[allow(dead_code)]
     pub(crate) unsafe fn new(iter: &raw::Iter, row: usize) -> Self {
         Self {
             world: WorldRef::from_raw(iter.world),
@@ -75,115 +78,349 @@ impl<'a> EachCtx<'a> {
     }
 }
 
-pub struct System<'world> {
-    world: &'world mut World,
-    name: String,
-    desc: raw::SystemDesc,
-    term_index: u16,
+pub struct Commands {
+    world: *mut raw::WorldRaw,
 }
 
-impl<'world> System<'world> {
+impl Commands {
     #[inline]
-    pub(crate) fn new(world: &'world mut World, name: &str) -> Self {
+    fn world(&self) -> WorldRef<'_> {
+        unsafe { WorldRef::from_raw(self.world) }
+    }
+
+    #[inline]
+    pub fn add<T: Component>(&self, entity: Entity) {
+        self.world().add::<T>(entity);
+    }
+
+    #[inline]
+    pub fn remove<T: Component>(&self, entity: Entity) {
+        self.world().remove::<T>(entity);
+    }
+
+    #[inline]
+    pub fn set<T: Component>(&self, entity: Entity, value: T) {
+        self.world().set(entity, value);
+    }
+
+    #[inline]
+    pub fn kill(&self, entity: Entity) {
+        self.world().kill(entity);
+    }
+
+    #[inline]
+    pub fn is_a(&self, entity: Entity, base: Entity) {
+        self.world().is_a(entity, base);
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct SystemContext<'world> {
+    world: *mut raw::WorldRaw,
+    iter: *mut raw::Iter,
+    _marker: PhantomData<&'world mut raw::WorldRaw>,
+}
+
+impl<'world> SystemContext<'world> {
+    #[inline]
+    unsafe fn new(iter: *mut raw::Iter) -> Self {
         Self {
-            world,
-            name: name.to_owned(),
+            world: (*iter).world,
+            iter,
+            _marker: PhantomData,
+        }
+    }
+}
+
+pub struct SystemDescBuilder {
+    desc: raw::SystemDesc,
+    terms: QueryTerms,
+    resources: ResourceAccess,
+}
+
+impl SystemDescBuilder {
+    #[inline]
+    fn new() -> Self {
+        Self {
             desc: raw::SystemDesc::default(),
-            term_index: 0,
+            terms: QueryTerms::default(),
+            resources: ResourceAccess::default(),
         }
     }
 
     #[inline]
-    pub fn require<T: Component>(mut self) -> Self {
-        self.append_component::<T>(raw::TermAccess::Filter);
-        self
+    pub fn read_resource<T: Resource>(&mut self, world: &mut World) -> Result<(), ParamError> {
+        self.resources.read::<T>(world)
     }
 
     #[inline]
-    pub fn exclude<T: Component>(mut self) -> Self {
-        self.append_component::<T>(raw::TermAccess::Not);
-        self
+    pub fn write_resource<T: Resource>(&mut self, world: &mut World) -> Result<(), ParamError> {
+        self.resources.write::<T>(world)
     }
 
     #[inline]
-    pub fn is_a(mut self, base: Entity) -> Self {
-        self.desc.query.is_a = base.id();
-        self
+    pub fn query_terms(&mut self) -> &mut QueryTerms {
+        &mut self.terms
     }
 
     #[inline]
-    pub fn phase(mut self, phase: Phase) -> Self {
-        self.desc.phase = phase;
-        self
-    }
-
-    #[inline]
-    pub fn disabled(mut self) -> Self {
-        self.desc.disabled = true;
-        self
-    }
-
-    #[inline]
-    pub fn after(mut self, system: SystemId) -> Self {
-        let slot = self
-            .desc
-            .after
-            .iter_mut()
-            .find(|slot| **slot == 0)
-            .expect("systems can depend on at most four prior systems");
-        *slot = system.raw();
-        self
-    }
-
-    #[inline]
-    pub fn each<F, Marker>(self, func: F) -> SystemId
-    where
-        F: QueryEach<Marker> + 'static,
-    {
-        self.try_each(func).unwrap_or_else(|err| panic!("{err}"))
-    }
-
-    #[inline]
-    pub fn try_each<F, Marker>(mut self, func: F) -> Result<SystemId, ParamError>
-    where
-        F: QueryEach<Marker> + 'static,
-    {
-        assert!(
-            size_of::<F>() == 0 && !needs_drop::<F>(),
-            "system callbacks must be stateless"
-        );
-        let _ = func;
-
-        F::append_terms(self.world, &mut self.desc.query, &mut self.term_index)?;
-        let mut resource_access = ResourceAccess::default();
-        F::validate_resources(self.world, &mut resource_access)?;
-        validate_returned_fields(&self.desc.query)?;
-
-        self.desc.name = self.world.retain_system_name(&self.name);
-        self.desc.callback = Some(system_callback::<F, Marker>);
-
-        Ok(unsafe { raw::ecs_system_init(self.world.as_raw_mut(), &self.desc).into() })
-    }
-
-    #[inline]
-    fn append_component<T: Component>(&mut self, access: raw::TermAccess) {
-        let id = T::id(self.world);
-        append_term(&mut self.desc.query, &mut self.term_index, id, access)
-            .expect("too many query terms");
+    fn finish(mut self) -> Result<raw::SystemDesc, ParamError> {
+        validate_returned_fields(&self.terms.desc)?;
+        self.desc.query = self.terms.desc;
+        Ok(self.desc)
     }
 }
 
-unsafe extern "C" fn system_callback<F, Marker>(iter: *mut raw::Iter)
+pub unsafe trait SystemParam {
+    type State;
+    type Item<'world>;
+
+    const NEEDS_DEFER: bool = false;
+
+    fn init_state(
+        world: &mut World,
+        desc: &mut SystemDescBuilder,
+    ) -> Result<Self::State, ParamError>;
+    unsafe fn get_param<'world>(
+        state: &'world mut Self::State,
+        ctx: SystemContext<'world>,
+    ) -> Self::Item<'world>;
+}
+
+unsafe impl<P: QueryParam> SystemParam for Query<P> {
+    type State = P::State;
+    type Item<'world> = Query<P>;
+
+    #[inline]
+    fn init_state(
+        world: &mut World,
+        desc: &mut SystemDescBuilder,
+    ) -> Result<Self::State, ParamError> {
+        P::init_state(world, desc.query_terms())
+    }
+
+    #[inline]
+    unsafe fn get_param<'world>(
+        state: &'world mut Self::State,
+        ctx: SystemContext<'world>,
+    ) -> Self::Item<'world> {
+        Query::from_iter(ctx.world, ctx.iter, state)
+    }
+}
+
+unsafe impl<T: Resource> SystemParam for Res<T> {
+    type State = ();
+    type Item<'world> = Res<T>;
+
+    #[inline]
+    fn init_state(
+        world: &mut World,
+        desc: &mut SystemDescBuilder,
+    ) -> Result<Self::State, ParamError> {
+        desc.read_resource::<T>(world)
+    }
+
+    #[inline]
+    unsafe fn get_param<'world>(
+        _state: &'world mut Self::State,
+        ctx: SystemContext<'world>,
+    ) -> Self::Item<'world> {
+        resource_ref::<T>(ctx.world)
+    }
+}
+
+unsafe impl<T: Resource> SystemParam for ResMut<T> {
+    type State = ();
+    type Item<'world> = ResMut<T>;
+
+    #[inline]
+    fn init_state(
+        world: &mut World,
+        desc: &mut SystemDescBuilder,
+    ) -> Result<Self::State, ParamError> {
+        desc.write_resource::<T>(world)
+    }
+
+    #[inline]
+    unsafe fn get_param<'world>(
+        _state: &'world mut Self::State,
+        ctx: SystemContext<'world>,
+    ) -> Self::Item<'world> {
+        resource_mut::<T>(ctx.world)
+    }
+}
+
+unsafe impl SystemParam for Commands {
+    type State = ();
+    type Item<'world> = Commands;
+
+    const NEEDS_DEFER: bool = true;
+
+    #[inline]
+    fn init_state(
+        _world: &mut World,
+        _desc: &mut SystemDescBuilder,
+    ) -> Result<Self::State, ParamError> {
+        Ok(())
+    }
+
+    #[inline]
+    unsafe fn get_param<'world>(
+        _state: &'world mut Self::State,
+        ctx: SystemContext<'world>,
+    ) -> Self::Item<'world> {
+        Commands { world: ctx.world }
+    }
+}
+
+pub trait IntoSystem<Marker> {
+    fn into_system(self, name: &str, world: &mut World) -> Result<SystemId, ParamError>;
+}
+
+pub struct System;
+
+trait SystemParamTuple {
+    type State;
+
+    const NEEDS_DEFER: bool;
+
+    fn init_state(
+        world: &mut World,
+        builder: &mut SystemDescBuilder,
+    ) -> Result<Self::State, ParamError>;
+}
+
+trait RunSystem<F>: SystemParamTuple {
+    unsafe fn run(func: &mut F, state: &mut Self::State, ctx: SystemContext<'_>);
+}
+
+trait SystemParamFunction<Marker>: Sized + 'static {
+    type Params: RunSystem<Self> + 'static;
+}
+
+struct SystemStorage<F, Params: SystemParamTuple> {
+    func: F,
+    state: Params::State,
+}
+
+unsafe extern "C" fn system_callback<F, Params>(iter: *mut raw::Iter)
 where
-    F: QueryEach<Marker> + 'static,
+    F: 'static,
+    Params: RunSystem<F> + 'static,
+    Params::State: 'static,
 {
     debug_assert!(!iter.is_null());
-    debug_assert_eq!(size_of::<F>(), 0);
-    debug_assert!(!needs_drop::<F>());
 
-    let mut func = MaybeUninit::<F>::zeroed().assume_init();
-    F::run(&mut func, &mut *iter);
+    let ctx = SystemContext::new(iter);
+    let storage = (*iter).user_data as *mut SystemStorage<F, Params>;
+    debug_assert!(!storage.is_null());
+
+    if Params::NEEDS_DEFER {
+        raw::ecs_defer_begin(ctx.world);
+    }
+
+    Params::run(&mut (*storage).func, &mut (*storage).state, ctx);
+
+    if Params::NEEDS_DEFER {
+        raw::ecs_defer_end(ctx.world);
+    }
 }
 
-#[doc(hidden)]
-pub struct SystemMarker<T>(PhantomData<T>);
+unsafe extern "C" fn system_storage_dtor<F, Params>(user_data: usize)
+where
+    Params: SystemParamTuple,
+    Params::State: 'static,
+{
+    drop(unsafe { Box::from_raw(user_data as *mut SystemStorage<F, Params>) });
+}
+
+impl<F, Marker> IntoSystem<Marker> for F
+where
+    F: SystemParamFunction<Marker>,
+    <<F as SystemParamFunction<Marker>>::Params as SystemParamTuple>::State: 'static,
+{
+    #[inline]
+    fn into_system(self, name: &str, world: &mut World) -> Result<SystemId, ParamError> {
+        type Params<F, Marker> = <F as SystemParamFunction<Marker>>::Params;
+
+        let mut builder = SystemDescBuilder::new();
+        let state = <Params<F, Marker> as SystemParamTuple>::init_state(world, &mut builder)?;
+        let storage = Box::new(SystemStorage::<F, Params<F, Marker>> { func: self, state });
+
+        let mut desc = builder.finish()?;
+        desc.name = world.retain_system_name(name);
+        desc.callback = Some(system_callback::<F, Params<F, Marker>>);
+        desc.user_data = Box::into_raw(storage) as usize;
+        desc.user_data_dtor = Some(system_storage_dtor::<F, Params<F, Marker>>);
+
+        Ok(unsafe { raw::ecs_system_init(world.as_raw_mut(), &desc).into() })
+    }
+}
+
+macro_rules! impl_into_system {
+    ($(($param:ident, $state:tt)),* $(,)?) => {
+        impl<$($param),*> SystemParamTuple for ($($param,)*)
+        where
+            $($param: SystemParam + 'static),*
+        {
+            type State = ($($param::State,)*);
+
+            const NEEDS_DEFER: bool = false $(|| $param::NEEDS_DEFER)*;
+
+            #[inline]
+            fn init_state(
+                world: &mut World,
+                builder: &mut SystemDescBuilder,
+            ) -> Result<Self::State, ParamError> {
+                Ok(($($param::init_state(world, builder)?,)*))
+            }
+        }
+
+        impl<F, $($param),*> RunSystem<F> for ($($param,)*)
+        where
+            F: FnMut($($param),*) + 'static,
+            $($param: for<'world> SystemParam<Item<'world> = $param> + 'static,)*
+            <($($param,)*) as SystemParamTuple>::State: 'static,
+        {
+            #[inline]
+            unsafe fn run(func: &mut F, state: &mut Self::State, ctx: SystemContext<'_>) {
+                func($($param::get_param(&mut state.$state, ctx),)*);
+            }
+        }
+
+        impl<F, $($param),*> SystemParamFunction<fn($($param),*)> for F
+        where
+            F: FnMut($($param),*) + 'static,
+            $($param: for<'world> SystemParam<Item<'world> = $param> + 'static,)*
+            <($($param,)*) as SystemParamTuple>::State: 'static,
+        {
+            type Params = ($($param,)*);
+        }
+    };
+}
+
+impl_into_system!((P1, 0));
+impl_into_system!((P1, 0), (P2, 1));
+impl_into_system!((P1, 0), (P2, 1), (P3, 2));
+impl_into_system!((P1, 0), (P2, 1), (P3, 2), (P4, 3));
+impl_into_system!((P1, 0), (P2, 1), (P3, 2), (P4, 3), (P5, 4));
+impl_into_system!((P1, 0), (P2, 1), (P3, 2), (P4, 3), (P5, 4), (P6, 5));
+impl_into_system!(
+    (P1, 0),
+    (P2, 1),
+    (P3, 2),
+    (P4, 3),
+    (P5, 4),
+    (P6, 5),
+    (P7, 6)
+);
+impl_into_system!(
+    (P1, 0),
+    (P2, 1),
+    (P3, 2),
+    (P4, 3),
+    (P5, 4),
+    (P6, 5),
+    (P7, 6),
+    (P8, 7)
+);

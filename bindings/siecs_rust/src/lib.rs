@@ -20,18 +20,22 @@ pub use observer::{
     Event, EventId, Observer, ObserverEvent, ObserverId, OnAdd, OnRemove, OnSet, RawEvent,
     TypedEvent,
 };
-pub use query::{Field, FieldKind, ParamError, Query};
+pub use query::{Field, FieldKind, ParamError, Query, QueryParam, QueryState};
 pub use resource::{Res, ResMut, Resource, ResourceId};
 pub use siecs_derive::{Component, Event, Resource};
-pub use system::{EachCtx, Phase, System, SystemId};
+pub use system::{
+    Commands, EachCtx, IntoSystem, Phase, System, SystemContext, SystemDescBuilder, SystemId,
+    SystemParam,
+};
 pub use world::{DeferGuard, World, WorldFeatures};
 pub use world_ref::WorldRef;
 
 pub mod prelude {
     pub use crate::{
-        Abstract, ChildOf, Component, DeferGuard, Disabled, EachCtx, Entity, Event, EventId, Field,
-        FieldKind, Module, ModuleId, Name, Observer, ObserverEvent, ObserverId, OnAdd, OnRemove,
-        OnSet, ParamError, Phase, Query, RawEvent, Res, ResMut, Resource, ResourceId, System,
-        SystemId, TypedEvent, World, WorldFeatures, WorldRef,
+        Abstract, ChildOf, Commands, Component, DeferGuard, Disabled, EachCtx, Entity, Event,
+        EventId, Field, FieldKind, IntoSystem, Module, ModuleId, Name, Observer, ObserverEvent,
+        ObserverId, OnAdd, OnRemove, OnSet, ParamError, Phase, Query, QueryParam, QueryState,
+        RawEvent, Res, ResMut, Resource, ResourceId, System, SystemContext, SystemDescBuilder,
+        SystemId, SystemParam, TypedEvent, World, WorldFeatures, WorldRef,
     };
 }
