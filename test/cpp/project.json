@@ -30,7 +30,9 @@
           "system_empty_callback_runs_once",
           "query_read",
           "does_not_create_query_term",
-          "field_index_stays_correct"
+          "field_index_stays_correct",
+          "cpp_raii_component_survives_table_migrations",
+          "capturing_system_keeps_state"
         ]
       },
       {

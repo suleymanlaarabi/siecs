@@ -6,12 +6,16 @@ namespace ecs {
 namespace detail {
 
 template <typename Callback, typename Args> static void system_callback(ecs_iter_t *it) {
-    Callback callback{};
+    Callback &callback = *reinterpret_cast<Callback *>(it->user_data);
     if constexpr (component_arg_count<Args>() == 0) {
         run_once<Callback, Args>(callback, it->world);
     } else {
         run_batch<Callback, Args>(callback, it);
     }
+}
+
+template <typename Callback> static void system_callback_dtor(uintptr_t user_data) {
+    delete reinterpret_cast<Callback *>(user_data);
 }
 
 } // namespace detail
@@ -38,21 +42,20 @@ class system : protected query {
         return *this;
     }
 
-    template <typename F> ecs_system_id_t each(F &&) {
+    template <typename F> ecs_system_id_t each(F &&func) {
         using callback = std::remove_cvref_t<F>;
-        static_assert(
-            std::is_empty_v<callback> && std::is_default_constructible_v<callback>,
-            "system callbacks must be stateless with the current C API"
-        );
 
         using traits = function_traits<callback>;
         using args = typename traits::args_tuple;
         detail::append_callback_terms<args>(_world, desc, term_index);
+        callback *state = new callback(std::forward<F>(func));
 
         ecs_system_desc_t system_desc = {
             .name = name,
             .query = this->desc,
             .callback = detail::system_callback<callback, args>,
+            .user_data = reinterpret_cast<uintptr_t>(state),
+            .user_data_dtor = detail::system_callback_dtor<callback>,
             .phase = _phase,
         };
 

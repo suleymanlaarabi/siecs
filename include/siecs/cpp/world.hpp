@@ -103,7 +103,11 @@ class world {
 
     template <typename T> void set_resource(T &&value) const {
         using type = std::remove_cvref_t<T>;
-        ecs_set_resource_rid(_world, ecs_cpp_resource_id<type>(_world), &value);
+        if constexpr (std::is_lvalue_reference_v<T>) {
+            ecs_set_resource_rid(_world, ecs_cpp_resource_id<type>(_world), &value);
+        } else {
+            ecs_move_resource_rid(_world, ecs_cpp_resource_id<type>(_world), &value);
+        }
     }
 
     template <typename T> [[nodiscard]] T &resource() const {

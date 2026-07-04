@@ -41,6 +41,14 @@ class entity {
         return *this;
     }
 
+    template <typename T> entity set(T &&value)
+        requires(!std::is_lvalue_reference_v<T>)
+    {
+        using type = std::remove_cvref_t<T>;
+        ecs_move_cid(_world, _entity, detail::ecs_cpp_component_id<type>(_world), &value);
+        return *this;
+    }
+
     entity is_a(entity target) {
         ecs_is_a(_world, _entity, target._entity);
         return *this;

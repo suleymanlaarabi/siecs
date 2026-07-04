@@ -1,5 +1,6 @@
 #pragma once
 
+#include "siecs/cpp/component.hpp"
 #include "siecs.h"
 #include "siecs/cpp/type.hpp"
 #include <cassert>
@@ -63,6 +64,7 @@ template <typename T> static ecs_resource_t ecs_cpp_resource_id(ecs_world_t *wor
     ecs_resource_desc_t desc = {
         .name = name.c_str(),
         .size = sizeof(type),
+        .ops = detail::value_ops<type>(),
         .on_set = nullptr,
         .on_remove = nullptr,
     };

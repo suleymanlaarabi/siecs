@@ -5,8 +5,12 @@
 #include "siecs/cpp/type.hpp"
 #include <cstddef>
 #include <cstdio>
+#include <memory>
+#include <new>
 #include <string.h>
 #include <string>
+#include <type_traits>
+#include <utility>
 
 namespace ecs {
 
@@ -30,6 +34,81 @@ template <typename T> consteval size_t sisizeof() {
 
 template <typename T> static void ecs_cpp_set_component_id(ecs_component_t cid) {
     detail::component_type<T>::id = cid;
+}
+
+template <typename T> static void value_ctor(void *ptr, uint32_t count) {
+    T *values = static_cast<T *>(ptr);
+    for (uint32_t i = 0; i < count; i++) {
+        std::construct_at(&values[i]);
+    }
+}
+
+template <typename T> static void value_dtor(void *ptr, uint32_t count) {
+    T *values = static_cast<T *>(ptr);
+    for (uint32_t i = 0; i < count; i++) {
+        std::destroy_at(&values[i]);
+    }
+}
+
+template <typename T> static void value_copy_ctor(void *dst, const void *src, uint32_t count) {
+    T *out = static_cast<T *>(dst);
+    const T *in = static_cast<const T *>(src);
+    for (uint32_t i = 0; i < count; i++) {
+        std::construct_at(&out[i], in[i]);
+    }
+}
+
+template <typename T> static void value_copy(void *dst, const void *src, uint32_t count) {
+    T *out = static_cast<T *>(dst);
+    const T *in = static_cast<const T *>(src);
+    for (uint32_t i = 0; i < count; i++) {
+        if constexpr (std::is_copy_assignable_v<T>) {
+            out[i] = in[i];
+        } else {
+            std::destroy_at(&out[i]);
+            std::construct_at(&out[i], in[i]);
+        }
+    }
+}
+
+template <typename T> static void value_move_ctor(void *dst, void *src, uint32_t count) {
+    T *out = static_cast<T *>(dst);
+    T *in = static_cast<T *>(src);
+    for (uint32_t i = 0; i < count; i++) {
+        std::construct_at(&out[i], std::move(in[i]));
+        std::destroy_at(&in[i]);
+    }
+}
+
+template <typename T> static void value_move(void *dst, void *src, uint32_t count) {
+    T *out = static_cast<T *>(dst);
+    T *in = static_cast<T *>(src);
+    for (uint32_t i = 0; i < count; i++) {
+        if constexpr (std::is_move_assignable_v<T>) {
+            out[i] = std::move(in[i]);
+        } else {
+            std::destroy_at(&out[i]);
+            std::construct_at(&out[i], std::move(in[i]));
+        }
+        std::destroy_at(&in[i]);
+    }
+}
+
+template <typename T> consteval ecs_type_ops_t value_ops() {
+    if constexpr (!is_complete<T>::value) {
+        return {};
+    } else if constexpr (sizeof(T) == 0 || std::is_trivially_copyable_v<T>) {
+        return {};
+    } else {
+        return {
+            .ctor = std::is_default_constructible_v<T> ? value_ctor<T> : nullptr,
+            .dtor = std::is_destructible_v<T> ? value_dtor<T> : nullptr,
+            .copy_ctor = std::is_copy_constructible_v<T> ? value_copy_ctor<T> : nullptr,
+            .copy = std::is_copy_constructible_v<T> ? value_copy<T> : nullptr,
+            .move_ctor = std::is_move_constructible_v<T> ? value_move_ctor<T> : nullptr,
+            .move = std::is_move_constructible_v<T> ? value_move<T> : nullptr,
+        };
+    }
 }
 
 template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *world) {
@@ -57,15 +136,10 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
     ecs_component_desc_t desc = {
         .name = reflection.name,
         .size = sisizeof<T>(),
+        .ops = value_ops<T>(),
         .on_set = nullptr,
-        .on_remove = []([[maybe_unused]] ecs_world_t *world,
-                        [[maybe_unused]] ecs_entity_t entity,
-                        [[maybe_unused]] ecs_component_t component,
-                        void *ptr) { static_cast<const T *>(ptr)->~T(); },
-        .on_add = []([[maybe_unused]] ecs_world_t *world,
-                     [[maybe_unused]] ecs_entity_t entity,
-                     [[maybe_unused]] ecs_component_t component,
-                     void *ptr) { new (const_cast<void *>(ptr)) T(); },
+        .on_remove = nullptr,
+        .on_add = nullptr,
         .relation_flags = 0,
         .struct_desc = &reflection,
     };

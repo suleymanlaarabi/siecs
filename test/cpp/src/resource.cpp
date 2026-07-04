@@ -1,5 +1,6 @@
 #include <siecs.h>
 #include <test.h>
+#include <string>
 
 struct CppTime {
     float dt;
@@ -22,6 +23,10 @@ struct CppNeverRegisteredResource {
     int value;
 };
 
+struct CppText {
+    std::string value;
+};
+
 static int cpp_resource_system_calls;
 static int cpp_resource_query_calls;
 
@@ -30,6 +35,14 @@ static CppPosition *cpp_resource_position(ecs::world &world, ecs::entity entity)
         world.c_ptr(),
         entity.id(),
         ecs::detail::ecs_cpp_component_id<CppPosition>(world.c_ptr())
+    ));
+}
+
+static CppText *cpp_text(ecs::world &world, ecs::entity entity) {
+    return static_cast<CppText *>(ecs_get_cid(
+        world.c_ptr(),
+        entity.id(),
+        ecs::detail::ecs_cpp_component_id<CppText>(world.c_ptr())
     ));
 }
 
@@ -179,4 +192,29 @@ void resource_field_index_stays_correct(void) {
 
     test_int(1, cpp_resource_query_calls);
     test_assert(cpp_resource_position(world, entity)->x == 8.0f);
+}
+
+void resource_cpp_raii_component_survives_table_migrations(void) {
+    ecs::world world;
+
+    auto entity = world.entity().set(CppText{ .value = "initial" });
+    entity.set(CppPosition{ .x = 1.0f });
+    entity.remove<CppPosition>();
+
+    test_str("initial", cpp_text(world, entity)->value.c_str());
+}
+
+void resource_capturing_system_keeps_state(void) {
+    ecs::world world;
+    world.entity().set(CppPosition{ .x = 1.0f });
+
+    int total = 0;
+    world.system("Capturing").each([&total](CppPosition &position) {
+        total += 3;
+        position.x += 2.0f;
+    });
+
+    world.progress();
+
+    test_int(3, total);
 }

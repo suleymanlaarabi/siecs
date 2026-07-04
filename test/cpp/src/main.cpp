@@ -22,6 +22,8 @@ void resource_system_empty_callback_runs_once(void);
 void resource_query_read(void);
 void resource_does_not_create_query_term(void);
 void resource_field_index_stays_correct(void);
+void resource_cpp_raii_component_survives_table_migrations(void);
+void resource_capturing_system_keeps_state(void);
 
 // Testsuite 'query'
 void query_reads_shared_inherited_field(void);
@@ -96,6 +98,14 @@ bake_test_case resource_testcases[] = {
     {
         "field_index_stays_correct",
         resource_field_index_stays_correct
+    },
+    {
+        "cpp_raii_component_survives_table_migrations",
+        resource_cpp_raii_component_survives_table_migrations
+    },
+    {
+        "capturing_system_keeps_state",
+        resource_capturing_system_keeps_state
     }
 };
 
@@ -196,7 +206,7 @@ static bake_test_suite suites[] = {
         "resource",
         NULL,
         NULL,
-        9,
+        11,
         resource_testcases
     },
     {

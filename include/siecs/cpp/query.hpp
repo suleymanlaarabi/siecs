@@ -54,7 +54,7 @@ inline auto make_fields(ecs_iter_t *it, Resources &resources, std::index_sequenc
     return std::tuple{ make_batch_arg<Args, Is>(it, resources)... };
 }
 
-template <std::uint8_t SharedMask, std::size_t I, typename Args, typename Tuple>
+template <std::size_t I, typename Args, typename Tuple>
 inline decltype(auto) row_arg(Tuple &fields, uint32_t row) {
     auto &field = std::get<I>(fields);
 
@@ -63,64 +63,57 @@ inline decltype(auto) row_arg(Tuple &fields, uint32_t row) {
         (void)row;
         return field;
     } else {
-        constexpr std::size_t field_index = field_index_before<Args, I>();
-        if constexpr ((SharedMask & (1U << field_index)) != 0) {
-            (void)row;
-            return field[0];
-        } else {
-            return field[row];
-        }
+        return field[row];
     }
 }
 
-template <std::uint8_t SharedMask, typename F, typename Args, typename Tuple, std::size_t... Is>
-inline void call_fields_impl(F &func, Tuple &fields, uint32_t count, std::index_sequence<Is...>) {
+template <std::size_t I, typename Args, typename Tuple>
+inline decltype(auto) row_arg_shared(Tuple &fields) {
+    auto &field = std::get<I>(fields);
+    using arg = std::tuple_element_t<I, Args>;
+    if constexpr (is_res_v<arg>) {
+        return field;
+    } else {
+        return field[0];
+    }
+}
+
+template <typename F, typename Args, typename Tuple, std::size_t... Is>
+inline void call_fields_impl(
+    F &func,
+    Tuple &fields,
+    uint32_t count,
+    std::uint64_t shared_mask,
+    std::index_sequence<Is...>
+) {
+    (void)shared_mask;
     for (uint32_t i = 0; i < count; i++) {
-        std::invoke(func, row_arg<SharedMask, Is, Args>(fields, i)...);
-    }
-}
-
-template <std::uint8_t SharedMask, typename F, typename Args, typename Tuple>
-inline void call_fields_mask(F &func, Tuple &fields, uint32_t count) {
-    constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<Tuple>>;
-
-    call_fields_impl<SharedMask, F, Args>(func, fields, count, std::make_index_sequence<N>{});
-}
-
-template <std::uint16_t Mask, std::uint16_t MaxMask, typename F, typename Args, typename Tuple>
-inline void call_fields_dispatch(F &func, Tuple &fields, uint32_t count, std::uint8_t shared_mask) {
-    if constexpr (Mask < MaxMask) {
-        if (shared_mask == Mask) {
-            call_fields_mask<static_cast<std::uint8_t>(Mask), F, Args, Tuple>(func, fields, count);
-        } else {
-            call_fields_dispatch<Mask + 1, MaxMask, F, Args, Tuple>(
-                func,
-                fields,
-                count,
-                shared_mask
-            );
-        }
+        std::invoke(
+            func,
+            ((shared_mask & (1ULL << field_index_before<Args, Is>()))
+                 ? row_arg_shared<Is, Args>(fields)
+                 : row_arg<Is, Args>(fields, i))...
+        );
     }
 }
 
 template <typename F, typename Args, typename Tuple>
-inline void call_fields(F &func, Tuple &fields, uint32_t count, std::uint8_t shared_mask) {
+inline void call_fields(F &func, Tuple &fields, uint32_t count, std::uint64_t shared_mask) {
+    constexpr std::size_t N = std::tuple_size_v<std::remove_reference_t<Tuple>>;
     constexpr std::size_t component_count = component_arg_count<Args>();
-    static_assert(component_count <= 8, "query callbacks can read at most 8 components");
+    static_assert(component_count <= 64, "query callbacks can read at most 64 components");
 
-    constexpr std::uint16_t max_mask = 1U << component_count;
-
-    call_fields_dispatch<0, max_mask, F, Args, Tuple>(func, fields, count, shared_mask);
+    call_fields_impl<F, Args>(func, fields, count, shared_mask, std::make_index_sequence<N>{});
 }
 
-template <typename Args> inline std::uint8_t make_shared_mask(const ecs_iter_t *it) {
+template <typename Args> inline std::uint64_t make_shared_mask(const ecs_iter_t *it) {
     constexpr std::size_t component_count = component_arg_count<Args>();
-    static_assert(component_count <= 8, "query callbacks can read at most 8 components");
+    static_assert(component_count <= 64, "query callbacks can read at most 64 components");
 
-    std::uint8_t mask = 0;
+    std::uint64_t mask = 0;
     for (std::size_t i = 0; i < component_count; i++) {
         if (it->field_kinds[i] == EcsFieldShared) {
-            mask |= static_cast<std::uint8_t>(1U << i);
+            mask |= 1ULL << i;
         }
     }
     return mask;
