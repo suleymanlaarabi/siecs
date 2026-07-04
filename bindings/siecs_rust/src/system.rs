@@ -2,9 +2,78 @@ use core::marker::PhantomData;
 use core::mem::{needs_drop, size_of, MaybeUninit};
 
 use crate::query::{append_term, validate_returned_fields, QueryEach};
-use crate::{raw, Component, Entity, World};
+use crate::{raw, Component, Entity, World, WorldRef};
 
 pub use raw::Phase;
+
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[repr(transparent)]
+pub struct SystemId(raw::SystemId);
+
+impl SystemId {
+    #[inline]
+    pub const fn raw(self) -> raw::SystemId {
+        self.0
+    }
+}
+
+impl From<raw::SystemId> for SystemId {
+    #[inline]
+    fn from(id: raw::SystemId) -> Self {
+        Self(id)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct EachCtx<'a> {
+    world: WorldRef<'a>,
+    entity: Entity,
+}
+
+impl<'a> EachCtx<'a> {
+    #[inline]
+    pub(crate) unsafe fn new(iter: &raw::Iter, row: usize) -> Self {
+        Self {
+            world: WorldRef::from_raw(iter.world),
+            entity: Entity::from_raw(*iter.entities.add(row)),
+        }
+    }
+
+    #[inline]
+    pub const fn entity(self) -> Entity {
+        self.entity
+    }
+
+    #[inline]
+    pub const fn world(self) -> WorldRef<'a> {
+        self.world
+    }
+
+    #[inline]
+    pub fn add<T: Component>(self) {
+        self.world.add::<T>(self.entity);
+    }
+
+    #[inline]
+    pub fn remove<T: Component>(self) {
+        self.world.remove::<T>(self.entity);
+    }
+
+    #[inline]
+    pub fn set<T: Component>(self, value: T) {
+        self.world.set(self.entity, value);
+    }
+
+    #[inline]
+    pub fn kill(self) {
+        self.world.kill(self.entity);
+    }
+
+    #[inline]
+    pub fn is_a(self, base: Entity) {
+        self.world.is_a(self.entity, base);
+    }
+}
 
 pub struct System<'world> {
     world: &'world mut World,
@@ -55,7 +124,19 @@ impl<'world> System<'world> {
     }
 
     #[inline]
-    pub fn each<F, Marker>(mut self, func: F) -> raw::SystemId
+    pub fn after(mut self, system: SystemId) -> Self {
+        let slot = self
+            .desc
+            .after
+            .iter_mut()
+            .find(|slot| **slot == 0)
+            .expect("systems can depend on at most four prior systems");
+        *slot = system.raw();
+        self
+    }
+
+    #[inline]
+    pub fn each<F, Marker>(mut self, func: F) -> SystemId
     where
         F: QueryEach<Marker> + 'static,
     {
@@ -71,7 +152,7 @@ impl<'world> System<'world> {
         self.desc.name = self.world.retain_system_name(&self.name);
         self.desc.callback = Some(system_callback::<F, Marker>);
 
-        unsafe { raw::ecs_system_init(self.world.as_raw_mut(), &self.desc) }
+        unsafe { raw::ecs_system_init(self.world.as_raw_mut(), &self.desc).into() }
     }
 
     #[inline]

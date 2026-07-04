@@ -71,6 +71,7 @@ static FILTER_CALLS: AtomicUsize = AtomicUsize::new(0);
 static ENABLE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static MULTI_WORLD_CALLS: AtomicUsize = AtomicUsize::new(0);
 static SYSTEM_ORDER: AtomicI32 = AtomicI32::new(0);
+static SYSTEM_AFTER_ORDER: AtomicI32 = AtomicI32::new(0);
 
 fn move_system(position: &mut SystemPosition, velocity: &SystemVelocity) {
     position.x += velocity.x;
@@ -96,6 +97,14 @@ fn pre_update_system(_position: &SystemPosition) {
 
 fn on_update_system(_position: &SystemPosition) {
     assert_eq!(SYSTEM_ORDER.swap(2, Ordering::SeqCst), 1);
+}
+
+fn after_first_system(_position: &SystemPosition) {
+    assert_eq!(SYSTEM_AFTER_ORDER.swap(1, Ordering::SeqCst), 0);
+}
+
+fn after_second_system(_position: &SystemPosition) {
+    assert_eq!(SYSTEM_AFTER_ORDER.swap(2, Ordering::SeqCst), 1);
 }
 
 #[test]
@@ -606,6 +615,24 @@ fn system_phase_order_matches_c_order() {
 
     world.progress();
     assert_eq!(SYSTEM_ORDER.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn system_after_orders_same_phase_systems() {
+    SYSTEM_AFTER_ORDER.store(0, Ordering::SeqCst);
+
+    let mut world = World::new();
+    let entity = world.entity();
+    world.set(entity, SystemPosition { x: 1 });
+
+    let first = world.system("AfterFirst").each(after_first_system);
+    world
+        .system("AfterSecond")
+        .after(first)
+        .each(after_second_system);
+
+    world.progress();
+    assert_eq!(SYSTEM_AFTER_ORDER.load(Ordering::SeqCst), 2);
 }
 
 #[test]

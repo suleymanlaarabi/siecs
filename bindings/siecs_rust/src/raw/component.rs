@@ -2,6 +2,12 @@ use core::ffi::{c_char, c_void};
 
 use super::{world::WorldRaw, ComponentId, EntityId, SireflectStructDesc};
 
+pub const ECS_RELATION_TARGET: u32 = 1 << 0;
+pub const ECS_RELATION_SOURCE: u32 = 1 << 1;
+pub const ECS_RELATION_CASCADE_DELETE: u32 = 1 << 2;
+pub const ECS_RELATION_ONE_TO_ONE: u32 = 1 << 3;
+pub const ECS_RELATION_ONE_TO_MANY: u32 = 1 << 4;
+
 pub type ComponentOnAdd =
     Option<unsafe extern "C" fn(*mut WorldRaw, EntityId, ComponentId, *mut c_void)>;
 pub type ComponentOnSet =
@@ -40,4 +46,5 @@ extern "C" {
         id: ComponentId,
         data: *const c_void,
     );
+    pub fn ecs_with(world: *mut WorldRaw, component: ComponentId, require: ComponentId);
 }

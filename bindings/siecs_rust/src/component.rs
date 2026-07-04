@@ -5,7 +5,12 @@ use crate::{raw, World};
 /// Implementations are expected to lazily register the component the first time
 /// `id` is called, then register that stable id in each world that uses it.
 pub trait Component: Sized + 'static {
-    fn id(world: &mut World) -> raw::ComponentId;
+    unsafe fn id_raw(world: *mut raw::WorldRaw) -> raw::ComponentId;
+
+    #[inline]
+    fn id(world: &mut World) -> raw::ComponentId {
+        unsafe { Self::id_raw(world.as_raw_mut()) }
+    }
 }
 
 extern "C" {
@@ -27,7 +32,9 @@ impl Abstract {
 
 impl Component for Abstract {
     #[inline]
-    fn id(world: &mut World) -> raw::ComponentId {
-        Self::id(world)
+    unsafe fn id_raw(_world: *mut raw::WorldRaw) -> raw::ComponentId {
+        let id = ECS_ID_ABSTRACT;
+        debug_assert_ne!(id, 0);
+        id
     }
 }

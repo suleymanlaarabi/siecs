@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 use core::ops::Deref;
 
-use crate::{raw, Component, Entity, World};
+use crate::{raw, Component, EachCtx, Entity, World};
 
 pub use raw::FieldKind;
 
@@ -343,6 +343,38 @@ macro_rules! impl_query_each {
     };
 }
 
+macro_rules! impl_query_each_ctx {
+    ($(($component:ident, $field:ident, $index:expr, $kind:ident)),+ $(,)?) => {
+        impl<F, $($component),+> QueryEach<fn(EachCtx<'_>, $(marker_ty!($kind $component)),+)> for F
+        where
+            F: FnMut(EachCtx<'_>, $(marker_arg!($kind $component)),+),
+            $($component: Component),+
+        {
+            #[inline]
+            fn append_terms(world: &mut World, desc: &mut raw::QueryDesc, term_index: &mut u16) {
+                $(
+                    let id = $component::id(world);
+                    append_term(desc, term_index, id, term_access!($kind));
+                )+
+            }
+
+            #[inline]
+            unsafe fn run(&mut self, iter: &mut raw::Iter) {
+                $(
+                    let $field = (
+                        raw::ecs_field(iter, $index).cast::<$component>(),
+                        raw::ecs_field_kind(iter, $index),
+                    );
+                )+
+
+                for row in 0..iter.count as usize {
+                    self(EachCtx::new(iter, row), $(row_arg!($kind $field row)),+);
+                }
+            }
+        }
+    };
+}
+
 macro_rules! impl_query_each_perms {
     ($($component:ident $field:ident $index:expr),+ $(,)?) => {
         impl_query_each_perms_inner!(() ($($component $field $index),+));
@@ -352,6 +384,7 @@ macro_rules! impl_query_each_perms {
 macro_rules! impl_query_each_perms_inner {
     (($($acc:tt)*) ()) => {
         impl_query_each!($($acc)*);
+        impl_query_each_ctx!($($acc)*);
     };
     (($($acc:tt)*) ($component:ident $field:ident $index:expr)) => {
         impl_query_each_perms_inner!(($($acc)* ($component, $field, $index, ref),) ());
