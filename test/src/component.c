@@ -40,6 +40,10 @@ static int hook_last_set_old;
 static int hook_last_set_new;
 static int hook_last_remove_value;
 static uint32_t add_observer_calls;
+static uint32_t lifecycle_ctor_calls;
+static uint32_t lifecycle_dtor_calls;
+static uint32_t lifecycle_copy_calls;
+static uint32_t lifecycle_move_ctor_calls;
 
 static void reset_hook_state(void) {
     hook_add_calls = 0;
@@ -56,6 +60,45 @@ static void reset_hook_state(void) {
     hook_last_set_new = 0;
     hook_last_remove_value = 0;
     add_observer_calls = 0;
+}
+
+static void lifecycle_reset(void) {
+    lifecycle_ctor_calls = 0;
+    lifecycle_dtor_calls = 0;
+    lifecycle_copy_calls = 0;
+    lifecycle_move_ctor_calls = 0;
+}
+
+static void lifecycle_ctor(void *ptr, uint32_t count) {
+    int *values = ptr;
+    for (uint32_t i = 0; i < count; i++) {
+        values[i] = -1;
+        lifecycle_ctor_calls++;
+    }
+}
+
+static void lifecycle_dtor(void *ptr, uint32_t count) {
+    (void)ptr;
+    lifecycle_dtor_calls += count;
+}
+
+static void lifecycle_copy(void *dst, const void *src, uint32_t count) {
+    int *out = dst;
+    const int *in = src;
+    for (uint32_t i = 0; i < count; i++) {
+        out[i] = in[i];
+        lifecycle_copy_calls++;
+    }
+}
+
+static void lifecycle_move_ctor(void *dst, void *src, uint32_t count) {
+    int *out = dst;
+    int *in = src;
+    for (uint32_t i = 0; i < count; i++) {
+        out[i] = in[i];
+        in[i] = -999;
+        lifecycle_move_ctor_calls++;
+    }
 }
 
 static void on_component_add_observer(ecs_observer_event_t *event) {
@@ -234,6 +277,41 @@ void component_on_add(void) {
     test_assert(hook_last_set_order < hook_last_remove_order);
     test_int(9, hook_last_remove_value);
     test_false(ecs_has(world, implicit_entity, HookComponent));
+
+    ecs_fini(world);
+}
+
+void component_lifecycle_ops_are_used_for_storage_moves(void) {
+    lifecycle_reset();
+
+    ecs_world_t *world = ecs_init();
+    ecs_type_ops_t ops = {
+        .ctor = lifecycle_ctor,
+        .dtor = lifecycle_dtor,
+        .copy = lifecycle_copy,
+        .move_ctor = lifecycle_move_ctor,
+    };
+    ecs_component_t a = ecs_component(world, { .name = "LifecycleA", .size = sizeof(int), .ops = ops });
+    ecs_component_t b = ecs_component(world, { .name = "LifecycleB", .size = sizeof(int), .ops = ops });
+
+    ecs_entity_t entity = ecs_new(world);
+    int value = 10;
+    ecs_set_cid(world, entity, a, &value);
+    test_int(1, lifecycle_ctor_calls);
+    test_int(1, lifecycle_copy_calls);
+    test_int(10, *(int *)ecs_get_cid(world, entity, a));
+
+    ecs_add_cid(world, entity, b);
+    test_int(2, lifecycle_ctor_calls);
+    test_int(1, lifecycle_move_ctor_calls);
+    test_int(10, *(int *)ecs_get_cid(world, entity, a));
+
+    ecs_remove_cid(world, entity, b);
+    test_int(2, lifecycle_move_ctor_calls);
+    test_int(1, lifecycle_dtor_calls);
+
+    ecs_remove_cid(world, entity, a);
+    test_int(2, lifecycle_dtor_calls);
 
     ecs_fini(world);
 }

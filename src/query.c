@@ -20,9 +20,9 @@ static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query
     ecs_vec_remove_last(&index->active_ids);
 }
 
-uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *desc) {
+ecs_query_id_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *desc) {
     ecs_assert_not_null(world);
-    uint32_t qid = ecs_query_index_create(&world->query_index, desc);
+    ecs_query_id_t qid = ecs_query_index_create(&world->query_index, desc);
     ecs_query_index_update_matches(
         world,
         ecs_vec_get_mut(&world->query_index.queries, qid, ecs_query_cache_t)
@@ -30,7 +30,7 @@ uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *desc) {
     return qid;
 }
 
-ecs_iter_t ecs_query_iter(ecs_world_t *world, uint16_t query_id) {
+ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id) {
     ecs_assert_not_null(world);
     ecs_assert(query_id < world->query_index.queries.size, "invalid query id: %u\n", query_id);
 

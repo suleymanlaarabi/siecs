@@ -23,11 +23,13 @@ ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *des
         .name = desc->name,
         .qid = desc->query.terms[0].id ? ecs_query_init(world, &desc->query) : ECS_SYSTEM_NO_QUERY,
         .callback = desc->callback,
+        .user_data = desc->user_data,
+        .user_data_dtor = desc->user_data_dtor,
         .phase = desc->phase,
         .enabled = !desc->disabled,
     };
 
-    memcpy(sys.after, desc->after, sizeof(ecs_system_id_t[4]));
+    memcpy(sys.after, desc->after, sizeof(sys.after));
 
     ecs_system_id_t system = ecs_system_index_create(&world->system_index, &sys);
     ecs_module_record_system(world, system);
@@ -45,6 +47,7 @@ void ecs_run_system(ecs_world_t *world, ecs_system_id_t system) {
     ecs_defer_begin(world);
     if (sys->qid != ECS_SYSTEM_NO_QUERY) {
         ecs_iter_t it = ecs_query_iter(world, sys->qid);
+        it.user_data = sys->user_data;
         while (ecs_iter_next(&it)) {
             sys->callback(&it);
         }
@@ -52,6 +55,7 @@ void ecs_run_system(ecs_world_t *world, ecs_system_id_t system) {
         ecs_iter_t it = {
             .world = world,
             .count = 1,
+            .user_data = sys->user_data,
         };
         sys->callback(&it);
     }

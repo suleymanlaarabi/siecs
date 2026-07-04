@@ -1,4 +1,5 @@
 #include <siecs_test.h>
+#include <stdlib.h>
 
 ECS_COMPONENT_DECLARE(SystemPosition, { int value; });
 ECS_COMPONENT_DECLARE(SystemTag, { int value; });
@@ -17,6 +18,7 @@ static uint32_t system_seen;
 static uint32_t system_order_count;
 static int system_order[8];
 static ecs_entity_t system_entity;
+static uint32_t system_user_data_dtor_calls;
 
 static void reset_system_test_state(void) {
     system_calls = 0;
@@ -80,6 +82,20 @@ static void no_query_system(ecs_iter_t *it) {
     test_assert(it->world != NULL);
     test_uint(1, it->count);
     system_calls++;
+}
+
+static void user_data_system(ecs_iter_t *it) {
+    int *value = (int *)it->user_data;
+    test_int(42, *value);
+    *value = 77;
+    system_calls++;
+}
+
+static void user_data_dtor(uintptr_t user_data) {
+    int *value = (int *)user_data;
+    test_int(77, *value);
+    system_user_data_dtor_calls++;
+    free(value);
 }
 
 static void consume_next_batch_system(ecs_iter_t *it) {
@@ -342,6 +358,33 @@ void system_without_query_runs_once(void) {
     test_uint(1, system_calls);
 
     ecs_fini(world);
+}
+
+void system_user_data_is_passed_and_destroyed(void) {
+    reset_system_test_state();
+    system_user_data_dtor_calls = 0;
+
+    ecs_world_t *world = ecs_init();
+    int *value = malloc(sizeof(int));
+    *value = 42;
+
+    ecs_system(
+        world,
+        {
+            .name = "UserData",
+            .callback = user_data_system,
+            .user_data = (uintptr_t)value,
+            .user_data_dtor = user_data_dtor,
+            .phase = EcsOnUpdate,
+        }
+    );
+
+    ecs_progress(world);
+    test_int(1, system_calls);
+    test_int(0, system_user_data_dtor_calls);
+
+    ecs_fini(world);
+    test_int(1, system_user_data_dtor_calls);
 }
 
 void system_callback_can_advance_iterator(void) {

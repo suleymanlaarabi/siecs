@@ -31,7 +31,7 @@ static void ecs_system_index_plan_one(
     state[system] = 1;
 
     ecs_system_t *sys = ecs_system_index_get(index, system);
-    for (uint32_t i = 0; i < 4; i++) {
+    for (uint32_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY; i++) {
         ecs_system_id_t after = sys->after[i];
         if (after == 0) {
             continue;
@@ -104,6 +104,13 @@ void ecs_system_index_build_plan(ecs_system_index_t *index) {
 }
 
 void ecs_system_index_fini(ecs_system_index_t *index) {
+    ecs_system_t *systems = ecs_vec_data(&index->systems, ecs_system_t);
+    for (uint32_t i = 1; i < index->systems.size; i++) {
+        if (systems[i].user_data_dtor) {
+            systems[i].user_data_dtor(systems[i].user_data);
+        }
+    }
+
     for (uint32_t i = 0; i < EcsPhaseCount; i++) {
         ecs_vec_fini(&index->phase_order[i]);
     }

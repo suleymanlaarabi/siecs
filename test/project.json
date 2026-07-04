@@ -36,6 +36,7 @@
         "testcases": [
           "reflection",
           "on_add",
+          "lifecycle_ops_are_used_for_storage_moves",
           "add_with_required_uses_current_table_edge",
           "add_with_required_uses_cached_multi_add_edge",
           "add_with_required_emits_each_on_add_once",
@@ -81,6 +82,7 @@
           "try_get_missing",
           "remove",
           "replace",
+          "lifecycle_ops_are_used_for_set_move_and_remove",
           "from_system_c",
           "hooks"
         ]
@@ -126,6 +128,7 @@
           "after_order",
           "enable",
           "without_query_runs_once",
+          "user_data_is_passed_and_destroyed",
           "callback_can_advance_iterator",
           "skips_disabled_by_default",
           "can_run_on_disabled_when_requested",

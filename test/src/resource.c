@@ -15,12 +15,56 @@ static uint32_t resource_on_set_calls;
 static uint32_t resource_on_remove_calls;
 static int resource_on_set_last;
 static int resource_on_remove_last;
+static uint32_t resource_lifecycle_copy_ctor_calls;
+static uint32_t resource_lifecycle_copy_calls;
+static uint32_t resource_lifecycle_move_calls;
+static uint32_t resource_lifecycle_dtor_calls;
 
 static void resource_reset_hooks(void) {
     resource_on_set_calls = 0;
     resource_on_remove_calls = 0;
     resource_on_set_last = 0;
     resource_on_remove_last = 0;
+}
+
+static void resource_lifecycle_reset(void) {
+    resource_lifecycle_copy_ctor_calls = 0;
+    resource_lifecycle_copy_calls = 0;
+    resource_lifecycle_move_calls = 0;
+    resource_lifecycle_dtor_calls = 0;
+}
+
+static void resource_lifecycle_copy_ctor(void *dst, const void *src, uint32_t count) {
+    int *out = dst;
+    const int *in = src;
+    for (uint32_t i = 0; i < count; i++) {
+        out[i] = in[i];
+        resource_lifecycle_copy_ctor_calls++;
+    }
+}
+
+static void resource_lifecycle_copy(void *dst, const void *src, uint32_t count) {
+    int *out = dst;
+    const int *in = src;
+    for (uint32_t i = 0; i < count; i++) {
+        out[i] = in[i];
+        resource_lifecycle_copy_calls++;
+    }
+}
+
+static void resource_lifecycle_move(void *dst, void *src, uint32_t count) {
+    int *out = dst;
+    int *in = src;
+    for (uint32_t i = 0; i < count; i++) {
+        out[i] = in[i];
+        in[i] = -100;
+        resource_lifecycle_move_calls++;
+    }
+}
+
+static void resource_lifecycle_dtor(void *ptr, uint32_t count) {
+    (void)ptr;
+    resource_lifecycle_dtor_calls += count;
 }
 
 static void resource_hook_on_set(ecs_world_t *world, const void *ptr) {
@@ -159,6 +203,46 @@ void resource_hooks(void) {
     ecs_remove_resource(world, ResourceHooked);
     test_int(1, resource_on_remove_calls);
     test_int(24, resource_on_remove_last);
+
+    ecs_fini(world);
+}
+
+void resource_lifecycle_ops_are_used_for_set_move_and_remove(void) {
+    resource_lifecycle_reset();
+
+    ecs_world_t *world = ecs_init();
+    ecs_resource_t id = ecs_resource_init(
+        world,
+        &(ecs_resource_desc_t){
+            .name = "LifecycleResource",
+            .size = sizeof(int),
+            .ops = {
+                .dtor = resource_lifecycle_dtor,
+                .copy_ctor = resource_lifecycle_copy_ctor,
+                .copy = resource_lifecycle_copy,
+                .move = resource_lifecycle_move,
+            },
+        }
+    );
+
+    int value = 1;
+    ecs_set_resource_rid(world, id, &value);
+    test_int(1, resource_lifecycle_copy_ctor_calls);
+    test_int(1, *(int *)ecs_resource_rid(world, id));
+
+    value = 2;
+    ecs_set_resource_rid(world, id, &value);
+    test_int(1, resource_lifecycle_copy_calls);
+    test_int(2, *(int *)ecs_resource_rid(world, id));
+
+    value = 3;
+    ecs_move_resource_rid(world, id, &value);
+    test_int(1, resource_lifecycle_move_calls);
+    test_int(-100, value);
+    test_int(3, *(int *)ecs_resource_rid(world, id));
+
+    ecs_remove_resource_rid(world, id);
+    test_int(1, resource_lifecycle_dtor_calls);
 
     ecs_fini(world);
 }
