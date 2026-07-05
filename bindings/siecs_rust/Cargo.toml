@@ -1,6 +1,6 @@
 [package]
 name = "siecs"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 links = "siecs"
 description = "Rust bindings for SIECS"
