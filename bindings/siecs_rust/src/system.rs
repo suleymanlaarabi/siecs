@@ -305,7 +305,7 @@ unsafe impl SystemParam for Commands {
 }
 
 pub trait IntoSystem<Marker> {
-    fn into_system(self, name: &str, world: &mut World) -> Result<SystemId, ParamError>;
+    fn into_system(self, phase: Phase, world: &mut World) -> Result<SystemId, ParamError>;
 }
 
 pub struct System;
@@ -371,7 +371,7 @@ where
     <<F as SystemParamFunction<Marker>>::Params as SystemParamTuple>::State: 'static,
 {
     #[inline]
-    fn into_system(self, name: &str, world: &mut World) -> Result<SystemId, ParamError> {
+    fn into_system(self, phase: Phase, world: &mut World) -> Result<SystemId, ParamError> {
         type Params<F, Marker> = <F as SystemParamFunction<Marker>>::Params;
 
         let mut builder = SystemDescBuilder::new();
@@ -379,7 +379,8 @@ where
         let storage = Box::new(SystemStorage::<F, Params<F, Marker>> { func: self, state });
 
         let mut desc = builder.finish()?;
-        desc.name = world.retain_system_name(name);
+        desc.name = world.retain_system_name("unamed");
+        desc.phase = phase;
         desc.callback = Some(system_callback::<F, Params<F, Marker>>);
         desc.user_data = Box::into_raw(storage) as usize;
         desc.user_data_dtor = Some(system_storage_dtor::<F, Params<F, Marker>>);

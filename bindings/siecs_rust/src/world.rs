@@ -7,8 +7,8 @@ use std::ffi::{CStr, CString};
 use crate::system::IntoSystem;
 use crate::{
     raw, ChildOf, Component, Disabled, Entity, Event, EventId, Name, Observer, ObserverId, OnAdd,
-    OnRemove, OnSet, Query, QueryFilter, QueryParam, QueryState, RawEvent, Resource, SystemId,
-    TypedEvent,
+    OnRemove, OnSet, Phase, Query, QueryFilter, QueryParam, QueryState, RawEvent, Resource,
+    SystemId, TypedEvent,
 };
 
 pub struct World {
@@ -176,24 +176,24 @@ impl World {
     }
 
     #[inline]
-    pub fn system<F, Marker>(&mut self, name: &str, system: F) -> SystemId
+    pub fn system<F, Marker>(&mut self, phase: Phase, system: F) -> SystemId
     where
         F: IntoSystem<Marker>,
     {
-        self.try_system(name, system)
+        self.try_system(phase, system)
             .unwrap_or_else(|err| panic!("{err}"))
     }
 
     #[inline]
     pub fn try_system<F, Marker>(
         &mut self,
-        name: &str,
+        phase: Phase,
         system: F,
     ) -> Result<SystemId, crate::ParamError>
     where
         F: IntoSystem<Marker>,
     {
-        system.into_system(name, self)
+        system.into_system(phase, self)
     }
 
     #[inline]

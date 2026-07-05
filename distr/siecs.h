@@ -1488,8 +1488,9 @@ typedef struct {
     ecs_world_t *world;
     uint32_t count;
     ecs_entity_t *entities;
-    struct ecs_query_cache_s *cache;
     void **ptrs;
+    float delta_time;
+    struct ecs_query_cache_s *cache;
     ecs_field_kind_t *field_kinds;
     uintptr_t user_data;
     uint16_t table_idx;

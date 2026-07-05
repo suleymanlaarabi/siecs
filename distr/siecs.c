@@ -5517,6 +5517,8 @@ typedef struct ecs_world_s {
     bool flushing_commands;
     bool did_start;
     bool exit;
+    double delta_time;
+    double last_time;
 } ecs_world_t;
 
 struct sihttp_app_state_s {
@@ -7380,6 +7382,7 @@ void ecs_run_system(ecs_world_t *world, ecs_system_id_t system) {
     if (sys->qid != ECS_SYSTEM_NO_QUERY) {
         ecs_iter_t it = ecs_query_iter(world, sys->qid);
         it.user_data = sys->user_data;
+        it.delta_time = world->delta_time;
         while (ecs_iter_next(&it)) {
             sys->callback(&it);
         }
@@ -7388,6 +7391,7 @@ void ecs_run_system(ecs_world_t *world, ecs_system_id_t system) {
             .world = world,
             .count = 1,
             .user_data = sys->user_data,
+            .delta_time = world->delta_time,
         };
         sys->callback(&it);
     }
@@ -7409,6 +7413,7 @@ void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase) {
         ecs_run_system(world, system);
     }
 }
+
 static inline double now_sec(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -7431,6 +7436,14 @@ bool ecs_progress(ecs_world_t *world) {
 
     double frame_start = now_sec();
 
+    if (world->last_time == 0.0) {
+        world->delta_time = 0.0;
+    } else {
+        world->delta_time = frame_start - world->last_time;
+    }
+
+    world->last_time = frame_start;
+
     if (!world->did_start) {
         ecs_run_phase(world, EcsPreStart);
         ecs_run_phase(world, EcsStart);
@@ -7441,6 +7454,7 @@ bool ecs_progress(ecs_world_t *world) {
     for (ecs_phase_t phase = EcsOnLoad; phase < EcsPhaseCount; phase++) {
         ecs_run_phase(world, phase);
     }
+
     if (world->features.rest) {
         sihttp_server_poll(world->server);
     }
@@ -8061,6 +8075,8 @@ ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     world->exit = false;
     world->server = NULL;
     world->server_state = NULL;
+    world->delta_time = 0;
+    world->last_time = 0;
 
     world->sireflect_registry = sireflect_registry_init();
 

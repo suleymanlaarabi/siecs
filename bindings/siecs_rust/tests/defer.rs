@@ -1,4 +1,4 @@
-use siecs::{Commands, Component, Entity, Query, World};
+use siecs::{Commands, Component, Entity, Phase, Query, World};
 
 #[derive(Component)]
 struct Position {
@@ -22,7 +22,7 @@ fn system_commands_can_mutate_entity() {
     let entity = world.entity();
     world.set(entity, Position { value: 1 });
 
-    world.system("Commands", mark_with_commands);
+    world.system(Phase::OnUpdate, mark_with_commands);
     world.progress();
 
     assert_eq!(world.get::<Position>(entity).unwrap().value, 2);

@@ -161,7 +161,7 @@ fn main() {
     world.set(entity, Position { x: 0.0, y: 0.0 });
     world.set(entity, Velocity { x: 1.0, y: 1.0 });
 
-    world.system("Move", move_system);
+    world.system(Phase::OnUpdate, move_system);
     world.progress();
 }
 ```

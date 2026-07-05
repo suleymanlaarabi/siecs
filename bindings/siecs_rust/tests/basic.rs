@@ -2,8 +2,8 @@ use core::mem::{align_of, size_of};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use siecs::{
-    raw, Abstract, Commands, Component, Entity, Field, FieldKind, ParamError, Query, Res, ResMut,
-    Resource, SystemDescBuilder, SystemParam, With, Without, World,
+    raw, Abstract, Commands, Component, Entity, Field, FieldKind, ParamError, Phase, Query, Res,
+    ResMut, Resource, SystemDescBuilder, SystemParam, With, Without, World,
 };
 
 #[derive(Component)]
@@ -321,7 +321,7 @@ fn system_accepts_bevy_style_query_function() {
     world.set(entity, Position { x: 1.0, y: 2.0 });
     world.set(entity, Velocity { x: 3.0, y: 5.0 });
 
-    world.system("MoveSys", plain_move_system);
+    world.system(Phase::OnUpdate, plain_move_system);
     world.progress();
 
     let position = world.get::<Position>(entity).unwrap();
@@ -342,7 +342,7 @@ fn system_query_supports_filters() {
     world.set(non_player, Position { x: 10.0, y: 20.0 });
     world.set(non_player, Velocity { x: 30.0, y: 50.0 });
 
-    world.system("PlayerMove", filtered_player_move_system);
+    world.system(Phase::OnUpdate, filtered_player_move_system);
     world.progress();
 
     let position = world.get::<Position>(player).unwrap();
@@ -368,7 +368,7 @@ fn system_supports_multiple_queries() {
     world.add::<Sleeping>(sleeping);
     world.set_resource(Stats::default());
 
-    world.system("MultiQuery", multi_query_system);
+    world.system(Phase::OnUpdate, multi_query_system);
     world.progress();
 
     let position = world.get::<Position>(player).unwrap();
@@ -387,7 +387,7 @@ fn system_query_resources_and_progress() {
     world.set_resource(DeltaTime(0.5));
     world.set_resource(Stats::default());
 
-    world.system("Move", move_system);
+    world.system(Phase::OnUpdate, move_system);
     world.progress();
 
     let position = world.get::<Position>(entity).unwrap();
@@ -414,7 +414,7 @@ fn system_commands_defer_to_c_buffer() {
     let entity = world.entity();
     world.set(entity, Position { x: 4.0, y: 8.0 });
 
-    world.system("Commands", command_system);
+    world.system(Phase::OnUpdate, command_system);
     world.progress();
 
     let velocity = world.get::<Velocity>(entity).unwrap();
@@ -452,7 +452,7 @@ fn custom_system(value: CustomValue, mut stats: ResMut<Stats>) {
 fn custom_system_param_runs() {
     let mut world = World::new();
     world.set_resource(Stats::default());
-    world.system("Custom", custom_system);
+    world.system(Phase::OnUpdate, custom_system);
     world.progress();
     assert_eq!(world.resource::<Stats>().custom, 42);
 }
@@ -477,7 +477,7 @@ fn access_conflicts_are_reported_once_at_registration() {
     assert_eq!(err, ParamError::DuplicateComponentField);
 
     let err = world
-        .try_system("BadResources", conflicting_resources)
+        .try_system(Phase::OnUpdate, conflicting_resources)
         .expect_err("resource read/write conflict should be rejected");
     assert_eq!(err, ParamError::ResourceReadWriteConflict);
 }
