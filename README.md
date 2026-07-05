@@ -147,9 +147,11 @@ struct Velocity {
     y: f32,
 }
 
-fn move_system(pos: &mut Position, vel: &Velocity) {
-    pos.x += vel.x;
-    pos.y += vel.y;
+fn move_system(mut query: Query<(&mut Position, &Velocity)>) {
+    for (position, velocity) in &mut query {
+        position.x += velocity.x;
+        position.y += velocity.y;
+    }
 }
 
 fn main() {
@@ -159,11 +161,7 @@ fn main() {
     world.set(entity, Position { x: 0.0, y: 0.0 });
     world.set(entity, Velocity { x: 1.0, y: 1.0 });
 
-    world
-        .system("Move")
-        .phase(Phase::OnUpdate)
-        .each(move_system);
-
+    world.system("Move", move_system);
     world.progress();
 }
 ```
