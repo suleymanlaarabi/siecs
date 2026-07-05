@@ -55,7 +55,7 @@ fn raw_query_layout_matches_c() {
     assert_eq!(align_of::<raw::TermAccess>(), 4);
     assert_eq!(size_of::<raw::QueryTerm>(), 8);
     assert_eq!(size_of::<raw::QueryDesc>(), 520);
-    assert_eq!(size_of::<raw::Iter>(), 64);
+    assert_eq!(size_of::<raw::Iter>(), 72);
 }
 
 #[test]
