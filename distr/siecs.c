@@ -4805,6 +4805,8 @@ static inline void *ecs_vec_push_empty(ecs_vec_t *vec, const uint32_t element_si
     return ptr;
 }
 
+bool ecs_vec_contains_u16(const ecs_vec_t *vec, uint16_t value);
+void ecs_vec_remove_u16(ecs_vec_t *vec, uint16_t value);
 bool ecs_vec_contains_u64(const ecs_vec_t *vec, uint64_t value);
 void ecs_vec_remove_u64(ecs_vec_t *vec, uint64_t value);
 
@@ -5113,30 +5115,43 @@ void ecs_is_a_now(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target);
 #ifndef ECS_ARENA_H
 #define ECS_ARENA_H
 
+#include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 
-typedef struct {
+typedef struct ecs_arena_block_s {
+    struct ecs_arena_block_s *next;
     uint32_t capacity;
     uint32_t cursor;
-    uint8_t *buf;
+    max_align_t data[];
+} ecs_arena_block_t;
+
+typedef struct {
+    ecs_arena_block_t *first;
+    ecs_arena_block_t *current;
+    ecs_arena_block_t *last;
 } ecs_arena_t;
 
 void ecs_arena_init(ecs_arena_t *allocator);
 void ecs_arena_fini(ecs_arena_t *allocator);
+void *ecs_arena_alloc_slow(ecs_arena_t *allocator, uint32_t size);
 
 static inline void *ecs_arena_alloc(ecs_arena_t *allocator, uint32_t size) {
-    if (ECS_LIKELY(allocator->cursor + size <= allocator->capacity)) {
-        allocator->cursor += size;
-        return allocator->buf + (allocator->cursor - size);
+    ecs_arena_block_t *block = allocator->current;
+    const uint32_t alignment = (uint32_t)_Alignof(max_align_t);
+    const uint32_t cursor = (block->cursor + alignment - 1u) & ~(alignment - 1u);
+    if (ECS_LIKELY(cursor <= block->capacity && size <= block->capacity - cursor)) {
+        block->cursor = cursor + size;
+        return (uint8_t *)block->data + cursor;
     }
-    allocator->buf = (uint8_t *)realloc(allocator->buf, allocator->capacity + size);
-    allocator->capacity = allocator->capacity + size;
-    allocator->cursor += size;
-    return allocator->buf + (allocator->cursor - size);
+    return ecs_arena_alloc_slow(allocator, size);
 }
 
-static inline void ecs_arena_reset(ecs_arena_t *allocator) { allocator->cursor = 0; }
+static inline void ecs_arena_reset(ecs_arena_t *allocator) {
+    for (ecs_arena_block_t *block = allocator->first; block; block = block->next) {
+        block->cursor = 0;
+    }
+    allocator->current = allocator->first;
+}
 
 #endif
 
@@ -5697,42 +5712,23 @@ void ecs_migrate_remove(
 
 #define ECS_COMMAND_NONE UINT32_MAX
 
-static bool id_vec_contains(const ecs_vec_t *vec, ecs_component_t id) {
-    const ecs_component_t *ids = ecs_vec_data(vec, ecs_component_t);
-    for (uint32_t i = 0; i < vec->size; i++) {
-        if (ids[i] == id) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static void id_vec_remove(ecs_vec_t *vec, ecs_component_t id) {
-    ecs_component_t *ids = ecs_vec_data(vec, ecs_component_t);
-    for (uint32_t i = 0; i < vec->size; i++) {
-        if (ids[i] == id) {
-            ecs_vec_remove_fast(vec, i, sizeof(ecs_component_t));
-            return;
-        }
+static inline void id_vec_push_unique(ecs_vec_t *vec, ecs_component_t id) {
+    if (!ecs_vec_contains_u16(vec, id)) {
+        ecs_vec_push_u16(vec, id);
     }
 }
 
-static void id_vec_push_unique(ecs_vec_t *vec, ecs_component_t id) {
-    if (!id_vec_contains(vec, id)) {
-        ecs_vec_push(vec, &id, sizeof(ecs_component_t));
-    }
-}
-
-static void deferred_set_fini(ecs_world_t *world, ecs_deferred_set_t *set) {
+static inline void deferred_set_fini(ecs_world_t *world, ecs_deferred_set_t *set) {
     if (!set->data) {
         return;
     }
-    const ecs_component_record_t *record = ecs_component_index_get(&world->component_index, set->id);
+    const ecs_component_record_t *record =
+        ecs_component_index_get(&world->component_index, set->id);
     ecs_component_value_dtor(record, set->data, 1);
     set->data = NULL;
 }
 
-static void set_vec_remove(ecs_world_t *world, ecs_vec_t *vec, ecs_component_t id) {
+static inline void set_vec_remove(ecs_world_t *world, ecs_vec_t *vec, ecs_component_t id) {
     ecs_deferred_set_t *sets = ecs_vec_data(vec, ecs_deferred_set_t);
     for (uint32_t i = 0; i < vec->size; i++) {
         if (sets[i].id == id) {
@@ -5743,7 +5739,7 @@ static void set_vec_remove(ecs_world_t *world, ecs_vec_t *vec, ecs_component_t i
     }
 }
 
-static ecs_deferred_set_t *set_vec_find(ecs_vec_t *vec, ecs_component_t id) {
+static inline ecs_deferred_set_t *set_vec_find(ecs_vec_t *vec, ecs_component_t id) {
     ecs_deferred_set_t *sets = ecs_vec_data(vec, ecs_deferred_set_t);
     for (uint32_t i = 0; i < vec->size; i++) {
         if (sets[i].id == id) {
@@ -5753,14 +5749,14 @@ static ecs_deferred_set_t *set_vec_find(ecs_vec_t *vec, ecs_component_t id) {
     return NULL;
 }
 
-static void command_init(ecs_entity_command_t *command, ecs_entity_t entity) {
+static inline void command_init(ecs_entity_command_t *command, ecs_entity_t entity) {
     *command = (ecs_entity_command_t){ .entity = entity };
     ecs_vec_init(&command->add_ids, sizeof(ecs_component_t));
     ecs_vec_init(&command->remove_ids, sizeof(ecs_component_t));
     ecs_vec_init(&command->sets, sizeof(ecs_deferred_set_t));
 }
 
-static void command_fini(ecs_world_t *world, ecs_entity_command_t *command) {
+static inline void command_fini(ecs_world_t *world, ecs_entity_command_t *command) {
     ecs_deferred_set_t *sets = ecs_vec_data(&command->sets, ecs_deferred_set_t);
     for (uint32_t i = 0; i < command->sets.size; i++) {
         deferred_set_fini(world, &sets[i]);
@@ -5795,8 +5791,7 @@ static void command_buffer_ensure_entity(ecs_command_buffer_t *buffer, uint32_t 
         new_capacity *= 2;
     }
 
-    buffer->entity_to_command =
-        realloc(buffer->entity_to_command, sizeof(uint32_t) * new_capacity);
+    buffer->entity_to_command = realloc(buffer->entity_to_command, sizeof(uint32_t) * new_capacity);
     for (uint32_t i = buffer->entity_capacity; i < new_capacity; i++) {
         buffer->entity_to_command[i] = ECS_COMMAND_NONE;
     }
@@ -5823,13 +5818,13 @@ static ecs_entity_command_t *command_for_entity(ecs_world_t *world, ecs_entity_t
 
 void ecs_command_buffer_add(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
     ecs_entity_command_t *command = command_for_entity(world, entity);
-    id_vec_remove(&command->remove_ids, id);
+    ecs_vec_remove_u16(&command->remove_ids, id);
     id_vec_push_unique(&command->add_ids, id);
 }
 
 void ecs_command_buffer_remove(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
     ecs_entity_command_t *command = command_for_entity(world, entity);
-    id_vec_remove(&command->add_ids, id);
+    ecs_vec_remove_u16(&command->add_ids, id);
     set_vec_remove(world, &command->sets, id);
     id_vec_push_unique(&command->remove_ids, id);
 }
@@ -5842,25 +5837,20 @@ void ecs_command_buffer_set(
 ) {
     ecs_entity_command_t *command = command_for_entity(world, entity);
     const ecs_component_record_t *record = ecs_component_index_get(&world->component_index, id);
-    void *copy = NULL;
 
-    {
-        uint32_t size = record->size ? record->size : 1;
-        void *dst = ecs_arena_alloc(&world->arena_allocator, size);
-        ecs_component_value_copy_ctor(record, dst, data, 1);
-        copy = dst;
-    }
-
-    id_vec_remove(&command->remove_ids, id);
+    ecs_vec_remove_u16(&command->remove_ids, id);
     id_vec_push_unique(&command->add_ids, id);
 
     ecs_deferred_set_t *set = set_vec_find(&command->sets, id);
     if (set) {
-        deferred_set_fini(world, set);
-        set->data = copy;
+        ecs_component_value_dtor(record, set->data, 1);
+        ecs_component_value_copy_ctor(record, set->data, data, 1);
         return;
     }
 
+    uint32_t size = record->size ? record->size : 1;
+    void *copy = ecs_arena_alloc(&world->arena_allocator, size);
+    ecs_component_value_copy_ctor(record, copy, data, 1);
     ecs_deferred_set_t new_set = { .id = id, .data = copy };
     ecs_vec_push(&command->sets, &new_set, sizeof(ecs_deferred_set_t));
 }
@@ -5873,25 +5863,20 @@ void ecs_command_buffer_move(
 ) {
     ecs_entity_command_t *command = command_for_entity(world, entity);
     const ecs_component_record_t *record = ecs_component_index_get(&world->component_index, id);
-    void *copy = NULL;
 
-    {
-        uint32_t size = record->size ? record->size : 1;
-        void *dst = ecs_arena_alloc(&world->arena_allocator, size);
-        ecs_component_value_move_ctor(record, dst, data, 1);
-        copy = dst;
-    }
-
-    id_vec_remove(&command->remove_ids, id);
+    ecs_vec_remove_u16(&command->remove_ids, id);
     id_vec_push_unique(&command->add_ids, id);
 
     ecs_deferred_set_t *set = set_vec_find(&command->sets, id);
     if (set) {
-        deferred_set_fini(world, set);
-        set->data = copy;
+        ecs_component_value_dtor(record, set->data, 1);
+        ecs_component_value_move_ctor(record, set->data, data, 1);
         return;
     }
 
+    uint32_t size = record->size ? record->size : 1;
+    void *copy = ecs_arena_alloc(&world->arena_allocator, size);
+    ecs_component_value_move_ctor(record, copy, data, 1);
     ecs_deferred_set_t new_set = { .id = id, .data = copy };
     ecs_vec_push(&command->sets, &new_set, sizeof(ecs_deferred_set_t));
 }
@@ -5933,19 +5918,12 @@ static void final_ids_push_sorted(ecs_vec_t *final_ids, ecs_component_t id) {
     ids[i] = id;
 }
 
-static bool final_ids_has(const ecs_vec_t *final_ids, ecs_component_t id) {
-    return id_vec_contains(final_ids, id);
-}
-
-static void final_ids_collect_requirements(
-    ecs_world_t *world,
-    ecs_vec_t *final_ids,
-    ecs_component_t id
-) {
+static void
+final_ids_collect_requirements(ecs_world_t *world, ecs_vec_t *final_ids, ecs_component_t id) {
     const ecs_component_record_t *record = ecs_component_index_get(&world->component_index, id);
     for (uint32_t i = 0; i < record->required_count; i++) {
         ecs_component_t required = record->required[i];
-        if (final_ids_has(final_ids, required)) {
+        if (ecs_vec_contains_u16(final_ids, required)) {
             continue;
         }
         final_ids_collect_requirements(world, final_ids, required);
@@ -5963,8 +5941,8 @@ static ecs_type_t command_build_type(
 
     for (uint16_t i = 0; i < table->type.count; i++) {
         ecs_component_t id = table->type.ids[i];
-        if (!id_vec_contains(&command->remove_ids, id)) {
-            final_ids_push_sorted(&final_ids, id);
+        if (!ecs_vec_contains_u16(&command->remove_ids, id)) {
+            ecs_vec_push_u16(&final_ids, id);
         }
     }
 
@@ -5972,12 +5950,6 @@ static ecs_type_t command_build_type(
     for (uint32_t i = 0; i < command->add_ids.size; i++) {
         final_ids_collect_requirements(world, &final_ids, adds[i]);
         final_ids_push_sorted(&final_ids, adds[i]);
-    }
-
-    ecs_deferred_set_t *sets = ecs_vec_data(&command->sets, ecs_deferred_set_t);
-    for (uint32_t i = 0; i < command->sets.size; i++) {
-        final_ids_collect_requirements(world, &final_ids, sets[i].id);
-        final_ids_push_sorted(&final_ids, sets[i].id);
     }
 
     return (ecs_type_t){
@@ -5994,9 +5966,13 @@ static void command_emit_removed(
     uint32_t row,
     const ecs_type_t *final_type
 ) {
+    uint16_t final_i = 0;
     for (uint16_t i = 0; i < table->type.count; i++) {
         ecs_component_t id = table->type.ids[i];
-        if (ecs_type_find(final_type, id) != -1) {
+        while (final_i < final_type->count && final_type->ids[final_i] < id) {
+            final_i++;
+        }
+        if (final_i < final_type->count && final_type->ids[final_i] == id) {
             continue;
         }
 
@@ -6033,6 +6009,23 @@ static void command_emit_added(
         }
         ecs_emit(world, new_table, entity, EcsOnAdd, data);
     }
+}
+
+static bool command_type_unchanged(const ecs_table_t *table, const ecs_entity_command_t *command) {
+    if (command->remove_ids.size != 0) {
+        return false;
+    }
+    if (command->has_base && command->base != table->type.base) {
+        return false;
+    }
+
+    const ecs_component_t *adds = ecs_vec_data(&command->add_ids, ecs_component_t);
+    for (uint32_t i = 0; i < command->add_ids.size; i++) {
+        if (!ecs_table_has_owned(table, adds[i])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static void command_apply_sets(ecs_world_t *world, ecs_entity_command_t *command) {
@@ -6074,6 +6067,11 @@ static void command_apply(ecs_world_t *world, ecs_entity_command_t *command) {
     ecs_entity_record_t *record = ecs_get_record(world, command->entity);
     uint16_t old_table_id = record->table_id;
     ecs_table_t *old_table = ecs_get_table(world, old_table_id);
+    if (command_type_unchanged(old_table, command)) {
+        command_apply_sets(world, command);
+        return;
+    }
+
     ecs_type_t final_type = command_build_type(world, old_table, command);
 
     if (!ecs_type_equals(&old_table->type, &final_type)) {
@@ -6114,16 +6112,11 @@ void ecs_command_buffer_flush(ecs_world_t *world) {
         ecs_entity_command_t *items = ecs_vec_data(&commands, ecs_entity_command_t);
         for (uint32_t i = 0; i < commands.size; i++) {
             uint32_t entity_id = ecs_first(items[i].entity);
-            if (entity_id < buffer->entity_capacity) {
-                buffer->entity_to_command[entity_id] = ECS_COMMAND_NONE;
-            }
+            buffer->entity_to_command[entity_id] = ECS_COMMAND_NONE;
         }
 
         for (uint32_t i = 0; i < commands.size; i++) {
             command_apply(world, &items[i]);
-        }
-
-        for (uint32_t i = 0; i < commands.size; i++) {
             command_fini(world, &items[i]);
         }
         ecs_vec_fini(&commands);
@@ -8663,13 +8656,59 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req) {
     return ecs_rest_json_response(200, schema);
 }
 
-void ecs_arena_init(ecs_arena_t *allocator) {
-    allocator->buf = malloc(8);
-    allocator->capacity = 8;
-    allocator->cursor = 0;
+#define ECS_ARENA_INITIAL_CAPACITY 4096u
+
+static ecs_arena_block_t *ecs_arena_block_new(uint32_t capacity) {
+    ecs_arena_block_t *block = malloc(sizeof(ecs_arena_block_t) + capacity);
+    *block = (ecs_arena_block_t){ .capacity = capacity };
+    return block;
 }
+
+void ecs_arena_init(ecs_arena_t *allocator) {
+    ecs_arena_block_t *block = ecs_arena_block_new(ECS_ARENA_INITIAL_CAPACITY);
+    *allocator = (ecs_arena_t){
+        .first = block,
+        .current = block,
+        .last = block,
+    };
+}
+
+void *ecs_arena_alloc_slow(ecs_arena_t *allocator, uint32_t size) {
+    for (ecs_arena_block_t *block = allocator->current->next; block; block = block->next) {
+        if (size <= block->capacity) {
+            allocator->current = block;
+            block->cursor = size;
+            return block->data;
+        }
+    }
+
+    uint32_t capacity = allocator->last->capacity;
+    if (capacity <= UINT32_MAX / 2u) {
+        capacity *= 2u;
+    }
+    while (capacity < size) {
+        if (capacity > UINT32_MAX / 2u) {
+            capacity = size;
+            break;
+        }
+        capacity *= 2u;
+    }
+
+    ecs_arena_block_t *block = ecs_arena_block_new(capacity);
+    allocator->last->next = block;
+    allocator->last = block;
+    allocator->current = block;
+    block->cursor = size;
+    return block->data;
+}
+
 void ecs_arena_fini(ecs_arena_t *allocator) {
-    free(allocator->buf);
+    ecs_arena_block_t *block = allocator->first;
+    while (block) {
+        ecs_arena_block_t *next = block->next;
+        free(block);
+        block = next;
+    }
 }
 
 void ecs_id_map_init(ecs_id_map_t *map) {
@@ -9150,6 +9189,32 @@ bool ecs_vec_contains_u64(const ecs_vec_t *vec, const uint64_t value) {
         }
     });
     return false;
+}
+
+bool ecs_vec_contains_u16(const ecs_vec_t *vec, const uint16_t value) {
+    ecs_vec_iter(vec, uint16_t, current, {
+        if (*current == value) {
+            return true;
+        }
+    });
+    return false;
+}
+
+static inline void ecs_vec_remove_fast_u16(ecs_vec_t *vec, uint32_t index) {
+    if (index < vec->size - 1) {
+        uint16_t *data = vec->data;
+        data[index] = data[vec->size - 1];
+    }
+    vec->size--;
+}
+
+void ecs_vec_remove_u16(ecs_vec_t *vec, const uint16_t value) {
+    ecs_vec_iter(vec, uint16_t, current, {
+        if (*current == value) {
+            ecs_vec_remove_fast_u16(vec, i);
+            return;
+        }
+    });
 }
 
 static inline void ecs_vec_remove_fast_u64(ecs_vec_t *vec, uint32_t index) {
