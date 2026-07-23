@@ -663,109 +663,68 @@ unsafe fn field_ref<'world, T>(fetch: &ComponentFetch<'world, T>, row: usize) ->
     }
 }
 
-unsafe impl<T: Component> QueryParam for &T {
-    type State = u16;
-    type Fetch<'world> = ComponentFetch<'world, T>;
-    type Item<'world> = &'world T;
+macro_rules! impl_component_param {
+    (
+        <$component:ident> for<$world:lifetime>
+        $param:ty => $item:ty,
+        $init:ident,
+        |$fetch:ident, $row:ident| $body:expr $(,)?
+    ) => {
+        unsafe impl<$component: Component> QueryParam for $param {
+            type State = u16;
+            type Fetch<$world> = ComponentFetch<$world, $component>;
+            type Item<$world> = $item;
 
-    #[inline]
-    fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
-        terms.read::<T>(world)
-    }
+            #[inline]
+            fn init_state(
+                world: &mut World,
+                terms: &mut QueryTerms,
+            ) -> Result<Self::State, ParamError> {
+                terms.$init::<$component>(world)
+            }
 
-    #[inline]
-    unsafe fn fetch<'world>(
-        state: &'world Self::State,
-        iter: *mut raw::Iter,
-    ) -> Self::Fetch<'world> {
-        field_fetch(iter, *state)
-    }
+            #[inline]
+            unsafe fn fetch<$world>(
+                state: &$world Self::State,
+                iter: *mut raw::Iter,
+            ) -> Self::Fetch<$world> {
+                field_fetch(iter, *state)
+            }
 
-    #[inline]
-    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
-        field_ref(fetch, row)
-    }
-}
-
-unsafe impl<T: Component> QueryParam for &mut T {
-    type State = u16;
-    type Fetch<'world> = ComponentFetch<'world, T>;
-    type Item<'world> = &'world mut T;
-
-    #[inline]
-    fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
-        terms.write::<T>(world)
-    }
-
-    #[inline]
-    unsafe fn fetch<'world>(
-        state: &'world Self::State,
-        iter: *mut raw::Iter,
-    ) -> Self::Fetch<'world> {
-        field_fetch(iter, *state)
-    }
-
-    #[inline]
-    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
-        &mut *fetch.ptr.add(row)
-    }
-}
-
-unsafe impl<T: Component> QueryParam for Option<&T> {
-    type State = u16;
-    type Fetch<'world> = ComponentFetch<'world, T>;
-    type Item<'world> = Option<&'world T>;
-
-    #[inline]
-    fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
-        terms.optional_read::<T>(world)
-    }
-
-    #[inline]
-    unsafe fn fetch<'world>(
-        state: &'world Self::State,
-        iter: *mut raw::Iter,
-    ) -> Self::Fetch<'world> {
-        field_fetch(iter, *state)
-    }
-
-    #[inline]
-    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
-        if fetch.ptr.is_null() {
-            None
-        } else {
-            Some(field_ref(fetch, row))
+            #[inline]
+            unsafe fn item<$world>(
+                $fetch: &mut Self::Fetch<$world>,
+                $row: usize,
+            ) -> Self::Item<$world> {
+                $body
+            }
         }
-    }
+    };
 }
 
-unsafe impl<T: Component> QueryParam for Option<&mut T> {
-    type State = u16;
-    type Fetch<'world> = ComponentFetch<'world, T>;
-    type Item<'world> = Option<&'world mut T>;
+impl_component_param!(
+    <T> for<'world> &T => &'world T,
+    read,
+    |fetch, row| field_ref(fetch, row),
+);
 
-    #[inline]
-    fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
-        terms.optional_write::<T>(world)
-    }
+impl_component_param!(
+    <T> for<'world> &mut T => &'world mut T,
+    write,
+    |fetch, row| &mut *fetch.ptr.add(row),
+);
 
-    #[inline]
-    unsafe fn fetch<'world>(
-        state: &'world Self::State,
-        iter: *mut raw::Iter,
-    ) -> Self::Fetch<'world> {
-        field_fetch(iter, *state)
-    }
+impl_component_param!(
+    <T> for<'world> Option<&T> => Option<&'world T>,
+    optional_read,
+    |fetch, row| (!fetch.ptr.is_null()).then(|| field_ref(fetch, row)),
+);
 
-    #[inline]
-    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
-        if fetch.ptr.is_null() {
-            None
-        } else {
-            Some(&mut *fetch.ptr.add(row))
-        }
-    }
-}
+impl_component_param!(
+    <T> for<'world> Option<&mut T> => Option<&'world mut T>,
+    optional_write,
+    |fetch, row| (!fetch.ptr.is_null()).then(|| &mut *fetch.ptr.add(row)),
+);
 
 unsafe impl QueryParam for Entity {
     type State = ();
@@ -791,57 +750,18 @@ unsafe impl QueryParam for Entity {
     }
 }
 
-unsafe impl<T: Component> QueryParam for Field<'_, T> {
-    type State = u16;
-    type Fetch<'world> = ComponentFetch<'world, T>;
-    type Item<'world> = Field<'world, T>;
+impl_component_param!(
+    <T> for<'world> Field<'_, T> => Field<'world, T>,
+    read,
+    |fetch, row| Field::new(field_ref(fetch, row), fetch.kind),
+);
 
-    #[inline]
-    fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
-        terms.read::<T>(world)
-    }
-
-    #[inline]
-    unsafe fn fetch<'world>(
-        state: &'world Self::State,
-        iter: *mut raw::Iter,
-    ) -> Self::Fetch<'world> {
-        field_fetch(iter, *state)
-    }
-
-    #[inline]
-    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
-        Field::new(field_ref(fetch, row), fetch.kind)
-    }
-}
-
-unsafe impl<T: Component> QueryParam for Option<Field<'_, T>> {
-    type State = u16;
-    type Fetch<'world> = ComponentFetch<'world, T>;
-    type Item<'world> = Option<Field<'world, T>>;
-
-    #[inline]
-    fn init_state(world: &mut World, terms: &mut QueryTerms) -> Result<Self::State, ParamError> {
-        terms.optional_read::<T>(world)
-    }
-
-    #[inline]
-    unsafe fn fetch<'world>(
-        state: &'world Self::State,
-        iter: *mut raw::Iter,
-    ) -> Self::Fetch<'world> {
-        field_fetch(iter, *state)
-    }
-
-    #[inline]
-    unsafe fn item<'world>(fetch: &mut Self::Fetch<'world>, row: usize) -> Self::Item<'world> {
-        if fetch.ptr.is_null() {
-            None
-        } else {
-            Some(Field::new(field_ref(fetch, row), fetch.kind))
-        }
-    }
-}
+impl_component_param!(
+    <T> for<'world> Option<Field<'_, T>> => Option<Field<'world, T>>,
+    optional_read,
+    |fetch, row| (!fetch.ptr.is_null())
+        .then(|| Field::new(field_ref(fetch, row), fetch.kind)),
+);
 
 macro_rules! impl_query_param_tuple {
     ($($name:ident $field:ident $index:tt),+ $(,)?) => {
