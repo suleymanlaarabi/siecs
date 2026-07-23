@@ -6,14 +6,14 @@ struct Position {
 }
 
 fn mark_with_commands(mut query: Query<(Entity, &Position)>, commands: Commands) {
-    for (entity, position) in &mut query {
+    query.each(|(entity, position)| {
         commands.set(
             entity,
             Position {
                 value: position.value + 1,
             },
         );
-    }
+    });
 }
 
 #[test]

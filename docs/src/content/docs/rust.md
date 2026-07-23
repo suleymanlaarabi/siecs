@@ -71,10 +71,10 @@ Direct queries are typed over the fields they return:
 
 ```rust
 let mut query = world.query::<(&mut Position, &Velocity)>();
-for (position, velocity) in &mut query {
+query.each(|(position, velocity)| {
     position.x += velocity.x;
     position.y += velocity.y;
-}
+});
 ```
 
 Optional fields are expressed with `Option`, and filter-only terms use
@@ -82,9 +82,9 @@ Optional fields are expressed with `Option`, and filter-only terms use
 
 ```rust
 let mut query = world.query_filtered::<(Entity, &Position), With<Player>>();
-for (entity, position) in &mut query {
+query.each(|(entity, position)| {
     println!("{entity:?}: {}, {}", position.x, position.y);
-}
+});
 ```
 
 Use `QueryState` when the same query is reused many times:
@@ -102,10 +102,10 @@ Systems run through `world.progress()`. A system function can request a query:
 
 ```rust
 fn move_system(mut query: Query<(&mut Position, &Velocity)>) {
-    for (position, velocity) in &mut query {
+    query.each(|(position, velocity)| {
         position.x += velocity.x;
         position.y += velocity.y;
-    }
+    });
 }
 
 world.system("Move", move_system);
@@ -119,10 +119,10 @@ Systems can also request resources and deferred commands:
 struct DeltaTime(f32);
 
 fn move_with_time(mut query: Query<(&mut Position, &Velocity)>, time: Res<DeltaTime>) {
-    for (position, velocity) in &mut query {
+    query.each(|(position, velocity)| {
         position.x += velocity.x * time.0;
         position.y += velocity.y * time.0;
-    }
+    });
 }
 
 world.set_resource(DeltaTime(0.016));
@@ -131,9 +131,9 @@ world.system("MoveWithTime", move_with_time);
 
 ```rust
 fn add_velocity(mut query: Query<(Entity, &Position)>, commands: Commands) {
-    for (entity, position) in &mut query {
+    query.each(|(entity, position)| {
         commands.set(entity, Velocity { x: position.x, y: position.y });
-    }
+    });
 }
 ```
 

@@ -1,9 +1,12 @@
-use core::mem::{align_of, size_of};
+use core::{
+    mem::{align_of, size_of},
+    ops::ControlFlow,
+};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use siecs::{
-    raw, Abstract, Commands, Component, Entity, Field, FieldKind, ParamError, Phase, Query, Res,
-    ResMut, Resource, SystemDescBuilder, SystemParam, With, Without, World,
+    raw, Abstract, Commands, Component, Entity, ParamError, Phase, Query, Res, ResMut, Resource,
+    SystemDescBuilder, SystemParam, With, Without, World,
 };
 
 #[derive(Component)]
@@ -95,10 +98,10 @@ fn direct_query_reads_and_writes_components() {
     world.set(entity, Velocity { x: 3.0, y: 5.0 });
 
     let mut query = world.query::<(&mut Position, &Velocity)>();
-    for (position, velocity) in &mut query {
+    query.each(|(position, velocity)| {
         position.x += velocity.x;
         position.y += velocity.y;
-    }
+    });
 
     let position = world.get::<Position>(entity).unwrap();
     assert_eq!(position.x, 4.0);
@@ -117,9 +120,9 @@ fn direct_query_optional_and_entity_items() {
 
     let mut seen = Vec::new();
     let mut query = world.query::<(Entity, &Position, Option<&Velocity>)>();
-    for (entity, position, velocity) in &mut query {
+    query.each(|(entity, position, velocity)| {
         seen.push((entity, position.x as i32, velocity.map(|v| v.x as i32)));
-    }
+    });
     seen.sort_by_key(|(_, x, _)| *x);
 
     assert_eq!(
@@ -140,9 +143,9 @@ fn direct_query_with_filter_requires_marker() {
 
     let mut seen = Vec::new();
     let mut query = world.query_filtered::<(Entity, &Position), With<Player>>();
-    for (entity, position) in &mut query {
+    query.each(|(entity, position)| {
         seen.push((entity, position.x as i32));
-    }
+    });
 
     assert_eq!(seen, vec![(player, 1)]);
 }
@@ -159,16 +162,20 @@ fn direct_query_without_filter_excludes_marker_without_returning_a_field() {
 
     let mut seen = Vec::new();
     let mut query = world.query_filtered::<(Entity, &Position), Without<Sleeping>>();
-    for (entity, position) in &mut query {
+    query.each(|(entity, position)| {
         seen.push((entity, position.x as i32));
-    }
+    });
 
     assert_eq!(seen, vec![(awake, 1)]);
 
     let mut without_only = world.query_filtered::<Entity, Without<Sleeping>>();
-    assert!((&mut without_only)
-        .into_iter()
-        .any(|entity| entity == awake));
+    assert!(without_only
+        .try_each(|entity| if entity == awake {
+            ControlFlow::Break(())
+        } else {
+            ControlFlow::Continue(())
+        })
+        .is_break());
 }
 
 #[test]
@@ -190,9 +197,9 @@ fn direct_query_tuple_filter_combines_with_and_without() {
     let mut seen = Vec::new();
     let mut query =
         world.query_filtered::<(Entity, &Position), (With<Player>, Without<Sleeping>)>();
-    for (entity, position) in &mut query {
+    query.each(|(entity, position)| {
         seen.push((entity, position.x as i32));
-    }
+    });
 
     assert_eq!(seen, vec![(awake_player, 1)]);
 }
@@ -206,13 +213,14 @@ fn filter_on_same_component_as_read_field_is_allowed() {
     let mut query = world
         .try_query_filtered::<&Position, With<Position>>()
         .expect("filter term must not count as a returned field");
-    let positions = (&mut query).into_iter().count();
+    let mut positions = 0;
+    query.each(|_| positions += 1);
 
     assert_eq!(positions, 1);
 }
 
 #[test]
-fn direct_query_field_reports_owned_and_shared() {
+fn direct_query_reads_owned_and_shared_transparently() {
     let mut world = World::new();
     let base = world.entity();
     let child = world.entity();
@@ -221,16 +229,39 @@ fn direct_query_field_reports_owned_and_shared() {
     world.set(base, Position { x: 9.0, y: 0.0 });
     world.add::<Abstract>(base);
     world.is_a(child, base);
-    world.set(owned, Position { x: 9.0, y: 0.0 });
+    world.set(owned, Position { x: 10.0, y: 0.0 });
 
-    let mut kinds = Vec::new();
-    let mut query = world.query::<Field<'_, Position>>();
-    for field in &mut query {
-        kinds.push((field.x as i32, field.kind()));
+    let mut values = Vec::new();
+    let mut query = world.query::<&Position>();
+    query.each(|position| values.push(position.x as i32));
+    values.sort_unstable();
+
+    assert_eq!(values, vec![9, 10]);
+}
+
+#[test]
+fn query_try_each_stops_immediately() {
+    let mut world = World::new();
+    for x in 0..3 {
+        let entity = world.entity();
+        world.set(
+            entity,
+            Position {
+                x: x as f32,
+                y: 0.0,
+            },
+        );
     }
 
-    assert!(kinds.contains(&(9, FieldKind::Owned)));
-    assert!(kinds.contains(&(9, FieldKind::Shared)));
+    let mut visited = 0;
+    let mut query = world.query::<&Position>();
+    let result = query.try_each(|_| {
+        visited += 1;
+        ControlFlow::Break("done")
+    });
+
+    assert_eq!(result, ControlFlow::Break("done"));
+    assert_eq!(visited, 1);
 }
 
 #[test]
@@ -279,25 +310,25 @@ fn move_system(
     time: Res<DeltaTime>,
     mut stats: ResMut<Stats>,
 ) {
-    for (position, velocity) in &mut query {
+    query.each(|(position, velocity)| {
         position.x += velocity.x * time.0;
         position.y += velocity.y * time.0;
         stats.moves += 1;
-    }
+    });
 }
 
 fn plain_move_system(mut query: Query<(&mut Position, &Velocity)>) {
-    for (position, velocity) in &mut query {
+    query.each(|(position, velocity)| {
         position.x += velocity.x;
         position.y += velocity.y;
-    }
+    });
 }
 
 fn filtered_player_move_system(mut query: Query<(&mut Position, &Velocity), With<Player>>) {
-    for (position, velocity) in &mut query {
+    query.each(|(position, velocity)| {
         position.x += velocity.x;
         position.y += velocity.y;
-    }
+    });
 }
 
 fn multi_query_system(
@@ -305,13 +336,13 @@ fn multi_query_system(
     mut sleeping: Query<Entity, With<Sleeping>>,
     mut stats: ResMut<Stats>,
 ) {
-    for (position, velocity) in &mut moving {
+    moving.each(|(position, velocity)| {
         position.x += velocity.x;
         position.y += velocity.y;
         stats.moves += 1;
-    }
+    });
 
-    stats.custom = (&mut sleeping).into_iter().count();
+    sleeping.each(|_| stats.custom += 1);
 }
 
 #[test]
@@ -397,7 +428,7 @@ fn system_query_resources_and_progress() {
 }
 
 fn command_system(mut query: Query<(Entity, &Position)>, commands: Commands) {
-    for (entity, position) in &mut query {
+    query.each(|(entity, position)| {
         commands.set(
             entity,
             Velocity {
@@ -405,7 +436,7 @@ fn command_system(mut query: Query<(Entity, &Position)>, commands: Commands) {
                 y: position.y + 1.0,
             },
         );
-    }
+    });
 }
 
 #[test]

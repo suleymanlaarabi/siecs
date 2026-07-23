@@ -20,10 +20,10 @@
 //! }
 //!
 //! fn move_system(mut query: Query<(&mut Position, &Velocity)>) {
-//!     for (position, velocity) in &mut query {
+//!     query.each(|(position, velocity)| {
 //!         position.x += velocity.x;
 //!         position.y += velocity.y;
-//!     }
+//!     });
 //! }
 //!
 //! let mut world = World::new();
@@ -61,9 +61,7 @@ pub use observer::{
     Event, EventId, Observer, ObserverEvent, ObserverId, OnAdd, OnRemove, OnSet, RawEvent,
     TypedEvent,
 };
-pub use query::{
-    Field, FieldKind, ParamError, Query, QueryFilter, QueryParam, QueryState, With, Without,
-};
+pub use query::{ParamError, Query, QueryFilter, QueryParam, QueryState, With, Without};
 pub use resource::{Res, ResMut, Resource, ResourceId};
 pub use siecs_derive::{Component, Event, Resource};
 pub use system::{
@@ -76,10 +74,9 @@ pub use world_ref::WorldRef;
 pub mod prelude {
     pub use crate::{
         Abstract, ChildOf, Commands, Component, DeferGuard, Disabled, EachCtx, Entity, Event,
-        EventId, Field, FieldKind, IntoSystem, Module, ModuleId, Name, Observer, ObserverEvent,
-        ObserverId, OnAdd, OnRemove, OnSet, ParamError, Phase, Query, QueryFilter, QueryParam,
-        QueryState, RawEvent, Res, ResMut, Resource, ResourceId, System, SystemContext,
-        SystemDescBuilder, SystemId, SystemParam, TypedEvent, With, Without, World, WorldFeatures,
-        WorldRef,
+        EventId, IntoSystem, Module, ModuleId, Name, Observer, ObserverEvent, ObserverId, OnAdd,
+        OnRemove, OnSet, ParamError, Phase, Query, QueryFilter, QueryParam, QueryState, RawEvent,
+        Res, ResMut, Resource, ResourceId, System, SystemContext, SystemDescBuilder, SystemId,
+        SystemParam, TypedEvent, With, Without, World, WorldFeatures, WorldRef,
     };
 }

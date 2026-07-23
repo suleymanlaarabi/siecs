@@ -1,8 +1,8 @@
 use core::marker::PhantomData;
 
 use crate::query::{
-    resource_mut, resource_ref, validate_returned_fields, ParamError, QueryFilter, QueryParam,
-    QueryState, QueryTerms, ResourceAccess,
+    resource_mut, resource_ref, ParamError, QueryFilter, QueryParam, QueryState, QueryTerms,
+    ResourceAccess,
 };
 use crate::{raw, Component, Entity, Query, Res, ResMut, Resource, World, WorldRef};
 
@@ -177,7 +177,6 @@ impl SystemDescBuilder {
 
     #[inline]
     fn finish(mut self) -> Result<raw::SystemDesc, ParamError> {
-        validate_returned_fields(&self.terms.desc)?;
         self.desc.query = self.terms.desc;
         Ok(self.desc)
     }
@@ -231,10 +230,8 @@ unsafe impl<P: QueryParam, F: QueryFilter> SystemParam for Query<P, F> {
         ctx: SystemContext<'world>,
     ) -> Self::Item<'world> {
         match state {
-            SystemQueryState::Main { param_state } => {
-                Query::from_iter(ctx.world, ctx.iter, param_state)
-            }
-            SystemQueryState::Secondary { state } => Query::from_state(ctx.world, state),
+            SystemQueryState::Main { param_state } => Query::from_iter(ctx.iter, param_state),
+            SystemQueryState::Secondary { state } => Query::from_state(state),
         }
     }
 }

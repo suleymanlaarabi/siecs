@@ -148,10 +148,10 @@ struct Velocity {
 }
 
 fn move_system(mut query: Query<(&mut Position, &Velocity)>) {
-    for (position, velocity) in &mut query {
+    query.each(|(position, velocity)| {
         position.x += velocity.x;
         position.y += velocity.y;
-    }
+    });
 }
 
 fn main() {

@@ -41,10 +41,10 @@ struct Velocity {
 }
 
 fn move_system(mut query: Query<(&mut Position, &Velocity)>) {
-    for (position, velocity) in &mut query {
+    query.each(|(position, velocity)| {
         position.x += velocity.x;
         position.y += velocity.y;
-    }
+    });
 }
 
 fn main() {
@@ -105,10 +105,10 @@ struct Player;
 
 let mut world = World::new();
 let mut query = world.query_filtered::<(&mut Position, &Velocity), With<Player>>();
-for (position, velocity) in &mut query {
+query.each(|(position, velocity)| {
     position.x += velocity.x;
     position.y += velocity.y;
-}
+});
 ```
 
 ## Systems
@@ -135,10 +135,10 @@ struct Velocity {
 struct DeltaTime(f32);
 
 fn move_system(mut query: Query<(&mut Position, &Velocity)>, time: Res<DeltaTime>) {
-    for (position, velocity) in &mut query {
+    query.each(|(position, velocity)| {
         position.x += velocity.x * time.0;
         position.y += velocity.y * time.0;
-    }
+    });
 }
 
 let mut world = World::new();

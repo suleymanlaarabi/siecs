@@ -14,6 +14,7 @@ categories = ["data-structures", "game-development"]
 include = [
     "Cargo.toml",
     "README.md",
+    "benches/**",
     "build.rs",
     "src/**",
     "tests/**",
@@ -27,5 +28,12 @@ members = ["siecs_derive", "tools/bindgen"]
 [dependencies]
 siecs_derive = { path = "siecs_derive", version = "0.1.0" }
 
+[dev-dependencies]
+criterion = "0.5"
+
 [build-dependencies]
 cc = "1"
+
+[[bench]]
+name = "query"
+harness = false
