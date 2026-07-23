@@ -52,7 +52,7 @@ test-cpp-release:
 	@bake rebuild test/cpp -r --cfg release >/dev/null
 	@bash -o pipefail -c "bake test test/cpp --cfg release 2>&1 | $(QUIET_BAKE)"
 
-update-rust-vendor: distr
+update-rust-vendor:
 	@bindings/siecs_rust/tools/update_vendor.sh
 
 check-rust-bindings:
