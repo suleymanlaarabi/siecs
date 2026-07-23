@@ -9,6 +9,14 @@ struct CppQueryVelocity {
     float x;
 };
 
+struct CppQueryMass {
+    float value;
+};
+
+struct CppQueryScale {
+    float value;
+};
+
 static CppQueryVelocity *cpp_query_velocity(ecs::world &world, ecs::entity entity) {
     return static_cast<CppQueryVelocity *>(ecs_get_cid(
         world.c_ptr(),
@@ -106,4 +114,32 @@ void query_owned_override_wins_over_shared_field(void) {
     test_int(1, calls);
     test_assert(cpp_query_position(world, entity)->x == 2.0f);
     test_assert(cpp_query_velocity(world, entity)->x == 3.0f);
+}
+
+void query_system_reads_shared_fields_with_interleaved_resource(void) {
+    ecs::world world;
+    world.set_resource(CppQueryScale{ .value = 2.0f });
+
+    auto base =
+        world.entity().set(CppQueryPosition{ .x = 3.0f }).set(CppQueryMass{ .value = 4.0f });
+    ecs_add(world.c_ptr(), base.id(), Abstract);
+
+    auto a = world.entity().is_a(base).set(CppQueryVelocity{ .x = 1.0f });
+    auto b = world.entity().is_a(base).set(CppQueryVelocity{ .x = 2.0f });
+    int calls = 0;
+
+    world.system("CppSharedFields")
+        .each([&](const CppQueryPosition &position,
+                  ecs::res<const CppQueryScale> scale,
+                  const CppQueryMass &mass,
+                  CppQueryVelocity &velocity) {
+            velocity.x += (position.x + mass.value) * scale->value;
+            calls++;
+        });
+
+    world.progress();
+
+    test_int(2, calls);
+    test_assert(cpp_query_velocity(world, a)->x == 15.0f);
+    test_assert(cpp_query_velocity(world, b)->x == 16.0f);
 }

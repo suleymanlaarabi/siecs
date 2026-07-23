@@ -30,6 +30,7 @@ void query_reads_shared_inherited_field(void);
 void query_mutable_does_not_match_shared_inherited_field(void);
 void query_reads_shared_and_writes_owned_field(void);
 void query_owned_override_wins_over_shared_field(void);
+void query_system_reads_shared_fields_with_interleaved_resource(void);
 
 // Testsuite 'observer'
 void observer_custom_event(void);
@@ -125,6 +126,10 @@ bake_test_case query_testcases[] = {
     {
         "owned_override_wins_over_shared_field",
         query_owned_override_wins_over_shared_field
+    },
+    {
+        "system_reads_shared_fields_with_interleaved_resource",
+        query_system_reads_shared_fields_with_interleaved_resource
     }
 };
 
@@ -213,7 +218,7 @@ static bake_test_suite suites[] = {
         "query",
         NULL,
         NULL,
-        4,
+        5,
         query_testcases
     },
     {

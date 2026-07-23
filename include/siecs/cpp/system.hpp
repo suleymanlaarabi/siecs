@@ -7,10 +7,11 @@ namespace detail {
 
 template <typename Callback, typename Args> static void system_callback(ecs_iter_t *it) {
     Callback &callback = *reinterpret_cast<Callback *>(it->user_data);
+    auto resources = make_resources<Args>(it->world);
     if constexpr (component_arg_count<Args>() == 0) {
-        run_once<Callback, Args>(callback, it->world);
+        std::apply(callback, resources);
     } else {
-        run_batch<Callback, Args>(callback, it);
+        run_batch<Callback, Args>(callback, it, resources);
     }
 }
 
@@ -27,26 +28,24 @@ class system : protected query {
   public:
     system(ecs_world_t *_world, const char *name) : query(_world), name(name) {}
 
-    template <typename... T> system require() {
+    template <typename... T> system &require() {
         query::require<T...>();
         return *this;
     }
 
-    template <typename... T> system exclude() {
+    template <typename... T> system &exclude() {
         query::exclude<T...>();
         return *this;
     }
 
-    system phase(ecs_phase_t _phase) {
+    system &phase(ecs_phase_t _phase) {
         this->_phase = _phase;
         return *this;
     }
 
     template <typename F> ecs_system_id_t each(F &&func) {
         using callback = std::remove_cvref_t<F>;
-
-        using traits = function_traits<callback>;
-        using args = typename traits::args_tuple;
+        using args = typename function_traits<callback>::args_tuple;
         detail::append_callback_terms<args>(_world, desc, term_index);
         callback *state = new callback(std::forward<F>(func));
 
