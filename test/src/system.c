@@ -593,6 +593,67 @@ void system_manual_defer_coalesces_to_final_state(void) {
     ecs_fini(world);
 }
 
+void system_deferred_many_sets_survive_arena_growth(void) {
+    enum { entity_count = 512 };
+
+    ecs_world_t *world = ecs_init();
+    test_not_null(world);
+    ECS_COMPONENT_REGISTER(world, SystemBatchA);
+
+    ecs_entity_t entities[entity_count];
+    for (int i = 0; i < entity_count; i++) {
+        entities[i] = ecs_new(world);
+    }
+
+    ecs_defer_begin(world);
+    for (int i = 0; i < entity_count; i++) {
+        ecs_set(world, entities[i], SystemBatchA, { i });
+    }
+    ecs_defer_end(world);
+
+    for (int i = 0; i < entity_count; i++) {
+        test_int(i, ecs_get(world, entities[i], SystemBatchA)->value);
+    }
+
+    ecs_fini(world);
+}
+
+void system_deferred_set_overwrite_keeps_latest_value(void) {
+    ecs_world_t *world = ecs_init();
+    test_not_null(world);
+    ECS_COMPONENT_REGISTER(world, SystemBatchA);
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_set(world, entity, SystemBatchA, { -1 });
+
+    ecs_defer_begin(world);
+    for (int i = 0; i < 1024; i++) {
+        ecs_set(world, entity, SystemBatchA, { i });
+    }
+    ecs_defer_end(world);
+
+    test_int(1023, ecs_get(world, entity, SystemBatchA)->value);
+    ecs_fini(world);
+}
+
+void system_deferred_set_adds_required_components(void) {
+    ecs_world_t *world = ecs_init();
+    test_not_null(world);
+    ECS_COMPONENT_REGISTER(world, SystemBatchA);
+    ECS_COMPONENT_REGISTER(world, SystemBatchB);
+    ecs_with(world, ecs_id(SystemBatchA), ecs_id(SystemBatchB));
+
+    ecs_entity_t entity = ecs_new(world);
+    ecs_defer_begin(world);
+    ecs_set(world, entity, SystemBatchA, { 42 });
+    ecs_defer_end(world);
+
+    test_assert(ecs_has(world, entity, SystemBatchA));
+    test_assert(ecs_has(world, entity, SystemBatchB));
+    test_int(42, ecs_get(world, entity, SystemBatchA)->value);
+    ecs_fini(world);
+}
+
 void system_quit_makes_progress_return_false(void) {
     reset_system_test_state();
 

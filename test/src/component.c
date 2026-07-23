@@ -291,8 +291,10 @@ void component_lifecycle_ops_are_used_for_storage_moves(void) {
         .copy = lifecycle_copy,
         .move_ctor = lifecycle_move_ctor,
     };
-    ecs_component_t a = ecs_component(world, { .name = "LifecycleA", .size = sizeof(int), .ops = ops });
-    ecs_component_t b = ecs_component(world, { .name = "LifecycleB", .size = sizeof(int), .ops = ops });
+    ecs_component_t a =
+        ecs_component(world, { .name = "LifecycleA", .size = sizeof(int), .ops = ops });
+    ecs_component_t b =
+        ecs_component(world, { .name = "LifecycleB", .size = sizeof(int), .ops = ops });
 
     ecs_entity_t entity = ecs_new(world);
     int value = 10;
@@ -314,6 +316,33 @@ void component_lifecycle_ops_are_used_for_storage_moves(void) {
     test_int(2, lifecycle_dtor_calls);
 
     ecs_fini(world);
+}
+
+void component_deferred_set_overwrite_preserves_lifecycle(void) {
+    lifecycle_reset();
+
+    ecs_world_t *world = ecs_init();
+    ecs_type_ops_t ops = {
+        .dtor = lifecycle_dtor,
+        .copy_ctor = lifecycle_copy,
+    };
+    ecs_component_t component =
+        ecs_component(world, { .name = "DeferredLifecycle", .size = sizeof(int), .ops = ops });
+    ecs_entity_t entity = ecs_new(world);
+    int first = 10;
+    int second = 20;
+
+    ecs_defer_begin(world);
+    ecs_set_cid(world, entity, component, &first);
+    ecs_set_cid(world, entity, component, &second);
+    test_int(2, lifecycle_copy_calls);
+    test_int(1, lifecycle_dtor_calls);
+    ecs_defer_end(world);
+
+    test_int(20, *(int *)ecs_get_cid(world, entity, component));
+    test_int(1, lifecycle_dtor_calls);
+    ecs_fini(world);
+    test_int(2, lifecycle_dtor_calls);
 }
 
 void component_add_with_required_uses_current_table_edge(void) {

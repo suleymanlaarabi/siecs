@@ -37,6 +37,7 @@
           "reflection",
           "on_add",
           "lifecycle_ops_are_used_for_storage_moves",
+          "deferred_set_overwrite_preserves_lifecycle",
           "add_with_required_uses_current_table_edge",
           "add_with_required_uses_cached_multi_add_edge",
           "add_with_required_emits_each_on_add_once",
@@ -135,6 +136,9 @@
           "defers_structural_changes_until_iteration_end",
           "flushes_between_ordered_systems",
           "manual_defer_coalesces_to_final_state",
+          "deferred_many_sets_survive_arena_growth",
+          "deferred_set_overwrite_keeps_latest_value",
+          "deferred_set_adds_required_components",
           "quit_makes_progress_return_false"
         ]
       },
