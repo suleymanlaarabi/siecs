@@ -13,42 +13,23 @@
 
 #define ECS_COMMAND_NONE UINT32_MAX
 
-static bool id_vec_contains(const ecs_vec_t *vec, ecs_component_t id) {
-    const ecs_component_t *ids = ecs_vec_data(vec, ecs_component_t);
-    for (uint32_t i = 0; i < vec->size; i++) {
-        if (ids[i] == id) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static void id_vec_remove(ecs_vec_t *vec, ecs_component_t id) {
-    ecs_component_t *ids = ecs_vec_data(vec, ecs_component_t);
-    for (uint32_t i = 0; i < vec->size; i++) {
-        if (ids[i] == id) {
-            ecs_vec_remove_fast(vec, i, sizeof(ecs_component_t));
-            return;
-        }
+static inline void id_vec_push_unique(ecs_vec_t *vec, ecs_component_t id) {
+    if (!ecs_vec_contains_u16(vec, id)) {
+        ecs_vec_push_u16(vec, id);
     }
 }
 
-static void id_vec_push_unique(ecs_vec_t *vec, ecs_component_t id) {
-    if (!id_vec_contains(vec, id)) {
-        ecs_vec_push(vec, &id, sizeof(ecs_component_t));
-    }
-}
-
-static void deferred_set_fini(ecs_world_t *world, ecs_deferred_set_t *set) {
+static inline void deferred_set_fini(ecs_world_t *world, ecs_deferred_set_t *set) {
     if (!set->data) {
         return;
     }
-    const ecs_component_record_t *record = ecs_component_index_get(&world->component_index, set->id);
+    const ecs_component_record_t *record =
+        ecs_component_index_get(&world->component_index, set->id);
     ecs_component_value_dtor(record, set->data, 1);
     set->data = NULL;
 }
 
-static void set_vec_remove(ecs_world_t *world, ecs_vec_t *vec, ecs_component_t id) {
+static inline void set_vec_remove(ecs_world_t *world, ecs_vec_t *vec, ecs_component_t id) {
     ecs_deferred_set_t *sets = ecs_vec_data(vec, ecs_deferred_set_t);
     for (uint32_t i = 0; i < vec->size; i++) {
         if (sets[i].id == id) {
@@ -59,7 +40,7 @@ static void set_vec_remove(ecs_world_t *world, ecs_vec_t *vec, ecs_component_t i
     }
 }
 
-static ecs_deferred_set_t *set_vec_find(ecs_vec_t *vec, ecs_component_t id) {
+static inline ecs_deferred_set_t *set_vec_find(ecs_vec_t *vec, ecs_component_t id) {
     ecs_deferred_set_t *sets = ecs_vec_data(vec, ecs_deferred_set_t);
     for (uint32_t i = 0; i < vec->size; i++) {
         if (sets[i].id == id) {
@@ -69,14 +50,14 @@ static ecs_deferred_set_t *set_vec_find(ecs_vec_t *vec, ecs_component_t id) {
     return NULL;
 }
 
-static void command_init(ecs_entity_command_t *command, ecs_entity_t entity) {
+static inline void command_init(ecs_entity_command_t *command, ecs_entity_t entity) {
     *command = (ecs_entity_command_t){ .entity = entity };
     ecs_vec_init(&command->add_ids, sizeof(ecs_component_t));
     ecs_vec_init(&command->remove_ids, sizeof(ecs_component_t));
     ecs_vec_init(&command->sets, sizeof(ecs_deferred_set_t));
 }
 
-static void command_fini(ecs_world_t *world, ecs_entity_command_t *command) {
+static inline void command_fini(ecs_world_t *world, ecs_entity_command_t *command) {
     ecs_deferred_set_t *sets = ecs_vec_data(&command->sets, ecs_deferred_set_t);
     for (uint32_t i = 0; i < command->sets.size; i++) {
         deferred_set_fini(world, &sets[i]);
@@ -111,8 +92,7 @@ static void command_buffer_ensure_entity(ecs_command_buffer_t *buffer, uint32_t 
         new_capacity *= 2;
     }
 
-    buffer->entity_to_command =
-        realloc(buffer->entity_to_command, sizeof(uint32_t) * new_capacity);
+    buffer->entity_to_command = realloc(buffer->entity_to_command, sizeof(uint32_t) * new_capacity);
     for (uint32_t i = buffer->entity_capacity; i < new_capacity; i++) {
         buffer->entity_to_command[i] = ECS_COMMAND_NONE;
     }
@@ -139,13 +119,13 @@ static ecs_entity_command_t *command_for_entity(ecs_world_t *world, ecs_entity_t
 
 void ecs_command_buffer_add(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
     ecs_entity_command_t *command = command_for_entity(world, entity);
-    id_vec_remove(&command->remove_ids, id);
+    ecs_vec_remove_u16(&command->remove_ids, id);
     id_vec_push_unique(&command->add_ids, id);
 }
 
 void ecs_command_buffer_remove(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id) {
     ecs_entity_command_t *command = command_for_entity(world, entity);
-    id_vec_remove(&command->add_ids, id);
+    ecs_vec_remove_u16(&command->add_ids, id);
     set_vec_remove(world, &command->sets, id);
     id_vec_push_unique(&command->remove_ids, id);
 }
@@ -167,7 +147,7 @@ void ecs_command_buffer_set(
         copy = dst;
     }
 
-    id_vec_remove(&command->remove_ids, id);
+    ecs_vec_remove_u16(&command->remove_ids, id);
     id_vec_push_unique(&command->add_ids, id);
 
     ecs_deferred_set_t *set = set_vec_find(&command->sets, id);
@@ -198,7 +178,7 @@ void ecs_command_buffer_move(
         copy = dst;
     }
 
-    id_vec_remove(&command->remove_ids, id);
+    ecs_vec_remove_u16(&command->remove_ids, id);
     id_vec_push_unique(&command->add_ids, id);
 
     ecs_deferred_set_t *set = set_vec_find(&command->sets, id);
@@ -249,19 +229,12 @@ static void final_ids_push_sorted(ecs_vec_t *final_ids, ecs_component_t id) {
     ids[i] = id;
 }
 
-static bool final_ids_has(const ecs_vec_t *final_ids, ecs_component_t id) {
-    return id_vec_contains(final_ids, id);
-}
-
-static void final_ids_collect_requirements(
-    ecs_world_t *world,
-    ecs_vec_t *final_ids,
-    ecs_component_t id
-) {
+static void
+final_ids_collect_requirements(ecs_world_t *world, ecs_vec_t *final_ids, ecs_component_t id) {
     const ecs_component_record_t *record = ecs_component_index_get(&world->component_index, id);
     for (uint32_t i = 0; i < record->required_count; i++) {
         ecs_component_t required = record->required[i];
-        if (final_ids_has(final_ids, required)) {
+        if (ecs_vec_contains_u16(final_ids, required)) {
             continue;
         }
         final_ids_collect_requirements(world, final_ids, required);
@@ -279,7 +252,7 @@ static ecs_type_t command_build_type(
 
     for (uint16_t i = 0; i < table->type.count; i++) {
         ecs_component_t id = table->type.ids[i];
-        if (!id_vec_contains(&command->remove_ids, id)) {
+        if (!ecs_vec_contains_u16(&command->remove_ids, id)) {
             final_ids_push_sorted(&final_ids, id);
         }
     }

@@ -36,6 +36,8 @@ static inline void *ecs_vec_push_empty(ecs_vec_t *vec, const uint32_t element_si
     return ptr;
 }
 
+bool ecs_vec_contains_u16(const ecs_vec_t *vec, uint16_t value);
+void ecs_vec_remove_u16(ecs_vec_t *vec, uint16_t value);
 bool ecs_vec_contains_u64(const ecs_vec_t *vec, uint64_t value);
 void ecs_vec_remove_u64(ecs_vec_t *vec, uint64_t value);
 

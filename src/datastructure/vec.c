@@ -71,6 +71,32 @@ bool ecs_vec_contains_u64(const ecs_vec_t *vec, const uint64_t value) {
     return false;
 }
 
+bool ecs_vec_contains_u16(const ecs_vec_t *vec, const uint16_t value) {
+    ecs_vec_iter(vec, uint16_t, current, {
+        if (*current == value) {
+            return true;
+        }
+    });
+    return false;
+}
+
+static inline void ecs_vec_remove_fast_u16(ecs_vec_t *vec, uint32_t index) {
+    if (index < vec->size - 1) {
+        uint16_t *data = vec->data;
+        data[index] = data[vec->size - 1];
+    }
+    vec->size--;
+}
+
+void ecs_vec_remove_u16(ecs_vec_t *vec, const uint16_t value) {
+    ecs_vec_iter(vec, uint16_t, current, {
+        if (*current == value) {
+            ecs_vec_remove_fast_u16(vec, i);
+            return;
+        }
+    });
+}
+
 static inline void ecs_vec_remove_fast_u64(ecs_vec_t *vec, uint32_t index) {
     if (index < vec->size - 1) {
         uint64_t *data = vec->data;

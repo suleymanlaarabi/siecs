@@ -172,6 +172,10 @@
           "strings",
           "unknown"
         ]
+      },
+      {
+        "id": "vec",
+        "testcases": ["u16_contains_and_remove"]
       }
     ]
   }
