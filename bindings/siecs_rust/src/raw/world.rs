@@ -1,22 +1,28 @@
 use core::ffi::c_void;
 
-pub enum WorldRaw {}
+pub type WorldRaw = super::generated::ecs_world_t;
+pub type WorldFeatDesc = super::generated::ecs_world_feat_desc_t;
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct WorldFeatDesc {
-    pub rest: bool,
-    pub target_fps: u16,
+#[allow(clippy::derivable_impls)]
+impl Default for WorldFeatDesc {
+    fn default() -> Self {
+        Self {
+            rest: false,
+            target_fps: 0,
+        }
+    }
 }
 
-extern "C" {
-    pub fn ecs_init() -> *mut WorldRaw;
-    pub fn ecs_init_w_features(features: *const WorldFeatDesc) -> *mut WorldRaw;
-    pub fn ecs_fini(world: *mut WorldRaw);
-
-    pub fn ecs_defer_begin(world: *mut WorldRaw);
-    pub fn ecs_defer_end(world: *mut WorldRaw);
-    pub fn ecs_is_deferred(world: *const WorldRaw) -> bool;
+impl PartialEq for WorldFeatDesc {
+    fn eq(&self, other: &Self) -> bool {
+        self.rest == other.rest && self.target_fps == other.target_fps
+    }
 }
+
+impl Eq for WorldFeatDesc {}
+
+pub use super::generated::{
+    ecs_defer_begin, ecs_defer_end, ecs_fini, ecs_init, ecs_init_w_features, ecs_is_deferred,
+};
 
 pub type OpaquePtr = *mut c_void;

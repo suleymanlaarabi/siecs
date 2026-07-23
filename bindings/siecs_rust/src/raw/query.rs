@@ -1,28 +1,13 @@
 use core::ffi::c_void;
 
-use super::{world::WorldRaw, ComponentId, EntityId, QueryId};
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TermAccess {
-    In,
-    Out,
-    InOut,
-    InOptional,
-    InOutOptional,
-    Filter,
-    Not,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct QueryTerm {
-    pub id: ComponentId,
-    pub access: TermAccess,
-}
+pub type TermAccess = super::generated::ecs_term_access_t;
+pub type QueryTerm = super::generated::ecs_query_term_t;
+pub type QueryDesc = super::generated::ecs_query_desc_t;
+pub type FieldKind = super::generated::ecs_field_kind_t;
+pub type QueryCache = super::generated::ecs_query_cache_s;
+pub type Iter = super::generated::ecs_iter_t;
 
 impl Default for QueryTerm {
-    #[inline]
     fn default() -> Self {
         Self {
             id: 0,
@@ -31,15 +16,15 @@ impl Default for QueryTerm {
     }
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct QueryDesc {
-    pub terms: [QueryTerm; 64],
-    pub is_a: EntityId,
+impl PartialEq for QueryTerm {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.access == other.access
+    }
 }
 
+impl Eq for QueryTerm {}
+
 impl Default for QueryDesc {
-    #[inline]
     fn default() -> Self {
         Self {
             terms: [QueryTerm::default(); 64],
@@ -48,39 +33,15 @@ impl Default for QueryDesc {
     }
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FieldKind {
-    None,
-    Owned,
-    Shared,
+impl PartialEq for QueryDesc {
+    fn eq(&self, other: &Self) -> bool {
+        self.terms == other.terms && self.is_a == other.is_a
+    }
 }
 
-#[repr(C)]
-pub struct QueryCache {
-    _private: [u8; 0],
-}
+impl Eq for QueryDesc {}
 
-#[repr(C)]
-pub struct Iter {
-    pub world: *mut WorldRaw,
-    pub count: u32,
-    pub entities: *mut EntityId,
-    pub ptrs: *mut *mut c_void,
-    pub delta_time: f32,
-    pub cache: *mut QueryCache,
-    pub field_kinds: *mut FieldKind,
-    pub user_data: usize,
-    pub table_idx: u16,
-    pub table_count: u16,
-}
-
-extern "C" {
-    pub fn ecs_query_init(world: *mut WorldRaw, query: *const QueryDesc) -> QueryId;
-    pub fn ecs_query_fini(world: *mut WorldRaw, query: QueryId);
-    pub fn ecs_query_iter(world: *mut WorldRaw, query_id: QueryId) -> Iter;
-    pub fn ecs_iter_next(it: *mut Iter) -> bool;
-}
+pub use super::generated::{ecs_iter_next, ecs_query_fini, ecs_query_init, ecs_query_iter};
 
 #[inline]
 pub unsafe fn ecs_field(it: *mut Iter, field_index: u16) -> *mut c_void {

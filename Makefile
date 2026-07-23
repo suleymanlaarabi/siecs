@@ -2,7 +2,7 @@ BAKE_HOME := $(shell bake env | sed -n 's/^BAKE_HOME=//p')
 DEPS_INCLUDE := -I$(BAKE_HOME)/include
 QUIET_BAKE = grep -Ev '^\[[[:space:]]*(test|build|run|runall|[0-9]+%)|^cmd:|^path:'
 
-.PHONY: clean bench clean-rust test test-c test-c-release test-cpp test-cpp-release test-leaks test-rust update-rust-vendor distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release act-ci act-rust act-docs act
+.PHONY: clean bench clean-rust test test-c test-c-release test-cpp test-cpp-release test-leaks test-rust update-rust-vendor check-rust-bindings distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release act-ci act-rust act-docs act
 
 ACT ?= act
 ACT_PLATFORM ?= ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
@@ -18,7 +18,7 @@ clean-rust:
 clean:
 	@rm -rf build-consumer-c build-consumer-cpp >/dev/null
 
-test: clean test-c test-c-release test-cpp test-cpp-release
+test: clean test-c test-c-release test-cpp test-cpp-release test-rust
 
 build-c:
 	@sh tools/rebuild_isolated.sh .
@@ -52,11 +52,16 @@ test-cpp-release:
 	@bake rebuild test/cpp -r --cfg release >/dev/null
 	@bash -o pipefail -c "bake test test/cpp --cfg release 2>&1 | $(QUIET_BAKE)"
 
-update-rust-vendor:
+update-rust-vendor: distr
 	@bindings/siecs_rust/tools/update_vendor.sh
 
-test-rust:
-	@cd bindings/siecs_rust && cargo test
+check-rust-bindings:
+	@cmp distr/siecs.c bindings/siecs_rust/vendor/siecs.c
+	@cmp distr/siecs.h bindings/siecs_rust/vendor/siecs.h
+	@cd bindings/siecs_rust && cargo run --quiet -p siecs_bindgen -- --check
+
+test-rust: check-rust-bindings
+	@cd bindings/siecs_rust && cargo test --workspace
 
 distr:
 	@sh tools/rebuild_distr.sh

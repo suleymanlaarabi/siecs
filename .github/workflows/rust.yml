@@ -27,8 +27,22 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Update vendored C sources
+      - name: Install bindgen dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev
+
+      - name: Update vendored C sources and Rust bindings
         run: make update-rust-vendor
+
+      - name: Check generated Rust bindings
+        run: |
+          git diff --exit-code -- \
+            distr/siecs.c \
+            distr/siecs.h \
+            bindings/siecs_rust/vendor \
+            bindings/siecs_rust/src/raw/generated.rs
+          make check-rust-bindings
 
       - name: Run Rust tests
         run: make test-rust

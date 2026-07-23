@@ -182,3 +182,9 @@ assert_eq!(world.get::<Health>(entity).unwrap().value, 7);
 Use `siecs::raw` only when the safe wrapper does not expose a feature yet. Raw
 functions follow the C API and keep the same pointer and same-world safety
 requirements.
+
+The raw C declarations in `src/raw/generated.rs` are generated from the
+vendored header. Maintainers should run `make update-rust-vendor` from the
+repository root after changing the C API; `make check-rust-bindings` verifies
+that the vendor snapshot and generated bindings are current. Published crate
+users do not need bindgen or libclang.

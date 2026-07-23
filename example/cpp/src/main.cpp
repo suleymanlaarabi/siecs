@@ -20,6 +20,11 @@ int main() {
         pos.y += vel.y;
     });
 
+    world.system().each([](Position &pos, Velocity &vel) {
+        pos.x += vel.x;
+        pos.y += vel.y;
+    });
+
     world.progress();
 
     const Position *position = static_cast<const Position *>(

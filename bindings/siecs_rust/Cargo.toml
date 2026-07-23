@@ -22,7 +22,7 @@ include = [
 ]
 
 [workspace]
-members = ["siecs_derive"]
+members = ["siecs_derive", "tools/bindgen"]
 
 [dependencies]
 siecs_derive = { path = "siecs_derive", version = "0.1.0" }

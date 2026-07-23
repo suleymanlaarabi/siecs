@@ -1,0 +1,8 @@
+[package]
+name = "siecs_bindgen"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+bindgen = "=0.72.1"

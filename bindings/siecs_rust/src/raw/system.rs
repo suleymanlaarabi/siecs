@@ -1,46 +1,15 @@
-use core::ffi::c_char;
+use super::query::Iter;
 
-use super::{query::Iter, query::QueryDesc, world::WorldRaw, SystemId};
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Phase {
-    PreStart,
-    Start,
-    PostStart,
-    OnLoad,
-    PostLoad,
-    PreUpdate,
-    OnUpdate,
-    PostUpdate,
-    PreRender,
-    OnRender,
-    PostRender,
-    PhaseCount,
-}
-
+pub type Phase = super::generated::ecs_phase_t;
 pub type SystemCallback = unsafe extern "C" fn(*mut Iter);
 pub type SystemUserDataDtor = unsafe extern "C" fn(usize);
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct SystemDesc {
-    pub name: *const c_char,
-    pub query: QueryDesc,
-    pub callback: Option<SystemCallback>,
-    pub user_data: usize,
-    pub user_data_dtor: Option<SystemUserDataDtor>,
-    pub phase: Phase,
-    pub after: [SystemId; 16],
-    pub disabled: bool,
-}
+pub type SystemDesc = super::generated::ecs_system_desc_t;
 
 impl Default for SystemDesc {
-    #[inline]
     fn default() -> Self {
         Self {
             name: core::ptr::null(),
-            query: QueryDesc::default(),
+            query: Default::default(),
             callback: None,
             user_data: 0,
             user_data_dtor: None,
@@ -51,11 +20,7 @@ impl Default for SystemDesc {
     }
 }
 
-extern "C" {
-    pub fn ecs_system_init(world: *mut WorldRaw, system: *const SystemDesc) -> SystemId;
-    pub fn ecs_progress(world: *mut WorldRaw) -> bool;
-    pub fn ecs_run_phase(world: *mut WorldRaw, phase: Phase);
-    pub fn ecs_run_system(world: *mut WorldRaw, system: SystemId);
-    pub fn ecs_system_enable(world: *mut WorldRaw, system: SystemId);
-    pub fn ecs_system_disable(world: *mut WorldRaw, system: SystemId);
-}
+pub use super::generated::{
+    ecs_progress, ecs_run_phase, ecs_run_system, ecs_system_disable, ecs_system_enable,
+    ecs_system_init,
+};
