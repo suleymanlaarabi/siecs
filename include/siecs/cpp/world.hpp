@@ -176,7 +176,8 @@ class world {
         static ecs_entity_t id = 0;
         if (id == 0 || ecs_is_alive(_world, id)) {
             if (name == nullptr) {
-                name = type_name<T>();
+                const std::string type = std::string(type_name<T>());
+                return this->entity(type.c_str());
             }
             return this->entity(name);
         }

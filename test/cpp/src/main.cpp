@@ -11,6 +11,7 @@
 // Testsuite 'entity_state'
 void entity_state_enable_disable(void);
 void entity_state_disabled_entities_are_skipped(void);
+void entity_state_typed_entity_creation(void);
 
 // Testsuite 'resource'
 void resource_world_api(void);
@@ -60,6 +61,10 @@ bake_test_case entity_state_testcases[] = {
     {
         "disabled_entities_are_skipped",
         entity_state_disabled_entities_are_skipped
+    },
+    {
+        "typed_entity_creation",
+        entity_state_typed_entity_creation
     }
 };
 
@@ -204,7 +209,7 @@ static bake_test_suite suites[] = {
         "entity_state",
         NULL,
         NULL,
-        2,
+        3,
         entity_state_testcases
     },
     {

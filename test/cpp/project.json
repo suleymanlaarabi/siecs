@@ -16,7 +16,8 @@
         "id": "entity_state",
         "testcases": [
           "enable_disable",
-          "disabled_entities_are_skipped"
+          "disabled_entities_are_skipped",
+          "typed_entity_creation"
         ]
       },
       {

@@ -5,6 +5,8 @@ struct EntityStatePosition {
     int value;
 };
 
+struct EntityStateTypedEntity {};
+
 static int entity_state_system_calls;
 
 static EntityStatePosition *entity_state_position(ecs::world &world, ecs::entity entity) {
@@ -53,4 +55,12 @@ void entity_state_disabled_entities_are_skipped(void) {
     test_int(1, entity_state_system_calls);
     test_int(1, entity_state_position(world, enabled)->value);
     test_int(0, entity_state_position(world, disabled)->value);
+}
+
+void entity_state_typed_entity_creation(void) {
+    ecs::world world;
+    auto entity = world.entity<EntityStateTypedEntity>();
+
+    test_true(entity.is_alive());
+    test_true(entity.has<Name>());
 }
