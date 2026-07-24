@@ -2,7 +2,7 @@
 title: Inheritance
 description: Abstract entities, inheritance links, and inherited queries.
 ---
-import LanguageExample from '../../components/LanguageExample.astro';
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 Inheritance lets an entity use another entity as a base for shared component
 data. It is useful for prototypes, presets, and categories where many entities
@@ -13,12 +13,27 @@ An entity can inherit from one base. That base must be marked with the built-in
 
 ## Create A Base
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_entity_t base = ecs_new();
 ecs_set(base, Health, { 100 });
 ecs_set(base, Speed, { 4.0f });
 ecs_add(base, Abstract);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Health { int value; };
+struct Speed { float value; };
+
+auto base = ecs::entity::create();
+base.set(Health{ 100 });
+base.set(Speed{ 4.0f });
+base.abstract();
+```
+</TabItem>
+</Tabs>
 
 Create the base with `ecs_new()`, add the default component values, then add
 `Abstract`.
@@ -34,10 +49,19 @@ components directly.
 
 Create another entity and link it to the abstract base with `ecs_is_a()`:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_entity_t instance = ecs_new();
 ecs_is_a(instance, base);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto instance = ecs::entity::create().is_a(base);
+```
+</TabItem>
+</Tabs>
 
 `ecs_is_a(instance, base)` moves `instance` to an archetype table whose
 type records `base` as its inheritance target. Local component data already on
@@ -55,6 +79,8 @@ rejected, so an entity cannot inherit from itself or from one of its descendants
 Inherited components are shared from the base. If the base owns `Health` and the
 instance does not, read-only queries can still see `Health` on the instance:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_entity_t base = ecs_new();
 ecs_set(base, Health, { 100 });
@@ -63,6 +89,19 @@ ecs_add(base, Abstract);
 ecs_entity_t instance = ecs_new();
 ecs_is_a(instance, base);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Health { int value; };
+
+auto base = ecs::entity::create();
+base.set(Health{ 100 });
+base.abstract();
+
+auto instance = ecs::entity::create().is_a(base);
+```
+</TabItem>
+</Tabs>
 
 In this example, `instance` inherits `Health` from `base`. The inherited value is
 not copied into the instance. It remains stored on `base`, and all instances that
@@ -72,17 +111,38 @@ inherit it read the same shared value.
 
 Add or set a component on the instance to override the inherited value:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_set(instance, Health, { 75 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+instance.set(Health{ 75 });
+```
+</TabItem>
+</Tabs>
 
 After this, `instance` owns its own `Health`. Queries read the instance value
 instead of the base value, and writes affect only the instance:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 const Health *base_health = ecs_get(base, Health);
 const Health *instance_health = ecs_get(instance, Health);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+const auto *base_health = static_cast<const Health *>(
+    ecs_get_cid(base.id(), ecs::component<Health>()));
+const auto *instance_health = static_cast<const Health *>(
+    ecs_get_cid(instance.id(), ecs::component<Health>()));
+```
+</TabItem>
+</Tabs>
 
 Local components are independent from inherited components. Adding
 `ecs_set(instance, Mana, { 20 })` does not change the base, and changing
@@ -92,11 +152,22 @@ the base does not rewrite components already owned by instances.
 
 Use `ecs_is()` to test inheritance:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 if (ecs_is(instance, base)) {
     /* instance inherits from base */
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+if (instance.is(base)) {
+    // instance inherits from base
+}
+```
+</TabItem>
+</Tabs>
 
 `ecs_is()` checks whether the entity is directly linked to the target.
 
@@ -105,6 +176,8 @@ if (ecs_is(instance, base)) {
 Queries can match inherited components for read-only terms. A query with
 `ecs_in(Health)` matches an instance that inherits `Health` from its base:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_id_t q = ecs_query({
     .terms = { ecs_in(Health) },
@@ -125,6 +198,16 @@ while (ecs_iter_next(&it)) {
     }
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().require<Health>().each([](const Health &health) {
+    // A const callback can read owned or inherited Health.
+    printf("%d\\n", health.value);
+});
+```
+</TabItem>
+</Tabs>
 
 When a field is inherited, `it.field_kinds[index]` is `EcsFieldShared`. The
 pointer returned by `ecs_field()` points to the component stored on the base, not
@@ -147,11 +230,23 @@ The inheritance rules for query fields are:
 Writable terms do not match shared inherited data. A query with
 `ecs_inout(Health)` only matches entities that own `Health` locally:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_id_t q = ecs_query({
     .terms = { ecs_inout(Health) },
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().each([](Health &health) {
+    // Mutable terms match only entity-owned Health.
+    health.value += 1;
+});
+```
+</TabItem>
+</Tabs>
 
 This keeps writes unambiguous. If an instance only inherits `Health`, it is
 skipped by this query. If the instance overrides `Health` with `ecs_set()`, it
@@ -159,11 +254,23 @@ matches and the query writes to the instance-owned value.
 
 Optional writable terms also ignore inherited shared values:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_id_t q = ecs_query({
     .terms = { ecs_inout_optional(Health) },
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+// The C++ query builder has no optional writable-term helper yet.
+ecs_query_id_t q = ecs_query({
+    .terms = { ecs_inout_optional(ecs::component<Health>()) },
+});
+```
+</TabItem>
+</Tabs>
 
 For an entity that only inherits `Health`, this field is `EcsFieldNone` and
 `ecs_field()` returns `NULL`.
@@ -173,12 +280,26 @@ For an entity that only inherits `Health`, this field is `EcsFieldNone` and
 Queries can be restricted to entities that inherit from a base with
 `ecs_query_desc_t.is_a`:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_id_t q = ecs_query({
     .is_a = base,
     .terms = { ecs_in(Position) },
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query()
+    .is_a(base.id())
+    .require<Position>()
+    .each([](const Position &position) {
+        (void)position;
+    });
+```
+</TabItem>
+</Tabs>
 
 This matches entities that inherit from `base` and also satisfy the component
 terms. The base relationship is transitive: if `Knight` inherits from `Player`
@@ -189,6 +310,8 @@ and `Player` inherits from `Character`, a query with `.is_a = Character` matches
 
 Use inheritance for shared defaults, then override only the values that differ:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_entity_t enemy = ecs_new();
 ecs_set(enemy, Health, { 100 });
@@ -199,5 +322,21 @@ ecs_entity_t boss = ecs_new();
 ecs_is_a(boss, enemy);
 ecs_set(boss, Health, { 500 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Health { int value; };
+struct Speed { float value; };
+
+auto enemy = ecs::entity::create();
+enemy.set(Health{ 100 });
+enemy.set(Speed{ 2.5f });
+enemy.abstract();
+
+auto boss = ecs::entity::create().is_a(enemy);
+boss.set(Health{ 500 });
+```
+</TabItem>
+</Tabs>
 
 `boss` inherits `Speed` from `enemy`, but owns its own `Health`.

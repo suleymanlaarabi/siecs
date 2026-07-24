@@ -10,8 +10,7 @@ const { code, language = 'c' } = Astro.props;
 const displayCode = typeof code === 'string' && code.startsWith('"')
   ? JSON.parse(code)
   : code;
-const cppComment = `// C++ equivalent: use the corresponding ecs:: API,
-// ecs::entity, or ecs::query API for this operation.`;
+const cppCode = `#include <siecs.h>\n\n${displayCode}`;
 ---
 
 <Tabs syncKey="language">
@@ -19,6 +18,6 @@ const cppComment = `// C++ equivalent: use the corresponding ecs:: API,
     <pre><code class={`language-${language}`}>{displayCode}</code></pre>
   </TabItem>
   <TabItem label="C++">
-    <pre><code class="language-cpp">{cppComment}</code></pre>
+    <pre><code class="language-cpp">{cppCode}</code></pre>
   </TabItem>
 </Tabs>

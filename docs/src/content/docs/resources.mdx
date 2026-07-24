@@ -49,28 +49,58 @@ registered in a dedicated resource registry.
 
 `ecs_set_resource()` creates or replaces the resource value:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_set_resource(Time, {
     .dt = 0.016f,
     .elapsed = 0.0f,
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::set_resource(Time{ .dt = 0.016f, .elapsed = 0.0f });
+```
+</TabItem>
+</Tabs>
 
 Use `ecs_get_resource()` when the resource must exist:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 Time *time = ecs_get_resource(Time);
 time->elapsed += time->dt;
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto &time = ecs::resource<Time>();
+time.elapsed += time.dt;
+```
+</TabItem>
+</Tabs>
 
 Use `ecs_get_resource_read()` when the caller only needs read access:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 const Time *time = ecs_get_resource_read(Time);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+const auto &time = ecs::resource<const Time>();
+```
+</TabItem>
+</Tabs>
 
 If absence is valid, use the nullable helpers:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 Time *time = ecs_try_get_resource(Time);
 if (time != NULL) {
@@ -79,6 +109,17 @@ if (time != NULL) {
 
 const Time *read_time = ecs_try_get_resource_read(Time);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+if (auto *time = ecs::try_resource<Time>()) {
+    time->elapsed += time->dt;
+}
+
+const auto *read_time = ecs::try_resource<const Time>();
+```
+</TabItem>
+</Tabs>
 
 `ecs_get_resource()` and `ecs_get_resource_read()` assert when the resource does not
 exist. The `try` variants return `NULL`.
@@ -87,6 +128,8 @@ exist. The `try` variants return `NULL`.
 
 Check whether a resource exists with `ecs_has_resource()`:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 if (!ecs_has_resource(Time)) {
     ecs_set_resource(Time, {
@@ -95,12 +138,30 @@ if (!ecs_has_resource(Time)) {
     });
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+if (!ecs::has_resource<Time>()) {
+    ecs::set_resource(Time{ .dt = 0.0f, .elapsed = 0.0f });
+}
+```
+</TabItem>
+</Tabs>
 
 Remove it with `ecs_remove_resource()`:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_remove_resource(Time);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::remove_resource<Time>();
+```
+</TabItem>
+</Tabs>
 
 Removing a missing resource is a no-op.
 
@@ -109,6 +170,8 @@ Removing a missing resource is a no-op.
 In C, systems receive an `ecs_iter_t *`. Read resources from `it->world` before
 the entity loop:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 static void move_system(ecs_iter_t *it) {
     const Time *time = ecs_get_resource_read(it->world, Time);
@@ -130,6 +193,20 @@ ecs_system({
     .callback = move_system,
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::system("Move").each([](
+    ecs::res<const Time> time,
+    Position &position,
+    const Velocity &velocity
+) {
+    position.x += velocity.x * time->dt;
+    position.y += velocity.y * time->dt;
+});
+```
+</TabItem>
+</Tabs>
 
 The resource is not part of the query. The system above matches entities with
 `Position` and `Velocity`; it does not require entities to have `Time`.

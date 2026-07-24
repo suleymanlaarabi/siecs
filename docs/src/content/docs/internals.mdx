@@ -2,13 +2,23 @@
 title: Internals
 description: Implementation notes for contributors.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 import LanguageExample from '../../components/LanguageExample.astro';
 
 This page is for contributors. User code should include only:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 #include <siecs.h>
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+#include <siecs.h>
+```
+</TabItem>
+</Tabs>
 
 Internal code uses headers in `src/`.
 

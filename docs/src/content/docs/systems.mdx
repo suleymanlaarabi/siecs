@@ -63,6 +63,8 @@ because system queries inherit the implicit `ecs_not(Disabled)` query rule.
 
 To run a system only on disabled entities, mention `Disabled` explicitly:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_system({
     .name = "PausedDebug",
@@ -71,12 +73,24 @@ ecs_system({
     .callback = paused_debug_system,
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::system("PausedDebug")
+    .each([](const Position &position, const ecs::Disabled &) {
+        (void)position;
+    });
+```
+</TabItem>
+</Tabs>
 
 ## Use Resources
 
 Resources are unique values stored on the world. In C systems, read them through
 `it->world` before the entity loop:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 static void move_system(ecs_iter_t *it) {
     const Time *time = ecs_get_resource_read(it->world, Time);
@@ -88,6 +102,19 @@ static void move_system(ecs_iter_t *it) {
     }
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::system("Move").each([](
+    ecs::res<const Time> time,
+    Position &position,
+    const Velocity &velocity
+) {
+    position.x += velocity.x * time->dt;
+});
+```
+</TabItem>
+</Tabs>
 
 In C++, callbacks can request `ecs::res<T>` or `ecs::res<const T>`. Resource
 parameters do not become query terms and do not consume an `ecs_field()` index.
@@ -107,9 +134,18 @@ ecs::system("Move").each([](
 
 Use `ecs_progress()` to run all enabled systems:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_progress();
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::progress();
+```
+</TabItem>
+</Tabs>
 
 `ecs_progress()` runs phases in this order:
 
@@ -129,10 +165,20 @@ ecs_progress();
 
 You can also run one phase or one system manually:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_run_phase(EcsOnUpdate);
 ecs_run_system(Move);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs_run_phase(EcsOnUpdate);
+ecs_run_system(Move);
+```
+</TabItem>
+</Tabs>
 
 The one-time start rule applies only to `ecs_progress()`. Calling
 `ecs_run_phase(EcsStart)` manually runs that phase normally.
@@ -148,6 +194,8 @@ aliases for the matching `Ecs*` phase names.
 Systems in different phases are ordered by the phase list above. Inside one
 phase, use `after` when a system depends on another system having run first:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_system_id_t Integrate = ecs_system({
     .name = "Integrate",
@@ -164,6 +212,20 @@ ecs_system({
     .after = { Integrate },
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+// The C++ system builder currently uses the raw descriptor for `after` links.
+ecs_system_id_t integrate = ecs_system({
+    .name = "Integrate",
+    .phase = EcsOnUpdate,
+    .query = { .terms = { ecs_inout(ecs::component<Position>()),
+                          ecs_in(ecs::component<Velocity>()) } },
+    .callback = integrate_system,
+});
+```
+</TabItem>
+</Tabs>
 
 `after` accepts up to four system ids. System id `0` is reserved, so an omitted
 or zero-filled `after` array means no dependency.
@@ -176,6 +238,8 @@ cross-phase dependencies are debug assertion failures.
 Systems are enabled by default. Create a disabled system with `.disabled = true`
 or toggle it later:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_system_id_t Damage = ecs_system({
     .name = "Damage",
@@ -188,6 +252,16 @@ ecs_system_id_t Damage = ecs_system({
 ecs_system_enable(Damage);
 ecs_system_disable(Damage);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs_system_id_t damage = ecs::system("Damage")
+    .each([](Health &health) { health.value -= 1; });
+ecs_system_disable(damage);
+ecs_system_enable(damage);
+```
+</TabItem>
+</Tabs>
 
 Disabled systems are skipped by `ecs_progress()`, `ecs_run_phase()`, and
 `ecs_run_system()`.
@@ -201,10 +275,21 @@ system queries.
 System callbacks receive direct pointers to component arrays for the current
 batch. Updating those component values in place is expected:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 Health *health = ecs_field(it, 0);
 health[i].value -= 1;
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::system("Damage").each([](Health &health) {
+    health.value -= 1;
+});
+```
+</TabItem>
+</Tabs>
 
 Adding or removing components can move entities between tables and invalidate
 the current batch pointers. Keep structural changes outside iteration unless the

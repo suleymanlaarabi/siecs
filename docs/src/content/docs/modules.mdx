@@ -2,6 +2,7 @@
 title: Modules
 description: Grouping components, systems, and observers behind one import.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 import LanguageExample from '../../components/LanguageExample.astro';
 
 Modules are import units. They let a library or feature register its components,
@@ -14,23 +15,50 @@ module is disabled.
 
 Declare a module in a header:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ECS_MODULE_DECLARE(physics, {
     float gravity;
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Physics {
+    float gravity;
+
+    void import() {
+        // Register components, systems, and observers here.
+    }
+};
+```
+</TabItem>
+</Tabs>
 
 This creates typed module properties named `physics_props_t` and declares the import
 function:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 void physics_import(const physics_props_t *props);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+// A module type exposes the same import entry point as a member function.
+void import();
+```
+</TabItem>
+</Tabs>
 
 ## Define And Import
 
 Define the module in exactly one C file:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ECS_MODULE_DEFINE(physics);
 
@@ -50,14 +78,38 @@ void physics_import(const physics_props_t *props) {
     (void)props;
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Physics {
+    float gravity;
+
+    void import() {
+        ecs::system("Move").each([](Position &position, const Velocity &velocity) {
+            position.x += velocity.x;
+        });
+    }
+};
+```
+</TabItem>
+</Tabs>
 
 Import it from application code:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_module_id_t Physics = ECS_MODULE_IMPORT(world, physics, {
     .gravity = 9.81f,
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto physics = ecs::import<Physics>(9.81f);
+```
+</TabItem>
+</Tabs>
 
 The props are passed only to `physics_import()`. Store any runtime settings
 you need in components, globals owned by your module, or user-managed state.
@@ -66,6 +118,8 @@ you need in components, globals owned by your module, or user-managed state.
 
 Modules with no parameters still use empty props:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ECS_MODULE_DECLARE(rendering, {});
 ECS_MODULE_DEFINE(rendering);
@@ -77,17 +131,44 @@ void rendering_import(const rendering_props_t *props) {
 
 ECS_MODULE_IMPORT(world, rendering, {});
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Rendering {
+    void import() {
+        // Register rendering systems and observers.
+    }
+};
+
+auto rendering = ecs::import<Rendering>();
+```
+</TabItem>
+</Tabs>
 
 ## What Gets Captured
 
 During `ECS_MODULE_IMPORT()`, SIECS records registrations made through the
 normal public API:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ECS_COMPONENT_REGISTER(world, Position);
 ecs_system({ /* ... */ });
 ecs_observer({ /* ... */ });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Physics {
+    void import() {
+        ecs::system("Move").each([](Position &, const Velocity &) {});
+        ecs::observe<ecs::OnSet>().each([](const Position &) {});
+    }
+};
+```
+</TabItem>
+</Tabs>
 
 Those ids are appended to the active module. User code does not need a separate
 `module_add_*` call.
@@ -100,10 +181,20 @@ after the nested import continue to belong to the parent module.
 Modules are enabled by default. Disabling a module disables only the systems and
 observers recorded by that module:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_module_disable(Physics);
 ecs_module_enable(Physics);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+physics.disable();
+physics.enable();
+```
+</TabItem>
+</Tabs>
 
 Components and relations stay registered. Existing component data stays valid.
 Component hooks still run because hooks belong to components, not to the module
@@ -111,6 +202,8 @@ scheduler.
 
 Import a module disabled with the generic API:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 physics_props_t props = { .gravity = 9.81f };
 
@@ -123,18 +216,39 @@ ecs_module_id_t Physics = ecs_module({
     .disabled = true,
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+// Import first, then disable the captured systems and observers.
+auto physics = ecs::import<Physics>(9.81f);
+physics.disable();
+```
+</TabItem>
+</Tabs>
 
 ## Idempotency
 
 Imports are idempotent for the active world. Importing the same module twice
 returns the same module id and does not register duplicate systems or observers:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_module_id_t first = ECS_MODULE_IMPORT(world, physics, { .gravity = 9.81f });
 ecs_module_id_t second = ECS_MODULE_IMPORT(world, physics, { .gravity = 1.0f });
 
 /* first == second */
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto first = ecs::import<Physics>(9.81f);
+auto second = ecs::import<Physics>(1.0f);
+
+assert(first.id() == second.id());
+```
+</TabItem>
+</Tabs>
 
 The first props value wins. Later imports with different props values do not
 reconfigure an already imported module.

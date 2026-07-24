@@ -2,14 +2,25 @@
 title: REST Explorer API
 description: HTTP endpoints exposed by the SIECS REST addon.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 import LanguageExample from '../../components/LanguageExample.astro';
 
 The REST addon is intended for editor and explorer tooling. Enable it when
 creating the world:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_with_features({ .rest = true });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs_world_feat_desc_t features{ .rest = true };
+ecs::init(features);
+```
+</TabItem>
+</Tabs>
 
 The server listens on port `4040` and is polled by `ecs_progress()` when the
 feature is enabled.

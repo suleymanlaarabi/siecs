@@ -2,6 +2,7 @@
 title: Performance Guide
 description: Practical rules for writing cache-friendly SIECS code.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 import LanguageExample from '../../components/LanguageExample.astro';
 
 SIECS is optimized around table iteration. The main goal is to keep hot code in
@@ -12,6 +13,8 @@ contiguous component arrays and keep structural changes out of tight loops.
 `ecs_query_each()` is convenient, but it creates and destroys a temporary query.
 Use persistent queries in repeated work:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_id_t moving = ecs_query({
     .terms = { ecs_inout(Position), ecs_in(Velocity) },
@@ -23,6 +26,15 @@ while (ecs_iter_next(&it)) {
     const Velocity *v = ecs_field(&it, 1);
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().each([](Position &position, const Velocity &velocity) {
+    position.x += velocity.x;
+});
+```
+</TabItem>
+</Tabs>
 
 Systems already own persistent queries internally.
 
@@ -31,6 +43,8 @@ Systems already own persistent queries internally.
 Call `ecs_field()` once per component per batch, then index arrays in the entity
 loop. Resolve resources before the loop:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 const Time *time = ecs_get_resource_read(it->world, Time);
 Position *p = ecs_field(it, 0);
@@ -40,6 +54,17 @@ for (uint32_t i = 0; i < it->count; i++) {
     p[i].x += v[i].x * time->dt;
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().each([](ecs::res<const Time> time,
+                     Position &position,
+                     const Velocity &velocity) {
+    position.x += velocity.x * time->dt;
+});
+```
+</TabItem>
+</Tabs>
 
 ## Tags Are Cheap In Storage
 
