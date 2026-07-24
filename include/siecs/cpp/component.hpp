@@ -15,8 +15,11 @@ namespace ecs {
 
 namespace detail {
 
+inline uint64_t world_generation;
+
 template <typename T> struct component_type {
     static inline ecs_component_t id = 0;
+    static inline uint64_t generation = 0;
 };
 
 template <typename T, typename = void> struct is_complete : std::false_type {};
@@ -29,10 +32,6 @@ template <typename T> consteval size_t sisizeof() {
     } else {
         return 0;
     }
-}
-
-template <typename T> static void ecs_cpp_set_component_id(ecs_component_t cid) {
-    detail::component_type<T>::id = cid;
 }
 
 template <typename T> static void value_ctor(void *ptr, uint32_t count) {
@@ -110,11 +109,13 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
     }
 }
 
-template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *world) {
+template <typename T> static ecs_component_t ecs_cpp_component_id() {
     ecs_component_t &cid = detail::component_type<T>::id;
+    uint64_t &generation = detail::component_type<T>::generation;
 
-    if (cid != 0) {
-        return cid;
+    if (generation != detail::world_generation) {
+        cid = 0;
+        generation = detail::world_generation;
     }
 
     static sireflect_struct_desc_t reflection = {
@@ -143,7 +144,7 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
         .struct_desc = &reflection,
     };
 
-    cid = ecs_component_init(world, &desc);
+    if (cid == 0) cid = ecs_component_init(&desc);
 
     return cid;
 }

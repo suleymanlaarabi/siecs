@@ -33,13 +33,13 @@ ECS_COMPONENT_DECLARE(Position, {
 ECS_COMPONENT_DEFINE(Position);
 
 int main(void) {
-    ecs_world_t *world = ecs_init();
+ecs_init();
     ECS_COMPONENT_REGISTER(world, Position);
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, Position, { .x = 10.0f, .y = 20.0f });
-    Position *position = ecs_get(world, entity, Position);
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, Position, { .x = 10.0f, .y = 20.0f });
+    Position *position = ecs_get(entity, Position);
     position->x += 1.0f;
-    ecs_fini(world);
+    ecs_fini();
     return 0;
 }
 ```
@@ -61,8 +61,8 @@ struct Position {
 };
 
 int main() {
-    ecs::world world;
-    auto entity = world.entity();
+    ecs::init();
+    auto entity = ecs::entity::create();
     entity.set(Position{ .x = 10.0f, .y = 20.0f });
     return 0;
 }
@@ -203,16 +203,16 @@ ECS_COMPONENT_DECLARE(Position, {
 ECS_COMPONENT_DEFINE(Position);
 
 int main(void) {
-    ecs_world_t *world = ecs_init();
+ecs_init();
     ECS_COMPONENT_REGISTER(world, Position);
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, Position, { .x = 10.0f, .y = 20.0f });
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, Position, { .x = 10.0f, .y = 20.0f });
 
-    Position *position = ecs_get(world, entity, Position);
+    Position *position = ecs_get(entity, Position);
     position->x += 1.0f;
 
-    ecs_fini(world);
+    ecs_fini();
     return 0;
 }
 ```
@@ -226,8 +226,8 @@ int main(void) {
 struct Position { float x, y; };
 
 int main() {
-    ecs::world world;
-    auto entity = world.entity();
+    ecs::init();
+    auto entity = ecs::entity::create();
     entity.set(Position{ .x = 10.0f, .y = 20.0f });
     const bool present = entity.has<Position>();
     (void)present;
@@ -258,14 +258,14 @@ static void Move(ecs_iter_t *it) {
     }
 }
 
-ecs_system(world, {
+ecs_system({
     .name = "Move",
     .phase = EcsOnUpdate,
     .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
     .callback = Move,
 });
 
-ecs_progress(world);
+ecs_progress();
 ```
 
 Systems own persistent queries internally, so they are the usual choice for

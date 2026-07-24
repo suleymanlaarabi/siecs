@@ -15,15 +15,15 @@ and it does not own behavior. Keep the handle, but store state in components:
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_entity_t player = ecs_new(world);
-ecs_set(world, player, Position, { .x = 0, .y = 0 });
-ecs_set(world, player, Velocity, { .x = 1, .y = 0 });
+ecs_entity_t player = ecs_new();
+ecs_set(player, Position, { .x = 0, .y = 0 });
+ecs_set(player, Velocity, { .x = 1, .y = 0 });
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
-ecs::world world;
-auto player = world.entity();
+ecs::init();
+auto player = ecs::entity::create();
 player.set(Position{ .x = 0, .y = 0 });
 player.set(Velocity{ .x = 1, .y = 0 });
 ```
@@ -41,7 +41,7 @@ tags have size `0` and represent state through presence:
 <TabItem label="C">
 ```c
 ECS_COMPONENT(Player, {});
-ecs_add(world, entity, Player);
+ecs_add(entity, Player);
 ```
 </TabItem>
 <TabItem label="C++">
@@ -73,7 +73,7 @@ and returns batches:
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_iter_t it = ecs_query_iter(world, moving);
+ecs_iter_t it = ecs_query_iter(moving);
 while (ecs_iter_next(&it)) {
     Position *p = ecs_field(&it, 0);
     Velocity *v = ecs_field(&it, 1);
@@ -82,7 +82,7 @@ while (ecs_iter_next(&it)) {
 </TabItem>
 <TabItem label="C++">
 ```cpp
-world.query().each([](Position &p, Velocity &v) {
+ecs::query().each([](Position &p, Velocity &v) {
     // Each callback invocation processes a matching table row.
 });
 ```
@@ -109,14 +109,14 @@ to match disabled entities:
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_query(world, {
+ecs_query({
     .terms = { ecs_in(Position), ecs_filter(Disabled) },
 });
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
-world.query().require<Position>().require<Disabled>().each(
+ecs::query().require<Position>().require<Disabled>().each(
     [](Position &) { /* process disabled entities */ });
 ```
 </TabItem>

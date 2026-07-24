@@ -21,24 +21,23 @@ static void ensure_sijson_entity_type(void) {
     );
 }
 
-bool ecs_rest_entity_component_is_reflected(ecs_world_t *world, ecs_component_t component) {
-    if (component >= world->component_index.components.size) {
+bool ecs_rest_entity_component_is_reflected(ecs_component_t component) {
+    if (component >= ecs_world.component_index.components.size) {
         return false;
     }
 
     const ecs_component_record_t *record =
-        ecs_component_index_get(&world->component_index, component);
-    return record->registered && record->reflection != SIREFLECT_INVALID_HANDLE &&
+        ecs_component_index_get(&ecs_world.component_index, component);
+    return record->reflection != SIREFLECT_INVALID_HANDLE &&
            record->reflection_desc != NULL;
 }
 
 static bool validate_component_shape(
-    ecs_world_t *world,
-    const ecs_component_record_t *record,
+        const ecs_component_record_t *record,
     sijson_value_t value
 ) {
     const sireflect_fields_t *fields =
-        sireflect_type_fields(world->sireflect_registry, record->reflection);
+        sireflect_type_fields(ecs_world.sireflect_registry, record->reflection);
     if (sijson_type(value) != SIJSON_OBJECT || sijson_object_len(value) != fields->field_count) {
         return false;
     }
@@ -78,11 +77,11 @@ static sijson_value_t component_value_json(const ecs_component_record_t *record,
 }
 
 sijson_value_t
-ecs_rest_entity_component_json(ecs_world_t *world, ecs_component_t component_id, const void *ptr) {
+ecs_rest_entity_component_json(ecs_component_t component_id, const void *ptr) {
     const ecs_component_record_t *record =
-        ecs_component_index_get(&world->component_index, component_id);
+        ecs_component_index_get(&ecs_world.component_index, component_id);
     const sireflect_type_info_t *type =
-        sireflect_type_info(world->sireflect_registry, record->reflection);
+        sireflect_type_info(ecs_world.sireflect_registry, record->reflection);
 
     sijson_value_t component = sijson_make_object();
     sijson_object_set(component, "id", sijson_make_number(component_id));
@@ -92,20 +91,19 @@ ecs_rest_entity_component_json(ecs_world_t *world, ecs_component_t component_id,
 }
 
 sihttp_response_t ecs_rest_set_entity_component(
-    ecs_world_t *world,
-    ecs_entity_t entity,
+        ecs_entity_t entity,
     ecs_component_t component,
     const char *body_text
 ) {
     sijson_clean();
 
-    if (!ecs_is_alive(world, entity)) {
+    if (!ecs_is_alive(entity)) {
         return ecs_rest_error_response(404, "entity not found");
     }
-    if (!ecs_rest_entity_component_is_reflected(world, component)) {
+    if (!ecs_rest_entity_component_is_reflected(component)) {
         return ecs_rest_error_response(404, "component not found");
     }
-    if (!ecs_has_cid(world, entity, component)) {
+    if (!ecs_has_cid(entity, component)) {
         return ecs_rest_error_response(404, "entity component not found");
     }
 
@@ -116,8 +114,8 @@ sihttp_response_t ecs_rest_set_entity_component(
     }
 
     const ecs_component_record_t *record =
-        ecs_component_index_get(&world->component_index, component);
-    if (!validate_component_shape(world, record, value)) {
+        ecs_component_index_get(&ecs_world.component_index, component);
+    if (!validate_component_shape(record, value)) {
         return ecs_rest_error_response(400, "invalid component value");
     }
 
@@ -129,9 +127,9 @@ sihttp_response_t ecs_rest_set_entity_component(
         return ecs_rest_error_response(400, "invalid component value");
     }
 
-    ecs_set_cid(world, entity, component, decoded);
+    ecs_set_cid(entity, component, decoded);
     return ecs_rest_json_response(
         200,
-        ecs_rest_entity_component_json(world, component, ecs_get_cid(world, entity, component))
+        ecs_rest_entity_component_json(component, ecs_get_cid(entity, component))
     );
 }

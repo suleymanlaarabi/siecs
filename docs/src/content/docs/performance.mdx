@@ -13,11 +13,11 @@ contiguous component arrays and keep structural changes out of tight loops.
 Use persistent queries in repeated work:
 
 ```c
-ecs_query_id_t moving = ecs_query(world, {
+ecs_query_id_t moving = ecs_query({
     .terms = { ecs_inout(Position), ecs_in(Velocity) },
 });
 
-ecs_iter_t it = ecs_query_iter(world, moving);
+ecs_iter_t it = ecs_query_iter(moving);
 while (ecs_iter_next(&it)) {
     Position *p = ecs_field(&it, 0);
     const Velocity *v = ecs_field(&it, 1);

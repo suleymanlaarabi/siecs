@@ -165,8 +165,7 @@ void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
 }
 
 static void ecs_query_cache_add_table(
-    ecs_world_t *world,
-    ecs_query_cache_t *cache,
+        ecs_query_cache_t *cache,
     const ecs_table_t *table,
     uint16_t table_id
 ) {
@@ -200,7 +199,7 @@ static void ecs_query_cache_add_table(
             }
         } else {
             bool is_shared = false;
-            field = ecs_table_field(world, table, term.id, &is_shared);
+            field = ecs_table_field(table, term.id, &is_shared);
             if (field || is_shared) {
                 field_kind = is_shared ? EcsFieldShared : EcsFieldOwned;
             }
@@ -253,39 +252,39 @@ static ecs_component_t ecs_query_first_positive_term(const ecs_query_t *query) {
     return 0;
 }
 
-void ecs_query_index_update_matches(ecs_world_t *world, ecs_query_cache_t *query_cache) {
+void ecs_query_index_update_matches(ecs_query_cache_t *query_cache) {
     uint16_t component = ecs_query_first_positive_term(&query_cache->query);
 
     if (ECS_LIKELY(component)) {
         const ecs_vec_t *tables_vec =
-            &ecs_component_index_get(&world->component_index, component)->tables;
+            &ecs_component_index_get(&ecs_world.component_index, component)->tables;
 
         ecs_vec_iter(tables_vec, uint16_t, table_index, {
-            const ecs_table_t *table = &world->table_index.tables[*table_index];
+            const ecs_table_t *table = &ecs_world.table_index.tables[*table_index];
 
-            if (ecs_query_match_table(world, &query_cache->query, table)) {
-                ecs_query_cache_add_table(world, query_cache, table, *table_index);
+            if (ecs_query_match_table(&query_cache->query, table)) {
+                ecs_query_cache_add_table(query_cache, table, *table_index);
             }
         });
     } else {
-        const uint16_t table_count = world->table_index.table_count;
-        const ecs_table_t *tables = world->table_index.tables;
+        const uint16_t table_count = ecs_world.table_index.table_count;
+        const ecs_table_t *tables = ecs_world.table_index.tables;
 
         for (uint16_t i = 0; i < table_count; i++) {
-            if (ecs_query_match_table(world, &query_cache->query, &tables[i])) {
-                ecs_query_cache_add_table(world, query_cache, &tables[i], i);
+            if (ecs_query_match_table(&query_cache->query, &tables[i])) {
+                ecs_query_cache_add_table(query_cache, &tables[i], i);
             }
         }
     }
 }
 
-void ecs_query_index_add_table(ecs_world_t *world, const ecs_table_t *table, uint16_t table_id) {
-    const ecs_query_id_t *active_ids = world->query_index.active_ids.data;
-    for (uint32_t i = 0; i < world->query_index.active_ids.size; i++) {
+void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id) {
+    const ecs_query_id_t *active_ids = ecs_world.query_index.active_ids.data;
+    for (uint32_t i = 0; i < ecs_world.query_index.active_ids.size; i++) {
         ecs_query_cache_t *cache =
-            ecs_vec_get_mut(&world->query_index.queries, active_ids[i], ecs_query_cache_t);
-        if (ecs_query_match_table(world, &cache->query, table)) {
-            ecs_query_cache_add_table(world, cache, table, table_id);
+            ecs_vec_get_mut(&ecs_world.query_index.queries, active_ids[i], ecs_query_cache_t);
+        if (ecs_query_match_table(&cache->query, table)) {
+            ecs_query_cache_add_table(cache, table, table_id);
         }
     }
 }

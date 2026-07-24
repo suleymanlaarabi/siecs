@@ -6,5 +6,11 @@
 #include <stdint.h>
 
 #include <bake_test.h>
+#include <siecs.h>
+
+struct ecs_test_scope {
+    ecs_test_scope() { ecs::init(); }
+    ~ecs_test_scope() { ecs::fini(); }
+};
 
 #endif

@@ -67,16 +67,14 @@ static void resource_lifecycle_dtor(void *ptr, uint32_t count) {
     resource_lifecycle_dtor_calls += count;
 }
 
-static void resource_hook_on_set(ecs_world_t *world, const void *ptr) {
-    (void)world;
+static void resource_hook_on_set(const void *ptr) {
 
     const ResourceHooked *value = ptr;
     resource_on_set_calls++;
     resource_on_set_last = value->value;
 }
 
-static void resource_hook_on_remove(ecs_world_t *world, const void *ptr) {
-    (void)world;
+static void resource_hook_on_remove(const void *ptr) {
 
     const ResourceHooked *value = ptr;
     resource_on_remove_calls++;
@@ -92,7 +90,7 @@ ECS_RESOURCE_DEFINE(
 static uint32_t resource_system_seen;
 
 static void resource_move_system(ecs_iter_t *it) {
-    const ResourceTime *time = ecs_get_resource_read(it->world, ResourceTime);
+    const ResourceTime *time = ecs_get_resource_read(ResourceTime);
     ResourcePosition *position = ecs_field(it, 0);
 
     for (uint32_t i = 0; i < it->count; i++) {
@@ -102,73 +100,72 @@ static void resource_move_system(ecs_iter_t *it) {
 }
 
 void resource_set_get(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_RESOURCE_REGISTER(world, ResourceTime);
+    ecs_init();
+    ECS_RESOURCE_REGISTER(ResourceTime);
 
-    ecs_set_resource(world, ResourceTime, { .dt = 0.016f, .elapsed = 1.0f });
+    ecs_set_resource(ResourceTime, { .dt = 0.016f, .elapsed = 1.0f });
 
-    ResourceTime *time = ecs_get_resource(world, ResourceTime);
+    ResourceTime *time = ecs_get_resource(ResourceTime);
     test_assert(time->dt == 0.016f);
     test_assert(time->elapsed == 1.0f);
-    test_true(ecs_has_resource(world, ResourceTime));
+    test_true(ecs_has_resource(ResourceTime));
 
     time->elapsed = 2.0f;
-    test_assert(ecs_get_resource_read(world, ResourceTime)->elapsed == 2.0f);
+    test_assert(ecs_get_resource_read(ResourceTime)->elapsed == 2.0f);
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void resource_try_get_missing(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_RESOURCE_REGISTER(world, ResourceTime);
+    ecs_init();
+    ECS_RESOURCE_REGISTER(ResourceTime);
 
-    test_false(ecs_has_resource(world, ResourceTime));
-    test_assert(ecs_try_get_resource(world, ResourceTime) == NULL);
-    test_assert(ecs_try_get_resource_read(world, ResourceTime) == NULL);
+    test_false(ecs_has_resource(ResourceTime));
+    test_assert(ecs_try_get_resource(ResourceTime) == NULL);
+    test_assert(ecs_try_get_resource_read(ResourceTime) == NULL);
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void resource_remove(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_RESOURCE_REGISTER(world, ResourceTime);
+    ecs_init();
+    ECS_RESOURCE_REGISTER(ResourceTime);
 
-    ecs_set_resource(world, ResourceTime, { .dt = 1.0f, .elapsed = 2.0f });
-    ecs_remove_resource(world, ResourceTime);
+    ecs_set_resource(ResourceTime, { .dt = 1.0f, .elapsed = 2.0f });
+    ecs_remove_resource(ResourceTime);
 
-    test_false(ecs_has_resource(world, ResourceTime));
-    test_assert(ecs_try_get_resource(world, ResourceTime) == NULL);
+    test_false(ecs_has_resource(ResourceTime));
+    test_assert(ecs_try_get_resource(ResourceTime) == NULL);
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void resource_replace(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_RESOURCE_REGISTER(world, ResourceTime);
+    ecs_init();
+    ECS_RESOURCE_REGISTER(ResourceTime);
 
-    ecs_set_resource(world, ResourceTime, { .dt = 1.0f, .elapsed = 2.0f });
-    ecs_set_resource(world, ResourceTime, { .dt = 3.0f, .elapsed = 4.0f });
+    ecs_set_resource(ResourceTime, { .dt = 1.0f, .elapsed = 2.0f });
+    ecs_set_resource(ResourceTime, { .dt = 3.0f, .elapsed = 4.0f });
 
-    const ResourceTime *time = ecs_get_resource_read(world, ResourceTime);
+    const ResourceTime *time = ecs_get_resource_read(ResourceTime);
     test_assert(time->dt == 3.0f);
     test_assert(time->elapsed == 4.0f);
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void resource_from_system_c(void) {
     resource_system_seen = 0;
 
-    ecs_world_t *world = ecs_init();
-    ECS_RESOURCE_REGISTER(world, ResourceTime);
-    ECS_COMPONENT_REGISTER(world, ResourcePosition);
-    ecs_set_resource(world, ResourceTime, { .dt = 0.5f, .elapsed = 0.0f });
+    ecs_init();
+    ECS_RESOURCE_REGISTER(ResourceTime);
+    ECS_COMPONENT_REGISTER(ResourcePosition);
+    ecs_set_resource(ResourceTime, { .dt = 0.5f, .elapsed = 0.0f });
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, ResourcePosition, { .x = 1.0f });
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, ResourcePosition, { .x = 1.0f });
 
     ecs_system(
-        world,
         {
             .name = "ResourceMove",
             .phase = EcsOnUpdate,
@@ -177,42 +174,41 @@ void resource_from_system_c(void) {
         }
     );
 
-    ecs_run_phase(world, EcsOnUpdate);
+    ecs_run_phase(EcsOnUpdate);
 
     test_int(1, resource_system_seen);
-    test_assert(ecs_get(world, entity, ResourcePosition)->x == 1.5f);
+    test_assert(ecs_get(entity, ResourcePosition)->x == 1.5f);
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void resource_hooks(void) {
     resource_reset_hooks();
 
-    ecs_world_t *world = ecs_init();
-    ECS_RESOURCE_REGISTER(world, ResourceHooked);
+    ecs_init();
+    ECS_RESOURCE_REGISTER(ResourceHooked);
 
-    ecs_set_resource(world, ResourceHooked, { .value = 12 });
+    ecs_set_resource(ResourceHooked, { .value = 12 });
     test_int(1, resource_on_set_calls);
     test_int(12, resource_on_set_last);
 
-    ecs_set_resource(world, ResourceHooked, { .value = 24 });
+    ecs_set_resource(ResourceHooked, { .value = 24 });
     test_int(2, resource_on_set_calls);
     test_int(24, resource_on_set_last);
     test_int(0, resource_on_remove_calls);
 
-    ecs_remove_resource(world, ResourceHooked);
+    ecs_remove_resource(ResourceHooked);
     test_int(1, resource_on_remove_calls);
     test_int(24, resource_on_remove_last);
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void resource_lifecycle_ops_are_used_for_set_move_and_remove(void) {
     resource_lifecycle_reset();
 
-    ecs_world_t *world = ecs_init();
+    ecs_init();
     ecs_resource_t id = ecs_resource_init(
-        world,
         &(ecs_resource_desc_t){
             .name = "LifecycleResource",
             .size = sizeof(int),
@@ -226,23 +222,23 @@ void resource_lifecycle_ops_are_used_for_set_move_and_remove(void) {
     );
 
     int value = 1;
-    ecs_set_resource_rid(world, id, &value);
+    ecs_set_resource_rid(id, &value);
     test_int(1, resource_lifecycle_copy_ctor_calls);
-    test_int(1, *(int *)ecs_resource_rid(world, id));
+    test_int(1, *(int *)ecs_resource_rid(id));
 
     value = 2;
-    ecs_set_resource_rid(world, id, &value);
+    ecs_set_resource_rid(id, &value);
     test_int(1, resource_lifecycle_copy_calls);
-    test_int(2, *(int *)ecs_resource_rid(world, id));
+    test_int(2, *(int *)ecs_resource_rid(id));
 
     value = 3;
-    ecs_move_resource_rid(world, id, &value);
+    ecs_move_resource_rid(id, &value);
     test_int(1, resource_lifecycle_move_calls);
     test_int(-100, value);
-    test_int(3, *(int *)ecs_resource_rid(world, id));
+    test_int(3, *(int *)ecs_resource_rid(id));
 
-    ecs_remove_resource_rid(world, id);
+    ecs_remove_resource_rid(id);
     test_int(1, resource_lifecycle_dtor_calls);
 
-    ecs_fini(world);
+    ecs_fini();
 }

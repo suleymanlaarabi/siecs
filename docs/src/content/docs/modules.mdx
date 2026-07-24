@@ -24,7 +24,7 @@ This creates typed module properties named `physics_props_t` and declares the im
 function:
 
 ```c
-void physics_import(ecs_world_t *world, const physics_props_t *props);
+void physics_import(const physics_props_t *props);
 ```
 
 ## Define And Import
@@ -34,11 +34,11 @@ Define the module in exactly one C file:
 ```c
 ECS_MODULE_DEFINE(physics);
 
-void physics_import(ecs_world_t *world, const physics_props_t *props) {
+void physics_import(const physics_props_t *props) {
     ECS_COMPONENT_REGISTER(world, Position);
     ECS_COMPONENT_REGISTER(world, Velocity);
 
-    ecs_system(world, {
+    ecs_system({
         .name = "Move",
         .phase = EcsOnUpdate,
         .query = {
@@ -70,7 +70,7 @@ Modules with no parameters still use empty props:
 ECS_MODULE_DECLARE(rendering, {});
 ECS_MODULE_DEFINE(rendering);
 
-void rendering_import(ecs_world_t *world, const rendering_props_t *props) {
+void rendering_import(const rendering_props_t *props) {
     (void)props;
     /* Register rendering systems and observers. */
 }
@@ -85,8 +85,8 @@ normal public API:
 
 ```c
 ECS_COMPONENT_REGISTER(world, Position);
-ecs_system(world, { /* ... */ });
-ecs_observer(world, { /* ... */ });
+ecs_system({ /* ... */ });
+ecs_observer({ /* ... */ });
 ```
 
 Those ids are appended to the active module. User code does not need a separate
@@ -101,8 +101,8 @@ Modules are enabled by default. Disabling a module disables only the systems and
 observers recorded by that module:
 
 ```c
-ecs_module_disable(world, Physics);
-ecs_module_enable(world, Physics);
+ecs_module_disable(Physics);
+ecs_module_enable(Physics);
 ```
 
 Components and relations stay registered. Existing component data stays valid.
@@ -114,7 +114,7 @@ Import a module disabled with the generic API:
 ```c
 physics_props_t props = { .gravity = 9.81f };
 
-ecs_module_id_t Physics = ecs_module(world, {
+ecs_module_id_t Physics = ecs_module({
     .name = "physics",
     .id = &ecs_id(physics),
     .import = ecs_id(physics_import_wrapper),

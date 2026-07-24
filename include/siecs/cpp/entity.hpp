@@ -1,99 +1,114 @@
 #pragma once
+
 #include "siecs/cpp/component.hpp"
 
 namespace ecs {
 
 class entity {
-    ecs_entity_t _entity;
-    ecs_world_t *_world;
+    ecs_entity_t _entity = 0;
 
   public:
-    static ecs::entity null() { return entity(nullptr, 0); }
+    entity() noexcept = default;
+    explicit entity(ecs_entity_t entity) noexcept : _entity(entity) {}
 
-    entity(ecs_world_t *world, ecs_entity_t entity) : _entity(entity), _world(world) {}
+    static entity create() noexcept { return entity(ecs_new()); }
+    static entity create(const char *name) {
+        entity value = create();
+        if (name != nullptr) {
+            value.set<Name>({ .value = strdup(name) });
+        }
+        return value;
+    }
 
+    static entity from(ecs_entity_t id) noexcept { return entity(id); }
+    static entity null() noexcept { return from(static_cast<ecs_entity_t>(0)); }
     [[nodiscard]] ecs_entity_t id() const noexcept { return _entity; }
+    operator ecs_entity_t() const noexcept { return _entity; }
 
     template <typename T> entity add() {
-        ecs_add_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world));
+        ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>());
         return *this;
     }
 
-    operator ecs_entity_t() const noexcept { return _entity; }
-
     entity abstract() {
-        ecs_add(_world, _entity, Abstract);
+        ecs_add(_entity, Abstract);
         return *this;
     }
 
     template <typename T> entity remove() {
-        ecs_remove_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world));
+        ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>());
         return *this;
     }
 
     template <typename T> [[nodiscard]] bool has() const {
-        return ecs_has_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world));
+        return ecs_has_cid(_entity, detail::ecs_cpp_component_id<T>());
     }
 
     template <typename T> entity set(const T &value) {
-        ecs_set_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world), &value);
+        ecs_set_cid(_entity, detail::ecs_cpp_component_id<T>(), &value);
         return *this;
     }
 
-    template <typename T>
-    entity set(T &&value)
-        requires(!std::is_lvalue_reference_v<T>)
-    {
+    template <typename T> entity set(T &&value) {
         using type = std::remove_cvref_t<T>;
-        ecs_move_cid(_world, _entity, detail::ecs_cpp_component_id<type>(_world), &value);
+        ecs_move_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
         return *this;
     }
 
     template <typename T> [[nodiscard]] T *try_get() {
-        return static_cast<T *>(
-            ecs_try_get_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world))
-        );
+        return static_cast<T *>(ecs_try_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
     }
 
     template <typename T> [[nodiscard]] T &get() {
-        return *static_cast<T *>(
-            ecs_get_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world))
-        );
+        return *static_cast<T *>(ecs_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
     }
 
-    bool is_alive() { return ecs_is_alive(_world, _entity); }
-
-    void kill() { ecs_kill(_world, _entity); }
+    [[nodiscard]] bool is_alive() const { return _entity != 0 && ecs_is_alive(_entity); }
+    void kill() { ecs_kill(_entity); }
 
     entity is_a(entity target) {
-        ecs_is_a(_world, _entity, target._entity);
+        ecs_is_a(_entity, target.id());
         return *this;
     }
 
-    bool is(entity target) { return ecs_is(_world, _entity, target._entity); }
+    template <typename T> entity is_a() {
+        ecs_is_a(_entity, ecs::entity::create<T>());
+        return *this;
+    }
+
+    entity is_a(ecs_entity_t target) {
+        ecs_is_a(_entity, target);
+        return *this;
+    }
+
+    [[nodiscard]] bool is(entity target) const { return ecs_is(_entity, target._entity); }
 
     entity child_of(entity parent) {
-        const ChildOf desc = { .target = parent._entity };
-        ecs_set_cid(_world, _entity, ecs_id(ChildOf), &desc);
+        ChildOf relation{ parent.id() };
+        ecs_set_cid(_entity, ecs_id(ChildOf), &relation);
         return *this;
     }
 
     entity enable() {
-        ecs_remove_cid(_world, _entity, ecs_id(Disabled));
+        ecs_remove(_entity, Disabled);
         return *this;
     }
 
     entity disable() {
-        ecs_add_cid(_world, _entity, ecs_id(Disabled));
+        ecs_add(_entity, Disabled);
         return *this;
     }
 
-    [[nodiscard]] bool is_enabled() const {
-        return !ecs_has_cid(_world, _entity, ecs_id(Disabled));
-    }
+    [[nodiscard]] bool is_enabled() const { return !has<Disabled>(); }
+    [[nodiscard]] bool is_disabled() const { return has<Disabled>(); }
 
-    [[nodiscard]] bool is_disabled() const {
-        return ecs_has_cid(_world, _entity, ecs_id(Disabled));
+    template <typename T> static entity create(const char *name = nullptr) {
+        static ecs_entity_t id = 0;
+        if (id == 0 || !ecs_is_alive(id)) {
+            const std::string generated = std::string(type_name<T>());
+            id = create(name ? name : generated.c_str()).id();
+        }
+        return from(id);
     }
 };
 

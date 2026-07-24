@@ -714,13 +714,9 @@ extern "C" {
  * Public id symbol generated for a component type.
  *
  * Users normally do not call this macro directly. It is used by the typed
- * helpers such as ecs_add(world, entity, Position).
+ * helpers such as ecs_add(entity, Position).
  */
 #define ecs_id(name) _ecs_id_##name##__
-
-/* Opaque ECS world. Create with ecs_init and destroy with ecs_fini. */
-struct ecs_world_s;
-typedef struct ecs_world_s ecs_world_t;
 
 /* Public handle types. A zero id is reserved internally and is not user data.
  */
@@ -733,7 +729,7 @@ typedef uint16_t ecs_module_id_t;
 typedef uint16_t ecs_resource_t;
 typedef uint32_t ecs_observer_id_t;
 
-#define ECS_QUERY_TERM_CAPACITY 64
+#define ECS_QUERY_TERM_CAPACITY 16
 #define ECS_SYSTEM_AFTER_CAPACITY 16
 
 /*
@@ -748,7 +744,7 @@ typedef uint32_t ecs_observer_id_t;
  * desc is the user props pointer from ecs_module_desc_t. The library does not
  * retain or copy it; it is only valid for the duration of this call.
  */
-typedef void (*ecs_module_import_t)(ecs_world_t *world, const void *desc);
+typedef void (*ecs_module_import_t)(const void *desc);
 
 /*
  * Module registration descriptor.
@@ -789,7 +785,6 @@ typedef struct {
  * - Custom events: pointer passed to ecs_observer_trigger.
  */
 typedef struct {
-    ecs_world_t *world;
     ecs_entity_t entity;
     ecs_event_t event;
     uintptr_t user_data;
@@ -799,12 +794,7 @@ typedef struct {
 typedef void (*ecs_observer_callback_t)(ecs_observer_event_t *event);
 
 /* Called after a component slot is added and zero-initialized. */
-typedef void (*ecs_component_on_add_t)(
-    ecs_world_t *world,
-    ecs_entity_t entity,
-    ecs_component_t component,
-    void *value
-);
+typedef void (*ecs_component_on_add_t)(ecs_entity_t entity, ecs_component_t component, void *value);
 
 /*
  * Called before ecs_set_cid copies new_value into current_value.
@@ -813,7 +803,6 @@ typedef void (*ecs_component_on_add_t)(
  * inspect the old value there, and may mutate it before the final copy.
  */
 typedef void (*ecs_component_on_set_t)(
-    ecs_world_t *world,
     ecs_entity_t entity,
     ecs_component_t component,
     const void *new_value,
@@ -822,7 +811,6 @@ typedef void (*ecs_component_on_set_t)(
 
 /* Called before a component slot is removed. */
 typedef void (*ecs_component_on_remove_t)(
-    ecs_world_t *world,
     ecs_entity_t entity,
     ecs_component_t component,
     void *value
@@ -895,7 +883,7 @@ typedef struct {
  * ptr points to the resource value being set or removed. The pointer is only
  * valid for the duration of the callback.
  */
-typedef void (*ecs_resource_hook_t)(ecs_world_t *world, const void *ptr);
+typedef void (*ecs_resource_hook_t)(const void *ptr);
 
 /*
  * Resource registration descriptor.
@@ -955,7 +943,7 @@ typedef struct {
  * Typed query term helpers.
  *
  * Example:
- *   ecs_query_id_t q = ecs_query(world, {
+ *   ecs_query_id_t q = ecs_query({
  *       .terms = { ecs_inout(Position), ecs_in(Velocity), ecs_filter(Player) }
  *   });
  */
@@ -985,7 +973,7 @@ typedef struct {
 #endif
 
 /* Create an ECS world. */
-SIECS_API ecs_world_t *ecs_init(void);
+SIECS_API void ecs_init(void);
 
 /* World feature descriptor. */
 typedef struct {
@@ -1000,13 +988,13 @@ typedef struct {
 #define ecs_with_features(...) ecs_init_w_features(&(ecs_world_feat_desc_t)__VA_ARGS__)
 
 /* Initialize a world with the given features. */
-SIECS_API ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features);
+SIECS_API void ecs_init_w_features(const ecs_world_feat_desc_t *features);
 
 /* Destroy a world and all ECS storage owned by it. world must not be NULL. */
-SIECS_API void ecs_fini(ecs_world_t *world);
+SIECS_API void ecs_fini(void);
 
 /* Request that future ecs_progress calls return false. */
-SIECS_API void ecs_quit(ecs_world_t *world);
+SIECS_API void ecs_quit(void);
 
 /*
  * Declare a component type and its public component id.
@@ -1039,8 +1027,7 @@ SIECS_API void ecs_quit(ecs_world_t *world);
  * Must be called before using the typed helpers for that component with this
  * world. Stores the generated component id in ecs_id(cname).
  */
-#define ECS_COMPONENT_REGISTER(world, cname)                                                       \
-    ecs_component_register(world, &ecs_id(cname), &ecs_id(cname##_desc))
+#define ECS_COMPONENT_REGISTER(cname) ecs_component_register(&ecs_id(cname), &ecs_id(cname##_desc))
 
 /*
  * Declare and define a component type in one translation unit.
@@ -1060,13 +1047,13 @@ SIECS_API void ecs_quit(ecs_world_t *world);
  *
  * This declares physics_props_t, the public module id symbol ecs_id(physics),
  * an import wrapper, and the user-defined import function:
- *   void physics_import(ecs_world_t *world, const physics_props_t *props);
+ *   void physics_import(const physics_props_t *props);
  */
 #define ECS_MODULE_DECLARE(module_name, ...)                                                       \
     typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;                        \
     extern ecs_module_id_t ecs_id(module_name);                                                    \
-    void ecs_id(module_name##_import_wrapper)(ecs_world_t * world, const void *desc);              \
-    void module_name##_import(ecs_world_t *world, const module_name##_props_t *props)
+    void ecs_id(module_name##_import_wrapper)(const void *desc);                                   \
+    void module_name##_import(const module_name##_props_t *props)
 
 /*
  * Define a typed module declared with ECS_MODULE_DECLARE.
@@ -1075,8 +1062,8 @@ SIECS_API void ecs_quit(ecs_world_t *world);
  */
 #define ECS_MODULE_DEFINE(module_name)                                                             \
     ecs_module_id_t ecs_id(module_name) = 0;                                                       \
-    void ecs_id(module_name##_import_wrapper)(ecs_world_t * world, const void *desc) {             \
-        module_name##_import(world, (const module_name##_props_t *)desc);                          \
+    void ecs_id(module_name##_import_wrapper)(const void *desc) {                                  \
+        module_name##_import((const module_name##_props_t *)desc);                                 \
     }
 
 /*
@@ -1087,17 +1074,14 @@ SIECS_API void ecs_quit(ecs_world_t *world);
  * return the existing id without calling module_name_import again; the first
  * props value wins.
  */
-#define ECS_MODULE_IMPORT(world, module_name, ...)                                                 \
-    (ecs_id(module_name) = ecs_module_init(                                                        \
-         world,                                                                                    \
-         &(ecs_module_desc_t){                                                                     \
-             .name = #module_name,                                                                 \
-             .id = &ecs_id(module_name),                                                           \
-             .import = ecs_id(module_name##_import_wrapper),                                       \
-             .desc = &(module_name##_props_t)__VA_ARGS__,                                          \
-             .desc_size = sizeof(module_name##_props_t),                                           \
-         }                                                                                         \
-     ))
+#define ECS_MODULE_IMPORT(module_name, ...)                                                        \
+    (ecs_id(module_name) = ecs_module_init(&(ecs_module_desc_t){                                   \
+         .name = #module_name,                                                                     \
+         .id = &ecs_id(module_name),                                                               \
+         .import = ecs_id(module_name##_import_wrapper),                                           \
+         .desc = &(module_name##_props_t)__VA_ARGS__,                                              \
+         .desc_size = sizeof(module_name##_props_t),                                               \
+     }))
 
 /*
  * Register/import a module with a raw descriptor.
@@ -1105,10 +1089,10 @@ SIECS_API void ecs_quit(ecs_world_t *world);
  * Prefer ECS_MODULE_IMPORT for typed modules. Use this when module properties
  * or ids are built dynamically.
  */
-#define ecs_module(world, ...) ecs_module_init(world, &(ecs_module_desc_t)__VA_ARGS__)
+#define ecs_module(...) ecs_module_init(&(ecs_module_desc_t)__VA_ARGS__)
 
 /* Register/import a module descriptor and return its module id. */
-SIECS_API ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *desc);
+SIECS_API ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc);
 
 /*
  * Find an already imported module by its id storage.
@@ -1116,16 +1100,17 @@ SIECS_API ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_d
  * For typed modules, pass &ecs_id(module_name). Returns 0 if the
  * module has not been imported into this world.
  */
-SIECS_API ecs_module_id_t ecs_module_find(ecs_world_t *world, const ecs_module_id_t *id);
 
 /* Enable systems and observers recorded during module import. */
-SIECS_API void ecs_module_enable(ecs_world_t *world, ecs_module_id_t module);
+SIECS_API void ecs_module_enable(ecs_module_id_t module);
+
+SIECS_API ecs_module_id_t ecs_module_find(const ecs_module_id_t *id);
 
 /* Disable systems and observers recorded during module import. */
-SIECS_API void ecs_module_disable(ecs_world_t *world, ecs_module_id_t module);
+SIECS_API void ecs_module_disable(ecs_module_id_t module);
 
 /* Return whether a module is currently enabled in this world. */
-SIECS_API bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t module);
+SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
 
 /*
  * Define a relation component.
@@ -1157,7 +1142,7 @@ SIECS_API bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t m
  *
  * Example:
  *   ECS_RELATION_DECLARE(Targets);
- *   ecs_set(world, entity, Targets, { target });
+ *   ecs_set(entity, Targets, { target });
  */
 #define ECS_RELATION_DECLARE(name) ECS_COMPONENT_DECLARE(name, { ecs_entity_t target; })
 
@@ -1177,32 +1162,32 @@ ECS_COMPONENT_DECLARE(Abstract, {});
  * Register a component from an inline descriptor.
  *
  * Example:
- *   ecs_component_t Position = ecs_component(world, {
+ *   ecs_component_t Position = ecs_component({
  *       .name = "Position",
  *       .size = sizeof(Position)
  *   });
  */
-#define ecs_component(world, ...) ecs_component_init(world, &(ecs_component_desc_t)__VA_ARGS__)
+#define ecs_component(...) ecs_component_init(&(ecs_component_desc_t)__VA_ARGS__)
 
 /* Register a component descriptor and return its component id. */
-SIECS_API ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc);
+SIECS_API ecs_component_t ecs_component_init(const ecs_component_desc_t *desc);
 
 /* Register a typed component descriptor using stable process-wide id storage.
  */
 SIECS_API ecs_component_t
-ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_component_desc_t *desc);
+ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc);
 
 /* Create a new alive entity in world. world must not be NULL. */
-SIECS_API ecs_entity_t ecs_new(ecs_world_t *world);
+SIECS_API ecs_entity_t ecs_new(void);
 
 /* Begin deferring ECS mutations into the world's command buffer. */
-SIECS_API void ecs_defer_begin(ecs_world_t *world);
+SIECS_API void ecs_defer_begin(void);
 
 /* End a defer scope. The outermost end flushes the command buffer. */
-SIECS_API void ecs_defer_end(ecs_world_t *world);
+SIECS_API void ecs_defer_end(void);
 
 /* Return whether mutations are currently being deferred or flushed. */
-SIECS_API bool ecs_is_deferred(const ecs_world_t *world);
+SIECS_API bool ecs_is_deferred(void);
 
 /*
  * Return whether entity is alive in world.
@@ -1210,24 +1195,24 @@ SIECS_API bool ecs_is_deferred(const ecs_world_t *world);
  * entity must be a handle created by this world. Passing arbitrary ids is not a
  * supported validity check.
  */
-SIECS_API bool ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity);
+SIECS_API bool ecs_is_alive(const ecs_entity_t entity);
 
-bool ecs_is(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target);
+bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
 
-SIECS_API void ecs_is_a(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target);
+SIECS_API void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 
 /* Destroy an alive entity and remove all of its components. */
-SIECS_API void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
+SIECS_API void ecs_kill(ecs_entity_t entity);
 
 /*
  * Create a query from an inline descriptor.
  *
  * Example:
- *   ecs_query_id_t q = ecs_query(world, {
+ *   ecs_query_id_t q = ecs_query({
  *       .terms = { ecs_in(Position), ecs_in(Velocity) }
  *   });
  */
-#define ecs_query(world, ...) ecs_query_init(world, &(ecs_query_desc_t)__VA_ARGS__)
+#define ecs_query(...) ecs_query_init(&(ecs_query_desc_t)__VA_ARGS__)
 
 /*
  * Convenience query loop for short-lived queries.
@@ -1236,26 +1221,25 @@ SIECS_API void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
  * persistent ecs_query_id_t for systems, hot paths, or repeated frame work.
  *
  * Example:
- *   ecs_query_each(world, it, i, ecs_in(Position), ecs_in(Velocity)) {
+ *   ecs_query_each(it, i, ecs_in(Position), ecs_in(Velocity)) {
  *       Position *p = ecs_field(&it, 0);
  *       Velocity *v = ecs_field(&it, 1);
  *       p[i].x += v[i].x;
  *   }
  */
-#define ecs_query_each(world, it, i, ...)                                                          \
-    for (ecs_query_id_t _q = ecs_query((world), { { __VA_ARGS__ } }); _q;                          \
-         ecs_query_fini((world), _q), _q = 0)                                                      \
-        for (ecs_iter_t it = ecs_query_iter((world), _q); ecs_iter_next(&it);)                     \
+#define ecs_query_each(it, i, ...)                                                                 \
+    for (ecs_query_id_t _q = ecs_query({ { __VA_ARGS__ } }); _q; ecs_query_fini(_q), _q = 0)       \
+        for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)                              \
             for (uint32_t i = 0; i < it.count; i++)
 
 /* Create a query. The query descriptor must read at least one component. */
-SIECS_API ecs_query_id_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *query);
+SIECS_API ecs_query_id_t ecs_query_init(const ecs_query_desc_t *query);
 
 /* Destroy a query id created by ecs_query/ecs_query_init. */
-SIECS_API void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
+SIECS_API void ecs_query_fini(ecs_query_id_t qid);
 
 /* Add a typed component tag/storage to an alive entity. */
-#define ecs_add(world, entity, cname) ecs_add_cid(world, entity, ecs_id(cname))
+#define ecs_add(entity, cname) ecs_add_cid(entity, ecs_id(cname))
 
 /*
  * Add a component id to an alive entity.
@@ -1263,24 +1247,24 @@ SIECS_API void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
  * If the component is already present, this is currently treated as a no-op by
  * table migration. The component id must be registered in the same world.
  */
-SIECS_API void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+SIECS_API void ecs_add_cid(ecs_entity_t entity, ecs_component_t id);
 
 /* Remove a typed component from an alive entity. */
-#define ecs_remove(world, entity, cname) ecs_remove_cid(world, entity, ecs_id(cname))
+#define ecs_remove(entity, cname) ecs_remove_cid(entity, ecs_id(cname))
 
 /*
  * Remove a component id from an alive entity.
  *
  * Removing a component that is not present is a no-op.
  */
-SIECS_API void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+SIECS_API void ecs_remove_cid(ecs_entity_t entity, ecs_component_t id);
 
 /* Return whether an alive entity has a typed component. */
-#define ecs_has(world, entity, cname) ecs_has_cid(world, entity, ecs_id(cname))
+#define ecs_has(entity, cname) ecs_has_cid(entity, ecs_id(cname))
 
 /* Return whether an alive entity has a component id. */
-SIECS_API bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
-bool ecs_has_cid_owned(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+SIECS_API bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id);
+bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id);
 
 /*
  * Get a typed component pointer from an alive entity.
@@ -1288,7 +1272,7 @@ bool ecs_has_cid_owned(const ecs_world_t *world, ecs_entity_t entity, ecs_compon
  * The component is assumed to exist. Use ecs_try_get when the component may be
  * absent.
  */
-#define ecs_get(world, entity, cname) ((cname *)ecs_get_cid(world, entity, ecs_id(cname)))
+#define ecs_get(entity, cname) ((cname *)ecs_get_cid(entity, ecs_id(cname)))
 
 /*
  * Get a component pointer by id.
@@ -1296,13 +1280,13 @@ bool ecs_has_cid_owned(const ecs_world_t *world, ecs_entity_t entity, ecs_compon
  * The component is assumed to exist on the entity. Use ecs_try_get_cid when the
  * component may be absent.
  */
-SIECS_API void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+SIECS_API void *ecs_get_cid(ecs_entity_t entity, ecs_component_t id);
 
 /* Get a typed component pointer, or NULL if the entity does not have it. */
-#define ecs_try_get(world, entity, cname) ((cname *)ecs_try_get_cid(world, entity, ecs_id(cname)))
+#define ecs_try_get(entity, cname) ((cname *)ecs_try_get_cid(entity, ecs_id(cname)))
 
 /* Get a component pointer by id, or NULL if the entity does not have it. */
-SIECS_API void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid);
+SIECS_API void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
 
 /*
  * Set a typed component value on an alive entity.
@@ -1311,8 +1295,7 @@ SIECS_API void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_com
  * receive the new value and current storage before the copy. EcsOnSet observers
  * receive the new value before it is copied into storage.
  */
-#define ecs_set(world, entity, cname, ...)                                                         \
-    ecs_set_cid(world, entity, ecs_id(cname), &(cname)__VA_ARGS__)
+#define ecs_set(entity, cname, ...) ecs_set_cid(entity, ecs_id(cname), &(cname)__VA_ARGS__)
 
 /*
  * Set a component value by id.
@@ -1320,10 +1303,8 @@ SIECS_API void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_com
  * data must point to at least the registered component size. Adds the component
  * if needed.
  */
-SIECS_API void
-ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
-SIECS_API void
-ecs_move_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, void *data);
+SIECS_API void ecs_set_cid(ecs_entity_t entity, ecs_component_t id, const void *data);
+SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data);
 
 /*
  * Declare and define a resource type.
@@ -1349,8 +1330,7 @@ ecs_move_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, void *
                                                  __VA_ARGS__ };                                    \
     ecs_resource_t ecs_id(rname) = 0
 
-#define ECS_RESOURCE_REGISTER(world, rname)                                                        \
-    ecs_resource_register(world, &ecs_id(rname), &ecs_id(rname##_desc))
+#define ECS_RESOURCE_REGISTER(rname) ecs_resource_register(&ecs_id(rname), &ecs_id(rname##_desc))
 
 #define ECS_RESOURCE(rname, ...)                                                                   \
     ECS_RESOURCE_DECLARE(rname, __VA_ARGS__);                                                      \
@@ -1360,44 +1340,41 @@ ecs_move_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, void *
  * Set or replace a world resource.
  *
  * Example:
- *   ecs_set_resource(world, Time, { .dt = 0.016f, .elapsed = 0.0f });
+ *   ecs_set_resource(Time, { .dt = 0.016f, .elapsed = 0.0f });
  */
-#define ecs_set_resource(world, rname, ...)                                                        \
-    ecs_set_resource_rid(world, ecs_id(rname), &(rname)__VA_ARGS__)
+#define ecs_set_resource(rname, ...) ecs_set_resource_rid(ecs_id(rname), &(rname)__VA_ARGS__)
 
 /* Get a world resource. The resource must exist. */
-#define ecs_get_resource(world, rname) ((rname *)ecs_resource_rid(world, ecs_id(rname)))
-#define ecs_get_resource_read(world, rname) ((const rname *)ecs_resource_rid(world, ecs_id(rname)))
+#define ecs_get_resource(rname) ((rname *)ecs_resource_rid(ecs_id(rname)))
+#define ecs_get_resource_read(rname) ((const rname *)ecs_resource_rid(ecs_id(rname)))
 
 /* Get a world resource, or NULL if it does not exist. */
-#define ecs_try_get_resource(world, rname) ((rname *)ecs_try_resource_rid(world, ecs_id(rname)))
-#define ecs_try_get_resource_read(world, rname)                                                    \
-    ((const rname *)ecs_try_resource_rid(world, ecs_id(rname)))
+#define ecs_try_get_resource(rname) ((rname *)ecs_try_resource_rid(ecs_id(rname)))
+#define ecs_try_get_resource_read(rname) ((const rname *)ecs_try_resource_rid(ecs_id(rname)))
 
 /* Return whether a world resource exists. */
-#define ecs_has_resource(world, rname) ecs_has_resource_rid(world, ecs_id(rname))
+#define ecs_has_resource(rname) ecs_has_resource_rid(ecs_id(rname))
 
 /* Remove a world resource if it exists. */
-#define ecs_remove_resource(world, rname) ecs_remove_resource_rid(world, ecs_id(rname))
+#define ecs_remove_resource(rname) ecs_remove_resource_rid(ecs_id(rname))
 
 /* Backward-compatible resource aliases. Prefer the ecs_get_resource names in
  * new code. */
-#define ecs_resource(world, rname) ecs_get_resource(world, rname)
-#define ecs_resource_read(world, rname) ecs_get_resource_read(world, rname)
-#define ecs_try_resource(world, rname) ecs_try_get_resource(world, rname)
-#define ecs_try_resource_read(world, rname) ecs_try_get_resource_read(world, rname)
+#define ecs_resource(rname) ecs_get_resource(rname)
+#define ecs_resource_read(rname) ecs_get_resource_read(rname)
+#define ecs_try_resource(rname) ecs_try_get_resource(rname)
+#define ecs_try_resource_read(rname) ecs_try_get_resource_read(rname)
 
-SIECS_API ecs_resource_t ecs_resource_init(ecs_world_t *world, const ecs_resource_desc_t *desc);
-SIECS_API ecs_resource_t
-ecs_resource_register(ecs_world_t *world, ecs_resource_t *id, const ecs_resource_desc_t *desc);
-SIECS_API ecs_resource_t ecs_resource_find(ecs_world_t *world, const char *name);
-SIECS_API bool ecs_resource_is_registered_rid(const ecs_world_t *world, ecs_resource_t id);
-SIECS_API void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);
-SIECS_API void ecs_move_resource_rid(ecs_world_t *world, ecs_resource_t id, void *data);
-SIECS_API void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id);
-SIECS_API void *ecs_try_resource_rid(ecs_world_t *world, ecs_resource_t id);
-SIECS_API bool ecs_has_resource_rid(const ecs_world_t *world, ecs_resource_t id);
-SIECS_API void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id);
+SIECS_API ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
+SIECS_API ecs_resource_t ecs_resource_find(const char *name);
+SIECS_API bool ecs_resource_is_registered_rid(ecs_resource_t id);
+SIECS_API ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc);
+SIECS_API void ecs_set_resource_rid(ecs_resource_t id, const void *data);
+SIECS_API void ecs_move_resource_rid(ecs_resource_t id, void *data);
+SIECS_API void *ecs_resource_rid(ecs_resource_t id);
+SIECS_API void *ecs_try_resource_rid(ecs_resource_t id);
+SIECS_API bool ecs_has_resource_rid(const ecs_resource_t id);
+SIECS_API void ecs_remove_resource_rid(ecs_resource_t id);
 
 /*
  * Declare that adding component also adds require first.
@@ -1405,10 +1382,10 @@ SIECS_API void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id);
  * Requirement cycles are debug assertion failures when declared.
  *
  * Example:
- *   ecs_with(world, ecs_id(Renderable), ecs_id(Transform));
- *   ecs_add(world, entity, Renderable); // also adds Transform
+ *   ecs_with(ecs_id(Renderable), ecs_id(Transform));
+ *   ecs_add(entity, Renderable); // also adds Transform
  */
-SIECS_API void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require);
+SIECS_API void ecs_with(ecs_component_t component, ecs_component_t require);
 
 /* Builtin observer events. */
 #define EcsOnAdd 0
@@ -1432,16 +1409,16 @@ typedef struct {
  * Create an observer from an inline descriptor.
  *
  * Example:
- *   ecs_observer(world, {
+ *   ecs_observer({
  *       .on = EcsOnSet,
  *       .query.terms = { ecs_in(Position) },
  *       .callback = on_position_set,
  *   });
  */
-#define ecs_observer(world, ...) ecs_observer_init(world, &(ecs_observer_desc_t)__VA_ARGS__)
+#define ecs_observer(...) ecs_observer_init(&(ecs_observer_desc_t)__VA_ARGS__)
 
 /* Allocate and return a custom event id for ecs_observer_trigger. */
-SIECS_API ecs_event_t ecs_event(ecs_world_t *world);
+SIECS_API ecs_event_t ecs_event(void);
 
 /*
  * Register a process-wide typed event id in this world.
@@ -1450,30 +1427,26 @@ SIECS_API ecs_event_t ecs_event(ecs_world_t *world);
  * Otherwise, reserves the existing id in this world so future ecs_event calls
  * cannot collide with the typed event.
  */
-SIECS_API ecs_event_t ecs_event_register(ecs_world_t *world, ecs_event_t *id);
+SIECS_API ecs_event_t ecs_event_register(ecs_event_t *id);
 
 /* Create an observer. desc->callback must not be NULL. */
-SIECS_API ecs_observer_id_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc);
+SIECS_API ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc);
 
-SIECS_API void ecs_observer_enable(ecs_world_t *world, ecs_observer_id_t id);
-SIECS_API void ecs_observer_disable(ecs_world_t *world, ecs_observer_id_t id);
+SIECS_API void ecs_observer_enable(ecs_observer_id_t id);
+SIECS_API void ecs_observer_disable(ecs_observer_id_t id);
 
 /*
  * Trigger an event for an alive entity.
  *
  * Observers matching the entity's current table and event id will be called.
  */
-SIECS_API void ecs_observer_trigger(
-    ecs_world_t *world,
-    ecs_entity_t entity,
-    ecs_event_t event,
-    const void *trigger_data
-);
+SIECS_API void
+ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *trigger_data);
 
 /*
  * Query iterator.
  *
- * Users may read world and count. The other fields are implementation details
+ * Users may read count. The other fields are implementation details
  * and should not be accessed directly.
  *
  * entities points to the current batch after ecs_iter_next returns true.
@@ -1485,7 +1458,6 @@ typedef enum {
 } ecs_field_kind_t;
 
 typedef struct {
-    ecs_world_t *world;
     uint32_t count;
     ecs_entity_t *entities;
     void **ptrs;
@@ -1501,12 +1473,12 @@ typedef struct {
  * Create a stack iterator for a query id.
  *
  * Example:
- *   ecs_iter_t it = ecs_query_iter(world, query);
+ *   ecs_iter_t it = ecs_query_iter(query);
  *   while (ecs_iter_next(&it)) {
  *       Position *p = ecs_field(&it, 0);
  *   }
  */
-SIECS_API ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);
+SIECS_API ecs_iter_t ecs_query_iter(ecs_query_id_t query_id);
 
 /*
  * Advance an iterator to the next non-empty batch.
@@ -1579,31 +1551,31 @@ typedef struct {
  * Create a system from an inline descriptor.
  *
  * Example:
- *   ecs_system(world, {
+ *   ecs_system({
  *       .name = "Move",
  *       .phase = EcsOnUpdate,
  *       .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
  *       .callback = Move,
  *   });
  */
-#define ecs_system(world, ...) ecs_system_init(world, &(ecs_system_desc_t)__VA_ARGS__)
+#define ecs_system(...) ecs_system_init(&(ecs_system_desc_t)__VA_ARGS__)
 
 /* Register a system and return its id. System id 0 is reserved. */
-SIECS_API ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc);
+SIECS_API ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc);
 
 /* Run all enabled systems in phase order. */
-SIECS_API bool ecs_progress(ecs_world_t *world);
+SIECS_API bool ecs_progress(void);
 
 /* Run all enabled systems from one phase. */
-SIECS_API void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase);
+SIECS_API void ecs_run_phase(ecs_phase_t phase);
 
 /* Run one enabled system immediately. */
-SIECS_API void ecs_run_system(ecs_world_t *world, ecs_system_id_t system);
+SIECS_API void ecs_run_system(ecs_system_id_t system);
 
 /* Enable or disable a system. Disabled systems stay registered but do not run.
  */
-SIECS_API void ecs_system_enable(ecs_world_t *world, ecs_system_id_t system);
-SIECS_API void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system);
+SIECS_API void ecs_system_enable(ecs_system_id_t system);
+SIECS_API void ecs_system_disable(ecs_system_id_t system);
 
 #ifdef __cplusplus
 }
@@ -1614,6 +1586,7 @@ SIECS_API void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system);
 #define SIECS_PUBLIC_CPP_HPP
 
 #pragma once
+
 #pragma once
 #pragma once
 
@@ -1660,8 +1633,11 @@ namespace ecs {
 
 namespace detail {
 
+inline uint64_t world_generation;
+
 template <typename T> struct component_type {
     static inline ecs_component_t id = 0;
+    static inline uint64_t generation = 0;
 };
 
 template <typename T, typename = void> struct is_complete : std::false_type {};
@@ -1674,10 +1650,6 @@ template <typename T> consteval size_t sisizeof() {
     } else {
         return 0;
     }
-}
-
-template <typename T> static void ecs_cpp_set_component_id(ecs_component_t cid) {
-    detail::component_type<T>::id = cid;
 }
 
 template <typename T> static void value_ctor(void *ptr, uint32_t count) {
@@ -1755,11 +1727,13 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
     }
 }
 
-template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *world) {
+template <typename T> static ecs_component_t ecs_cpp_component_id() {
     ecs_component_t &cid = detail::component_type<T>::id;
+    uint64_t &generation = detail::component_type<T>::generation;
 
-    if (cid != 0) {
-        return cid;
+    if (generation != detail::world_generation) {
+        cid = 0;
+        generation = detail::world_generation;
     }
 
     static sireflect_struct_desc_t reflection = {
@@ -1788,7 +1762,7 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
         .struct_desc = &reflection,
     };
 
-    cid = ecs_component_init(world, &desc);
+    if (cid == 0) cid = ecs_component_init(&desc);
 
     return cid;
 }
@@ -1808,96 +1782,110 @@ template <typename T> static ecs_component_t ecs_cpp_component_id(ecs_world_t *w
 namespace ecs {
 
 class entity {
-    ecs_entity_t _entity;
-    ecs_world_t *_world;
+    ecs_entity_t _entity = 0;
 
   public:
-    static ecs::entity null() { return entity(nullptr, 0); }
+    entity() noexcept = default;
+    explicit entity(ecs_entity_t entity) noexcept : _entity(entity) {}
 
-    entity(ecs_world_t *world, ecs_entity_t entity) : _entity(entity), _world(world) {}
+    static entity create() noexcept { return entity(ecs_new()); }
+    static entity create(const char *name) {
+        entity value = create();
+        if (name != nullptr) {
+            value.set<Name>({ .value = strdup(name) });
+        }
+        return value;
+    }
 
+    static entity from(ecs_entity_t id) noexcept { return entity(id); }
+    static entity null() noexcept { return from(static_cast<ecs_entity_t>(0)); }
     [[nodiscard]] ecs_entity_t id() const noexcept { return _entity; }
+    operator ecs_entity_t() const noexcept { return _entity; }
 
     template <typename T> entity add() {
-        ecs_add_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world));
+        ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>());
         return *this;
     }
 
-    operator ecs_entity_t() const noexcept { return _entity; }
-
     entity abstract() {
-        ecs_add(_world, _entity, Abstract);
+        ecs_add(_entity, Abstract);
         return *this;
     }
 
     template <typename T> entity remove() {
-        ecs_remove_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world));
+        ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>());
         return *this;
     }
 
     template <typename T> [[nodiscard]] bool has() const {
-        return ecs_has_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world));
+        return ecs_has_cid(_entity, detail::ecs_cpp_component_id<T>());
     }
 
     template <typename T> entity set(const T &value) {
-        ecs_set_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world), &value);
+        ecs_set_cid(_entity, detail::ecs_cpp_component_id<T>(), &value);
         return *this;
     }
 
-    template <typename T>
-    entity set(T &&value)
-        requires(!std::is_lvalue_reference_v<T>)
-    {
+    template <typename T> entity set(T &&value) {
         using type = std::remove_cvref_t<T>;
-        ecs_move_cid(_world, _entity, detail::ecs_cpp_component_id<type>(_world), &value);
+        ecs_move_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
         return *this;
     }
 
     template <typename T> [[nodiscard]] T *try_get() {
-        return static_cast<T *>(
-            ecs_try_get_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world))
-        );
+        return static_cast<T *>(ecs_try_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
     }
 
     template <typename T> [[nodiscard]] T &get() {
-        return *static_cast<T *>(
-            ecs_get_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world))
-        );
+        return *static_cast<T *>(ecs_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
     }
 
-    bool is_alive() { return ecs_is_alive(_world, _entity); }
-
-    void kill() { ecs_kill(_world, _entity); }
+    [[nodiscard]] bool is_alive() const { return _entity != 0 && ecs_is_alive(_entity); }
+    void kill() { ecs_kill(_entity); }
 
     entity is_a(entity target) {
-        ecs_is_a(_world, _entity, target._entity);
+        ecs_is_a(_entity, target.id());
         return *this;
     }
 
-    bool is(entity target) { return ecs_is(_world, _entity, target._entity); }
+    template <typename T> entity is_a() {
+        ecs_is_a(_entity, ecs::entity::create<T>());
+        return *this;
+    }
+
+    entity is_a(ecs_entity_t target) {
+        ecs_is_a(_entity, target);
+        return *this;
+    }
+
+    [[nodiscard]] bool is(entity target) const { return ecs_is(_entity, target._entity); }
 
     entity child_of(entity parent) {
-        const ChildOf desc = { .target = parent._entity };
-        ecs_set_cid(_world, _entity, ecs_id(ChildOf), &desc);
+        ChildOf relation{ parent.id() };
+        ecs_set_cid(_entity, ecs_id(ChildOf), &relation);
         return *this;
     }
 
     entity enable() {
-        ecs_remove_cid(_world, _entity, ecs_id(Disabled));
+        ecs_remove(_entity, Disabled);
         return *this;
     }
 
     entity disable() {
-        ecs_add_cid(_world, _entity, ecs_id(Disabled));
+        ecs_add(_entity, Disabled);
         return *this;
     }
 
-    [[nodiscard]] bool is_enabled() const {
-        return !ecs_has_cid(_world, _entity, ecs_id(Disabled));
-    }
+    [[nodiscard]] bool is_enabled() const { return !has<Disabled>(); }
+    [[nodiscard]] bool is_disabled() const { return has<Disabled>(); }
 
-    [[nodiscard]] bool is_disabled() const {
-        return ecs_has_cid(_world, _entity, ecs_id(Disabled));
+    template <typename T> static entity create(const char *name = nullptr) {
+        static ecs_entity_t id = 0;
+        if (id == 0 || !ecs_is_alive(id)) {
+            const std::string generated = std::string(type_name<T>());
+            id = create(name ? name : generated.c_str()).id();
+        }
+        return from(id);
     }
 };
 
@@ -1910,36 +1898,29 @@ class entity {
 
 namespace ecs {
 
-class world;
-
 template <typename T> class module_ref {
-    ecs_world_t *_world = nullptr;
     ecs_module_id_t _id = 0;
 
   public:
     constexpr module_ref() noexcept = default;
-    constexpr module_ref(ecs_world_t *world, ecs_module_id_t id) noexcept
-        : _world(world), _id(id) {}
+    constexpr explicit module_ref(ecs_module_id_t id) noexcept : _id(id) {}
 
     [[nodiscard]] constexpr ecs_module_id_t id() const noexcept { return _id; }
     [[nodiscard]] constexpr explicit operator bool() const noexcept { return _id != 0; }
 
     void enable() const noexcept {
-        assert(_world != nullptr);
         assert(_id != 0);
-        ecs_module_enable(_world, _id);
+        ecs_module_enable(_id);
     }
 
     void disable() const noexcept {
-        assert(_world != nullptr);
         assert(_id != 0);
-        ecs_module_disable(_world, _id);
+        ecs_module_disable(_id);
     }
 
     [[nodiscard]] bool is_enabled() const noexcept {
-        assert(_world != nullptr);
         assert(_id != 0);
-        return ecs_module_is_enabled(_world, _id);
+        return ecs_module_is_enabled(_id);
     }
 };
 
@@ -1947,11 +1928,12 @@ namespace detail {
 
 template <typename T> struct module_type {
     static inline ecs_module_id_t id;
+    static inline uint64_t generation;
 };
 
 template <typename T>
-concept module_importable = requires(T module, ecs::world &world) {
-    { module.import(world) } -> std::same_as<void>;
+concept module_importable = requires(T module) {
+    { module.import() } -> std::same_as<void>;
 };
 
 template <typename T, typename... Args>
@@ -2039,6 +2021,7 @@ namespace detail {
 
 template <typename T> struct resource_type {
     static inline ecs_resource_t id;
+    static inline uint64_t generation;
 };
 
 template <typename T> struct is_res : std::false_type {};
@@ -2061,19 +2044,17 @@ struct no_resource {};
 
 } // namespace detail
 
-template <typename T> static ecs_resource_t ecs_cpp_resource_id(ecs_world_t *world) {
+template <typename T> static ecs_resource_t ecs_cpp_resource_id() {
     using type = std::remove_cv_t<T>;
     ecs_resource_t &rid = detail::resource_type<type>::id;
+    uint64_t &generation = detail::resource_type<type>::generation;
 
-    if (rid != 0 && ecs_resource_is_registered_rid(world, rid)) {
-        return rid;
+    if (generation != detail::world_generation) {
+        rid = 0;
+        generation = detail::world_generation;
     }
 
-    std::string name = std::string(type_name<type>());
-    rid = ecs_resource_find(world, name.c_str());
-    if (rid != 0) {
-        return rid;
-    }
+    static const std::string name = std::string(type_name<type>());
 
     ecs_resource_desc_t desc = {
         .name = name.c_str(),
@@ -2083,46 +2064,39 @@ template <typename T> static ecs_resource_t ecs_cpp_resource_id(ecs_world_t *wor
         .on_remove = nullptr,
     };
 
-    rid = ecs_resource_init(world, &desc);
+    if (rid == 0) rid = ecs_resource_init(&desc);
     return rid;
 }
 
-template <typename T> static ecs_resource_t ecs_cpp_try_resource_id(ecs_world_t *world) {
+template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {
     using type = std::remove_cv_t<T>;
     ecs_resource_t &rid = detail::resource_type<type>::id;
 
-    if (rid != 0 && ecs_resource_is_registered_rid(world, rid)) {
-        return rid;
-    }
-
-    std::string name = std::string(type_name<type>());
-    rid = ecs_resource_find(world, name.c_str());
-    return rid;
+    return detail::resource_type<type>::generation == detail::world_generation ? rid : 0;
 }
 
 namespace detail {
 
-template <typename Arg> inline auto make_resource_arg(ecs_world_t *world) {
+template <typename Arg> inline auto make_resource_arg() {
     if constexpr (is_res_v<Arg>) {
         using value_type = res_value_t<Arg>;
         using resource_type = std::remove_cv_t<value_type>;
 
-        ecs_resource_t id = ecs::ecs_cpp_resource_id<resource_type>(world);
-        return ecs::res<value_type>(static_cast<value_type *>(ecs_resource_rid(world, id)));
+        ecs_resource_t id = ecs_cpp_resource_id<resource_type>();
+        return ecs::res<value_type>(static_cast<value_type *>(ecs_resource_rid(id)));
     } else {
         return no_resource{};
     }
 }
 
 template <typename Args, std::size_t... Is>
-inline auto make_resources(ecs_world_t *world, std::index_sequence<Is...>) {
-    (void)world;
-    return std::tuple{ make_resource_arg<std::tuple_element_t<Is, Args>>(world)... };
+inline auto make_resources(std::index_sequence<Is...>) {
+    return std::tuple{ make_resource_arg<std::tuple_element_t<Is, Args>>()... };
 }
 
-template <typename Args> inline auto make_resources(ecs_world_t *world) {
+template <typename Args> inline auto make_resources() {
     constexpr std::size_t N = std::tuple_size_v<Args>;
-    return make_resources<Args>(world, std::make_index_sequence<N>{});
+    return make_resources<Args>(std::make_index_sequence<N>{});
 }
 
 } // namespace detail
@@ -2240,24 +2214,18 @@ inline void append_term(
 }
 
 template <typename... T>
-inline void append_terms(
-    ecs_world_t *world,
-    ecs_query_desc_t &desc,
-    uint16_t &term_index,
-    ecs_term_access_t access
-) {
-    (append_term(desc, term_index, ecs::detail::ecs_cpp_component_id<T>(world), access), ...);
+inline void append_terms(ecs_query_desc_t &desc, uint16_t &term_index, ecs_term_access_t access) {
+    (append_term(desc, term_index, ecs::detail::ecs_cpp_component_id<T>(), access), ...);
 }
 
 template <typename Args>
-inline void
-append_callback_terms(ecs_world_t *world, ecs_query_desc_t &desc, uint16_t &term_index) {
+inline void append_callback_terms(ecs_query_desc_t &desc, uint16_t &term_index) {
     for_each_type<Args>([&]<typename T>() {
         if constexpr (!is_res_v<T>) {
             append_term(
                 desc,
                 term_index,
-                ecs::detail::ecs_cpp_component_id<std::remove_cvref_t<T>>(world),
+                ecs::detail::ecs_cpp_component_id<std::remove_cvref_t<T>>(),
                 term_access<T>()
             );
         }
@@ -2266,24 +2234,20 @@ append_callback_terms(ecs_world_t *world, ecs_query_desc_t &desc, uint16_t &term
 
 } // namespace detail
 
-class world;
-
 class query {
   protected:
     ecs_query_desc_t desc{};
     uint16_t term_index = 0;
-    ecs_world_t *_world = nullptr;
-
   public:
-    explicit query(ecs_world_t *world) noexcept : _world(world) {}
+    query() = default;
 
     template <typename... T> query &require() {
-        detail::append_terms<T...>(_world, desc, term_index, EcsFilter);
+        detail::append_terms<T...>(desc, term_index, EcsFilter);
         return *this;
     }
 
     template <typename... T> query &exclude() {
-        detail::append_terms<T...>(_world, desc, term_index, EcsNot);
+        detail::append_terms<T...>(desc, term_index, EcsNot);
         return *this;
     }
 
@@ -2292,7 +2256,7 @@ class query {
         return *this;
     }
 
-    ecs_query_id_t build() { return ecs_query_init(_world, &desc); }
+    ecs_query_id_t build() { return ecs_query_init(&desc); }
 
     template <typename F> void each(F &&func) {
         using args = typename function_traits<std::remove_reference_t<F>>::args_tuple;
@@ -2301,27 +2265,27 @@ class query {
             "query callbacks must read at least one component"
         );
 
-        detail::append_callback_terms<args>(_world, desc, term_index);
+        detail::append_callback_terms<args>(desc, term_index);
 
         ecs_query_id_t qid = this->build();
-        auto resources = detail::make_resources<args>(_world);
-        ecs_iter_t it = ecs_query_iter(_world, qid);
+        auto resources = detail::make_resources<args>();
+        ecs_iter_t it = ecs_query_iter(qid);
         while (ecs_iter_next(&it)) {
             detail::run_batch<F, args>(func, &it, resources);
         }
-        ecs_query_fini(_world, qid);
+        ecs_query_fini(qid);
     }
 
     entity first() {
         ecs_query_id_t qid = this->build();
-        ecs_iter_t it = ecs_query_iter(_world, qid);
+        ecs_iter_t it = ecs_query_iter(qid);
         ecs_entity_t result = 0;
         while (ecs_iter_next(&it)) {
             result = it.entities[0];
             break;
         }
-        ecs_query_fini(_world, qid);
-        return result ? entity(_world, result) : entity::null();
+        ecs_query_fini(qid);
+        return result ? entity(result) : entity::null();
     }
 };
 
@@ -2344,27 +2308,38 @@ namespace detail {
 
 template <typename T> struct event_type {
     static inline ecs_event_t id = UINT16_MAX;
+    static inline uint64_t generation;
 };
 
-template <typename T> static ecs_event_t ecs_cpp_event_id(ecs_world_t *world) {
+template <typename T> static ecs_event_t ecs_cpp_event_id() {
     ecs_event_t &eid = detail::event_type<T>::id;
+    uint64_t &generation = detail::event_type<T>::generation;
 
-    if (eid != UINT16_MAX) {
-        return eid;
+    if (generation != detail::world_generation) {
+        eid = UINT16_MAX;
+        generation = detail::world_generation;
     }
 
-    eid = ecs_event(world);
+    if constexpr (std::is_same_v<T, OnAdd>) {
+        eid = EcsOnAdd;
+    } else if constexpr (std::is_same_v<T, OnSet>) {
+        eid = EcsOnSet;
+    } else if constexpr (std::is_same_v<T, OnRemove>) {
+        eid = EcsOnRemove;
+    } else {
+        if (eid == UINT16_MAX) {
+            eid = ecs_event();
+        } else {
+            ecs_event_register(&eid);
+        }
+    }
 
     return eid;
 }
 
-template <typename T> static void ecs_cpp_set_event_id(ecs_event_t eid) {
-    detail::event_type<T>::id = eid;
-}
-
 template <typename T> decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event) {
     using raw = std::remove_cvref_t<T>;
-    void *ptr = ecs_get_cid(event->world, event->entity, ecs_cpp_component_id<raw>(event->world));
+    void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
 
     if constexpr (std::is_const_v<std::remove_reference_t<T>>) {
         return *static_cast<const raw *>(ptr);
@@ -2388,7 +2363,7 @@ decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event, Resources &reso
 template <typename Func, typename Args, std::size_t... Is>
 void ecs_cpp_observer_callback_impl(ecs_observer_event_t *event, std::index_sequence<Is...>) {
     Func func{};
-    auto resources = make_resources<Args>(event->world);
+    auto resources = make_resources<Args>();
     std::invoke(func, ecs_cpp_observer_arg<Args, Is>(event, resources)...);
 }
 
@@ -2405,7 +2380,7 @@ void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
 template <typename T> class observer : public query {
 
   public:
-    observer(ecs_world_t *world) : query(world) {};
+    observer() = default;
 
     template <typename F> ecs_observer_id_t each(F &&) {
         using callback = std::remove_cvref_t<F>;
@@ -2421,15 +2396,15 @@ template <typename T> class observer : public query {
             "observer callbacks must read at least one component"
         );
 
-        ecs::detail::append_callback_terms<args>(_world, this->desc, term_index);
+        ecs::detail::append_callback_terms<args>(this->desc, term_index);
 
         ecs_observer_desc_t observer_desc = {
-            .on = detail::ecs_cpp_event_id<T>(_world),
+            .on = detail::ecs_cpp_event_id<T>(),
             .query = this->desc,
             .callback = detail::ecs_cpp_observer_callback<callback, args>,
         };
 
-        return ecs_observer_init(_world, &observer_desc);
+        return ecs_observer_init(&observer_desc);
     }
 };
 
@@ -2443,7 +2418,7 @@ namespace detail {
 
 template <typename Callback, typename Args> static void system_callback(ecs_iter_t *it) {
     Callback &callback = *reinterpret_cast<Callback *>(it->user_data);
-    auto resources = make_resources<Args>(it->world);
+    auto resources = make_resources<Args>();
     if constexpr (component_arg_count<Args>() == 0) {
         std::apply(callback, resources);
     } else {
@@ -2462,7 +2437,7 @@ class system : protected query {
     ecs_phase_t _phase = EcsOnUpdate;
 
   public:
-    system(ecs_world_t *_world, const char *name) : query(_world), name(name) {}
+    explicit system(const char *name = "unnamed") : name(name) {}
 
     template <typename... T> system &require() {
         query::require<T...>();
@@ -2482,7 +2457,7 @@ class system : protected query {
     template <typename F> ecs_system_id_t each(F &&func) {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
-        detail::append_callback_terms<args>(_world, desc, term_index);
+        detail::append_callback_terms<args>(desc, term_index);
         callback *state = new callback(std::forward<F>(func));
 
         ecs_system_desc_t system_desc = {
@@ -2494,196 +2469,122 @@ class system : protected query {
             .phase = _phase,
         };
 
-        return ecs_system_init(_world, &system_desc);
+        return ecs_system_init(&system_desc);
     }
 };
 
 } // namespace ecs
 
 #include <cstring>
+#include <string>
+#include <utility>
 
 namespace ecs {
 
-enum class world_ownership : uint8_t {
-    owned,
-    borrowed,
-};
+inline void init_cpp_state() {
+    detail::world_generation++;
+    detail::component_type<Disabled>::id = ecs_id(Disabled);
+    detail::component_type<Name>::id = ecs_id(Name);
+    detail::component_type<ChildOf>::id = ecs_id(ChildOf);
+    detail::component_type<Abstract>::id = ecs_id(Abstract);
+    detail::component_type<Disabled>::generation = detail::world_generation;
+    detail::component_type<Name>::generation = detail::world_generation;
+    detail::component_type<ChildOf>::generation = detail::world_generation;
+    detail::component_type<Abstract>::generation = detail::world_generation;
+}
+inline void init() {
+    ecs_init();
+    init_cpp_state();
+}
+inline void init(const ecs_world_feat_desc_t &features) {
+    ecs_init_w_features(&features);
+    init_cpp_state();
+}
+inline void fini() { ecs_fini(); }
+inline void quit() { ecs_quit(); }
+inline bool progress() { return ecs_progress(); }
 
-class world {
-    ecs_world_t *_world = nullptr;
-    world_ownership _ownership = world_ownership::owned;
+template <typename T> inline ecs_component_t component() {
+    return detail::ecs_cpp_component_id<T>();
+}
 
-    template <typename T> static void import_module_callback(ecs_world_t *raw, const void *ptr) {
-        ecs::world world = ecs::world::borrow(raw);
-        T &module = *static_cast<T *>(const_cast<void *>(ptr));
-        module.import(world);
+template <typename T> inline void set_resource(T &&value) {
+    using type = std::remove_cvref_t<T>;
+    if constexpr (std::is_lvalue_reference_v<T>) {
+        ecs_set_resource_rid(ecs_cpp_resource_id<type>(), &value);
+    } else {
+        ecs_move_resource_rid(ecs_cpp_resource_id<type>(), &value);
     }
+}
 
-    template <typename T> [[nodiscard]] module_ref<T> import_module(T &module) const {
-        static const std::string name = std::string(type_name<T>());
+template <typename T> [[nodiscard]] inline T &resource() {
+    using type = std::remove_cv_t<T>;
+    return *static_cast<T *>(ecs_resource_rid(ecs_cpp_resource_id<type>()));
+}
 
-        ecs_module_desc_t desc = {
-            .name = name.c_str(),
-            .id = &detail::module_type<T>::id,
-            .import = import_module_callback<T>,
-            .desc = &module,
-            .desc_size = sizeof(T),
-            .disabled = false,
-        };
+template <typename T> [[nodiscard]] inline T *try_resource() {
+    using type = std::remove_cv_t<T>;
+    ecs_resource_t id = ecs_cpp_try_resource_id<type>();
+    return id ? static_cast<T *>(ecs_try_resource_rid(id)) : nullptr;
+}
 
-        return module_ref<T>(_world, ecs_module_init(_world, &desc));
+template <typename T> [[nodiscard]] inline bool has_resource() {
+    using type = std::remove_cv_t<T>;
+    ecs_resource_t id = ecs_cpp_try_resource_id<type>();
+    return id && ecs_has_resource_rid(id);
+}
+
+template <typename T> inline void remove_resource() {
+    using type = std::remove_cv_t<T>;
+    ecs_resource_t id = ecs_cpp_try_resource_id<type>();
+    if (id) {
+        ecs_remove_resource_rid(id);
     }
+}
 
-  public:
-    world() noexcept : _world(nullptr), _ownership(world_ownership::owned) {
-        ecs_world_feat_desc_t desc{ .rest = true, .target_fps = 120 };
-        _world = ecs_init_w_features(&desc);
-        detail::ecs_cpp_set_component_id<Disabled>(ecs_id(Disabled));
-        detail::ecs_cpp_set_component_id<Name>(ecs_id(Name));
-        detail::ecs_cpp_set_component_id<ChildOf>(ecs_id(ChildOf));
-        detail::ecs_cpp_set_event_id<OnAdd>(EcsOnAdd);
-        detail::ecs_cpp_set_event_id<OnSet>(EcsOnSet);
-        detail::ecs_cpp_set_event_id<OnRemove>(EcsOnRemove);
+template <typename T> static void import_module_callback(const void *ptr) {
+    T &module = *static_cast<T *>(const_cast<void *>(ptr));
+    module.import();
+}
+
+template <typename T> [[nodiscard]] module_ref<T> import(T module) {
+    if (detail::module_type<T>::generation != detail::world_generation) {
+        detail::module_type<T>::id = 0;
+        detail::module_type<T>::generation = detail::world_generation;
     }
-    explicit world(ecs_world_t *world) noexcept
-        : _world(world), _ownership(world_ownership::owned) {}
-    world(ecs_world_t *world, world_ownership ownership) noexcept
-        : _world(world), _ownership(ownership) {}
+    static const std::string name = std::string(type_name<T>());
+    ecs_module_desc_t desc = {
+        .name = name.c_str(),
+        .id = &detail::module_type<T>::id,
+        .import = import_module_callback<T>,
+        .desc = &module,
+        .desc_size = sizeof(T),
+        .disabled = false,
+    };
+    return module_ref<T>(ecs_module_init(&desc));
+}
 
-    [[nodiscard]] static world borrow(ecs_world_t *world) noexcept {
-        return ecs::world(world, world_ownership::borrowed);
-    }
+template <typename T, typename... Args>
+    requires detail::module_importable<T> && detail::module_list_initializable<T, Args...>
+[[nodiscard]] module_ref<T> import(Args &&...args) {
+    return import(T{ std::forward<Args>(args)... });
+}
 
-    world(const world &) = delete;
-    world &operator=(const world &) = delete;
+template <typename T> [[nodiscard]] module_ref<T> module() noexcept {
+    return module_ref<T>(detail::module_type<T>::generation == detail::world_generation
+                             ? detail::module_type<T>::id
+                             : 0);
+}
 
-    world(world &&other) noexcept
-        : _world(std::exchange(other._world, nullptr)),
-          _ownership(std::exchange(other._ownership, world_ownership::owned)) {}
+template <typename T> [[nodiscard]] observer<T> observe() { return observer<T>(); }
 
-    world &operator=(world &&other) noexcept {
-        if (this != &other) {
-            reset();
-            _world = std::exchange(other._world, nullptr);
-            _ownership = std::exchange(other._ownership, world_ownership::owned);
-        }
+template <typename T> [[nodiscard]] ecs_event_t event() { return detail::ecs_cpp_event_id<T>(); }
 
-        return *this;
-    }
+template <typename T> inline void trigger(entity value, const void *data = nullptr) {
+    ecs_observer_trigger(value.id(), event<T>(), data);
+}
 
-    ~world() noexcept { reset(); }
-
-    [[nodiscard]] ecs_world_t *c_ptr() const noexcept { return _world; }
-
-    operator ecs_world_t *() const noexcept { return _world; }
-
-    void reset(
-        ecs_world_t *world = nullptr,
-        world_ownership ownership = world_ownership::owned
-    ) noexcept {
-        if (_world != nullptr && _ownership == world_ownership::owned) {
-            ecs_fini(_world);
-        }
-
-        _world = world;
-        _ownership = ownership;
-    }
-
-    template <typename T> ecs_component_t component() const {
-        return detail::ecs_cpp_component_id<T>(_world);
-    }
-
-    template <typename T> void set_resource(T &&value) const {
-        using type = std::remove_cvref_t<T>;
-        if constexpr (std::is_lvalue_reference_v<T>) {
-            ecs_set_resource_rid(_world, ecs_cpp_resource_id<type>(_world), &value);
-        } else {
-            ecs_move_resource_rid(_world, ecs_cpp_resource_id<type>(_world), &value);
-        }
-    }
-
-    template <typename T> [[nodiscard]] T &resource() const {
-        using type = std::remove_cv_t<T>;
-        return *static_cast<T *>(ecs_resource_rid(_world, ecs_cpp_resource_id<type>(_world)));
-    }
-
-    template <typename T> [[nodiscard]] T *try_resource() const {
-        using type = std::remove_cv_t<T>;
-        ecs_resource_t id = ecs_cpp_try_resource_id<type>(_world);
-        return id ? static_cast<T *>(ecs_try_resource_rid(_world, id)) : nullptr;
-    }
-
-    template <typename T> [[nodiscard]] bool has_resource() const {
-        using type = std::remove_cv_t<T>;
-        ecs_resource_t id = ecs_cpp_try_resource_id<type>(_world);
-        return id && ecs_has_resource_rid(_world, id);
-    }
-
-    template <typename T> void remove_resource() const {
-        using type = std::remove_cv_t<T>;
-        ecs_resource_t id = ecs_cpp_try_resource_id<type>(_world);
-        if (id) {
-            ecs_remove_resource_rid(_world, id);
-        }
-    }
-
-    template <typename T>
-        requires detail::module_importable<T>
-    module_ref<T> import(T module) const {
-        return import_module<T>(module);
-    }
-
-    template <typename T, typename... Args>
-        requires detail::module_importable<T> && detail::module_list_initializable<T, Args...>
-    module_ref<T> import(Args &&...args) const {
-        T module{ std::forward<Args>(args)... };
-        return import_module<T>(module);
-    }
-
-    template <typename T> [[nodiscard]] module_ref<T> module() const noexcept {
-        return module_ref<T>(_world, ecs_module_find(_world, &detail::module_type<T>::id));
-    }
-
-    template <typename T> observer<T> observe() const { return observer<T>(_world); }
-
-    template <typename T> [[nodiscard]] ecs_event_t event() const {
-        return detail::ecs_cpp_event_id<T>(_world);
-    }
-
-    template <typename T> void trigger(ecs::entity entity, const void *data = nullptr) const {
-        ecs_observer_trigger(_world, entity.id(), event<T>(), data);
-    }
-
-    ecs::entity entity(const char *name = nullptr) const {
-        auto e = ecs::entity(_world, ecs_new(_world));
-        if (name) {
-            e.set<Name>({ .value = strdup(name) });
-        }
-        return e;
-    }
-
-    ecs::entity entity(ecs_entity_t id) const { return ecs::entity(_world, id); }
-
-    template <typename T> ecs::entity entity(const char *name = nullptr) {
-        static ecs_entity_t id = 0;
-        if (id == 0 || ecs_is_alive(_world, id)) {
-            if (name == nullptr) {
-                const std::string type = std::string(type_name<T>());
-                return this->entity(type.c_str());
-            }
-            return this->entity(name);
-        }
-        return ecs::entity(_world, id);
-    }
-
-    [[nodiscard]] ecs::entity instantiate(ecs::entity e) { return this->entity().is_a(e); }
-    [[nodiscard]] ecs::query query() const { return ecs::query(_world); }
-    [[nodiscard]] ecs::system system(const char *name = "unamed") const {
-        return ecs::system(_world, name);
-    }
-
-    bool progress() { return ecs_progress(_world); }
-};
+inline entity instantiate(entity base) { return entity::create().is_a(base); }
 
 } // namespace ecs
 

@@ -9,31 +9,27 @@
 #define ECS_ADD_PLAN_MAX_COMPONENTS 64
 
 ecs_type_t ecs_type_with_requirements(
-    ecs_world_t *world,
-    ecs_table_t *from_table,
+        ecs_table_t *from_table,
     ecs_component_t cid,
     const ecs_component_record_t *crec
 );
 
 #ifndef NDEBUG
 bool ecs_component_requires(
-    const ecs_world_t *world,
-    ecs_component_t component,
+    const     ecs_component_t component,
     ecs_component_t require
 );
 #endif
 
 void ecs_migrate_to_table(
-    ecs_world_t *world,
-    ecs_entity_record_t *record,
+        ecs_entity_record_t *record,
     ecs_entity_t entity,
     ecs_table_t *from_table,
     uint16_t to_table_id
 );
 
 void *ecs_migrate_add(
-    ecs_world_t *world,
-    ecs_entity_record_t *record,
+        ecs_entity_record_t *record,
     ecs_entity_t entity,
     ecs_table_t *from_table,
     ecs_table_t *to_table,
@@ -42,8 +38,7 @@ void *ecs_migrate_add(
 );
 
 void *ecs_migrate_add_many(
-    ecs_world_t *world,
-    ecs_entity_record_t *record,
+        ecs_entity_record_t *record,
     ecs_entity_t entity,
     ecs_table_t *from_table,
     ecs_table_t *to_table,
@@ -52,8 +47,7 @@ void *ecs_migrate_add_many(
 );
 
 void ecs_migrate_remove(
-    ecs_world_t *world,
-    ecs_entity_record_t *record,
+        ecs_entity_record_t *record,
     ecs_entity_t entity,
     ecs_table_t *from_table,
     uint16_t to_table_id,

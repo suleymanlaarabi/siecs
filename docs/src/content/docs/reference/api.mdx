@@ -14,7 +14,6 @@ Include the public API with:
 
 | Type | Meaning |
 | --- | --- |
-| `ecs_world_t` | Opaque world object. |
 | `ecs_entity_t` | Entity handle. |
 | `ecs_component_t` | Component id. |
 | `ecs_query_id_t` | Query id. |
@@ -22,14 +21,14 @@ Include the public API with:
 | `ecs_event_t` | Observer event id. |
 | `ecs_module_id_t` | Module id. Id `0` is reserved. |
 | `ecs_observer_id_t` | Observer id. |
-| `ecs_iter_t` | Query iterator. Users may read `world` and `count`. |
+| `ecs_iter_t` | Query iterator. Users may read `count`. |
 
 ## World
 
 ```c
-ecs_world_t *ecs_init(void);
-ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features);
-void ecs_fini(ecs_world_t *world);
+void ecs_init(void);
+void ecs_init_w_features(const ecs_world_feat_desc_t *features);
+void ecs_fini(void);
 ```
 
 ```c
@@ -49,7 +48,7 @@ caps `ecs_progress()` by sleeping for the remaining frame time when non-zero.
 ```c
 ECS_COMPONENT_DECLARE(Name, { /* fields */ });
 ECS_COMPONENT_DEFINE(Name);
-ECS_COMPONENT_REGISTER(world, Name);
+ECS_COMPONENT_REGISTER(Name);
 ```
 
 Built-in components declared by the public API:
@@ -69,8 +68,8 @@ disabled entities by mentioning `Disabled` explicitly, for example with
 component add, set, or remove operations from normal application code.
 
 ```c
-#define ecs_component(world, ...)
-ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc);
+#define ecs_component(...)
+ecs_component_t ecs_component_init(const ecs_component_desc_t *desc);
 ```
 
 ```c
@@ -88,11 +87,11 @@ typedef struct {
 ## Entities
 
 ```c
-ecs_entity_t ecs_new(ecs_world_t *world);
-bool ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity);
-void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
-void ecs_is_a(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target);
-bool ecs_is(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target);
+ecs_entity_t ecs_new(void);
+bool ecs_is_alive(const ecs_entity_t entity);
+void ecs_kill(ecs_entity_t entity);
+void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
+bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
 ```
 
 `ecs_is_a()` creates an inheritance link from `entity` to `target`.
@@ -103,33 +102,33 @@ bool ecs_is(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target);
 Typed helpers:
 
 ```c
-ecs_add(world, entity, Component);
-ecs_remove(world, entity, Component);
-ecs_has(world, entity, Component);
-ecs_get(world, entity, Component);
-ecs_try_get(world, entity, Component);
-ecs_set(world, entity, Component, { /* value */ });
+ecs_add(entity, Component);
+ecs_remove(entity, Component);
+ecs_has(entity, Component);
+ecs_get(entity, Component);
+ecs_try_get(entity, Component);
+ecs_set(entity, Component, { /* value */ });
 ```
 
 Id-based functions:
 
 ```c
-void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
-void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
-bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
-void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
-void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid);
-void ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
+void ecs_add_cid(ecs_entity_t entity, ecs_component_t id);
+void ecs_remove_cid(ecs_entity_t entity, ecs_component_t id);
+bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id);
+void *ecs_get_cid(ecs_entity_t entity, ecs_component_t id);
+void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
+void ecs_set_cid(ecs_entity_t entity, ecs_component_t id, const void *data);
 ```
 
 `ecs_get()` and `ecs_get_cid()` assume the component exists. Use
 `ecs_try_get()` or `ecs_try_get_cid()` when absence is valid.
 
 ```c
-void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require);
+void ecs_with(ecs_component_t component, ecs_component_t require);
 ```
 
-`ecs_with(world, component, require)` declares that adding `component` also adds
+`ecs_with(component, require)` declares that adding `component` also adds
 `require` first.
 
 Requirement cycles are invalid and are asserted in debug builds when declared.
@@ -142,34 +141,32 @@ ids, separate from component ids.
 ```c
 ECS_RESOURCE_DECLARE(Time, { float dt; });
 ECS_RESOURCE_DEFINE(Time);
-ECS_RESOURCE_REGISTER(world, Time);
+ECS_RESOURCE_REGISTER(Time);
 ECS_RESOURCE(Time, { float dt; });
 ```
 
 Typed helpers:
 
 ```c
-ecs_set_resource(world, Time, { .dt = 0.016f });
-ecs_get_resource(world, Time);
-ecs_get_resource_read(world, Time);
-ecs_try_get_resource(world, Time);
-ecs_try_get_resource_read(world, Time);
-ecs_has_resource(world, Time);
-ecs_remove_resource(world, Time);
+ecs_set_resource(Time, { .dt = 0.016f });
+ecs_get_resource(Time);
+ecs_get_resource_read(Time);
+ecs_try_get_resource(Time);
+ecs_try_get_resource_read(Time);
+ecs_has_resource(Time);
+ecs_remove_resource(Time);
 ```
 
 Id-based functions:
 
 ```c
-ecs_resource_t ecs_resource_register(ecs_world_t *world, ecs_resource_t *id, const ecs_resource_desc_t *desc);
-ecs_resource_t ecs_resource_init(ecs_world_t *world, const ecs_resource_desc_t *desc);
-ecs_resource_t ecs_resource_find(ecs_world_t *world, const char *name);
-bool ecs_resource_is_registered_rid(const ecs_world_t *world, ecs_resource_t id);
-void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);
-void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id);
-void *ecs_try_resource_rid(ecs_world_t *world, ecs_resource_t id);
-bool ecs_has_resource_rid(const ecs_world_t *world, ecs_resource_t id);
-void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id);
+ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc);
+ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
+void ecs_set_resource_rid(ecs_resource_t id, const void *data);
+void *ecs_resource_rid(ecs_resource_t id);
+void *ecs_try_resource_rid(ecs_resource_t id);
+bool ecs_has_resource_rid(const ecs_resource_t id);
+void ecs_remove_resource_rid(ecs_resource_t id);
 ```
 
 `ecs_resource_rid()` asserts if the resource is absent. Use
@@ -180,9 +177,9 @@ the world is destroyed.
 ## Queries
 
 ```c
-#define ecs_query(world, ...)
-uint32_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *query);
-void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
+#define ecs_query(...)
+uint32_t ecs_query_init(const ecs_query_desc_t *query);
+void ecs_query_fini(ecs_query_id_t qid);
 ```
 
 ```c
@@ -229,7 +226,7 @@ contains a term for `Disabled`. The implicit term is used by plain queries,
 systems, and observers.
 
 ```c
-ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);
+ecs_iter_t ecs_query_iter(ecs_query_id_t query_id);
 bool ecs_iter_next(ecs_iter_t *it);
 void *ecs_field(ecs_iter_t *it, uint16_t field_index);
 ```
@@ -243,13 +240,12 @@ void *ecs_field(ecs_iter_t *it, uint16_t field_index);
 ```
 
 ```c
-#define ecs_observer(world, ...)
-ecs_event_t ecs_event(ecs_world_t *world);
-ecs_observer_id_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc);
-void ecs_observer_enable(ecs_world_t *world, ecs_observer_id_t id);
-void ecs_observer_disable(ecs_world_t *world, ecs_observer_id_t id);
+#define ecs_observer(...)
+ecs_event_t ecs_event(void);
+ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc);
+void ecs_observer_enable(ecs_observer_id_t id);
+void ecs_observer_disable(ecs_observer_id_t id);
 void ecs_observer_trigger(
-    ecs_world_t *world,
     ecs_entity_t entity,
     ecs_event_t event,
     const void *trigger_data
@@ -258,7 +254,6 @@ void ecs_observer_trigger(
 
 ```c
 typedef struct {
-    ecs_world_t *world;
     ecs_entity_t entity;
     ecs_event_t event;
     uintptr_t user_data;
@@ -290,7 +285,7 @@ ECS_MODULE_IMPORT(world, Name, { /* settings */ });
 parameters and declares `Name_import()`.
 
 ```c
-typedef void (*ecs_module_import_t)(ecs_world_t *world, const void *desc);
+typedef void (*ecs_module_import_t)(const void *desc);
 
 typedef struct {
     const char *name;
@@ -303,12 +298,12 @@ typedef struct {
 ```
 
 ```c
-#define ecs_module(world, ...)
-ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *desc);
-ecs_module_id_t ecs_module_find(ecs_world_t *world, const ecs_module_id_t *id);
-void ecs_module_enable(ecs_world_t *world, ecs_module_id_t module);
-void ecs_module_disable(ecs_world_t *world, ecs_module_id_t module);
-bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t module);
+#define ecs_module(...)
+ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc);
+ecs_module_id_t ecs_module_find(const ecs_module_id_t *id);
+void ecs_module_enable(ecs_module_id_t module);
+void ecs_module_disable(ecs_module_id_t module);
+bool ecs_module_is_enabled(const ecs_module_id_t module);
 ```
 
 Modules capture components, systems, and observers registered during import.
@@ -362,13 +357,13 @@ typedef struct {
 ```
 
 ```c
-#define ecs_system(world, ...)
-ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc);
-bool ecs_progress(ecs_world_t *world);
-void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase);
-void ecs_run_system(ecs_world_t *world, ecs_system_id_t system);
-void ecs_system_enable(ecs_world_t *world, ecs_system_id_t system);
-void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system);
+#define ecs_system(...)
+ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc);
+bool ecs_progress(void);
+void ecs_run_phase(ecs_phase_t phase);
+void ecs_run_system(ecs_system_id_t system);
+void ecs_system_enable(ecs_system_id_t system);
+void ecs_system_disable(ecs_system_id_t system);
 ```
 
 `after` declares systems that must run first in the same phase. System id `0` is
@@ -388,12 +383,12 @@ static void Move(ecs_iter_t *it) {
     }
 }
 
-ecs_system(world, {
+ecs_system({
     .name = "Move",
     .phase = EcsOnUpdate,
     .query = { .terms = { ecs_inout(Position), ecs_in(Velocity) } },
     .callback = Move,
 });
 
-ecs_progress(world);
+ecs_progress();
 ```

@@ -33,16 +33,16 @@ static inline double time_ms(void) {
     } while (0)
 
 #define BENCH_SETUP(name, ...)                                                                     \
-    void bench_##name(ecs_world_t *world) {                                                        \
+    void bench_##name(void) {                                                                      \
         const char *__bench_id = #name;                                                            \
         __VA_ARGS__                                                                                \
     }
 
 #define run_bench(id)                                                                              \
     {                                                                                              \
-        ecs_world_t *world = ecs_init();                                                           \
-        bench_##id(world);                                                                         \
-        ecs_fini(world);                                                                           \
+        ecs_init();                                                                                \
+        bench_##id();                                                                              \
+        ecs_fini();                                                                                \
     }
 
 #ifdef __cplusplus

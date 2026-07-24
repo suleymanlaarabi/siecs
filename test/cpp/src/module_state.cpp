@@ -2,9 +2,9 @@
 #include <test.h>
 
 void module_state_lookup_empty(void) {
-    ecs::world world;
+    ecs_test_scope _ecs_scope;
 
-    auto module = world.module<cpp_physics>();
+    auto module = ecs::module<cpp_physics>();
 
     test_assert(!module);
     test_int(0, module.id());
@@ -13,38 +13,17 @@ void module_state_lookup_empty(void) {
 void module_state_enable(void) {
     reset_module_state();
 
-    ecs::world world;
-    world.import<cpp_physics>();
-    create_module_entity(world, 10, 2);
+    ecs_test_scope _ecs_scope;
+    (void)ecs::import<cpp_physics>();
+    create_module_entity(10, 2);
 
-    world.module<cpp_physics>().disable();
-    test_false(world.module<cpp_physics>().is_enabled());
-    world.progress();
+    ecs::module<cpp_physics>().disable();
+    test_false(ecs::module<cpp_physics>().is_enabled());
+    ecs::progress();
     test_int(0, module_system_calls);
 
-    world.module<cpp_physics>().enable();
-    test_true(world.module<cpp_physics>().is_enabled());
-    world.progress();
+    ecs::module<cpp_physics>().enable();
+    test_true(ecs::module<cpp_physics>().is_enabled());
+    ecs::progress();
     test_int(1, module_system_calls);
-}
-
-void module_state_reimport_after_world_fini(void) {
-    reset_module_state();
-
-    {
-        ecs::world first_world;
-        auto first = first_world.import<cpp_physics_with_props>({ .gravity = 1 });
-
-        test_assert(static_cast<bool>(first));
-        test_true(first_world.module<cpp_physics_with_props>().is_enabled());
-    }
-
-    test_int(0, ecs::detail::module_type<cpp_physics_with_props>::id);
-
-    ecs::world second_world;
-    auto second = second_world.import<cpp_physics_with_props>({ .gravity = 2 });
-
-    test_assert(static_cast<bool>(second));
-    test_int(2, module_import_calls);
-    test_true(second_world.module<cpp_physics_with_props>().is_enabled());
 }

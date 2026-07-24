@@ -28,7 +28,7 @@ static void on_position_set(ecs_observer_event_t *event) {
     (void)value;
 }
 
-ecs_observer(world, {
+ecs_observer({
     .on = EcsOnSet,
     .query = { .terms = { ecs_in(Position) } },
     .callback = on_position_set,
@@ -39,7 +39,7 @@ ecs_observer(world, {
 <TabItem label="C++">
 
 ```cpp
-world.observe<ecs::OnSet>().each([](const Position &position) {
+ecs::observe<ecs::OnSet>().each([](const Position &position) {
     std::cout << position.x << '\n';
 });
 ```
@@ -54,7 +54,7 @@ the built-in `Disabled` component do not trigger matching observers unless the
 observer query mentions `Disabled` explicitly:
 
 ```c
-ecs_observer(world, {
+ecs_observer({
     .on = EcsOnSet,
     .query = {
         .terms = { ecs_in(Position), ecs_filter(Disabled) },
@@ -69,7 +69,7 @@ Observers are enabled by default. Use `ecs_observer_disable()` and
 Pass small callback context through `user_data` when needed:
 
 ```c
-ecs_observer(world, {
+ecs_observer({
     .on = EcsOnSet,
     .query.terms = { ecs_in(Position) },
     .callback = on_position_set,
@@ -83,7 +83,6 @@ The callback receives `ecs_observer_event_t`:
 
 ```c
 typedef struct {
-    ecs_world_t *world;
     ecs_entity_t entity;
     ecs_event_t event;
     uintptr_t user_data;
@@ -110,9 +109,9 @@ Component hooks run before matching observers for the same operation.
 Create custom event ids with `ecs_event()`:
 
 ```c
-ecs_event_t Damaged = ecs_event(world);
+ecs_event_t Damaged = ecs_event();
 
-ecs_observer(world, {
+ecs_observer({
     .on = Damaged,
     .query = {
         .terms = { ecs_in(Health) },
@@ -121,5 +120,5 @@ ecs_observer(world, {
 });
 
 Damage damage = { .amount = 10 };
-ecs_observer_trigger(world, entity, Damaged, &damage);
+ecs_observer_trigger(entity, Damaged, &damage);
 ```

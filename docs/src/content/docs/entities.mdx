@@ -10,13 +10,13 @@ Entities are `ecs_entity_t` handles created by a world.
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_entity_t entity = ecs_new(world);
+ecs_entity_t entity = ecs_new();
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
-ecs::world world;
-auto entity = world.entity();
+ecs::init();
+auto entity = ecs::entity::create();
 ```
 </TabItem>
 </Tabs>
@@ -33,7 +33,7 @@ Use `ecs_is_alive()` with entity handles created by the same world:
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-if (ecs_is_alive(world, entity)) {
+if (ecs_is_alive(entity)) {
     /* entity can be used */
 }
 ```
@@ -55,7 +55,7 @@ that did not come from the world is not supported.
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_kill(world, entity);
+ecs_kill(entity);
 ```
 </TabItem>
 <TabItem label="C++">

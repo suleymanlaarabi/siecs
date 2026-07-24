@@ -107,12 +107,10 @@ static void on_component_add_observer(ecs_observer_event_t *event) {
 }
 
 static void hook_component_on_add(
-    ecs_world_t *world,
-    ecs_entity_t entity,
+        ecs_entity_t entity,
     ecs_component_t component,
     void *ptr
 ) {
-    (void)world;
     (void)entity;
 
     const HookComponent *value = ptr;
@@ -123,13 +121,11 @@ static void hook_component_on_add(
 }
 
 static void hook_component_on_set(
-    ecs_world_t *world,
-    ecs_entity_t entity,
+        ecs_entity_t entity,
     ecs_component_t component,
     const void *new_value,
     void *current_value
 ) {
-    (void)world;
     (void)entity;
     (void)component;
 
@@ -143,12 +139,10 @@ static void hook_component_on_set(
 }
 
 static void hook_component_on_remove(
-    ecs_world_t *world,
-    ecs_entity_t entity,
+        ecs_entity_t entity,
     ecs_component_t component,
     void *ptr
 ) {
-    (void)world;
     (void)entity;
 
     const HookComponent *value = ptr;
@@ -169,8 +163,7 @@ ECS_COMPONENT_DEFINE(RequiredA);
 ECS_COMPONENT_DEFINE(RequiredB);
 
 static void register_many_tag_and_data_components(
-    ecs_world_t *world,
-    ecs_component_t tags[15],
+        ecs_component_t tags[15],
     ecs_component_t data[15],
     char tag_names[15][32],
     char data_names[15][32]
@@ -179,28 +172,27 @@ static void register_many_tag_and_data_components(
         snprintf(tag_names[i], 32, "ManyTag%d", i);
         snprintf(data_names[i], 32, "ManyData%d", i);
 
-        tags[i] = ecs_component(world, { .name = tag_names[i] });
-        data[i] = ecs_component(world, { .name = data_names[i], .size = sizeof(int) });
+        tags[i] = ecs_component({ .name = tag_names[i] });
+        data[i] = ecs_component({ .name = data_names[i], .size = sizeof(int) });
     }
 }
 
 static void
-set_many_data(ecs_world_t *world, ecs_entity_t entity, ecs_component_t data[15], int base) {
+set_many_data(ecs_entity_t entity, ecs_component_t data[15], int base) {
     for (uint32_t i = 0; i < 15; i++) {
         int value = base + (int)i;
-        ecs_set_cid(world, entity, data[i], &value);
+        ecs_set_cid(entity, data[i], &value);
     }
 }
 
-static void add_many_tags(ecs_world_t *world, ecs_entity_t entity, ecs_component_t tags[15]) {
+static void add_many_tags(ecs_entity_t entity, ecs_component_t tags[15]) {
     for (uint32_t i = 0; i < 15; i++) {
-        ecs_add_cid(world, entity, tags[i]);
+        ecs_add_cid(entity, tags[i]);
     }
 }
 
 static void expect_many_data(
-    ecs_world_t *world,
-    ecs_entity_t entity,
+        ecs_entity_t entity,
     ecs_component_t data[15],
     int base,
     uint32_t skip
@@ -209,58 +201,58 @@ static void expect_many_data(
         if (i == skip) {
             continue;
         }
-        test_int(base + (int)i, *(int *)ecs_get_cid(world, entity, data[i]));
+        test_int(base + (int)i, *(int *)ecs_get_cid(entity, data[i]));
     }
 }
 
-static void expect_many_tags(ecs_world_t *world, ecs_entity_t entity, ecs_component_t tags[15]) {
+static void expect_many_tags(ecs_entity_t entity, ecs_component_t tags[15]) {
     for (uint32_t i = 0; i < 15; i++) {
-        test_true(ecs_has_cid(world, entity, tags[i]));
+        test_true(ecs_has_cid(entity, tags[i]));
     }
 }
 
 void component_reflection(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, Position);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(Position);
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, Position, { 10, 20 });
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, Position, { 10, 20 });
 
-    void *data = ecs_get(world, entity, Position);
+    void *data = ecs_get(entity, Position);
     char *result = sijson_to_json_ptr(Position, data);
 
     test_str("{\"x\":10,\"y\":20}", result);
     free(result);
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void component_on_add(void) {
     reset_hook_state();
 
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, HookComponent);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(HookComponent);
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_add(world, entity, HookComponent);
+    ecs_entity_t entity = ecs_new();
+    ecs_add(entity, HookComponent);
 
     test_assert(hook_add_calls == 1);
     test_assert(hook_set_calls == 0);
     test_true(hook_add_saw_zero);
     test_true(hook_add_saw_component);
-    test_int(0, ecs_get(world, entity, HookComponent)->value);
+    test_int(0, ecs_get(entity, HookComponent)->value);
 
-    ecs_add(world, entity, HookComponent);
+    ecs_add(entity, HookComponent);
     test_assert(hook_add_calls == 1);
 
-    ecs_set(world, entity, HookComponent, { 5 });
+    ecs_set(entity, HookComponent, { 5 });
     test_assert(hook_add_calls == 1);
     test_assert(hook_set_calls == 1);
     test_assert(hook_last_set_old == 0);
     test_assert(hook_last_set_new == 5);
-    test_int(5, ecs_get(world, entity, HookComponent)->value);
+    test_int(5, ecs_get(entity, HookComponent)->value);
 
-    ecs_entity_t implicit_entity = ecs_new(world);
-    ecs_set(world, implicit_entity, HookComponent, { 9 });
+    ecs_entity_t implicit_entity = ecs_new();
+    ecs_set(implicit_entity, HookComponent, { 9 });
 
     test_assert(hook_add_calls == 2);
     test_assert(hook_set_calls == 2);
@@ -269,22 +261,22 @@ void component_on_add(void) {
     test_true(hook_add_saw_zero);
     test_assert(hook_last_set_old == 0);
     test_assert(hook_last_set_new == 9);
-    test_int(9, ecs_get(world, implicit_entity, HookComponent)->value);
+    test_int(9, ecs_get(implicit_entity, HookComponent)->value);
 
-    ecs_remove(world, implicit_entity, HookComponent);
+    ecs_remove(implicit_entity, HookComponent);
     test_assert(hook_remove_calls == 1);
     test_true(hook_remove_saw_component);
     test_assert(hook_last_set_order < hook_last_remove_order);
     test_int(9, hook_last_remove_value);
-    test_false(ecs_has(world, implicit_entity, HookComponent));
+    test_false(ecs_has(implicit_entity, HookComponent));
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void component_lifecycle_ops_are_used_for_storage_moves(void) {
     lifecycle_reset();
 
-    ecs_world_t *world = ecs_init();
+    ecs_init();
     ecs_type_ops_t ops = {
         .ctor = lifecycle_ctor,
         .dtor = lifecycle_dtor,
@@ -292,122 +284,121 @@ void component_lifecycle_ops_are_used_for_storage_moves(void) {
         .move_ctor = lifecycle_move_ctor,
     };
     ecs_component_t a =
-        ecs_component(world, { .name = "LifecycleA", .size = sizeof(int), .ops = ops });
+        ecs_component({ .name = "LifecycleA", .size = sizeof(int), .ops = ops });
     ecs_component_t b =
-        ecs_component(world, { .name = "LifecycleB", .size = sizeof(int), .ops = ops });
+        ecs_component({ .name = "LifecycleB", .size = sizeof(int), .ops = ops });
 
-    ecs_entity_t entity = ecs_new(world);
+    ecs_entity_t entity = ecs_new();
     int value = 10;
-    ecs_set_cid(world, entity, a, &value);
+    ecs_set_cid(entity, a, &value);
     test_int(1, lifecycle_ctor_calls);
     test_int(1, lifecycle_copy_calls);
-    test_int(10, *(int *)ecs_get_cid(world, entity, a));
+    test_int(10, *(int *)ecs_get_cid(entity, a));
 
-    ecs_add_cid(world, entity, b);
+    ecs_add_cid(entity, b);
     test_int(2, lifecycle_ctor_calls);
     test_int(1, lifecycle_move_ctor_calls);
-    test_int(10, *(int *)ecs_get_cid(world, entity, a));
+    test_int(10, *(int *)ecs_get_cid(entity, a));
 
-    ecs_remove_cid(world, entity, b);
+    ecs_remove_cid(entity, b);
     test_int(2, lifecycle_move_ctor_calls);
     test_int(1, lifecycle_dtor_calls);
 
-    ecs_remove_cid(world, entity, a);
+    ecs_remove_cid(entity, a);
     test_int(2, lifecycle_dtor_calls);
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void component_deferred_set_overwrite_preserves_lifecycle(void) {
     lifecycle_reset();
 
-    ecs_world_t *world = ecs_init();
+    ecs_init();
     ecs_type_ops_t ops = {
         .dtor = lifecycle_dtor,
         .copy_ctor = lifecycle_copy,
     };
     ecs_component_t component =
-        ecs_component(world, { .name = "DeferredLifecycle", .size = sizeof(int), .ops = ops });
-    ecs_entity_t entity = ecs_new(world);
+        ecs_component({ .name = "DeferredLifecycle", .size = sizeof(int), .ops = ops });
+    ecs_entity_t entity = ecs_new();
     int first = 10;
     int second = 20;
 
-    ecs_defer_begin(world);
-    ecs_set_cid(world, entity, component, &first);
-    ecs_set_cid(world, entity, component, &second);
+    ecs_defer_begin();
+    ecs_set_cid(entity, component, &first);
+    ecs_set_cid(entity, component, &second);
     test_int(2, lifecycle_copy_calls);
     test_int(1, lifecycle_dtor_calls);
-    ecs_defer_end(world);
+    ecs_defer_end();
 
-    test_int(20, *(int *)ecs_get_cid(world, entity, component));
+    test_int(20, *(int *)ecs_get_cid(entity, component));
     test_int(1, lifecycle_dtor_calls);
-    ecs_fini(world);
+    ecs_fini();
     test_int(2, lifecycle_dtor_calls);
 }
 
 void component_add_with_required_uses_current_table_edge(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, RequiredA);
-    ECS_COMPONENT_REGISTER(world, RequiredB);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RequiredA);
+    ECS_COMPONENT_REGISTER(RequiredB);
 
-    ecs_with(world, ecs_id(RequiredA), ecs_id(RequiredB));
+    ecs_with(ecs_id(RequiredA), ecs_id(RequiredB));
 
-    ecs_entity_t warmup = ecs_new(world);
-    ecs_add(world, warmup, RequiredA);
+    ecs_entity_t warmup = ecs_new();
+    ecs_add(warmup, RequiredA);
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_add(world, entity, RequiredA);
+    ecs_entity_t entity = ecs_new();
+    ecs_add(entity, RequiredA);
 
-    test_true(ecs_has(world, entity, RequiredA));
-    test_true(ecs_has(world, entity, RequiredB));
+    test_true(ecs_has(entity, RequiredA));
+    test_true(ecs_has(entity, RequiredB));
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void component_add_with_required_uses_cached_multi_add_edge(void) {
     reset_hook_state();
 
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, RequiredA);
-    ECS_COMPONENT_REGISTER(world, RequiredB);
-    ECS_COMPONENT_REGISTER(world, HookComponent);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RequiredA);
+    ECS_COMPONENT_REGISTER(RequiredB);
+    ECS_COMPONENT_REGISTER(HookComponent);
 
-    ecs_with(world, ecs_id(RequiredA), ecs_id(RequiredB));
-    ecs_with(world, ecs_id(RequiredB), ecs_id(HookComponent));
+    ecs_with(ecs_id(RequiredA), ecs_id(RequiredB));
+    ecs_with(ecs_id(RequiredB), ecs_id(HookComponent));
 
-    ecs_entity_t first = ecs_new(world);
-    ecs_add(world, first, RequiredA);
+    ecs_entity_t first = ecs_new();
+    ecs_add(first, RequiredA);
 
-    ecs_entity_t second = ecs_new(world);
-    ecs_add(world, second, RequiredA);
+    ecs_entity_t second = ecs_new();
+    ecs_add(second, RequiredA);
 
-    test_true(ecs_has(world, first, RequiredA));
-    test_true(ecs_has(world, first, RequiredB));
-    test_true(ecs_has(world, first, HookComponent));
-    test_true(ecs_has(world, second, RequiredA));
-    test_true(ecs_has(world, second, RequiredB));
-    test_true(ecs_has(world, second, HookComponent));
-    test_int(0, ecs_get(world, first, HookComponent)->value);
-    test_int(0, ecs_get(world, second, HookComponent)->value);
+    test_true(ecs_has(first, RequiredA));
+    test_true(ecs_has(first, RequiredB));
+    test_true(ecs_has(first, HookComponent));
+    test_true(ecs_has(second, RequiredA));
+    test_true(ecs_has(second, RequiredB));
+    test_true(ecs_has(second, HookComponent));
+    test_int(0, ecs_get(first, HookComponent)->value);
+    test_int(0, ecs_get(second, HookComponent)->value);
     test_assert(hook_add_calls == 2);
     test_true(hook_add_saw_component);
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void component_add_with_required_emits_each_on_add_once(void) {
     reset_hook_state();
 
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, RequiredA);
-    ECS_COMPONENT_REGISTER(world, RequiredB);
-    ECS_COMPONENT_REGISTER(world, HookComponent);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RequiredA);
+    ECS_COMPONENT_REGISTER(RequiredB);
+    ECS_COMPONENT_REGISTER(HookComponent);
 
-    ecs_with(world, ecs_id(RequiredA), ecs_id(RequiredB));
-    ecs_with(world, ecs_id(RequiredB), ecs_id(HookComponent));
+    ecs_with(ecs_id(RequiredA), ecs_id(RequiredB));
+    ecs_with(ecs_id(RequiredB), ecs_id(HookComponent));
 
     ecs_observer(
-        world,
         {
             .on = EcsOnAdd,
             .query = { .terms = { ecs_in(RequiredA) } },
@@ -415,116 +406,115 @@ void component_add_with_required_emits_each_on_add_once(void) {
         }
     );
 
-    ecs_add(world, ecs_new(world), RequiredA);
+    ecs_add(ecs_new(), RequiredA);
 
     test_int(3, add_observer_calls);
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void component_add_with_required_accepts_sixteen_component_plan(void) {
-    ecs_world_t *world = ecs_init();
+    ecs_init();
     ecs_component_t components[16];
     char names[16][32];
 
     for (uint32_t i = 0; i < 16; i++) {
         snprintf(names[i], 32, "RequiredChain%d", i);
-        components[i] = ecs_component(world, { .name = names[i] });
+        components[i] = ecs_component({ .name = names[i] });
     }
 
     for (uint32_t i = 1; i < 16; i++) {
-        ecs_with(world, components[i], components[i - 1]);
+        ecs_with(components[i], components[i - 1]);
     }
 
-    ecs_entity_t first = ecs_new(world);
-    ecs_add_cid(world, first, components[15]);
+    ecs_entity_t first = ecs_new();
+    ecs_add_cid(first, components[15]);
 
-    ecs_entity_t second = ecs_new(world);
-    ecs_add_cid(world, second, components[15]);
+    ecs_entity_t second = ecs_new();
+    ecs_add_cid(second, components[15]);
 
     for (uint32_t i = 0; i < 16; i++) {
-        test_true(ecs_has_cid(world, first, components[i]));
-        test_true(ecs_has_cid(world, second, components[i]));
+        test_true(ecs_has_cid(first, components[i]));
+        test_true(ecs_has_cid(second, components[i]));
     }
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void component_add_zeroes_reused_component_slot(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, HookComponent);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(HookComponent);
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, HookComponent, { 42 });
-    ecs_remove(world, entity, HookComponent);
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, HookComponent, { 42 });
+    ecs_remove(entity, HookComponent);
 
     reset_hook_state();
 
-    ecs_entity_t reused = ecs_new(world);
-    ecs_add(world, reused, HookComponent);
+    ecs_entity_t reused = ecs_new();
+    ecs_add(reused, HookComponent);
 
     test_assert(hook_add_calls == 1);
     test_true(hook_add_saw_zero);
-    test_int(0, ecs_get(world, reused, HookComponent)->value);
+    test_int(0, ecs_get(reused, HookComponent)->value);
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void component_many_tags_preserve_data_on_migration(void) {
-    ecs_world_t *world = ecs_init();
+    ecs_init();
     ecs_component_t tags[15];
     ecs_component_t data[15];
     char tag_names[15][32];
     char data_names[15][32];
-    register_many_tag_and_data_components(world, tags, data, tag_names, data_names);
+    register_many_tag_and_data_components(tags, data, tag_names, data_names);
 
-    ecs_entity_t entity = ecs_new(world);
-    set_many_data(world, entity, data, 100);
+    ecs_entity_t entity = ecs_new();
+    set_many_data(entity, data, 100);
 
     for (uint32_t i = 0; i < 14; i++) {
-        ecs_add_cid(world, entity, tags[i]);
+        ecs_add_cid(entity, tags[i]);
     }
-    expect_many_data(world, entity, data, 100, UINT32_MAX);
+    expect_many_data(entity, data, 100, UINT32_MAX);
 
-    ecs_add_cid(world, entity, tags[14]);
-    expect_many_data(world, entity, data, 100, UINT32_MAX);
-    expect_many_tags(world, entity, tags);
+    ecs_add_cid(entity, tags[14]);
+    expect_many_data(entity, data, 100, UINT32_MAX);
+    expect_many_tags(entity, tags);
 
-    ecs_remove_cid(world, entity, tags[3]);
-    test_false(ecs_has_cid(world, entity, tags[3]));
-    expect_many_data(world, entity, data, 100, UINT32_MAX);
+    ecs_remove_cid(entity, tags[3]);
+    test_false(ecs_has_cid(entity, tags[3]));
+    expect_many_data(entity, data, 100, UINT32_MAX);
 
-    ecs_remove_cid(world, entity, data[7]);
-    test_false(ecs_has_cid(world, entity, data[7]));
-    expect_many_data(world, entity, data, 100, 7);
+    ecs_remove_cid(entity, data[7]);
+    test_false(ecs_has_cid(entity, data[7]));
+    expect_many_data(entity, data, 100, 7);
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void component_many_tags_swap_remove_preserves_moved_entity_data(void) {
-    ecs_world_t *world = ecs_init();
+    ecs_init();
     ecs_component_t tags[15];
     ecs_component_t data[15];
     char tag_names[15][32];
     char data_names[15][32];
-    register_many_tag_and_data_components(world, tags, data, tag_names, data_names);
+    register_many_tag_and_data_components(tags, data, tag_names, data_names);
 
-    ecs_entity_t first = ecs_new(world);
-    ecs_entity_t moved = ecs_new(world);
+    ecs_entity_t first = ecs_new();
+    ecs_entity_t moved = ecs_new();
 
-    set_many_data(world, first, data, 100);
-    add_many_tags(world, first, tags);
+    set_many_data(first, data, 100);
+    add_many_tags(first, tags);
 
-    set_many_data(world, moved, data, 200);
-    add_many_tags(world, moved, tags);
+    set_many_data(moved, data, 200);
+    add_many_tags(moved, tags);
 
-    ecs_remove_cid(world, first, tags[0]);
+    ecs_remove_cid(first, tags[0]);
 
-    expect_many_data(world, moved, data, 200, UINT32_MAX);
-    expect_many_tags(world, moved, tags);
+    expect_many_data(moved, data, 200, UINT32_MAX);
+    expect_many_tags(moved, tags);
 
     ecs_query_id_t query = ecs_query(
-        world,
         {
             .terms = {
                 (ecs_query_term_t){ data[0], EcsIn },
@@ -532,15 +522,15 @@ void component_many_tags_swap_remove_preserves_moved_entity_data(void) {
             },
         }
     );
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_iter_t it = ecs_query_iter(query);
     test_true(ecs_iter_next(&it));
     test_int(1, it.count);
     int *values = ecs_field(&it, 0);
     test_int(200, values[0]);
     test_false(ecs_iter_next(&it));
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 static ecs_type_t component_type_with_position_and_base(ecs_entity_t base) {
@@ -552,29 +542,29 @@ static ecs_type_t component_type_with_position_and_base(ecs_entity_t base) {
 }
 
 void component_same_local_type_with_different_base_creates_different_tables(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, Position);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(Position);
 
-    ecs_entity_t base_a = ecs_new(world);
-    ecs_entity_t base_b = ecs_new(world);
+    ecs_entity_t base_a = ecs_new();
+    ecs_entity_t base_b = ecs_new();
 
     uint16_t table_a =
-        ecs_table_index_get_or_create(world, component_type_with_position_and_base(base_a));
+        ecs_table_index_get_or_create(component_type_with_position_and_base(base_a));
     uint16_t table_b =
-        ecs_table_index_get_or_create(world, component_type_with_position_and_base(base_b));
+        ecs_table_index_get_or_create(component_type_with_position_and_base(base_b));
 
     test_assert(table_a != table_b);
-    test_assert(base_a == world->table_index.tables[table_a].type.base);
-    test_assert(base_b == world->table_index.tables[table_b].type.base);
+    test_assert(base_a == ecs_world->table_index.tables[table_a].type.base);
+    test_assert(base_b == ecs_world->table_index.tables[table_b].type.base);
 
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void component_type_add_remove_preserves_base(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, Position);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(Position);
 
-    ecs_entity_t base = ecs_new(world);
+    ecs_entity_t base = ecs_new();
     ecs_type_t empty = { .base = base };
     ecs_type_t added = ecs_type_with_add(&empty, ecs_id(Position));
     ecs_type_t removed = ecs_type_with_remove_at(&added, 0);
@@ -584,41 +574,41 @@ void component_type_add_remove_preserves_base(void) {
 
     ecs_type_fini(&added);
     ecs_type_fini(&removed);
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void component_table_resolves_recursive_base_components(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, Position);
-    ECS_COMPONENT_REGISTER(world, Velocity);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(Position);
+    ECS_COMPONENT_REGISTER(Velocity);
 
-    ecs_entity_t grandparent = ecs_new(world);
-    ecs_set(world, grandparent, Position, { 10, 20 });
-    ecs_add(world, grandparent, Abstract);
+    ecs_entity_t grandparent = ecs_new();
+    ecs_set(grandparent, Position, { 10, 20 });
+    ecs_add(grandparent, Abstract);
 
-    ecs_entity_t parent = ecs_new(world);
-    ecs_set(world, parent, Velocity, { 30, 40 });
-    ecs_is_a(world, parent, grandparent);
-    ecs_add(world, parent, Abstract);
+    ecs_entity_t parent = ecs_new();
+    ecs_set(parent, Velocity, { 30, 40 });
+    ecs_is_a(parent, grandparent);
+    ecs_add(parent, Abstract);
 
-    ecs_entity_t child = ecs_new(world);
-    ecs_is_a(world, child, parent);
+    ecs_entity_t child = ecs_new();
+    ecs_is_a(child, parent);
 
-    const ecs_entity_record_t *child_record = ecs_get_record(world, child);
-    const ecs_table_t *child_table = ecs_get_table(world, child_record->table_id);
+    const ecs_entity_record_t *child_record = ecs_get_record(child);
+    const ecs_table_t *child_table = ecs_get_table(child_record->table_id);
     bool position_shared = false;
     bool velocity_shared = false;
-    Position *position = ecs_table_field(world, child_table, ecs_id(Position), &position_shared);
-    Velocity *velocity = ecs_table_field(world, child_table, ecs_id(Velocity), &velocity_shared);
+    Position *position = ecs_table_field(child_table, ecs_id(Position), &position_shared);
+    Velocity *velocity = ecs_table_field(child_table, ecs_id(Velocity), &velocity_shared);
 
-    test_true(ecs_has(world, child, Position));
-    test_true(ecs_has(world, child, Velocity));
+    test_true(ecs_has(child, Position));
+    test_true(ecs_has(child, Velocity));
     test_true(position_shared);
     test_true(velocity_shared);
-    test_assert(position == ecs_get(world, grandparent, Position));
-    test_assert(velocity == ecs_get(world, parent, Velocity));
+    test_assert(position == ecs_get(grandparent, Position));
+    test_assert(velocity == ecs_get(parent, Velocity));
     test_int(10, position->x);
     test_int(40, velocity->y);
 
-    ecs_fini(world);
+    ecs_fini();
 }

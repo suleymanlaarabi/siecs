@@ -9,7 +9,6 @@
 #include <stdint.h>
 
 typedef struct {
-    bool registered;
     uint16_t *required;
     uint32_t required_count;
     uint32_t size;

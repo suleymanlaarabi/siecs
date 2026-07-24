@@ -23,12 +23,11 @@ void ecs_component_index_register(
 
     ecs_component_record_t *existing =
         ecs_vec_get_mut(&index->components, id, ecs_component_record_t);
-    if (existing->registered) {
+    if (existing->tables.data) {
         return;
     }
 
     ecs_component_record_t record = {
-        .registered = true,
         .required = NULL,
         .required_count = 0,
         .size = size,
@@ -54,9 +53,6 @@ void ecs_component_index_fini(ecs_component_index_t *index) {
     ecs_component_record_t *records = index->components.data;
 
     for (uint32_t i = 0; i < index->components.size; i++) {
-        if (!records[i].registered) {
-            continue;
-        }
         free(records[i].required);
         ecs_vec_fini(&records[i].tables);
     }

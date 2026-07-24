@@ -14,10 +14,10 @@ An entity can inherit from one base. That base must be marked with the built-in
 ## Create A Base
 
 ```c
-ecs_entity_t base = ecs_new(world);
-ecs_set(world, base, Health, { 100 });
-ecs_set(world, base, Speed, { 4.0f });
-ecs_add(world, base, Abstract);
+ecs_entity_t base = ecs_new();
+ecs_set(base, Health, { 100 });
+ecs_set(base, Speed, { 4.0f });
+ecs_add(base, Abstract);
 ```
 
 Create the base with `ecs_new()`, add the default component values, then add
@@ -35,11 +35,11 @@ components directly.
 Create another entity and link it to the abstract base with `ecs_is_a()`:
 
 ```c
-ecs_entity_t instance = ecs_new(world);
-ecs_is_a(world, instance, base);
+ecs_entity_t instance = ecs_new();
+ecs_is_a(instance, base);
 ```
 
-`ecs_is_a(world, instance, base)` moves `instance` to an archetype table whose
+`ecs_is_a(instance, base)` moves `instance` to an archetype table whose
 type records `base` as its inheritance target. Local component data already on
 the instance is kept.
 
@@ -56,12 +56,12 @@ Inherited components are shared from the base. If the base owns `Health` and the
 instance does not, read-only queries can still see `Health` on the instance:
 
 ```c
-ecs_entity_t base = ecs_new(world);
-ecs_set(world, base, Health, { 100 });
-ecs_add(world, base, Abstract);
+ecs_entity_t base = ecs_new();
+ecs_set(base, Health, { 100 });
+ecs_add(base, Abstract);
 
-ecs_entity_t instance = ecs_new(world);
-ecs_is_a(world, instance, base);
+ecs_entity_t instance = ecs_new();
+ecs_is_a(instance, base);
 ```
 
 In this example, `instance` inherits `Health` from `base`. The inherited value is
@@ -73,19 +73,19 @@ inherit it read the same shared value.
 Add or set a component on the instance to override the inherited value:
 
 ```c
-ecs_set(world, instance, Health, { 75 });
+ecs_set(instance, Health, { 75 });
 ```
 
 After this, `instance` owns its own `Health`. Queries read the instance value
 instead of the base value, and writes affect only the instance:
 
 ```c
-const Health *base_health = ecs_get(world, base, Health);
-const Health *instance_health = ecs_get(world, instance, Health);
+const Health *base_health = ecs_get(base, Health);
+const Health *instance_health = ecs_get(instance, Health);
 ```
 
 Local components are independent from inherited components. Adding
-`ecs_set(world, instance, Mana, { 20 })` does not change the base, and changing
+`ecs_set(instance, Mana, { 20 })` does not change the base, and changing
 the base does not rewrite components already owned by instances.
 
 ## Inheritance Checks
@@ -93,7 +93,7 @@ the base does not rewrite components already owned by instances.
 Use `ecs_is()` to test inheritance:
 
 ```c
-if (ecs_is(world, instance, base)) {
+if (ecs_is(instance, base)) {
     /* instance inherits from base */
 }
 ```
@@ -106,11 +106,11 @@ Queries can match inherited components for read-only terms. A query with
 `ecs_in(Health)` matches an instance that inherits `Health` from its base:
 
 ```c
-ecs_query_id_t q = ecs_query(world, {
+ecs_query_id_t q = ecs_query({
     .terms = { ecs_in(Health) },
 });
 
-ecs_iter_t it = ecs_query_iter(world, q);
+ecs_iter_t it = ecs_query_iter(q);
 while (ecs_iter_next(&it)) {
     Health *health = ecs_field(&it, 0);
 
@@ -148,7 +148,7 @@ Writable terms do not match shared inherited data. A query with
 `ecs_inout(Health)` only matches entities that own `Health` locally:
 
 ```c
-ecs_query_id_t q = ecs_query(world, {
+ecs_query_id_t q = ecs_query({
     .terms = { ecs_inout(Health) },
 });
 ```
@@ -160,7 +160,7 @@ matches and the query writes to the instance-owned value.
 Optional writable terms also ignore inherited shared values:
 
 ```c
-ecs_query_id_t q = ecs_query(world, {
+ecs_query_id_t q = ecs_query({
     .terms = { ecs_inout_optional(Health) },
 });
 ```
@@ -174,7 +174,7 @@ Queries can be restricted to entities that inherit from a base with
 `ecs_query_desc_t.is_a`:
 
 ```c
-ecs_query_id_t q = ecs_query(world, {
+ecs_query_id_t q = ecs_query({
     .is_a = base,
     .terms = { ecs_in(Position) },
 });
@@ -190,14 +190,14 @@ and `Player` inherits from `Character`, a query with `.is_a = Character` matches
 Use inheritance for shared defaults, then override only the values that differ:
 
 ```c
-ecs_entity_t enemy = ecs_new(world);
-ecs_set(world, enemy, Health, { 100 });
-ecs_set(world, enemy, Speed, { 2.5f });
-ecs_add(world, enemy, Abstract);
+ecs_entity_t enemy = ecs_new();
+ecs_set(enemy, Health, { 100 });
+ecs_set(enemy, Speed, { 2.5f });
+ecs_add(enemy, Abstract);
 
-ecs_entity_t boss = ecs_new(world);
-ecs_is_a(world, boss, enemy);
-ecs_set(world, boss, Health, { 500 });
+ecs_entity_t boss = ecs_new();
+ecs_is_a(boss, enemy);
+ecs_set(boss, Health, { 500 });
 ```
 
 `boss` inherits `Speed` from `enemy`, but owns its own `Health`.

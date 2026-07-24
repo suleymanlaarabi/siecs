@@ -115,24 +115,18 @@ inline void append_term(
 }
 
 template <typename... T>
-inline void append_terms(
-    ecs_world_t *world,
-    ecs_query_desc_t &desc,
-    uint16_t &term_index,
-    ecs_term_access_t access
-) {
-    (append_term(desc, term_index, ecs::detail::ecs_cpp_component_id<T>(world), access), ...);
+inline void append_terms(ecs_query_desc_t &desc, uint16_t &term_index, ecs_term_access_t access) {
+    (append_term(desc, term_index, ecs::detail::ecs_cpp_component_id<T>(), access), ...);
 }
 
 template <typename Args>
-inline void
-append_callback_terms(ecs_world_t *world, ecs_query_desc_t &desc, uint16_t &term_index) {
+inline void append_callback_terms(ecs_query_desc_t &desc, uint16_t &term_index) {
     for_each_type<Args>([&]<typename T>() {
         if constexpr (!is_res_v<T>) {
             append_term(
                 desc,
                 term_index,
-                ecs::detail::ecs_cpp_component_id<std::remove_cvref_t<T>>(world),
+                ecs::detail::ecs_cpp_component_id<std::remove_cvref_t<T>>(),
                 term_access<T>()
             );
         }
@@ -141,24 +135,20 @@ append_callback_terms(ecs_world_t *world, ecs_query_desc_t &desc, uint16_t &term
 
 } // namespace detail
 
-class world;
-
 class query {
   protected:
     ecs_query_desc_t desc{};
     uint16_t term_index = 0;
-    ecs_world_t *_world = nullptr;
-
   public:
-    explicit query(ecs_world_t *world) noexcept : _world(world) {}
+    query() = default;
 
     template <typename... T> query &require() {
-        detail::append_terms<T...>(_world, desc, term_index, EcsFilter);
+        detail::append_terms<T...>(desc, term_index, EcsFilter);
         return *this;
     }
 
     template <typename... T> query &exclude() {
-        detail::append_terms<T...>(_world, desc, term_index, EcsNot);
+        detail::append_terms<T...>(desc, term_index, EcsNot);
         return *this;
     }
 
@@ -167,7 +157,7 @@ class query {
         return *this;
     }
 
-    ecs_query_id_t build() { return ecs_query_init(_world, &desc); }
+    ecs_query_id_t build() { return ecs_query_init(&desc); }
 
     template <typename F> void each(F &&func) {
         using args = typename function_traits<std::remove_reference_t<F>>::args_tuple;
@@ -176,27 +166,27 @@ class query {
             "query callbacks must read at least one component"
         );
 
-        detail::append_callback_terms<args>(_world, desc, term_index);
+        detail::append_callback_terms<args>(desc, term_index);
 
         ecs_query_id_t qid = this->build();
-        auto resources = detail::make_resources<args>(_world);
-        ecs_iter_t it = ecs_query_iter(_world, qid);
+        auto resources = detail::make_resources<args>();
+        ecs_iter_t it = ecs_query_iter(qid);
         while (ecs_iter_next(&it)) {
             detail::run_batch<F, args>(func, &it, resources);
         }
-        ecs_query_fini(_world, qid);
+        ecs_query_fini(qid);
     }
 
     entity first() {
         ecs_query_id_t qid = this->build();
-        ecs_iter_t it = ecs_query_iter(_world, qid);
+        ecs_iter_t it = ecs_query_iter(qid);
         ecs_entity_t result = 0;
         while (ecs_iter_next(&it)) {
             result = it.entities[0];
             break;
         }
-        ecs_query_fini(_world, qid);
-        return result ? entity(_world, result) : entity::null();
+        ecs_query_fini(qid);
+        return result ? entity(result) : entity::null();
     }
 };
 

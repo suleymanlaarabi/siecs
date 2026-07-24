@@ -12,7 +12,7 @@ Queries match archetype tables and return component arrays in batches.
 <TabItem label="C">
 
 ```c
-ecs_query_id_t moving = ecs_query(world, {
+ecs_query_id_t moving = ecs_query({
     .terms = { ecs_inout(Position), ecs_in(Velocity) },
 });
 ```
@@ -21,7 +21,7 @@ ecs_query_id_t moving = ecs_query(world, {
 <TabItem label="C++">
 
 ```cpp
-auto moving = world.query()
+auto moving = ecs::query()
     .require<Position>()
     .require<Velocity>();
 ```
@@ -55,7 +55,7 @@ Use `is_a` when a query should only match entities that inherit from a specific
 base entity:
 
 ```c
-ecs_query_id_t enemies = ecs_query(world, {
+ecs_query_id_t enemies = ecs_query({
     .is_a = enemy_base,
     .terms = { ecs_in(Position) },
 });
@@ -64,7 +64,7 @@ ecs_query_id_t enemies = ecs_query(world, {
 ## Iterate
 
 ```c
-ecs_iter_t it = ecs_query_iter(world, moving);
+ecs_iter_t it = ecs_query_iter(moving);
 
 while (ecs_iter_next(&it)) {
     Position *positions = ecs_field(&it, 0);
@@ -89,7 +89,7 @@ resources, not query terms. They are resolved from the world before table
 iteration and do not consume field indexes:
 
 ```cpp
-world.query().each([](ecs::res<const Time> time,
+ecs::query().each([](ecs::res<const Time> time,
                       Position &position,
                       const Velocity &velocity) {
     position.x += velocity.x * time->dt;
@@ -101,7 +101,7 @@ world.query().each([](ecs::res<const Time> time,
 Use `ecs_filter` when a component must exist but does not need to be returned:
 
 ```c
-ecs_query_id_t visible_positions = ecs_query(world, {
+ecs_query_id_t visible_positions = ecs_query({
     .terms = { ecs_inout(Position), ecs_filter(Visible) },
 });
 ```
@@ -109,7 +109,7 @@ ecs_query_id_t visible_positions = ecs_query(world, {
 Use `ecs_not` to skip entities with a component:
 
 ```c
-ecs_query_id_t active_positions = ecs_query(world, {
+ecs_query_id_t active_positions = ecs_query({
     .terms = { ecs_inout(Position), ecs_not(Disabled) },
 });
 ```
@@ -118,7 +118,7 @@ The `ecs_not(Disabled)` term is implicit for normal queries, so the previous
 example can usually be written as:
 
 ```c
-ecs_query_id_t active_positions = ecs_query(world, {
+ecs_query_id_t active_positions = ecs_query({
     .terms = { ecs_inout(Position) },
 });
 ```
@@ -126,7 +126,7 @@ ecs_query_id_t active_positions = ecs_query(world, {
 To match disabled entities, mention `Disabled` explicitly:
 
 ```c
-ecs_query_id_t disabled_positions = ecs_query(world, {
+ecs_query_id_t disabled_positions = ecs_query({
     .terms = { ecs_inout(Position), ecs_filter(Disabled) },
 });
 ```
@@ -137,11 +137,11 @@ Optional terms let one query handle tables where a component may or may not be
 present:
 
 ```c
-ecs_query_id_t q = ecs_query(world, {
+ecs_query_id_t q = ecs_query({
     .terms = { ecs_inout(Position), ecs_in_optional(Velocity) },
 });
 
-ecs_iter_t it = ecs_query_iter(world, q);
+ecs_iter_t it = ecs_query_iter(q);
 while (ecs_iter_next(&it)) {
     Position *positions = ecs_field(&it, 0);
     const Velocity *velocities = ecs_field(&it, 1);
@@ -162,7 +162,7 @@ The optional field pointer is either a component array for the whole batch or
 `ecs_query_each()` is useful for setup, tests, tools, and short one-off scans:
 
 ```c
-ecs_query_each(world, it, i, ecs_in(Position)) {
+ecs_query_each(it, i, ecs_in(Position)) {
     const Position *positions = ecs_field(&it, 0);
     (void)positions[i];
 }
@@ -174,7 +174,7 @@ persistent query once and iterate it with `ecs_query_iter()`.
 ## Destroy A Query
 
 ```c
-ecs_query_fini(world, moving);
+ecs_query_fini(moving);
 ```
 
 Destroy queries before destroying the world if you no longer need them. The

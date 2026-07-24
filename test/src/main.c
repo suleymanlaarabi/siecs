@@ -44,15 +44,6 @@ void rest_set_component_value_rejects_wrong_type(void);
 void rest_set_component_value_rejects_missing_component(void);
 void rest_set_component_value_rejects_non_reflected_component(void);
 
-// Testsuite 'multi_world'
-void multi_world_same_component_registered_in_two_worlds(void);
-void multi_world_worlds_keep_independent_component_storage(void);
-void multi_world_queries_only_see_their_world_tables(void);
-void multi_world_fini_one_world_keeps_other_world_valid(void);
-void multi_world_relations_remain_world_local(void);
-void multi_world_resource_ids_are_not_overwritten_by_other_world(void);
-void multi_world_typed_resource_macros_use_their_world_records(void);
-
 // Testsuite 'resource'
 void resource_set_get(void);
 void resource_try_get_missing(void);
@@ -112,14 +103,12 @@ void observer_enable(void);
 void observer_skips_disabled_by_default(void);
 void observer_can_match_disabled_when_requested(void);
 void observer_on_remove_runs_when_entity_is_killed(void);
-void observer_event_register_reserves_static_ids(void);
 
 // Testsuite 'module'
 void module_import_registers_runtime(void);
 void module_enable(void);
 void module_disabled_import(void);
 void module_double_import_is_noop(void);
-void module_reimport_after_world_fini(void);
 
 // Testsuite 'string'
 void string_init(void);
@@ -264,37 +253,6 @@ bake_test_case rest_testcases[] = {
     {
         "set_component_value_rejects_non_reflected_component",
         rest_set_component_value_rejects_non_reflected_component
-    }
-};
-
-bake_test_case multi_world_testcases[] = {
-    {
-        "same_component_registered_in_two_worlds",
-        multi_world_same_component_registered_in_two_worlds
-    },
-    {
-        "worlds_keep_independent_component_storage",
-        multi_world_worlds_keep_independent_component_storage
-    },
-    {
-        "queries_only_see_their_world_tables",
-        multi_world_queries_only_see_their_world_tables
-    },
-    {
-        "fini_one_world_keeps_other_world_valid",
-        multi_world_fini_one_world_keeps_other_world_valid
-    },
-    {
-        "relations_remain_world_local",
-        multi_world_relations_remain_world_local
-    },
-    {
-        "resource_ids_are_not_overwritten_by_other_world",
-        multi_world_resource_ids_are_not_overwritten_by_other_world
-    },
-    {
-        "typed_resource_macros_use_their_world_records",
-        multi_world_typed_resource_macros_use_their_world_records
     }
 };
 
@@ -510,10 +468,6 @@ bake_test_case observer_testcases[] = {
     {
         "on_remove_runs_when_entity_is_killed",
         observer_on_remove_runs_when_entity_is_killed
-    },
-    {
-        "event_register_reserves_static_ids",
-        observer_event_register_reserves_static_ids
     }
 };
 
@@ -533,10 +487,6 @@ bake_test_case module_testcases[] = {
     {
         "double_import_is_noop",
         module_double_import_is_noop
-    },
-    {
-        "reimport_after_world_fini",
-        module_reimport_after_world_fini
     }
 };
 
@@ -617,13 +567,6 @@ static bake_test_suite suites[] = {
         rest_testcases
     },
     {
-        "multi_world",
-        NULL,
-        NULL,
-        7,
-        multi_world_testcases
-    },
-    {
         "resource",
         NULL,
         NULL,
@@ -655,14 +598,14 @@ static bake_test_suite suites[] = {
         "observer",
         NULL,
         NULL,
-        5,
+        4,
         observer_testcases
     },
     {
         "module",
         NULL,
         NULL,
-        5,
+        4,
         module_testcases
     },
     {
@@ -689,5 +632,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 13);
+    return bake_test_run("siecs.test", argc, argv, suites, 12);
 }

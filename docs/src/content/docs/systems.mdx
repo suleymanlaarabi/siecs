@@ -27,7 +27,7 @@ static void move_system(ecs_iter_t *it) {
     }
 }
 
-ecs_system_id_t Move = ecs_system(world, {
+ecs_system_id_t Move = ecs_system({
     .name = "Move",
     .phase = EcsOnUpdate,
     .query = {
@@ -41,7 +41,7 @@ ecs_system_id_t Move = ecs_system(world, {
 <TabItem label="C++">
 
 ```cpp
-world.system("Move")
+ecs::system("Move")
     .phase(EcsOnUpdate)
     .each([](Position &position, const Velocity &velocity) {
         position.x += velocity.x;
@@ -64,7 +64,7 @@ because system queries inherit the implicit `ecs_not(Disabled)` query rule.
 To run a system only on disabled entities, mention `Disabled` explicitly:
 
 ```c
-ecs_system(world, {
+ecs_system({
     .name = "PausedDebug",
     .phase = EcsOnUpdate,
     .query = { .terms = { ecs_in(Position), ecs_filter(Disabled) } },
@@ -94,7 +94,7 @@ parameters do not become query terms and do not consume an `ecs_field()` index.
 SIECS resolves them before iterating the query tables.
 
 ```cpp
-world.system("Move").each([](
+ecs::system("Move").each([](
     ecs::res<const Time> time,
     Position &position,
     const Velocity &velocity
@@ -108,7 +108,7 @@ world.system("Move").each([](
 Use `ecs_progress()` to run all enabled systems:
 
 ```c
-ecs_progress(world);
+ecs_progress();
 ```
 
 `ecs_progress()` runs phases in this order:
@@ -130,12 +130,12 @@ ecs_progress(world);
 You can also run one phase or one system manually:
 
 ```c
-ecs_run_phase(world, EcsOnUpdate);
-ecs_run_system(world, Move);
+ecs_run_phase(EcsOnUpdate);
+ecs_run_system(Move);
 ```
 
 The one-time start rule applies only to `ecs_progress()`. Calling
-`ecs_run_phase(world, EcsStart)` manually runs that phase normally.
+`ecs_run_phase(EcsStart)` manually runs that phase normally.
 
 `ecs_run_system()` ignores phase order and runs only the selected enabled
 system. This is useful for tests or explicit one-off work.
@@ -149,14 +149,14 @@ Systems in different phases are ordered by the phase list above. Inside one
 phase, use `after` when a system depends on another system having run first:
 
 ```c
-ecs_system_id_t Integrate = ecs_system(world, {
+ecs_system_id_t Integrate = ecs_system({
     .name = "Integrate",
     .phase = EcsOnUpdate,
     .query = { .terms = { ecs_inout(Position), ecs_in(Velocity) } },
     .callback = integrate_system,
 });
 
-ecs_system(world, {
+ecs_system({
     .name = "SyncTransform",
     .phase = EcsOnUpdate,
     .query = { .terms = { ecs_in(Position), ecs_inout(Transform) } },
@@ -177,7 +177,7 @@ Systems are enabled by default. Create a disabled system with `.disabled = true`
 or toggle it later:
 
 ```c
-ecs_system_id_t Damage = ecs_system(world, {
+ecs_system_id_t Damage = ecs_system({
     .name = "Damage",
     .phase = EcsOnUpdate,
     .query = { .terms = { ecs_inout(Health) } },
@@ -185,8 +185,8 @@ ecs_system_id_t Damage = ecs_system(world, {
     .disabled = true,
 });
 
-ecs_system_enable(world, Damage);
-ecs_system_disable(world, Damage);
+ecs_system_enable(Damage);
+ecs_system_disable(Damage);
 ```
 
 Disabled systems are skipped by `ecs_progress()`, `ecs_run_phase()`, and

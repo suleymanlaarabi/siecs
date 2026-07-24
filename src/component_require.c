@@ -27,8 +27,7 @@ static inline void ecs_add_plan_push(ecs_add_plan_t *plan, ecs_component_t id) {
 }
 
 static inline void ecs_add_plan_collect_requirements(
-    ecs_world_t *world,
-    ecs_table_t *from_table,
+        ecs_table_t *from_table,
     ecs_add_plan_t *plan,
     const ecs_component_record_t *crec
 ) {
@@ -39,9 +38,9 @@ static inline void ecs_add_plan_collect_requirements(
         }
 
         const ecs_component_record_t *required_rec =
-            ecs_component_index_get(&world->component_index, required);
+            ecs_component_index_get(&ecs_world.component_index, required);
         if (required_rec->required_count) {
-            ecs_add_plan_collect_requirements(world, from_table, plan, required_rec);
+            ecs_add_plan_collect_requirements(from_table, plan, required_rec);
         }
         ecs_add_plan_push(plan, required);
     }
@@ -60,13 +59,12 @@ static inline void ecs_sort_component_ids(ecs_component_t *ids, uint16_t count) 
 }
 
 ecs_type_t ecs_type_with_requirements(
-    ecs_world_t *world,
-    ecs_table_t *from_table,
+        ecs_table_t *from_table,
     ecs_component_t cid,
     const ecs_component_record_t *crec
 ) {
     ecs_add_plan_t plan = { 0 };
-    ecs_add_plan_collect_requirements(world, from_table, &plan, crec);
+    ecs_add_plan_collect_requirements(from_table, &plan, crec);
     ecs_add_plan_push(&plan, cid);
     ecs_sort_component_ids(plan.ids, plan.count);
 
@@ -102,16 +100,15 @@ ecs_type_t ecs_type_with_requirements(
 
 #ifndef NDEBUG
 bool ecs_component_requires(
-    const ecs_world_t *world,
-    ecs_component_t component,
+    const     ecs_component_t component,
     ecs_component_t require
 ) {
     const ecs_component_record_t *record =
-        ecs_component_index_get(&world->component_index, component);
+        ecs_component_index_get(&ecs_world.component_index, component);
 
     for (uint32_t i = 0; i < record->required_count; i++) {
         ecs_component_t current = record->required[i];
-        if (current == require || ecs_component_requires(world, current, require)) {
+        if (current == require || ecs_component_requires(current, require)) {
             return true;
         }
     }

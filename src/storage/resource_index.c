@@ -123,7 +123,7 @@ void ecs_resource_index_init(ecs_resource_index_t *index) {
     index->count = 1;
 }
 
-void ecs_resource_index_fini(ecs_resource_index_t *index, ecs_world_t *world) {
+void ecs_resource_index_fini(ecs_resource_index_t *index) {
     for (uint64_t id = 1; id < index->capacity; id++) {
         if (!index->present[id]) {
             continue;
@@ -131,7 +131,7 @@ void ecs_resource_index_fini(ecs_resource_index_t *index, ecs_world_t *world) {
 
         const ecs_resource_desc_t *record = &index->records[id];
         if (record->on_remove) {
-            record->on_remove(world, index->data[id]);
+            record->on_remove(index->data[id]);
         }
         ecs_resource_value_dtor(record, index->data[id]);
         free(index->data[id]);
@@ -161,13 +161,9 @@ ecs_resource_index_register(ecs_resource_index_t *index, ecs_resource_t id, cons
 
 ecs_resource_t ecs_resource_index_find(const ecs_resource_index_t *index, const char *name) {
     ecs_assert_not_null(name);
-
     for (uint32_t id = 1; id < index->count; id++) {
-        if (index->records[id].name && strcmp(index->records[id].name, name) == 0) {
-            return id;
-        }
+        if (index->records[id].name && strcmp(index->records[id].name, name) == 0) return id;
     }
-
     return 0;
 }
 
@@ -177,8 +173,7 @@ bool ecs_resource_index_is_registered(const ecs_resource_index_t *index, ecs_res
 
 void ecs_resource_index_set(
     ecs_resource_index_t *index,
-    ecs_world_t *world,
-    ecs_resource_t id,
+        ecs_resource_t id,
     const void *data
 ) {
     ecs_resource_index_assert_registered(index, id);
@@ -192,7 +187,7 @@ void ecs_resource_index_set(
     }
 
     if (record->on_set) {
-        record->on_set(world, data);
+        record->on_set(data);
     }
 
     if (record->size != 0) {
@@ -206,8 +201,7 @@ void ecs_resource_index_set(
 
 void ecs_resource_index_move(
     ecs_resource_index_t *index,
-    ecs_world_t *world,
-    ecs_resource_t id,
+        ecs_resource_t id,
     void *data
 ) {
     ecs_resource_index_assert_registered(index, id);
@@ -221,7 +215,7 @@ void ecs_resource_index_move(
     }
 
     if (record->on_set) {
-        record->on_set(world, data);
+        record->on_set(data);
     }
 
     if (record->size != 0) {
@@ -256,7 +250,7 @@ bool ecs_resource_index_has(const ecs_resource_index_t *index, ecs_resource_t id
     return index->present[id];
 }
 
-void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_world_t *world, ecs_resource_t id) {
+void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_resource_t id) {
     ecs_resource_index_assert_registered(index, id);
     if (!index->present[id]) {
         return;
@@ -264,7 +258,7 @@ void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_world_t *world, 
 
     const ecs_resource_desc_t *record = &index->records[id];
     if (record->on_remove) {
-        record->on_remove(world, index->data[id]);
+        record->on_remove(index->data[id]);
     }
     ecs_resource_value_dtor(record, index->data[id]);
 

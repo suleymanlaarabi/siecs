@@ -22,11 +22,11 @@ inline void reset_module_state() {
 }
 
 struct cpp_physics {
-    void import(ecs::world &world) {
-        (void)world.component<ModulePosition>();
-        (void)world.component<ModuleVelocity>();
+    void import() {
+        (void)ecs::component<ModulePosition>();
+        (void)ecs::component<ModuleVelocity>();
 
-        world.system("CppMove").each([](ModulePosition &pos, const ModuleVelocity &vel) {
+        ecs::system("CppMove").each([](ModulePosition &pos, const ModuleVelocity &vel) {
             pos.value += vel.value;
             module_system_calls++;
         });
@@ -36,29 +36,28 @@ struct cpp_physics {
 struct cpp_physics_with_props {
     int gravity;
 
-    void import(ecs::world &world) {
+    void import() {
         module_import_calls++;
         module_last_gravity = gravity;
 
-        (void)world.component<ModulePosition>();
-        (void)world.component<ModuleVelocity>();
+        (void)ecs::component<ModulePosition>();
+        (void)ecs::component<ModuleVelocity>();
 
-        world.system("CppMoveWithProps").each([](ModulePosition &pos, const ModuleVelocity &vel) {
+        ecs::system("CppMoveWithProps").each([](ModulePosition &pos, const ModuleVelocity &vel) {
             pos.value += vel.value;
             module_system_calls++;
         });
     }
 };
 
-inline ecs::entity create_module_entity(ecs::world &world, int position, int velocity) {
-    return world.entity().set(ModulePosition{ position }).set(ModuleVelocity{ velocity });
+inline ecs::entity create_module_entity(int position, int velocity) {
+    return ecs::entity::create().set(ModulePosition{ position }).set(ModuleVelocity{ velocity });
 }
 
-inline ModulePosition *get_module_position(ecs::world &world, ecs::entity entity) {
+inline ModulePosition *get_module_position(ecs::entity entity) {
     return static_cast<ModulePosition *>(ecs_get_cid(
-        world.c_ptr(),
-        entity.id(),
-        ecs::detail::ecs_cpp_component_id<ModulePosition>(world.c_ptr())
+                entity.id(),
+        ecs::detail::ecs_cpp_component_id<ModulePosition>()
     ));
 }
 

@@ -24,13 +24,9 @@ extern "C" {
  * Public id symbol generated for a component type.
  *
  * Users normally do not call this macro directly. It is used by the typed
- * helpers such as ecs_add(world, entity, Position).
+ * helpers such as ecs_add(entity, Position).
  */
 #define ecs_id(name) _ecs_id_##name##__
-
-/* Opaque ECS world. Create with ecs_init and destroy with ecs_fini. */
-struct ecs_world_s;
-typedef struct ecs_world_s ecs_world_t;
 
 /* Public handle types. A zero id is reserved internally and is not user data.
  */
@@ -43,7 +39,7 @@ typedef uint16_t ecs_module_id_t;
 typedef uint16_t ecs_resource_t;
 typedef uint32_t ecs_observer_id_t;
 
-#define ECS_QUERY_TERM_CAPACITY 64
+#define ECS_QUERY_TERM_CAPACITY 16
 #define ECS_SYSTEM_AFTER_CAPACITY 16
 
 /*
@@ -58,7 +54,7 @@ typedef uint32_t ecs_observer_id_t;
  * desc is the user props pointer from ecs_module_desc_t. The library does not
  * retain or copy it; it is only valid for the duration of this call.
  */
-typedef void (*ecs_module_import_t)(ecs_world_t *world, const void *desc);
+typedef void (*ecs_module_import_t)(const void *desc);
 
 /*
  * Module registration descriptor.
@@ -99,7 +95,6 @@ typedef struct {
  * - Custom events: pointer passed to ecs_observer_trigger.
  */
 typedef struct {
-    ecs_world_t *world;
     ecs_entity_t entity;
     ecs_event_t event;
     uintptr_t user_data;
@@ -109,12 +104,7 @@ typedef struct {
 typedef void (*ecs_observer_callback_t)(ecs_observer_event_t *event);
 
 /* Called after a component slot is added and zero-initialized. */
-typedef void (*ecs_component_on_add_t)(
-    ecs_world_t *world,
-    ecs_entity_t entity,
-    ecs_component_t component,
-    void *value
-);
+typedef void (*ecs_component_on_add_t)(ecs_entity_t entity, ecs_component_t component, void *value);
 
 /*
  * Called before ecs_set_cid copies new_value into current_value.
@@ -123,7 +113,6 @@ typedef void (*ecs_component_on_add_t)(
  * inspect the old value there, and may mutate it before the final copy.
  */
 typedef void (*ecs_component_on_set_t)(
-    ecs_world_t *world,
     ecs_entity_t entity,
     ecs_component_t component,
     const void *new_value,
@@ -132,7 +121,6 @@ typedef void (*ecs_component_on_set_t)(
 
 /* Called before a component slot is removed. */
 typedef void (*ecs_component_on_remove_t)(
-    ecs_world_t *world,
     ecs_entity_t entity,
     ecs_component_t component,
     void *value
@@ -205,7 +193,7 @@ typedef struct {
  * ptr points to the resource value being set or removed. The pointer is only
  * valid for the duration of the callback.
  */
-typedef void (*ecs_resource_hook_t)(ecs_world_t *world, const void *ptr);
+typedef void (*ecs_resource_hook_t)(const void *ptr);
 
 /*
  * Resource registration descriptor.
@@ -265,7 +253,7 @@ typedef struct {
  * Typed query term helpers.
  *
  * Example:
- *   ecs_query_id_t q = ecs_query(world, {
+ *   ecs_query_id_t q = ecs_query({
  *       .terms = { ecs_inout(Position), ecs_in(Velocity), ecs_filter(Player) }
  *   });
  */
@@ -295,7 +283,7 @@ typedef struct {
 #endif
 
 /* Create an ECS world. */
-SIECS_API ecs_world_t *ecs_init(void);
+SIECS_API void ecs_init(void);
 
 /* World feature descriptor. */
 typedef struct {
@@ -310,13 +298,13 @@ typedef struct {
 #define ecs_with_features(...) ecs_init_w_features(&(ecs_world_feat_desc_t)__VA_ARGS__)
 
 /* Initialize a world with the given features. */
-SIECS_API ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features);
+SIECS_API void ecs_init_w_features(const ecs_world_feat_desc_t *features);
 
 /* Destroy a world and all ECS storage owned by it. world must not be NULL. */
-SIECS_API void ecs_fini(ecs_world_t *world);
+SIECS_API void ecs_fini(void);
 
 /* Request that future ecs_progress calls return false. */
-SIECS_API void ecs_quit(ecs_world_t *world);
+SIECS_API void ecs_quit(void);
 
 /*
  * Declare a component type and its public component id.
@@ -349,8 +337,7 @@ SIECS_API void ecs_quit(ecs_world_t *world);
  * Must be called before using the typed helpers for that component with this
  * world. Stores the generated component id in ecs_id(cname).
  */
-#define ECS_COMPONENT_REGISTER(world, cname)                                                       \
-    ecs_component_register(world, &ecs_id(cname), &ecs_id(cname##_desc))
+#define ECS_COMPONENT_REGISTER(cname) ecs_component_register(&ecs_id(cname), &ecs_id(cname##_desc))
 
 /*
  * Declare and define a component type in one translation unit.
@@ -370,13 +357,13 @@ SIECS_API void ecs_quit(ecs_world_t *world);
  *
  * This declares physics_props_t, the public module id symbol ecs_id(physics),
  * an import wrapper, and the user-defined import function:
- *   void physics_import(ecs_world_t *world, const physics_props_t *props);
+ *   void physics_import(const physics_props_t *props);
  */
 #define ECS_MODULE_DECLARE(module_name, ...)                                                       \
     typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;                        \
     extern ecs_module_id_t ecs_id(module_name);                                                    \
-    void ecs_id(module_name##_import_wrapper)(ecs_world_t * world, const void *desc);              \
-    void module_name##_import(ecs_world_t *world, const module_name##_props_t *props)
+    void ecs_id(module_name##_import_wrapper)(const void *desc);                                   \
+    void module_name##_import(const module_name##_props_t *props)
 
 /*
  * Define a typed module declared with ECS_MODULE_DECLARE.
@@ -385,8 +372,8 @@ SIECS_API void ecs_quit(ecs_world_t *world);
  */
 #define ECS_MODULE_DEFINE(module_name)                                                             \
     ecs_module_id_t ecs_id(module_name) = 0;                                                       \
-    void ecs_id(module_name##_import_wrapper)(ecs_world_t * world, const void *desc) {             \
-        module_name##_import(world, (const module_name##_props_t *)desc);                          \
+    void ecs_id(module_name##_import_wrapper)(const void *desc) {                                  \
+        module_name##_import((const module_name##_props_t *)desc);                                 \
     }
 
 /*
@@ -397,17 +384,14 @@ SIECS_API void ecs_quit(ecs_world_t *world);
  * return the existing id without calling module_name_import again; the first
  * props value wins.
  */
-#define ECS_MODULE_IMPORT(world, module_name, ...)                                                 \
-    (ecs_id(module_name) = ecs_module_init(                                                        \
-         world,                                                                                    \
-         &(ecs_module_desc_t){                                                                     \
-             .name = #module_name,                                                                 \
-             .id = &ecs_id(module_name),                                                           \
-             .import = ecs_id(module_name##_import_wrapper),                                       \
-             .desc = &(module_name##_props_t)__VA_ARGS__,                                          \
-             .desc_size = sizeof(module_name##_props_t),                                           \
-         }                                                                                         \
-     ))
+#define ECS_MODULE_IMPORT(module_name, ...)                                                        \
+    (ecs_id(module_name) = ecs_module_init(&(ecs_module_desc_t){                                   \
+         .name = #module_name,                                                                     \
+         .id = &ecs_id(module_name),                                                               \
+         .import = ecs_id(module_name##_import_wrapper),                                           \
+         .desc = &(module_name##_props_t)__VA_ARGS__,                                              \
+         .desc_size = sizeof(module_name##_props_t),                                               \
+     }))
 
 /*
  * Register/import a module with a raw descriptor.
@@ -415,10 +399,10 @@ SIECS_API void ecs_quit(ecs_world_t *world);
  * Prefer ECS_MODULE_IMPORT for typed modules. Use this when module properties
  * or ids are built dynamically.
  */
-#define ecs_module(world, ...) ecs_module_init(world, &(ecs_module_desc_t)__VA_ARGS__)
+#define ecs_module(...) ecs_module_init(&(ecs_module_desc_t)__VA_ARGS__)
 
 /* Register/import a module descriptor and return its module id. */
-SIECS_API ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_desc_t *desc);
+SIECS_API ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc);
 
 /*
  * Find an already imported module by its id storage.
@@ -426,16 +410,17 @@ SIECS_API ecs_module_id_t ecs_module_init(ecs_world_t *world, const ecs_module_d
  * For typed modules, pass &ecs_id(module_name). Returns 0 if the
  * module has not been imported into this world.
  */
-SIECS_API ecs_module_id_t ecs_module_find(ecs_world_t *world, const ecs_module_id_t *id);
 
 /* Enable systems and observers recorded during module import. */
-SIECS_API void ecs_module_enable(ecs_world_t *world, ecs_module_id_t module);
+SIECS_API void ecs_module_enable(ecs_module_id_t module);
+
+SIECS_API ecs_module_id_t ecs_module_find(const ecs_module_id_t *id);
 
 /* Disable systems and observers recorded during module import. */
-SIECS_API void ecs_module_disable(ecs_world_t *world, ecs_module_id_t module);
+SIECS_API void ecs_module_disable(ecs_module_id_t module);
 
 /* Return whether a module is currently enabled in this world. */
-SIECS_API bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t module);
+SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
 
 /*
  * Define a relation component.
@@ -467,7 +452,7 @@ SIECS_API bool ecs_module_is_enabled(const ecs_world_t *world, ecs_module_id_t m
  *
  * Example:
  *   ECS_RELATION_DECLARE(Targets);
- *   ecs_set(world, entity, Targets, { target });
+ *   ecs_set(entity, Targets, { target });
  */
 #define ECS_RELATION_DECLARE(name) ECS_COMPONENT_DECLARE(name, { ecs_entity_t target; })
 
@@ -487,32 +472,32 @@ ECS_COMPONENT_DECLARE(Abstract, {});
  * Register a component from an inline descriptor.
  *
  * Example:
- *   ecs_component_t Position = ecs_component(world, {
+ *   ecs_component_t Position = ecs_component({
  *       .name = "Position",
  *       .size = sizeof(Position)
  *   });
  */
-#define ecs_component(world, ...) ecs_component_init(world, &(ecs_component_desc_t)__VA_ARGS__)
+#define ecs_component(...) ecs_component_init(&(ecs_component_desc_t)__VA_ARGS__)
 
 /* Register a component descriptor and return its component id. */
-SIECS_API ecs_component_t ecs_component_init(ecs_world_t *world, const ecs_component_desc_t *desc);
+SIECS_API ecs_component_t ecs_component_init(const ecs_component_desc_t *desc);
 
 /* Register a typed component descriptor using stable process-wide id storage.
  */
 SIECS_API ecs_component_t
-ecs_component_register(ecs_world_t *world, ecs_component_t *id, const ecs_component_desc_t *desc);
+ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc);
 
 /* Create a new alive entity in world. world must not be NULL. */
-SIECS_API ecs_entity_t ecs_new(ecs_world_t *world);
+SIECS_API ecs_entity_t ecs_new(void);
 
 /* Begin deferring ECS mutations into the world's command buffer. */
-SIECS_API void ecs_defer_begin(ecs_world_t *world);
+SIECS_API void ecs_defer_begin(void);
 
 /* End a defer scope. The outermost end flushes the command buffer. */
-SIECS_API void ecs_defer_end(ecs_world_t *world);
+SIECS_API void ecs_defer_end(void);
 
 /* Return whether mutations are currently being deferred or flushed. */
-SIECS_API bool ecs_is_deferred(const ecs_world_t *world);
+SIECS_API bool ecs_is_deferred(void);
 
 /*
  * Return whether entity is alive in world.
@@ -520,24 +505,24 @@ SIECS_API bool ecs_is_deferred(const ecs_world_t *world);
  * entity must be a handle created by this world. Passing arbitrary ids is not a
  * supported validity check.
  */
-SIECS_API bool ecs_is_alive(const ecs_world_t *world, ecs_entity_t entity);
+SIECS_API bool ecs_is_alive(const ecs_entity_t entity);
 
-bool ecs_is(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target);
+bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
 
-SIECS_API void ecs_is_a(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t target);
+SIECS_API void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 
 /* Destroy an alive entity and remove all of its components. */
-SIECS_API void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
+SIECS_API void ecs_kill(ecs_entity_t entity);
 
 /*
  * Create a query from an inline descriptor.
  *
  * Example:
- *   ecs_query_id_t q = ecs_query(world, {
+ *   ecs_query_id_t q = ecs_query({
  *       .terms = { ecs_in(Position), ecs_in(Velocity) }
  *   });
  */
-#define ecs_query(world, ...) ecs_query_init(world, &(ecs_query_desc_t)__VA_ARGS__)
+#define ecs_query(...) ecs_query_init(&(ecs_query_desc_t)__VA_ARGS__)
 
 /*
  * Convenience query loop for short-lived queries.
@@ -546,26 +531,25 @@ SIECS_API void ecs_kill(ecs_world_t *world, ecs_entity_t entity);
  * persistent ecs_query_id_t for systems, hot paths, or repeated frame work.
  *
  * Example:
- *   ecs_query_each(world, it, i, ecs_in(Position), ecs_in(Velocity)) {
+ *   ecs_query_each(it, i, ecs_in(Position), ecs_in(Velocity)) {
  *       Position *p = ecs_field(&it, 0);
  *       Velocity *v = ecs_field(&it, 1);
  *       p[i].x += v[i].x;
  *   }
  */
-#define ecs_query_each(world, it, i, ...)                                                          \
-    for (ecs_query_id_t _q = ecs_query((world), { { __VA_ARGS__ } }); _q;                          \
-         ecs_query_fini((world), _q), _q = 0)                                                      \
-        for (ecs_iter_t it = ecs_query_iter((world), _q); ecs_iter_next(&it);)                     \
+#define ecs_query_each(it, i, ...)                                                                 \
+    for (ecs_query_id_t _q = ecs_query({ { __VA_ARGS__ } }); _q; ecs_query_fini(_q), _q = 0)       \
+        for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)                              \
             for (uint32_t i = 0; i < it.count; i++)
 
 /* Create a query. The query descriptor must read at least one component. */
-SIECS_API ecs_query_id_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *query);
+SIECS_API ecs_query_id_t ecs_query_init(const ecs_query_desc_t *query);
 
 /* Destroy a query id created by ecs_query/ecs_query_init. */
-SIECS_API void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
+SIECS_API void ecs_query_fini(ecs_query_id_t qid);
 
 /* Add a typed component tag/storage to an alive entity. */
-#define ecs_add(world, entity, cname) ecs_add_cid(world, entity, ecs_id(cname))
+#define ecs_add(entity, cname) ecs_add_cid(entity, ecs_id(cname))
 
 /*
  * Add a component id to an alive entity.
@@ -573,24 +557,24 @@ SIECS_API void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid);
  * If the component is already present, this is currently treated as a no-op by
  * table migration. The component id must be registered in the same world.
  */
-SIECS_API void ecs_add_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+SIECS_API void ecs_add_cid(ecs_entity_t entity, ecs_component_t id);
 
 /* Remove a typed component from an alive entity. */
-#define ecs_remove(world, entity, cname) ecs_remove_cid(world, entity, ecs_id(cname))
+#define ecs_remove(entity, cname) ecs_remove_cid(entity, ecs_id(cname))
 
 /*
  * Remove a component id from an alive entity.
  *
  * Removing a component that is not present is a no-op.
  */
-SIECS_API void ecs_remove_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+SIECS_API void ecs_remove_cid(ecs_entity_t entity, ecs_component_t id);
 
 /* Return whether an alive entity has a typed component. */
-#define ecs_has(world, entity, cname) ecs_has_cid(world, entity, ecs_id(cname))
+#define ecs_has(entity, cname) ecs_has_cid(entity, ecs_id(cname))
 
 /* Return whether an alive entity has a component id. */
-SIECS_API bool ecs_has_cid(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
-bool ecs_has_cid_owned(const ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+SIECS_API bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id);
+bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id);
 
 /*
  * Get a typed component pointer from an alive entity.
@@ -598,7 +582,7 @@ bool ecs_has_cid_owned(const ecs_world_t *world, ecs_entity_t entity, ecs_compon
  * The component is assumed to exist. Use ecs_try_get when the component may be
  * absent.
  */
-#define ecs_get(world, entity, cname) ((cname *)ecs_get_cid(world, entity, ecs_id(cname)))
+#define ecs_get(entity, cname) ((cname *)ecs_get_cid(entity, ecs_id(cname)))
 
 /*
  * Get a component pointer by id.
@@ -606,13 +590,13 @@ bool ecs_has_cid_owned(const ecs_world_t *world, ecs_entity_t entity, ecs_compon
  * The component is assumed to exist on the entity. Use ecs_try_get_cid when the
  * component may be absent.
  */
-SIECS_API void *ecs_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id);
+SIECS_API void *ecs_get_cid(ecs_entity_t entity, ecs_component_t id);
 
 /* Get a typed component pointer, or NULL if the entity does not have it. */
-#define ecs_try_get(world, entity, cname) ((cname *)ecs_try_get_cid(world, entity, ecs_id(cname)))
+#define ecs_try_get(entity, cname) ((cname *)ecs_try_get_cid(entity, ecs_id(cname)))
 
 /* Get a component pointer by id, or NULL if the entity does not have it. */
-SIECS_API void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t cid);
+SIECS_API void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
 
 /*
  * Set a typed component value on an alive entity.
@@ -621,8 +605,7 @@ SIECS_API void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_com
  * receive the new value and current storage before the copy. EcsOnSet observers
  * receive the new value before it is copied into storage.
  */
-#define ecs_set(world, entity, cname, ...)                                                         \
-    ecs_set_cid(world, entity, ecs_id(cname), &(cname)__VA_ARGS__)
+#define ecs_set(entity, cname, ...) ecs_set_cid(entity, ecs_id(cname), &(cname)__VA_ARGS__)
 
 /*
  * Set a component value by id.
@@ -630,10 +613,8 @@ SIECS_API void *ecs_try_get_cid(ecs_world_t *world, ecs_entity_t entity, ecs_com
  * data must point to at least the registered component size. Adds the component
  * if needed.
  */
-SIECS_API void
-ecs_set_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, const void *data);
-SIECS_API void
-ecs_move_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, void *data);
+SIECS_API void ecs_set_cid(ecs_entity_t entity, ecs_component_t id, const void *data);
+SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data);
 
 /*
  * Declare and define a resource type.
@@ -659,8 +640,7 @@ ecs_move_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, void *
                                                  __VA_ARGS__ };                                    \
     ecs_resource_t ecs_id(rname) = 0
 
-#define ECS_RESOURCE_REGISTER(world, rname)                                                        \
-    ecs_resource_register(world, &ecs_id(rname), &ecs_id(rname##_desc))
+#define ECS_RESOURCE_REGISTER(rname) ecs_resource_register(&ecs_id(rname), &ecs_id(rname##_desc))
 
 #define ECS_RESOURCE(rname, ...)                                                                   \
     ECS_RESOURCE_DECLARE(rname, __VA_ARGS__);                                                      \
@@ -670,44 +650,41 @@ ecs_move_cid(ecs_world_t *world, ecs_entity_t entity, ecs_component_t id, void *
  * Set or replace a world resource.
  *
  * Example:
- *   ecs_set_resource(world, Time, { .dt = 0.016f, .elapsed = 0.0f });
+ *   ecs_set_resource(Time, { .dt = 0.016f, .elapsed = 0.0f });
  */
-#define ecs_set_resource(world, rname, ...)                                                        \
-    ecs_set_resource_rid(world, ecs_id(rname), &(rname)__VA_ARGS__)
+#define ecs_set_resource(rname, ...) ecs_set_resource_rid(ecs_id(rname), &(rname)__VA_ARGS__)
 
 /* Get a world resource. The resource must exist. */
-#define ecs_get_resource(world, rname) ((rname *)ecs_resource_rid(world, ecs_id(rname)))
-#define ecs_get_resource_read(world, rname) ((const rname *)ecs_resource_rid(world, ecs_id(rname)))
+#define ecs_get_resource(rname) ((rname *)ecs_resource_rid(ecs_id(rname)))
+#define ecs_get_resource_read(rname) ((const rname *)ecs_resource_rid(ecs_id(rname)))
 
 /* Get a world resource, or NULL if it does not exist. */
-#define ecs_try_get_resource(world, rname) ((rname *)ecs_try_resource_rid(world, ecs_id(rname)))
-#define ecs_try_get_resource_read(world, rname)                                                    \
-    ((const rname *)ecs_try_resource_rid(world, ecs_id(rname)))
+#define ecs_try_get_resource(rname) ((rname *)ecs_try_resource_rid(ecs_id(rname)))
+#define ecs_try_get_resource_read(rname) ((const rname *)ecs_try_resource_rid(ecs_id(rname)))
 
 /* Return whether a world resource exists. */
-#define ecs_has_resource(world, rname) ecs_has_resource_rid(world, ecs_id(rname))
+#define ecs_has_resource(rname) ecs_has_resource_rid(ecs_id(rname))
 
 /* Remove a world resource if it exists. */
-#define ecs_remove_resource(world, rname) ecs_remove_resource_rid(world, ecs_id(rname))
+#define ecs_remove_resource(rname) ecs_remove_resource_rid(ecs_id(rname))
 
 /* Backward-compatible resource aliases. Prefer the ecs_get_resource names in
  * new code. */
-#define ecs_resource(world, rname) ecs_get_resource(world, rname)
-#define ecs_resource_read(world, rname) ecs_get_resource_read(world, rname)
-#define ecs_try_resource(world, rname) ecs_try_get_resource(world, rname)
-#define ecs_try_resource_read(world, rname) ecs_try_get_resource_read(world, rname)
+#define ecs_resource(rname) ecs_get_resource(rname)
+#define ecs_resource_read(rname) ecs_get_resource_read(rname)
+#define ecs_try_resource(rname) ecs_try_get_resource(rname)
+#define ecs_try_resource_read(rname) ecs_try_get_resource_read(rname)
 
-SIECS_API ecs_resource_t ecs_resource_init(ecs_world_t *world, const ecs_resource_desc_t *desc);
-SIECS_API ecs_resource_t
-ecs_resource_register(ecs_world_t *world, ecs_resource_t *id, const ecs_resource_desc_t *desc);
-SIECS_API ecs_resource_t ecs_resource_find(ecs_world_t *world, const char *name);
-SIECS_API bool ecs_resource_is_registered_rid(const ecs_world_t *world, ecs_resource_t id);
-SIECS_API void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);
-SIECS_API void ecs_move_resource_rid(ecs_world_t *world, ecs_resource_t id, void *data);
-SIECS_API void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id);
-SIECS_API void *ecs_try_resource_rid(ecs_world_t *world, ecs_resource_t id);
-SIECS_API bool ecs_has_resource_rid(const ecs_world_t *world, ecs_resource_t id);
-SIECS_API void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id);
+SIECS_API ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
+SIECS_API ecs_resource_t ecs_resource_find(const char *name);
+SIECS_API bool ecs_resource_is_registered_rid(ecs_resource_t id);
+SIECS_API ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc);
+SIECS_API void ecs_set_resource_rid(ecs_resource_t id, const void *data);
+SIECS_API void ecs_move_resource_rid(ecs_resource_t id, void *data);
+SIECS_API void *ecs_resource_rid(ecs_resource_t id);
+SIECS_API void *ecs_try_resource_rid(ecs_resource_t id);
+SIECS_API bool ecs_has_resource_rid(const ecs_resource_t id);
+SIECS_API void ecs_remove_resource_rid(ecs_resource_t id);
 
 /*
  * Declare that adding component also adds require first.
@@ -715,10 +692,10 @@ SIECS_API void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id);
  * Requirement cycles are debug assertion failures when declared.
  *
  * Example:
- *   ecs_with(world, ecs_id(Renderable), ecs_id(Transform));
- *   ecs_add(world, entity, Renderable); // also adds Transform
+ *   ecs_with(ecs_id(Renderable), ecs_id(Transform));
+ *   ecs_add(entity, Renderable); // also adds Transform
  */
-SIECS_API void ecs_with(ecs_world_t *world, ecs_component_t component, ecs_component_t require);
+SIECS_API void ecs_with(ecs_component_t component, ecs_component_t require);
 
 /* Builtin observer events. */
 #define EcsOnAdd 0
@@ -742,16 +719,16 @@ typedef struct {
  * Create an observer from an inline descriptor.
  *
  * Example:
- *   ecs_observer(world, {
+ *   ecs_observer({
  *       .on = EcsOnSet,
  *       .query.terms = { ecs_in(Position) },
  *       .callback = on_position_set,
  *   });
  */
-#define ecs_observer(world, ...) ecs_observer_init(world, &(ecs_observer_desc_t)__VA_ARGS__)
+#define ecs_observer(...) ecs_observer_init(&(ecs_observer_desc_t)__VA_ARGS__)
 
 /* Allocate and return a custom event id for ecs_observer_trigger. */
-SIECS_API ecs_event_t ecs_event(ecs_world_t *world);
+SIECS_API ecs_event_t ecs_event(void);
 
 /*
  * Register a process-wide typed event id in this world.
@@ -760,30 +737,26 @@ SIECS_API ecs_event_t ecs_event(ecs_world_t *world);
  * Otherwise, reserves the existing id in this world so future ecs_event calls
  * cannot collide with the typed event.
  */
-SIECS_API ecs_event_t ecs_event_register(ecs_world_t *world, ecs_event_t *id);
+SIECS_API ecs_event_t ecs_event_register(ecs_event_t *id);
 
 /* Create an observer. desc->callback must not be NULL. */
-SIECS_API ecs_observer_id_t ecs_observer_init(ecs_world_t *world, const ecs_observer_desc_t *desc);
+SIECS_API ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc);
 
-SIECS_API void ecs_observer_enable(ecs_world_t *world, ecs_observer_id_t id);
-SIECS_API void ecs_observer_disable(ecs_world_t *world, ecs_observer_id_t id);
+SIECS_API void ecs_observer_enable(ecs_observer_id_t id);
+SIECS_API void ecs_observer_disable(ecs_observer_id_t id);
 
 /*
  * Trigger an event for an alive entity.
  *
  * Observers matching the entity's current table and event id will be called.
  */
-SIECS_API void ecs_observer_trigger(
-    ecs_world_t *world,
-    ecs_entity_t entity,
-    ecs_event_t event,
-    const void *trigger_data
-);
+SIECS_API void
+ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *trigger_data);
 
 /*
  * Query iterator.
  *
- * Users may read world and count. The other fields are implementation details
+ * Users may read count. The other fields are implementation details
  * and should not be accessed directly.
  *
  * entities points to the current batch after ecs_iter_next returns true.
@@ -795,7 +768,6 @@ typedef enum {
 } ecs_field_kind_t;
 
 typedef struct {
-    ecs_world_t *world;
     uint32_t count;
     ecs_entity_t *entities;
     void **ptrs;
@@ -811,12 +783,12 @@ typedef struct {
  * Create a stack iterator for a query id.
  *
  * Example:
- *   ecs_iter_t it = ecs_query_iter(world, query);
+ *   ecs_iter_t it = ecs_query_iter(query);
  *   while (ecs_iter_next(&it)) {
  *       Position *p = ecs_field(&it, 0);
  *   }
  */
-SIECS_API ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id);
+SIECS_API ecs_iter_t ecs_query_iter(ecs_query_id_t query_id);
 
 /*
  * Advance an iterator to the next non-empty batch.
@@ -889,31 +861,31 @@ typedef struct {
  * Create a system from an inline descriptor.
  *
  * Example:
- *   ecs_system(world, {
+ *   ecs_system({
  *       .name = "Move",
  *       .phase = EcsOnUpdate,
  *       .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
  *       .callback = Move,
  *   });
  */
-#define ecs_system(world, ...) ecs_system_init(world, &(ecs_system_desc_t)__VA_ARGS__)
+#define ecs_system(...) ecs_system_init(&(ecs_system_desc_t)__VA_ARGS__)
 
 /* Register a system and return its id. System id 0 is reserved. */
-SIECS_API ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc);
+SIECS_API ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc);
 
 /* Run all enabled systems in phase order. */
-SIECS_API bool ecs_progress(ecs_world_t *world);
+SIECS_API bool ecs_progress(void);
 
 /* Run all enabled systems from one phase. */
-SIECS_API void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase);
+SIECS_API void ecs_run_phase(ecs_phase_t phase);
 
 /* Run one enabled system immediately. */
-SIECS_API void ecs_run_system(ecs_world_t *world, ecs_system_id_t system);
+SIECS_API void ecs_run_system(ecs_system_id_t system);
 
 /* Enable or disable a system. Disabled systems stay registered but do not run.
  */
-SIECS_API void ecs_system_enable(ecs_world_t *world, ecs_system_id_t system);
-SIECS_API void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system);
+SIECS_API void ecs_system_enable(ecs_system_id_t system);
+SIECS_API void ecs_system_disable(ecs_system_id_t system);
 
 #ifdef __cplusplus
 }

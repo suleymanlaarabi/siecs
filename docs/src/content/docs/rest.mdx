@@ -8,7 +8,7 @@ The REST addon is intended for editor and explorer tooling. Enable it when
 creating the world:
 
 ```c
-ecs_world_t *world = ecs_with_features({ .rest = true });
+ecs_with_features({ .rest = true });
 ```
 
 The server listens on port `4040` and is polled by `ecs_progress()` when the

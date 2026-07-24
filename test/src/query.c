@@ -10,32 +10,29 @@ ECS_COMPONENT_DEFINE(QueryVelocity);
 ECS_COMPONENT_DEFINE(QueryMass);
 ECS_COMPONENT_DEFINE(QueryDisabled);
 
-static ecs_world_t *query_test_world(void) {
-    ecs_world_t *world = ecs_init();
-    test_not_null(world);
+static void query_test_world(void) {
+    ecs_init();
+    
+    ECS_COMPONENT_REGISTER(QueryPosition);
+    ECS_COMPONENT_REGISTER(QueryVelocity);
+    ECS_COMPONENT_REGISTER(QueryMass);
+    ECS_COMPONENT_REGISTER(QueryDisabled);
 
-    ECS_COMPONENT_REGISTER(world, QueryPosition);
-    ECS_COMPONENT_REGISTER(world, QueryVelocity);
-    ECS_COMPONENT_REGISTER(world, QueryMass);
-    ECS_COMPONENT_REGISTER(world, QueryDisabled);
-
-    return world;
 }
 
-static ecs_entity_t query_test_entity(ecs_world_t *world, int p, int v, int m) {
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, QueryPosition, { p });
-    ecs_set(world, entity, QueryVelocity, { v });
-    ecs_set(world, entity, QueryMass, { m });
+static ecs_entity_t query_test_entity(int p, int v, int m) {
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, QueryPosition, { p });
+    ecs_set(entity, QueryVelocity, { v });
+    ecs_set(entity, QueryMass, { m });
     return entity;
 }
 
 void query_terms_field_order(void) {
-    ecs_world_t *world = query_test_world();
-    ecs_entity_t entity = query_test_entity(world, 10, 20, 30);
+    query_test_world();
+    ecs_entity_t entity = query_test_entity(10, 20, 30);
 
     ecs_query_id_t query = ecs_query(
-        world,
         {
             .terms = {
                 ecs_inout(QueryPosition),
@@ -45,7 +42,7 @@ void query_terms_field_order(void) {
         }
     );
 
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_iter_t it = ecs_query_iter(query);
     test_true(ecs_iter_next(&it));
 
     QueryPosition *position = ecs_field(&it, 0);
@@ -58,38 +55,37 @@ void query_terms_field_order(void) {
 
     test_false(ecs_iter_next(&it));
 
-    test_int(11, ecs_get(world, entity, QueryPosition)->value);
+    test_int(11, ecs_get(entity, QueryPosition)->value);
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_out_term_matches_and_returns_field(void) {
-    ecs_world_t *world = query_test_world();
-    ecs_entity_t entity = query_test_entity(world, 1, 2, 3);
+    query_test_world();
+    ecs_entity_t entity = query_test_entity(1, 2, 3);
 
-    ecs_query_id_t query = ecs_query(world, { .terms = { ecs_out(QueryPosition) } });
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_query_id_t query = ecs_query({ .terms = { ecs_out(QueryPosition) } });
+    ecs_iter_t it = ecs_query_iter(query);
 
     test_true(ecs_iter_next(&it));
     QueryPosition *position = ecs_field(&it, 0);
     position[0].value = 42;
 
-    test_int(42, ecs_get(world, entity, QueryPosition)->value);
+    test_int(42, ecs_get(entity, QueryPosition)->value);
     test_false(ecs_iter_next(&it));
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_not_excludes_tables(void) {
-    ecs_world_t *world = query_test_world();
-    ecs_entity_t enabled = query_test_entity(world, 1, 2, 3);
-    ecs_entity_t disabled = query_test_entity(world, 10, 20, 30);
-    ecs_add(world, disabled, QueryDisabled);
+    query_test_world();
+    ecs_entity_t enabled = query_test_entity(1, 2, 3);
+    ecs_entity_t disabled = query_test_entity(10, 20, 30);
+    ecs_add(disabled, QueryDisabled);
 
     ecs_query_id_t query = ecs_query(
-        world,
         {
             .terms = {
                 ecs_in(QueryPosition),
@@ -98,113 +94,113 @@ void query_not_excludes_tables(void) {
         }
     );
 
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_iter_t it = ecs_query_iter(query);
     test_true(ecs_iter_next(&it));
 
     QueryPosition *position = ecs_field(&it, 0);
     test_int(1, it.count);
-    test_int(ecs_get(world, enabled, QueryPosition)->value, position[0].value);
+    test_int(ecs_get(enabled, QueryPosition)->value, position[0].value);
     test_false(ecs_iter_next(&it));
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_excludes_disabled_by_default(void) {
-    ecs_world_t *world = query_test_world();
-    ecs_entity_t enabled = query_test_entity(world, 1, 2, 3);
-    ecs_entity_t disabled = query_test_entity(world, 10, 20, 30);
-    ecs_add(world, disabled, Disabled);
+    query_test_world();
+    ecs_entity_t enabled = query_test_entity(1, 2, 3);
+    ecs_entity_t disabled = query_test_entity(10, 20, 30);
+    ecs_add(disabled, Disabled);
 
-    ecs_query_id_t query = ecs_query(world, { .terms = { ecs_in(QueryPosition) } });
+    ecs_query_id_t query = ecs_query({ .terms = { ecs_in(QueryPosition) } });
 
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_iter_t it = ecs_query_iter(query);
     test_true(ecs_iter_next(&it));
 
     QueryPosition *position = ecs_field(&it, 0);
     test_int(1, it.count);
-    test_int(ecs_get(world, enabled, QueryPosition)->value, position[0].value);
+    test_int(ecs_get(enabled, QueryPosition)->value, position[0].value);
     test_false(ecs_iter_next(&it));
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_can_include_disabled_explicitly(void) {
-    ecs_world_t *world = query_test_world();
-    ecs_entity_t enabled = query_test_entity(world, 1, 2, 3);
-    ecs_entity_t disabled = query_test_entity(world, 10, 20, 30);
-    ecs_add(world, disabled, Disabled);
+    query_test_world();
+    ecs_entity_t enabled = query_test_entity(1, 2, 3);
+    ecs_entity_t disabled = query_test_entity(10, 20, 30);
+    ecs_add(disabled, Disabled);
 
     ecs_query_id_t query =
-        ecs_query(world, { .terms = { ecs_in(QueryPosition), ecs_filter(Disabled) } });
+        ecs_query({ .terms = { ecs_in(QueryPosition), ecs_filter(Disabled) } });
 
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_iter_t it = ecs_query_iter(query);
     test_true(ecs_iter_next(&it));
 
     QueryPosition *position = ecs_field(&it, 0);
     test_int(1, it.count);
-    test_int(ecs_get(world, disabled, QueryPosition)->value, position[0].value);
-    test_int(1, ecs_has(world, disabled, Disabled));
-    test_int(0, ecs_has(world, enabled, Disabled));
+    test_int(ecs_get(disabled, QueryPosition)->value, position[0].value);
+    test_int(1, ecs_has(disabled, Disabled));
+    test_int(0, ecs_has(enabled, Disabled));
     test_false(ecs_iter_next(&it));
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_excludes_abstract_by_default(void) {
-    ecs_world_t *world = query_test_world();
-    ecs_entity_t entity = query_test_entity(world, 1, 2, 3);
-    ecs_entity_t abstract = query_test_entity(world, 10, 20, 30);
-    ecs_add(world, abstract, Abstract);
+    query_test_world();
+    ecs_entity_t entity = query_test_entity(1, 2, 3);
+    ecs_entity_t abstract = query_test_entity(10, 20, 30);
+    ecs_add(abstract, Abstract);
 
-    ecs_query_id_t query = ecs_query(world, { .terms = { ecs_in(QueryPosition) } });
+    ecs_query_id_t query = ecs_query({ .terms = { ecs_in(QueryPosition) } });
 
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_iter_t it = ecs_query_iter(query);
     test_true(ecs_iter_next(&it));
 
     QueryPosition *position = ecs_field(&it, 0);
     test_int(1, it.count);
     test_assert(it.entities[0] == entity);
-    test_int(ecs_get(world, entity, QueryPosition)->value, position[0].value);
+    test_int(ecs_get(entity, QueryPosition)->value, position[0].value);
     test_false(ecs_iter_next(&it));
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_can_include_abstract_explicitly(void) {
-    ecs_world_t *world = query_test_world();
-    ecs_entity_t entity = query_test_entity(world, 1, 2, 3);
-    ecs_entity_t abstract = query_test_entity(world, 10, 20, 30);
-    ecs_add(world, abstract, Abstract);
+    query_test_world();
+    ecs_entity_t entity = query_test_entity(1, 2, 3);
+    ecs_entity_t abstract = query_test_entity(10, 20, 30);
+    ecs_add(abstract, Abstract);
 
     ecs_query_id_t query =
-        ecs_query(world, { .terms = { ecs_in(QueryPosition), ecs_filter(Abstract) } });
+        ecs_query({ .terms = { ecs_in(QueryPosition), ecs_filter(Abstract) } });
 
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_iter_t it = ecs_query_iter(query);
     test_true(ecs_iter_next(&it));
 
     QueryPosition *position = ecs_field(&it, 0);
     test_int(1, it.count);
     test_assert(it.entities[0] == abstract);
-    test_int(ecs_get(world, abstract, QueryPosition)->value, position[0].value);
-    test_int(1, ecs_has(world, abstract, Abstract));
-    test_int(0, ecs_has(world, entity, Abstract));
+    test_int(ecs_get(abstract, QueryPosition)->value, position[0].value);
+    test_int(1, ecs_has(abstract, Abstract));
+    test_int(0, ecs_has(entity, Abstract));
     test_false(ecs_iter_next(&it));
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_optional_field_present(void) {
-    ecs_world_t *world = query_test_world();
-    query_test_entity(world, 10, 20, 30);
+    query_test_world();
+    query_test_entity(10, 20, 30);
 
     ecs_query_id_t query =
-        ecs_query(world, { .terms = { ecs_in_optional(QueryPosition), ecs_in(QueryVelocity) } });
-    ecs_iter_t it = ecs_query_iter(world, query);
+        ecs_query({ .terms = { ecs_in_optional(QueryPosition), ecs_in(QueryVelocity) } });
+    ecs_iter_t it = ecs_query_iter(query);
 
     test_true(ecs_iter_next(&it));
 
@@ -218,18 +214,17 @@ void query_optional_field_present(void) {
 
     test_false(ecs_iter_next(&it));
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_optional_field_missing_keeps_field_order(void) {
-    ecs_world_t *world = query_test_world();
+    query_test_world();
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, QueryVelocity, { 20 });
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, QueryVelocity, { 20 });
 
     ecs_query_id_t query = ecs_query(
-        world,
         {
             .terms = {
                 ecs_in_optional(QueryPosition),
@@ -237,7 +232,7 @@ void query_optional_field_missing_keeps_field_order(void) {
             },
         }
     );
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_iter_t it = ecs_query_iter(query);
 
     test_true(ecs_iter_next(&it));
 
@@ -251,19 +246,19 @@ void query_optional_field_missing_keeps_field_order(void) {
     velocity[0].value = 21;
 
     test_false(ecs_iter_next(&it));
-    test_int(21, ecs_get(world, entity, QueryVelocity)->value);
+    test_int(21, ecs_get(entity, QueryVelocity)->value);
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_inout_optional_mutates_when_present(void) {
-    ecs_world_t *world = query_test_world();
-    ecs_entity_t entity = query_test_entity(world, 10, 20, 30);
+    query_test_world();
+    ecs_entity_t entity = query_test_entity(10, 20, 30);
 
     ecs_query_id_t query =
-        ecs_query(world, { .terms = { ecs_inout_optional(QueryPosition), ecs_in(QueryVelocity) } });
-    ecs_iter_t it = ecs_query_iter(world, query);
+        ecs_query({ .terms = { ecs_inout_optional(QueryPosition), ecs_in(QueryVelocity) } });
+    ecs_iter_t it = ecs_query_iter(query);
 
     test_true(ecs_iter_next(&it));
 
@@ -275,24 +270,24 @@ void query_inout_optional_mutates_when_present(void) {
     position[0].value += velocity[0].value;
 
     test_false(ecs_iter_next(&it));
-    test_int(30, ecs_get(world, entity, QueryPosition)->value);
+    test_int(30, ecs_get(entity, QueryPosition)->value);
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_inherited_field_is_shared(void) {
-    ecs_world_t *world = query_test_world();
+    query_test_world();
 
-    ecs_entity_t base = ecs_new(world);
-    ecs_set(world, base, QueryPosition, { 42 });
-    ecs_add(world, base, Abstract);
+    ecs_entity_t base = ecs_new();
+    ecs_set(base, QueryPosition, { 42 });
+    ecs_add(base, Abstract);
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_is_a(world, entity, base);
+    ecs_entity_t entity = ecs_new();
+    ecs_is_a(entity, base);
 
-    ecs_query_id_t query = ecs_query(world, { .terms = { ecs_in(QueryPosition) } });
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_query_id_t query = ecs_query({ .terms = { ecs_in(QueryPosition) } });
+    ecs_iter_t it = ecs_query_iter(query);
 
     bool found_shared = false;
     while (ecs_iter_next(&it)) {
@@ -300,7 +295,7 @@ void query_inherited_field_is_shared(void) {
         if (it.field_kinds[0] == EcsFieldShared) {
             test_int(1, it.count);
             test_assert(it.entities[0] == entity);
-            test_assert(position == ecs_get(world, base, QueryPosition));
+            test_assert(position == ecs_get(base, QueryPosition));
             test_int(42, position->value);
             found_shared = true;
         }
@@ -308,23 +303,23 @@ void query_inherited_field_is_shared(void) {
 
     test_true(found_shared);
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_override_field_is_owned(void) {
-    ecs_world_t *world = query_test_world();
+    query_test_world();
 
-    ecs_entity_t base = ecs_new(world);
-    ecs_set(world, base, QueryPosition, { 42 });
-    ecs_add(world, base, Abstract);
+    ecs_entity_t base = ecs_new();
+    ecs_set(base, QueryPosition, { 42 });
+    ecs_add(base, Abstract);
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_is_a(world, entity, base);
-    ecs_set(world, entity, QueryPosition, { 100 });
+    ecs_entity_t entity = ecs_new();
+    ecs_is_a(entity, base);
+    ecs_set(entity, QueryPosition, { 100 });
 
-    ecs_query_id_t query = ecs_query(world, { .terms = { ecs_inout(QueryPosition) } });
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_query_id_t query = ecs_query({ .terms = { ecs_inout(QueryPosition) } });
+    ecs_iter_t it = ecs_query_iter(query);
 
     bool found_owned_override = false;
     while (ecs_iter_next(&it)) {
@@ -332,7 +327,7 @@ void query_override_field_is_owned(void) {
         if (it.entities[0] == entity) {
             test_int(1, it.count);
             test_int(EcsFieldOwned, it.field_kinds[0]);
-            test_assert(position == ecs_get(world, entity, QueryPosition));
+            test_assert(position == ecs_get(entity, QueryPosition));
             test_int(100, position->value);
             position->value = 101;
             found_owned_override = true;
@@ -340,46 +335,46 @@ void query_override_field_is_owned(void) {
     }
 
     test_true(found_owned_override);
-    test_int(101, ecs_get(world, entity, QueryPosition)->value);
-    test_int(42, ecs_get(world, base, QueryPosition)->value);
+    test_int(101, ecs_get(entity, QueryPosition)->value);
+    test_int(42, ecs_get(base, QueryPosition)->value);
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_inout_does_not_match_shared_inherited_field(void) {
-    ecs_world_t *world = query_test_world();
+    query_test_world();
 
-    ecs_entity_t base = ecs_new(world);
-    ecs_set(world, base, QueryPosition, { 42 });
-    ecs_add(world, base, Abstract);
+    ecs_entity_t base = ecs_new();
+    ecs_set(base, QueryPosition, { 42 });
+    ecs_add(base, Abstract);
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_is_a(world, entity, base);
+    ecs_entity_t entity = ecs_new();
+    ecs_is_a(entity, base);
 
-    ecs_query_id_t query = ecs_query(world, { .terms = { ecs_inout(QueryPosition) } });
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_query_id_t query = ecs_query({ .terms = { ecs_inout(QueryPosition) } });
+    ecs_iter_t it = ecs_query_iter(query);
 
     while (ecs_iter_next(&it)) {
         test_assert(it.entities[0] != entity);
     }
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_inout_optional_ignores_shared_inherited_field(void) {
-    ecs_world_t *world = query_test_world();
+    query_test_world();
 
-    ecs_entity_t base = ecs_new(world);
-    ecs_set(world, base, QueryPosition, { 42 });
-    ecs_add(world, base, Abstract);
+    ecs_entity_t base = ecs_new();
+    ecs_set(base, QueryPosition, { 42 });
+    ecs_add(base, Abstract);
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_is_a(world, entity, base);
+    ecs_entity_t entity = ecs_new();
+    ecs_is_a(entity, base);
 
-    ecs_query_id_t query = ecs_query(world, { .terms = { ecs_inout_optional(QueryPosition) } });
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_query_id_t query = ecs_query({ .terms = { ecs_inout_optional(QueryPosition) } });
+    ecs_iter_t it = ecs_query_iter(query);
 
     bool found_entity = false;
     while (ecs_iter_next(&it)) {
@@ -393,46 +388,46 @@ void query_inout_optional_ignores_shared_inherited_field(void) {
 
     test_true(found_entity);
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_is_a_matches_direct_base(void) {
-    ecs_world_t *world = query_test_world();
+    query_test_world();
 
-    ecs_entity_t character = ecs_new(world);
-    ecs_add(world, character, Abstract);
+    ecs_entity_t character = ecs_new();
+    ecs_add(character, Abstract);
 
-    ecs_entity_t player = ecs_new(world);
-    ecs_is_a(world, player, character);
+    ecs_entity_t player = ecs_new();
+    ecs_is_a(player, character);
 
-    ecs_query_id_t query = ecs_query(world, { .is_a = character });
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_query_id_t query = ecs_query({ .is_a = character });
+    ecs_iter_t it = ecs_query_iter(query);
 
     test_true(ecs_iter_next(&it));
     test_int(1, it.count);
     test_assert(it.entities[0] == player);
     test_false(ecs_iter_next(&it));
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_is_a_excludes_other_bases(void) {
-    ecs_world_t *world = query_test_world();
+    query_test_world();
 
-    ecs_entity_t character = ecs_new(world);
-    ecs_add(world, character, Abstract);
-    ecs_entity_t vehicle = ecs_new(world);
-    ecs_add(world, vehicle, Abstract);
+    ecs_entity_t character = ecs_new();
+    ecs_add(character, Abstract);
+    ecs_entity_t vehicle = ecs_new();
+    ecs_add(vehicle, Abstract);
 
-    ecs_entity_t player = ecs_new(world);
-    ecs_is_a(world, player, character);
-    ecs_entity_t car = ecs_new(world);
-    ecs_is_a(world, car, vehicle);
+    ecs_entity_t player = ecs_new();
+    ecs_is_a(player, character);
+    ecs_entity_t car = ecs_new();
+    ecs_is_a(car, vehicle);
 
-    ecs_query_id_t query = ecs_query(world, { .is_a = character });
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_query_id_t query = ecs_query({ .is_a = character });
+    ecs_iter_t it = ecs_query_iter(query);
 
     test_true(ecs_iter_next(&it));
     test_int(1, it.count);
@@ -440,48 +435,47 @@ void query_is_a_excludes_other_bases(void) {
     test_assert(it.entities[0] != car);
     test_false(ecs_iter_next(&it));
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_is_a_matches_transitive_base(void) {
-    ecs_world_t *world = query_test_world();
+    query_test_world();
 
-    ecs_entity_t character = ecs_new(world);
-    ecs_add(world, character, Abstract);
+    ecs_entity_t character = ecs_new();
+    ecs_add(character, Abstract);
 
-    ecs_entity_t player = ecs_new(world);
-    ecs_is_a(world, player, character);
-    ecs_add(world, player, Abstract);
+    ecs_entity_t player = ecs_new();
+    ecs_is_a(player, character);
+    ecs_add(player, Abstract);
 
-    ecs_entity_t knight = ecs_new(world);
-    ecs_is_a(world, knight, player);
+    ecs_entity_t knight = ecs_new();
+    ecs_is_a(knight, player);
 
-    ecs_query_id_t query = ecs_query(world, { .is_a = character });
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_query_id_t query = ecs_query({ .is_a = character });
+    ecs_iter_t it = ecs_query_iter(query);
 
     test_true(ecs_iter_next(&it));
     test_int(1, it.count);
     test_assert(it.entities[0] == knight);
     test_false(ecs_iter_next(&it));
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_is_a_with_component_terms(void) {
-    ecs_world_t *world = query_test_world();
+    query_test_world();
 
-    ecs_entity_t character = ecs_new(world);
-    ecs_set(world, character, QueryPosition, { 42 });
-    ecs_add(world, character, Abstract);
+    ecs_entity_t character = ecs_new();
+    ecs_set(character, QueryPosition, { 42 });
+    ecs_add(character, Abstract);
 
-    ecs_entity_t player = ecs_new(world);
-    ecs_is_a(world, player, character);
-    ecs_set(world, player, QueryVelocity, { 7 });
+    ecs_entity_t player = ecs_new();
+    ecs_is_a(player, character);
+    ecs_set(player, QueryVelocity, { 7 });
 
     ecs_query_id_t query = ecs_query(
-        world,
         {
             .is_a = character,
             .terms = {
@@ -490,7 +484,7 @@ void query_is_a_with_component_terms(void) {
             },
         }
     );
-    ecs_iter_t it = ecs_query_iter(world, query);
+    ecs_iter_t it = ecs_query_iter(query);
 
     test_true(ecs_iter_next(&it));
     QueryPosition *position = ecs_field(&it, 0);
@@ -499,36 +493,36 @@ void query_is_a_with_component_terms(void) {
     test_assert(it.entities[0] == player);
     test_int(EcsFieldShared, it.field_kinds[0]);
     test_int(EcsFieldOwned, it.field_kinds[1]);
-    test_assert(position == ecs_get(world, character, QueryPosition));
-    test_assert(velocity == ecs_get(world, player, QueryVelocity));
+    test_assert(position == ecs_get(character, QueryPosition));
+    test_assert(velocity == ecs_get(player, QueryVelocity));
     test_int(42, position->value);
     test_int(7, velocity->value);
     test_false(ecs_iter_next(&it));
 
-    ecs_query_fini(world, query);
-    ecs_fini(world);
+    ecs_query_fini(query);
+    ecs_fini();
 }
 
 void query_ids_stay_valid_after_temporary_query_fini(void) {
-    ecs_world_t *world = query_test_world();
-    ecs_entity_t entity = query_test_entity(world, 10, 20, 30);
+    query_test_world();
+    ecs_entity_t entity = query_test_entity(10, 20, 30);
 
-    ecs_query_id_t temporary = ecs_query(world, { .terms = { ecs_in(QueryVelocity) } });
-    ecs_query_id_t persistent = ecs_query(world, { .terms = { ecs_in(QueryPosition) } });
+    ecs_query_id_t temporary = ecs_query({ .terms = { ecs_in(QueryVelocity) } });
+    ecs_query_id_t persistent = ecs_query({ .terms = { ecs_in(QueryPosition) } });
 
-    ecs_query_fini(world, temporary);
+    ecs_query_fini(temporary);
 
-    ecs_query_id_t reused = ecs_query(world, { .terms = { ecs_in(QueryMass) } });
+    ecs_query_id_t reused = ecs_query({ .terms = { ecs_in(QueryMass) } });
 
-    ecs_iter_t it = ecs_query_iter(world, persistent);
+    ecs_iter_t it = ecs_query_iter(persistent);
     test_true(ecs_iter_next(&it));
 
     QueryPosition *position = ecs_field(&it, 0);
     test_int(1, it.count);
-    test_int(ecs_get(world, entity, QueryPosition)->value, position[0].value);
+    test_int(ecs_get(entity, QueryPosition)->value, position[0].value);
     test_false(ecs_iter_next(&it));
 
-    ecs_query_fini(world, reused);
-    ecs_query_fini(world, persistent);
-    ecs_fini(world);
+    ecs_query_fini(reused);
+    ecs_query_fini(persistent);
+    ecs_fini();
 }

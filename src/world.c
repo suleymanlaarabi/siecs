@@ -12,64 +12,72 @@
 #include "storage/resource_index.h"
 #include "storage/system_index.h"
 #include "storage/table_index.h"
+#include "utils.h"
 #include "world_internal.h"
 #include <stdlib.h>
+#include <string.h>
 
-ecs_world_t *ecs_init_w_features(const ecs_world_feat_desc_t *features) {
-    ecs_world_t *world = malloc(sizeof(ecs_world_t));
-    ecs_entity_index_init(&world->entity_index);
-    ecs_component_index_init(&world->component_index);
-    ecs_table_index_init(&world->table_index);
-    ecs_query_index_init(&world->query_index);
-    ecs_observer_index_init(&world->observer_index);
-    ecs_system_index_init(&world->system_index);
-    ecs_module_index_init(&world->module_index);
-    ecs_resource_index_init(&world->resource_index);
-    ecs_arena_init(&world->arena_allocator);
-    ecs_command_buffer_init(&world->commands);
-    world->active_module = 0;
-    world->features = *features;
-    world->defer_depth = 0;
-    world->flushing_commands = false;
-    world->did_start = false;
-    world->exit = false;
-    world->server = NULL;
-    world->server_state = NULL;
-    world->delta_time = 0;
-    world->last_time = 0;
+ecs_world_t ecs_world;
+static bool ecs_world_started;
+static bool ecs_world_finished;
 
-    world->sireflect_registry = sireflect_registry_init();
-
-    ecs_bootstrap(world);
-    return world;
-}
-
-ecs_world_t *ecs_init() {
-    ecs_world_t *world = ecs_with_features({});
-
-    return world;
-}
-
-void ecs_fini(ecs_world_t *world) {
-    ecs_resource_index_fini(&world->resource_index, world);
-    ecs_table_index_fini(world, &world->table_index);
-    ecs_entity_index_fini(&world->entity_index);
-    ecs_component_index_fini(&world->component_index);
-    ecs_query_index_fini(&world->query_index);
-    ecs_observer_index_fini(&world->observer_index);
-    ecs_system_index_fini(&world->system_index);
-    ecs_module_index_fini(&world->module_index);
-    ecs_command_buffer_fini(world, &world->commands);
-    ecs_arena_fini(&world->arena_allocator);
-    sireflect_registry_fini(world->sireflect_registry);
-
-    if (world->features.rest) {
-        sihttp_server_stop(world->server);
+void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
+    ecs_assert(!ecs_world_started, "ecs_init called while ECS is already running\n");
+    if (ecs_world_finished) {
+        memset(&ecs_world, 0, sizeof ecs_world);
+        ecs_world_finished = false;
     }
-    sihttp_server_fini(world->server);
-    free(world->server_state);
+    ecs_world_started = true;
 
-    free(world);
+    ecs_entity_index_init(&ecs_world.entity_index);
+    ecs_component_index_init(&ecs_world.component_index);
+    ecs_table_index_init(&ecs_world.table_index);
+    ecs_query_index_init(&ecs_world.query_index);
+    ecs_observer_index_init(&ecs_world.observer_index);
+    ecs_system_index_init(&ecs_world.system_index);
+    ecs_module_index_init(&ecs_world.module_index);
+    ecs_resource_index_init(&ecs_world.resource_index);
+    ecs_arena_init(&ecs_world.arena_allocator);
+    ecs_command_buffer_init(&ecs_world.commands);
+    ecs_world.active_module = 0;
+    ecs_world.features = *features;
+    ecs_world.defer_depth = 0;
+    ecs_world.flushing_commands = false;
+    ecs_world.did_start = false;
+    ecs_world.exit = false;
+    ecs_world.server = NULL;
+    ecs_world.server_state = NULL;
+    ecs_world.delta_time = 0;
+    ecs_world.last_time = 0;
+    ecs_world.sireflect_registry = sireflect_registry_init();
+
+    ecs_bootstrap();
 }
 
-void ecs_quit(ecs_world_t *world) { world->exit = true; }
+void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){}); }
+
+void ecs_fini(void) {
+    ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
+    ecs_world_finished = true;
+
+    ecs_resource_index_fini(&ecs_world.resource_index);
+    ecs_table_index_fini(&ecs_world.table_index);
+    ecs_entity_index_fini(&ecs_world.entity_index);
+    ecs_component_index_fini(&ecs_world.component_index);
+    ecs_query_index_fini(&ecs_world.query_index);
+    ecs_observer_index_fini(&ecs_world.observer_index);
+    ecs_system_index_fini(&ecs_world.system_index);
+    ecs_module_index_fini(&ecs_world.module_index);
+    ecs_command_buffer_fini(&ecs_world.commands);
+    ecs_arena_fini(&ecs_world.arena_allocator);
+    sireflect_registry_fini(ecs_world.sireflect_registry);
+
+    if (ecs_world.features.rest) {
+        sihttp_server_stop(ecs_world.server);
+    }
+    sihttp_server_fini(ecs_world.server);
+    free(ecs_world.server_state);
+    ecs_world_started = false;
+}
+
+void ecs_quit(void) { ecs_world.exit = true; }

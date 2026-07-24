@@ -1,44 +1,38 @@
+#include <concepts>
+#include <cstdint>
 #include <siecs.h>
 
 #include <cassert>
 
 struct Position {
-    float x, y;
+    reflected(float x, y;)
 };
 
 struct Velocity {
-    float x, y;
+    reflected(float x, y;)
+};
+
+struct Gravity {
+    float value;
 };
 
 struct Enemy;
 
 int main() {
-    ecs::world world;
+    ecs::init();
 
-    ecs::entity entity = world.entity().set(Position{ 0.0f, 0.0f }).set(Velocity{ 1.0f, 2.0f });
+    ecs::entity::create<Enemy>();
 
-    world.system().each([](Position &pos, Velocity &vel) {
-        pos.x += vel.x;
-        pos.y += vel.y;
+    ecs::entity::create().is_a<Enemy>();
+
+    ecs::system().require<Position>();
+
+    ecs::system().require<Enemy>().each([](Position &pos, const Velocity &vel) { pos.x += vel.x; });
+
+    ecs::system().exclude<Enemy>().each([](Velocity &vitesse, const Gravity &gravity) {
+        vitesse.y += gravity.value;
     });
 
-    world.system().exclude<Enemy>().each([](Position &pos, Velocity &vel) {
-        pos.x += vel.x;
-        pos.y += vel.y;
-    });
-
-    struct Enemy {};
-    struct Player {};
-
-    world.entity<Player>().is_a(world.entity<Enemy>());
-
-    world.progress();
-
-    const Position *position = static_cast<const Position *>(
-        ecs_get_cid(world.c_ptr(), entity.id(), world.component<Position>())
-    );
-
-    assert(position != nullptr);
-    assert(position->x == 1.0f);
-    assert(position->y == 2.0f);
+    while (ecs::progress()) {
+    };
 }

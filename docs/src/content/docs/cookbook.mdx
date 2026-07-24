@@ -10,15 +10,15 @@ import LanguageExample from '../../components/LanguageExample.astro';
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_world_t *world = ecs_init();
-ecs_entity_t entity = ecs_new(world);
-ecs_fini(world);
+ecs_init();
+ecs_entity_t entity = ecs_new();
+ecs_fini();
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
-ecs::world world;
-auto entity = world.entity();
+ecs::init();
+auto entity = ecs::entity::create();
 ```
 </TabItem>
 </Tabs>
@@ -46,8 +46,8 @@ struct Time { float dt; };
 struct Position { float x; };
 struct Velocity { float x; };
 
-world.set_resource(Time{ .dt = 0.016f });
-world.system("Move").each([](ecs::res<const Time> time,
+ecs::set_resource(Time{ .dt = 0.016f });
+ecs::system("Move").each([](ecs::res<const Time> time,
                               Position &p, const Velocity &v) {
     p.x += v.x * time->dt;
 });
@@ -60,15 +60,15 @@ world.system("Move").each([](ecs::res<const Time> time,
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_entity_t parent = ecs_new(world);
-ecs_entity_t child = ecs_new(world);
-ecs_set(world, child, ChildOf, { parent });
+ecs_entity_t parent = ecs_new();
+ecs_entity_t child = ecs_new();
+ecs_set(child, ChildOf, { parent });
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
-auto parent = world.entity();
-auto child = world.entity().child_of(parent);
+auto parent = ecs::entity::create();
+auto child = ecs::entity::create().child_of(parent);
 ```
 </TabItem>
 </Tabs>
@@ -80,14 +80,14 @@ auto child = world.entity().child_of(parent);
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_query_id_t q = ecs_query(world, {
+ecs_query_id_t q = ecs_query({
     .terms = { ecs_inout(Position), ecs_in_optional(Velocity) },
 });
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
-auto query = world.query()
+auto query = ecs::query()
     .require<Position>()
     .each([](Position &position) {
         // Query optional data through the C API when needed.
@@ -107,7 +107,7 @@ static void OnPositionSet(ecs_observer_event_t *event) {
     (void)incoming;
 }
 
-ecs_observer(world, {
+ecs_observer({
     .on = EcsOnSet,
     .query.terms = { ecs_in(Position) },
     .callback = OnPositionSet,
@@ -116,7 +116,7 @@ ecs_observer(world, {
 </TabItem>
 <TabItem label="C++">
 ```cpp
-world.observe<ecs::OnSet>().each([](const Position &position) {
+ecs::observe<ecs::OnSet>().each([](const Position &position) {
     std::cout << position.x << '\n';
 });
 ```
@@ -128,8 +128,8 @@ world.observe<ecs::OnSet>().each([](const Position &position) {
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_add(world, entity, Disabled);
-ecs_remove(world, entity, Disabled);
+ecs_add(entity, Disabled);
+ecs_remove(entity, Disabled);
 ```
 </TabItem>
 <TabItem label="C++">

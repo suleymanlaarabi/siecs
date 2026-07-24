@@ -13,15 +13,14 @@
 
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
 
-ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *desc) {
-    ecs_assert_not_null(world);
-    ecs_assert_not_null(desc);
+ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
+        ecs_assert_not_null(desc);
     ecs_assert(desc->callback, "system requires callback function\n");
     ecs_assert(desc->phase < EcsPhaseCount, "invalid system phase: %u\n", desc->phase);
 
     ecs_system_t sys = {
         .name = desc->name,
-        .qid = desc->query.terms[0].id ? ecs_query_init(world, &desc->query) : ECS_SYSTEM_NO_QUERY,
+        .qid = desc->query.terms[0].id ? ecs_query_init(&desc->query) : ECS_SYSTEM_NO_QUERY,
         .callback = desc->callback,
         .user_data = desc->user_data,
         .user_data_dtor = desc->user_data_dtor,
@@ -31,44 +30,41 @@ ecs_system_id_t ecs_system_init(ecs_world_t *world, const ecs_system_desc_t *des
 
     memcpy(sys.after, desc->after, sizeof(sys.after));
 
-    ecs_system_id_t system = ecs_system_index_create(&world->system_index, &sys);
-    ecs_module_record_system(world, system);
+    ecs_system_id_t system = ecs_system_index_create(&ecs_world.system_index, &sys);
+    ecs_module_record_system(system);
     return system;
 }
 
-void ecs_run_system(ecs_world_t *world, ecs_system_id_t system) {
-    ecs_assert_not_null(world);
-
-    ecs_system_t *sys = ecs_system_index_get(&world->system_index, system);
+void ecs_run_system(ecs_system_id_t system) {
+    
+    ecs_system_t *sys = ecs_system_index_get(&ecs_world.system_index, system);
     if (!sys->enabled) {
         return;
     }
 
-    ecs_defer_begin(world);
+    ecs_defer_begin();
     if (sys->qid != ECS_SYSTEM_NO_QUERY) {
-        ecs_iter_t it = ecs_query_iter(world, sys->qid);
+        ecs_iter_t it = ecs_query_iter(sys->qid);
         it.user_data = sys->user_data;
-        it.delta_time = world->delta_time;
+        it.delta_time = ecs_world.delta_time;
         while (ecs_iter_next(&it)) {
             sys->callback(&it);
         }
     } else {
         ecs_iter_t it = {
-            .world = world,
-            .count = 1,
+                        .count = 1,
             .user_data = sys->user_data,
-            .delta_time = world->delta_time,
+            .delta_time = ecs_world.delta_time,
         };
         sys->callback(&it);
     }
-    ecs_defer_end(world);
+    ecs_defer_end();
 }
 
-void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase) {
-    ecs_assert_not_null(world);
-    ecs_assert(phase < EcsPhaseCount, "invalid system phase: %u\n", phase);
+void ecs_run_phase(ecs_phase_t phase) {
+        ecs_assert(phase < EcsPhaseCount, "invalid system phase: %u\n", phase);
 
-    ecs_system_index_t *index = &world->system_index;
+    ecs_system_index_t *index = &ecs_world.system_index;
     if (index->plan_dirty) {
         ecs_system_index_build_plan(index);
     }
@@ -76,7 +72,7 @@ void ecs_run_phase(ecs_world_t *world, ecs_phase_t phase) {
     ecs_vec_t *order = &index->phase_order[phase];
     for (uint32_t i = 0; i < order->size; i++) {
         ecs_system_id_t system = *ecs_vec_get(order, i, ecs_system_id_t);
-        ecs_run_system(world, system);
+        ecs_run_system(system);
     }
 }
 
@@ -97,65 +93,62 @@ static inline void sleep_sec(double seconds) {
     nanosleep(&ts, NULL);
 }
 
-bool ecs_progress(ecs_world_t *world) {
-    ecs_assert_not_null(world);
-
+bool ecs_progress(void) {
+    
     double frame_start = now_sec();
 
-    if (world->last_time == 0.0) {
-        world->delta_time = 0.0;
+    if (ecs_world.last_time == 0.0) {
+        ecs_world.delta_time = 0.0;
     } else {
-        world->delta_time = frame_start - world->last_time;
+        ecs_world.delta_time = frame_start - ecs_world.last_time;
     }
 
-    world->last_time = frame_start;
+    ecs_world.last_time = frame_start;
 
-    if (!world->did_start) {
-        ecs_run_phase(world, EcsPreStart);
-        ecs_run_phase(world, EcsStart);
-        ecs_run_phase(world, EcsPostStart);
-        world->did_start = true;
+    if (!ecs_world.did_start) {
+        ecs_run_phase(EcsPreStart);
+        ecs_run_phase(EcsStart);
+        ecs_run_phase(EcsPostStart);
+        ecs_world.did_start = true;
     }
 
     for (ecs_phase_t phase = EcsOnLoad; phase < EcsPhaseCount; phase++) {
-        ecs_run_phase(world, phase);
+        ecs_run_phase(phase);
     }
 
-    if (world->features.rest) {
-        sihttp_server_poll(world->server);
+    if (ecs_world.features.rest) {
+        sihttp_server_poll(ecs_world.server);
     }
 
-    if (world->features.target_fps) {
-        double target_dt = 1.0 / (double)world->features.target_fps;
+    if (ecs_world.features.target_fps) {
+        double target_dt = 1.0 / (double)ecs_world.features.target_fps;
         double elapsed = now_sec() - frame_start;
         double remaining = target_dt - elapsed;
 
         sleep_sec(remaining);
     }
 
-    return !world->exit;
+    return !ecs_world.exit;
 }
 
-void ecs_system_enable(ecs_world_t *world, ecs_system_id_t system) {
-    ecs_assert_not_null(world);
-
-    ecs_system_t *sys = ecs_system_index_get(&world->system_index, system);
+void ecs_system_enable(ecs_system_id_t system) {
+    
+    ecs_system_t *sys = ecs_system_index_get(&ecs_world.system_index, system);
     if (sys->enabled == true) {
         return;
     }
 
     sys->enabled = true;
-    world->system_index.plan_dirty = true;
+    ecs_world.system_index.plan_dirty = true;
 }
 
-void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system) {
-    ecs_assert_not_null(world);
-
-    ecs_system_t *sys = ecs_system_index_get(&world->system_index, system);
+void ecs_system_disable(ecs_system_id_t system) {
+    
+    ecs_system_t *sys = ecs_system_index_get(&ecs_world.system_index, system);
     if (sys->enabled == false) {
         return;
     }
 
     sys->enabled = false;
-    world->system_index.plan_dirty = true;
+    ecs_world.system_index.plan_dirty = true;
 }

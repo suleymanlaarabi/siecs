@@ -36,7 +36,7 @@ ECS_RESOURCE_REGISTER(world, Time);
 
 ```cpp
 struct Time { float dt; };
-world.set_resource(Time{ .dt = 0.016f });
+ecs::set_resource(Time{ .dt = 0.016f });
 ```
 
 </TabItem>
@@ -50,7 +50,7 @@ registered in a dedicated resource registry.
 `ecs_set_resource()` creates or replaces the resource value:
 
 ```c
-ecs_set_resource(world, Time, {
+ecs_set_resource(Time, {
     .dt = 0.016f,
     .elapsed = 0.0f,
 });
@@ -59,25 +59,25 @@ ecs_set_resource(world, Time, {
 Use `ecs_get_resource()` when the resource must exist:
 
 ```c
-Time *time = ecs_get_resource(world, Time);
+Time *time = ecs_get_resource(Time);
 time->elapsed += time->dt;
 ```
 
 Use `ecs_get_resource_read()` when the caller only needs read access:
 
 ```c
-const Time *time = ecs_get_resource_read(world, Time);
+const Time *time = ecs_get_resource_read(Time);
 ```
 
 If absence is valid, use the nullable helpers:
 
 ```c
-Time *time = ecs_try_get_resource(world, Time);
+Time *time = ecs_try_get_resource(Time);
 if (time != NULL) {
     time->elapsed += time->dt;
 }
 
-const Time *read_time = ecs_try_get_resource_read(world, Time);
+const Time *read_time = ecs_try_get_resource_read(Time);
 ```
 
 `ecs_get_resource()` and `ecs_get_resource_read()` assert when the resource does not
@@ -88,8 +88,8 @@ exist. The `try` variants return `NULL`.
 Check whether a resource exists with `ecs_has_resource()`:
 
 ```c
-if (!ecs_has_resource(world, Time)) {
-    ecs_set_resource(world, Time, {
+if (!ecs_has_resource(Time)) {
+    ecs_set_resource(Time, {
         .dt = 0.0f,
         .elapsed = 0.0f,
     });
@@ -99,7 +99,7 @@ if (!ecs_has_resource(world, Time)) {
 Remove it with `ecs_remove_resource()`:
 
 ```c
-ecs_remove_resource(world, Time);
+ecs_remove_resource(Time);
 ```
 
 Removing a missing resource is a no-op.
@@ -121,7 +121,7 @@ static void move_system(ecs_iter_t *it) {
     }
 }
 
-ecs_system(world, {
+ecs_system({
     .name = "Move",
     .phase = EcsOnUpdate,
     .query = {
@@ -139,11 +139,11 @@ The resource is not part of the query. The system above matches entities with
 Typed helpers are wrappers around the id-based API:
 
 ```c
-void ecs_set_resource_rid(ecs_world_t *world, ecs_resource_t id, const void *data);
-void *ecs_resource_rid(ecs_world_t *world, ecs_resource_t id);
-void *ecs_try_resource_rid(ecs_world_t *world, ecs_resource_t id);
-bool ecs_has_resource_rid(const ecs_world_t *world, ecs_resource_t id);
-void ecs_remove_resource_rid(ecs_world_t *world, ecs_resource_t id);
+void ecs_set_resource_rid(ecs_resource_t id, const void *data);
+void *ecs_resource_rid(ecs_resource_t id);
+void *ecs_try_resource_rid(ecs_resource_t id);
+bool ecs_has_resource_rid(const ecs_resource_t id);
+void ecs_remove_resource_rid(ecs_resource_t id);
 ```
 
 This is useful for generic module code:
@@ -151,8 +151,8 @@ This is useful for generic module code:
 ```c
 ecs_resource_t time_id = ecs_id(Time);
 
-if (ecs_has_resource_rid(world, time_id)) {
-    const Time *time = ecs_resource_rid(world, time_id);
+if (ecs_has_resource_rid(time_id)) {
+    const Time *time = ecs_resource_rid(time_id);
     /* use time */
 }
 ```
@@ -169,7 +169,7 @@ Resources have dedicated resource hooks:
 Hooks receive only the world and the resource value pointer.
 
 ```c
-static void on_time_set(ecs_world_t *world, const void *data) {
+static void on_time_set(const void *data) {
     (void)world;
 
     const Time *time = data;

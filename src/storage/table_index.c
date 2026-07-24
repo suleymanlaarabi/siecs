@@ -63,9 +63,9 @@ void ecs_table_index_init(ecs_table_index_t *map) {
     ecs_table_index_init_slots(map);
 }
 
-void ecs_table_index_fini(ecs_world_t *world, ecs_table_index_t *map) {
+void ecs_table_index_fini(ecs_table_index_t *map) {
     for (uint16_t i = 0; i < map->table_count; i++) {
-        ecs_table_fini(world, &map->tables[i]);
+        ecs_table_fini(&map->tables[i]);
     }
     free(map->tables);
     free(map->slots);
@@ -88,15 +88,14 @@ static void ecs_table_index_grow_tables(ecs_table_index_t *map) {
 }
 
 static bool ecs_table_index_inherits_component_before(
-    const ecs_world_t *world,
     const ecs_table_t *table,
     ecs_entity_t stop_base,
     ecs_component_t component
 ) {
     ecs_entity_t base = table->type.base;
     while (base != 0 && base != stop_base) {
-        const ecs_entity_record_t *record = ecs_get_record(world, base);
-        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+        const ecs_entity_record_t *record = ecs_get_record(base);
+        const ecs_table_t *base_table = ecs_get_table(record->table_id);
         if (ecs_table_column_or_invalid(base_table, component) != UINT16_MAX) {
             return true;
         }
@@ -106,25 +105,24 @@ static bool ecs_table_index_inherits_component_before(
 }
 
 static void ecs_table_index_register_inherited_components(
-    ecs_world_t *world,
-    ecs_table_t *table,
+        ecs_table_t *table,
     uint16_t table_id
 ) {
     ecs_entity_t base = table->type.base;
     while (base != 0) {
-        const ecs_entity_record_t *record = ecs_get_record(world, base);
-        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+        const ecs_entity_record_t *record = ecs_get_record(base);
+        const ecs_table_t *base_table = ecs_get_table(record->table_id);
 
         for (uint16_t i = 0; i < base_table->type.count; i++) {
             ecs_component_t component = base_table->type.ids[i];
             if (ecs_table_column_or_invalid(table, component) != UINT16_MAX ||
-                ecs_table_index_inherits_component_before(world, table, base, component)) {
+                ecs_table_index_inherits_component_before(table, base, component)) {
                 continue;
             }
 
             table->bloom |= 1ull << (component % 64);
             ecs_component_record_t *record =
-                ecs_component_index_get_mut(&world->component_index, component);
+                ecs_component_index_get_mut(&ecs_world.component_index, component);
             ecs_vec_push_u16(&record->tables, table_id);
         }
 
@@ -132,9 +130,9 @@ static void ecs_table_index_register_inherited_components(
     }
 }
 
-uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
-    const ecs_component_index_t *component_index = &world->component_index;
-    ecs_table_index_t *map = &world->table_index;
+uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
+    const ecs_component_index_t *component_index = &ecs_world.component_index;
+    ecs_table_index_t *map = &ecs_world.table_index;
     uint32_t hash = ecs_type_hash(type);
     uint16_t hash_fingerprint = ecs_type_hash_fingerprint(hash);
     uint32_t slot_mask = ecs_table_index_slot_count(map) - 1;
@@ -167,12 +165,12 @@ uint16_t ecs_table_index_get_or_create(ecs_world_t *world, ecs_type_t type) {
     ecs_table_t new_table;
     ecs_table_init(&new_table, type, component_index, table_idx);
     map->tables[table_idx] = new_table;
-    ecs_table_index_register_inherited_components(world, &map->tables[table_idx], table_idx);
+    ecs_table_index_register_inherited_components(&map->tables[table_idx], table_idx);
 
     map->slots[slot_idx].hash = hash_fingerprint;
     map->slots[slot_idx].table_index = table_idx;
 
-    ecs_query_index_add_table(world, ecs_table_index_at(map, table_idx), table_idx);
-    ecs_observer_index_add_table(world, ecs_table_index_at(map, table_idx));
+    ecs_query_index_add_table(ecs_table_index_at(map, table_idx), table_idx);
+    ecs_observer_index_add_table(ecs_table_index_at(map, table_idx));
     return (uint16_t)table_idx;
 }

@@ -8,7 +8,8 @@
     "use": ["siecs"]
   },
   "lang.cpp": {
-    "cpp-standard": "c++23"
+    "cpp-standard": "c++23",
+    "include": ["../../include"]
   },
   "test": {
     "testsuites": [
@@ -71,8 +72,7 @@
         "id": "module_state",
         "testcases": [
           "lookup_empty",
-          "enable",
-          "reimport_after_world_fini"
+          "enable"
         ]
       }
     ]

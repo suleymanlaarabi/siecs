@@ -7,7 +7,7 @@ namespace detail {
 
 template <typename Callback, typename Args> static void system_callback(ecs_iter_t *it) {
     Callback &callback = *reinterpret_cast<Callback *>(it->user_data);
-    auto resources = make_resources<Args>(it->world);
+    auto resources = make_resources<Args>();
     if constexpr (component_arg_count<Args>() == 0) {
         std::apply(callback, resources);
     } else {
@@ -26,7 +26,7 @@ class system : protected query {
     ecs_phase_t _phase = EcsOnUpdate;
 
   public:
-    system(ecs_world_t *_world, const char *name) : query(_world), name(name) {}
+    explicit system(const char *name = "unnamed") : name(name) {}
 
     template <typename... T> system &require() {
         query::require<T...>();
@@ -46,7 +46,7 @@ class system : protected query {
     template <typename F> ecs_system_id_t each(F &&func) {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
-        detail::append_callback_terms<args>(_world, desc, term_index);
+        detail::append_callback_terms<args>(desc, term_index);
         callback *state = new callback(std::forward<F>(func));
 
         ecs_system_desc_t system_desc = {
@@ -58,7 +58,7 @@ class system : protected query {
             .phase = _phase,
         };
 
-        return ecs_system_init(_world, &system_desc);
+        return ecs_system_init(&system_desc);
     }
 };
 

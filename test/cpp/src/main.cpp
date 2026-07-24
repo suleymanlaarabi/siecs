@@ -51,7 +51,6 @@ void module_import_double_import(void);
 // Testsuite 'module_state'
 void module_state_lookup_empty(void);
 void module_state_enable(void);
-void module_state_reimport_after_world_fini(void);
 
 bake_test_case entity_state_testcases[] = {
     {
@@ -196,10 +195,6 @@ bake_test_case module_state_testcases[] = {
     {
         "enable",
         module_state_enable
-    },
-    {
-        "reimport_after_world_fini",
-        module_state_reimport_after_world_fini
     }
 };
 
@@ -244,7 +239,7 @@ static bake_test_suite suites[] = {
         "module_state",
         NULL,
         NULL,
-        3,
+        2,
         module_state_testcases
     }
 };

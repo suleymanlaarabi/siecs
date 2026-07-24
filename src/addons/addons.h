@@ -2,6 +2,6 @@
 #define ECS_ADDONS_H
 #include <siecs.h>
 
-void init_rest(ecs_world_t *world);
+void init_rest();
 
 #endif

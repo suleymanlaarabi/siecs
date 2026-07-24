@@ -12,7 +12,7 @@ SIECS includes the built-in `ChildOf` relation:
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_set(world, child, ChildOf, { .target = parent });
+ecs_set(child, ChildOf, { .target = parent });
 ```
 </TabItem>
 <TabItem label="C++">
@@ -49,7 +49,7 @@ Declare and define a relation:
 ECS_RELATION_DECLARE(Targets);
 ECS_RELATION_DEFINE(Targets, 0);
 ECS_COMPONENT_REGISTER(world, Targets);
-ecs_set(world, entity, Targets, { .target = other_entity });
+ecs_set(entity, Targets, { .target = other_entity });
 ```
 </TabItem>
 <TabItem label="C++">

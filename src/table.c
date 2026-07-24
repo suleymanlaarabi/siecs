@@ -46,14 +46,14 @@ void ecs_table_init(
     }
 }
 
-static inline void ecs_table_grow(ecs_world_t *world, ecs_table_t *table) {
+static inline void ecs_table_grow(ecs_table_t *table) {
     uint64_t new_capacity = table->entity_capacity * (uint64_t)2;
     table->entities = realloc(table->entities, sizeof(ecs_entity_t) * new_capacity);
     for (uint16_t i = 0; i < table->data_count; i++) {
         uint16_t column_index = table->data_columns[i];
         ecs_column_t *column = &table->cls[column_index];
         const ecs_component_record_t *record =
-            ecs_component_index_get(&world->component_index, table->type.ids[column_index]);
+            ecs_component_index_get(&ecs_world.component_index, table->type.ids[column_index]);
 
         void *new_data = calloc(new_capacity, column->size);
         ecs_assert_not_null(new_data);
@@ -64,9 +64,9 @@ static inline void ecs_table_grow(ecs_world_t *world, ecs_table_t *table) {
     table->entity_capacity = new_capacity;
 }
 
-uint32_t ecs_table_add_entity(ecs_world_t *world, ecs_table_t *table, ecs_entity_t entity) {
+uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
     if (ECS_UNLIKELY(table->entity_count >= table->entity_capacity)) {
-        ecs_table_grow(world, table);
+        ecs_table_grow(table);
     }
     uint32_t row = table->entity_count++;
     table->entities[row] = entity;
@@ -76,7 +76,7 @@ uint32_t ecs_table_add_entity(ecs_world_t *world, ecs_table_t *table, ecs_entity
 // if the entity is not the last one, the last entity will be moved to the removed entity's
 // position, and the moved entity will be returned
 ecs_entity_t
-ecs_table_remove_entity(ecs_world_t *world, ecs_table_t *table, uint32_t row, bool row_values_live) {
+ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) {
     ecs_entity_t removed_entity = table->entities[row];
     uint32_t last_row = table->entity_count - 1;
     if (row_values_live) {
@@ -84,7 +84,7 @@ ecs_table_remove_entity(ecs_world_t *world, ecs_table_t *table, uint32_t row, bo
             uint16_t column_index = table->data_columns[i];
             ecs_column_t *column = &table->cls[column_index];
             const ecs_component_record_t *record =
-                ecs_component_index_get(&world->component_index, table->type.ids[column_index]);
+                ecs_component_index_get(&ecs_world.component_index, table->type.ids[column_index]);
             void *ptr = (char *)column->data + (column->size * row);
             ecs_component_value_dtor(record, ptr, 1);
         }
@@ -96,7 +96,7 @@ ecs_table_remove_entity(ecs_world_t *world, ecs_table_t *table, uint32_t row, bo
             uint16_t column_index = table->data_columns[i];
             ecs_column_t *column = &table->cls[column_index];
             const ecs_component_record_t *record =
-                ecs_component_index_get(&world->component_index, table->type.ids[column_index]);
+                ecs_component_index_get(&ecs_world.component_index, table->type.ids[column_index]);
             void *src = (char *)column->data + (column->size * last_row);
             void *dst = (char *)column->data + (column->size * row);
             ecs_component_value_move_ctor(record, dst, src, 1);
@@ -125,11 +125,11 @@ void ecs_table_add_observer(ecs_table_t *table, uint16_t event, uint16_t observe
     ecs_vec_push_u16(list, observer_id);
 }
 
-static void ecs_table_fini_component_values(ecs_world_t *world, ecs_table_t *table) {
+static void ecs_table_fini_component_values(ecs_table_t *table) {
     for (uint16_t c = 0; c < table->type.count; c++) {
         ecs_component_t component = table->type.ids[c];
         const ecs_component_record_t *crec =
-            ecs_component_index_get(&world->component_index, component);
+            ecs_component_index_get(&ecs_world.component_index, component);
 
         if (crec->relation_flags & EcsRelationSource) {
             if (!(crec->relation_flags & EcsRelationOneToOne)) {
@@ -148,15 +148,15 @@ static void ecs_table_fini_component_values(ecs_world_t *world, ecs_table_t *tab
         for (uint32_t row = 0; row < table->entity_count; row++) {
             void *ptr = ecs_table_component_at_column(table, c, row);
             if (crec->on_remove) {
-                crec->on_remove(world, table->entities[row], component, ptr);
+                crec->on_remove(table->entities[row], component, ptr);
             }
             ecs_component_value_dtor(crec, ptr, 1);
         }
     }
 }
 
-void ecs_table_fini(ecs_world_t *world, ecs_table_t *table) {
-    ecs_table_fini_component_values(world, table);
+void ecs_table_fini(ecs_table_t *table) {
+    ecs_table_fini_component_values(table);
 
     for (uint16_t i = 0; i < table->type.count; i++) {
         free(table->cls[i].data);
@@ -173,7 +173,6 @@ void ecs_table_fini(ecs_world_t *world, ecs_table_t *table) {
 }
 
 bool ecs_table_has(
-    const ecs_world_t *world,
     const ecs_table_t *table,
     ecs_component_t component_id
 ) {
@@ -187,8 +186,8 @@ bool ecs_table_has(
 
     ecs_entity_t base = table->type.base;
     while (base != 0) {
-        const ecs_entity_record_t *record = ecs_get_record(world, base);
-        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+        const ecs_entity_record_t *record = ecs_get_record(base);
+        const ecs_table_t *base_table = ecs_get_table(record->table_id);
         if (ecs_table_column_or_invalid(base_table, component_id) != UINT16_MAX) {
             return true;
         }
@@ -198,7 +197,7 @@ bool ecs_table_has(
     return false;
 }
 
-bool ecs_table_is_a(const ecs_world_t *world, const ecs_table_t *table, ecs_entity_t base) {
+bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
     if (base == 0) {
         return true;
     }
@@ -209,8 +208,8 @@ bool ecs_table_is_a(const ecs_world_t *world, const ecs_table_t *table, ecs_enti
             return true;
         }
 
-        const ecs_entity_record_t *record = ecs_get_record(world, current);
-        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+        const ecs_entity_record_t *record = ecs_get_record(current);
+        const ecs_table_t *base_table = ecs_get_table(record->table_id);
         current = base_table->type.base;
     }
 
@@ -218,8 +217,7 @@ bool ecs_table_is_a(const ecs_world_t *world, const ecs_table_t *table, ecs_enti
 }
 
 void *ecs_table_field(
-    ecs_world_t *world,
-    const ecs_table_t *table,
+        const ecs_table_t *table,
     ecs_component_t component_id,
     bool *is_shared
 ) {
@@ -231,8 +229,8 @@ void *ecs_table_field(
 
     ecs_entity_t base = table->type.base;
     while (base != 0) {
-        const ecs_entity_record_t *record = ecs_get_record(world, base);
-        const ecs_table_t *base_table = ecs_get_table(world, record->table_id);
+        const ecs_entity_record_t *record = ecs_get_record(base);
+        const ecs_table_t *base_table = ecs_get_table(record->table_id);
 
         cidx = ecs_table_column_or_invalid(base_table, component_id);
         if (cidx != UINT16_MAX) {

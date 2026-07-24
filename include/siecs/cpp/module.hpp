@@ -6,36 +6,29 @@
 
 namespace ecs {
 
-class world;
-
 template <typename T> class module_ref {
-    ecs_world_t *_world = nullptr;
     ecs_module_id_t _id = 0;
 
   public:
     constexpr module_ref() noexcept = default;
-    constexpr module_ref(ecs_world_t *world, ecs_module_id_t id) noexcept
-        : _world(world), _id(id) {}
+    constexpr explicit module_ref(ecs_module_id_t id) noexcept : _id(id) {}
 
     [[nodiscard]] constexpr ecs_module_id_t id() const noexcept { return _id; }
     [[nodiscard]] constexpr explicit operator bool() const noexcept { return _id != 0; }
 
     void enable() const noexcept {
-        assert(_world != nullptr);
         assert(_id != 0);
-        ecs_module_enable(_world, _id);
+        ecs_module_enable(_id);
     }
 
     void disable() const noexcept {
-        assert(_world != nullptr);
         assert(_id != 0);
-        ecs_module_disable(_world, _id);
+        ecs_module_disable(_id);
     }
 
     [[nodiscard]] bool is_enabled() const noexcept {
-        assert(_world != nullptr);
         assert(_id != 0);
-        return ecs_module_is_enabled(_world, _id);
+        return ecs_module_is_enabled(_id);
     }
 };
 
@@ -43,11 +36,12 @@ namespace detail {
 
 template <typename T> struct module_type {
     static inline ecs_module_id_t id;
+    static inline uint64_t generation;
 };
 
 template <typename T>
-concept module_importable = requires(T module, ecs::world &world) {
-    { module.import(world) } -> std::same_as<void>;
+concept module_importable = requires(T module) {
+    { module.import() } -> std::same_as<void>;
 };
 
 template <typename T, typename... Args>

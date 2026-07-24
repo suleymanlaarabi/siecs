@@ -20,12 +20,11 @@ typedef struct {
 } ecs_table_index_t;
 
 void ecs_table_index_init(ecs_table_index_t *map);
-void ecs_table_index_fini(struct ecs_world_s *world, ecs_table_index_t *map);
+void ecs_table_index_fini(ecs_table_index_t *map);
 
 #define ecs_table_index_at(map, index) (&(map)->tables[index])
 
 uint16_t ecs_table_index_get_or_create(
-    struct ecs_world_s *world,
     ecs_type_t type
 );
 

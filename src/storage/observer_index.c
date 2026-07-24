@@ -32,24 +32,23 @@ uint16_t ecs_observer_index_create(ecs_observer_index_t *index, const ecs_observ
 }
 
 void ecs_observer_index_match_tables(
-    ecs_world_t *world,
-    ecs_table_t *tables,
+        ecs_table_t *tables,
     uint16_t table_count,
     uint16_t observer_id
 ) {
     ecs_observer_t *obs =
-        ecs_vec_get_mut(&world->observer_index.observers, observer_id, ecs_observer_t);
+        ecs_vec_get_mut(&ecs_world.observer_index.observers, observer_id, ecs_observer_t);
     for (uint16_t i = 0; i < table_count; i++) {
-        if (ecs_query_match_table(world, &obs->query, &tables[i])) {
+        if (ecs_query_match_table(&obs->query, &tables[i])) {
             ecs_table_add_observer(&tables[i], obs->event, observer_id);
         }
     }
 }
 
-void ecs_observer_index_add_table(ecs_world_t *world, ecs_table_t *table) {
-    for (uint32_t i = 0; i < world->observer_index.observers.size; i++) {
-        ecs_observer_t *obs = ecs_vec_get_mut(&world->observer_index.observers, i, ecs_observer_t);
-        if (ecs_query_match_table(world, &obs->query, table)) {
+void ecs_observer_index_add_table(ecs_table_t *table) {
+    for (uint32_t i = 0; i < ecs_world.observer_index.observers.size; i++) {
+        ecs_observer_t *obs = ecs_vec_get_mut(&ecs_world.observer_index.observers, i, ecs_observer_t);
+        if (ecs_query_match_table(&obs->query, table)) {
             ecs_table_add_observer(table, obs->event, i);
         }
     }

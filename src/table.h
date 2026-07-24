@@ -37,12 +37,12 @@ void ecs_table_init(
     const struct ecs_component_index_s *component_index,
     uint16_t table_id
 );
-void ecs_table_fini(ecs_world_t *world, ecs_table_t *table);
-uint32_t ecs_table_add_entity(ecs_world_t *world, ecs_table_t *table, ecs_entity_t entity);
+void ecs_table_fini(ecs_table_t *table);
+uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity);
 // if the entity is not the last one, the last entity will be moved to the removed entity's
 // position, and the moved entity will be returned
 ecs_entity_t
-ecs_table_remove_entity(ecs_world_t *world, ecs_table_t *table, uint32_t row, bool row_values_live);
+ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live);
 
 void *ecs_table_get_component(ecs_table_t *table, ecs_component_t component_id, uint32_t row);
 
@@ -71,11 +71,10 @@ ecs_table_column_or_invalid(const ecs_table_t *table, ecs_component_t component_
 }
 
 bool ecs_table_has(
-    const ecs_world_t *world,
     const ecs_table_t *table,
     ecs_component_t component_id
 );
-bool ecs_table_is_a(const ecs_world_t *world, const ecs_table_t *table, ecs_entity_t base);
+bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base);
 
 static inline uint16_t
 ecs_table_get_column_index(const ecs_table_t *table, ecs_component_t component_id) {
@@ -87,8 +86,7 @@ static inline bool ecs_table_has_owned(const ecs_table_t *table, ecs_component_t
 }
 
 void *ecs_table_field(
-    ecs_world_t *world,
-    const ecs_table_t *table,
+        const ecs_table_t *table,
     ecs_component_t component_id,
     bool *is_shared
 );

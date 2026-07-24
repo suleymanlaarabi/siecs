@@ -8,7 +8,7 @@
   },
   "lang.c": {
     "c-standard": "c23",
-    "include": ["../src"]
+    "include": ["../src", "../include"]
   },
   "bundle": {
     "repositories": {
@@ -62,18 +62,6 @@
           "set_component_value_rejects_wrong_type",
           "set_component_value_rejects_missing_component",
           "set_component_value_rejects_non_reflected_component"
-        ]
-      },
-      {
-        "id": "multi_world",
-        "testcases": [
-          "same_component_registered_in_two_worlds",
-          "worlds_keep_independent_component_storage",
-          "queries_only_see_their_world_tables",
-          "fini_one_world_keeps_other_world_valid",
-          "relations_remain_world_local",
-          "resource_ids_are_not_overwritten_by_other_world",
-          "typed_resource_macros_use_their_world_records"
         ]
       },
       {
@@ -148,8 +136,7 @@
           "enable",
           "skips_disabled_by_default",
           "can_match_disabled_when_requested",
-          "on_remove_runs_when_entity_is_killed",
-          "event_register_reserves_static_ids"
+          "on_remove_runs_when_entity_is_killed"
         ]
       },
       {
@@ -158,8 +145,7 @@
           "import_registers_runtime",
           "enable",
           "disabled_import",
-          "double_import_is_noop",
-          "reimport_after_world_fini"
+          "double_import_is_noop"
         ]
       },
       {

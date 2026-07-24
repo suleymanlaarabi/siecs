@@ -20,26 +20,22 @@ static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query
     ecs_vec_remove_last(&index->active_ids);
 }
 
-ecs_query_id_t ecs_query_init(ecs_world_t *world, const ecs_query_desc_t *desc) {
-    ecs_assert_not_null(world);
-    ecs_query_id_t qid = ecs_query_index_create(&world->query_index, desc);
+ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) {
+        ecs_query_id_t qid = ecs_query_index_create(&ecs_world.query_index, desc);
     ecs_query_index_update_matches(
-        world,
-        ecs_vec_get_mut(&world->query_index.queries, qid, ecs_query_cache_t)
+                ecs_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t)
     );
     return qid;
 }
 
-ecs_iter_t ecs_query_iter(ecs_world_t *world, ecs_query_id_t query_id) {
-    ecs_assert_not_null(world);
-    ecs_assert(query_id < world->query_index.queries.size, "invalid query id: %u\n", query_id);
+ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
+        ecs_assert(query_id < ecs_world.query_index.queries.size, "invalid query id: %u\n", query_id);
 
     ecs_query_cache_t *cache =
-        ecs_vec_get_mut(&world->query_index.queries, query_id, ecs_query_cache_t);
+        ecs_vec_get_mut(&ecs_world.query_index.queries, query_id, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", query_id);
     return (ecs_iter_t){
-        .world = world,
-        .cache = cache,
+                .cache = cache,
         .table_idx = UINT16_MAX,
         .table_count = cache->table_ids.size,
         .count = 0,
@@ -51,7 +47,7 @@ bool ecs_iter_next(ecs_iter_t *it) {
     do {
         if (++it->table_idx >= it->table_count)
             return false;
-        it->count = it->world->table_index.tables[tids[it->table_idx]].entity_count;
+        it->count = ecs_world.table_index.tables[tids[it->table_idx]].entity_count;
     } while (it->count == 0);
     if (it->cache->query.field_count == 0) {
         it->ptrs = NULL;
@@ -60,20 +56,19 @@ bool ecs_iter_next(ecs_iter_t *it) {
         it->ptrs = &it->cache->fields_ptr[it->table_idx * it->cache->query.field_count];
         it->field_kinds = &it->cache->fields_kind[it->table_idx * it->cache->query.field_count];
     }
-    it->entities = it->world->table_index.tables[tids[it->table_idx]].entities;
+    it->entities = ecs_world.table_index.tables[tids[it->table_idx]].entities;
     return true;
 }
 
 ecs_table_t *ecs_iter_table(ecs_iter_t *it) {
     uint16_t tid = *ecs_vec_get_mut(&it->cache->table_ids, it->table_idx, uint16_t);
-    return ecs_table_index_at(&it->world->table_index, tid);
+    return ecs_table_index_at(&ecs_world.table_index, tid);
 }
 
-void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid) {
-    ecs_assert_not_null(world);
-    ecs_assert(qid < world->query_index.queries.size, "invalid query id: %u\n", qid);
+void ecs_query_fini(ecs_query_id_t qid) {
+        ecs_assert(qid < ecs_world.query_index.queries.size, "invalid query id: %u\n", qid);
 
-    ecs_query_cache_t *cache = ecs_vec_get_mut(&world->query_index.queries, qid, ecs_query_cache_t);
+    ecs_query_cache_t *cache = ecs_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", qid);
 
     ecs_query_index_destroy(&cache->query);
@@ -84,8 +79,8 @@ void ecs_query_fini(ecs_world_t *world, ecs_query_id_t qid) {
     cache->fields_kind = NULL;
     cache->field_table_capacity = 0;
 
-    ecs_query_index_remove_active_id(&world->query_index, qid);
-    cache->next_free = world->query_index.first_free;
+    ecs_query_index_remove_active_id(&ecs_world.query_index, qid);
+    cache->next_free = ecs_world.query_index.first_free;
     cache->alive = false;
-    world->query_index.first_free = qid;
+    ecs_world.query_index.first_free = qid;
 }

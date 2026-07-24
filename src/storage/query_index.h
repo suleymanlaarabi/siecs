@@ -35,8 +35,8 @@ typedef struct {
 void ecs_query_index_init(ecs_query_index_t *index);
 void ecs_query_index_fini(ecs_query_index_t *index);
 uint16_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc);
-void ecs_query_index_update_matches(ecs_world_t *world, ecs_query_cache_t *query_cache);
-void ecs_query_index_add_table(ecs_world_t *world, const ecs_table_t *table, uint16_t table_id);
+void ecs_query_index_update_matches(ecs_query_cache_t *query_cache);
+void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id);
 
 // Reusable query helpers shared with the observer index.
 void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query);
@@ -47,7 +47,6 @@ static inline bool ecs_query_term_requires_owned(ecs_query_term_t term) {
 }
 
 static inline bool ecs_query_match_table(
-    const ecs_world_t *world,
     const ecs_query_t *query,
     const ecs_table_t *table
 ) {
@@ -55,7 +54,7 @@ static inline bool ecs_query_match_table(
         return false;
     }
 
-    if (query->is_a && !ecs_table_is_a(world, table, query->is_a)) {
+    if (query->is_a && !ecs_table_is_a(table, query->is_a)) {
         return false;
     }
 
@@ -64,14 +63,14 @@ static inline bool ecs_query_match_table(
         if (term.access == EcsInOptional || term.access == EcsInOutOptional) {
             continue;
         } else if (term.access == EcsNot) {
-            if (ecs_table_has(world, table, term.id)) {
+            if (ecs_table_has(table, term.id)) {
                 return false;
             }
         } else if (ecs_query_term_requires_owned(term)) {
             if (ecs_table_column_or_invalid(table, term.id) == UINT16_MAX) {
                 return false;
             }
-        } else if (!ecs_table_has(world, table, term.id)) {
+        } else if (!ecs_table_has(table, term.id)) {
             return false;
         }
     }

@@ -70,18 +70,18 @@ struct Velocity {
 };
 
 int main() {
-    ecs::world world;
+    ecs::init();
 
-    world.entity().set(Position{ 0, 0 }).set(Velocity{ 10, 10 });
+    ecs::entity::create().set(Position{ 0, 0 }).set(Velocity{ 10, 10 });
 
-    world.system("Move")
+    ecs::system("Move")
         .phase(EcsOnUpdate)
         .each([](Position &pos, const Velocity &vel) {
             pos.x += vel.x;
             pos.y += vel.y;
         });
 
-    world.progress();
+    ecs::progress();
 }
 ```
 
@@ -110,24 +110,24 @@ void Move(ecs_iter_t *it) {
 }
 
 int main(void) {
-    ecs_world_t *world = ecs_init();
+    ecs_init();
 
-    ECS_COMPONENT_REGISTER(world, Position);
-    ECS_COMPONENT_REGISTER(world, Velocity);
+    ECS_COMPONENT_REGISTER(Position);
+    ECS_COMPONENT_REGISTER(Velocity);
 
-    ecs_system(world, {
+    ecs_system({
         .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
         .callback = Move,
         .phase = EcsOnUpdate,
     });
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, Position, {0, 0});
-    ecs_set(world, entity, Velocity, {1, 1});
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, Position, {0, 0});
+    ecs_set(entity, Velocity, {1, 1});
 
-    while (ecs_progress(world)) {}
+    while (ecs_progress()) {}
 
-    ecs_fini(world);
+    ecs_fini();
 }
 ```
 

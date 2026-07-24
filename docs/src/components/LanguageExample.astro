@@ -10,7 +10,7 @@ const { code, language = 'c' } = Astro.props;
 const displayCode = typeof code === 'string' && code.startsWith('"')
   ? JSON.parse(code)
   : code;
-const cppComment = `// C++ equivalent: use the corresponding ecs::world,
+const cppComment = `// C++ equivalent: use the corresponding ecs:: API,
 // ecs::entity, or ecs::query API for this operation.`;
 ---
 

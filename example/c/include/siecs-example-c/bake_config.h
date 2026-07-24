@@ -18,10 +18,7 @@
 #define SIECS_EXAMPLE_C_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
-#include <siecs.h>
-#include <sijson.h>
-#include <sireflect.h>
-#include <sihttp.h>
+/* No dependencies */
 
 #endif
 

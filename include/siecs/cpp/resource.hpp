@@ -24,6 +24,7 @@ namespace detail {
 
 template <typename T> struct resource_type {
     static inline ecs_resource_t id;
+    static inline uint64_t generation;
 };
 
 template <typename T> struct is_res : std::false_type {};
@@ -46,19 +47,17 @@ struct no_resource {};
 
 } // namespace detail
 
-template <typename T> static ecs_resource_t ecs_cpp_resource_id(ecs_world_t *world) {
+template <typename T> static ecs_resource_t ecs_cpp_resource_id() {
     using type = std::remove_cv_t<T>;
     ecs_resource_t &rid = detail::resource_type<type>::id;
+    uint64_t &generation = detail::resource_type<type>::generation;
 
-    if (rid != 0 && ecs_resource_is_registered_rid(world, rid)) {
-        return rid;
+    if (generation != detail::world_generation) {
+        rid = 0;
+        generation = detail::world_generation;
     }
 
-    std::string name = std::string(type_name<type>());
-    rid = ecs_resource_find(world, name.c_str());
-    if (rid != 0) {
-        return rid;
-    }
+    static const std::string name = std::string(type_name<type>());
 
     ecs_resource_desc_t desc = {
         .name = name.c_str(),
@@ -68,46 +67,39 @@ template <typename T> static ecs_resource_t ecs_cpp_resource_id(ecs_world_t *wor
         .on_remove = nullptr,
     };
 
-    rid = ecs_resource_init(world, &desc);
+    if (rid == 0) rid = ecs_resource_init(&desc);
     return rid;
 }
 
-template <typename T> static ecs_resource_t ecs_cpp_try_resource_id(ecs_world_t *world) {
+template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {
     using type = std::remove_cv_t<T>;
     ecs_resource_t &rid = detail::resource_type<type>::id;
 
-    if (rid != 0 && ecs_resource_is_registered_rid(world, rid)) {
-        return rid;
-    }
-
-    std::string name = std::string(type_name<type>());
-    rid = ecs_resource_find(world, name.c_str());
-    return rid;
+    return detail::resource_type<type>::generation == detail::world_generation ? rid : 0;
 }
 
 namespace detail {
 
-template <typename Arg> inline auto make_resource_arg(ecs_world_t *world) {
+template <typename Arg> inline auto make_resource_arg() {
     if constexpr (is_res_v<Arg>) {
         using value_type = res_value_t<Arg>;
         using resource_type = std::remove_cv_t<value_type>;
 
-        ecs_resource_t id = ecs::ecs_cpp_resource_id<resource_type>(world);
-        return ecs::res<value_type>(static_cast<value_type *>(ecs_resource_rid(world, id)));
+        ecs_resource_t id = ecs_cpp_resource_id<resource_type>();
+        return ecs::res<value_type>(static_cast<value_type *>(ecs_resource_rid(id)));
     } else {
         return no_resource{};
     }
 }
 
 template <typename Args, std::size_t... Is>
-inline auto make_resources(ecs_world_t *world, std::index_sequence<Is...>) {
-    (void)world;
-    return std::tuple{ make_resource_arg<std::tuple_element_t<Is, Args>>(world)... };
+inline auto make_resources(std::index_sequence<Is...>) {
+    return std::tuple{ make_resource_arg<std::tuple_element_t<Is, Args>>()... };
 }
 
-template <typename Args> inline auto make_resources(ecs_world_t *world) {
+template <typename Args> inline auto make_resources() {
     constexpr std::size_t N = std::tuple_size_v<Args>;
-    return make_resources<Args>(world, std::make_index_sequence<N>{});
+    return make_resources<Args>(std::make_index_sequence<N>{});
 }
 
 } // namespace detail

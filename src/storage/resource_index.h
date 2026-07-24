@@ -14,7 +14,7 @@ typedef struct {
 } ecs_resource_index_t;
 
 void ecs_resource_index_init(ecs_resource_index_t *index);
-void ecs_resource_index_fini(ecs_resource_index_t *index, ecs_world_t *world);
+void ecs_resource_index_fini(ecs_resource_index_t *index);
 
 ecs_resource_t ecs_resource_index_register(
     ecs_resource_index_t *index,
@@ -23,22 +23,19 @@ ecs_resource_t ecs_resource_index_register(
 );
 ecs_resource_t ecs_resource_index_find(const ecs_resource_index_t *index, const char *name);
 bool ecs_resource_index_is_registered(const ecs_resource_index_t *index, ecs_resource_t id);
-
 void ecs_resource_index_set(
     ecs_resource_index_t *index,
-    ecs_world_t *world,
-    ecs_resource_t id,
+        ecs_resource_t id,
     const void *data
 );
 void ecs_resource_index_move(
     ecs_resource_index_t *index,
-    ecs_world_t *world,
-    ecs_resource_t id,
+        ecs_resource_t id,
     void *data
 );
 void *ecs_resource_index_get(ecs_resource_index_t *index, ecs_resource_t id);
 const void *ecs_resource_index_get_const(const ecs_resource_index_t *index, ecs_resource_t id);
 bool ecs_resource_index_has(const ecs_resource_index_t *index, ecs_resource_t id);
-void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_world_t *world, ecs_resource_t id);
+void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_resource_t id);
 
 #endif

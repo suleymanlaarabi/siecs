@@ -1,6 +1,7 @@
 #include "siecs.h"
 #include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 ECS_COMPONENT(LeakCounter, { int value; });
@@ -9,13 +10,7 @@ ECS_COMPONENT_DECLARE(LeakHooked, { int *value; });
 static uint32_t observer_calls;
 static uint32_t system_calls;
 
-static void leak_owned_on_remove(
-    ecs_world_t *world,
-    ecs_entity_t entity,
-    ecs_component_t component,
-    void *ptr
-) {
-    (void)world;
+static void leak_owned_on_remove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
     (void)entity;
     (void)component;
 
@@ -43,13 +38,12 @@ static void count_system(ecs_iter_t *it) {
 }
 
 int main(void) {
-    ecs_world_t *world = ecs_init();
+    ecs_init();
 
-    ECS_COMPONENT_REGISTER(world, LeakCounter);
-    ECS_COMPONENT_REGISTER(world, LeakHooked);
+    ECS_COMPONENT_REGISTER(LeakCounter);
+    ECS_COMPONENT_REGISTER(LeakHooked);
 
     ecs_observer(
-        world,
         {
             .on = EcsOnSet,
             .query = { .terms = { ecs_in(LeakCounter) } },
@@ -58,7 +52,6 @@ int main(void) {
     );
 
     ecs_system(
-        world,
         {
             .name = "Count",
             .phase = EcsOnUpdate,
@@ -71,16 +64,16 @@ int main(void) {
     assert(owned_value != NULL);
     *owned_value = 7;
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, LeakHooked, { owned_value });
-    ecs_set(world, entity, LeakCounter, { 41 });
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, LeakHooked, { owned_value });
+    ecs_set(entity, LeakCounter, { 41 });
 
-    ecs_run_phase(world, EcsOnUpdate);
+    ecs_run_phase(EcsOnUpdate);
 
     assert(observer_calls == 1);
     assert(system_calls == 1);
-    assert(ecs_get(world, entity, LeakCounter)->value == 42);
+    assert(ecs_get(entity, LeakCounter)->value == 42);
 
-    ecs_fini(world);
+    ecs_fini();
     return 0;
 }

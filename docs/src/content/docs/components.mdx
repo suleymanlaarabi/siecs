@@ -35,8 +35,8 @@ ECS_COMPONENT_REGISTER(world, Position);
 ```cpp
 struct Position { float x, y; };
 
-ecs::world world;
-auto entity = world.entity();
+ecs::init();
+auto entity = ecs::entity::create();
 entity.set(Position{ .x = 1.0f, .y = 2.0f });
 ```
 
@@ -51,7 +51,7 @@ entity.set(Position{ .x = 1.0f, .y = 2.0f });
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_set(world, entity, Position, { .x = 1.0f, .y = 2.0f });
+ecs_set(entity, Position, { .x = 1.0f, .y = 2.0f });
 ```
 </TabItem>
 <TabItem label="C++">
@@ -63,20 +63,20 @@ entity.set(Position{ .x = 1.0f, .y = 2.0f });
 
 `ecs_get()` assumes the component exists. The C++ wrapper currently has no
 `entity.get<T>()` or `entity.try_get<T>()` method for direct typed reads. Use
-the raw C API through `world.c_ptr()` and `world.component<T>()` when reading
+the raw C API through `ecs::component<T>()` when reading
 one known entity:
 
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-Position *position = ecs_get(world, entity, Position);
+Position *position = ecs_get(entity, Position);
 position->x += 1.0f;
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
 Position *position = static_cast<Position *>(
-    ecs_get_cid(world.c_ptr(), entity.id(), world.component<Position>())
+ecs_get_cid(entity.id(), ecs::component<Position>())
 );
 position->x += 1.0f;
 ```
@@ -88,14 +88,14 @@ When the component may be absent, use the nullable helpers:
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-Position *position = ecs_try_get(world, entity, Position);
+Position *position = ecs_try_get(entity, Position);
 if (position != NULL) position->x += 1.0f;
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
 Position *position = static_cast<Position *>(
-    ecs_try_get_cid(world.c_ptr(), entity.id(), world.component<Position>())
+ecs_try_get_cid(entity.id(), ecs::component<Position>())
 );
 if (position != nullptr) position->x += 1.0f;
 ```
@@ -109,7 +109,7 @@ Use the typed operation for components that do not need an immediate value:
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_add(world, entity, Position);
+ecs_add(entity, Position);
 ```
 </TabItem>
 <TabItem label="C++">
@@ -124,8 +124,8 @@ Check and remove components with:
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-if (ecs_has(world, entity, Position)) {
-    ecs_remove(world, entity, Position);
+if (ecs_has(entity, Position)) {
+    ecs_remove(entity, Position);
 }
 ```
 </TabItem>
@@ -148,7 +148,7 @@ from queries by default:
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_add(world, entity, Disabled);
+ecs_add(entity, Disabled);
 ```
 </TabItem>
 <TabItem label="C++">
@@ -164,14 +164,14 @@ explicitly:
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_query(world, {
+ecs_query({
     .terms = { ecs_in(Position), ecs_filter(Disabled) },
 });
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
-world.query().require<Position>().require<Disabled>().each(
+ecs::query().require<Position>().require<Disabled>().each(
     [](Position &) { /* process disabled entities */ });
 ```
 </TabItem>
@@ -182,9 +182,9 @@ world.query().require<Position>().require<Disabled>().each(
 Use `ecs_with()` when adding one component should also add another component:
 
 ```c
-ecs_with(world, ecs_id(Renderable), ecs_id(Transform));
+ecs_with(ecs_id(Renderable), ecs_id(Transform));
 
-ecs_add(world, entity, Renderable);
+ecs_add(entity, Renderable);
 
 /* Transform was added first. */
 ```
@@ -204,7 +204,7 @@ typedef struct {
     float y;
 } Position;
 
-ecs_component_t position_id = ecs_component(world, {
+ecs_component_t position_id = ecs_component({
     .name = "Position",
     .size = sizeof(Position),
 });
@@ -213,9 +213,9 @@ ecs_component_t position_id = ecs_component(world, {
 Then use the `_cid` functions:
 
 ```c
-ecs_set_cid(world, entity, position_id, &(Position){ .x = 1.0f, .y = 2.0f });
+ecs_set_cid(entity, position_id, &(Position){ .x = 1.0f, .y = 2.0f });
 
-Position *position = ecs_get_cid(world, entity, position_id);
+Position *position = ecs_get_cid(entity, position_id);
 ```
 
 ## Reflection And JSON
@@ -236,7 +236,7 @@ descriptor are reflected only when `struct_desc` points to a valid
 `sireflect_struct_desc_t` produced by the reflection layer:
 
 ```c
-ecs_component_t position_id = ecs_component(world, {
+ecs_component_t position_id = ecs_component({
     .name = "Position",
     .size = sizeof(Position),
     .struct_desc = position_reflection_desc,
@@ -252,7 +252,6 @@ Component descriptors can provide lifecycle hooks:
 
 ```c
 static void on_set_position(
-    ecs_world_t *world,
     ecs_entity_t entity,
     ecs_component_t component,
     const void *new_value,

@@ -20,27 +20,38 @@ namespace detail {
 
 template <typename T> struct event_type {
     static inline ecs_event_t id = UINT16_MAX;
+    static inline uint64_t generation;
 };
 
-template <typename T> static ecs_event_t ecs_cpp_event_id(ecs_world_t *world) {
+template <typename T> static ecs_event_t ecs_cpp_event_id() {
     ecs_event_t &eid = detail::event_type<T>::id;
+    uint64_t &generation = detail::event_type<T>::generation;
 
-    if (eid != UINT16_MAX) {
-        return eid;
+    if (generation != detail::world_generation) {
+        eid = UINT16_MAX;
+        generation = detail::world_generation;
     }
 
-    eid = ecs_event(world);
+    if constexpr (std::is_same_v<T, OnAdd>) {
+        eid = EcsOnAdd;
+    } else if constexpr (std::is_same_v<T, OnSet>) {
+        eid = EcsOnSet;
+    } else if constexpr (std::is_same_v<T, OnRemove>) {
+        eid = EcsOnRemove;
+    } else {
+        if (eid == UINT16_MAX) {
+            eid = ecs_event();
+        } else {
+            ecs_event_register(&eid);
+        }
+    }
 
     return eid;
 }
 
-template <typename T> static void ecs_cpp_set_event_id(ecs_event_t eid) {
-    detail::event_type<T>::id = eid;
-}
-
 template <typename T> decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event) {
     using raw = std::remove_cvref_t<T>;
-    void *ptr = ecs_get_cid(event->world, event->entity, ecs_cpp_component_id<raw>(event->world));
+    void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
 
     if constexpr (std::is_const_v<std::remove_reference_t<T>>) {
         return *static_cast<const raw *>(ptr);
@@ -64,7 +75,7 @@ decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event, Resources &reso
 template <typename Func, typename Args, std::size_t... Is>
 void ecs_cpp_observer_callback_impl(ecs_observer_event_t *event, std::index_sequence<Is...>) {
     Func func{};
-    auto resources = make_resources<Args>(event->world);
+    auto resources = make_resources<Args>();
     std::invoke(func, ecs_cpp_observer_arg<Args, Is>(event, resources)...);
 }
 
@@ -81,7 +92,7 @@ void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
 template <typename T> class observer : public query {
 
   public:
-    observer(ecs_world_t *world) : query(world) {};
+    observer() = default;
 
     template <typename F> ecs_observer_id_t each(F &&) {
         using callback = std::remove_cvref_t<F>;
@@ -97,15 +108,15 @@ template <typename T> class observer : public query {
             "observer callbacks must read at least one component"
         );
 
-        ecs::detail::append_callback_terms<args>(_world, this->desc, term_index);
+        ecs::detail::append_callback_terms<args>(this->desc, term_index);
 
         ecs_observer_desc_t observer_desc = {
-            .on = detail::ecs_cpp_event_id<T>(_world),
+            .on = detail::ecs_cpp_event_id<T>(),
             .query = this->desc,
             .callback = detail::ecs_cpp_observer_callback<callback, args>,
         };
 
-        return ecs_observer_init(_world, &observer_desc);
+        return ecs_observer_init(&observer_desc);
     }
 };
 

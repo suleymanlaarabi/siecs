@@ -69,10 +69,10 @@ static void rest_assert_no_extra_schema_fields(sijson_value_t schema) {
 }
 
 void rest_schema_returns_editor_contract(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, RestPosition);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RestPosition);
 
-    sihttp_app_state_t state = { .world = world };
+    sihttp_app_state_t state = {};
     sihttp_request_t req = { .state = &state };
     sihttp_response_t res = ecs_rest_get_schema(&req);
 
@@ -117,23 +117,23 @@ void rest_schema_returns_editor_contract(void) {
     rest_assert_no_extra_schema_fields(schema);
 
     free(res.body);
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void rest_entity_detail_returns_editor_state(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, RestPosition);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RestPosition);
 
-    ecs_entity_t parent = ecs_new(world);
-    ecs_set(world, parent, Name, { strdup("Parent") });
-    ecs_set(world, parent, RestPosition, { 10.0f, 20.0f });
+    ecs_entity_t parent = ecs_new();
+    ecs_set(parent, Name, { strdup("Parent") });
+    ecs_set(parent, RestPosition, { 10.0f, 20.0f });
 
-    ecs_entity_t child = ecs_new(world);
-    ecs_set(world, child, Name, { strdup("Child") });
-    ecs_set(world, child, ChildOf, { parent });
+    ecs_entity_t child = ecs_new();
+    ecs_set(child, Name, { strdup("Child") });
+    ecs_set(child, ChildOf, { parent });
 
     sijson_clean();
-    sijson_value_t detail = ecs_rest_entity_detail_json(world, parent);
+    sijson_value_t detail = ecs_rest_entity_detail_json(parent);
 
     test_str("Parent", sijson_string(sijson_object_get(detail, "name")));
     test_null(sijson_object_get(detail, "id"));
@@ -164,38 +164,38 @@ void rest_entity_detail_returns_editor_state(void) {
     test_assert(rest_find_by_name(components, "ChildOf") == NULL);
 
     sijson_clean();
-    sijson_value_t child_detail = ecs_rest_entity_detail_json(world, child);
+    sijson_value_t child_detail = ecs_rest_entity_detail_json(child);
     sijson_value_t parent_summary = sijson_object_get(child_detail, "parent");
     test_assert(parent_summary != NULL);
     test_str("Parent", sijson_string(sijson_object_get(parent_summary, "name")));
     test_null(sijson_object_get(parent_summary, "id"));
     test_true(sijson_bool(sijson_object_get(parent_summary, "hasChildren")));
 
-    free(ecs_get(world, parent, Name)->value);
-    free(ecs_get(world, child, Name)->value);
-    ecs_fini(world);
+    free(ecs_get(parent, Name)->value);
+    free(ecs_get(child, Name)->value);
+    ecs_fini();
 }
 
 void rest_entity_children_returns_direct_children(void) {
-    ecs_world_t *world = ecs_init();
+    ecs_init();
 
-    ecs_entity_t parent = ecs_new(world);
-    ecs_set(world, parent, Name, { strdup("Parent") });
+    ecs_entity_t parent = ecs_new();
+    ecs_set(parent, Name, { strdup("Parent") });
 
-    ecs_entity_t child = ecs_new(world);
-    ecs_set(world, child, Name, { strdup("Child") });
-    ecs_set(world, child, ChildOf, { parent });
+    ecs_entity_t child = ecs_new();
+    ecs_set(child, Name, { strdup("Child") });
+    ecs_set(child, ChildOf, { parent });
 
-    ecs_entity_t grandchild = ecs_new(world);
-    ecs_set(world, grandchild, Name, { strdup("Grandchild") });
-    ecs_set(world, grandchild, ChildOf, { child });
+    ecs_entity_t grandchild = ecs_new();
+    ecs_set(grandchild, Name, { strdup("Grandchild") });
+    ecs_set(grandchild, ChildOf, { child });
 
     sijson_clean();
-    sijson_value_t parent_summary = ecs_rest_entity_json(world, parent);
+    sijson_value_t parent_summary = ecs_rest_entity_json(parent);
     test_true(sijson_bool(sijson_object_get(parent_summary, "hasChildren")));
 
     sijson_clean();
-    sijson_value_t children = ecs_rest_entity_children_json(world, parent);
+    sijson_value_t children = ecs_rest_entity_children_json(parent);
     test_int(1, (int)sijson_array_len(children));
     sijson_value_t child_summary = rest_find_by_index(children, ecs_first(child));
     test_assert(child_summary != NULL);
@@ -204,31 +204,30 @@ void rest_entity_children_returns_direct_children(void) {
     test_assert(rest_find_by_index(children, ecs_first(grandchild)) == NULL);
 
     sijson_clean();
-    sijson_value_t grandchild_summary = ecs_rest_entity_json(world, grandchild);
+    sijson_value_t grandchild_summary = ecs_rest_entity_json(grandchild);
     test_false(sijson_bool(sijson_object_get(grandchild_summary, "hasChildren")));
 
-    free(ecs_get(world, parent, Name)->value);
-    free(ecs_get(world, child, Name)->value);
-    free(ecs_get(world, grandchild, Name)->value);
-    ecs_fini(world);
+    free(ecs_get(parent, Name)->value);
+    free(ecs_get(child, Name)->value);
+    free(ecs_get(grandchild, Name)->value);
+    ecs_fini();
 }
 
 void rest_set_component_value_updates_entity(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, RestPosition);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RestPosition);
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, RestPosition, { 1.0f, 2.0f });
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, RestPosition, { 1.0f, 2.0f });
 
     sihttp_response_t res = ecs_rest_set_entity_component(
-        world,
         entity,
         ecs_id(RestPosition),
         "{\"value\":{\"x\":30,\"y\":40}}"
     );
 
     test_int(200, res.status);
-    RestPosition *position = ecs_get(world, entity, RestPosition);
+    RestPosition *position = ecs_get(entity, RestPosition);
     test_int(30, (int)position->x);
     test_int(40, (int)position->y);
 
@@ -242,86 +241,82 @@ void rest_set_component_value_updates_entity(void) {
     test_int(40, (int)sijson_number(sijson_object_get(value, "y")));
 
     free(res.body);
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void rest_set_component_value_rejects_missing_field(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, RestPosition);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RestPosition);
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, RestPosition, { 1.0f, 2.0f });
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, RestPosition, { 1.0f, 2.0f });
 
     sihttp_response_t res = ecs_rest_set_entity_component(
-        world,
         entity,
         ecs_id(RestPosition),
         "{\"value\":{\"x\":30}}"
     );
 
     test_int(400, res.status);
-    RestPosition *position = ecs_get(world, entity, RestPosition);
+    RestPosition *position = ecs_get(entity, RestPosition);
     test_int(1, (int)position->x);
     test_int(2, (int)position->y);
 
     free(res.body);
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void rest_set_component_value_rejects_unknown_field(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, RestPosition);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RestPosition);
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, RestPosition, { 1.0f, 2.0f });
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, RestPosition, { 1.0f, 2.0f });
 
     sihttp_response_t res = ecs_rest_set_entity_component(
-        world,
         entity,
         ecs_id(RestPosition),
         "{\"value\":{\"x\":30,\"y\":40,\"z\":50}}"
     );
 
     test_int(400, res.status);
-    RestPosition *position = ecs_get(world, entity, RestPosition);
+    RestPosition *position = ecs_get(entity, RestPosition);
     test_int(1, (int)position->x);
     test_int(2, (int)position->y);
 
     free(res.body);
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void rest_set_component_value_rejects_wrong_type(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, RestPosition);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RestPosition);
 
-    ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, RestPosition, { 1.0f, 2.0f });
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, RestPosition, { 1.0f, 2.0f });
 
     sihttp_response_t res = ecs_rest_set_entity_component(
-        world,
         entity,
         ecs_id(RestPosition),
         "{\"value\":{\"x\":\"bad\",\"y\":40}}"
     );
 
     test_int(400, res.status);
-    RestPosition *position = ecs_get(world, entity, RestPosition);
+    RestPosition *position = ecs_get(entity, RestPosition);
     test_int(1, (int)position->x);
     test_int(2, (int)position->y);
 
     free(res.body);
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void rest_set_component_value_rejects_missing_component(void) {
-    ecs_world_t *world = ecs_init();
-    ECS_COMPONENT_REGISTER(world, RestPosition);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RestPosition);
 
-    ecs_entity_t entity = ecs_new(world);
+    ecs_entity_t entity = ecs_new();
 
     sihttp_response_t res = ecs_rest_set_entity_component(
-        world,
         entity,
         ecs_id(RestPosition),
         "{\"value\":{\"x\":30,\"y\":40}}"
@@ -330,22 +325,22 @@ void rest_set_component_value_rejects_missing_component(void) {
     test_int(404, res.status);
 
     free(res.body);
-    ecs_fini(world);
+    ecs_fini();
 }
 
 void rest_set_component_value_rejects_non_reflected_component(void) {
-    ecs_world_t *world = ecs_init();
-    ecs_component_t opaque = ecs_component(world, { .name = "RestOpaque", .size = sizeof(int) });
+    ecs_init();
+    ecs_component_t opaque = ecs_component({ .name = "RestOpaque", .size = sizeof(int) });
 
-    ecs_entity_t entity = ecs_new(world);
+    ecs_entity_t entity = ecs_new();
     int value = 7;
-    ecs_set_cid(world, entity, opaque, &value);
+    ecs_set_cid(entity, opaque, &value);
 
-    sihttp_response_t res = ecs_rest_set_entity_component(world, entity, opaque, "{\"value\":10}");
+    sihttp_response_t res = ecs_rest_set_entity_component(entity, opaque, "{\"value\":10}");
 
     test_int(404, res.status);
-    test_int(7, *(int *)ecs_get_cid(world, entity, opaque));
+    test_int(7, *(int *)ecs_get_cid(entity, opaque));
 
     free(res.body);
-    ecs_fini(world);
+    ecs_fini();
 }
