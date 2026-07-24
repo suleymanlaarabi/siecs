@@ -554,8 +554,8 @@ void component_same_local_type_with_different_base_creates_different_tables(void
         ecs_table_index_get_or_create(component_type_with_position_and_base(base_b));
 
     test_assert(table_a != table_b);
-    test_assert(base_a == ecs_world->table_index.tables[table_a].type.base);
-    test_assert(base_b == ecs_world->table_index.tables[table_b].type.base);
+    test_assert(base_a == ecs_world.table_index.tables[table_a].type.base);
+    test_assert(base_b == ecs_world.table_index.tables[table_b].type.base);
 
     ecs_fini();
 }
