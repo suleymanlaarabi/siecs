@@ -131,42 +131,6 @@ int main(void) {
 }
 ```
 
-# C Modules
-Modules can wrap the component and system setup from the C example:
-
-```c
-ECS_MODULE_DECLARE(physics, {
-    float gravity;
-});
-
-ECS_MODULE_DEFINE(physics);
-
-void physics_import(ecs_world_t *world, const physics_props_t *props) {
-    ECS_COMPONENT_REGISTER(world, Position);
-    ECS_COMPONENT_REGISTER(world, Velocity);
-
-    ecs_system(world, {
-        .name = "Move",
-        .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_inout(Position), ecs_in(Velocity) } },
-        .callback = Move,
-    });
-}
-
-int main(void) {
-    ecs_world_t *world = ecs_init();
-
-    ecs_module_id_t Physics = ECS_MODULE_IMPORT(world, physics, {
-        .gravity = 9.81f,
-    });
-
-    ecs_module_disable(world, Physics);
-    ecs_module_enable(world, Physics);
-
-    ecs_fini(world);
-}
-```
-
 ## Bake Example
 
 Bake is supported for users who already use Bake or want the same setup as the
