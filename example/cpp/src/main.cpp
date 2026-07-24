@@ -10,6 +10,8 @@ struct Velocity {
     float x, y;
 };
 
+struct Enemy;
+
 int main() {
     ecs::world world;
 
@@ -20,10 +22,15 @@ int main() {
         pos.y += vel.y;
     });
 
-    world.system().each([](Position &pos, Velocity &vel) {
+    world.system().exclude<Enemy>().each([](Position &pos, Velocity &vel) {
         pos.x += vel.x;
         pos.y += vel.y;
     });
+
+    struct Enemy {};
+    struct Player {};
+
+    world.entity<Player>().is_a(world.entity<Enemy>());
 
     world.progress();
 

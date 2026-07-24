@@ -1,4 +1,5 @@
 #pragma once
+#include "siecs.h"
 #include "siecs/cpp/component.hpp"
 #include "siecs/cpp/entity.hpp"
 #include "siecs/cpp/module.hpp"
@@ -161,13 +162,27 @@ class world {
         ecs_observer_trigger(_world, entity.id(), event<T>(), data);
     }
 
-    [[nodiscard]] ecs::entity entity(const char *name = nullptr) const {
+    ecs::entity entity(const char *name = nullptr) const {
         auto e = ecs::entity(_world, ecs_new(_world));
         if (name) {
             e.set<Name>({ .value = strdup(name) });
         }
         return e;
     }
+
+    ecs::entity entity(ecs_entity_t id) const { return ecs::entity(_world, id); }
+
+    template <typename T> ecs::entity entity(const char *name = nullptr) {
+        static ecs_entity_t id = 0;
+        if (id == 0 || ecs_is_alive(_world, id)) {
+            if (name == nullptr) {
+                name = type_name<T>();
+            }
+            return this->entity(name);
+        }
+        return ecs::entity(_world, id);
+    }
+
     [[nodiscard]] ecs::entity instantiate(ecs::entity e) { return this->entity().is_a(e); }
     [[nodiscard]] ecs::query query() const { return ecs::query(_world); }
     [[nodiscard]] ecs::system system(const char *name = "unamed") const {
