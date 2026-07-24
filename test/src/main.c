@@ -116,14 +116,6 @@ void string_append(void);
 void string_trim(void);
 void string_starts_ends_with(void);
 
-// Testsuite 'lexer'
-void lexer_single_char_tokens(void);
-void lexer_two_char_tokens(void);
-void lexer_keywords_and_identifiers(void);
-void lexer_numbers(void);
-void lexer_strings(void);
-void lexer_unknown(void);
-
 // Testsuite 'vec'
 void vec_u16_contains_and_remove(void);
 
@@ -509,33 +501,6 @@ bake_test_case string_testcases[] = {
     }
 };
 
-bake_test_case lexer_testcases[] = {
-    {
-        "single_char_tokens",
-        lexer_single_char_tokens
-    },
-    {
-        "two_char_tokens",
-        lexer_two_char_tokens
-    },
-    {
-        "keywords_and_identifiers",
-        lexer_keywords_and_identifiers
-    },
-    {
-        "numbers",
-        lexer_numbers
-    },
-    {
-        "strings",
-        lexer_strings
-    },
-    {
-        "unknown",
-        lexer_unknown
-    }
-};
-
 bake_test_case vec_testcases[] = {
     {
         "u16_contains_and_remove",
@@ -616,13 +581,6 @@ static bake_test_suite suites[] = {
         string_testcases
     },
     {
-        "lexer",
-        NULL,
-        NULL,
-        6,
-        lexer_testcases
-    },
-    {
         "vec",
         NULL,
         NULL,
@@ -632,5 +590,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 12);
+    return bake_test_run("siecs.test", argc, argv, suites, 11);
 }

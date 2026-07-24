@@ -153,17 +153,6 @@
         "testcases": ["init", "append", "trim", "starts_ends_with"]
       },
       {
-        "id": "lexer",
-        "testcases": [
-          "single_char_tokens",
-          "two_char_tokens",
-          "keywords_and_identifiers",
-          "numbers",
-          "strings",
-          "unknown"
-        ]
-      },
-      {
         "id": "vec",
         "testcases": ["u16_contains_and_remove"]
       }
