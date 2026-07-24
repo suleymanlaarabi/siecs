@@ -49,6 +49,18 @@ class entity {
         return *this;
     }
 
+    template <typename T> [[nodiscard]] T *try_get() {
+        return static_cast<T *>(
+            ecs_try_get_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world))
+        );
+    }
+
+    template <typename T> [[nodiscard]] T &get() {
+        return *static_cast<T *>(
+            ecs_get_cid(_world, _entity, detail::ecs_cpp_component_id<T>(_world))
+        );
+    }
+
     bool is_alive() { return ecs_is_alive(_world, _entity); }
 
     void kill() { ecs_kill(_world, _entity); }

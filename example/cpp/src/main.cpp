@@ -25,16 +25,6 @@ int main() {
         pos.y += vel.y;
     });
 
-    ecs::entity e = world.entity();
-
-    if (e.is_alive()) {
-        e.add<Position>();
-
-        ecs::entity enemy = world.entity().add<Position>().add<Velocity>().abstract();
-
-        e.is_a(enemy);
-    }
-
     world.progress();
 
     const Position *position = static_cast<const Position *>(
