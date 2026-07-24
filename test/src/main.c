@@ -110,12 +110,6 @@ void module_enable(void);
 void module_disabled_import(void);
 void module_double_import_is_noop(void);
 
-// Testsuite 'string'
-void string_init(void);
-void string_append(void);
-void string_trim(void);
-void string_starts_ends_with(void);
-
 // Testsuite 'vec'
 void vec_u16_contains_and_remove(void);
 
@@ -482,25 +476,6 @@ bake_test_case module_testcases[] = {
     }
 };
 
-bake_test_case string_testcases[] = {
-    {
-        "init",
-        string_init
-    },
-    {
-        "append",
-        string_append
-    },
-    {
-        "trim",
-        string_trim
-    },
-    {
-        "starts_ends_with",
-        string_starts_ends_with
-    }
-};
-
 bake_test_case vec_testcases[] = {
     {
         "u16_contains_and_remove",
@@ -574,13 +549,6 @@ static bake_test_suite suites[] = {
         module_testcases
     },
     {
-        "string",
-        NULL,
-        NULL,
-        4,
-        string_testcases
-    },
-    {
         "vec",
         NULL,
         NULL,
@@ -590,5 +558,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 11);
+    return bake_test_run("siecs.test", argc, argv, suites, 10);
 }

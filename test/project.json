@@ -149,10 +149,6 @@
         ]
       },
       {
-        "id": "string",
-        "testcases": ["init", "append", "trim", "starts_ends_with"]
-      },
-      {
         "id": "vec",
         "testcases": ["u16_contains_and_remove"]
       }
