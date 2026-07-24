@@ -2,16 +2,39 @@
 title: Queries
 description: Creating queries and iterating matching entities.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import LanguageExample from '../../components/LanguageExample.astro';
 
 Queries match archetype tables and return component arrays in batches.
-
 ## Create A Query
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_query_id_t moving = ecs_query(world, {
     .terms = { ecs_inout(Position), ecs_in(Velocity) },
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto moving = world.query()
+    .require<Position>()
+    .require<Velocity>();
+```
+
+</TabItem>
+<TabItem label="Rust">
+
+```rust
+let mut moving = world.query::<(&mut Position, &Velocity)>();
+```
+
+</TabItem>
+</Tabs>
 
 The `terms` array is a zero-terminated list of component terms.
 

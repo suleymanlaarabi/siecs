@@ -1,5 +1,5 @@
 #pragma once
-#include "siecs.h"
+#include "siecs/cpp/c_api.hpp"
 #include "siecs/cpp/component.hpp"
 #include "siecs/cpp/entity.hpp"
 #include "siecs/cpp/function_traits.hpp"

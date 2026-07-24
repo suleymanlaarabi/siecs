@@ -2,6 +2,8 @@
 title: Observers And Events
 description: Reacting to component and custom events.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import LanguageExample from '../../components/LanguageExample.astro';
 
 Observers run callbacks when an event is emitted for an entity matching a query.
 
@@ -17,6 +19,9 @@ SIECS currently exposes three built-in events:
 
 ## Create An Observer
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 static void on_position_set(ecs_observer_event_t *event) {
     const Position *value = event->trigger_data;
@@ -25,12 +30,33 @@ static void on_position_set(ecs_observer_event_t *event) {
 
 ecs_observer(world, {
     .on = EcsOnSet,
-    .query = {
-        .terms = { ecs_in(Position) },
-    },
+    .query = { .terms = { ecs_in(Position) } },
     .callback = on_position_set,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+world.observe<ecs::OnSet>().each([](const Position &position) {
+    std::cout << position.x << '\n';
+});
+```
+
+</TabItem>
+<TabItem label="Rust">
+
+```rust
+fn on_set(position: &Position) {
+    println!("{}", position.x);
+}
+
+world.on_set::<Position>().each(on_set);
+```
+
+</TabItem>
+</Tabs>
 
 `callback` is required.
 

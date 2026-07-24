@@ -2,6 +2,8 @@
 title: Getting Started
 description: Minimal SIECS program using typed components.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import LanguageExample from '../../components/LanguageExample.astro';
 
 This page shows the normal user flow and the supported ways to consume SIECS.
 
@@ -9,12 +11,15 @@ If you are new to ECS, read [ECS Theory](../theory/) after this page. The short
 version is: entities are ids, components are data, and systems run over batches
 of entities that match a query.
 
-## Quick Start Without Bake
+## Quick Start
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 For a small C project, use the standalone distribution:
 
 1. Copy `distr/siecs.h` and `distr/siecs.c` into your project.
-2. Include the public header from your code.
+2. Include the public header.
 3. Compile your file together with `siecs.c`.
 
 ```c
@@ -30,41 +35,117 @@ ECS_COMPONENT_DEFINE(Position);
 int main(void) {
     ecs_world_t *world = ecs_init();
     ECS_COMPONENT_REGISTER(world, Position);
-
     ecs_entity_t entity = ecs_new(world);
-    ecs_set(world, entity, Position, {
-        .x = 10.0f,
-        .y = 20.0f,
-    });
-
+    ecs_set(world, entity, Position, { .x = 10.0f, .y = 20.0f });
     Position *position = ecs_get(world, entity, Position);
     position->x += 1.0f;
-
     ecs_fini(world);
     return 0;
 }
 ```
 
-If the file above is `main.c` and `siecs.h` / `siecs.c` are in the same
-directory:
+Build it with `cc -std=c23 -I. main.c siecs.c -pthread -o my_app`.
 
-```sh
-cc -std=c23 -I. main.c siecs.c -pthread -o my_app
+The standalone distribution embeds SIECS and its public C dependencies.
+
+</TabItem>
+<TabItem label="C++">
+
+For a C++23 project, include the same public header and link the SIECS C runtime.
+
+```cpp
+#include <siecs.h>
+
+struct Position {
+    float x, y;
+};
+
+int main() {
+    ecs::world world;
+    auto entity = world.entity();
+    entity.set(Position{ .x = 10.0f, .y = 20.0f });
+    return 0;
+}
 ```
 
-The standalone distribution embeds SIECS and its public C dependencies. You do
-not need Bake for this C setup.
+Compile the C runtime as C, then link it with the C++ program:
 
-## C++ Setup
+```sh
+cc -std=c23 -I. -c siecs.c -o siecs.o
+c++ -std=c++23 -I. main.cpp siecs.o -pthread -o my_app
+```
 
-The C++ API is header-only and is exposed by the same public header:
+</TabItem>
+<TabItem label="Rust">
+
+Rust uses the `siecs` crate; it does not copy `distr/siecs.c` or compile with `cc`.
+
+```toml
+[dependencies]
+siecs = "0.1.3"
+```
+
+```rust
+use siecs::prelude::*;
+
+#[derive(Component)]
+struct Position {
+    x: f32,
+    y: f32,
+}
+
+fn main() {
+    let mut world = World::new();
+    let entity = world.entity();
+    world.set(entity, Position { x: 10.0, y: 20.0 });
+    world.get_mut::<Position>(entity).unwrap().x += 1.0;
+}
+```
+
+Run it with `cargo run`.
+
+</TabItem>
+</Tabs>
+
+## Language Setup
+
+The same SIECS runtime can be consumed from C, C++, or Rust:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+#include <siecs.h>
+```
+
+Compile the C source with `cc -std=c23`.
+
+</TabItem>
+<TabItem label="C++">
 
 ```cpp
 #include <siecs.h>
 ```
 
-It still wraps the C runtime, so compile/link the SIECS C library with your
-C++ application.
+The C++23 API is a header-only wrapper around the C runtime. Link the SIECS C
+library with your application.
+
+</TabItem>
+<TabItem label="Rust">
+
+```rust
+use siecs::prelude::*;
+```
+
+Use the published crate or the local path crate:
+
+```toml
+[dependencies]
+siecs = "0.1.1"
+```
+
+</TabItem>
+</Tabs>
 
 ## Bake Example
 
@@ -151,6 +232,9 @@ The runtime flow from the standalone example is:
 4. Set or read component data.
 5. Destroy the world.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 #include <siecs.h>
 
@@ -166,11 +250,7 @@ int main(void) {
     ECS_COMPONENT_REGISTER(world, Position);
 
     ecs_entity_t entity = ecs_new(world);
-
-    ecs_set(world, entity, Position, {
-        .x = 10.0f,
-        .y = 20.0f,
-    });
+    ecs_set(world, entity, Position, { .x = 10.0f, .y = 20.0f });
 
     Position *position = ecs_get(world, entity, Position);
     position->x += 1.0f;
@@ -179,6 +259,44 @@ int main(void) {
     return 0;
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+#include <siecs.h>
+
+struct Position { float x, y; };
+
+int main() {
+    ecs::world world;
+    auto entity = world.entity();
+    entity.set(Position{ .x = 10.0f, .y = 20.0f });
+    const bool present = entity.has<Position>();
+    (void)present;
+    return 0;
+}
+```
+
+</TabItem>
+<TabItem label="Rust">
+
+```rust
+use siecs::prelude::*;
+
+#[derive(Component)]
+struct Position { x: f32, y: f32 }
+
+fn main() {
+    let mut world = World::new();
+    let entity = world.entity();
+    world.set(entity, Position { x: 10.0, y: 20.0 });
+    world.get::<Position>(entity).unwrap().x += 1.0;
+}
+```
+
+</TabItem>
+</Tabs>
 
 ## Minimal System
 

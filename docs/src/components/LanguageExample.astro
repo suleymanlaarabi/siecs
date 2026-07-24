@@ -1,0 +1,29 @@
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+interface Props {
+  code: string;
+  language?: string;
+}
+
+const { code, language = 'c' } = Astro.props;
+const displayCode = typeof code === 'string' && code.startsWith('"')
+  ? JSON.parse(code)
+  : code;
+const cppComment = `// C++ equivalent: use the corresponding ecs::world,
+// ecs::entity, or ecs::query API for this operation.`;
+const rustComment = `// Rust equivalent: use the corresponding World, Entity,
+// Query API, or siecs::raw when the safe wrapper is not available.`;
+---
+
+<Tabs syncKey="language">
+  <TabItem label="C">
+    <pre><code class={`language-${language}`}>{displayCode}</code></pre>
+  </TabItem>
+  <TabItem label="C++">
+    <pre><code class="language-cpp">{cppComment}</code></pre>
+  </TabItem>
+  <TabItem label="Rust">
+    <pre><code class="language-rust">{rustComment}</code></pre>
+  </TabItem>
+</Tabs>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "siecs.h"
+#include "siecs/cpp/c_api.hpp"
 #include <cassert>
 #include <concepts>
 

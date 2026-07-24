@@ -1,8 +1,7 @@
 #pragma once
-
-#include "siecs.h"
-#include "sireflect.h"
+#include "siecs/cpp/c_api.hpp"
 #include "siecs/cpp/type.hpp"
+#include "sireflect.h"
 #include <cstddef>
 #include <cstdio>
 #include <memory>

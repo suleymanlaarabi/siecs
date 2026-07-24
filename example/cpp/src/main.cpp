@@ -15,7 +15,7 @@ int main() {
 
     ecs::entity entity = world.entity().set(Position{ 0.0f, 0.0f }).set(Velocity{ 1.0f, 2.0f });
 
-    world.system("Move").each([](Position &pos, const Velocity &vel) {
+    world.system().each([](Position &pos, Velocity &vel) {
         pos.x += vel.x;
         pos.y += vel.y;
     });
@@ -24,6 +24,16 @@ int main() {
         pos.x += vel.x;
         pos.y += vel.y;
     });
+
+    ecs::entity e = world.entity();
+
+    if (e.is_alive()) {
+        e.add<Position>();
+
+        ecs::entity enemy = world.entity().add<Position>().add<Velocity>().abstract();
+
+        e.is_a(enemy);
+    }
 
     world.progress();
 

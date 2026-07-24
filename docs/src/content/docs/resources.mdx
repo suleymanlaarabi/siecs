@@ -2,6 +2,8 @@
 title: Resources
 description: Storing and reading unique world-level values from C.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import LanguageExample from '../../components/LanguageExample.astro';
 
 Resources are typed values stored once per world. Use them for state that is
 unique to the world, not attached to each entity: frame time, input state,
@@ -14,26 +16,41 @@ consume an `ecs_field()` slot.
 
 ## Declare A Resource
 
-Declare the resource type like a component:
+Resources are declared once and stored per world:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ECS_RESOURCE_DECLARE(Time, {
     float dt;
     float elapsed;
 });
-```
 
-Define the storage in exactly one C file:
-
-```c
 ECS_RESOURCE_DEFINE(Time);
-```
-
-Register it once per world before using it:
-
-```c
 ECS_RESOURCE_REGISTER(world, Time);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+struct Time { float dt; };
+world.set_resource(Time{ .dt = 0.016f });
+```
+
+</TabItem>
+<TabItem label="Rust">
+
+```rust
+#[derive(Resource)]
+struct DeltaTime(f32);
+
+world.set_resource(DeltaTime(0.016));
+```
+
+</TabItem>
+</Tabs>
 
 The resource macros intentionally mirror component macros, but resources are
 registered in a dedicated resource registry.

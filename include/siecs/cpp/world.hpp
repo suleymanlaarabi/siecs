@@ -5,7 +5,6 @@
 #include "siecs/cpp/observer.hpp"
 #include "siecs/cpp/query.hpp"
 #include "siecs/cpp/resource.hpp"
-#include "siecs.h"
 #include "siecs/cpp/system.hpp"
 #include "siecs/cpp/type.hpp"
 #include <cstring>
@@ -50,8 +49,8 @@ class world {
         detail::ecs_cpp_set_component_id<Name>(ecs_id(Name));
         detail::ecs_cpp_set_component_id<ChildOf>(ecs_id(ChildOf));
         detail::ecs_cpp_set_event_id<OnAdd>(EcsOnAdd);
-        detail::ecs_cpp_set_event_id<OnAdd>(EcsOnSet);
-        detail::ecs_cpp_set_event_id<OnAdd>(EcsOnRemove);
+        detail::ecs_cpp_set_event_id<OnSet>(EcsOnSet);
+        detail::ecs_cpp_set_event_id<OnRemove>(EcsOnRemove);
     }
     explicit world(ecs_world_t *world) noexcept
         : _world(world), _ownership(world_ownership::owned) {}

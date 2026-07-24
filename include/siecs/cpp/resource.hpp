@@ -1,7 +1,6 @@
 #pragma once
 
 #include "siecs/cpp/component.hpp"
-#include "siecs.h"
 #include "siecs/cpp/type.hpp"
 #include <cassert>
 #include <string>

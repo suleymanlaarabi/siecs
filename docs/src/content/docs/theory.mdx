@@ -2,6 +2,7 @@
 title: ECS Theory
 description: How SIECS models data, storage, queries, and structural changes.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 SIECS is an archetype ECS. Entities are ids, components are plain data, and
 systems run logic over batches of entities that share the same component set.
@@ -11,11 +12,31 @@ systems run logic over batches of entities that share the same component set.
 An `ecs_entity_t` identifies a row in world-owned storage. It is not an object
 and it does not own behavior. Keep the handle, but store state in components:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_entity_t player = ecs_new(world);
 ecs_set(world, player, Position, { .x = 0, .y = 0 });
 ecs_set(world, player, Velocity, { .x = 1, .y = 0 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::world world;
+auto player = world.entity();
+player.set(Position{ .x = 0, .y = 0 });
+player.set(Velocity{ .x = 1, .y = 0 });
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+let mut world = World::new();
+let player = world.entity();
+world.set(player, Position { x: 0.0, y: 0.0 });
+world.set(player, Velocity { x: 1.0, y: 0.0 });
+```
+</TabItem>
+</Tabs>
 
 Entity handles belong to one world. Do not use a handle with a different world.
 
@@ -24,10 +45,27 @@ Entity handles belong to one world. Do not use a handle with a different world.
 A component is a registered type. Data components have a non-zero size, while
 tags have size `0` and represent state through presence:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ECS_COMPONENT(Player, {});
 ecs_add(world, entity, Player);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Player {};
+entity.add<Player>();
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+#[derive(Component)]
+struct Player;
+world.add::<Player>(entity);
+```
+</TabItem>
+</Tabs>
 
 Use components for per-entity state. Use resources for one value stored on the
 world, such as time, input, renderer state, or shared configuration.
@@ -47,6 +85,8 @@ contiguous arrays for each requested component.
 A query does not scan every entity one by one. It stores the matching table ids
 and returns batches:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_iter_t it = ecs_query_iter(world, moving);
 while (ecs_iter_next(&it)) {
@@ -54,6 +94,23 @@ while (ecs_iter_next(&it)) {
     Velocity *v = ecs_field(&it, 1);
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+world.query().each([](Position &p, Velocity &v) {
+    // Each callback invocation processes a matching table row.
+});
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+let mut query = world.query::<(&mut Position, &Velocity)>();
+query.each(|(p, v)| {
+    // Each callback invocation processes a matching table row.
+});
+```
+</TabItem>
+</Tabs>
 
 `ecs_filter(T)` and `ecs_not(T)` affect matching but do not consume field
 indexes. Optional terms consume a field index and return `NULL` for tables where
@@ -72,8 +129,24 @@ Adding the built-in `Disabled` component excludes an entity from queries,
 systems, and observers by default. Mention `Disabled` explicitly when you want
 to match disabled entities:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query(world, {
     .terms = { ecs_in(Position), ecs_filter(Disabled) },
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+world.query().require<Position>().require<Disabled>().each(
+    [](Position &) { /* process disabled entities */ });
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+let mut query = world.query_filtered::<&Position, With<Disabled>>();
+query.each(|position| { /* process disabled entities */ });
+```
+</TabItem>
+</Tabs>

@@ -2,6 +2,8 @@
 title: Components
 description: Declaring, registering, setting, reading, and removing components.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import LanguageExample from '../../components/LanguageExample.astro';
 
 Components are data types registered in a world. They can be used through typed
 macros or directly through `ecs_component_t` ids.
@@ -12,70 +14,172 @@ state such as time, input, renderer state, or shared config.
 
 ## Typed Components
 
-Declare a component in a header or source file:
+Components are declared once and registered with each world:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ECS_COMPONENT_DECLARE(Position, {
     float x;
     float y;
 });
-```
 
-Define the component id storage in exactly one C file:
-
-```c
 ECS_COMPONENT_DEFINE(Position);
-```
-
-Register the component once per world before using it:
-
-```c
 ECS_COMPONENT_REGISTER(world, Position);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+struct Position { float x, y; };
+
+ecs::world world;
+auto entity = world.entity();
+entity.set(Position{ .x = 1.0f, .y = 2.0f });
+```
+
+</TabItem>
+<TabItem label="Rust">
+
+```rust
+#[derive(Component)]
+struct Position {
+    x: f32,
+    y: f32,
+}
+
+let entity = world.entity();
+world.set(entity, Position { x: 1.0, y: 2.0 });
+```
+
+</TabItem>
+</Tabs>
+
 
 ## Set And Read
 
 `ecs_set()` adds the component if needed, then writes the value:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
-ecs_set(world, entity, Position, {
-    .x = 1.0f,
-    .y = 2.0f,
-});
+ecs_set(world, entity, Position, { .x = 1.0f, .y = 2.0f });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+entity.set(Position{ .x = 1.0f, .y = 2.0f });
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+world.set(entity, Position { x: 1.0, y: 2.0 });
+```
+</TabItem>
+</Tabs>
 
-`ecs_get()` assumes the component exists:
+`ecs_get()` assumes the component exists. The C++ wrapper currently has no
+`entity.get<T>()` or `entity.try_get<T>()` method for direct typed reads. Use
+the raw C API through `world.c_ptr()` and `world.component<T>()` when reading
+one known entity:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 Position *position = ecs_get(world, entity, Position);
 position->x += 1.0f;
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+Position *position = static_cast<Position *>(
+    ecs_get_cid(world.c_ptr(), entity.id(), world.component<Position>())
+);
+position->x += 1.0f;
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+world.get_mut::<Position>(entity).unwrap().x += 1.0;
+```
+</TabItem>
+</Tabs>
 
-When the component may be absent, use `ecs_try_get()`:
+When the component may be absent, use the nullable helpers:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 Position *position = ecs_try_get(world, entity, Position);
-if (position != NULL) {
-    position->x += 1.0f;
+if (position != NULL) position->x += 1.0f;
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+Position *position = static_cast<Position *>(
+    ecs_try_get_cid(world.c_ptr(), entity.id(), world.component<Position>())
+);
+if (position != nullptr) position->x += 1.0f;
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+if let Some(position) = world.get_mut::<Position>(entity) {
+    position.x += 1.0;
 }
 ```
+</TabItem>
+</Tabs>
 
 ## Add, Remove, Has
 
-Use `ecs_add()` for components that do not need an immediate value, including
-tag-like zero-sized components:
+Use the typed operation for components that do not need an immediate value:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_add(world, entity, Position);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+entity.add<Position>();
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+world.add::<Position>(entity);
+```
+</TabItem>
+</Tabs>
 
 Check and remove components with:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 if (ecs_has(world, entity, Position)) {
     ecs_remove(world, entity, Position);
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+if (entity.has<Position>()) {
+    entity.remove<Position>();
+}
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+if world.has::<Position>(entity) {
+    world.remove::<Position>(entity);
+}
+```
+</TabItem>
+</Tabs>
 
 Removing a component that is not present is a no-op.
 
@@ -84,19 +188,48 @@ Removing a component that is not present is a no-op.
 `Disabled` is a built-in component. Adding it to an entity excludes that entity
 from queries by default:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_add(world, entity, Disabled);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+entity.disable();
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+world.disable(entity);
+```
+</TabItem>
+</Tabs>
 
-Queries, systems, and observers behave as if they had `ecs_not(Disabled)` unless
-their query mentions `Disabled` explicitly. To match disabled entities, add a
-`Disabled` term yourself:
+Queries, systems, and observers skip disabled entities by default. To match them
+explicitly:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
-ecs_query_id_t disabled_positions = ecs_query(world, {
+ecs_query(world, {
     .terms = { ecs_in(Position), ecs_filter(Disabled) },
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+world.query().require<Position>().require<Disabled>().each(
+    [](Position &) { /* process disabled entities */ });
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+let mut query = world.query_filtered::<&Position, With<Disabled>>();
+query.each(|position| { /* process disabled entities */ });
+```
+</TabItem>
+</Tabs>
 
 ## Component Requirements
 

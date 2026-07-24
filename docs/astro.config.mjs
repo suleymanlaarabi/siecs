@@ -1,9 +1,13 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import languageExamples from './src/plugins/language-examples';
 
 export default defineConfig({
   site: 'https://suleymanlaarabi.github.io',
   base: '/siecs',
+  markdown: {
+    remarkPlugins: [languageExamples],
+  },
   integrations: [
     starlight({
       title: 'SIECS',
@@ -15,7 +19,7 @@ export default defineConfig({
           items: ['getting-started', 'theory', 'cookbook'],
         },
         {
-          label: 'C API',
+          label: 'Core Concepts',
           items: [
             'components',
             'resources',
@@ -27,10 +31,6 @@ export default defineConfig({
             'modules',
             'relations',
           ],
-        },
-        {
-          label: 'Bindings',
-          items: ['cpp', 'rust'],
         },
         {
           label: 'Addons',

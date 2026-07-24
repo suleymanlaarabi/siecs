@@ -2,12 +2,30 @@
 title: Entities
 description: Entity handles, liveness, and destruction.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import LanguageExample from '../../components/LanguageExample.astro';
 
 Entities are `ecs_entity_t` handles created by a world.
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_entity_t entity = ecs_new(world);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::world world;
+auto entity = world.entity();
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+let mut world = World::new();
+let entity = world.entity();
+```
+</TabItem>
+</Tabs>
 
 New entities start alive and have no user components.
 
@@ -18,20 +36,52 @@ For abstract entities, bases, and inherited components, see
 
 Use `ecs_is_alive()` with entity handles created by the same world:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 if (ecs_is_alive(world, entity)) {
     /* entity can be used */
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+if (entity.is_alive()) {
+    // entity can be used
+}
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+if world.is_alive(entity) {
+    // entity is usable
+}
+```
+</TabItem>
+</Tabs>
 
 `ecs_is_alive()` is not a general validator for arbitrary integers. Passing ids
 that did not come from the world is not supported.
 
 ## Destroy Entities
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_kill(world, entity);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+entity.kill();
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+world.kill(entity);
+```
+</TabItem>
+</Tabs>
 
 Killing an entity removes all of its components, runs remove hooks, removes the
 entity from its current archetype table, and invalidates the handle.

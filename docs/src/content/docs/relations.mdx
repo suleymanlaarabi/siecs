@@ -1,0 +1,120 @@
+---
+title: Relations
+description: Relation components such as ChildOf.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import LanguageExample from '../../components/LanguageExample.astro';
+
+Relations are components that store an entity target.
+
+SIECS includes the built-in `ChildOf` relation:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_set(world, child, ChildOf, { .target = parent });
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+child.child_of(parent);
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+world.child_of(child, parent);
+```
+</TabItem>
+</Tabs>
+
+The generated relation struct contains:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+typedef struct {
+    ecs_entity_t target;
+} ChildOf;
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+// ChildOf is provided by the SIECS C++ wrapper.
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+// ChildOf::new(parent) creates the typed relation value.
+```
+</TabItem>
+</Tabs>
+
+## Declare Custom Relations
+
+Declare and define a relation:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_RELATION_DECLARE(Targets);
+ECS_RELATION_DEFINE(Targets, 0);
+ECS_COMPONENT_REGISTER(world, Targets);
+ecs_set(world, entity, Targets, { .target = other_entity });
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Targets { ecs::entity target; };
+
+// The wrapper can store the relation value, but it has no helper for
+// ECS_RELATION_DEFINE flags such as cascade deletion.
+entity.set(Targets{ .target = other_entity });
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+// Custom relation registration is not available in the safe Rust wrapper yet.
+```
+</TabItem>
+</Tabs>
+
+`ChildOf` is defined with `EcsRelationCascadeDelete`, so killing a parent also
+kills its children. Custom relations only remove reverse links by default unless
+they opt into that flag.
+
+## Source Component
+
+For every relation component, SIECS also creates an internal source component
+used to track reverse links.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_component_t source_id = ecs_source(Targets);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+// Source components are internal; use the relation component itself.
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+// Source components are internal; use the typed relation API.
+```
+</TabItem>
+</Tabs>
+
+## Lifecycle
+
+When a relation target changes, SIECS removes the source entity from the old
+target reverse list and appends it to the new target reverse list. Removing the
+relation removes the reverse link.
+
+When a target entity is killed:
+
+- relations without `EcsRelationCascadeDelete` remove the relation from sources
+- relations with `EcsRelationCascadeDelete` kill the source entities too
+
+`ChildOf` uses cascade delete because child entities are considered owned by
+their parent.

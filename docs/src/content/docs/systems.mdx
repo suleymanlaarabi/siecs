@@ -2,6 +2,8 @@
 title: Systems
 description: Running query callbacks in a predictable phase order.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import LanguageExample from '../../components/LanguageExample.astro';
 
 Systems are named callbacks attached to a query. They are the usual way to run
 game or application logic over matching entities.
@@ -10,6 +12,9 @@ game or application logic over matching entities.
 
 A system callback receives an `ecs_iter_t *`. Each call gives a batch of matching
 entities for the system query.
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 static void move_system(ecs_iter_t *it) {
@@ -31,6 +36,35 @@ ecs_system_id_t Move = ecs_system(world, {
     .callback = move_system,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+world.system("Move")
+    .phase(EcsOnUpdate)
+    .each([](Position &position, const Velocity &velocity) {
+        position.x += velocity.x;
+        position.y += velocity.y;
+    });
+```
+
+</TabItem>
+<TabItem label="Rust">
+
+```rust
+fn move_system(mut query: Query<(&mut Position, &Velocity)>) {
+    query.each(|(position, velocity)| {
+        position.x += velocity.x;
+        position.y += velocity.y;
+    });
+}
+
+world.system("Move", move_system);
+```
+
+</TabItem>
+</Tabs>
 
 `callback` is required for normal C systems. `name` is optional, but recommended
 because it makes debugging and traces easier to read.

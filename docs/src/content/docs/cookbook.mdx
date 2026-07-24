@@ -1,0 +1,193 @@
+---
+title: Cookbook
+description: Small complete patterns for common SIECS tasks.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+import LanguageExample from '../../components/LanguageExample.astro';
+
+## Minimal World
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_world_t *world = ecs_init();
+ecs_entity_t entity = ecs_new(world);
+ecs_fini(world);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::world world;
+auto entity = world.entity();
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+let mut world = World::new();
+let entity = world.entity();
+```
+</TabItem>
+</Tabs>
+
+## Game Loop With Time
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_RESOURCE(Time, { float dt; });
+ECS_COMPONENT(Position, { float x; });
+ECS_COMPONENT(Velocity, { float x; });
+
+static void Move(ecs_iter_t *it) {
+    const Time *time = ecs_get_resource_read(it->world, Time);
+    Position *p = ecs_field(it, 0);
+    const Velocity *v = ecs_field(it, 1);
+    for (uint32_t i = 0; i < it->count; i++) p[i].x += v[i].x * time->dt;
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Time { float dt; };
+struct Position { float x; };
+struct Velocity { float x; };
+
+world.set_resource(Time{ .dt = 0.016f });
+world.system("Move").each([](ecs::res<const Time> time,
+                              Position &p, const Velocity &v) {
+    p.x += v.x * time->dt;
+});
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+#[derive(Resource)]
+struct DeltaTime(f32);
+
+fn move_system(mut query: Query<(&mut Position, &Velocity)>, time: Res<DeltaTime>) {
+    query.each(|(position, velocity)| position.x += velocity.x * time.0);
+}
+
+world.set_resource(DeltaTime(0.016));
+world.system("Move", move_system);
+```
+</TabItem>
+</Tabs>
+
+## Parent And Child
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_entity_t parent = ecs_new(world);
+ecs_entity_t child = ecs_new(world);
+ecs_set(world, child, ChildOf, { parent });
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto parent = world.entity();
+auto child = world.entity().child_of(parent);
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+let parent = world.entity();
+let child = world.entity();
+world.child_of(child, parent);
+```
+</TabItem>
+</Tabs>
+
+`ChildOf` cascades deletion: killing the parent also kills its children.
+
+## Optional Component Query
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_id_t q = ecs_query(world, {
+    .terms = { ecs_inout(Position), ecs_in_optional(Velocity) },
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto query = world.query()
+    .require<Position>()
+    .each([](Position &position) {
+        // Query optional data through the C API when needed.
+        (void)position;
+    });
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+let mut query = world.query::<(&mut Position, Option<&Velocity>)>();
+query.each(|(position, velocity)| {
+    if let Some(velocity) = velocity { position.x += velocity.x; }
+});
+```
+</TabItem>
+</Tabs>
+
+## React To A Component Set
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+static void OnPositionSet(ecs_observer_event_t *event) {
+    const Position *incoming = event->trigger_data;
+    (void)incoming;
+}
+
+ecs_observer(world, {
+    .on = EcsOnSet,
+    .query.terms = { ecs_in(Position) },
+    .callback = OnPositionSet,
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+world.observe<ecs::OnSet>().each([](const Position &position) {
+    std::cout << position.x << '\n';
+});
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+fn on_set(position: &Position) {
+    println!("{}", position.x);
+}
+
+world.on_set::<Position>().each(on_set);
+```
+</TabItem>
+</Tabs>
+
+## Pause Entities With Disabled
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_add(world, entity, Disabled);
+ecs_remove(world, entity, Disabled);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+entity.disable();
+entity.enable();
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+world.add(entity, Disabled);
+world.remove::<Disabled>(entity);
+```
+</TabItem>
+</Tabs>
+
+Normal queries skip disabled entities. Add `ecs_filter(Disabled)` to match them
+explicitly.

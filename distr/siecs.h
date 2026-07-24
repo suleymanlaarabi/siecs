@@ -1615,6 +1615,17 @@ SIECS_API void ecs_system_disable(ecs_world_t *world, ecs_system_id_t system);
 
 #pragma once
 #pragma once
+#pragma once
+
+#ifndef SIECS_NO_CPP
+#define SIECS_NO_CPP
+#define SIECS_CPP_RESTORE_CPP_INCLUDE
+#endif
+
+#ifdef SIECS_CPP_RESTORE_CPP_INCLUDE
+#undef SIECS_CPP_RESTORE_CPP_INCLUDE
+#undef SIECS_NO_CPP
+#endif
 
 #pragma once
 #include <string_view>
@@ -1833,13 +1844,18 @@ class entity {
         return *this;
     }
 
-    template <typename T> entity set(T &&value)
+    template <typename T>
+    entity set(T &&value)
         requires(!std::is_lvalue_reference_v<T>)
     {
         using type = std::remove_cvref_t<T>;
         ecs_move_cid(_world, _entity, detail::ecs_cpp_component_id<type>(_world), &value);
         return *this;
     }
+
+    bool is_alive() { return ecs_is_alive(_world, _entity); }
+
+    void kill() { ecs_kill(_world, _entity); }
 
     entity is_a(entity target) {
         ecs_is_a(_world, _entity, target._entity);
@@ -2514,8 +2530,8 @@ class world {
         detail::ecs_cpp_set_component_id<Name>(ecs_id(Name));
         detail::ecs_cpp_set_component_id<ChildOf>(ecs_id(ChildOf));
         detail::ecs_cpp_set_event_id<OnAdd>(EcsOnAdd);
-        detail::ecs_cpp_set_event_id<OnAdd>(EcsOnSet);
-        detail::ecs_cpp_set_event_id<OnAdd>(EcsOnRemove);
+        detail::ecs_cpp_set_event_id<OnSet>(EcsOnSet);
+        detail::ecs_cpp_set_event_id<OnRemove>(EcsOnRemove);
     }
     explicit world(ecs_world_t *world) noexcept
         : _world(world), _ownership(world_ownership::owned) {}
