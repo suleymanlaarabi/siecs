@@ -45,17 +45,6 @@ world.observe<ecs::OnSet>().each([](const Position &position) {
 ```
 
 </TabItem>
-<TabItem label="Rust">
-
-```rust
-fn on_set(position: &Position) {
-    println!("{}", position.x);
-}
-
-world.on_set::<Position>().each(on_set);
-```
-
-</TabItem>
 </Tabs>
 
 `callback` is required.

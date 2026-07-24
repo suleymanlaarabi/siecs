@@ -19,12 +19,6 @@ ecs::world world;
 auto entity = world.entity();
 ```
 </TabItem>
-<TabItem label="Rust">
-```rust
-let mut world = World::new();
-let entity = world.entity();
-```
-</TabItem>
 </Tabs>
 
 New entities start alive and have no user components.
@@ -51,13 +45,6 @@ if (entity.is_alive()) {
 }
 ```
 </TabItem>
-<TabItem label="Rust">
-```rust
-if world.is_alive(entity) {
-    // entity is usable
-}
-```
-</TabItem>
 </Tabs>
 
 `ecs_is_alive()` is not a general validator for arbitrary integers. Passing ids
@@ -74,11 +61,6 @@ ecs_kill(world, entity);
 <TabItem label="C++">
 ```cpp
 entity.kill();
-```
-</TabItem>
-<TabItem label="Rust">
-```rust
-world.kill(entity);
 ```
 </TabItem>
 </Tabs>

@@ -40,16 +40,6 @@ world.set_resource(Time{ .dt = 0.016f });
 ```
 
 </TabItem>
-<TabItem label="Rust">
-
-```rust
-#[derive(Resource)]
-struct DeltaTime(f32);
-
-world.set_resource(DeltaTime(0.016));
-```
-
-</TabItem>
 </Tabs>
 
 The resource macros intentionally mirror component macros, but resources are

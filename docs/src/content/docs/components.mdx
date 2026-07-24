@@ -41,20 +41,6 @@ entity.set(Position{ .x = 1.0f, .y = 2.0f });
 ```
 
 </TabItem>
-<TabItem label="Rust">
-
-```rust
-#[derive(Component)]
-struct Position {
-    x: f32,
-    y: f32,
-}
-
-let entity = world.entity();
-world.set(entity, Position { x: 1.0, y: 2.0 });
-```
-
-</TabItem>
 </Tabs>
 
 
@@ -71,11 +57,6 @@ ecs_set(world, entity, Position, { .x = 1.0f, .y = 2.0f });
 <TabItem label="C++">
 ```cpp
 entity.set(Position{ .x = 1.0f, .y = 2.0f });
-```
-</TabItem>
-<TabItem label="Rust">
-```rust
-world.set(entity, Position { x: 1.0, y: 2.0 });
 ```
 </TabItem>
 </Tabs>
@@ -100,11 +81,6 @@ Position *position = static_cast<Position *>(
 position->x += 1.0f;
 ```
 </TabItem>
-<TabItem label="Rust">
-```rust
-world.get_mut::<Position>(entity).unwrap().x += 1.0;
-```
-</TabItem>
 </Tabs>
 
 When the component may be absent, use the nullable helpers:
@@ -124,13 +100,6 @@ Position *position = static_cast<Position *>(
 if (position != nullptr) position->x += 1.0f;
 ```
 </TabItem>
-<TabItem label="Rust">
-```rust
-if let Some(position) = world.get_mut::<Position>(entity) {
-    position.x += 1.0;
-}
-```
-</TabItem>
 </Tabs>
 
 ## Add, Remove, Has
@@ -146,11 +115,6 @@ ecs_add(world, entity, Position);
 <TabItem label="C++">
 ```cpp
 entity.add<Position>();
-```
-</TabItem>
-<TabItem label="Rust">
-```rust
-world.add::<Position>(entity);
 ```
 </TabItem>
 </Tabs>
@@ -169,13 +133,6 @@ if (ecs_has(world, entity, Position)) {
 ```cpp
 if (entity.has<Position>()) {
     entity.remove<Position>();
-}
-```
-</TabItem>
-<TabItem label="Rust">
-```rust
-if world.has::<Position>(entity) {
-    world.remove::<Position>(entity);
 }
 ```
 </TabItem>
@@ -199,11 +156,6 @@ ecs_add(world, entity, Disabled);
 entity.disable();
 ```
 </TabItem>
-<TabItem label="Rust">
-```rust
-world.disable(entity);
-```
-</TabItem>
 </Tabs>
 
 Queries, systems, and observers skip disabled entities by default. To match them
@@ -221,12 +173,6 @@ ecs_query(world, {
 ```cpp
 world.query().require<Position>().require<Disabled>().each(
     [](Position &) { /* process disabled entities */ });
-```
-</TabItem>
-<TabItem label="Rust">
-```rust
-let mut query = world.query_filtered::<&Position, With<Disabled>>();
-query.each(|position| { /* process disabled entities */ });
 ```
 </TabItem>
 </Tabs>

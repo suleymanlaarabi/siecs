@@ -2,7 +2,7 @@ BAKE_HOME := $(shell bake env | sed -n 's/^BAKE_HOME=//p')
 DEPS_INCLUDE := -I$(BAKE_HOME)/include
 QUIET_BAKE = grep -Ev '^\[[[:space:]]*(test|build|run|runall|[0-9]+%)|^cmd:|^path:'
 
-.PHONY: clean bench clean-rust test test-c test-c-release test-cpp test-cpp-release test-leaks test-rust update-rust-vendor check-rust-bindings distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release act-ci act-rust act-docs act
+.PHONY: clean bench test test-c test-c-release test-cpp test-cpp-release test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release act-ci act-docs act
 
 ACT ?= act
 ACT_PLATFORM ?= ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
@@ -12,13 +12,10 @@ bench:
 	@bake rebuild bench --cfg release >/dev/null
 	@bake run bench --cfg release
 
-clean-rust:
-	@cd bindings/siecs_rust && cargo clean >/dev/null
-
 clean:
 	@rm -rf build-consumer-c build-consumer-cpp >/dev/null
 
-test: clean test-c test-c-release test-cpp test-cpp-release test-rust
+test: clean test-c test-c-release test-cpp test-cpp-release
 
 build-c:
 	@sh tools/rebuild_isolated.sh .
@@ -52,17 +49,6 @@ test-cpp-release:
 	@bake rebuild test/cpp -r --cfg release >/dev/null
 	@bash -o pipefail -c "bake test test/cpp --cfg release 2>&1 | $(QUIET_BAKE)"
 
-update-rust-vendor:
-	@bindings/siecs_rust/tools/update_vendor.sh
-
-check-rust-bindings:
-	@cmp distr/siecs.c bindings/siecs_rust/vendor/siecs.c
-	@cmp distr/siecs.h bindings/siecs_rust/vendor/siecs.h
-	@cd bindings/siecs_rust && cargo run --quiet -p siecs_bindgen -- --check
-
-test-rust: check-rust-bindings
-	@cd bindings/siecs_rust && cargo test --workspace
-
 distr:
 	@sh tools/rebuild_distr.sh
 
@@ -95,10 +81,6 @@ check-distr-cpp-standalone:
 
 act-ci:
 	@$(ACT) push -W .github/workflows/ci-act.yml -P $(ACT_PLATFORM)
-	@$(ACT) push -W .github/workflows/rust.yml -P $(ACT_PLATFORM)
-
-act-rust:
-	@$(ACT) push -W .github/workflows/rust.yml -P $(ACT_PLATFORM)
 
 act-docs:
 	@$(ACT) push -W .github/workflows/docs.yml -P $(ACT_PLATFORM)

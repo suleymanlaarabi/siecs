@@ -20,11 +20,6 @@ ecs_set(world, child, ChildOf, { .target = parent });
 child.child_of(parent);
 ```
 </TabItem>
-<TabItem label="Rust">
-```rust
-world.child_of(child, parent);
-```
-</TabItem>
 </Tabs>
 
 The generated relation struct contains:
@@ -40,11 +35,6 @@ typedef struct {
 <TabItem label="C++">
 ```cpp
 // ChildOf is provided by the SIECS C++ wrapper.
-```
-</TabItem>
-<TabItem label="Rust">
-```rust
-// ChildOf::new(parent) creates the typed relation value.
 ```
 </TabItem>
 </Tabs>
@@ -71,11 +61,6 @@ struct Targets { ecs::entity target; };
 entity.set(Targets{ .target = other_entity });
 ```
 </TabItem>
-<TabItem label="Rust">
-```rust
-// Custom relation registration is not available in the safe Rust wrapper yet.
-```
-</TabItem>
 </Tabs>
 
 `ChildOf` is defined with `EcsRelationCascadeDelete`, so killing a parent also
@@ -96,11 +81,6 @@ ecs_component_t source_id = ecs_source(Targets);
 <TabItem label="C++">
 ```cpp
 // Source components are internal; use the relation component itself.
-```
-</TabItem>
-<TabItem label="Rust">
-```rust
-// Source components are internal; use the typed relation API.
 ```
 </TabItem>
 </Tabs>

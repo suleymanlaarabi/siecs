@@ -28,14 +28,6 @@ player.set(Position{ .x = 0, .y = 0 });
 player.set(Velocity{ .x = 1, .y = 0 });
 ```
 </TabItem>
-<TabItem label="Rust">
-```rust
-let mut world = World::new();
-let player = world.entity();
-world.set(player, Position { x: 0.0, y: 0.0 });
-world.set(player, Velocity { x: 1.0, y: 0.0 });
-```
-</TabItem>
 </Tabs>
 
 Entity handles belong to one world. Do not use a handle with a different world.
@@ -56,13 +48,6 @@ ecs_add(world, entity, Player);
 ```cpp
 struct Player {};
 entity.add<Player>();
-```
-</TabItem>
-<TabItem label="Rust">
-```rust
-#[derive(Component)]
-struct Player;
-world.add::<Player>(entity);
 ```
 </TabItem>
 </Tabs>
@@ -102,14 +87,6 @@ world.query().each([](Position &p, Velocity &v) {
 });
 ```
 </TabItem>
-<TabItem label="Rust">
-```rust
-let mut query = world.query::<(&mut Position, &Velocity)>();
-query.each(|(p, v)| {
-    // Each callback invocation processes a matching table row.
-});
-```
-</TabItem>
 </Tabs>
 
 `ecs_filter(T)` and `ecs_not(T)` affect matching but do not consume field
@@ -141,12 +118,6 @@ ecs_query(world, {
 ```cpp
 world.query().require<Position>().require<Disabled>().each(
     [](Position &) { /* process disabled entities */ });
-```
-</TabItem>
-<TabItem label="Rust">
-```rust
-let mut query = world.query_filtered::<&Position, With<Disabled>>();
-query.each(|position| { /* process disabled entities */ });
 ```
 </TabItem>
 </Tabs>

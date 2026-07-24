@@ -3,7 +3,7 @@ title: SIECS
 description: User guide for the SIECS C entity component system.
 ---
 SIECS is a small archetype ECS library with a compact C23 API, C++23 wrapper,
-Rust bindings, reflection, modules, and an optional REST explorer for tools.
+reflection, modules, and an optional REST explorer for tools.
 
 The public user API is exposed by:
 

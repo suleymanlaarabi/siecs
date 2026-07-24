@@ -76,40 +76,11 @@ c++ -std=c++23 -I. main.cpp siecs.o -pthread -o my_app
 ```
 
 </TabItem>
-<TabItem label="Rust">
-
-Rust uses the `siecs` crate; it does not copy `distr/siecs.c` or compile with `cc`.
-
-```toml
-[dependencies]
-siecs = "0.1.3"
-```
-
-```rust
-use siecs::prelude::*;
-
-#[derive(Component)]
-struct Position {
-    x: f32,
-    y: f32,
-}
-
-fn main() {
-    let mut world = World::new();
-    let entity = world.entity();
-    world.set(entity, Position { x: 10.0, y: 20.0 });
-    world.get_mut::<Position>(entity).unwrap().x += 1.0;
-}
-```
-
-Run it with `cargo run`.
-
-</TabItem>
 </Tabs>
 
 ## Language Setup
 
-The same SIECS runtime can be consumed from C, C++, or Rust:
+The same SIECS runtime can be consumed from C or C++:
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -129,20 +100,6 @@ Compile the C source with `cc -std=c23`.
 
 The C++23 API is a header-only wrapper around the C runtime. Link the SIECS C
 library with your application.
-
-</TabItem>
-<TabItem label="Rust">
-
-```rust
-use siecs::prelude::*;
-```
-
-Use the published crate or the local path crate:
-
-```toml
-[dependencies]
-siecs = "0.1.1"
-```
 
 </TabItem>
 </Tabs>
@@ -275,23 +232,6 @@ int main() {
     const bool present = entity.has<Position>();
     (void)present;
     return 0;
-}
-```
-
-</TabItem>
-<TabItem label="Rust">
-
-```rust
-use siecs::prelude::*;
-
-#[derive(Component)]
-struct Position { x: f32, y: f32 }
-
-fn main() {
-    let mut world = World::new();
-    let entity = world.entity();
-    world.set(entity, Position { x: 10.0, y: 20.0 });
-    world.get::<Position>(entity).unwrap().x += 1.0;
 }
 ```
 

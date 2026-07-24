@@ -50,20 +50,6 @@ world.system("Move")
 ```
 
 </TabItem>
-<TabItem label="Rust">
-
-```rust
-fn move_system(mut query: Query<(&mut Position, &Velocity)>) {
-    query.each(|(position, velocity)| {
-        position.x += velocity.x;
-        position.y += velocity.y;
-    });
-}
-
-world.system("Move", move_system);
-```
-
-</TabItem>
 </Tabs>
 
 `callback` is required for normal C systems. `name` is optional, but recommended

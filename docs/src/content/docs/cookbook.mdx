@@ -21,12 +21,6 @@ ecs::world world;
 auto entity = world.entity();
 ```
 </TabItem>
-<TabItem label="Rust">
-```rust
-let mut world = World::new();
-let entity = world.entity();
-```
-</TabItem>
 </Tabs>
 
 ## Game Loop With Time
@@ -59,19 +53,6 @@ world.system("Move").each([](ecs::res<const Time> time,
 });
 ```
 </TabItem>
-<TabItem label="Rust">
-```rust
-#[derive(Resource)]
-struct DeltaTime(f32);
-
-fn move_system(mut query: Query<(&mut Position, &Velocity)>, time: Res<DeltaTime>) {
-    query.each(|(position, velocity)| position.x += velocity.x * time.0);
-}
-
-world.set_resource(DeltaTime(0.016));
-world.system("Move", move_system);
-```
-</TabItem>
 </Tabs>
 
 ## Parent And Child
@@ -88,13 +69,6 @@ ecs_set(world, child, ChildOf, { parent });
 ```cpp
 auto parent = world.entity();
 auto child = world.entity().child_of(parent);
-```
-</TabItem>
-<TabItem label="Rust">
-```rust
-let parent = world.entity();
-let child = world.entity();
-world.child_of(child, parent);
 ```
 </TabItem>
 </Tabs>
@@ -119,14 +93,6 @@ auto query = world.query()
         // Query optional data through the C API when needed.
         (void)position;
     });
-```
-</TabItem>
-<TabItem label="Rust">
-```rust
-let mut query = world.query::<(&mut Position, Option<&Velocity>)>();
-query.each(|(position, velocity)| {
-    if let Some(velocity) = velocity { position.x += velocity.x; }
-});
 ```
 </TabItem>
 </Tabs>
@@ -155,15 +121,6 @@ world.observe<ecs::OnSet>().each([](const Position &position) {
 });
 ```
 </TabItem>
-<TabItem label="Rust">
-```rust
-fn on_set(position: &Position) {
-    println!("{}", position.x);
-}
-
-world.on_set::<Position>().each(on_set);
-```
-</TabItem>
 </Tabs>
 
 ## Pause Entities With Disabled
@@ -179,12 +136,6 @@ ecs_remove(world, entity, Disabled);
 ```cpp
 entity.disable();
 entity.enable();
-```
-</TabItem>
-<TabItem label="Rust">
-```rust
-world.add(entity, Disabled);
-world.remove::<Disabled>(entity);
 ```
 </TabItem>
 </Tabs>
