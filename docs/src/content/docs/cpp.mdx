@@ -33,18 +33,28 @@ struct Position {
     float x, y;
 };
 
-auto entity = ecs::entity::create("player");
-entity.set(Position{ .x = 0.0f, .y = 0.0f });
+struct Velocity {
+    float x, y;
+};
 
-if (entity.has<Position>()) {
-    entity.remove<Position>();
+auto entity = ecs::entity::create("player");
+entity.set(
+    Position{ .x = 0.0f, .y = 0.0f },
+    Velocity{ .x = 1.0f, .y = 0.0f }
+);
+
+if (entity.has<Position, Velocity>()) {
+    entity.remove<Position, Velocity>();
 }
 
 entity.kill();
 ```
 
-Use `entity.add<T>()` for tags or zero-initialized components, and
-`entity.child_of(parent)` for the built-in `ChildOf` relation.
+Use `entity.add<A, B>()` for tags or zero-initialized components. Operations
+with several components are combined into one deferred mutation, so the entity
+moves directly to its final archetype. Use `entity.get<T>()` and
+`entity.try_get<T>()` for direct typed access, and `entity.child_of(parent)` for
+the built-in `ChildOf` relation.
 
 ## Queries
 

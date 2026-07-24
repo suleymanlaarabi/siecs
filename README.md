@@ -72,7 +72,7 @@ struct Velocity {
 int main() {
     ecs::init();
 
-    ecs::entity::create().set(Position{ 0, 0 }).set(Velocity{ 10, 10 });
+    ecs::entity::create().set(Position{ 0, 0 }, Velocity{ 10, 10 });
 
     ecs::system("Move")
         .phase(EcsOnUpdate)

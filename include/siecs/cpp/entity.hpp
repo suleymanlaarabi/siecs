@@ -4,6 +4,19 @@
 
 namespace ecs {
 
+namespace detail {
+
+class defer_scope {
+  public:
+    defer_scope() { ecs_defer_begin(); }
+    ~defer_scope() { ecs_defer_end(); }
+
+    defer_scope(const defer_scope &) = delete;
+    defer_scope &operator=(const defer_scope &) = delete;
+};
+
+} // namespace detail
+
 class entity {
     ecs_entity_t _entity = 0;
 
@@ -25,8 +38,15 @@ class entity {
     [[nodiscard]] ecs_entity_t id() const noexcept { return _entity; }
     operator ecs_entity_t() const noexcept { return _entity; }
 
-    template <typename T> entity add() {
-        ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>());
+    template <typename... T>
+        requires(sizeof...(T) > 0)
+    entity add() {
+        if constexpr (sizeof...(T) == 1) {
+            (ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>()), ...);
+        } else {
+            detail::defer_scope scope;
+            (ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>()), ...);
+        }
         return *this;
     }
 
@@ -35,13 +55,22 @@ class entity {
         return *this;
     }
 
-    template <typename T> entity remove() {
-        ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>());
+    template <typename... T>
+        requires(sizeof...(T) > 0)
+    entity remove() {
+        if constexpr (sizeof...(T) == 1) {
+            (ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>()), ...);
+        } else {
+            detail::defer_scope scope;
+            (ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>()), ...);
+        }
         return *this;
     }
 
-    template <typename T> [[nodiscard]] bool has() const {
-        return ecs_has_cid(_entity, detail::ecs_cpp_component_id<T>());
+    template <typename... T>
+        requires(sizeof...(T) > 0)
+    [[nodiscard]] bool has() const {
+        return (ecs_has_cid(_entity, detail::ecs_cpp_component_id<T>()) && ...);
     }
 
     template <typename T> entity set(const T &value) {
@@ -55,12 +84,29 @@ class entity {
         return *this;
     }
 
+    template <typename First, typename Second, typename... Rest>
+    entity set(First &&first, Second &&second, Rest &&...rest) {
+        detail::defer_scope scope;
+        set(std::forward<First>(first));
+        set(std::forward<Second>(second));
+        (set(std::forward<Rest>(rest)), ...);
+        return *this;
+    }
+
     template <typename T> [[nodiscard]] T *try_get() {
         return static_cast<T *>(ecs_try_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
     }
 
     template <typename T> [[nodiscard]] T &get() {
         return *static_cast<T *>(ecs_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
+    }
+
+    template <typename T> [[nodiscard]] const T *try_get() const {
+        return static_cast<const T *>(ecs_try_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
+    }
+
+    template <typename T> [[nodiscard]] const T &get() const {
+        return *static_cast<const T *>(ecs_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
     }
 
     [[nodiscard]] bool is_alive() const { return _entity != 0 && ecs_is_alive(_entity); }

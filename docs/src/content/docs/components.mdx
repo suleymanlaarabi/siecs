@@ -61,10 +61,7 @@ entity.set(Position{ .x = 1.0f, .y = 2.0f });
 </TabItem>
 </Tabs>
 
-`ecs_get()` assumes the component exists. The C++ wrapper currently has no
-`entity.get<T>()` or `entity.try_get<T>()` method for direct typed reads. Use
-the raw C API through `ecs::component<T>()` when reading
-one known entity:
+`ecs_get()` and `entity.get<T>()` assume the component exists:
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -75,10 +72,8 @@ position->x += 1.0f;
 </TabItem>
 <TabItem label="C++">
 ```cpp
-Position *position = static_cast<Position *>(
-ecs_get_cid(entity.id(), ecs::component<Position>())
-);
-position->x += 1.0f;
+Position &position = entity.get<Position>();
+position.x += 1.0f;
 ```
 </TabItem>
 </Tabs>
@@ -94,10 +89,9 @@ if (position != NULL) position->x += 1.0f;
 </TabItem>
 <TabItem label="C++">
 ```cpp
-Position *position = static_cast<Position *>(
-ecs_try_get_cid(entity.id(), ecs::component<Position>())
-);
-if (position != nullptr) position->x += 1.0f;
+if (Position *position = entity.try_get<Position>()) {
+    position->x += 1.0f;
+}
 ```
 </TabItem>
 </Tabs>
@@ -118,6 +112,21 @@ entity.add<Position>();
 ```
 </TabItem>
 </Tabs>
+
+The C++ methods accept several component types or values at once:
+
+```cpp
+entity.set(Position{ 1.0f, 2.0f }, Velocity{ 3.0f, 4.0f });
+entity.add<Selected, Visible>();
+
+if (entity.has<Selected, Visible>()) {
+    entity.remove<Selected, Visible>();
+}
+```
+
+Multi-component `set`, `add`, and `remove` calls are deferred as one batch. This
+lets SIECS compute the final archetype and migrate the entity once instead of
+once per component.
 
 Check and remove components with:
 

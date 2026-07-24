@@ -33,6 +33,8 @@ int main() {
         vitesse.y += gravity.value;
     });
 
+    ecs::entity::create().add<Position, Velocity>();
+
     while (ecs::progress()) {
     };
 }

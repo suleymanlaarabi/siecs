@@ -12,6 +12,8 @@
 void entity_state_enable_disable(void);
 void entity_state_disabled_entities_are_skipped(void);
 void entity_state_typed_entity_creation(void);
+void entity_state_variadic_set_and_read(void);
+void entity_state_variadic_add_remove_batches_migration(void);
 
 // Testsuite 'resource'
 void resource_world_api(void);
@@ -64,6 +66,14 @@ bake_test_case entity_state_testcases[] = {
     {
         "typed_entity_creation",
         entity_state_typed_entity_creation
+    },
+    {
+        "variadic_set_and_read",
+        entity_state_variadic_set_and_read
+    },
+    {
+        "variadic_add_remove_batches_migration",
+        entity_state_variadic_add_remove_batches_migration
     }
 };
 
@@ -204,7 +214,7 @@ static bake_test_suite suites[] = {
         "entity_state",
         NULL,
         NULL,
-        3,
+        5,
         entity_state_testcases
     },
     {
