@@ -23,14 +23,6 @@ ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id) {
     return new_type;
 }
 
-ecs_type_t ecs_type_with_remove(const ecs_type_t *type, uint16_t id) {
-    for (uint16_t i = 0; i < type->count; i++) {
-        if (type->ids[i] == id) {
-            return ecs_type_with_remove_at(type, i);
-        }
-    }
-    return (ecs_type_t){ .base = type->base };
-}
 
 ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index) {
     ecs_type_t new_type = {
@@ -63,35 +55,6 @@ ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base) {
     return new_type;
 }
 
-// returns the index of the id in the type, or -1 if not found
-int ecs_type_find(const ecs_type_t *type, uint16_t id) {
-    // binary search
-    int left = 0, right = type->count - 1;
-    while (left <= right) {
-        int mid = left + (right - left) / 2;
-        if (type->ids[mid] == id) {
-            return mid;
-        } else if (type->ids[mid] < id) {
-            left = mid + 1;
-        } else {
-            right = mid - 1;
-        }
-    }
-    return -1;
-}
-
-void ecs_type_add(ecs_type_t *type, uint16_t id) {
-    type->ids = realloc(type->ids, (type->count + 1) * sizeof(uint16_t));
-
-    uint16_t i = type->count;
-    while (i > 0 && type->ids[i - 1] > id) {
-        type->ids[i] = type->ids[i - 1];
-        i--;
-    }
-
-    type->ids[i] = id;
-    type->count++;
-}
 
 void ecs_type_fini(ecs_type_t *type) {
     if (type->ids) {

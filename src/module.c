@@ -77,16 +77,6 @@ bool ecs_module_is_enabled(const ecs_module_id_t module) {
         return ecs_module_index_get_const(&ecs_world.module_index, module)->enabled;
 }
 
-void ecs_module_record_component(ecs_component_t component) {
-    ecs_module_id_t module = ecs_world.active_module;
-    if (!module) {
-        return;
-    }
-
-    ecs_module_t *record = ecs_module_index_get(&ecs_world.module_index, module);
-    ecs_vec_push_u16(&record->components, component);
-}
-
 void ecs_module_record_system(ecs_system_id_t system) {
     ecs_module_id_t module = ecs_world.active_module;
     if (!module) {

@@ -236,15 +236,6 @@ void *ecs_resource_index_get(ecs_resource_index_t *index, ecs_resource_t id) {
     return index->data[id];
 }
 
-const void *ecs_resource_index_get_const(const ecs_resource_index_t *index, ecs_resource_t id) {
-    ecs_resource_index_assert_registered(index, id);
-    if (!index->present[id]) {
-        return NULL;
-    }
-
-    return index->data[id];
-}
-
 bool ecs_resource_index_has(const ecs_resource_index_t *index, ecs_resource_t id) {
     ecs_resource_index_assert_registered(index, id);
     return index->present[id];

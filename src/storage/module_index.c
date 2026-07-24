@@ -11,7 +11,6 @@ static void ecs_module_record_init(ecs_module_t *module, ecs_module_id_t *id, co
     module->enabled = true;
     ecs_vec_init(&module->observers, sizeof(ecs_observer_id_t));
     ecs_vec_init(&module->systems, sizeof(ecs_system_id_t));
-    ecs_vec_init(&module->components, sizeof(ecs_component_t));
 }
 
 static void ecs_module_record_fini(ecs_module_t *module) {
@@ -21,7 +20,6 @@ static void ecs_module_record_fini(ecs_module_t *module) {
 
     ecs_vec_fini(&module->observers);
     ecs_vec_fini(&module->systems);
-    ecs_vec_fini(&module->components);
 }
 
 void ecs_module_index_init(ecs_module_index_t *index) {

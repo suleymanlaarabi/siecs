@@ -9,7 +9,6 @@ typedef struct {
     const char *name;
     ecs_vec_t observers;  // ecs_observer_id_t
     ecs_vec_t systems;    // ecs_system_id_t
-    ecs_vec_t components; // ecs_component_t
     bool enabled;
 } ecs_module_t;
 

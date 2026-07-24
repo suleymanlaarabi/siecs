@@ -21,21 +21,6 @@ void ecs_vec_grow(ecs_vec_t *vec, uint32_t element_size) {
     vec->data = realloc(vec->data, element_size * vec->capacity);
 }
 
-void ecs_vec_resize_max(ecs_vec_t *vec, uint32_t new_capacity, uint32_t element_size) {
-    if (new_capacity > vec->capacity) {
-        vec->data = realloc(vec->data, element_size * new_capacity);
-        memset(
-            (uint8_t *)vec->data + (element_size * vec->capacity),
-            0xFF,
-            element_size * (new_capacity - vec->capacity)
-        );
-        vec->capacity = new_capacity;
-    }
-    if (new_capacity < vec->size) {
-        vec->size = new_capacity;
-    }
-}
-
 void ecs_vec_push(ecs_vec_t *vec, const void *element, const uint32_t element_size) {
     if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
         ecs_vec_grow(vec, element_size);
@@ -60,15 +45,6 @@ void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_
         memcpy(dst, src, element_size);
     }
     vec->size--;
-}
-
-bool ecs_vec_contains_u64(const ecs_vec_t *vec, const uint64_t value) {
-    ecs_vec_iter(vec, uint64_t, current, {
-        if (*current == value) {
-            return true;
-        }
-    });
-    return false;
 }
 
 bool ecs_vec_contains_u16(const ecs_vec_t *vec, const uint16_t value) {

@@ -203,15 +203,3 @@ void ecs_kill(ecs_entity_t entity) {
 
     ecs_kill_now(entity);
 }
-
-void ecs_clone_w_entity(ecs_entity_t entity, ecs_entity_t target) {
-    const ecs_entity_record_t *target_record = ecs_get_record(target);
-    ecs_table_t *target_table = ecs_get_table(target_record->table_id);
-
-    ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    ecs_table_t *entity_table = ecs_get_table(entity_record->table_id);
-
-    ecs_table_add_entity(target_table, entity);
-
-    ecs_migrate_to_table(entity_record, entity, entity_table, target_record->table_id);
-}

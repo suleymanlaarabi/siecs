@@ -14,7 +14,6 @@ void ecs_vec_init(ecs_vec_t *vec, const uint32_t element_size);
 void ecs_vec_init_w_size(ecs_vec_t *vec, const uint32_t element_size, uint32_t size);
 void ecs_vec_fini(ecs_vec_t *vec);
 void ecs_vec_grow(ecs_vec_t *vec, const uint32_t element_size);
-void ecs_vec_resize_max(ecs_vec_t *vec, uint32_t new_capacity, const uint32_t element_size);
 
 // Ensure vec has at least `count` elements. New slots are zero-initialized.
 void ecs_vec_ensure(ecs_vec_t *vec, uint32_t count, const uint32_t element_size);
@@ -38,7 +37,6 @@ static inline void *ecs_vec_push_empty(ecs_vec_t *vec, const uint32_t element_si
 
 bool ecs_vec_contains_u16(const ecs_vec_t *vec, uint16_t value);
 void ecs_vec_remove_u16(ecs_vec_t *vec, uint16_t value);
-bool ecs_vec_contains_u64(const ecs_vec_t *vec, uint64_t value);
 void ecs_vec_remove_u64(ecs_vec_t *vec, uint64_t value);
 
 // Specialized push for 2-byte types
@@ -62,27 +60,15 @@ void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_
 // Direct pointer access for fast iteration
 #define ecs_vec_get(vec, index, type) (&((const type *)(vec)->data)[index])
 #define ecs_vec_get_mut(vec, index, type) (&((type *)(vec)->data)[index])
-#define ecs_vec_get_last(vec, type) (&((type *)(vec)->data)[(vec)->size - 1])
 #define ecs_vec_remove_last(vec) ((vec)->size--)
 #define ecs_vec_clear(vec) ((vec)->size = 0)
 #define ecs_vec_data(vec, type) ((type *)(vec)->data)
-
-// Direct indexed access for fast writes. Does not check bounds or grow the vec.
-#define ecs_vec_set(vec, type, index, value) (((type *)vec->data)[index] = value)
 
 #define ecs_vec_iter(vec, type, value, ...)                                                        \
     const type *__values = (vec)->data;                                                            \
     const uint32_t __count = (vec)->size;                                                          \
     for (uint32_t i = 0; i < __count; i++) {                                                       \
         const type *value = &__values[i];                                                          \
-        __VA_ARGS__                                                                                \
-    }
-
-#define ecs_vec_iter_mut(vec, type, value, ...)                                                    \
-    type *__values = (vec)->data;                                                                  \
-    const uint32_t __count = (vec)->size;                                                          \
-    for (uint32_t i = 0; i < __count; i++) {                                                       \
-        type *value = &__values[i];                                                                \
         __VA_ARGS__                                                                                \
     }
 

@@ -11,15 +11,11 @@ typedef struct {
 } ecs_type_t;
 
 ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
-void ecs_type_add(ecs_type_t *type, uint16_t id);
-ecs_type_t ecs_type_with_remove(const ecs_type_t *type, uint16_t id);
 ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
 ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
 
 uint64_t ecs_type_bloom(const ecs_type_t *type);
 
-// returns the index of the id in the type, or -1 if not found
-int ecs_type_find(const ecs_type_t *type, uint16_t id);
 
 void ecs_type_fini(ecs_type_t *type);
 

@@ -1,6 +1,5 @@
 #include "compiler.h"
 #include "datastructure/vec.h"
-#include "module.h"
 #include "siecs.h"
 #include <stdio.h>
 #ifndef SIREFLECT_H
@@ -12,13 +11,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-typedef struct ecs_component_global_name_s {
-    char *name;
-    ecs_component_t id;
-    uint16_t count;
-    struct ecs_component_global_name_s *next;
-} ecs_component_global_name_t;
 
 static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
     uint32_t id = ecs_world.component_index.components.size;
@@ -168,8 +160,6 @@ ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
             SIREFLECT_INVALID_HANDLE,
             NULL
         );
-        ecs_module_record_component(component);
-        ecs_module_record_component(source);
         return component;
     } else {
         if (*id == 0) {
@@ -189,7 +179,6 @@ ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
             reflection,
             desc->struct_desc
         );
-        ecs_module_record_component(component);
         return component;
     }
 }

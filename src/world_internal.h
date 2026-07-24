@@ -90,6 +90,5 @@ static inline void ecs_emit(
 }
 
 void ecs_bootstrap(void);
-struct ecs_table_s *ecs_iter_table(ecs_iter_t *it);
 
 #endif

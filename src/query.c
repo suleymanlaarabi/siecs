@@ -59,12 +59,6 @@ bool ecs_iter_next(ecs_iter_t *it) {
     it->entities = ecs_world.table_index.tables[tids[it->table_idx]].entities;
     return true;
 }
-
-ecs_table_t *ecs_iter_table(ecs_iter_t *it) {
-    uint16_t tid = *ecs_vec_get_mut(&it->cache->table_ids, it->table_idx, uint16_t);
-    return ecs_table_index_at(&ecs_world.table_index, tid);
-}
-
 void ecs_query_fini(ecs_query_id_t qid) {
         ecs_assert(qid < ecs_world.query_index.queries.size, "invalid query id: %u\n", qid);
 

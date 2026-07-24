@@ -34,7 +34,6 @@ void ecs_resource_index_move(
     void *data
 );
 void *ecs_resource_index_get(ecs_resource_index_t *index, ecs_resource_t id);
-const void *ecs_resource_index_get_const(const ecs_resource_index_t *index, ecs_resource_t id);
 bool ecs_resource_index_has(const ecs_resource_index_t *index, ecs_resource_t id);
 void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_resource_t id);
 
