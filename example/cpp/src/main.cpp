@@ -17,6 +17,15 @@ struct Gravity {
 };
 
 struct Enemy;
+struct NoIntegrate;
+
+template <typename... T> struct With {};
+
+template <typename... T> struct Without {};
+
+template <typename T> struct IsA {};
+
+template <typename With, typename Without = Without<>> struct Query {};
 
 int main() {
     ecs::init();

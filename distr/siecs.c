@@ -4783,7 +4783,6 @@ void ecs_vec_init(ecs_vec_t *vec, const uint32_t element_size);
 void ecs_vec_init_w_size(ecs_vec_t *vec, const uint32_t element_size, uint32_t size);
 void ecs_vec_fini(ecs_vec_t *vec);
 void ecs_vec_grow(ecs_vec_t *vec, const uint32_t element_size);
-void ecs_vec_resize_max(ecs_vec_t *vec, uint32_t new_capacity, const uint32_t element_size);
 
 // Ensure vec has at least `count` elements. New slots are zero-initialized.
 void ecs_vec_ensure(ecs_vec_t *vec, uint32_t count, const uint32_t element_size);
@@ -4807,7 +4806,6 @@ static inline void *ecs_vec_push_empty(ecs_vec_t *vec, const uint32_t element_si
 
 bool ecs_vec_contains_u16(const ecs_vec_t *vec, uint16_t value);
 void ecs_vec_remove_u16(ecs_vec_t *vec, uint16_t value);
-bool ecs_vec_contains_u64(const ecs_vec_t *vec, uint64_t value);
 void ecs_vec_remove_u64(ecs_vec_t *vec, uint64_t value);
 
 // Specialized push for 2-byte types
@@ -4831,27 +4829,15 @@ void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_
 // Direct pointer access for fast iteration
 #define ecs_vec_get(vec, index, type) (&((const type *)(vec)->data)[index])
 #define ecs_vec_get_mut(vec, index, type) (&((type *)(vec)->data)[index])
-#define ecs_vec_get_last(vec, type) (&((type *)(vec)->data)[(vec)->size - 1])
 #define ecs_vec_remove_last(vec) ((vec)->size--)
 #define ecs_vec_clear(vec) ((vec)->size = 0)
 #define ecs_vec_data(vec, type) ((type *)(vec)->data)
-
-// Direct indexed access for fast writes. Does not check bounds or grow the vec.
-#define ecs_vec_set(vec, type, index, value) (((type *)vec->data)[index] = value)
 
 #define ecs_vec_iter(vec, type, value, ...)                                                        \
     const type *__values = (vec)->data;                                                            \
     const uint32_t __count = (vec)->size;                                                          \
     for (uint32_t i = 0; i < __count; i++) {                                                       \
         const type *value = &__values[i];                                                          \
-        __VA_ARGS__                                                                                \
-    }
-
-#define ecs_vec_iter_mut(vec, type, value, ...)                                                    \
-    type *__values = (vec)->data;                                                                  \
-    const uint32_t __count = (vec)->size;                                                          \
-    for (uint32_t i = 0; i < __count; i++) {                                                       \
-        type *value = &__values[i];                                                                \
         __VA_ARGS__                                                                                \
     }
 
@@ -4913,15 +4899,10 @@ typedef struct {
 } ecs_type_t;
 
 ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
-void ecs_type_add(ecs_type_t *type, uint16_t id);
-ecs_type_t ecs_type_with_remove(const ecs_type_t *type, uint16_t id);
 ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
 ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
 
 uint64_t ecs_type_bloom(const ecs_type_t *type);
-
-// returns the index of the id in the type, or -1 if not found
-int ecs_type_find(const ecs_type_t *type, uint16_t id);
 
 void ecs_type_fini(ecs_type_t *type);
 
@@ -5295,7 +5276,6 @@ typedef struct {
     const char *name;
     ecs_vec_t observers;  // ecs_observer_id_t
     ecs_vec_t systems;    // ecs_system_id_t
-    ecs_vec_t components; // ecs_component_t
     bool enabled;
 } ecs_module_t;
 
@@ -5466,7 +5446,6 @@ void ecs_resource_index_move(
     void *data
 );
 void *ecs_resource_index_get(ecs_resource_index_t *index, ecs_resource_t id);
-const void *ecs_resource_index_get_const(const ecs_resource_index_t *index, ecs_resource_t id);
 bool ecs_resource_index_has(const ecs_resource_index_t *index, ecs_resource_t id);
 void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_resource_t id);
 
@@ -5573,7 +5552,6 @@ static inline void ecs_emit(
 }
 
 void ecs_bootstrap(void);
-struct ecs_table_s *ecs_iter_table(ecs_iter_t *it);
 
 #endif
 
@@ -6120,25 +6098,9 @@ bool ecs_is_deferred(void) {
         return ecs_world.defer_depth != 0 || ecs_world.flushing_commands;
 }
 
-#ifndef SIECS_MODULE_H
-#define SIECS_MODULE_H
-
-void ecs_module_record_component(ecs_component_t component);
-void ecs_module_record_system(ecs_system_id_t system);
-void ecs_module_record_observer(ecs_observer_id_t observer);
-
-#endif
-
 #include <stdio.h>
 #ifndef SIREFLECT_H
 #endif
-
-typedef struct ecs_component_global_name_s {
-    char *name;
-    ecs_component_t id;
-    uint16_t count;
-    struct ecs_component_global_name_s *next;
-} ecs_component_global_name_t;
 
 static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
     uint32_t id = ecs_world.component_index.components.size;
@@ -6288,8 +6250,6 @@ ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
             SIREFLECT_INVALID_HANDLE,
             NULL
         );
-        ecs_module_record_component(component);
-        ecs_module_record_component(source);
         return component;
     } else {
         if (*id == 0) {
@@ -6309,7 +6269,6 @@ ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
             reflection,
             desc->struct_desc
         );
-        ecs_module_record_component(component);
         return component;
     }
 }
@@ -6947,17 +6906,13 @@ void ecs_kill(ecs_entity_t entity) {
     ecs_kill_now(entity);
 }
 
-void ecs_clone_w_entity(ecs_entity_t entity, ecs_entity_t target) {
-    const ecs_entity_record_t *target_record = ecs_get_record(target);
-    ecs_table_t *target_table = ecs_get_table(target_record->table_id);
+#ifndef SIECS_MODULE_H
+#define SIECS_MODULE_H
 
-    ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    ecs_table_t *entity_table = ecs_get_table(entity_record->table_id);
+void ecs_module_record_system(ecs_system_id_t system);
+void ecs_module_record_observer(ecs_observer_id_t observer);
 
-    ecs_table_add_entity(target_table, entity);
-
-    ecs_migrate_to_table(entity_record, entity, entity_table, target_record->table_id);
-}
+#endif
 
 ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
         ecs_assert_not_null(desc);
@@ -7032,16 +6987,6 @@ void ecs_module_disable(ecs_module_id_t module) {
 
 bool ecs_module_is_enabled(const ecs_module_id_t module) {
         return ecs_module_index_get_const(&ecs_world.module_index, module)->enabled;
-}
-
-void ecs_module_record_component(ecs_component_t component) {
-    ecs_module_id_t module = ecs_world.active_module;
-    if (!module) {
-        return;
-    }
-
-    ecs_module_t *record = ecs_module_index_get(&ecs_world.module_index, module);
-    ecs_vec_push_u16(&record->components, component);
 }
 
 void ecs_module_record_system(ecs_system_id_t system) {
@@ -7167,12 +7112,6 @@ bool ecs_iter_next(ecs_iter_t *it) {
     it->entities = ecs_world.table_index.tables[tids[it->table_idx]].entities;
     return true;
 }
-
-ecs_table_t *ecs_iter_table(ecs_iter_t *it) {
-    uint16_t tid = *ecs_vec_get_mut(&it->cache->table_ids, it->table_idx, uint16_t);
-    return ecs_table_index_at(&ecs_world.table_index, tid);
-}
-
 void ecs_query_fini(ecs_query_id_t qid) {
         ecs_assert(qid < ecs_world.query_index.queries.size, "invalid query id: %u\n", qid);
 
@@ -7865,15 +7804,6 @@ ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id) {
     return new_type;
 }
 
-ecs_type_t ecs_type_with_remove(const ecs_type_t *type, uint16_t id) {
-    for (uint16_t i = 0; i < type->count; i++) {
-        if (type->ids[i] == id) {
-            return ecs_type_with_remove_at(type, i);
-        }
-    }
-    return (ecs_type_t){ .base = type->base };
-}
-
 ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index) {
     ecs_type_t new_type = {
         .ids = malloc((type->count - 1) * sizeof(uint16_t)),
@@ -7903,36 +7833,6 @@ ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base) {
         memcpy(new_type.ids, type->ids, type->count * sizeof(uint16_t));
     }
     return new_type;
-}
-
-// returns the index of the id in the type, or -1 if not found
-int ecs_type_find(const ecs_type_t *type, uint16_t id) {
-    // binary search
-    int left = 0, right = type->count - 1;
-    while (left <= right) {
-        int mid = left + (right - left) / 2;
-        if (type->ids[mid] == id) {
-            return mid;
-        } else if (type->ids[mid] < id) {
-            left = mid + 1;
-        } else {
-            right = mid - 1;
-        }
-    }
-    return -1;
-}
-
-void ecs_type_add(ecs_type_t *type, uint16_t id) {
-    type->ids = realloc(type->ids, (type->count + 1) * sizeof(uint16_t));
-
-    uint16_t i = type->count;
-    while (i > 0 && type->ids[i - 1] > id) {
-        type->ids[i] = type->ids[i - 1];
-        i--;
-    }
-
-    type->ids[i] = id;
-    type->count++;
 }
 
 void ecs_type_fini(ecs_type_t *type) {
@@ -8634,398 +8534,6 @@ void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id) {
     }
 }
 
-#ifndef NDEBUG
-#ifndef SIECS_DATASTRUCTURE_MAP_H
-#define SIECS_DATASTRUCTURE_MAP_H
-#ifndef NDEBUG
-
-#include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
-
-typedef struct {
-    const char *key;
-    uint64_t hash;
-    uint32_t value;
-} ecs_map_slot_t;
-
-typedef struct {
-    ecs_map_slot_t *slots;
-    size_t cap;
-    size_t len;
-} ecs_map_t;
-
-void ecs_map_init(ecs_map_t *m, size_t initial_capacity);
-void ecs_map_fini(ecs_map_t *m);
-
-void ecs_map_set(ecs_map_t *m, const char *key, uint32_t value);
-uint32_t ecs_map_get(const ecs_map_t *m, const char *key);
-bool ecs_map_has(const ecs_map_t *m, const char *key);
-#endif
-
-#endif
-
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
-#define ECS_MAP_LOAD_NUM 7
-#define ECS_MAP_LOAD_DEN 10
-
-static size_t ecs_next_pow2(size_t x) {
-    size_t p = 16;
-    while (p < x)
-        p <<= 1;
-    return p;
-}
-
-static inline uint64_t ecs_map_hash_cstr(const char *s) {
-    uint64_t h = 1469598103934665603ull;
-    while (*s) {
-        h ^= (unsigned char)*s++;
-        h *= 1099511628211ull;
-    }
-
-    h ^= h >> 33;
-    h *= 0xff51afd7ed558ccdull;
-    h ^= h >> 33;
-    h *= 0xc4ceb9fe1a85ec53ull;
-    h ^= h >> 33;
-
-    return h ? h : 1;
-}
-
-void ecs_map_init(ecs_map_t *m, size_t initial_capacity) {
-    size_t cap = ecs_next_pow2(initial_capacity);
-    m->slots = (ecs_map_slot_t *)calloc(cap, sizeof(ecs_map_slot_t));
-
-    m->cap = cap;
-    m->len = 0;
-}
-
-void ecs_map_fini(ecs_map_t *m) {
-    if (!m)
-        return;
-
-    if (m->slots) {
-        free(m->slots);
-    }
-
-    m->slots = NULL;
-    m->cap = 0;
-    m->len = 0;
-}
-
-static bool ecs_map_insert_raw(
-    ecs_map_slot_t *slots,
-    size_t cap,
-    const char *key,
-    uint64_t hash,
-    uint32_t value
-) {
-    size_t mask = cap - 1;
-    size_t i = (size_t)hash & mask;
-
-    for (;;) {
-        ecs_map_slot_t *s = &slots[i];
-
-        if (!s->key) {
-            s->key = key;
-            s->hash = hash;
-            s->value = value;
-            return true;
-        }
-
-        if (s->hash == hash && (s->key == key || strcmp(s->key, key) == 0)) {
-            s->value = value;
-            return false;
-        }
-
-        i = (i + 1) & mask;
-    }
-}
-
-static void ecs_map_grow(ecs_map_t *m) {
-    size_t new_cap = m->cap ? m->cap * 2 : 16;
-    ecs_map_slot_t *new_slots = (ecs_map_slot_t *)calloc(new_cap, sizeof(ecs_map_slot_t));
-
-    for (size_t i = 0; i < m->cap; i++) {
-        const ecs_map_slot_t *s = &m->slots[i];
-        if (s->key) {
-            ecs_map_insert_raw(new_slots, new_cap, s->key, s->hash, s->value);
-        }
-    }
-
-    free(m->slots);
-    m->slots = new_slots;
-    m->cap = new_cap;
-}
-
-void ecs_map_set(ecs_map_t *m, const char *key, uint32_t value) {
-    if (!m->slots) {
-        ecs_map_init(m, 16);
-    }
-
-    if ((m->len + 1) * ECS_MAP_LOAD_DEN > m->cap * ECS_MAP_LOAD_NUM) {
-        ecs_map_grow(m);
-    }
-
-    uint64_t hash = ecs_map_hash_cstr(key);
-    bool inserted = ecs_map_insert_raw(m->slots, m->cap, key, hash, value);
-
-    if (inserted) {
-        m->len++;
-    }
-}
-
-uint32_t ecs_map_get(const ecs_map_t *m, const char *key) {
-    if (!m->slots)
-        return UINT32_MAX;
-
-    uint64_t hash = ecs_map_hash_cstr(key);
-    size_t mask = m->cap - 1;
-    size_t i = (size_t)hash & mask;
-
-    for (;;) {
-        const ecs_map_slot_t *s = &m->slots[i];
-
-        if (!s->key)
-            return UINT32_MAX;
-
-        if (s->hash == hash && (s->key == key || strcmp(s->key, key) == 0)) {
-            return s->value;
-        }
-
-        i = (i + 1) & mask;
-    }
-}
-
-bool ecs_map_has(const ecs_map_t *m, const char *key) { return ecs_map_get(m, key) != UINT32_MAX; }
-#endif
-
-#ifndef ECS_STRING_H
-#define ECS_STRING_H
-
-#include <stdint.h>
-#include <stdbool.h>
-
-typedef struct {
-    char *data; // null terminated string
-    uint32_t len;
-    uint32_t capacity;
-} ecs_str_t;
-
-void ecs_str_init(ecs_str_t *str);
-void ecs_str_fini(ecs_str_t *str);
-ecs_str_t ecs_str_new();
-ecs_str_t ecs_str_with_capacity(uint32_t capacity);
-
-void ecs_str_reserve(ecs_str_t *str, uint32_t capacity);
-void ecs_str_resize(ecs_str_t *str, uint32_t len);
-ecs_str_t ecs_str_from_cstr(const char *cstr);
-ecs_str_t ecs_str_clone(const ecs_str_t *str);
-
-const char *ecs_str_cstr(const ecs_str_t *str);
-char ecs_str_at(const ecs_str_t *str, uint32_t index);
-
-void ecs_str_char_append(ecs_str_t *dst, char src);
-void ecs_str_str_append(ecs_str_t *dst, const ecs_str_t *src);
-void ecs_str_cstr_append(ecs_str_t *dst, const char *src);
-void ecs_str_insert(ecs_str_t *str, uint32_t pos, char c);
-void ecs_str_remove(ecs_str_t *str, uint32_t pos);
-void ecs_str_pop_back(ecs_str_t *str);
-
-void ecs_str_trim(ecs_str_t *str);
-
-bool ecs_str_starts_with(const ecs_str_t *str, const ecs_str_t *prefix);
-bool ecs_str_ends_with(const ecs_str_t *str, const ecs_str_t *suffix);
-bool ecs_str_cmp(const ecs_str_t *a, const ecs_str_t *b);
-
-#endif
-
-#include <ctype.h>
-
-void ecs_str_init(ecs_str_t *str) {
-    str->data = NULL;
-    str->len = 0;
-    str->capacity = 0;
-}
-
-void ecs_str_fini(ecs_str_t *str) {
-    if (str->data) {
-        free(str->data);
-    }
-    ecs_str_init(str);
-}
-
-ecs_str_t ecs_str_new() {
-    ecs_str_t str;
-    ecs_str_init(&str);
-    return str;
-}
-
-ecs_str_t ecs_str_with_capacity(uint32_t capacity) {
-    ecs_str_t str;
-    str.len = 0;
-    str.capacity = capacity;
-    if (capacity > 0) {
-        str.data = malloc(capacity + 1);
-        str.data[0] = '\0';
-    } else {
-        str.data = NULL;
-    }
-    return str;
-}
-
-void ecs_str_reserve(ecs_str_t *str, uint32_t capacity) {
-    if (capacity > str->capacity) {
-        str->data = realloc(str->data, capacity + 1);
-        str->capacity = capacity;
-        if (str->len == 0 && str->data) {
-            str->data[0] = '\0';
-        }
-    }
-}
-
-void ecs_str_resize(ecs_str_t *str, uint32_t len) {
-    ecs_str_reserve(str, len);
-    if (str->data) {
-        str->data[len] = '\0';
-    }
-    str->len = len;
-}
-
-ecs_str_t ecs_str_from_cstr(const char *cstr) {
-    if (!cstr)
-        return ecs_str_new();
-    uint32_t len = (uint32_t)strlen(cstr);
-    ecs_str_t str = ecs_str_with_capacity(len);
-    if (len > 0) {
-        memcpy(str.data, cstr, len + 1);
-        str.len = len;
-    }
-    return str;
-}
-
-ecs_str_t ecs_str_clone(const ecs_str_t *str) {
-    if (!str || !str->data)
-        return ecs_str_new();
-    ecs_str_t new_str = ecs_str_with_capacity(str->len);
-    if (str->len > 0) {
-        memcpy(new_str.data, str->data, str->len + 1);
-        new_str.len = str->len;
-    }
-    return new_str;
-}
-
-const char *ecs_str_cstr(const ecs_str_t *str) { return str->data ? str->data : ""; }
-
-char ecs_str_at(const ecs_str_t *str, uint32_t index) {
-    ecs_assert(index < str->len, "index out of bounds: %d (len: %d)", index, str->len);
-    return str->data[index];
-}
-
-void ecs_str_char_append(ecs_str_t *dst, char src) {
-    if (dst->len + 1 > dst->capacity) {
-        uint32_t new_cap = dst->capacity == 0 ? 8 : dst->capacity * 2;
-        ecs_str_reserve(dst, new_cap);
-    }
-    dst->data[dst->len++] = src;
-    dst->data[dst->len] = '\0';
-}
-
-void ecs_str_str_append(ecs_str_t *dst, const ecs_str_t *src) {
-    if (!src || src->len == 0)
-        return;
-    uint32_t required = dst->len + src->len;
-    if (required > dst->capacity) {
-        ecs_str_reserve(dst, required);
-    }
-    memcpy(dst->data + dst->len, src->data, src->len);
-    dst->len = required;
-    dst->data[dst->len] = '\0';
-}
-
-void ecs_str_cstr_append(ecs_str_t *dst, const char *src) {
-    if (!src || *src == '\0')
-        return;
-    uint32_t required = dst->len + strlen(src);
-    if (required > dst->capacity) {
-        ecs_str_reserve(dst, required);
-    }
-    memcpy(dst->data + dst->len, src, strlen(src));
-    dst->len = required;
-    dst->data[dst->len] = '\0';
-}
-
-void ecs_str_insert(ecs_str_t *str, uint32_t pos, char c) {
-    ecs_assert(pos <= str->len, "pos out of bounds: %d (len: %d)", pos, str->len);
-    if (str->len + 1 > str->capacity) {
-        uint32_t new_cap = str->capacity == 0 ? 8 : str->capacity * 2;
-        ecs_str_reserve(str, new_cap);
-    }
-    memmove(str->data + pos + 1, str->data + pos, str->len - pos + 1);
-    str->data[pos] = c;
-    str->len++;
-}
-
-void ecs_str_remove(ecs_str_t *str, uint32_t pos) {
-    ecs_assert(pos < str->len, "pos out of bounds: %d (len: %d)", pos, str->len);
-    memmove(str->data + pos, str->data + pos + 1, str->len - pos);
-    str->len--;
-}
-
-void ecs_str_pop_back(ecs_str_t *str) {
-    if (str->len > 0) {
-        str->len--;
-        str->data[str->len] = '\0';
-    }
-}
-
-void ecs_str_trim(ecs_str_t *str) {
-    if (str->len == 0)
-        return;
-    uint32_t start = 0;
-    while (start < str->len && isspace((unsigned char)str->data[start])) {
-        start++;
-    }
-    if (start == str->len) {
-        str->len = 0;
-        str->data[0] = '\0';
-        return;
-    }
-    uint32_t end = str->len - 1;
-    while (end > start && isspace((unsigned char)str->data[end])) {
-        end--;
-    }
-    uint32_t new_len = end - start + 1;
-    if (start > 0) {
-        memmove(str->data, str->data + start, new_len);
-    }
-    str->len = new_len;
-    str->data[str->len] = '\0';
-}
-
-bool ecs_str_starts_with(const ecs_str_t *str, const ecs_str_t *prefix) {
-    if (prefix->len > str->len)
-        return false;
-    return memcmp(str->data, prefix->data, prefix->len) == 0;
-}
-
-bool ecs_str_ends_with(const ecs_str_t *str, const ecs_str_t *suffix) {
-    if (suffix->len > str->len)
-        return false;
-    return memcmp(str->data + (str->len - suffix->len), suffix->data, suffix->len) == 0;
-}
-
-bool ecs_str_cmp(const ecs_str_t *a, const ecs_str_t *b) {
-    if (a->len != b->len)
-        return false;
-    if (a->len == 0)
-        return true;
-    return memcmp(a->data, b->data, a->len) == 0;
-}
-
 void ecs_vec_init(ecs_vec_t *vec, uint32_t element_size) {
     vec->data = malloc(element_size); // Start with 1 elements
     vec->size = 0;
@@ -9043,21 +8551,6 @@ void ecs_vec_fini(ecs_vec_t *vec) { free(vec->data); }
 void ecs_vec_grow(ecs_vec_t *vec, uint32_t element_size) {
     vec->capacity *= 2;
     vec->data = realloc(vec->data, element_size * vec->capacity);
-}
-
-void ecs_vec_resize_max(ecs_vec_t *vec, uint32_t new_capacity, uint32_t element_size) {
-    if (new_capacity > vec->capacity) {
-        vec->data = realloc(vec->data, element_size * new_capacity);
-        memset(
-            (uint8_t *)vec->data + (element_size * vec->capacity),
-            0xFF,
-            element_size * (new_capacity - vec->capacity)
-        );
-        vec->capacity = new_capacity;
-    }
-    if (new_capacity < vec->size) {
-        vec->size = new_capacity;
-    }
 }
 
 void ecs_vec_push(ecs_vec_t *vec, const void *element, const uint32_t element_size) {
@@ -9084,15 +8577,6 @@ void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_
         memcpy(dst, src, element_size);
     }
     vec->size--;
-}
-
-bool ecs_vec_contains_u64(const ecs_vec_t *vec, const uint64_t value) {
-    ecs_vec_iter(vec, uint64_t, current, {
-        if (*current == value) {
-            return true;
-        }
-    });
-    return false;
 }
 
 bool ecs_vec_contains_u16(const ecs_vec_t *vec, const uint16_t value) {
@@ -9136,490 +8620,6 @@ void ecs_vec_remove_u64(ecs_vec_t *vec, uint64_t value) {
             return;
         }
     });
-}
-
-#ifndef ECS_LEXER_H
-#define ECS_LEXER_H
-
-typedef enum {
-    EcsTokEnd = '\0',
-    EcsTokUnknown,
-    EcsTokScopeOpen = '{',
-    EcsTokScopeClose = '}',
-    EcsTokParenOpen = '(',
-    EcsTokParenClose = ')',
-    EcsTokBracketOpen = '[',
-    EcsTokBracketClose = ']',
-    EcsTokMember = '.',
-    EcsTokComma = ',',
-    EcsTokSemiColon = ';',
-    EcsTokColon = ':',
-    EcsTokAssign = '=',
-    EcsTokAdd = '+',
-    EcsTokSub = '-',
-    EcsTokMul = '*',
-    EcsTokDiv = '/',
-    EcsTokMod = '%',
-    EcsTokBitwiseOr = '|',
-    EcsTokBitwiseAnd = '&',
-    EcsTokNot = '!',
-    EcsTokOptional = '?',
-    EcsTokEq = 100,              // ==
-    EcsTokNeq = 101,             // !=
-    EcsTokGt = 102,              // >
-    EcsTokGtEq = 103,            // >=
-    EcsTokLt = 104,              // <
-    EcsTokLtEq = 105,            // <=
-    EcsTokAnd = 106,             // &&
-    EcsTokOr = 107,              // ||
-    EcsTokMatch = 108,           // ~=
-    EcsTokRange = 109,           // ..
-    EcsTokShiftLeft = 110,       // <<
-    EcsTokShiftRight = 111,      // >>
-    EcsTokIdentifier = 112,      // identifier
-    EcsTokFunction = 113,        // function
-    EcsTokString = 114,          // string literal
-    EcsTokNumber = 115,          // number literal
-    EcsTokKeywordModule = 116,   // module
-    EcsTokKeywordUsing = 117,    // using
-    EcsTokKeywordWith = 118,     // with
-    EcsTokKeywordIf = 119,       // if
-    EcsTokKeywordFor = 120,      // for
-    EcsTokKeywordIn = 121,       // in
-    EcsTokKeywordElse = 122,     // else
-    EcsTokKeywordTemplate = 130, // template
-    EcsTokKeywordProp = 131,     // prop
-    EcsTokKeywordConst = 132,    // const
-    EcsTokKeywordMatch = 133,    // match
-    EcsTokKeywordNew = 134,      // new
-    EcsTokKeywordExport = 135,   // export
-    EcsTokKeywordInclude = 138,  // include
-    EcsTokKeywordFn = 139,       // fn
-    EcsTokArrow = 140,           // =>
-    EcsTokAddAssign = 136,       // +=
-    EcsTokMulAssign = 137,       // *=
-} ecs_token_type_t;
-
-typedef struct {
-    const char *data;
-    uint32_t len;
-} ecs_token_slice_t;
-
-typedef struct {
-    ecs_token_type_t type;
-    union {
-        ecs_token_slice_t str;
-        double number;
-        char character;
-    } data;
-} ecs_token_t;
-
-void ecs_lexer_lex(const char *str, ecs_vec_t *tokens); // tokens = ecs_token_t
-
-#endif
-
-#ifndef ECS_PARSING_SCANNER_H
-#define ECS_PARSING_SCANNER_H
-
-#include <ctype.h>
-#include <stdint.h>
-#include <stdlib.h>
-
-typedef struct {
-    const char *str;
-    uint32_t pos;
-    uint32_t len;
-} ecs_scanner_t;
-
-void ecs_scanner_init(ecs_scanner_t *scanner, const char *str);
-
-static inline bool ecs_scanner_is_done(const ecs_scanner_t *scanner) {
-    return scanner->pos >= scanner->len;
-}
-
-static inline void ecs_scanner_advance(ecs_scanner_t *scanner) { scanner->pos += 1; }
-
-static inline char ecs_scanner_peek(const ecs_scanner_t *scanner) {
-    return scanner->str[scanner->pos];
-}
-
-static inline char ecs_scanner_pop(ecs_scanner_t *scanner) {
-    char letter = ecs_scanner_peek(scanner);
-    ecs_scanner_advance(scanner);
-    return letter;
-}
-
-typedef int (*ecs_scanner_cmp_t)(int);
-
-static inline void ecs_scanner_skip_while(ecs_scanner_t *scanner, const ecs_scanner_cmp_t cmp) {
-    while (!ecs_scanner_is_done(scanner) && cmp(ecs_scanner_peek(scanner))) {
-        ecs_scanner_advance(scanner);
-    }
-}
-
-static inline void ecs_scanner_skip_whitespace(ecs_scanner_t *scanner) {
-    ecs_scanner_skip_while(scanner, isblank);
-}
-
-static inline ecs_str_t
-ecs_scanner_take_while(ecs_scanner_t *scanner, const ecs_scanner_cmp_t cmp) {
-    ecs_str_t str = ecs_str_new();
-
-    while (!ecs_scanner_is_done(scanner) && cmp(ecs_scanner_peek(scanner))) {
-        ecs_str_char_append(&str, ecs_scanner_pop(scanner));
-    }
-
-    return str;
-}
-
-static inline bool ecs_is_identifier_start(int c) { return isalpha(c) || c == '_'; }
-
-static inline bool ecs_is_identifier_part(int c) { return isalnum(c) || c == '_'; }
-
-static inline ecs_str_t ecs_scanner_take_identifier(ecs_scanner_t *scanner) {
-    ecs_str_t str = ecs_str_new();
-
-    if (ecs_scanner_is_done(scanner) || !ecs_is_identifier_start(ecs_scanner_peek(scanner))) {
-        return str;
-    }
-
-    ecs_str_char_append(&str, ecs_scanner_pop(scanner));
-
-    while (!ecs_scanner_is_done(scanner) && ecs_is_identifier_part(ecs_scanner_peek(scanner))) {
-        ecs_str_char_append(&str, ecs_scanner_pop(scanner));
-    }
-
-    return str;
-}
-
-static inline char ecs_scanner_peek_next(const ecs_scanner_t *scanner) {
-    if (scanner->pos + 1 >= scanner->len) {
-        return '\0';
-    }
-    return scanner->str[scanner->pos + 1];
-}
-
-static inline bool ecs_scanner_match(ecs_scanner_t *scanner, char expected) {
-    if (ecs_scanner_is_done(scanner)) {
-        return false;
-    }
-    return scanner->str[scanner->pos] == expected;
-}
-
-static inline const char *ecs_scanner_current_ptr(const ecs_scanner_t *scanner) {
-    return scanner->str + scanner->pos;
-}
-
-static inline void ecs_scanner_advance_n(ecs_scanner_t *scanner, uint64_t count) {
-    scanner->pos += count;
-}
-
-#endif
-
-static inline void ecs_lexer_push(ecs_vec_t *tokens, ecs_token_type_t type) {
-    ecs_token_t *token = ecs_vec_push_empty(tokens, sizeof(ecs_token_t));
-    token->type = type;
-}
-
-static inline void ecs_lexer_push_char(ecs_vec_t *tokens, ecs_token_type_t type, char value) {
-    ecs_token_t *token = ecs_vec_push_empty(tokens, sizeof(ecs_token_t));
-    token->type = type;
-    token->data.character = value;
-}
-
-static inline void
-ecs_lexer_push_slice(ecs_vec_t *tokens, ecs_token_type_t type, const char *data, uint32_t len) {
-    ecs_token_t *token = ecs_vec_push_empty(tokens, sizeof(ecs_token_t));
-    token->type = type;
-    token->data.str = (ecs_token_slice_t){ data, len };
-}
-
-static inline void ecs_lexer_push_number(ecs_vec_t *tokens, double value) {
-    ecs_token_t *token = ecs_vec_push_empty(tokens, sizeof(ecs_token_t));
-    token->type = EcsTokNumber;
-    token->data.number = value;
-}
-
-static inline bool ecs_lexer_slice_eq(const char *data, uint32_t len, const char *keyword) {
-    uint32_t keyword_len = (uint32_t)strlen(keyword);
-    return len == keyword_len && memcmp(data, keyword, len) == 0;
-}
-
-static ecs_token_type_t ecs_lexer_keyword_type(const char *data, uint32_t len) {
-    switch (len) {
-    case 2:
-        if (ecs_lexer_slice_eq(data, len, "if"))
-            return EcsTokKeywordIf;
-        if (ecs_lexer_slice_eq(data, len, "in"))
-            return EcsTokKeywordIn;
-        if (ecs_lexer_slice_eq(data, len, "fn"))
-            return EcsTokKeywordFn;
-        break;
-    case 3:
-        if (ecs_lexer_slice_eq(data, len, "for"))
-            return EcsTokKeywordFor;
-        if (ecs_lexer_slice_eq(data, len, "new"))
-            return EcsTokKeywordNew;
-        break;
-    case 4:
-        if (ecs_lexer_slice_eq(data, len, "with"))
-            return EcsTokKeywordWith;
-        if (ecs_lexer_slice_eq(data, len, "else"))
-            return EcsTokKeywordElse;
-        if (ecs_lexer_slice_eq(data, len, "prop"))
-            return EcsTokKeywordProp;
-        break;
-    case 5:
-        if (ecs_lexer_slice_eq(data, len, "using"))
-            return EcsTokKeywordUsing;
-        if (ecs_lexer_slice_eq(data, len, "const"))
-            return EcsTokKeywordConst;
-        if (ecs_lexer_slice_eq(data, len, "match"))
-            return EcsTokKeywordMatch;
-        break;
-    case 6:
-        if (ecs_lexer_slice_eq(data, len, "module"))
-            return EcsTokKeywordModule;
-        if (ecs_lexer_slice_eq(data, len, "export"))
-            return EcsTokKeywordExport;
-        break;
-    case 7:
-        if (ecs_lexer_slice_eq(data, len, "include"))
-            return EcsTokKeywordInclude;
-        break;
-    case 8:
-        if (ecs_lexer_slice_eq(data, len, "function"))
-            return EcsTokFunction;
-        if (ecs_lexer_slice_eq(data, len, "template"))
-            return EcsTokKeywordTemplate;
-        break;
-    }
-    return EcsTokIdentifier;
-}
-
-static void ecs_lexer_lex_identifier(ecs_scanner_t *scanner, ecs_vec_t *tokens) {
-    const char *start = ecs_scanner_current_ptr(scanner);
-    uint32_t start_pos = scanner->pos;
-
-    ecs_scanner_advance(scanner);
-    while (!ecs_scanner_is_done(scanner) && ecs_is_identifier_part(ecs_scanner_peek(scanner))) {
-        ecs_scanner_advance(scanner);
-    }
-
-    uint32_t len = scanner->pos - start_pos;
-    ecs_lexer_push_slice(tokens, ecs_lexer_keyword_type(start, len), start, len);
-}
-
-static void ecs_lexer_lex_number(ecs_scanner_t *scanner, ecs_vec_t *tokens) {
-    double value = 0.0;
-
-    while (!ecs_scanner_is_done(scanner) && isdigit(ecs_scanner_peek(scanner))) {
-        value = value * 10.0 + (double)(ecs_scanner_peek(scanner) - '0');
-        ecs_scanner_advance(scanner);
-    }
-
-    if (!ecs_scanner_is_done(scanner) && ecs_scanner_peek(scanner) == '.' &&
-        isdigit(ecs_scanner_peek_next(scanner))) {
-        double place = 0.1;
-        ecs_scanner_advance(scanner);
-        while (!ecs_scanner_is_done(scanner) && isdigit(ecs_scanner_peek(scanner))) {
-            value += (double)(ecs_scanner_peek(scanner) - '0') * place;
-            place *= 0.1;
-            ecs_scanner_advance(scanner);
-        }
-    }
-
-    if (!ecs_scanner_is_done(scanner) &&
-        (ecs_scanner_peek(scanner) == 'e' || ecs_scanner_peek(scanner) == 'E')) {
-        uint32_t pos = scanner->pos + 1;
-        bool negative = false;
-
-        if (pos < scanner->len && (scanner->str[pos] == '+' || scanner->str[pos] == '-')) {
-            negative = scanner->str[pos] == '-';
-            pos++;
-        }
-
-        if (pos < scanner->len && isdigit(scanner->str[pos])) {
-            uint32_t exponent = 0;
-            double scale = 1.0;
-
-            scanner->pos = pos;
-            while (!ecs_scanner_is_done(scanner) && isdigit(ecs_scanner_peek(scanner))) {
-                exponent = exponent * 10 + (uint32_t)(ecs_scanner_peek(scanner) - '0');
-                ecs_scanner_advance(scanner);
-            }
-
-            while (exponent-- > 0) {
-                scale *= 10.0;
-            }
-
-            value = negative ? value / scale : value * scale;
-        }
-    }
-
-    ecs_lexer_push_number(tokens, value);
-}
-
-static void ecs_lexer_lex_string(ecs_scanner_t *scanner, ecs_vec_t *tokens) {
-    ecs_scanner_advance(scanner);
-
-    const char *start = ecs_scanner_current_ptr(scanner);
-    uint32_t start_pos = scanner->pos;
-
-    while (!ecs_scanner_is_done(scanner) && ecs_scanner_peek(scanner) != '"') {
-        if (ecs_scanner_peek(scanner) == '\\' && ecs_scanner_peek_next(scanner) != '\0') {
-            ecs_scanner_advance_n(scanner, 2);
-        } else {
-            ecs_scanner_advance(scanner);
-        }
-    }
-
-    uint32_t len = scanner->pos - start_pos;
-    if (!ecs_scanner_is_done(scanner)) {
-        ecs_scanner_advance(scanner);
-    }
-
-    ecs_lexer_push_slice(tokens, EcsTokString, start, len);
-}
-
-static bool ecs_lexer_try_two_char(
-    ecs_scanner_t *scanner,
-    ecs_vec_t *tokens,
-    char next,
-    ecs_token_type_t type
-) {
-    if (ecs_scanner_peek_next(scanner) != next) {
-        return false;
-    }
-    ecs_lexer_push(tokens, type);
-    ecs_scanner_advance_n(scanner, 2);
-    return true;
-}
-
-void ecs_lexer_lex(const char *str, ecs_vec_t *tokens) {
-    ecs_scanner_t scanner;
-    ecs_scanner_init(&scanner, str);
-
-    while (!ecs_scanner_is_done(&scanner)) {
-        ecs_scanner_skip_while(&scanner, isspace);
-        if (ecs_scanner_is_done(&scanner)) {
-            break;
-        }
-
-        char c = ecs_scanner_peek(&scanner);
-
-        if (ecs_is_identifier_start(c)) {
-            ecs_lexer_lex_identifier(&scanner, tokens);
-            continue;
-        }
-
-        if (isdigit(c)) {
-            ecs_lexer_lex_number(&scanner, tokens);
-            continue;
-        }
-
-        if (c == '"') {
-            ecs_lexer_lex_string(&scanner, tokens);
-            continue;
-        }
-
-        switch (c) {
-        case '{':
-        case '}':
-        case '(':
-        case ')':
-        case '[':
-        case ']':
-        case ',':
-        case ';':
-        case ':':
-        case '/':
-        case '%':
-        case '?':
-            ecs_lexer_push(tokens, (ecs_token_type_t)c);
-            ecs_scanner_advance(&scanner);
-            break;
-        case '.':
-            if (!ecs_lexer_try_two_char(&scanner, tokens, '.', EcsTokRange)) {
-                ecs_lexer_push(tokens, EcsTokMember);
-                ecs_scanner_advance(&scanner);
-            }
-            break;
-        case '=':
-            if (!ecs_lexer_try_two_char(&scanner, tokens, '=', EcsTokEq) &&
-                !ecs_lexer_try_two_char(&scanner, tokens, '>', EcsTokArrow)) {
-                ecs_lexer_push(tokens, EcsTokAssign);
-                ecs_scanner_advance(&scanner);
-            }
-            break;
-        case '+':
-            if (!ecs_lexer_try_two_char(&scanner, tokens, '=', EcsTokAddAssign)) {
-                ecs_lexer_push(tokens, EcsTokAdd);
-                ecs_scanner_advance(&scanner);
-            }
-            break;
-        case '-':
-            ecs_lexer_push(tokens, EcsTokSub);
-            ecs_scanner_advance(&scanner);
-            break;
-        case '*':
-            if (!ecs_lexer_try_two_char(&scanner, tokens, '=', EcsTokMulAssign)) {
-                ecs_lexer_push(tokens, EcsTokMul);
-                ecs_scanner_advance(&scanner);
-            }
-            break;
-        case '|':
-            if (!ecs_lexer_try_two_char(&scanner, tokens, '|', EcsTokOr)) {
-                ecs_lexer_push(tokens, EcsTokBitwiseOr);
-                ecs_scanner_advance(&scanner);
-            }
-            break;
-        case '&':
-            if (!ecs_lexer_try_two_char(&scanner, tokens, '&', EcsTokAnd)) {
-                ecs_lexer_push(tokens, EcsTokBitwiseAnd);
-                ecs_scanner_advance(&scanner);
-            }
-            break;
-        case '!':
-            if (!ecs_lexer_try_two_char(&scanner, tokens, '=', EcsTokNeq)) {
-                ecs_lexer_push(tokens, EcsTokNot);
-                ecs_scanner_advance(&scanner);
-            }
-            break;
-        case '~':
-            if (!ecs_lexer_try_two_char(&scanner, tokens, '=', EcsTokMatch)) {
-                ecs_lexer_push_char(tokens, EcsTokUnknown, c);
-                ecs_scanner_advance(&scanner);
-            }
-            break;
-        case '<':
-            if (!ecs_lexer_try_two_char(&scanner, tokens, '=', EcsTokLtEq) &&
-                !ecs_lexer_try_two_char(&scanner, tokens, '<', EcsTokShiftLeft)) {
-                ecs_lexer_push(tokens, EcsTokLt);
-                ecs_scanner_advance(&scanner);
-            }
-            break;
-        case '>':
-            if (!ecs_lexer_try_two_char(&scanner, tokens, '=', EcsTokGtEq) &&
-                !ecs_lexer_try_two_char(&scanner, tokens, '>', EcsTokShiftRight)) {
-                ecs_lexer_push(tokens, EcsTokGt);
-                ecs_scanner_advance(&scanner);
-            }
-            break;
-        default:
-            ecs_lexer_push_char(tokens, EcsTokUnknown, c);
-            ecs_scanner_advance(&scanner);
-            break;
-        }
-    }
-
-    ecs_lexer_push(tokens, EcsTokEnd);
-}
-
-void ecs_scanner_init(ecs_scanner_t *scanner, const char *str) {
-    scanner->str = str;
-    scanner->pos = 0;
-    scanner->len = (uint32_t)strlen(str);
 }
 
 #ifndef SIREFLECT_H
@@ -9799,7 +8799,6 @@ static void ecs_module_record_init(ecs_module_t *module, ecs_module_id_t *id, co
     module->enabled = true;
     ecs_vec_init(&module->observers, sizeof(ecs_observer_id_t));
     ecs_vec_init(&module->systems, sizeof(ecs_system_id_t));
-    ecs_vec_init(&module->components, sizeof(ecs_component_t));
 }
 
 static void ecs_module_record_fini(ecs_module_t *module) {
@@ -9809,7 +8808,6 @@ static void ecs_module_record_fini(ecs_module_t *module) {
 
     ecs_vec_fini(&module->observers);
     ecs_vec_fini(&module->systems);
-    ecs_vec_fini(&module->components);
 }
 
 void ecs_module_index_init(ecs_module_index_t *index) {
@@ -10412,15 +9410,6 @@ void ecs_resource_index_move(
 }
 
 void *ecs_resource_index_get(ecs_resource_index_t *index, ecs_resource_t id) {
-    ecs_resource_index_assert_registered(index, id);
-    if (!index->present[id]) {
-        return NULL;
-    }
-
-    return index->data[id];
-}
-
-const void *ecs_resource_index_get_const(const ecs_resource_index_t *index, ecs_resource_t id) {
     ecs_resource_index_assert_registered(index, id);
     if (!index->present[id]) {
         return NULL;
