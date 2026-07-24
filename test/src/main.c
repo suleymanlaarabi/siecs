@@ -21,6 +21,7 @@ void entity_is_with_multiple_depth(void);
 void component_reflection(void);
 void component_on_add(void);
 void component_lifecycle_ops_are_used_for_storage_moves(void);
+void component_deferred_set_overwrite_preserves_lifecycle(void);
 void component_add_with_required_uses_current_table_edge(void);
 void component_add_with_required_uses_cached_multi_add_edge(void);
 void component_add_with_required_emits_each_on_add_once(void);
@@ -101,6 +102,10 @@ void system_can_run_on_disabled_when_requested(void);
 void system_defers_structural_changes_until_iteration_end(void);
 void system_flushes_between_ordered_systems(void);
 void system_manual_defer_coalesces_to_final_state(void);
+void system_deferred_many_sets_survive_arena_growth(void);
+void system_deferred_set_overwrite_keeps_latest_value(void);
+void system_deferred_set_adds_required_components(void);
+void system_quit_makes_progress_return_false(void);
 
 // Testsuite 'observer'
 void observer_enable(void);
@@ -129,6 +134,9 @@ void lexer_keywords_and_identifiers(void);
 void lexer_numbers(void);
 void lexer_strings(void);
 void lexer_unknown(void);
+
+// Testsuite 'vec'
+void vec_u16_contains_and_remove(void);
 
 bake_test_case entity_testcases[] = {
     {
@@ -173,6 +181,10 @@ bake_test_case component_testcases[] = {
     {
         "lifecycle_ops_are_used_for_storage_moves",
         component_lifecycle_ops_are_used_for_storage_moves
+    },
+    {
+        "deferred_set_overwrite_preserves_lifecycle",
+        component_deferred_set_overwrite_preserves_lifecycle
     },
     {
         "add_with_required_uses_current_table_edge",
@@ -463,6 +475,22 @@ bake_test_case system_testcases[] = {
     {
         "manual_defer_coalesces_to_final_state",
         system_manual_defer_coalesces_to_final_state
+    },
+    {
+        "deferred_many_sets_survive_arena_growth",
+        system_deferred_many_sets_survive_arena_growth
+    },
+    {
+        "deferred_set_overwrite_keeps_latest_value",
+        system_deferred_set_overwrite_keeps_latest_value
+    },
+    {
+        "deferred_set_adds_required_components",
+        system_deferred_set_adds_required_components
+    },
+    {
+        "quit_makes_progress_return_false",
+        system_quit_makes_progress_return_false
     }
 };
 
@@ -558,6 +586,13 @@ bake_test_case lexer_testcases[] = {
     }
 };
 
+bake_test_case vec_testcases[] = {
+    {
+        "u16_contains_and_remove",
+        vec_u16_contains_and_remove
+    }
+};
+
 
 static bake_test_suite suites[] = {
     {
@@ -571,7 +606,7 @@ static bake_test_suite suites[] = {
         "component",
         NULL,
         NULL,
-        13,
+        14,
         component_testcases
     },
     {
@@ -613,7 +648,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        13,
+        17,
         system_testcases
     },
     {
@@ -643,9 +678,16 @@ static bake_test_suite suites[] = {
         NULL,
         6,
         lexer_testcases
+    },
+    {
+        "vec",
+        NULL,
+        NULL,
+        1,
+        vec_testcases
     }
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 12);
+    return bake_test_run("siecs.test", argc, argv, suites, 13);
 }
