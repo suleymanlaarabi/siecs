@@ -37,6 +37,8 @@ inline void init(const ecs_world_feat_desc_t &features) {
 inline void fini() { ecs_fini(); }
 inline void quit() { ecs_quit(); }
 inline bool progress() { return ecs_progress(); }
+inline void run() { ecs_run(); }
+inline void run_phase(ecs_phase_t phase) { ecs_run_phase(phase); }
 
 template <typename T> inline ecs_component_t component() {
     return detail::ecs_cpp_component_id<T>();
@@ -105,9 +107,10 @@ template <typename T, typename... Args>
 }
 
 template <typename T> [[nodiscard]] module_ref<T> module() noexcept {
-    return module_ref<T>(detail::module_type<T>::generation == detail::world_generation
-                             ? detail::module_type<T>::id
-                             : 0);
+    return module_ref<T>(
+        detail::module_type<T>::generation == detail::world_generation ? detail::module_type<T>::id
+                                                                       : 0
+    );
 }
 
 template <typename T> [[nodiscard]] observer<T> observe() { return observer<T>(); }

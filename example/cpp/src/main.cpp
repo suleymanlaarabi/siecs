@@ -19,14 +19,6 @@ struct Gravity {
 struct Enemy;
 struct NoIntegrate;
 
-template <typename... T> struct With {};
-
-template <typename... T> struct Without {};
-
-template <typename T> struct IsA {};
-
-template <typename With, typename Without = Without<>> struct Query {};
-
 int main() {
     ecs::init();
 
@@ -38,12 +30,12 @@ int main() {
 
     ecs::system().require<Enemy>().each([](Position &pos, const Velocity &vel) { pos.x += vel.x; });
 
-    ecs::system().exclude<Enemy>().each([](Velocity &vitesse, const Gravity &gravity) {
-        vitesse.y += gravity.value;
-    });
+    ecs::system()
+        .phase(EcsOnUpdate)
+        .exclude<Enemy>()
+        .each([](Velocity &vitesse, const Gravity &gravity) { vitesse.y += gravity.value; });
 
     ecs::entity::create().add<Position, Velocity>();
 
-    while (ecs::progress()) {
-    };
+    ecs::run();
 }

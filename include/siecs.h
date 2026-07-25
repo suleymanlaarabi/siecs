@@ -876,6 +876,9 @@ SIECS_API ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc);
 /* Run all enabled systems in phase order. */
 SIECS_API bool ecs_progress(void);
 
+/* Run all enabled systems in phase order. */
+SIECS_API void ecs_run(void);
+
 /* Run all enabled systems from one phase. */
 SIECS_API void ecs_run_phase(ecs_phase_t phase);
 

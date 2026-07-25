@@ -1,5 +1,5 @@
-#include "compiler.h"
 #include "command_buffer.h"
+#include "compiler.h"
 #include "datastructure/idmap.h"
 #include "siecs.h"
 #include "storage/component_index.h"
@@ -13,11 +13,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define ecs_assert_can_be_updated(entity, ...)                                              \
+#define ecs_assert_can_be_updated(entity, ...)                                                     \
     ecs_assert(!ecs_has_cid_owned(entity, ecs_id(Abstract)), __VA_ARGS__)
 
 static void ecs_emit_added_components(
-        ecs_table_t *from_table,
+    ecs_table_t *from_table,
     ecs_table_t *to_table,
     ecs_entity_t entity,
     uint32_t row
@@ -43,7 +43,7 @@ static void ecs_emit_added_components(
 }
 
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
-        ecs_assert_id_valid(cid);
+    ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
     ecs_assert_can_be_updated(entity, "An abstract entity cannot be updated.");
@@ -89,9 +89,9 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_table_t *new_table = ecs_get_table(edge);
     bool add_many = new_table->type.count > table->type.count + 1;
 
-    void *component_data =
-        add_many ? ecs_migrate_add_many(record, entity, table, new_table, edge, cid)
-                 : ecs_migrate_add(record, entity, table, new_table, edge, cid);
+    void *component_data = add_many
+                               ? ecs_migrate_add_many(record, entity, table, new_table, edge, cid)
+                               : ecs_migrate_add(record, entity, table, new_table, edge, cid);
 
     if (add_many) {
         ecs_emit_added_components(table, new_table, entity, record->table_row);
@@ -105,7 +105,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
 }
 
 void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
-        ecs_assert_id_valid(cid);
+    ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
     ecs_assert_can_be_updated(entity, "An abstract entity cannot be updated.");
@@ -119,7 +119,7 @@ void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
 }
 
 void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
-        ecs_assert_id_valid(cid);
+    ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
@@ -154,7 +154,7 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
 }
 
 void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
-        ecs_assert_id_valid(cid);
+    ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
@@ -167,7 +167,7 @@ void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
 }
 
 void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
-        ecs_assert_id_valid(cid);
+    ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
@@ -195,7 +195,7 @@ void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
 }
 
 void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) {
-        ecs_assert_id_valid(cid);
+    ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
@@ -210,7 +210,7 @@ void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) {
 }
 
 void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data) {
-        ecs_assert_id_valid(cid);
+    ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
@@ -233,7 +233,7 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
 }
 
 void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
-        ecs_assert_id_valid(cid);
+    ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
@@ -246,7 +246,7 @@ void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
 }
 
 void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
-        ecs_assert_id_valid(cid);
+    ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
@@ -274,7 +274,7 @@ void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
 }
 
 void ecs_move_cid(ecs_entity_t entity, ecs_component_t cid, void *data) {
-        ecs_assert_id_valid(cid);
+    ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
@@ -287,7 +287,7 @@ void ecs_move_cid(ecs_entity_t entity, ecs_component_t cid, void *data) {
 }
 
 bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id) {
-        ecs_assert_entity_valid(entity);
+    ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
     uint16_t tid = ecs_get_record(entity)->table_id;
@@ -295,7 +295,7 @@ bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id) {
 }
 
 bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id) {
-        ecs_assert_entity_valid(entity);
+    ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
     uint16_t tid = ecs_get_record(entity)->table_id;
@@ -303,7 +303,7 @@ bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id) {
 }
 
 void ecs_with(ecs_component_t component, ecs_component_t require) {
-        ecs_assert_id_valid(component);
+    ecs_assert_id_valid(component);
     ecs_assert_id_valid(require);
     ecs_assert(component != require, "component cannot require itself: %d\n", component);
 #ifndef NDEBUG

@@ -14,7 +14,7 @@
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
 
 ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
-        ecs_assert_not_null(desc);
+    ecs_assert_not_null(desc);
     ecs_assert(desc->callback, "system requires callback function\n");
     ecs_assert(desc->phase < EcsPhaseCount, "invalid system phase: %u\n", desc->phase);
 
@@ -36,7 +36,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
 }
 
 void ecs_run_system(ecs_system_id_t system) {
-    
+
     ecs_system_t *sys = ecs_system_index_get(&ecs_world.system_index, system);
     if (!sys->enabled) {
         return;
@@ -52,7 +52,7 @@ void ecs_run_system(ecs_system_id_t system) {
         }
     } else {
         ecs_iter_t it = {
-                        .count = 1,
+            .count = 1,
             .user_data = sys->user_data,
             .delta_time = ecs_world.delta_time,
         };
@@ -62,7 +62,7 @@ void ecs_run_system(ecs_system_id_t system) {
 }
 
 void ecs_run_phase(ecs_phase_t phase) {
-        ecs_assert(phase < EcsPhaseCount, "invalid system phase: %u\n", phase);
+    ecs_assert(phase < EcsPhaseCount, "invalid system phase: %u\n", phase);
 
     ecs_system_index_t *index = &ecs_world.system_index;
     if (index->plan_dirty) {
@@ -94,7 +94,6 @@ static inline void sleep_sec(double seconds) {
 }
 
 bool ecs_progress(void) {
-    
     double frame_start = now_sec();
 
     if (ecs_world.last_time == 0.0) {
@@ -131,8 +130,14 @@ bool ecs_progress(void) {
     return !ecs_world.exit;
 }
 
+void ecs_run(void) {
+    while (ecs_progress()) {
+    }
+    ecs_fini();
+}
+
 void ecs_system_enable(ecs_system_id_t system) {
-    
+
     ecs_system_t *sys = ecs_system_index_get(&ecs_world.system_index, system);
     if (sys->enabled == true) {
         return;
@@ -143,7 +148,7 @@ void ecs_system_enable(ecs_system_id_t system) {
 }
 
 void ecs_system_disable(ecs_system_id_t system) {
-    
+
     ecs_system_t *sys = ecs_system_index_get(&ecs_world.system_index, system);
     if (sys->enabled == false) {
         return;
