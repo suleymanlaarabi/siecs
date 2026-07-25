@@ -2,7 +2,7 @@
 #define SIECS_TABLE_H
 #include "datastructure/idmap.h"
 #include "datastructure/vec.h"
-#include "id.h"
+#include "helper.h"
 #include "siecs.h"
 #include "type.h"
 #include <stdbool.h>
@@ -41,8 +41,7 @@ void ecs_table_fini(ecs_table_t *table);
 uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity);
 // if the entity is not the last one, the last entity will be moved to the removed entity's
 // position, and the moved entity will be returned
-ecs_entity_t
-ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live);
+ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live);
 
 void *ecs_table_get_component(ecs_table_t *table, ecs_component_t component_id, uint32_t row);
 
@@ -70,10 +69,7 @@ ecs_table_column_or_invalid(const ecs_table_t *table, ecs_component_t component_
     return UINT16_MAX;
 }
 
-bool ecs_table_has(
-    const ecs_table_t *table,
-    ecs_component_t component_id
-);
+bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id);
 bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base);
 
 static inline uint16_t
@@ -85,10 +81,6 @@ static inline bool ecs_table_has_owned(const ecs_table_t *table, ecs_component_t
     return ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
 }
 
-void *ecs_table_field(
-        const ecs_table_t *table,
-    ecs_component_t component_id,
-    bool *is_shared
-);
+void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bool *is_shared);
 
 #endif

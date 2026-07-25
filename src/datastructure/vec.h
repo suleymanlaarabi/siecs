@@ -1,6 +1,6 @@
 #ifndef SIECS_DATASTRUCTURE_VEC_H
 #define SIECS_DATASTRUCTURE_VEC_H
-#include "../compiler.h"
+#include "../helper.h"
 #include <stdbool.h>
 #include <stdint.h>
 

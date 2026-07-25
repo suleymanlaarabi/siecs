@@ -57,16 +57,12 @@ typedef struct {
     ecs_vec_t entities;
 } RelationSource;
 
-#define ecs_get_record(entity)                                                              \
+#define ecs_get_record(entity)                                                                     \
     ecs_vec_get_mut(&ecs_world.entity_index.entities, ecs_first(entity), ecs_entity_record_t)
 #define ecs_get_table(tid) ecs_table_index_at(&ecs_world.table_index, tid)
 
-static inline void ecs_emit(
-    ecs_table_t *table,
-    ecs_entity_t entity,
-    ecs_event_t event,
-    const void *trigger_data
-) {
+static inline void
+ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void *trigger_data) {
     if (table->observers_by_event.size <= event) {
         return;
     }

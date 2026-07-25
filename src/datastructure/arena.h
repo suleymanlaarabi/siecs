@@ -1,7 +1,7 @@
 #ifndef ECS_ARENA_H
 #define ECS_ARENA_H
 
-#include "../compiler.h"
+#include "../helper.h"
 #include <stddef.h>
 #include <stdint.h>
 

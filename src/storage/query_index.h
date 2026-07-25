@@ -1,7 +1,7 @@
 #ifndef SIECS_STORAGE_QUERY_INDEX_H
 #define SIECS_STORAGE_QUERY_INDEX_H
-#include "../compiler.h"
 #include "../datastructure/vec.h"
+#include "../helper.h"
 #include "../table.h"
 #include "siecs.h"
 #include <stdint.h>
@@ -46,10 +46,7 @@ static inline bool ecs_query_term_requires_owned(ecs_query_term_t term) {
     return term.access == EcsOut || term.access == EcsInOut || term.access == EcsInOutOptional;
 }
 
-static inline bool ecs_query_match_table(
-    const ecs_query_t *query,
-    const ecs_table_t *table
-) {
+static inline bool ecs_query_match_table(const ecs_query_t *query, const ecs_table_t *table) {
     if (ECS_LIKELY((query->bloom & table->bloom) != query->bloom)) {
         return false;
     }

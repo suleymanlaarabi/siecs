@@ -26,7 +26,7 @@ uint16_t ecs_observer_index_create(ecs_observer_index_t *index, const ecs_observ
 
 // Cache a freshly created observer onto every existing table it matches.
 void ecs_observer_index_match_tables(
-        ecs_table_t *tables,
+    ecs_table_t *tables,
     uint16_t table_count,
     uint16_t observer_id
 );

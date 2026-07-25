@@ -1,6 +1,8 @@
-#ifndef SIECS_ID_H
-#define SIECS_ID_H
-#include <stdint.h>
+#ifndef SIECS_HELPER_H
+#define SIECS_HELPER_H
+
+#define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
+#define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
 
 #define ecs_entity(index, generation) (((uint64_t)(index) << 32) | (generation & 0xffffffff))
 
