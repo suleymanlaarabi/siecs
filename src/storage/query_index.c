@@ -1,10 +1,10 @@
 #include "query_index.h"
-#include "../compiler.h"
 #include "../datastructure/vec.h"
 #include "../table.h"
 #include "../utils.h"
 #include "../world_internal.h"
 #include "component_index.h"
+#include "helper.h"
 #include "siecs.h"
 #include <stdint.h>
 #include <stdlib.h>
@@ -164,11 +164,8 @@ void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
     }
 }
 
-static void ecs_query_cache_add_table(
-        ecs_query_cache_t *cache,
-    const ecs_table_t *table,
-    uint16_t table_id
-) {
+static void
+ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t table_id) {
     ecs_vec_push_u16(&cache->table_ids, table_id);
     const uint16_t table_count = cache->table_ids.size;
     const uint16_t field_count = cache->query.field_count;

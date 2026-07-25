@@ -1,5 +1,5 @@
-#include "compiler.h"
 #include "datastructure/vec.h"
+#include "helper.h"
 #include "siecs.h"
 #include <stdio.h>
 #ifndef SIREFLECT_H
@@ -14,13 +14,14 @@
 
 static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
     uint32_t id = ecs_world.component_index.components.size;
-    if (id == 0) id = 1;
+    if (id == 0)
+        id = 1;
     ecs_assert(id + count <= UINT16_MAX, "component id overflow\n");
     return id;
 }
 
 void RelationOnSet(
-        ecs_entity_t entity,
+    ecs_entity_t entity,
     ecs_component_t target_component,
     const void *new_value,
     void *current_value
@@ -57,11 +58,7 @@ void RelationOnSet(
     }
 }
 
-void RelationOnRemove(
-        ecs_entity_t entity,
-    ecs_component_t component,
-    void *ptr
-) {
+void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
     const RelationTarget *target_data = ptr;
     ecs_component_t source_component = component + 1;
     RelationSource *target_source_data = ecs_get_cid(target_data->target, source_component);
@@ -78,11 +75,7 @@ void RelationOnRemove(
     }
 }
 
-void RelationSourceOnRemove(
-        ecs_entity_t,
-    ecs_component_t component,
-    void *ptr
-) {
+void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) {
     RelationSource *source_data = ptr;
 
     const ecs_entity_t *entities = source_data->entities.data;
@@ -104,8 +97,7 @@ void RelationSourceOnRemove(
     ecs_vec_fini(&source_data->entities);
 }
 
-ecs_component_t
-ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
+ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
 

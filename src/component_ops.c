@@ -1,6 +1,6 @@
 #include "command_buffer.h"
-#include "compiler.h"
 #include "datastructure/idmap.h"
+#include "helper.h"
 #include "siecs.h"
 #include "storage/component_index.h"
 #include "storage/table_index.h"
