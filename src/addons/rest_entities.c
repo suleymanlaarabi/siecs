@@ -31,18 +31,10 @@ static bool entity_is_alive(ecs_entity_t entity) {
     return entity_from_index(ecs_first(entity), &current) && current == entity;
 }
 
-static char *entity_name(ecs_entity_t entity) {
-    if (ecs_has(entity, Name)) {
-        const char *value = ecs_get(entity, Name)->value;
-        return strdup(value ? value : "");
-    }
-    return siformat("(%d, %d)", ecs_first(entity), ecs_second(entity));
-}
-
 sijson_value_t ecs_rest_entity_json(ecs_entity_t entity) {
     sijson_value_t object = sijson_make_object();
 
-    char *name = entity_name(entity);
+    char *name = ecs_entity_name(entity);
     sijson_object_set(object, "name", sijson_make_string(name));
     free(name);
 
@@ -75,7 +67,7 @@ sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity) {
 sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
     sijson_value_t detail = sijson_make_object();
 
-    char *name = entity_name(entity);
+    char *name = ecs_entity_name(entity);
     sijson_object_set(detail, "name", sijson_make_string(name));
     free(name);
 

@@ -490,6 +490,9 @@ ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc);
 /* Create a new alive entity in world. world must not be NULL. */
 SIECS_API ecs_entity_t ecs_new(void);
 
+/* Get entity name */
+SIECS_API char *ecs_entity_name(ecs_entity_t entity);
+
 /* Begin deferring ECS mutations into the world's command buffer. */
 SIECS_API void ecs_defer_begin(void);
 

@@ -13,7 +13,7 @@
 #include <string.h>
 
 ecs_entity_t ecs_new(void) {
-        ecs_table_t *table = ecs_get_table(0);
+    ecs_table_t *table = ecs_get_table(0);
 
     ecs_entity_t entity = ecs_entity_index_create(&ecs_world.entity_index, table->entity_count);
     ecs_table_add_entity(table, entity);
@@ -26,8 +26,7 @@ bool ecs_is_alive(const ecs_entity_t entity) {
 }
 
 #ifndef NDEBUG
-static inline bool
-ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_entity_t target) {
+static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_entity_t target) {
     while (target != 0) {
         if (target == entity) {
             return true;
@@ -41,7 +40,7 @@ ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_entity_t target) {
 #endif
 
 static inline void ecs_entity_rebase(
-        ecs_entity_record_t *record,
+    ecs_entity_record_t *record,
     ecs_entity_t entity,
     ecs_table_t *from_table,
     uint16_t to_table_id
@@ -81,7 +80,7 @@ bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
 }
 
 void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
-        ecs_assert_entity_valid(entity);
+    ecs_assert_entity_valid(entity);
     ecs_assert_entity_valid(target);
     ecs_assert_is_alive(entity);
     ecs_assert_is_alive(target);
@@ -115,7 +114,7 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
 }
 
 void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
-        ecs_assert_entity_valid(entity);
+    ecs_assert_entity_valid(entity);
     ecs_assert_entity_valid(target);
     ecs_assert_is_alive(entity);
     ecs_assert_is_alive(target);
@@ -129,7 +128,7 @@ void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
 }
 
 void ecs_kill_now(ecs_entity_t entity) {
-        ecs_assert_entity_valid(entity);
+    ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
     ecs_entity_record_t *record = ecs_get_record(entity);
@@ -193,7 +192,7 @@ void ecs_kill_now(ecs_entity_t entity) {
 }
 
 void ecs_kill(ecs_entity_t entity) {
-        ecs_assert_entity_valid(entity);
+    ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
     if (ecs_is_deferred()) {
@@ -202,4 +201,12 @@ void ecs_kill(ecs_entity_t entity) {
     }
 
     ecs_kill_now(entity);
+}
+
+char *ecs_entity_name(ecs_entity_t entity) {
+    if (ecs_has(entity, Name)) {
+        const char *value = ecs_get(entity, Name)->value;
+        return strdup(value ? value : "");
+    }
+    return siformat("(%d, %d)", ecs_first(entity), ecs_second(entity));
 }
