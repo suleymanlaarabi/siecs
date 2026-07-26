@@ -6688,7 +6688,7 @@ bool ecs_component_requires(
 #endif
 
 ecs_entity_t ecs_new(void) {
-        ecs_table_t *table = ecs_get_table(0);
+    ecs_table_t *table = ecs_get_table(0);
 
     ecs_entity_t entity = ecs_entity_index_create(&ecs_world.entity_index, table->entity_count);
     ecs_table_add_entity(table, entity);
@@ -6701,8 +6701,7 @@ bool ecs_is_alive(const ecs_entity_t entity) {
 }
 
 #ifndef NDEBUG
-static inline bool
-ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_entity_t target) {
+static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_entity_t target) {
     while (target != 0) {
         if (target == entity) {
             return true;
@@ -6716,7 +6715,7 @@ ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_entity_t target) {
 #endif
 
 static inline void ecs_entity_rebase(
-        ecs_entity_record_t *record,
+    ecs_entity_record_t *record,
     ecs_entity_t entity,
     ecs_table_t *from_table,
     uint16_t to_table_id
@@ -6756,7 +6755,7 @@ bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
 }
 
 void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
-        ecs_assert_entity_valid(entity);
+    ecs_assert_entity_valid(entity);
     ecs_assert_entity_valid(target);
     ecs_assert_is_alive(entity);
     ecs_assert_is_alive(target);
@@ -6790,7 +6789,7 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
 }
 
 void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
-        ecs_assert_entity_valid(entity);
+    ecs_assert_entity_valid(entity);
     ecs_assert_entity_valid(target);
     ecs_assert_is_alive(entity);
     ecs_assert_is_alive(target);
@@ -6804,7 +6803,7 @@ void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
 }
 
 void ecs_kill_now(ecs_entity_t entity) {
-        ecs_assert_entity_valid(entity);
+    ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
     ecs_entity_record_t *record = ecs_get_record(entity);
@@ -6868,7 +6867,7 @@ void ecs_kill_now(ecs_entity_t entity) {
 }
 
 void ecs_kill(ecs_entity_t entity) {
-        ecs_assert_entity_valid(entity);
+    ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
     if (ecs_is_deferred()) {
@@ -6877,6 +6876,14 @@ void ecs_kill(ecs_entity_t entity) {
     }
 
     ecs_kill_now(entity);
+}
+
+char *ecs_entity_name(ecs_entity_t entity) {
+    if (ecs_has(entity, Name)) {
+        const char *value = ecs_get(entity, Name)->value;
+        return strdup(value ? value : "");
+    }
+    return siformat("(%d, %d)", ecs_first(entity), ecs_second(entity));
 }
 
 #ifndef SIECS_MODULE_H
@@ -7047,25 +7054,37 @@ static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query
 }
 
 ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) {
-        ecs_query_id_t qid = ecs_query_index_create(&ecs_world.query_index, desc);
+    ecs_query_id_t qid = ecs_query_index_create(&ecs_world.query_index, desc);
     ecs_query_index_update_matches(
-                ecs_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t)
+        ecs_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t)
     );
     return qid;
 }
 
 ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
-        ecs_assert(query_id < ecs_world.query_index.queries.size, "invalid query id: %u\n", query_id);
+    ecs_assert(query_id < ecs_world.query_index.queries.size, "invalid query id: %u\n", query_id);
 
     ecs_query_cache_t *cache =
         ecs_vec_get_mut(&ecs_world.query_index.queries, query_id, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", query_id);
     return (ecs_iter_t){
-                .cache = cache,
+        .cache = cache,
         .table_idx = UINT16_MAX,
         .table_count = cache->table_ids.size,
         .count = 0,
     };
+}
+
+uint32_t ecs_query_count(ecs_query_id_t query_id) {
+    ecs_query_cache_t *cache =
+        ecs_vec_get_mut(&ecs_world.query_index.queries, query_id, ecs_query_cache_t);
+    uint16_t *tids = cache->table_ids.data;
+
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < cache->table_ids.size; i++) {
+        count += ecs_world.table_index.tables[tids[i]].entity_count;
+    }
+    return count;
 }
 
 bool ecs_iter_next(ecs_iter_t *it) {
@@ -7086,9 +7105,10 @@ bool ecs_iter_next(ecs_iter_t *it) {
     return true;
 }
 void ecs_query_fini(ecs_query_id_t qid) {
-        ecs_assert(qid < ecs_world.query_index.queries.size, "invalid query id: %u\n", qid);
+    ecs_assert(qid < ecs_world.query_index.queries.size, "invalid query id: %u\n", qid);
 
-    ecs_query_cache_t *cache = ecs_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t);
+    ecs_query_cache_t *cache =
+        ecs_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", qid);
 
     ecs_query_index_destroy(&cache->query);
@@ -8017,18 +8037,10 @@ static bool entity_is_alive(ecs_entity_t entity) {
     return entity_from_index(ecs_first(entity), &current) && current == entity;
 }
 
-static char *entity_name(ecs_entity_t entity) {
-    if (ecs_has(entity, Name)) {
-        const char *value = ecs_get(entity, Name)->value;
-        return strdup(value ? value : "");
-    }
-    return siformat("(%d, %d)", ecs_first(entity), ecs_second(entity));
-}
-
 sijson_value_t ecs_rest_entity_json(ecs_entity_t entity) {
     sijson_value_t object = sijson_make_object();
 
-    char *name = entity_name(entity);
+    char *name = ecs_entity_name(entity);
     sijson_object_set(object, "name", sijson_make_string(name));
     free(name);
 
@@ -8061,7 +8073,7 @@ sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity) {
 sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
     sijson_value_t detail = sijson_make_object();
 
-    char *name = entity_name(entity);
+    char *name = ecs_entity_name(entity);
     sijson_object_set(detail, "name", sijson_make_string(name));
     free(name);
 
