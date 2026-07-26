@@ -1,3 +1,4 @@
+#include "command_buffer.h"
 #include "datastructure/vec.h"
 #include "storage/query_index.h"
 #include "table.h"
@@ -21,25 +22,37 @@ static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query
 }
 
 ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) {
-        ecs_query_id_t qid = ecs_query_index_create(&ecs_world.query_index, desc);
+    ecs_query_id_t qid = ecs_query_index_create(&ecs_world.query_index, desc);
     ecs_query_index_update_matches(
-                ecs_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t)
+        ecs_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t)
     );
     return qid;
 }
 
 ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
-        ecs_assert(query_id < ecs_world.query_index.queries.size, "invalid query id: %u\n", query_id);
+    ecs_assert(query_id < ecs_world.query_index.queries.size, "invalid query id: %u\n", query_id);
 
     ecs_query_cache_t *cache =
         ecs_vec_get_mut(&ecs_world.query_index.queries, query_id, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", query_id);
     return (ecs_iter_t){
-                .cache = cache,
+        .cache = cache,
         .table_idx = UINT16_MAX,
         .table_count = cache->table_ids.size,
         .count = 0,
     };
+}
+
+uint32_t ecs_query_count(ecs_query_id_t query_id) {
+    ecs_query_cache_t *cache =
+        ecs_vec_get_mut(&ecs_world.query_index.queries, query_id, ecs_query_cache_t);
+    uint16_t *tids = cache->table_ids.data;
+
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < cache->table_ids.size; i++) {
+        count += ecs_world.table_index.tables[tids[i]].entity_count;
+    }
+    return count;
 }
 
 bool ecs_iter_next(ecs_iter_t *it) {
@@ -60,9 +73,10 @@ bool ecs_iter_next(ecs_iter_t *it) {
     return true;
 }
 void ecs_query_fini(ecs_query_id_t qid) {
-        ecs_assert(qid < ecs_world.query_index.queries.size, "invalid query id: %u\n", qid);
+    ecs_assert(qid < ecs_world.query_index.queries.size, "invalid query id: %u\n", qid);
 
-    ecs_query_cache_t *cache = ecs_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t);
+    ecs_query_cache_t *cache =
+        ecs_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", qid);
 
     ecs_query_index_destroy(&cache->query);

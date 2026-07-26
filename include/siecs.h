@@ -790,6 +790,8 @@ typedef struct {
  */
 SIECS_API ecs_iter_t ecs_query_iter(ecs_query_id_t query_id);
 
+SIECS_API uint32_t ecs_query_count(ecs_query_id_t query_id);
+
 /*
  * Advance an iterator to the next non-empty batch.
  *
