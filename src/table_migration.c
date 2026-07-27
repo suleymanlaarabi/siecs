@@ -133,14 +133,14 @@ void *ecs_migrate_add(
     ctor_column(to_table, k, new_row);
 
     uint16_t i = 0;
-    for (; i < from_table->data_count; i++) {
+    for (; i < from_table->type.data_count; i++) {
         uint16_t from_col = from_table->data_columns[i];
         if (from_col >= k) {
             break;
         }
         move_column(from_table, from_col, old_row, to_table, from_col, new_row);
     }
-    for (; i < from_table->data_count; i++) {
+    for (; i < from_table->type.data_count; i++) {
         uint16_t from_col = from_table->data_columns[i];
         move_column(from_table, from_col, old_row, to_table, from_col + 1, new_row);
     }
@@ -161,11 +161,11 @@ void *ecs_migrate_add_many(
     const uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
     uint16_t from_data = 0;
-    for (uint16_t to_data = 0; to_data < to_table->data_count; to_data++) {
+    for (uint16_t to_data = 0; to_data < to_table->type.data_count; to_data++) {
         const uint16_t to_col = to_table->data_columns[to_data];
         const ecs_component_t to_id = to_table->type.ids[to_col];
 
-        while (from_data < from_table->data_count) {
+        while (from_data < from_table->type.data_count) {
             const uint16_t from_col = from_table->data_columns[from_data];
             const ecs_component_t from_id = from_table->type.ids[from_col];
             if (from_id >= to_id) {
@@ -174,7 +174,7 @@ void *ecs_migrate_add_many(
             from_data++;
         }
 
-        if (from_data < from_table->data_count) {
+        if (from_data < from_table->type.data_count) {
             const uint16_t from_col = from_table->data_columns[from_data];
             if (from_table->type.ids[from_col] == to_id) {
                 move_column(from_table, from_col, old_row, to_table, to_col, new_row);
@@ -207,18 +207,18 @@ void ecs_migrate_remove(
     uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
     uint16_t i = 0;
-    for (; i < from_table->data_count; i++) {
+    for (; i < from_table->type.data_count; i++) {
         uint16_t from_col = from_table->data_columns[i];
         if (from_col >= col_idx) {
             break;
         }
         move_column(from_table, from_col, old_row, to_table, from_col, new_row);
     }
-    if (i < from_table->data_count && from_table->data_columns[i] == col_idx) {
+    if (i < from_table->type.data_count && from_table->data_columns[i] == col_idx) {
         dtor_column(from_table, col_idx, old_row);
         i++;
     }
-    for (; i < from_table->data_count; i++) {
+    for (; i < from_table->type.data_count; i++) {
         uint16_t from_col = from_table->data_columns[i];
         move_column(from_table, from_col, old_row, to_table, from_col - 1, new_row);
     }

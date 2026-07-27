@@ -17,7 +17,8 @@ void ecs_table_init(
     table->type = type;
     table->entity_capacity = 1;
     table->entity_count = 0;
-    table->data_count = 0;
+    // data_count belongs to the canonical table layout, not to transient types.
+    table->type.data_count = 0;
     table->entities = malloc(sizeof(ecs_entity_t) * table->entity_capacity);
     table->cls = type.count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.count);
     table->data_columns = type.count == 0 ? NULL : malloc(sizeof(uint16_t) * type.count);
@@ -32,7 +33,7 @@ void ecs_table_init(
         table->cls[i].size = rec->size;
         table->cls[i].data = rec->size != 0 ? calloc(table->entity_capacity, rec->size) : NULL;
         if (rec->size != 0) {
-            table->data_columns[table->data_count++] = i;
+            table->data_columns[table->type.data_count++] = i;
         }
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
@@ -48,18 +49,19 @@ void ecs_table_init(
         }
     }
 
-    if (table->data_count == 0) {
+    if (table->type.data_count == 0) {
         free(table->data_columns);
         table->data_columns = NULL;
-    } else if (table->data_count < type.count) {
-        table->data_columns = realloc(table->data_columns, sizeof(uint16_t) * table->data_count);
+    } else if (table->type.data_count < type.count) {
+        table->data_columns =
+            realloc(table->data_columns, sizeof(uint16_t) * table->type.data_count);
     }
 }
 
 static inline void ecs_table_grow(ecs_table_t *table) {
     uint64_t new_capacity = table->entity_capacity * (uint64_t)2;
     table->entities = realloc(table->entities, sizeof(ecs_entity_t) * new_capacity);
-    for (uint16_t i = 0; i < table->data_count; i++) {
+    for (uint16_t i = 0; i < table->type.data_count; i++) {
         uint16_t column_index = table->data_columns[i];
         ecs_column_t *column = &table->cls[column_index];
 
@@ -97,7 +99,7 @@ ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) 
     ecs_entity_t removed_entity = table->entities[row];
     uint32_t last_row = table->entity_count - 1;
     if (row_values_live) {
-        for (uint16_t i = 0; i < table->data_count; i++) {
+        for (uint16_t i = 0; i < table->type.data_count; i++) {
             uint16_t column_index = table->data_columns[i];
             ecs_column_t *column = &table->cls[column_index];
             if (column->flags & EcsColumnNoDtor) {
@@ -112,7 +114,7 @@ ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) 
     if (row != last_row) {
         ecs_entity_t moved_entity = table->entities[last_row];
         table->entities[row] = moved_entity;
-        for (uint16_t i = 0; i < table->data_count; i++) {
+        for (uint16_t i = 0; i < table->type.data_count; i++) {
             uint16_t column_index = table->data_columns[i];
             ecs_column_t *column = &table->cls[column_index];
             void *src = (char *)column->data + (column->size * last_row);

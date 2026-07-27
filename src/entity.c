@@ -49,7 +49,7 @@ static inline void ecs_entity_rebase(
     uint32_t old_row = record->table_row;
     uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
-    for (uint16_t i = 0; i < from_table->data_count; i++) {
+    for (uint16_t i = 0; i < from_table->type.data_count; i++) {
         uint16_t col = from_table->data_columns[i];
         const ecs_column_t *column = &from_table->cls[col];
         void *src = ecs_table_component_at_column(from_table, col, old_row);

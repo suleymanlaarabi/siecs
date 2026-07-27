@@ -344,6 +344,34 @@ BENCH_SETUP(add_many_components_wide_no_required, {
     free(cids);
 });
 
+BENCH_SETUP(create_wide_tables_across_index_resize, {
+    arg(common_count, 256);
+    arg(table_count, 4096);
+
+    ecs_component_t *common = malloc(sizeof(ecs_component_t) * common_count);
+    ecs_component_t *unique = malloc(sizeof(ecs_component_t) * table_count);
+    ecs_entity_t *entities = malloc(sizeof(ecs_entity_t) * table_count);
+    register_components(common, common_count);
+    register_components(unique, table_count);
+
+    for (uint32_t i = 0; i < table_count; i++) {
+        entities[i] = ecs_new();
+        for (uint32_t j = 0; j < common_count; j++) {
+            ecs_add_cid(entities[i], common[j]);
+        }
+    }
+
+    BENCH({
+        for (uint32_t i = 0; i < table_count; i++) {
+            ecs_add_cid(entities[i], unique[i]);
+        }
+    });
+
+    free(entities);
+    free(unique);
+    free(common);
+});
+
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
@@ -362,6 +390,7 @@ int main(int argc, char *argv[]) {
     run_bench(add_required_to_existing_component);
     run_bench(add_duplicate_component);
     run_bench(add_many_components_wide_no_required);
+    run_bench(create_wide_tables_across_index_resize);
 
     return 0;
 }

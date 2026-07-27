@@ -27,7 +27,6 @@ typedef struct ecs_table_s {
                            // index if the component is in the table
     uint32_t entity_capacity;
     uint32_t entity_count;
-    uint16_t data_count;
     ecs_entity_t *entities;
     ecs_column_t *cls;
     uint16_t *data_columns;

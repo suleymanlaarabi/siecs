@@ -4890,6 +4890,10 @@ static inline uint16_t ecs_id_map_at_or_invalid(const ecs_id_map_t *map, uint16_
 typedef struct {
     uint16_t *ids;
     uint16_t count;
+    // Table metadata stored in the alignment gap before base. It is not part of
+    // type identity; transient types may leave it zero until table creation.
+    uint16_t data_count;
+    uint32_t hash;
     ecs_entity_t base;
 } ecs_type_t;
 
@@ -4935,7 +4939,6 @@ typedef struct ecs_table_s {
                            // index if the component is in the table
     uint32_t entity_capacity;
     uint32_t entity_count;
-    uint16_t data_count;
     ecs_entity_t *entities;
     ecs_column_t *cls;
     uint16_t *data_columns;
@@ -6732,7 +6735,7 @@ static inline void ecs_entity_rebase(
     uint32_t old_row = record->table_row;
     uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
-    for (uint16_t i = 0; i < from_table->data_count; i++) {
+    for (uint16_t i = 0; i < from_table->type.data_count; i++) {
         uint16_t col = from_table->data_columns[i];
         const ecs_column_t *column = &from_table->cls[col];
         void *src = ecs_table_component_at_column(from_table, col, old_row);
@@ -7372,7 +7375,8 @@ void ecs_table_init(
     table->type = type;
     table->entity_capacity = 1;
     table->entity_count = 0;
-    table->data_count = 0;
+    // data_count belongs to the canonical table layout, not to transient types.
+    table->type.data_count = 0;
     table->entities = malloc(sizeof(ecs_entity_t) * table->entity_capacity);
     table->cls = type.count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.count);
     table->data_columns = type.count == 0 ? NULL : malloc(sizeof(uint16_t) * type.count);
@@ -7387,7 +7391,7 @@ void ecs_table_init(
         table->cls[i].size = rec->size;
         table->cls[i].data = rec->size != 0 ? calloc(table->entity_capacity, rec->size) : NULL;
         if (rec->size != 0) {
-            table->data_columns[table->data_count++] = i;
+            table->data_columns[table->type.data_count++] = i;
         }
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
@@ -7403,18 +7407,19 @@ void ecs_table_init(
         }
     }
 
-    if (table->data_count == 0) {
+    if (table->type.data_count == 0) {
         free(table->data_columns);
         table->data_columns = NULL;
-    } else if (table->data_count < type.count) {
-        table->data_columns = realloc(table->data_columns, sizeof(uint16_t) * table->data_count);
+    } else if (table->type.data_count < type.count) {
+        table->data_columns =
+            realloc(table->data_columns, sizeof(uint16_t) * table->type.data_count);
     }
 }
 
 static inline void ecs_table_grow(ecs_table_t *table) {
     uint64_t new_capacity = table->entity_capacity * (uint64_t)2;
     table->entities = realloc(table->entities, sizeof(ecs_entity_t) * new_capacity);
-    for (uint16_t i = 0; i < table->data_count; i++) {
+    for (uint16_t i = 0; i < table->type.data_count; i++) {
         uint16_t column_index = table->data_columns[i];
         ecs_column_t *column = &table->cls[column_index];
 
@@ -7452,7 +7457,7 @@ ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) 
     ecs_entity_t removed_entity = table->entities[row];
     uint32_t last_row = table->entity_count - 1;
     if (row_values_live) {
-        for (uint16_t i = 0; i < table->data_count; i++) {
+        for (uint16_t i = 0; i < table->type.data_count; i++) {
             uint16_t column_index = table->data_columns[i];
             ecs_column_t *column = &table->cls[column_index];
             if (column->flags & EcsColumnNoDtor) {
@@ -7467,7 +7472,7 @@ ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) 
     if (row != last_row) {
         ecs_entity_t moved_entity = table->entities[last_row];
         table->entities[row] = moved_entity;
-        for (uint16_t i = 0; i < table->data_count; i++) {
+        for (uint16_t i = 0; i < table->type.data_count; i++) {
             uint16_t column_index = table->data_columns[i];
             ecs_column_t *column = &table->cls[column_index];
             void *src = (char *)column->data + (column->size * last_row);
@@ -7754,14 +7759,14 @@ void *ecs_migrate_add(
     ctor_column(to_table, k, new_row);
 
     uint16_t i = 0;
-    for (; i < from_table->data_count; i++) {
+    for (; i < from_table->type.data_count; i++) {
         uint16_t from_col = from_table->data_columns[i];
         if (from_col >= k) {
             break;
         }
         move_column(from_table, from_col, old_row, to_table, from_col, new_row);
     }
-    for (; i < from_table->data_count; i++) {
+    for (; i < from_table->type.data_count; i++) {
         uint16_t from_col = from_table->data_columns[i];
         move_column(from_table, from_col, old_row, to_table, from_col + 1, new_row);
     }
@@ -7782,11 +7787,11 @@ void *ecs_migrate_add_many(
     const uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
     uint16_t from_data = 0;
-    for (uint16_t to_data = 0; to_data < to_table->data_count; to_data++) {
+    for (uint16_t to_data = 0; to_data < to_table->type.data_count; to_data++) {
         const uint16_t to_col = to_table->data_columns[to_data];
         const ecs_component_t to_id = to_table->type.ids[to_col];
 
-        while (from_data < from_table->data_count) {
+        while (from_data < from_table->type.data_count) {
             const uint16_t from_col = from_table->data_columns[from_data];
             const ecs_component_t from_id = from_table->type.ids[from_col];
             if (from_id >= to_id) {
@@ -7795,7 +7800,7 @@ void *ecs_migrate_add_many(
             from_data++;
         }
 
-        if (from_data < from_table->data_count) {
+        if (from_data < from_table->type.data_count) {
             const uint16_t from_col = from_table->data_columns[from_data];
             if (from_table->type.ids[from_col] == to_id) {
                 move_column(from_table, from_col, old_row, to_table, to_col, new_row);
@@ -7828,18 +7833,18 @@ void ecs_migrate_remove(
     uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
     uint16_t i = 0;
-    for (; i < from_table->data_count; i++) {
+    for (; i < from_table->type.data_count; i++) {
         uint16_t from_col = from_table->data_columns[i];
         if (from_col >= col_idx) {
             break;
         }
         move_column(from_table, from_col, old_row, to_table, from_col, new_row);
     }
-    if (i < from_table->data_count && from_table->data_columns[i] == col_idx) {
+    if (i < from_table->type.data_count && from_table->data_columns[i] == col_idx) {
         dtor_column(from_table, col_idx, old_row);
         i++;
     }
-    for (; i < from_table->data_count; i++) {
+    for (; i < from_table->type.data_count; i++) {
         uint16_t from_col = from_table->data_columns[i];
         move_column(from_table, from_col, old_row, to_table, from_col - 1, new_row);
     }
@@ -9713,7 +9718,8 @@ static void ecs_table_index_resize(ecs_table_index_t *map) {
     map->slot_shift += 1;
     ecs_table_index_init_slots(map);
     for (uint16_t i = 0; i < map->table_count; ++i) {
-        ecs_table_index_insert_slot(map, ecs_type_hash(map->tables[i].type), i);
+        // Table-owned types retain their full hash, so resize never scans their ids again.
+        ecs_table_index_insert_slot(map, map->tables[i].type.hash, i);
     }
     free(old_slots);
 }
@@ -9789,9 +9795,13 @@ uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
     // Slow path: creation
     if (ECS_UNLIKELY(map->table_count >= ecs_table_index_slot_count(map) * LOAD_FACTOR)) {
         ecs_table_index_resize(map);
-        // re-calculate slot_idx after resize
+        // Recalculate and probe again: rehashing existing tables may occupy the
+        // new ideal slot even though the old table had an empty slot there.
         slot_mask = ecs_table_index_slot_count(map) - 1;
         slot_idx = hash & slot_mask;
+        while (map->slots[slot_idx].table_index != ECS_TABLE_SLOT_EMPTY) {
+            slot_idx = (slot_idx + 1) & slot_mask;
+        }
     }
     if (ECS_UNLIKELY(map->table_count >= map->table_capacity)) {
         ecs_table_index_grow_tables(map);
@@ -9799,6 +9809,8 @@ uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
 
     uint16_t table_idx = map->table_count++;
     ecs_table_t new_table;
+    // Persist the hash while transferring ownership of the type to the table.
+    type.hash = hash;
     ecs_table_init(&new_table, type, component_index, table_idx);
     map->tables[table_idx] = new_table;
     ecs_table_index_register_inherited_components(&map->tables[table_idx], table_idx);

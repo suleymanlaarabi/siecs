@@ -7,6 +7,10 @@
 typedef struct {
     uint16_t *ids;
     uint16_t count;
+    // Table metadata stored in the alignment gap before base. It is not part of
+    // type identity; transient types may leave it zero until table creation.
+    uint16_t data_count;
+    uint32_t hash;
     ecs_entity_t base;
 } ecs_type_t;
 

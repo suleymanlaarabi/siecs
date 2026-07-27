@@ -5,8 +5,16 @@
 #include "world_internal.h"
 #include <siecs_test.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#if UINTPTR_MAX == UINT64_MAX
+_Static_assert(sizeof(ecs_type_t) == 24);
+_Static_assert(offsetof(ecs_type_t, data_count) == 10);
+_Static_assert(offsetof(ecs_type_t, hash) == 12);
+_Static_assert(sizeof(ecs_table_t) == 96);
+#endif
 
 ECS_COMPONENT_DECLARE(Position, {
     float x;
@@ -574,6 +582,101 @@ void component_type_add_remove_preserves_base(void) {
 
     ecs_type_fini(&added);
     ecs_type_fini(&removed);
+    ecs_fini();
+}
+
+void component_table_type_tracks_data_columns(void) {
+    ecs_init();
+
+    ecs_component_t tag_a = ecs_component({});
+    ecs_component_t tag_b = ecs_component({});
+    ecs_component_t data_a = ecs_component({ .size = sizeof(uint32_t) });
+    ecs_component_t data_b = ecs_component({ .size = sizeof(uint64_t) });
+    ecs_entity_t entity = ecs_new();
+
+    ecs_add_cid(entity, tag_a);
+    ecs_add_cid(entity, tag_b);
+    ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
+    test_int(0, table->type.data_count);
+    test_null(table->data_columns);
+
+    uint32_t value_a = 42;
+    ecs_set_cid(entity, data_a, &value_a);
+    table = ecs_get_table(ecs_get_record(entity)->table_id);
+    test_int(1, table->type.data_count);
+    test_assert(table->type.ids[table->data_columns[0]] == data_a);
+
+    uint64_t value_b = 84;
+    ecs_set_cid(entity, data_b, &value_b);
+    table = ecs_get_table(ecs_get_record(entity)->table_id);
+    test_int(2, table->type.data_count);
+    test_assert(table->type.ids[table->data_columns[0]] == data_a);
+    test_assert(table->type.ids[table->data_columns[1]] == data_b);
+
+    ecs_remove_cid(entity, data_a);
+    table = ecs_get_table(ecs_get_record(entity)->table_id);
+    test_int(1, table->type.data_count);
+    test_assert(table->type.ids[table->data_columns[0]] == data_b);
+    test_int(84, *(uint64_t *)ecs_get_cid(entity, data_b));
+
+    ecs_fini();
+}
+
+static ecs_type_t component_type_from_mask(
+    const ecs_component_t *components,
+    uint16_t component_count,
+    uint32_t mask
+) {
+    uint16_t count = 0;
+    for (uint16_t i = 0; i < component_count; i++) {
+        count += (uint16_t)((mask >> i) & 1u);
+    }
+
+    ecs_type_t type = {
+        .ids = count == 0 ? NULL : malloc(sizeof(ecs_component_t) * count),
+        .count = count,
+    };
+    uint16_t out = 0;
+    for (uint16_t i = 0; i < component_count; i++) {
+        if (mask & (1u << i)) {
+            type.ids[out++] = components[i];
+        }
+    }
+    return type;
+}
+
+void component_table_index_resize_preserves_type_hashes(void) {
+    enum {
+        ComponentCount = 12,
+        TypeCount = 3200,
+    };
+
+    ecs_init();
+
+    ecs_component_t components[ComponentCount];
+    for (uint16_t i = 0; i < ComponentCount; i++) {
+        components[i] = ecs_component({});
+    }
+
+    uint16_t *table_ids = malloc(sizeof(uint16_t) * TypeCount);
+    for (uint32_t mask = 0; mask < TypeCount; mask++) {
+        table_ids[mask] = ecs_table_index_get_or_create(
+            component_type_from_mask(components, ComponentCount, mask)
+        );
+    }
+
+    test_assert(ecs_world.table_index.slot_shift > 12);
+    uint16_t table_count = ecs_world.table_index.table_count;
+
+    for (uint32_t mask = 0; mask < TypeCount; mask++) {
+        uint16_t table_id = ecs_table_index_get_or_create(
+            component_type_from_mask(components, ComponentCount, mask)
+        );
+        test_int(table_ids[mask], table_id);
+    }
+    test_int(table_count, ecs_world.table_index.table_count);
+
+    free(table_ids);
     ecs_fini();
 }
 

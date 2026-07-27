@@ -77,7 +77,8 @@ static void ecs_table_index_resize(ecs_table_index_t *map) {
     map->slot_shift += 1;
     ecs_table_index_init_slots(map);
     for (uint16_t i = 0; i < map->table_count; ++i) {
-        ecs_table_index_insert_slot(map, ecs_type_hash(map->tables[i].type), i);
+        // Table-owned types retain their full hash, so resize never scans their ids again.
+        ecs_table_index_insert_slot(map, map->tables[i].type.hash, i);
     }
     free(old_slots);
 }
@@ -153,9 +154,13 @@ uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
     // Slow path: creation
     if (ECS_UNLIKELY(map->table_count >= ecs_table_index_slot_count(map) * LOAD_FACTOR)) {
         ecs_table_index_resize(map);
-        // re-calculate slot_idx after resize
+        // Recalculate and probe again: rehashing existing tables may occupy the
+        // new ideal slot even though the old table had an empty slot there.
         slot_mask = ecs_table_index_slot_count(map) - 1;
         slot_idx = hash & slot_mask;
+        while (map->slots[slot_idx].table_index != ECS_TABLE_SLOT_EMPTY) {
+            slot_idx = (slot_idx + 1) & slot_mask;
+        }
     }
     if (ECS_UNLIKELY(map->table_count >= map->table_capacity)) {
         ecs_table_index_grow_tables(map);
@@ -163,6 +168,8 @@ uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
 
     uint16_t table_idx = map->table_count++;
     ecs_table_t new_table;
+    // Persist the hash while transferring ownership of the type to the table.
+    type.hash = hash;
     ecs_table_init(&new_table, type, component_index, table_idx);
     map->tables[table_idx] = new_table;
     ecs_table_index_register_inherited_components(&map->tables[table_idx], table_idx);
