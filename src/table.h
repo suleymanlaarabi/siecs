@@ -8,11 +8,18 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+typedef enum {
+    EcsColumnTrivialMove = 1 << 0,
+    EcsColumnNoDtor = 1 << 1,
+    EcsColumnZeroCtor = 1 << 2,
+} ecs_column_flags_t;
+
 typedef struct {
     void *data;
     uint32_t size;
     uint16_t remove_edge; // the table that has the component removed or UINT16_MAX if the edge is
                           // not set
+    uint16_t flags;
 } ecs_column_t;
 
 typedef struct ecs_table_s {

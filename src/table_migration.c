@@ -11,11 +11,17 @@ static inline void move_column(
     const uint16_t to_col,
     const uint32_t to_row
 ) {
+    const ecs_column_t *from_column = &from_table->cls[from_col];
+    void *src = ecs_table_component_at_column(from_table, from_col, from_row);
+    void *dst = ecs_table_component_at_column(to_table, to_col, to_row);
+    if (from_column->flags & EcsColumnTrivialMove) {
+        memcpy(dst, src, from_column->size);
+        return;
+    }
+
     ecs_component_t component = from_table->type.ids[from_col];
     const ecs_component_record_t *record =
         ecs_component_index_get(&ecs_world.component_index, component);
-    void *src = ecs_table_component_at_column(from_table, from_col, from_row);
-    void *dst = ecs_table_component_at_column(to_table, to_col, to_row);
     ecs_component_value_move_ctor(record, dst, src, 1);
 }
 
@@ -24,10 +30,20 @@ static inline void ctor_column(
     const uint16_t col,
     const uint32_t row
 ) {
+    const ecs_column_t *column = &table->cls[col];
+    if (column->size == 0) {
+        return;
+    }
+
+    void *dst = ecs_table_component_at_column(table, col, row);
+    if (column->flags & EcsColumnZeroCtor) {
+        memset(dst, 0, column->size);
+        return;
+    }
+
     ecs_component_t component = table->type.ids[col];
     const ecs_component_record_t *record =
         ecs_component_index_get(&ecs_world.component_index, component);
-    void *dst = ecs_table_component_at_column(table, col, row);
     ecs_component_value_ctor(record, dst, 1);
 }
 
@@ -36,6 +52,11 @@ static inline void dtor_column(
     const uint16_t col,
     const uint32_t row
 ) {
+    const ecs_column_t *column = &table->cls[col];
+    if (column->flags & EcsColumnNoDtor) {
+        return;
+    }
+
     ecs_component_t component = table->type.ids[col];
     const ecs_component_record_t *record =
         ecs_component_index_get(&ecs_world.component_index, component);

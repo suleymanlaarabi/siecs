@@ -36,6 +36,16 @@ void ecs_table_init(
         }
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
+        table->cls[i].flags = 0;
+        if (rec->size == 0 || (!rec->ops.move_ctor && !rec->ops.copy_ctor)) {
+            table->cls[i].flags |= EcsColumnTrivialMove;
+        }
+        if (rec->size == 0 || !rec->ops.dtor) {
+            table->cls[i].flags |= EcsColumnNoDtor;
+        }
+        if (rec->size == 0 || !rec->ops.ctor) {
+            table->cls[i].flags |= EcsColumnZeroCtor;
+        }
     }
 
     if (table->data_count == 0) {
@@ -52,10 +62,17 @@ static inline void ecs_table_grow(ecs_table_t *table) {
     for (uint16_t i = 0; i < table->data_count; i++) {
         uint16_t column_index = table->data_columns[i];
         ecs_column_t *column = &table->cls[column_index];
+
+        if (column->flags & EcsColumnTrivialMove) {
+            void *new_data = realloc(column->data, (size_t)new_capacity * column->size);
+            ecs_assert_not_null(new_data);
+            column->data = new_data;
+            continue;
+        }
+
         const ecs_component_record_t *record =
             ecs_component_index_get(&ecs_world.component_index, table->type.ids[column_index]);
-
-        void *new_data = calloc(new_capacity, column->size);
+        void *new_data = malloc((size_t)new_capacity * column->size);
         ecs_assert_not_null(new_data);
         ecs_component_value_move_ctor(record, new_data, column->data, table->entity_count);
         free(column->data);
@@ -83,6 +100,9 @@ ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) 
         for (uint16_t i = 0; i < table->data_count; i++) {
             uint16_t column_index = table->data_columns[i];
             ecs_column_t *column = &table->cls[column_index];
+            if (column->flags & EcsColumnNoDtor) {
+                continue;
+            }
             const ecs_component_record_t *record =
                 ecs_component_index_get(&ecs_world.component_index, table->type.ids[column_index]);
             void *ptr = (char *)column->data + (column->size * row);
@@ -95,10 +115,14 @@ ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) 
         for (uint16_t i = 0; i < table->data_count; i++) {
             uint16_t column_index = table->data_columns[i];
             ecs_column_t *column = &table->cls[column_index];
-            const ecs_component_record_t *record =
-                ecs_component_index_get(&ecs_world.component_index, table->type.ids[column_index]);
             void *src = (char *)column->data + (column->size * last_row);
             void *dst = (char *)column->data + (column->size * row);
+            if (column->flags & EcsColumnTrivialMove) {
+                memcpy(dst, src, column->size);
+                continue;
+            }
+            const ecs_component_record_t *record =
+                ecs_component_index_get(&ecs_world.component_index, table->type.ids[column_index]);
             ecs_component_value_move_ctor(record, dst, src, 1);
         }
         table->entity_count -= 1;

@@ -51,11 +51,17 @@ static inline void ecs_entity_rebase(
 
     for (uint16_t i = 0; i < from_table->data_count; i++) {
         uint16_t col = from_table->data_columns[i];
+        const ecs_column_t *column = &from_table->cls[col];
+        void *src = ecs_table_component_at_column(from_table, col, old_row);
+        void *dst = ecs_table_component_at_column(to_table, col, new_row);
+        if (column->flags & EcsColumnTrivialMove) {
+            memcpy(dst, src, column->size);
+            continue;
+        }
+
         ecs_component_t component = from_table->type.ids[col];
         const ecs_component_record_t *crec =
             ecs_component_index_get(&ecs_world.component_index, component);
-        void *src = ecs_table_component_at_column(from_table, col, old_row);
-        void *dst = ecs_table_component_at_column(to_table, col, new_row);
         ecs_component_value_move_ctor(crec, dst, src, 1);
     }
 

@@ -8,6 +8,70 @@ static void register_components(ecs_component_t *cids, uint32_t cid_count) {
     }
 }
 
+typedef struct {
+    uint64_t values[4];
+} trivial_bench_value_t;
+
+static void register_trivial_data_components(ecs_component_t *cids, uint32_t cid_count) {
+    for (uint32_t i = 0; i < cid_count; i++) {
+        cids[i] = ecs_component({ .size = sizeof(trivial_bench_value_t) });
+    }
+}
+
+static ecs_entity_t *make_entities_with_trivial_data(
+    const ecs_component_t *cids,
+    uint32_t cid_count,
+    uint32_t entity_count
+) {
+    ecs_entity_t *entities = malloc(sizeof(ecs_entity_t) * entity_count);
+    trivial_bench_value_t value = { .values = { 1, 2, 3, 4 } };
+
+    for (uint32_t i = 0; i < entity_count; i++) {
+        ecs_entity_t entity = ecs_new();
+        entities[i] = entity;
+        for (uint32_t j = 0; j < cid_count; j++) {
+            ecs_set_cid(entity, cids[j], &value);
+        }
+    }
+
+    return entities;
+}
+
+BENCH_SETUP(migrate_trivial_columns, {
+    arg(cid_count, 8);
+    arg(entity_count, 100000);
+
+    ecs_component_t cids[cid_count];
+    register_trivial_data_components(cids, cid_count);
+    ecs_entity_t *entities = make_entities_with_trivial_data(cids, cid_count, entity_count);
+    ecs_component_t tag = ecs_component({});
+
+    BENCH({
+        for (uint32_t i = 0; i < entity_count; i++) {
+            ecs_add_cid(entities[i], tag);
+        }
+    });
+
+    free(entities);
+});
+
+BENCH_SETUP(remove_trivial_rows, {
+    arg(cid_count, 8);
+    arg(entity_count, 100000);
+
+    ecs_component_t cids[cid_count];
+    register_trivial_data_components(cids, cid_count);
+    ecs_entity_t *entities = make_entities_with_trivial_data(cids, cid_count, entity_count);
+
+    BENCH({
+        for (uint32_t i = 0; i < entity_count; i++) {
+            ecs_kill(entities[i]);
+        }
+    });
+
+    free(entities);
+});
+
 BENCH_SETUP(add_one_component_cold_edge, {
     arg(entity_count, 100000);
 
@@ -163,6 +227,8 @@ int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
+    run_bench(migrate_trivial_columns);
+    run_bench(remove_trivial_rows);
     run_bench(add_one_component_cold_edge);
     run_bench(add_one_component_hot_edge);
     run_bench(add_many_components_no_required);
