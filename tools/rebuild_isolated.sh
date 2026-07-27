@@ -17,6 +17,8 @@ shift
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 work_dir=$(mktemp -d /tmp/siecs-bake-build.XXXXXX)
+bake_bin=${BAKE:-bake}
+host_bake_home=$("$bake_bin" env | sed -n 's/^BAKE_HOME=//p')
 export BAKE_HOME="$work_dir/.bake"
 
 cleanup() {
@@ -53,9 +55,16 @@ copy_common
 copy_package
 
 cd "$work_dir"
-sh tools/install_bake_deps.sh
-bake rebuild . -r "$@" >/dev/null
+
+mkdir -p "$BAKE_HOME/include" "$BAKE_HOME/lib" "$BAKE_HOME/meta"
+cp -R "$host_bake_home/include/." "$BAKE_HOME/include/"
+cp "$host_bake_home"/lib/libbake_*.so "$BAKE_HOME/lib/"
+for pkg in bake.amalgamate bake.lang.c bake.lang.cpp bake.test bake.util; do
+    cp -R "$host_bake_home/meta/$pkg" "$BAKE_HOME/meta/$pkg"
+done
+
+"$bake_bin" rebuild . -r "$@" >/dev/null
 
 if [ "$run" -eq 1 ]; then
-    bake run "$package" "$@"
+    "$bake_bin" run "$package" "$@"
 fi
