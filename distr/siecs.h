@@ -1904,6 +1904,9 @@ template <typename T> static ecs_component_t ecs_cpp_component_id() {
 
 #pragma once
 
+#include <cstring>
+#include <string>
+
 namespace ecs {
 
 namespace detail {
@@ -2663,6 +2666,11 @@ class system : protected query {
 
     template <typename... T> system &require() {
         query::require<T...>();
+        return *this;
+    }
+
+    template <typename... T> system &optional() {
+        query::optional<T...>();
         return *this;
     }
 

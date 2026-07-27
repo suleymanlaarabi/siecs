@@ -33,6 +33,11 @@ class system : protected query {
         return *this;
     }
 
+    template <typename... T> system &optional() {
+        query::optional<T...>();
+        return *this;
+    }
+
     template <typename... T> system &exclude() {
         query::exclude<T...>();
         return *this;

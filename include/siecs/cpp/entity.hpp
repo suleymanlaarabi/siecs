@@ -1,6 +1,8 @@
 #pragma once
 
 #include "siecs/cpp/component.hpp"
+#include <cstring>
+#include <string>
 
 namespace ecs {
 
