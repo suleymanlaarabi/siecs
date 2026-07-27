@@ -112,7 +112,9 @@ void rest_schema_returns_editor_contract(void) {
     test_str("string", sijson_string(sijson_object_get(string_type, "editor")));
 
     test_assert(rest_find_by_name(components, "IsA") == NULL);
-    test_assert(rest_find_by_name(components, "ChildOf") == NULL);
+    sijson_value_t child_of = rest_find_by_name(components, "ChildOf");
+    test_assert(child_of != NULL);
+    test_true(sijson_bool(sijson_object_get(child_of, "isRelation")));
     rest_assert_no_extra_schema_fields(schema);
 
     free(res.body);
