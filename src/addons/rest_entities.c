@@ -98,10 +98,24 @@ sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *req) {
     sijson_clean();
 
     sijson_value_t array = sijson_make_array();
-    ecs_query_each(it, i, { ecs_source(ChildOf) }, { ecs_id(ChildOf), EcsNot }) {
+    ecs_query_each(
+        it,
+        i,
+        { ecs_source(ChildOf) },
+        ecs_not(ChildOf),
+        ecs_in_optional(Abstract),
+        ecs_in_optional(Disabled)
+    ) {
         sijson_array_push(array, ecs_rest_entity_json(it.entities[i]));
     }
-    ecs_query_each(it, i, { ecs_source(ChildOf), EcsNot }, { ecs_id(ChildOf), EcsNot }) {
+    ecs_query_each(
+        it,
+        i,
+        { ecs_source(ChildOf), EcsNot },
+        ecs_not(ChildOf),
+        ecs_in_optional(Abstract),
+        ecs_in_optional(Disabled)
+    ) {
         sijson_array_push(array, ecs_rest_entity_json(it.entities[i]));
     }
     return ecs_rest_json_response(200, array);
