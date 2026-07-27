@@ -25,6 +25,42 @@ strip_dep_includes() {
         "$1"
 }
 
+strip_internal_includes() {
+    sed \
+        -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"]siecs\.h[>"]/d' \
+        -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*"[^"]*"/d' \
+        "$1"
+}
+
+embed_internal_headers() {
+    # Keep dependencies before users: local includes are removed below because
+    # standalone output contains only siecs.c and siecs.h.
+    for header in \
+        src/helper.h \
+        src/datastructure/idmap.h \
+        src/datastructure/vec.h \
+        src/datastructure/arena.h \
+        src/type.h \
+        src/storage/resource_index.h \
+        src/storage/module_index.h \
+        src/storage/system_index.h \
+        src/storage/entity_index.h \
+        src/storage/component_index.h \
+        src/table.h \
+        src/storage/query_index.h \
+        src/storage/observer_index.h \
+        src/storage/table_index.h \
+        src/command_buffer.h \
+        src/table_migration.h \
+        src/module.h \
+        src/world_internal.h \
+        src/addons/addons.h \
+        src/addons/rest_internal.h \
+        src/utils.h; do
+        strip_internal_includes "$header"
+    done
+}
+
 {
     printf '/* Embedded public dependency headers for standalone distribution. */\n'
     printf '#ifndef _POSIX_C_SOURCE\n'
@@ -47,12 +83,16 @@ strip_dep_includes() {
 
 {
     printf '#include "siecs.h"\n'
+    printf '/* Embedded internal headers for standalone distribution. */\n'
+    embed_internal_headers
     printf '/* Embedded dependency implementations for standalone distribution. */\n'
     strip_dep_includes "$deps_dir/sireflect.c"
     strip_dep_includes "$deps_dir/sijson.c"
     strip_dep_includes "$deps_dir/sihttp.c"
     sed \
         -e '1{/^[[:space:]]*#[[:space:]]*include[[:space:]]*"siecs\.h"/d;}' \
+        -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*[<"]siecs\.h[>"]/d' \
+        -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*"[^"]*"/d' \
         -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]sireflect\.h[">]/d' \
         -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]sijson\.h[">]/d' \
         -e '/^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]sihttp\.h[">]/d' \

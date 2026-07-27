@@ -1,4 +1,903 @@
 #include "siecs.h"
+/* Embedded internal headers for standalone distribution. */
+#ifndef SIECS_HELPER_H
+#define SIECS_HELPER_H
+
+#define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
+#define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
+
+#define ecs_entity(index, generation) (((uint64_t)(index) << 32) | (generation & 0xffffffff))
+
+#define ecs_first(id) ((uint32_t)((id) >> 32))
+#define ecs_second(id) ((uint32_t)((id) & 0xffffffff))
+
+#endif
+#ifndef SIECS_DATASTRUCTURE_IDMAP_H
+#define SIECS_DATASTRUCTURE_IDMAP_H
+#include <stdint.h>
+
+typedef struct {
+    uint16_t *ids;
+    uint16_t capacity;
+} ecs_id_map_t;
+
+void ecs_id_map_init(ecs_id_map_t *map);
+void ecs_id_map_fini(ecs_id_map_t *map);
+
+void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id);
+
+static inline void ecs_id_map_set(ecs_id_map_t *map, uint16_t id, uint16_t value) {
+    ecs_id_map_ensure(map, id);
+    map->ids[id] = value;
+}
+
+static inline uint16_t ecs_id_map_at(const ecs_id_map_t *map, uint16_t id) { return map->ids[id]; }
+
+static inline uint16_t ecs_id_map_at_or_invalid(const ecs_id_map_t *map, uint16_t id) {
+    return map->capacity > id ? map->ids[id] : UINT16_MAX;
+}
+
+#endif
+#ifndef SIECS_DATASTRUCTURE_VEC_H
+#define SIECS_DATASTRUCTURE_VEC_H
+#include <stdbool.h>
+#include <stdint.h>
+
+typedef struct {
+    void *data;
+    uint32_t size;
+    uint32_t capacity;
+} ecs_vec_t;
+
+void ecs_vec_init(ecs_vec_t *vec, const uint32_t element_size);
+void ecs_vec_init_w_size(ecs_vec_t *vec, const uint32_t element_size, uint32_t size);
+void ecs_vec_fini(ecs_vec_t *vec);
+void ecs_vec_grow(ecs_vec_t *vec, const uint32_t element_size);
+
+// Ensure vec has at least `count` elements. New slots are zero-initialized.
+void ecs_vec_ensure(ecs_vec_t *vec, uint32_t count, const uint32_t element_size);
+
+// Copy element into the vec (memcpy). The pointer is not retained.
+// Safe to call repeatedly — any grow only invalidates the internal buffer, not
+// the source pointer.
+void ecs_vec_push(ecs_vec_t *vec, const void *element, const uint32_t element_size);
+
+// Reserve one slot and return a pointer to it (uninitialized).
+// WARNING: the returned pointer is invalidated by any subsequent push or grow
+// on the same vec. Finish all writes through this pointer before pushing again.
+static inline void *ecs_vec_push_empty(ecs_vec_t *vec, const uint32_t element_size) {
+    if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
+        ecs_vec_grow(vec, element_size);
+    }
+    void *ptr = (uint8_t *)vec->data + (vec->size * element_size);
+    vec->size++;
+    return ptr;
+}
+
+bool ecs_vec_contains_u16(const ecs_vec_t *vec, uint16_t value);
+void ecs_vec_remove_u16(ecs_vec_t *vec, uint16_t value);
+void ecs_vec_remove_u64(ecs_vec_t *vec, uint64_t value);
+
+// Specialized push for 2-byte types
+static inline void ecs_vec_push_u16(ecs_vec_t *vec, const uint16_t value) {
+    if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
+        ecs_vec_grow(vec, sizeof(uint16_t));
+    }
+    ((uint16_t *)vec->data)[vec->size++] = value;
+}
+
+// Specialized push for 8-byte types
+static inline void ecs_vec_push_u64(ecs_vec_t *vec, const uint64_t value) {
+    if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
+        ecs_vec_grow(vec, sizeof(uint64_t));
+    }
+    ((uint64_t *)vec->data)[vec->size++] = value;
+}
+
+void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_size);
+
+// Direct pointer access for fast iteration
+#define ecs_vec_get(vec, index, type) (&((const type *)(vec)->data)[index])
+#define ecs_vec_get_mut(vec, index, type) (&((type *)(vec)->data)[index])
+#define ecs_vec_remove_last(vec) ((vec)->size--)
+#define ecs_vec_clear(vec) ((vec)->size = 0)
+#define ecs_vec_data(vec, type) ((type *)(vec)->data)
+
+#define ecs_vec_iter(vec, type, value, ...)                                                        \
+    const type *__values = (vec)->data;                                                            \
+    const uint32_t __count = (vec)->size;                                                          \
+    for (uint32_t i = 0; i < __count; i++) {                                                       \
+        const type *value = &__values[i];                                                          \
+        __VA_ARGS__                                                                                \
+    }
+
+#endif
+#ifndef ECS_ARENA_H
+#define ECS_ARENA_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+typedef struct ecs_arena_block_s {
+    struct ecs_arena_block_s *next;
+    uint32_t capacity;
+    uint32_t cursor;
+    max_align_t data[];
+} ecs_arena_block_t;
+
+typedef struct {
+    ecs_arena_block_t *first;
+    ecs_arena_block_t *current;
+    ecs_arena_block_t *last;
+} ecs_arena_t;
+
+void ecs_arena_init(ecs_arena_t *allocator);
+void ecs_arena_fini(ecs_arena_t *allocator);
+void *ecs_arena_alloc_slow(ecs_arena_t *allocator, uint32_t size);
+
+static inline void *ecs_arena_alloc(ecs_arena_t *allocator, uint32_t size) {
+    ecs_arena_block_t *block = allocator->current;
+    const uint32_t alignment = (uint32_t)_Alignof(max_align_t);
+    const uint32_t cursor = (block->cursor + alignment - 1u) & ~(alignment - 1u);
+    if (ECS_LIKELY(cursor <= block->capacity && size <= block->capacity - cursor)) {
+        block->cursor = cursor + size;
+        return (uint8_t *)block->data + cursor;
+    }
+    return ecs_arena_alloc_slow(allocator, size);
+}
+
+static inline void ecs_arena_reset(ecs_arena_t *allocator) {
+    for (ecs_arena_block_t *block = allocator->first; block; block = block->next) {
+        block->cursor = 0;
+    }
+    allocator->current = allocator->first;
+}
+
+#endif
+#ifndef SIECS_TYPE_H
+#define SIECS_TYPE_H
+#include <stdint.h>
+#include <string.h>
+
+typedef struct {
+    uint16_t *ids;
+    uint16_t count;
+    // Table metadata stored in the alignment gap before base. It is not part of
+    // type identity; transient types may leave it zero until table creation.
+    uint16_t data_count;
+    uint32_t hash;
+    ecs_entity_t base;
+} ecs_type_t;
+
+ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
+ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
+ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
+
+uint64_t ecs_type_bloom(const ecs_type_t *type);
+
+
+void ecs_type_fini(ecs_type_t *type);
+
+static inline int ecs_type_equals(const ecs_type_t *a, const ecs_type_t *b) {
+    if (a->base != b->base)
+        return 0;
+    if (a->count != b->count)
+        return 0;
+    if (a->count == 0)
+        return 1;
+    return memcmp(a->ids, b->ids, (size_t)a->count * sizeof(uint16_t)) == 0;
+}
+
+#endif
+#ifndef SIECS_STORAGE_RESOURCE_INDEX_H
+#define SIECS_STORAGE_RESOURCE_INDEX_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+typedef struct {
+    ecs_resource_desc_t *records;
+    void **data;
+    bool *present;
+    uint64_t capacity;
+    uint64_t count;
+} ecs_resource_index_t;
+
+void ecs_resource_index_init(ecs_resource_index_t *index);
+void ecs_resource_index_fini(ecs_resource_index_t *index);
+
+ecs_resource_t ecs_resource_index_register(
+    ecs_resource_index_t *index,
+    ecs_resource_t id,
+    const ecs_resource_desc_t *desc
+);
+ecs_resource_t ecs_resource_index_find(const ecs_resource_index_t *index, const char *name);
+bool ecs_resource_index_is_registered(const ecs_resource_index_t *index, ecs_resource_t id);
+void ecs_resource_index_set(
+    ecs_resource_index_t *index,
+        ecs_resource_t id,
+    const void *data
+);
+void ecs_resource_index_move(
+    ecs_resource_index_t *index,
+        ecs_resource_t id,
+    void *data
+);
+void *ecs_resource_index_get(ecs_resource_index_t *index, ecs_resource_t id);
+bool ecs_resource_index_has(const ecs_resource_index_t *index, ecs_resource_t id);
+void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_resource_t id);
+
+#endif
+#ifndef SIECS_STORAGE_MODULE_INDEX_H
+#define SIECS_STORAGE_MODULE_INDEX_H
+
+
+typedef struct {
+    ecs_module_id_t *id;
+    const char *name;
+    ecs_vec_t observers;  // ecs_observer_id_t
+    ecs_vec_t systems;    // ecs_system_id_t
+    bool enabled;
+} ecs_module_t;
+
+typedef struct {
+    ecs_vec_t modules; // ecs_module_t
+} ecs_module_index_t;
+
+void ecs_module_index_init(ecs_module_index_t *index);
+void ecs_module_index_fini(ecs_module_index_t *index);
+
+ecs_module_id_t ecs_module_index_create(
+    ecs_module_index_t *index,
+    ecs_module_id_t *id,
+    const char *name
+);
+ecs_module_t *ecs_module_index_get(ecs_module_index_t *index, ecs_module_id_t module);
+const ecs_module_t *ecs_module_index_get_const(
+    const ecs_module_index_t *index,
+    ecs_module_id_t module
+);
+ecs_module_id_t ecs_module_index_find(const ecs_module_index_t *index, const ecs_module_id_t *id);
+
+#endif
+#ifndef SIECS_STORAGE_SYSTEM_INDEX_H
+#define SIECS_STORAGE_SYSTEM_INDEX_H
+#include <stdint.h>
+
+typedef struct {
+    const char *name;
+    ecs_query_id_t qid;
+    void (*callback)(ecs_iter_t *);
+    uintptr_t user_data;
+    void (*user_data_dtor)(uintptr_t user_data);
+    ecs_phase_t phase;
+    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
+    bool enabled;
+} ecs_system_t;
+
+typedef struct {
+    ecs_vec_t systems;
+    ecs_vec_t phase_order[EcsPhaseCount];
+    bool plan_dirty;
+} ecs_system_index_t;
+
+void ecs_system_index_init(ecs_system_index_t *index);
+void ecs_system_index_fini(ecs_system_index_t *index);
+
+ecs_system_id_t ecs_system_index_create(ecs_system_index_t *index, const ecs_system_t *system);
+ecs_system_t *ecs_system_index_get(ecs_system_index_t *index, ecs_system_id_t system);
+void ecs_system_index_build_plan(ecs_system_index_t *index);
+
+#endif
+#ifndef SIECS_STORAGE_ENTITY_INDEX_H
+#define SIECS_STORAGE_ENTITY_INDEX_H
+#include <stdint.h>
+
+typedef struct {
+    uint16_t generation;
+    uint16_t table_id;
+    // Alive records store the row in their table. Dead records reuse this field
+    // as the next entity id in the free list headed by first_available.
+    uint32_t table_row;
+} ecs_entity_record_t;
+
+typedef struct {
+    ecs_vec_t entities;       // ecs_entity_record_t
+    uint32_t first_available; // UINT32_MAX when no dead entity can be reused
+} ecs_entity_index_t;
+
+#define ecs_entity_index_get_record(index, entity_id)                                              \
+    ecs_vec_get_mut((&(index)->entities), entity_id, ecs_entity_record_t)
+
+static inline ecs_entity_t ecs_entity_index_create(ecs_entity_index_t *index, uint32_t row) {
+    uint32_t entity_id;
+    uint32_t generation;
+    if (index->first_available != UINT32_MAX) {
+        entity_id = index->first_available;
+        ecs_entity_record_t *record = ecs_entity_index_get_record(index, entity_id);
+        index->first_available = record->table_row;
+        generation = record->generation;
+        record->table_id = 0;
+        record->table_row = row;
+    } else {
+        entity_id = index->entities.size;
+        generation = 0;
+        ecs_entity_record_t *record = (ecs_entity_record_t *)
+            ecs_vec_push_empty(&index->entities, sizeof(ecs_entity_record_t));
+        *record = (ecs_entity_record_t){ .generation = 0, .table_row = row, .table_id = 0 };
+    }
+    return ecs_entity(entity_id, generation);
+}
+
+static inline bool ecs_entity_index_is_alive(const ecs_entity_index_t *index, ecs_entity_t entity) {
+    return ecs_entity_index_get_record(index, ecs_first(entity))->generation == ecs_second(entity);
+}
+
+static inline void ecs_entity_index_kill(ecs_entity_index_t *index, uint32_t entity_id) {
+    ecs_entity_record_t *record = ecs_entity_index_get_record(index, entity_id);
+    record->generation += 1;
+    record->table_row = index->first_available;
+    record->table_id = UINT16_MAX;
+    index->first_available = entity_id;
+}
+
+void ecs_entity_index_init(ecs_entity_index_t *index);
+void ecs_entity_index_fini(ecs_entity_index_t *index);
+
+#endif
+#ifndef SIECS_STORAGE_COMPONENT_INDEX_H
+#define SIECS_STORAGE_COMPONENT_INDEX_H
+#ifndef SIREFLECT_H
+#endif
+#include <stdbool.h>
+#include <stdint.h>
+
+typedef struct {
+    uint16_t *required;
+    uint32_t required_count;
+    uint32_t size;
+    ecs_type_ops_t ops;
+    ecs_component_on_set_t on_set;
+    ecs_component_on_remove_t on_remove;
+    ecs_component_on_add_t on_add;
+    uint32_t relation_flags;
+    ecs_vec_t tables; // uint16_t
+    sireflect_handle_t reflection;
+    const sireflect_struct_desc_t *reflection_desc;
+} ecs_component_record_t;
+
+typedef struct ecs_component_index_s {
+    ecs_vec_t components; // ecs_component_record_t
+} ecs_component_index_t;
+
+void ecs_component_index_register(
+    ecs_component_index_t *index,
+    ecs_component_t id,
+    uint64_t size,
+    ecs_type_ops_t ops,
+    ecs_component_on_set_t on_set,
+    ecs_component_on_remove_t on_remove,
+    ecs_component_on_add_t on_add,
+    uint32_t relation_flags,
+    sireflect_handle_t reflection,
+    const sireflect_struct_desc_t *reflection_desc
+);
+
+#define ecs_component_index_get(index, id)                                                         \
+    ecs_vec_get(&(index)->components, id, ecs_component_record_t)
+#define ecs_component_index_get_mut(index, id)                                                     \
+    ecs_vec_get_mut(&(index)->components, id, ecs_component_record_t)
+
+void ecs_component_index_init(ecs_component_index_t *index);
+void ecs_component_index_fini(ecs_component_index_t *index);
+
+void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count);
+void ecs_component_value_dtor(const ecs_component_record_t *record, void *ptr, uint32_t count);
+void ecs_component_value_copy_ctor(
+    const ecs_component_record_t *record,
+    void *dst,
+    const void *src,
+    uint32_t count
+);
+void ecs_component_value_copy(
+    const ecs_component_record_t *record,
+    void *dst,
+    const void *src,
+    uint32_t count
+);
+void ecs_component_value_move_ctor(
+    const ecs_component_record_t *record,
+    void *dst,
+    void *src,
+    uint32_t count
+);
+void ecs_component_value_move(
+    const ecs_component_record_t *record,
+    void *dst,
+    void *src,
+    uint32_t count
+);
+
+#endif
+#ifndef SIECS_TABLE_H
+#define SIECS_TABLE_H
+#include <stdbool.h>
+#include <stdint.h>
+
+typedef enum {
+    EcsColumnTrivialMove = 1 << 0,
+    EcsColumnNoDtor = 1 << 1,
+    EcsColumnZeroCtor = 1 << 2,
+} ecs_column_flags_t;
+
+typedef struct {
+    void *data;
+    uint32_t size;
+    uint16_t remove_edge; // the table that has the component removed or UINT16_MAX if the edge is
+                          // not set
+    uint16_t flags;
+} ecs_column_t;
+
+typedef struct ecs_table_s {
+    ecs_id_map_t add_edge; // maps component id to the table that has the component added or column
+                           // index if the component is in the table
+    uint32_t entity_capacity;
+    uint32_t entity_count;
+    ecs_entity_t *entities;
+    ecs_column_t *cls;
+    uint16_t *data_columns;
+    ecs_type_t type;
+    uint64_t bloom;
+    ecs_vec_t observers_by_event; // ecs_vec_t per event id; each holds uint16_t observer ids.
+} ecs_table_t;
+
+struct ecs_component_index_s;
+
+void ecs_table_init(
+    ecs_table_t *table,
+    ecs_type_t type,
+    const struct ecs_component_index_s *component_index,
+    uint16_t table_id
+);
+void ecs_table_fini(ecs_table_t *table);
+uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity);
+// if the entity is not the last one, the last entity will be moved to the removed entity's
+// position, and the moved entity will be returned
+ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live);
+
+void *ecs_table_get_component(ecs_table_t *table, ecs_component_t component_id, uint32_t row);
+
+// Append an observer id to this table's dense list for the given event,
+// growing the per-event slot array on demand.
+void ecs_table_add_observer(ecs_table_t *table, uint16_t event, uint16_t observer_id);
+
+static inline uint16_t
+ecs_table_get_add_edge(const ecs_table_t *table, ecs_component_t component_id) {
+    return ecs_id_map_at_or_invalid(&table->add_edge, component_id);
+}
+
+static inline void *
+ecs_table_component_at_column(const ecs_table_t *table, uint16_t column_index, uint32_t row) {
+    ecs_column_t *column = &table->cls[column_index];
+    return column->size != 0 ? (uint8_t *)column->data + (column->size * row) : NULL;
+}
+
+static inline uint16_t
+ecs_table_column_or_invalid(const ecs_table_t *table, ecs_component_t component_id) {
+    uint16_t column_index = ecs_table_get_add_edge(table, component_id);
+    if (column_index < table->type.count && table->type.ids[column_index] == component_id) {
+        return column_index;
+    }
+    return UINT16_MAX;
+}
+
+bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id);
+bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base);
+
+static inline uint16_t
+ecs_table_get_column_index(const ecs_table_t *table, ecs_component_t component_id) {
+    return ecs_id_map_at(&table->add_edge, component_id);
+}
+
+static inline bool ecs_table_has_owned(const ecs_table_t *table, ecs_component_t component_id) {
+    return ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
+}
+
+void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bool *is_shared);
+
+#endif
+#ifndef SIECS_STORAGE_QUERY_INDEX_H
+#define SIECS_STORAGE_QUERY_INDEX_H
+#include <stdint.h>
+
+typedef struct {
+    uint64_t bloom;
+    ecs_entity_t is_a;
+    ecs_query_term_t *terms;
+    uint16_t term_count;
+    uint16_t field_count;
+    uint16_t field_mask;
+    bool fields_owned_only;
+} ecs_query_t;
+
+typedef struct ecs_query_cache_s {
+    ecs_query_t query;
+    ecs_vec_t table_ids; // uint16_t
+    void **fields_ptr;
+    uint32_t *field_kind_bits;
+    uint16_t field_table_capacity;
+    uint32_t active_index;
+    uint16_t next_free;
+    bool alive;
+} ecs_query_cache_t;
+
+typedef struct {
+    ecs_vec_t queries;
+    ecs_vec_t active_ids; // ecs_query_id_t
+    uint16_t first_free;
+} ecs_query_index_t;
+
+void ecs_query_index_init(ecs_query_index_t *index);
+void ecs_query_index_fini(ecs_query_index_t *index);
+uint16_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc);
+void ecs_query_index_update_matches(ecs_query_cache_t *query_cache);
+void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id);
+
+// Reusable query helpers shared with the observer index.
+void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query);
+void ecs_query_index_destroy(ecs_query_t *query);
+
+static inline bool ecs_query_term_requires_owned(ecs_query_term_t term) {
+    return term.access == EcsOut || term.access == EcsInOut || term.access == EcsInOutOptional;
+}
+
+static inline bool ecs_query_match_table(const ecs_query_t *query, const ecs_table_t *table) {
+    if (ECS_LIKELY((query->bloom & table->bloom) != query->bloom)) {
+        return false;
+    }
+
+    if (query->is_a && !ecs_table_is_a(table, query->is_a)) {
+        return false;
+    }
+
+    for (uint16_t i = 0; i < query->term_count; i++) {
+        ecs_query_term_t term = query->terms[i];
+        if (term.access == EcsInOptional || term.access == EcsInOutOptional) {
+            continue;
+        } else if (term.access == EcsNot) {
+            if (ecs_table_has(table, term.id)) {
+                return false;
+            }
+        } else if (ecs_query_term_requires_owned(term)) {
+            if (ecs_table_column_or_invalid(table, term.id) == UINT16_MAX) {
+                return false;
+            }
+        } else if (!ecs_table_has(table, term.id)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+#endif
+#ifndef SIECS_STORAGE_OBSERVER_INDEX_H
+#define SIECS_STORAGE_OBSERVER_INDEX_H
+#include <stdint.h>
+
+typedef struct {
+    ecs_event_t event;
+    ecs_query_t query;
+    ecs_observer_callback_t callback;
+    uintptr_t user_data;
+    bool enabled;
+} ecs_observer_t;
+
+typedef struct {
+    ecs_vec_t observers;  // ecs_observer_t
+    uint16_t event_count; // next free event id; starts past the builtin events
+} ecs_observer_index_t;
+
+void ecs_observer_index_init(ecs_observer_index_t *index);
+void ecs_observer_index_fini(ecs_observer_index_t *index);
+
+uint16_t ecs_observer_index_create(ecs_observer_index_t *index, const ecs_observer_desc_t *desc);
+
+// Cache a freshly created observer onto every existing table it matches.
+void ecs_observer_index_match_tables(
+    ecs_table_t *tables,
+    uint16_t table_count,
+    uint16_t observer_id
+);
+
+// Cache every existing observer that matches a freshly created table.
+void ecs_observer_index_add_table(ecs_table_t *table);
+
+#endif
+#ifndef SIECS_STORAGE_TABLE_INDEX_H
+#define SIECS_STORAGE_TABLE_INDEX_H
+#include <stdint.h>
+
+struct ecs_world_s;
+
+typedef struct {
+    uint16_t table_index; // UINT16_MAX for empty
+    uint16_t hash;
+} ecs_type_slot_t;
+
+typedef struct {
+    ecs_table_t *tables;
+    ecs_type_slot_t *slots;
+    uint16_t table_count;
+    uint16_t table_capacity;
+    uint8_t slot_shift; // slot_count = 1 << slot_shift
+} ecs_table_index_t;
+
+void ecs_table_index_init(ecs_table_index_t *map);
+void ecs_table_index_fini(ecs_table_index_t *map);
+
+#define ecs_table_index_at(map, index) (&(map)->tables[index])
+
+uint16_t ecs_table_index_get_or_create(
+    ecs_type_t type
+);
+
+#endif
+#ifndef SIECS_COMMAND_BUFFER_H
+#define SIECS_COMMAND_BUFFER_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+typedef struct ecs_world_s ecs_world_t;
+
+typedef struct {
+    ecs_component_t id;
+    void *data;
+} ecs_deferred_set_t;
+
+typedef struct {
+    ecs_entity_t entity;
+    bool kill;
+    bool has_base;
+    ecs_entity_t base;
+    ecs_vec_t add_ids;
+    ecs_vec_t remove_ids;
+    ecs_vec_t sets;
+} ecs_entity_command_t;
+
+typedef struct ecs_command_buffer_s {
+    ecs_vec_t commands;
+    uint32_t *entity_to_command;
+    uint32_t entity_capacity;
+} ecs_command_buffer_t;
+
+void ecs_command_buffer_init(ecs_command_buffer_t *buffer);
+void ecs_command_buffer_fini(ecs_command_buffer_t *buffer);
+
+void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id);
+void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id);
+void ecs_command_buffer_set(
+        ecs_entity_t entity,
+    ecs_component_t id,
+    const void *data
+);
+void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data);
+void ecs_command_buffer_kill(ecs_entity_t entity);
+void ecs_command_buffer_set_base(ecs_entity_t entity, ecs_entity_t target);
+void ecs_command_buffer_flush();
+
+void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t id);
+void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t id);
+void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t id, const void *data);
+void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t id, void *data);
+void ecs_kill_now(ecs_entity_t entity);
+void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target);
+
+#endif
+#ifndef SIECS_TABLE_MIGRATION_H
+#define SIECS_TABLE_MIGRATION_H
+#include <stdint.h>
+
+#define ECS_ADD_PLAN_MAX_COMPONENTS 64
+
+ecs_type_t ecs_type_with_requirements(
+        ecs_table_t *from_table,
+    ecs_component_t cid,
+    const ecs_component_record_t *crec
+);
+
+#ifndef NDEBUG
+bool ecs_component_requires(
+    const     ecs_component_t component,
+    ecs_component_t require
+);
+#endif
+
+void ecs_migrate_to_table(
+        ecs_entity_record_t *record,
+    ecs_entity_t entity,
+    ecs_table_t *from_table,
+    uint16_t to_table_id
+);
+
+void *ecs_migrate_add(
+        ecs_entity_record_t *record,
+    ecs_entity_t entity,
+    ecs_table_t *from_table,
+    ecs_table_t *to_table,
+    uint16_t to_table_id,
+    ecs_component_t added_id
+);
+
+void *ecs_migrate_add_many(
+        ecs_entity_record_t *record,
+    ecs_entity_t entity,
+    ecs_table_t *from_table,
+    ecs_table_t *to_table,
+    uint16_t to_table_id,
+    ecs_component_t requested_id
+);
+
+void ecs_migrate_remove(
+        ecs_entity_record_t *record,
+    ecs_entity_t entity,
+    ecs_table_t *from_table,
+    uint16_t to_table_id,
+    uint16_t col_idx
+);
+
+#endif
+#ifndef SIECS_MODULE_H
+#define SIECS_MODULE_H
+
+
+void ecs_module_record_system(ecs_system_id_t system);
+void ecs_module_record_observer(ecs_observer_id_t observer);
+
+#endif
+#ifndef SIECS_WORLD_INTERNAL_H
+#define SIECS_WORLD_INTERNAL_H
+#ifndef SIHTTP_H
+#endif
+#ifndef SIREFLECT_H
+#endif
+
+typedef struct ecs_world_s ecs_world_t;
+
+struct ecs_world_s {
+    ecs_entity_index_t entity_index;
+    ecs_component_index_t component_index;
+    ecs_table_index_t table_index;
+    ecs_query_index_t query_index;
+    ecs_observer_index_t observer_index;
+    ecs_system_index_t system_index;
+    ecs_module_index_t module_index;
+    ecs_resource_index_t resource_index;
+    ecs_module_id_t active_module;
+    sireflect_registry_t *sireflect_registry;
+    sihttp_server_t *server;
+    sihttp_app_state_t *server_state;
+    ecs_world_feat_desc_t features;
+    ecs_arena_t arena_allocator;
+    ecs_command_buffer_t commands;
+    uint32_t defer_depth;
+    bool flushing_commands;
+    bool did_start;
+    bool exit;
+    double delta_time;
+    double last_time;
+};
+
+extern ecs_world_t ecs_world;
+
+struct sihttp_app_state_s {};
+
+typedef struct {
+    ecs_entity_t target;
+} RelationTarget;
+
+typedef struct {
+    ecs_vec_t entities;
+} RelationSource;
+
+#define ecs_get_record(entity)                                                                     \
+    ecs_vec_get_mut(&ecs_world.entity_index.entities, ecs_first(entity), ecs_entity_record_t)
+#define ecs_get_table(tid) ecs_table_index_at(&ecs_world.table_index, tid)
+
+static inline void
+ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void *trigger_data) {
+    if (table->observers_by_event.size <= event) {
+        return;
+    }
+    const ecs_vec_t *list = ecs_vec_get(&table->observers_by_event, event, ecs_vec_t);
+    uint32_t n = list->size;
+    for (uint32_t i = 0; i < n; i++) {
+        uint16_t oid = *ecs_vec_get(list, i, uint16_t);
+        ecs_observer_t *obs =
+            ecs_vec_get_mut(&ecs_world.observer_index.observers, oid, ecs_observer_t);
+        if (!obs->enabled) {
+            continue;
+        }
+        ecs_observer_event_t observer_event = {
+            .entity = entity,
+            .event = event,
+            .user_data = obs->user_data,
+            .trigger_data = trigger_data,
+        };
+        obs->callback(&observer_event);
+    }
+}
+
+void ecs_bootstrap(void);
+
+#endif
+#ifndef ECS_ADDONS_H
+#define ECS_ADDONS_H
+
+void init_rest();
+
+#endif
+#ifndef SIECS_ADDONS_REST_INTERNAL_H
+#define SIECS_ADDONS_REST_INTERNAL_H
+
+#ifndef SIHTTP_H
+#endif
+#ifndef SIJSON_H
+#endif
+#ifndef SIREFLECT_H
+#endif
+
+sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body);
+sihttp_response_t ecs_rest_error_response(int status, const char *message);
+
+sijson_value_t ecs_rest_entity_json(ecs_entity_t entity);
+sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity);
+sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity);
+bool ecs_rest_entity_component_is_reflected(ecs_component_t component);
+sijson_value_t
+ecs_rest_entity_component_json(ecs_component_t component, const void *ptr);
+sihttp_response_t ecs_rest_set_entity_component(
+        ecs_entity_t entity,
+    ecs_component_t component,
+    const char *body
+);
+
+sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *req);
+sihttp_response_t ecs_rest_get_entity(const sihttp_request_t *req);
+sihttp_response_t ecs_rest_get_entity_children(const sihttp_request_t *req);
+sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req);
+sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req);
+sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req);
+
+#endif
+#ifndef SIECS_UTILS_H
+#define SIECS_UTILS_H
+#ifndef NDEBUG
+#include <stdio.h>
+#include <stdlib.h>
+#define ecs_cid_valid(id) ((id) != 0)
+#define ecs_entity_valid(entity) (ecs_first(entity) != 0)
+
+#define ecs_assert(condition, ...) \
+    if (!(condition)) { \
+        fprintf(stderr, __VA_ARGS__); \
+        abort(); \
+    }
+
+#define ecs_assert_id_valid(id) ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
+#define ecs_assert_not_null(ptr) ecs_assert((ptr) != NULL, "null pointer: %s\n", #ptr)
+#define ecs_assert_entity_valid(entity) ecs_assert(ecs_entity_valid(entity), "invalid entity: %d, entity must be registered\n", ecs_first(entity))
+#define ecs_assert_is_alive(entity) ecs_assert(ecs_is_alive(entity), "entity is dead: %d\n", ecs_first(entity))
+
+#else
+#define ecs_assert(condition, ...)
+#define ecs_assert_id_valid(id)
+#define ecs_assert_not_null(ptr)
+#define ecs_assert_entity_valid(entity)
+#define ecs_assert_is_alive(entity)
+#endif
+
+#endif
 /* Embedded dependency implementations for standalone distribution. */
 
 #ifndef NDEBUG
@@ -5210,7 +6109,6 @@ void ecs_component_value_move(
 
 #ifndef SIECS_STORAGE_ENTITY_INDEX_H
 #define SIECS_STORAGE_ENTITY_INDEX_H
-#include "helper.h"
 #include <stdint.h>
 
 typedef struct {
@@ -8083,7 +8981,6 @@ sihttp_response_t ecs_rest_error_response(int status, const char *message) {
     return ecs_rest_json_response(status, body);
 }
 
-#include "helper.h"
 #ifndef SIJSON_H
 #endif
 
