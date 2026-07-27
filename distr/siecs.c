@@ -776,7 +776,6 @@ struct ecs_world_s {
     ecs_module_id_t active_module;
     sireflect_registry_t *sireflect_registry;
     sihttp_server_t *server;
-    sihttp_app_state_t *server_state;
     ecs_world_feat_desc_t features;
     ecs_arena_t arena_allocator;
     ecs_command_buffer_t commands;
@@ -789,8 +788,6 @@ struct ecs_world_s {
 };
 
 extern ecs_world_t ecs_world;
-
-struct sihttp_app_state_s {};
 
 typedef struct {
     ecs_entity_t target;
@@ -6389,7 +6386,6 @@ struct ecs_world_s {
     ecs_module_id_t active_module;
     sireflect_registry_t *sireflect_registry;
     sihttp_server_t *server;
-    sihttp_app_state_t *server_state;
     ecs_world_feat_desc_t features;
     ecs_arena_t arena_allocator;
     ecs_command_buffer_t commands;
@@ -6402,8 +6398,6 @@ struct ecs_world_s {
 };
 
 extern ecs_world_t ecs_world;
-
-struct sihttp_app_state_s {};
 
 typedef struct {
     ecs_entity_t target;
@@ -6447,8 +6441,8 @@ void ecs_bootstrap(void);
 
 ECS_RELATION_DEFINE(ChildOf, EcsRelationCascadeDelete);
 ECS_COMPONENT_DEFINE(Name);
-ECS_COMPONENT_DEFINE(Disabled);
-ECS_COMPONENT_DEFINE(Abstract);
+ECS_TAG_DEFINE(Disabled);
+ECS_TAG_DEFINE(Abstract);
 
 void ecs_bootstrap() {
     // Reserve identifiers used to represent false return values.
@@ -8852,7 +8846,6 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world.did_start = false;
     ecs_world.exit = false;
     ecs_world.server = NULL;
-    ecs_world.server_state = NULL;
     ecs_world.delta_time = 0;
     ecs_world.last_time = 0;
     ecs_world.sireflect_registry = sireflect_registry_init();
@@ -8882,7 +8875,6 @@ void ecs_fini(void) {
         sihttp_server_stop(ecs_world.server);
     }
     sihttp_server_fini(ecs_world.server);
-    free(ecs_world.server_state);
     ecs_world_started = false;
 }
 
@@ -8930,14 +8922,10 @@ sihttp_response_t health(const sihttp_request_t *) {
 }
 
 void init_rest() {
-    sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
-
-    ecs_world.server_state = state;
-
     ecs_world.server = sihttp_server(
         {
             .port = 4040,
-            .state = state,
+            .state = NULL,
         }
     );
 
@@ -9067,6 +9055,7 @@ sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
 }
 
 sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *req) {
+    (void)req;
     sijson_clean();
 
     sijson_value_t array = sijson_make_array();
@@ -9116,6 +9105,7 @@ sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req) {
 }
 
 sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req) {
+    (void)req;
     ecs_entity_t entity = ecs_new();
     return sihttp_response(
         {
@@ -9380,6 +9370,7 @@ static sijson_value_t ecs_rest_type_json(sireflect_handle_t id) {
 }
 
 sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req) {
+    (void)req;
     ecs_rest_type_set_t types = { 0 };
 
     sijson_clean();

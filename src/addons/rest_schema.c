@@ -133,6 +133,7 @@ static sijson_value_t ecs_rest_type_json(sireflect_handle_t id) {
 }
 
 sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req) {
+    (void)req;
     ecs_rest_type_set_t types = { 0 };
 
     sijson_clean();

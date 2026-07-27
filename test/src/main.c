@@ -31,6 +31,7 @@ void component_many_tags_preserve_data_on_migration(void);
 void component_many_tags_swap_remove_preserves_moved_entity_data(void);
 void component_same_local_type_with_different_base_creates_different_tables(void);
 void component_type_add_remove_preserves_base(void);
+void component_tag_components_have_no_storage(void);
 void component_table_type_tracks_data_columns(void);
 void component_table_index_resize_preserves_type_hashes(void);
 void component_table_resolves_recursive_base_components(void);
@@ -198,6 +199,10 @@ bake_test_case component_testcases[] = {
     {
         "type_add_remove_preserves_base",
         component_type_add_remove_preserves_base
+    },
+    {
+        "tag_components_have_no_storage",
+        component_tag_components_have_no_storage
     },
     {
         "table_type_tracks_data_columns",
@@ -506,7 +511,7 @@ static bake_test_suite suites[] = {
         "component",
         NULL,
         NULL,
-        16,
+        17,
         component_testcases
     },
     {

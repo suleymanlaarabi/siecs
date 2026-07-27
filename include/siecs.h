@@ -333,6 +333,29 @@ SIECS_API void ecs_quit(void);
   ecs_component_t ecs_id(cname) = 0
 
 /*
+ * Declare a tag component without declaring a zero-member struct.
+ *
+ * The opaque type keeps the component name visible to C/C++ tooling and
+ * preserves typed helpers such as ecs_id(Tag), ecs_filter(Tag), and
+ * ecs::entity::has<Tag>(). Tags intentionally have no reflected data or
+ * storage column; their descriptor therefore has size zero.
+ */
+#define ECS_TAG_DECLARE(cname)                                                 \
+  typedef struct cname##_tag_t cname;                                          \
+  extern ecs_component_t ecs_id(cname);                                        \
+  extern ecs_component_desc_t ecs_id(cname##_desc)
+
+/* Define a tag component declared with ECS_TAG_DECLARE. */
+#define ECS_TAG_DEFINE(cname)                                                   \
+  ecs_component_desc_t ecs_id(cname##_desc) = {.name = #cname, .size = 0};      \
+  ecs_component_t ecs_id(cname) = 0
+
+/* Declare and define a tag component in one translation unit. */
+#define ECS_TAG(cname)                                                          \
+  ECS_TAG_DECLARE(cname);                                                       \
+  ECS_TAG_DEFINE(cname)
+
+/*
  * Register a component type in a world.
  *
  * Must be called before using the typed helpers for that component with this
@@ -465,11 +488,11 @@ ECS_RELATION_DECLARE(ChildOf);
 /* Builtin component for entity names. */
 ECS_COMPONENT_DECLARE(Name, { char *value; });
 
-/* Builtin component excluded from queries by default. */
-ECS_COMPONENT_DECLARE(Disabled, {});
+/* Builtin tag excluded from queries by default. */
+ECS_TAG_DECLARE(Disabled);
 
-/* Builtin component for abstract entity. */
-ECS_COMPONENT_DECLARE(Abstract, {});
+/* Builtin tag for abstract entities. */
+ECS_TAG_DECLARE(Abstract);
 
 /*
  * Register a component from an inline descriptor.

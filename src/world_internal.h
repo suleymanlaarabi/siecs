@@ -33,7 +33,6 @@ struct ecs_world_s {
     ecs_module_id_t active_module;
     sireflect_registry_t *sireflect_registry;
     sihttp_server_t *server;
-    sihttp_app_state_t *server_state;
     ecs_world_feat_desc_t features;
     ecs_arena_t arena_allocator;
     ecs_command_buffer_t commands;
@@ -46,8 +45,6 @@ struct ecs_world_s {
 };
 
 extern ecs_world_t ecs_world;
-
-struct sihttp_app_state_s {};
 
 typedef struct {
     ecs_entity_t target;

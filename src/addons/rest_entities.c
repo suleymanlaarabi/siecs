@@ -94,6 +94,7 @@ sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
 }
 
 sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *req) {
+    (void)req;
     sijson_clean();
 
     sijson_value_t array = sijson_make_array();
@@ -143,6 +144,7 @@ sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req) {
 }
 
 sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req) {
+    (void)req;
     ecs_entity_t entity = ecs_new();
     return sihttp_response(
         {

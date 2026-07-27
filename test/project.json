@@ -47,6 +47,7 @@
           "many_tags_swap_remove_preserves_moved_entity_data",
           "same_local_type_with_different_base_creates_different_tables",
           "type_add_remove_preserves_base",
+          "tag_components_have_no_storage",
           "table_type_tracks_data_columns",
           "table_index_resize_preserves_type_hashes",
           "table_resolves_recursive_base_components"

@@ -14,7 +14,6 @@
 #include "storage/table_index.h"
 #include "utils.h"
 #include "world_internal.h"
-#include <stdlib.h>
 #include <string.h>
 
 ecs_world_t ecs_world;
@@ -46,7 +45,6 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world.did_start = false;
     ecs_world.exit = false;
     ecs_world.server = NULL;
-    ecs_world.server_state = NULL;
     ecs_world.delta_time = 0;
     ecs_world.last_time = 0;
     ecs_world.sireflect_registry = sireflect_registry_init();
@@ -76,7 +74,6 @@ void ecs_fini(void) {
         sihttp_server_stop(ecs_world.server);
     }
     sihttp_server_fini(ecs_world.server);
-    free(ecs_world.server_state);
     ecs_world_started = false;
 }
 

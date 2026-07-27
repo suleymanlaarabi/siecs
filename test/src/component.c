@@ -585,6 +585,25 @@ void component_type_add_remove_preserves_base(void) {
     ecs_fini();
 }
 
+void component_tag_components_have_no_storage(void) {
+    ecs_init();
+
+    test_int(0, ecs_id(Disabled_desc).size);
+    test_null(ecs_id(Disabled_desc).struct_desc);
+    test_int(0, ecs_id(Abstract_desc).size);
+    test_null(ecs_id(Abstract_desc).struct_desc);
+
+    ecs_entity_t entity = ecs_new();
+    ecs_add(entity, Disabled);
+    ecs_add(entity, Abstract);
+
+    ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
+    test_int(0, table->type.data_count);
+    test_null(table->data_columns);
+
+    ecs_fini();
+}
+
 void component_table_type_tracks_data_columns(void) {
     ecs_init();
 

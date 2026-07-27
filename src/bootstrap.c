@@ -9,8 +9,8 @@
 
 ECS_RELATION_DEFINE(ChildOf, EcsRelationCascadeDelete);
 ECS_COMPONENT_DEFINE(Name);
-ECS_COMPONENT_DEFINE(Disabled);
-ECS_COMPONENT_DEFINE(Abstract);
+ECS_TAG_DEFINE(Disabled);
+ECS_TAG_DEFINE(Abstract);
 
 void ecs_bootstrap() {
     // Reserve identifiers used to represent false return values.

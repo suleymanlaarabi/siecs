@@ -2,7 +2,6 @@
 #ifndef SIHTTP_H
 #include "sihttp.h"
 #endif
-#include <stdlib.h>
 #include <string.h>
 
 sihttp_response_t health(const sihttp_request_t *) {
@@ -10,14 +9,10 @@ sihttp_response_t health(const sihttp_request_t *) {
 }
 
 void init_rest() {
-    sihttp_app_state_t *state = malloc(sizeof(sihttp_app_state_t));
-
-    ecs_world.server_state = state;
-
     ecs_world.server = sihttp_server(
         {
             .port = 4040,
-            .state = state,
+            .state = NULL,
         }
     );
 
