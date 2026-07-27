@@ -10,16 +10,17 @@ typedef struct {
     uint64_t bloom;
     ecs_entity_t is_a;
     ecs_query_term_t *terms;
-    ecs_query_term_t *fields;
     uint16_t term_count;
     uint16_t field_count;
+    uint16_t field_mask;
+    bool fields_owned_only;
 } ecs_query_t;
 
 typedef struct ecs_query_cache_s {
     ecs_query_t query;
     ecs_vec_t table_ids; // uint16_t
     void **fields_ptr;
-    ecs_field_kind_t *fields_kind;
+    uint32_t *field_kind_bits;
     uint16_t field_table_capacity;
     uint32_t active_index;
     uint16_t next_free;

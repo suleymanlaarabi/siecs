@@ -73,6 +73,7 @@ void query_inherited_field_is_shared(void);
 void query_override_field_is_owned(void);
 void query_inout_does_not_match_shared_inherited_field(void);
 void query_inout_optional_ignores_shared_inherited_field(void);
+void query_compact_field_kinds_preserve_none_owned_shared(void);
 void query_is_a_matches_direct_base(void);
 void query_is_a_excludes_other_bases(void);
 void query_is_a_matches_transitive_base(void);
@@ -344,6 +345,10 @@ bake_test_case query_testcases[] = {
     {
         "inout_optional_ignores_shared_inherited_field",
         query_inout_optional_ignores_shared_inherited_field
+    },
+    {
+        "compact_field_kinds_preserve_none_owned_shared",
+        query_compact_field_kinds_preserve_none_owned_shared
     },
     {
         "is_a_matches_direct_base",

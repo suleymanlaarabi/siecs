@@ -790,7 +790,7 @@ typedef struct {
   void **ptrs;
   float delta_time;
   struct ecs_query_cache_s *cache;
-  ecs_field_kind_t *field_kinds;
+  uint32_t field_kind_bits;
   uintptr_t user_data;
   uint16_t table_idx;
   uint16_t table_count;
@@ -825,14 +825,27 @@ SIECS_API bool ecs_iter_next(ecs_iter_t *it);
  * table does not have the component. EcsFilter and EcsNot terms affect matching
  * but are not returned as fields.
  */
+static inline ecs_field_kind_t ecs_field_kind(const ecs_iter_t *it, uint16_t field_index) {
+  if (it->field_kind_bits == UINT32_MAX) {
+    return it->ptrs[field_index] ? EcsFieldOwned : EcsFieldNone;
+  }
+
+  ecs_field_kind_t kind =
+      (ecs_field_kind_t)((it->field_kind_bits >> (field_index * 2)) & 0x3u);
+  return kind;
+}
+
 static inline void *ecs_field(ecs_iter_t *it, uint16_t field_index) {
   void *field = it->ptrs[field_index];
-  return it->field_kinds[field_index] == EcsFieldOwned ? *(void **)field
-                                                       : field;
+  if (it->field_kind_bits == UINT32_MAX) {
+    return field ? *(void **)field : NULL;
+  }
+  return ecs_field_kind(it, field_index) == EcsFieldOwned ? *(void **)field
+                                                          : field;
 }
 
 static inline bool ecs_field_is_shared(ecs_iter_t *it, uint16_t field_index) {
-  return it->field_kinds[field_index] == EcsFieldShared;
+  return ecs_field_kind(it, field_index) == EcsFieldShared;
 }
 
 /* System phases run in enum order when ecs_progress is called. */

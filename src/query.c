@@ -64,10 +64,12 @@ bool ecs_iter_next(ecs_iter_t *it) {
     } while (it->count == 0);
     if (it->cache->query.field_count == 0) {
         it->ptrs = NULL;
-        it->field_kinds = NULL;
+        it->field_kind_bits = 0;
     } else {
         it->ptrs = &it->cache->fields_ptr[it->table_idx * it->cache->query.field_count];
-        it->field_kinds = &it->cache->fields_kind[it->table_idx * it->cache->query.field_count];
+        it->field_kind_bits = it->cache->query.fields_owned_only
+                                  ? UINT32_MAX
+                                  : it->cache->field_kind_bits[it->table_idx];
     }
     it->entities = ecs_world.table_index.tables[tids[it->table_idx]].entities;
     return true;
@@ -81,10 +83,10 @@ void ecs_query_fini(ecs_query_id_t qid) {
 
     ecs_query_index_destroy(&cache->query);
     free(cache->fields_ptr);
-    free(cache->fields_kind);
+    free(cache->field_kind_bits);
     ecs_vec_fini(&cache->table_ids);
     cache->fields_ptr = NULL;
-    cache->fields_kind = NULL;
+    cache->field_kind_bits = NULL;
     cache->field_table_capacity = 0;
 
     ecs_query_index_remove_active_id(&ecs_world.query_index, qid);

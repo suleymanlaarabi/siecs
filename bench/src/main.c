@@ -37,6 +37,127 @@ static ecs_entity_t *make_entities_with_trivial_data(
     return entities;
 }
 
+static void make_query_tables(
+    ecs_component_t common,
+    ecs_component_t rare,
+    uint32_t table_count,
+    uint32_t rare_table_count
+) {
+    ecs_component_t *tags = malloc(sizeof(ecs_component_t) * table_count);
+    register_components(tags, table_count);
+
+    for (uint32_t i = 0; i < table_count; i++) {
+        ecs_entity_t entity = ecs_new();
+        ecs_add_cid(entity, common);
+        ecs_add_cid(entity, tags[i]);
+        if (i < rare_table_count) {
+            ecs_add_cid(entity, rare);
+        }
+    }
+
+    free(tags);
+}
+
+static void make_owned_query_tables(
+    const ecs_component_t *fields,
+    uint32_t field_count,
+    uint32_t table_count
+) {
+    ecs_component_t *tags = malloc(sizeof(ecs_component_t) * table_count);
+    register_components(tags, table_count);
+    trivial_bench_value_t value = { .values = { 1, 2, 3, 4 } };
+
+    for (uint32_t i = 0; i < table_count; i++) {
+        ecs_entity_t entity = ecs_new();
+        for (uint32_t field = 0; field < field_count; field++) {
+            ecs_set_cid(entity, fields[field], &value);
+        }
+        ecs_add_cid(entity, tags[i]);
+    }
+
+    free(tags);
+}
+
+static ecs_query_desc_t
+make_query_desc(const ecs_component_t *fields, uint32_t field_count, ecs_term_access_t access) {
+    ecs_query_desc_t desc = { 0 };
+    for (uint32_t i = 0; i < field_count; i++) {
+        desc.terms[i] = (ecs_query_term_t){ .id = fields[i], .access = access };
+    }
+    return desc;
+}
+
+BENCH_SETUP(query_init_rarest_positive, {
+    arg(table_count, 4096);
+    arg(rare_table_count, 8);
+    arg(iter_count, 2000);
+
+    ecs_component_t common = ecs_component({});
+    ecs_component_t rare = ecs_component({});
+    make_query_tables(common, rare, table_count, rare_table_count);
+    ecs_query_desc_t desc = {
+        .terms = {
+            { .id = common, .access = EcsFilter },
+            { .id = rare, .access = EcsFilter },
+        },
+    };
+
+    BENCH({
+        for (uint32_t i = 0; i < iter_count; i++) {
+            ecs_query_id_t query = ecs_query_init(&desc);
+            ecs_query_fini(query);
+        }
+    });
+});
+
+BENCH_SETUP(query_init_owned_fields, {
+    arg(field_count, 8);
+    arg(table_count, 256);
+    arg(iter_count, 1000);
+
+    ecs_component_t fields[field_count];
+    register_trivial_data_components(fields, field_count);
+    make_owned_query_tables(fields, field_count, table_count);
+    ecs_query_desc_t desc = make_query_desc(fields, field_count, EcsInOut);
+
+    BENCH({
+        for (uint32_t i = 0; i < iter_count; i++) {
+            ecs_query_id_t query = ecs_query_init(&desc);
+            ecs_query_fini(query);
+        }
+    });
+});
+
+BENCH_SETUP(query_iter_owned_fields, {
+    arg(field_count, 8);
+    arg(table_count, 256);
+    arg(iter_count, 10000);
+
+    ecs_component_t fields[field_count];
+    register_trivial_data_components(fields, field_count);
+    make_owned_query_tables(fields, field_count, table_count);
+    ecs_query_desc_t desc = make_query_desc(fields, field_count, EcsInOut);
+    ecs_query_id_t query = ecs_query_init(&desc);
+    uint64_t checksum = 0;
+
+    BENCH({
+        for (uint32_t i = 0; i < iter_count; i++) {
+            ecs_iter_t it = ecs_query_iter(query);
+            while (ecs_iter_next(&it)) {
+                for (uint32_t field = 0; field < field_count; field++) {
+                    trivial_bench_value_t *value = ecs_field(&it, field);
+                    checksum += value->values[0];
+                }
+            }
+        }
+    });
+
+    if (checksum == 0) {
+        abort();
+    }
+    ecs_query_fini(query);
+});
+
 BENCH_SETUP(migrate_trivial_columns, {
     arg(cid_count, 8);
     arg(entity_count, 100000);
@@ -227,6 +348,9 @@ int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
+    run_bench(query_init_rarest_positive);
+    run_bench(query_init_owned_fields);
+    run_bench(query_iter_owned_fields);
     run_bench(migrate_trivial_columns);
     run_bench(remove_trivial_rows);
     run_bench(add_one_component_cold_edge);

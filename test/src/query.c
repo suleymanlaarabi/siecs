@@ -292,7 +292,7 @@ void query_inherited_field_is_shared(void) {
     bool found_shared = false;
     while (ecs_iter_next(&it)) {
         QueryPosition *position = ecs_field(&it, 0);
-        if (it.field_kinds[0] == EcsFieldShared) {
+        if (ecs_field_kind(&it, 0) == EcsFieldShared) {
             test_int(1, it.count);
             test_assert(it.entities[0] == entity);
             test_assert(position == ecs_get(base, QueryPosition));
@@ -326,7 +326,7 @@ void query_override_field_is_owned(void) {
         QueryPosition *position = ecs_field(&it, 0);
         if (it.entities[0] == entity) {
             test_int(1, it.count);
-            test_int(EcsFieldOwned, it.field_kinds[0]);
+            test_int(EcsFieldOwned, ecs_field_kind(&it, 0));
             test_assert(position == ecs_get(entity, QueryPosition));
             test_int(100, position->value);
             position->value = 101;
@@ -380,13 +380,50 @@ void query_inout_optional_ignores_shared_inherited_field(void) {
     while (ecs_iter_next(&it)) {
         if (it.entities[0] == entity) {
             test_int(1, it.count);
-            test_int(EcsFieldNone, it.field_kinds[0]);
+            test_int(EcsFieldNone, ecs_field_kind(&it, 0));
             test_assert(ecs_field(&it, 0) == NULL);
             found_entity = true;
         }
     }
 
     test_true(found_entity);
+
+    ecs_query_fini(query);
+    ecs_fini();
+}
+
+void query_compact_field_kinds_preserve_none_owned_shared(void) {
+    query_test_world();
+
+    ecs_entity_t base = ecs_new();
+    ecs_set(base, QueryPosition, { 42 });
+    ecs_add(base, Abstract);
+
+    ecs_entity_t entity = ecs_new();
+    ecs_is_a(entity, base);
+    ecs_set(entity, QueryVelocity, { 7 });
+
+    ecs_query_id_t query = ecs_query(
+        {
+            .terms = {
+                ecs_in_optional(QueryPosition),
+                ecs_inout(QueryVelocity),
+                ecs_inout_optional(QueryMass),
+            },
+        }
+    );
+    ecs_iter_t it = ecs_query_iter(query);
+
+    test_true(ecs_iter_next(&it));
+    test_int(1, it.count);
+    test_assert(it.entities[0] == entity);
+    test_int(EcsFieldShared, ecs_field_kind(&it, 0));
+    test_int(EcsFieldOwned, ecs_field_kind(&it, 1));
+    test_int(EcsFieldNone, ecs_field_kind(&it, 2));
+    test_assert(ecs_field(&it, 0) == ecs_get(base, QueryPosition));
+    test_assert(ecs_field(&it, 1) == ecs_get(entity, QueryVelocity));
+    test_null(ecs_field(&it, 2));
+    test_false(ecs_iter_next(&it));
 
     ecs_query_fini(query);
     ecs_fini();
@@ -491,8 +528,8 @@ void query_is_a_with_component_terms(void) {
     QueryVelocity *velocity = ecs_field(&it, 1);
     test_int(1, it.count);
     test_assert(it.entities[0] == player);
-    test_int(EcsFieldShared, it.field_kinds[0]);
-    test_int(EcsFieldOwned, it.field_kinds[1]);
+    test_int(EcsFieldShared, ecs_field_kind(&it, 0));
+    test_int(EcsFieldOwned, ecs_field_kind(&it, 1));
     test_assert(position == ecs_get(character, QueryPosition));
     test_assert(velocity == ecs_get(player, QueryVelocity));
     test_int(42, position->value);

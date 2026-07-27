@@ -54,7 +54,7 @@ inline auto make_cursor(ecs_iter_t *it, Resources &resources, bool &has_shared) 
         auto *value = static_cast<value_type *>(ecs_field(it, static_cast<uint16_t>(field)));
         bool shared = false;
         if constexpr (std::is_const_v<value_type>) {
-            shared = it->field_kinds[field] == EcsFieldShared;
+            shared = ecs_field_is_shared(it, static_cast<uint16_t>(field));
             has_shared |= shared;
         }
         return component_cursor<value_type>{ value, shared ? 0U : 1U };

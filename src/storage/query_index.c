@@ -23,7 +23,7 @@ void ecs_query_index_fini(ecs_query_index_t *index) {
             ecs_vec_get_mut(&index->queries, active_ids[i], ecs_query_cache_t);
         ecs_vec_fini(&cache->table_ids);
         free(cache->fields_ptr);
-        free(cache->fields_kind);
+        free(cache->field_kind_bits);
         ecs_query_index_destroy(&cache->query);
     }
     ecs_vec_fini(&index->active_ids);
@@ -32,7 +32,6 @@ void ecs_query_index_fini(ecs_query_index_t *index) {
 
 void ecs_query_index_destroy(ecs_query_t *query) {
     free(query->terms);
-    free(query->fields);
 }
 
 static uint16_t ecs_query_count_terms(const ecs_query_term_t *terms) {
@@ -138,22 +137,19 @@ void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
     query->is_a = desc->is_a;
 
     query->field_count = 0;
+    query->field_mask = 0;
+    query->fields_owned_only = true;
     for (uint16_t i = 0; i < query->term_count; i++) {
         if (ecs_query_term_is_field(query->terms[i])) {
+            query->field_mask |= (uint16_t)(1u << i);
             query->field_count++;
-        }
-    }
-
-    query->fields = NULL;
-    if (query->field_count != 0) {
-        query->fields = malloc(sizeof(ecs_query_term_t) * query->field_count);
-
-        uint16_t field = 0;
-        for (uint16_t i = 0; i < query->term_count; i++) {
-            if (ecs_query_term_is_field(query->terms[i])) {
-                query->fields[field++] = query->terms[i];
+            if (!ecs_query_term_requires_owned(query->terms[i])) {
+                query->fields_owned_only = false;
             }
         }
+    }
+    if (query->field_count == 0) {
+        query->fields_owned_only = false;
     }
 
     query->bloom = 0;
@@ -178,26 +174,54 @@ ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, ui
 
         const uint32_t slot_count = (uint32_t)capacity * field_count;
         cache->fields_ptr = realloc(cache->fields_ptr, sizeof(void *) * slot_count);
-        cache->fields_kind = realloc(cache->fields_kind, sizeof(ecs_field_kind_t) * slot_count);
+        if (!cache->query.fields_owned_only && field_count != 0) {
+            cache->field_kind_bits =
+                realloc(cache->field_kind_bits, sizeof(uint32_t) * capacity);
+        }
         cache->field_table_capacity = capacity;
     }
 
     const uint32_t base = (uint32_t)(table_count - 1) * field_count;
-    for (uint16_t i = 0; i < cache->query.field_count; i++) {
-        const ecs_query_term_t term = cache->query.fields[i];
-        void *field = NULL;
+    uint16_t remaining_fields = cache->query.field_mask;
+    uint16_t field_index = 0;
+
+    if (cache->query.fields_owned_only) {
+        while (remaining_fields) {
+            const uint16_t term_index = (uint16_t)__builtin_ctz((unsigned)remaining_fields);
+            remaining_fields &= (uint16_t)(remaining_fields - 1);
+            const ecs_query_term_t term = cache->query.terms[term_index];
+            const uint16_t column = ecs_table_column_or_invalid(table, term.id);
+            void *field_ptr = column == UINT16_MAX ? NULL : &table->cls[column].data;
+
+            ecs_assert(
+                field_ptr || term.access == EcsInOutOptional,
+                "query cache matched table without owned field component: %d\n",
+                term.id
+            );
+
+            cache->fields_ptr[base + field_index++] = field_ptr;
+        }
+        return;
+    }
+
+    uint32_t field_kind_bits = 0;
+    while (remaining_fields) {
+        const uint16_t term_index = (uint16_t)__builtin_ctz((unsigned)remaining_fields);
+        remaining_fields &= (uint16_t)(remaining_fields - 1);
+        const ecs_query_term_t term = cache->query.terms[term_index];
+        void *field_ptr = NULL;
         ecs_field_kind_t field_kind = EcsFieldNone;
 
         if (ecs_query_term_requires_owned(term)) {
             uint16_t column = ecs_table_column_or_invalid(table, term.id);
             if (column != UINT16_MAX) {
-                field = &table->cls[column].data;
+                field_ptr = &table->cls[column].data;
                 field_kind = EcsFieldOwned;
             }
         } else {
             bool is_shared = false;
-            field = ecs_table_field(table, term.id, &is_shared);
-            if (field || is_shared) {
+            field_ptr = ecs_table_field(table, term.id, &is_shared);
+            if (field_ptr || is_shared) {
                 field_kind = is_shared ? EcsFieldShared : EcsFieldOwned;
             }
         }
@@ -209,8 +233,13 @@ ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, ui
             term.id
         );
 
-        cache->fields_ptr[base + i] = field;
-        cache->fields_kind[base + i] = field_kind;
+        cache->fields_ptr[base + field_index] = field_ptr;
+        field_kind_bits |= (uint32_t)field_kind << (field_index * 2);
+        field_index++;
+    }
+
+    if (field_count != 0) {
+        cache->field_kind_bits[table_count - 1] = field_kind_bits;
     }
 }
 
@@ -230,7 +259,7 @@ ecs_query_id_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_
     ecs_query_from_desc(desc, &query_cache->query);
     ecs_vec_init(&query_cache->table_ids, sizeof(uint16_t));
     query_cache->fields_ptr = NULL;
-    query_cache->fields_kind = NULL;
+    query_cache->field_kind_bits = NULL;
     query_cache->field_table_capacity = 0;
     query_cache->active_index = index->active_ids.size;
     query_cache->next_free = UINT16_MAX;
@@ -240,17 +269,30 @@ ecs_query_id_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_
     return id;
 }
 
-static ecs_component_t ecs_query_first_positive_term(const ecs_query_t *query) {
+static ecs_component_t ecs_query_rarest_positive_term(const ecs_query_t *query) {
+    ecs_component_t rarest = 0;
+    uint32_t rarest_table_count = UINT32_MAX;
+
     for (uint16_t i = 0; i < query->term_count; i++) {
         if (ecs_query_term_is_positive(query->terms[i])) {
-            return query->terms[i].id;
+            const ecs_component_t component = query->terms[i].id;
+            const uint32_t table_count =
+                ecs_component_index_get(&ecs_world.component_index, component)->tables.size;
+            if (table_count < rarest_table_count) {
+                rarest = component;
+                rarest_table_count = table_count;
+                if (table_count == 0) {
+                    break;
+                }
+            }
         }
     }
-    return 0;
+
+    return rarest;
 }
 
 void ecs_query_index_update_matches(ecs_query_cache_t *query_cache) {
-    uint16_t component = ecs_query_first_positive_term(&query_cache->query);
+    uint16_t component = ecs_query_rarest_positive_term(&query_cache->query);
 
     if (ECS_LIKELY(component)) {
         const ecs_vec_t *tables_vec =
