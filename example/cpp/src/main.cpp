@@ -25,9 +25,11 @@ struct Enemy {};
 struct NoIntegrate {};
 
 int main() {
-    ecs::init();
+    ecs::init({ .rest = true, .target_fps = 60 });
 
     ecs::entity::create();
+
+    ecs::run();
 
     ecs::fini();
 }

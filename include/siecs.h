@@ -347,7 +347,10 @@ SIECS_API void ecs_quit(void);
 
 /* Define a tag component declared with ECS_TAG_DECLARE. */
 #define ECS_TAG_DEFINE(cname)                                                   \
-  ecs_component_desc_t ecs_id(cname##_desc) = {.name = #cname, .size = 0};      \
+  static const sireflect_struct_desc_t sireflect_desc(cname) = {                 \
+      .name = #cname, .fields = "{}", .size = 0, .align = 1};                   \
+  ecs_component_desc_t ecs_id(cname##_desc) = {                                  \
+      .name = #cname, .size = 0, .struct_desc = &sireflect_desc(cname)};         \
   ecs_component_t ecs_id(cname) = 0
 
 /* Declare and define a tag component in one translation unit. */
@@ -461,6 +464,7 @@ SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
   ecs_component_desc_t ecs_id(cname##_desc) = {                                \
       .name = #cname,                                                          \
       .size = sizeof(cname),                                                   \
+      .struct_desc = &sireflect_desc(cname),                                   \
       .relation_flags = EcsRelationTarget | (flags),                           \
   };                                                                           \
   ecs_component_t ecs_id(cname) = 0

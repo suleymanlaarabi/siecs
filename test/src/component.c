@@ -589,9 +589,11 @@ void component_tag_components_have_no_storage(void) {
     ecs_init();
 
     test_int(0, ecs_id(Disabled_desc).size);
-    test_null(ecs_id(Disabled_desc).struct_desc);
+    test_not_null(ecs_id(Disabled_desc).struct_desc);
+    test_str("{}", ecs_id(Disabled_desc).struct_desc->fields);
     test_int(0, ecs_id(Abstract_desc).size);
-    test_null(ecs_id(Abstract_desc).struct_desc);
+    test_not_null(ecs_id(Abstract_desc).struct_desc);
+    test_str("{}", ecs_id(Abstract_desc).struct_desc->fields);
 
     ecs_entity_t entity = ecs_new();
     ecs_add(entity, Disabled);

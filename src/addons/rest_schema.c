@@ -1,5 +1,5 @@
-#include "rest_internal.h"
 #include "../storage/component_index.h"
+#include "rest_internal.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -27,10 +27,8 @@ static sijson_value_t ecs_rest_field_json(const sireflect_field_info_t *field) {
     return object;
 }
 
-static sijson_value_t ecs_rest_component_json(
-        ecs_component_t id,
-    const ecs_component_record_t *record
-) {
+static sijson_value_t
+ecs_rest_component_json(ecs_component_t id, const ecs_component_record_t *record) {
     sijson_value_t fields_json = sijson_make_array();
     const sireflect_type_info_t *type =
         sireflect_type_info(ecs_world.sireflect_registry, record->reflection);
@@ -74,10 +72,8 @@ static void ecs_rest_type_set_add(ecs_rest_type_set_t *set, sireflect_handle_t i
     set->items[id] = true;
 }
 
-static void ecs_rest_collect_component_types(
-        ecs_rest_type_set_t *set,
-    const ecs_component_record_t *record
-) {
+static void
+ecs_rest_collect_component_types(ecs_rest_type_set_t *set, const ecs_component_record_t *record) {
     ecs_rest_type_set_add(set, record->reflection);
 
     const sireflect_fields_t *fields =
@@ -91,8 +87,7 @@ static bool ecs_rest_type_name_is(const sireflect_type_info_t *type, const char 
     return type->name && strcmp(type->name, name) == 0;
 }
 
-static const char *
-ecs_rest_editor_type(sireflect_handle_t id, const sireflect_type_info_t *type) {
+static const char *ecs_rest_editor_type(sireflect_handle_t id, const sireflect_type_info_t *type) {
     if (ecs_rest_type_name_is(type, "ecs_entity_t")) {
         return "entity";
     }
