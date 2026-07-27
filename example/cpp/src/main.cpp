@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
-#include <print>
 #include <siecs.h>
 
 #include <cassert>
@@ -30,10 +29,6 @@ int main() {
     ecs::init({ .rest = true, .target_fps = 60 });
 
     ecs::entity::create<Enemy>().abstract();
-
-    ecs::query().optional<Abstract>().each([](ecs::entity entity) {
-        std::println("{}", entity.get<Name>().value);
-    });
 
     ecs::run();
 
