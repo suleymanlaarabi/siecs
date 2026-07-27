@@ -203,10 +203,14 @@ void ecs_kill(ecs_entity_t entity) {
     ecs_kill_now(entity);
 }
 
-char *ecs_entity_name(ecs_entity_t entity) {
+const char *ecs_entity_name(ecs_entity_t entity) {
+    static char *buff = NULL;
     if (ecs_has(entity, Name)) {
-        const char *value = ecs_get(entity, Name)->value;
-        return strdup(value ? value : "");
+        return ecs_get(entity, Name)->value;
     }
-    return siformat("(%d, %d)", ecs_first(entity), ecs_second(entity));
+    if (!buff) {
+        buff = calloc(20, sizeof(char));
+    }
+    sprintf(buff, "(%d, %d)", ecs_first(entity), ecs_second(entity));
+    return buff;
 }

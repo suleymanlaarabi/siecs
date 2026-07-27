@@ -6878,12 +6878,16 @@ void ecs_kill(ecs_entity_t entity) {
     ecs_kill_now(entity);
 }
 
-char *ecs_entity_name(ecs_entity_t entity) {
+const char *ecs_entity_name(ecs_entity_t entity) {
+    static char *buff = NULL;
     if (ecs_has(entity, Name)) {
-        const char *value = ecs_get(entity, Name)->value;
-        return strdup(value ? value : "");
+        return ecs_get(entity, Name)->value;
     }
-    return siformat("(%d, %d)", ecs_first(entity), ecs_second(entity));
+    if (!buff) {
+        buff = calloc(20, sizeof(char));
+    }
+    sprintf(buff, "(%d, %d)", ecs_first(entity), ecs_second(entity));
+    return buff;
 }
 
 #ifndef SIECS_MODULE_H
@@ -8040,10 +8044,7 @@ static bool entity_is_alive(ecs_entity_t entity) {
 sijson_value_t ecs_rest_entity_json(ecs_entity_t entity) {
     sijson_value_t object = sijson_make_object();
 
-    char *name = ecs_entity_name(entity);
-    sijson_object_set(object, "name", sijson_make_string(name));
-    free(name);
-
+    sijson_object_set(object, "name", sijson_make_string(ecs_entity_name(entity)));
     sijson_object_set(object, "index", sijson_make_number(ecs_first(entity)));
     sijson_object_set(object, "generation", sijson_make_number(ecs_second(entity)));
     sijson_object_set(
@@ -8073,10 +8074,7 @@ sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity) {
 sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
     sijson_value_t detail = sijson_make_object();
 
-    char *name = ecs_entity_name(entity);
-    sijson_object_set(detail, "name", sijson_make_string(name));
-    free(name);
-
+    sijson_object_set(detail, "name", sijson_make_string(ecs_entity_name(entity)));
     sijson_object_set(detail, "index", sijson_make_number(ecs_first(entity)));
     sijson_object_set(detail, "generation", sijson_make_number(ecs_second(entity)));
 
