@@ -9054,30 +9054,28 @@ sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
     return detail;
 }
 
-sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *req) {
-    (void)req;
+sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *) {
     sijson_clean();
 
     sijson_value_t array = sijson_make_array();
-    ecs_query_each(
-        it,
-        i,
-        { ecs_source(ChildOf) },
+    ecs_query_entities(
+        entity,
+        ecs_in_source(ChildOf),
         ecs_not(ChildOf),
-        ecs_in_optional(Abstract),
-        ecs_in_optional(Disabled)
+        ecs_optional(Abstract),
+        ecs_optional(Disabled)
     ) {
-        sijson_array_push(array, ecs_rest_entity_json(it.entities[i]));
+        sijson_array_push(array, ecs_rest_entity_json(entity));
     }
-    ecs_query_each(
-        it,
-        i,
-        { ecs_source(ChildOf), EcsNot },
+
+    ecs_query_entities(
+        entity,
+        ecs_not_source(ChildOf),
         ecs_not(ChildOf),
-        ecs_in_optional(Abstract),
-        ecs_in_optional(Disabled)
+        ecs_optional(Abstract),
+        ecs_optional(Disabled)
     ) {
-        sijson_array_push(array, ecs_rest_entity_json(it.entities[i]));
+        sijson_array_push(array, ecs_rest_entity_json(entity));
     }
     return ecs_rest_json_response(200, array);
 }

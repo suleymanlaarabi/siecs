@@ -767,12 +767,12 @@ typedef void (*ecs_module_import_t)(const void *desc);
  * observers captured during import. Components remain registered.
  */
 typedef struct {
-  const char *name;
-  ecs_module_id_t *id;
-  ecs_module_import_t import;
-  const void *desc;
-  uint32_t desc_size;
-  bool disabled;
+    const char *name;
+    ecs_module_id_t *id;
+    ecs_module_import_t import;
+    const void *desc;
+    uint32_t desc_size;
+    bool disabled;
 } ecs_module_desc_t;
 
 /*
@@ -785,17 +785,16 @@ typedef struct {
  * - Custom events: pointer passed to ecs_observer_trigger.
  */
 typedef struct {
-  ecs_entity_t entity;
-  ecs_event_t event;
-  uintptr_t user_data;
-  const void *trigger_data;
+    ecs_entity_t entity;
+    ecs_event_t event;
+    uintptr_t user_data;
+    const void *trigger_data;
 } ecs_observer_event_t;
 
 typedef void (*ecs_observer_callback_t)(ecs_observer_event_t *event);
 
 /* Called after a component slot is added and zero-initialized. */
-typedef void (*ecs_component_on_add_t)(ecs_entity_t entity,
-                                       ecs_component_t component, void *value);
+typedef void (*ecs_component_on_add_t)(ecs_entity_t entity, ecs_component_t component, void *value);
 
 /*
  * Called before ecs_set_cid copies new_value into current_value.
@@ -803,15 +802,19 @@ typedef void (*ecs_component_on_add_t)(ecs_entity_t entity,
  * current_value is the component slot currently stored on the entity. Hooks can
  * inspect the old value there, and may mutate it before the final copy.
  */
-typedef void (*ecs_component_on_set_t)(ecs_entity_t entity,
-                                       ecs_component_t component,
-                                       const void *new_value,
-                                       void *current_value);
+typedef void (*ecs_component_on_set_t)(
+    ecs_entity_t entity,
+    ecs_component_t component,
+    const void *new_value,
+    void *current_value
+);
 
 /* Called before a component slot is removed. */
-typedef void (*ecs_component_on_remove_t)(ecs_entity_t entity,
-                                          ecs_component_t component,
-                                          void *value);
+typedef void (*ecs_component_on_remove_t)(
+    ecs_entity_t entity,
+    ecs_component_t component,
+    void *value
+);
 
 /*
  * Value lifecycle operations for non-trivial component/resource storage.
@@ -830,12 +833,12 @@ typedef void (*ecs_type_copy_t)(void *dst, const void *src, uint32_t count);
 typedef void (*ecs_type_move_t)(void *dst, void *src, uint32_t count);
 
 typedef struct {
-  ecs_type_ctor_t ctor;
-  ecs_type_dtor_t dtor;
-  ecs_type_copy_t copy_ctor;
-  ecs_type_copy_t copy;
-  ecs_type_move_t move_ctor;
-  ecs_type_move_t move;
+    ecs_type_ctor_t ctor;
+    ecs_type_dtor_t dtor;
+    ecs_type_copy_t copy_ctor;
+    ecs_type_copy_t copy;
+    ecs_type_move_t move_ctor;
+    ecs_type_move_t move;
 } ecs_type_ops_t;
 
 /*
@@ -847,11 +850,11 @@ typedef struct {
  * target entity is killed.
  */
 typedef enum {
-  EcsRelationTarget = 1 << 0,
-  EcsRelationSource = 1 << 1,
-  EcsRelationCascadeDelete = 1 << 2,
-  EcsRelationOneToOne = 1 << 3,
-  EcsRelationOneToMany = 1 << 4
+    EcsRelationTarget = 1 << 0,
+    EcsRelationSource = 1 << 1,
+    EcsRelationCascadeDelete = 1 << 2,
+    EcsRelationOneToOne = 1 << 3,
+    EcsRelationOneToMany = 1 << 4
 } ecs_relation_flags_t;
 
 /*
@@ -864,14 +867,14 @@ typedef enum {
  * relation_flags is normally set only by ECS_RELATION_DEFINE.
  */
 typedef struct {
-  const char *name;
-  uint64_t size;
-  ecs_type_ops_t ops;
-  ecs_component_on_set_t on_set;
-  ecs_component_on_remove_t on_remove;
-  ecs_component_on_add_t on_add;
-  uint32_t relation_flags;
-  const sireflect_struct_desc_t *struct_desc;
+    const char *name;
+    uint64_t size;
+    ecs_type_ops_t ops;
+    ecs_component_on_set_t on_set;
+    ecs_component_on_remove_t on_remove;
+    ecs_component_on_add_t on_add;
+    uint32_t relation_flags;
+    const sireflect_struct_desc_t *struct_desc;
 } ecs_component_desc_t;
 
 /*
@@ -889,25 +892,25 @@ typedef void (*ecs_resource_hook_t)(const void *ptr);
  * size are required; hooks are optional.
  */
 typedef struct {
-  const char *name;
-  uint64_t size;
-  ecs_type_ops_t ops;
-  ecs_resource_hook_t on_set;
-  ecs_resource_hook_t on_remove;
+    const char *name;
+    uint64_t size;
+    ecs_type_ops_t ops;
+    ecs_resource_hook_t on_set;
+    ecs_resource_hook_t on_remove;
 } ecs_resource_desc_t;
 
 /* Query term access mode. */
 typedef enum {
-  EcsIn,    /* Component must exist and is returned by ecs_field for reading. */
-  EcsOut,   /* Component must exist and is returned by ecs_field for writing. */
-  EcsInOut, /* Component must exist and is returned by ecs_field for read/write.
-             */
-  EcsInOptional,    /* Component is returned by ecs_field if present, NULL
-                       otherwise. */
-  EcsInOutOptional, /* Component is returned by ecs_field if present, NULL
-                       otherwise. */
-  EcsFilter,        /* Component must exist but is not returned by ecs_field. */
-  EcsNot, /* Component must not exist and is not returned by ecs_field. */
+    EcsIn,            /* Component must exist and is returned by ecs_field for reading. */
+    EcsOut,           /* Component must exist and is returned by ecs_field for writing. */
+    EcsInOut,         /* Component must exist and is returned by ecs_field for read/write.
+                       */
+    EcsInOptional,    /* Component is returned by ecs_field if present, NULL
+                         otherwise. */
+    EcsInOutOptional, /* Component is returned by ecs_field if present, NULL
+                         otherwise. */
+    EcsFilter,        /* Component must exist but is not returned by ecs_field. */
+    EcsNot,           /* Component must not exist and is not returned by ecs_field. */
 } ecs_term_access_t;
 
 /*
@@ -917,8 +920,8 @@ typedef enum {
  * Fill this manually only for dynamic component ids.
  */
 typedef struct {
-  ecs_component_t id;
-  ecs_term_access_t access;
+    ecs_component_t id;
+    ecs_term_access_t access;
 } ecs_query_term_t;
 
 /*
@@ -932,8 +935,8 @@ typedef struct {
  * A query must contain at least one term or an is_a target.
  */
 typedef struct {
-  ecs_query_term_t terms[ECS_QUERY_TERM_CAPACITY];
-  ecs_entity_t is_a;
+    ecs_query_term_t terms[ECS_QUERY_TERM_CAPACITY];
+    ecs_entity_t is_a;
 } ecs_query_desc_t;
 
 /*
@@ -945,30 +948,32 @@ typedef struct {
  *   });
  */
 #ifdef __cplusplus
-#define ecs_in(cname)                                                          \
-  ecs_query_term_t { ecs_id(cname), EcsIn }
-#define ecs_out(cname)                                                         \
-  ecs_query_term_t { ecs_id(cname), EcsOut }
-#define ecs_inout(cname)                                                       \
-  ecs_query_term_t { ecs_id(cname), EcsInOut }
-#define ecs_in_optional(cname)                                                 \
-  ecs_query_term_t { ecs_id(cname), EcsInOptional }
-#define ecs_inout_optional(cname)                                              \
-  ecs_query_term_t { ecs_id(cname), EcsInOutOptional }
-#define ecs_filter(cname)                                                      \
-  ecs_query_term_t { ecs_id(cname), EcsFilter }
-#define ecs_not(cname)                                                         \
-  ecs_query_term_t { ecs_id(cname), EcsNot }
+#define ecs_in(cname)                                                                              \
+    ecs_query_term_t { ecs_id(cname), EcsIn }
+#define ecs_out(cname)                                                                             \
+    ecs_query_term_t { ecs_id(cname), EcsOut }
+#define ecs_inout(cname)                                                                           \
+    ecs_query_term_t { ecs_id(cname), EcsInOut }
+#define ecs_in_optional(cname)                                                                     \
+    ecs_query_term_t { ecs_id(cname), EcsInOptional }
+#define ecs_inout_optional(cname)                                                                  \
+    ecs_query_term_t { ecs_id(cname), EcsInOutOptional }
+#define ecs_filter(cname)                                                                          \
+    ecs_query_term_t { ecs_id(cname), EcsFilter }
+#define ecs_not(cname)                                                                             \
+    ecs_query_term_t { ecs_id(cname), EcsNot }
 #else
-#define ecs_in(cname) ((ecs_query_term_t){ecs_id(cname), EcsIn})
-#define ecs_out(cname) ((ecs_query_term_t){ecs_id(cname), EcsOut})
-#define ecs_inout(cname) ((ecs_query_term_t){ecs_id(cname), EcsInOut})
-#define ecs_in_optional(cname)                                                 \
-  ((ecs_query_term_t){ecs_id(cname), EcsInOptional})
-#define ecs_inout_optional(cname)                                              \
-  ((ecs_query_term_t){ecs_id(cname), EcsInOutOptional})
-#define ecs_filter(cname) ((ecs_query_term_t){ecs_id(cname), EcsFilter})
-#define ecs_not(cname) ((ecs_query_term_t){ecs_id(cname), EcsNot})
+#define ecs_in(cname) ((ecs_query_term_t){ ecs_id(cname), EcsIn })
+#define ecs_out(cname) ((ecs_query_term_t){ ecs_id(cname), EcsOut })
+#define ecs_inout(cname) ((ecs_query_term_t){ ecs_id(cname), EcsInOut })
+#define ecs_in_optional(cname) ((ecs_query_term_t){ ecs_id(cname), EcsInOptional })
+#define ecs_optional ecs_in_optional
+#define ecs_inout_optional(cname) ((ecs_query_term_t){ ecs_id(cname), EcsInOutOptional })
+#define ecs_filter(cname) ((ecs_query_term_t){ ecs_id(cname), EcsFilter })
+#define ecs_not(cname) ((ecs_query_term_t){ ecs_id(cname), EcsNot })
+#define ecs_in_source(cname) ((ecs_query_term_t){ ecs_source(cname), EcsIn })
+#define ecs_not_source(cname) ((ecs_query_term_t){ ecs_source(cname), EcsNot })
+#define ecs_filter_source(cname) ((ecs_query_term_t){ ecs_source(cname), EcsFilter })
 #endif
 
 /* Create an ECS world. */
@@ -976,16 +981,15 @@ SIECS_API void ecs_init(void);
 
 /* World feature descriptor. */
 typedef struct {
-  /* Start the REST explorer server when the rest addon is built in. */
-  bool rest;
+    /* Start the REST explorer server when the rest addon is built in. */
+    bool rest;
 
-  /* Target frames per second for the world's update loop. */
-  uint16_t target_fps;
+    /* Target frames per second for the world's update loop. */
+    uint16_t target_fps;
 } ecs_world_feat_desc_t;
 
 /* Create a world with the given features. */
-#define ecs_with_features(...)                                                 \
-  ecs_init_w_features(&(ecs_world_feat_desc_t)__VA_ARGS__)
+#define ecs_with_features(...) ecs_init_w_features(&(ecs_world_feat_desc_t)__VA_ARGS__)
 
 /* Initialize a world with the given features. */
 SIECS_API void ecs_init_w_features(const ecs_world_feat_desc_t *features);
@@ -1002,10 +1006,10 @@ SIECS_API void ecs_quit(void);
  * Use in headers:
  *   ECS_COMPONENT_DECLARE(Position, { float x; float y; });
  */
-#define ECS_COMPONENT_DECLARE(cname, ...)                                      \
-  SIJSON_DECLARE(cname, __VA_ARGS__)                                           \
-  extern ecs_component_t ecs_id(cname);                                        \
-  extern ecs_component_desc_t ecs_id(cname##_desc)
+#define ECS_COMPONENT_DECLARE(cname, ...)                                                          \
+    SIJSON_DECLARE(cname, __VA_ARGS__)                                                             \
+    extern ecs_component_t ecs_id(cname);                                                          \
+    extern ecs_component_desc_t ecs_id(cname##_desc)
 
 /*
  * Define a component declared with ECS_COMPONENT_DECLARE.
@@ -1013,14 +1017,13 @@ SIECS_API void ecs_quit(void);
  * Use once in a C file:
  *   ECS_COMPONENT_DEFINE(Position);
  */
-#define ECS_COMPONENT_DEFINE(cname, ...)                                       \
-  SIJSON_DEFINE(cname)                                                         \
-  ecs_component_desc_t ecs_id(cname##_desc) = {.name = #cname,                 \
-                                               .size = sizeof(cname),          \
-                                               .struct_desc =                  \
-                                                   &sireflect_desc(cname),     \
-                                               __VA_ARGS__};                   \
-  ecs_component_t ecs_id(cname) = 0
+#define ECS_COMPONENT_DEFINE(cname, ...)                                                           \
+    SIJSON_DEFINE(cname)                                                                           \
+    ecs_component_desc_t ecs_id(cname##_desc) = { .name = #cname,                                  \
+                                                  .size = sizeof(cname),                           \
+                                                  .struct_desc = &sireflect_desc(cname),           \
+                                                  __VA_ARGS__ };                                   \
+    ecs_component_t ecs_id(cname) = 0
 
 /*
  * Declare a tag component without declaring a zero-member struct.
@@ -1030,23 +1033,25 @@ SIECS_API void ecs_quit(void);
  * ecs::entity::has<Tag>(). Tags intentionally have no reflected data or
  * storage column; their descriptor therefore has size zero.
  */
-#define ECS_TAG_DECLARE(cname)                                                 \
-  typedef struct cname##_tag_t cname;                                          \
-  extern ecs_component_t ecs_id(cname);                                        \
-  extern ecs_component_desc_t ecs_id(cname##_desc)
+#define ECS_TAG_DECLARE(cname)                                                                     \
+    typedef struct cname##_tag_t cname;                                                            \
+    extern ecs_component_t ecs_id(cname);                                                          \
+    extern ecs_component_desc_t ecs_id(cname##_desc)
 
 /* Define a tag component declared with ECS_TAG_DECLARE. */
-#define ECS_TAG_DEFINE(cname)                                                   \
-  static const sireflect_struct_desc_t sireflect_desc(cname) = {                 \
-      .name = #cname, .fields = "{}", .size = 0, .align = 1};                   \
-  ecs_component_desc_t ecs_id(cname##_desc) = {                                  \
-      .name = #cname, .size = 0, .struct_desc = &sireflect_desc(cname)};         \
-  ecs_component_t ecs_id(cname) = 0
+#define ECS_TAG_DEFINE(cname)                                                                      \
+    static const sireflect_struct_desc_t sireflect_desc(                                           \
+        cname                                                                                      \
+    ) = { .name = #cname, .fields = "{}", .size = 0, .align = 1 };                                 \
+    ecs_component_desc_t ecs_id(cname##_desc) = { .name = #cname,                                  \
+                                                  .size = 0,                                       \
+                                                  .struct_desc = &sireflect_desc(cname) };         \
+    ecs_component_t ecs_id(cname) = 0
 
 /* Declare and define a tag component in one translation unit. */
-#define ECS_TAG(cname)                                                          \
-  ECS_TAG_DECLARE(cname);                                                       \
-  ECS_TAG_DEFINE(cname)
+#define ECS_TAG(cname)                                                                             \
+    ECS_TAG_DECLARE(cname);                                                                        \
+    ECS_TAG_DEFINE(cname)
 
 /*
  * Register a component type in a world.
@@ -1054,8 +1059,7 @@ SIECS_API void ecs_quit(void);
  * Must be called before using the typed helpers for that component with this
  * world. Stores the generated component id in ecs_id(cname).
  */
-#define ECS_COMPONENT_REGISTER(cname)                                          \
-  ecs_component_register(&ecs_id(cname), &ecs_id(cname##_desc))
+#define ECS_COMPONENT_REGISTER(cname) ecs_component_register(&ecs_id(cname), &ecs_id(cname##_desc))
 
 /*
  * Declare and define a component type in one translation unit.
@@ -1063,9 +1067,9 @@ SIECS_API void ecs_quit(void);
  * Example:
  *   ECS_COMPONENT(Position, { float x; float y; });
  */
-#define ECS_COMPONENT(cname, ...)                                              \
-  ECS_COMPONENT_DECLARE(cname, __VA_ARGS__);                                   \
-  ECS_COMPONENT_DEFINE(cname);
+#define ECS_COMPONENT(cname, ...)                                                                  \
+    ECS_COMPONENT_DECLARE(cname, __VA_ARGS__);                                                     \
+    ECS_COMPONENT_DEFINE(cname);
 
 /*
  * Declare a typed module.
@@ -1077,22 +1081,22 @@ SIECS_API void ecs_quit(void);
  * an import wrapper, and the user-defined import function:
  *   void physics_import(const physics_props_t *props);
  */
-#define ECS_MODULE_DECLARE(module_name, ...)                                   \
-  typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;      \
-  extern ecs_module_id_t ecs_id(module_name);                                  \
-  void ecs_id(module_name##_import_wrapper)(const void *desc);                 \
-  void module_name##_import(const module_name##_props_t *props)
+#define ECS_MODULE_DECLARE(module_name, ...)                                                       \
+    typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;                        \
+    extern ecs_module_id_t ecs_id(module_name);                                                    \
+    void ecs_id(module_name##_import_wrapper)(const void *desc);                                   \
+    void module_name##_import(const module_name##_props_t *props)
 
 /*
  * Define a typed module declared with ECS_MODULE_DECLARE.
  *
  * Use once in a C file before implementing module_name_import.
  */
-#define ECS_MODULE_DEFINE(module_name)                                         \
-  ecs_module_id_t ecs_id(module_name) = 0;                                     \
-  void ecs_id(module_name##_import_wrapper)(const void *desc) {                \
-    module_name##_import((const module_name##_props_t *)desc);                 \
-  }
+#define ECS_MODULE_DEFINE(module_name)                                                             \
+    ecs_module_id_t ecs_id(module_name) = 0;                                                       \
+    void ecs_id(module_name##_import_wrapper)(const void *desc) {                                  \
+        module_name##_import((const module_name##_props_t *)desc);                                 \
+    }
 
 /*
  * Import a typed module into a world.
@@ -1102,14 +1106,14 @@ SIECS_API void ecs_quit(void);
  * return the existing id without calling module_name_import again; the first
  * props value wins.
  */
-#define ECS_MODULE_IMPORT(module_name, ...)                                    \
-  (ecs_id(module_name) = ecs_module_init(&(ecs_module_desc_t){                 \
-       .name = #module_name,                                                   \
-       .id = &ecs_id(module_name),                                             \
-       .import = ecs_id(module_name##_import_wrapper),                         \
-       .desc = &(module_name##_props_t)__VA_ARGS__,                            \
-       .desc_size = sizeof(module_name##_props_t),                             \
-   }))
+#define ECS_MODULE_IMPORT(module_name, ...)                                                        \
+    (ecs_id(module_name) = ecs_module_init(&(ecs_module_desc_t){                                   \
+         .name = #module_name,                                                                     \
+         .id = &ecs_id(module_name),                                                               \
+         .import = ecs_id(module_name##_import_wrapper),                                           \
+         .desc = &(module_name##_props_t)__VA_ARGS__,                                              \
+         .desc_size = sizeof(module_name##_props_t),                                               \
+     }))
 
 /*
  * Register/import a module with a raw descriptor.
@@ -1150,18 +1154,18 @@ SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
  *   ECS_RELATION_DECLARE(ParentOf);
  *   ECS_RELATION_DEFINE(ParentOf, EcsRelationCascadeDelete);
  */
-#define ECS_RELATION_DEFINE(cname, flags)                                      \
-  ecs_component_desc_t ecs_id(cname##_desc) = {                                \
-      .name = #cname,                                                          \
-      .size = sizeof(cname),                                                   \
-      .struct_desc = &sireflect_desc(cname),                                   \
-      .relation_flags = EcsRelationTarget | (flags),                           \
-  };                                                                           \
-  ecs_component_t ecs_id(cname) = 0
+#define ECS_RELATION_DEFINE(cname, flags)                                                          \
+    ecs_component_desc_t ecs_id(cname##_desc) = {                                                  \
+        .name = #cname,                                                                            \
+        .size = sizeof(cname),                                                                     \
+        .struct_desc = &sireflect_desc(cname),                                                     \
+        .relation_flags = EcsRelationTarget | (flags),                                             \
+    };                                                                                             \
+    ecs_component_t ecs_id(cname) = 0
 
-#define ECS_RELATION(cname, flags)                                             \
-  ECS_RELATION_DECLARE(cname);                                                 \
-  ECS_RELATION_DEFINE(cname, flags)
+#define ECS_RELATION(cname, flags)                                                                 \
+    ECS_RELATION_DECLARE(cname);                                                                   \
+    ECS_RELATION_DEFINE(cname, flags)
 
 /* Return the internal source component id associated with a relation id. */
 #define ecs_source(name) (ecs_id(name) + 1)
@@ -1173,8 +1177,7 @@ SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
  *   ECS_RELATION_DECLARE(Targets);
  *   ecs_set(entity, Targets, { target });
  */
-#define ECS_RELATION_DECLARE(name)                                             \
-  ECS_COMPONENT_DECLARE(name, { ecs_entity_t target; })
+#define ECS_RELATION_DECLARE(name) ECS_COMPONENT_DECLARE(name, { ecs_entity_t target; })
 
 /* Builtin relation for parent/child relationships. */
 ECS_RELATION_DECLARE(ChildOf);
@@ -1197,8 +1200,7 @@ ECS_TAG_DECLARE(Abstract);
  *       .size = sizeof(Position)
  *   });
  */
-#define ecs_component(...)                                                     \
-  ecs_component_init(&(ecs_component_desc_t)__VA_ARGS__)
+#define ecs_component(...) ecs_component_init(&(ecs_component_desc_t)__VA_ARGS__)
 
 /* Register a component descriptor and return its component id. */
 SIECS_API ecs_component_t ecs_component_init(const ecs_component_desc_t *desc);
@@ -1261,12 +1263,15 @@ SIECS_API void ecs_kill(ecs_entity_t entity);
  *       p[i].x += v[i].x;
  *   }
  */
-#define ecs_query_each(it, i, ...)                                             \
-  for (ecs_query_id_t _q = ecs_query({{__VA_ARGS__}}); _q;                     \
-       ecs_query_fini(_q), _q = 0)                                             \
-    for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)              \
-      for (uint32_t i = 0; i < it.count; i++)
+#define ecs_query_each(it, i, ...)                                                                 \
+    for (ecs_query_id_t _q = ecs_query({ { __VA_ARGS__ } }); _q; ecs_query_fini(_q), _q = 0)       \
+        for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)                              \
+            for (uint32_t i = 0; i < it.count; i++)
 
+#define ecs_query_entities(entity, ...)                                                            \
+    for (ecs_query_id_t _q = ecs_query({ { __VA_ARGS__ } }); _q; ecs_query_fini(_q), _q = 0)       \
+        for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)                              \
+            for (uint64_t i = 0, entity = *it.entities; i < it.count; i++, entity = it.entities[i])
 /* Create a query. The query descriptor must read at least one component. */
 SIECS_API ecs_query_id_t ecs_query_init(const ecs_query_desc_t *query);
 
@@ -1318,8 +1323,7 @@ bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id);
 SIECS_API void *ecs_get_cid(ecs_entity_t entity, ecs_component_t id);
 
 /* Get a typed component pointer, or NULL if the entity does not have it. */
-#define ecs_try_get(entity, cname)                                             \
-  ((cname *)ecs_try_get_cid(entity, ecs_id(cname)))
+#define ecs_try_get(entity, cname) ((cname *)ecs_try_get_cid(entity, ecs_id(cname)))
 
 /* Get a component pointer by id, or NULL if the entity does not have it. */
 SIECS_API void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
@@ -1331,8 +1335,7 @@ SIECS_API void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
  * receive the new value and current storage before the copy. EcsOnSet observers
  * receive the new value before it is copied into storage.
  */
-#define ecs_set(entity, cname, ...)                                            \
-  ecs_set_cid(entity, ecs_id(cname), &(cname)__VA_ARGS__)
+#define ecs_set(entity, cname, ...) ecs_set_cid(entity, ecs_id(cname), &(cname)__VA_ARGS__)
 
 /*
  * Set a component value by id.
@@ -1340,10 +1343,8 @@ SIECS_API void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
  * data must point to at least the registered component size. Adds the component
  * if needed.
  */
-SIECS_API void ecs_set_cid(ecs_entity_t entity, ecs_component_t id,
-                           const void *data);
-SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
-                            void *data);
+SIECS_API void ecs_set_cid(ecs_entity_t entity, ecs_component_t id, const void *data);
+SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data);
 
 /*
  * Declare and define a resource type.
@@ -1357,23 +1358,23 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
  * Example:
  *   ECS_RESOURCE(Time, { float dt; float elapsed; });
  */
-#define ECS_RESOURCE_DECLARE(rname, ...)                                       \
-  typedef struct rname rname;                                                  \
-  struct rname __VA_ARGS__;                                                    \
-  extern ecs_resource_t ecs_id(rname);                                         \
-  extern ecs_resource_desc_t ecs_id(rname##_desc)
+#define ECS_RESOURCE_DECLARE(rname, ...)                                                           \
+    typedef struct rname rname;                                                                    \
+    struct rname __VA_ARGS__;                                                                      \
+    extern ecs_resource_t ecs_id(rname);                                                           \
+    extern ecs_resource_desc_t ecs_id(rname##_desc)
 
-#define ECS_RESOURCE_DEFINE(rname, ...)                                        \
-  ecs_resource_desc_t ecs_id(rname##_desc) = {                                 \
-      .name = #rname, .size = sizeof(rname), __VA_ARGS__};                     \
-  ecs_resource_t ecs_id(rname) = 0
+#define ECS_RESOURCE_DEFINE(rname, ...)                                                            \
+    ecs_resource_desc_t ecs_id(rname##_desc) = { .name = #rname,                                   \
+                                                 .size = sizeof(rname),                            \
+                                                 __VA_ARGS__ };                                    \
+    ecs_resource_t ecs_id(rname) = 0
 
-#define ECS_RESOURCE_REGISTER(rname)                                           \
-  ecs_resource_register(&ecs_id(rname), &ecs_id(rname##_desc))
+#define ECS_RESOURCE_REGISTER(rname) ecs_resource_register(&ecs_id(rname), &ecs_id(rname##_desc))
 
-#define ECS_RESOURCE(rname, ...)                                               \
-  ECS_RESOURCE_DECLARE(rname, __VA_ARGS__);                                    \
-  ECS_RESOURCE_DEFINE(rname)
+#define ECS_RESOURCE(rname, ...)                                                                   \
+    ECS_RESOURCE_DECLARE(rname, __VA_ARGS__);                                                      \
+    ECS_RESOURCE_DEFINE(rname)
 
 /*
  * Set or replace a world resource.
@@ -1381,19 +1382,15 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
  * Example:
  *   ecs_set_resource(Time, { .dt = 0.016f, .elapsed = 0.0f });
  */
-#define ecs_set_resource(rname, ...)                                           \
-  ecs_set_resource_rid(ecs_id(rname), &(rname)__VA_ARGS__)
+#define ecs_set_resource(rname, ...) ecs_set_resource_rid(ecs_id(rname), &(rname)__VA_ARGS__)
 
 /* Get a world resource. The resource must exist. */
 #define ecs_get_resource(rname) ((rname *)ecs_resource_rid(ecs_id(rname)))
-#define ecs_get_resource_read(rname)                                           \
-  ((const rname *)ecs_resource_rid(ecs_id(rname)))
+#define ecs_get_resource_read(rname) ((const rname *)ecs_resource_rid(ecs_id(rname)))
 
 /* Get a world resource, or NULL if it does not exist. */
-#define ecs_try_get_resource(rname)                                            \
-  ((rname *)ecs_try_resource_rid(ecs_id(rname)))
-#define ecs_try_get_resource_read(rname)                                       \
-  ((const rname *)ecs_try_resource_rid(ecs_id(rname)))
+#define ecs_try_get_resource(rname) ((rname *)ecs_try_resource_rid(ecs_id(rname)))
+#define ecs_try_get_resource_read(rname) ((const rname *)ecs_try_resource_rid(ecs_id(rname)))
 
 /* Return whether a world resource exists. */
 #define ecs_has_resource(rname) ecs_has_resource_rid(ecs_id(rname))
@@ -1411,8 +1408,7 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
 SIECS_API ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
 SIECS_API ecs_resource_t ecs_resource_find(const char *name);
 SIECS_API bool ecs_resource_is_registered_rid(ecs_resource_t id);
-SIECS_API ecs_resource_t ecs_resource_register(ecs_resource_t *id,
-                                               const ecs_resource_desc_t *desc);
+SIECS_API ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc);
 SIECS_API void ecs_set_resource_rid(ecs_resource_t id, const void *data);
 SIECS_API void ecs_move_resource_rid(ecs_resource_t id, void *data);
 SIECS_API void *ecs_resource_rid(ecs_resource_t id);
@@ -1443,10 +1439,10 @@ SIECS_API void ecs_with(ecs_component_t component, ecs_component_t require);
  * user_data is copied into ecs_observer_event_t for the callback.
  */
 typedef struct {
-  ecs_event_t on;
-  ecs_query_desc_t query;
-  ecs_observer_callback_t callback;
-  uintptr_t user_data;
+    ecs_event_t on;
+    ecs_query_desc_t query;
+    ecs_observer_callback_t callback;
+    uintptr_t user_data;
 } ecs_observer_desc_t;
 
 /*
@@ -1484,8 +1480,8 @@ SIECS_API void ecs_observer_disable(ecs_observer_id_t id);
  *
  * Observers matching the entity's current table and event id will be called.
  */
-SIECS_API void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event,
-                                    const void *trigger_data);
+SIECS_API void
+ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *trigger_data);
 
 /*
  * Query iterator.
@@ -1496,21 +1492,21 @@ SIECS_API void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event,
  * entities points to the current batch after ecs_iter_next returns true.
  */
 typedef enum {
-  EcsFieldNone,
-  EcsFieldOwned,
-  EcsFieldShared,
+    EcsFieldNone,
+    EcsFieldOwned,
+    EcsFieldShared,
 } ecs_field_kind_t;
 
 typedef struct {
-  uint32_t count;
-  ecs_entity_t *entities;
-  void **ptrs;
-  float delta_time;
-  struct ecs_query_cache_s *cache;
-  uint32_t field_kind_bits;
-  uintptr_t user_data;
-  uint16_t table_idx;
-  uint16_t table_count;
+    uint32_t count;
+    ecs_entity_t *entities;
+    void **ptrs;
+    float delta_time;
+    struct ecs_query_cache_s *cache;
+    uint32_t field_kind_bits;
+    uintptr_t user_data;
+    uint16_t table_idx;
+    uint16_t table_count;
 } ecs_iter_t;
 
 /*
@@ -1543,42 +1539,40 @@ SIECS_API bool ecs_iter_next(ecs_iter_t *it);
  * but are not returned as fields.
  */
 static inline ecs_field_kind_t ecs_field_kind(const ecs_iter_t *it, uint16_t field_index) {
-  if (it->field_kind_bits == UINT32_MAX) {
-    return it->ptrs[field_index] ? EcsFieldOwned : EcsFieldNone;
-  }
+    if (it->field_kind_bits == UINT32_MAX) {
+        return it->ptrs[field_index] ? EcsFieldOwned : EcsFieldNone;
+    }
 
-  ecs_field_kind_t kind =
-      (ecs_field_kind_t)((it->field_kind_bits >> (field_index * 2)) & 0x3u);
-  return kind;
+    ecs_field_kind_t kind = (ecs_field_kind_t)((it->field_kind_bits >> (field_index * 2)) & 0x3u);
+    return kind;
 }
 
 static inline void *ecs_field(ecs_iter_t *it, uint16_t field_index) {
-  void *field = it->ptrs[field_index];
-  if (it->field_kind_bits == UINT32_MAX) {
-    return field ? *(void **)field : NULL;
-  }
-  return ecs_field_kind(it, field_index) == EcsFieldOwned ? *(void **)field
-                                                          : field;
+    void *field = it->ptrs[field_index];
+    if (it->field_kind_bits == UINT32_MAX) {
+        return field ? *(void **)field : NULL;
+    }
+    return ecs_field_kind(it, field_index) == EcsFieldOwned ? *(void **)field : field;
 }
 
 static inline bool ecs_field_is_shared(ecs_iter_t *it, uint16_t field_index) {
-  return ecs_field_kind(it, field_index) == EcsFieldShared;
+    return ecs_field_kind(it, field_index) == EcsFieldShared;
 }
 
 /* System phases run in enum order when ecs_progress is called. */
 typedef enum {
-  EcsPreStart,
-  EcsStart,
-  EcsPostStart,
-  EcsOnLoad,
-  EcsPostLoad,
-  EcsPreUpdate,
-  EcsOnUpdate,
-  EcsPostUpdate,
-  EcsPreRender,
-  EcsOnRender,
-  EcsPostRender,
-  EcsPhaseCount,
+    EcsPreStart,
+    EcsStart,
+    EcsPostStart,
+    EcsOnLoad,
+    EcsPostLoad,
+    EcsPreUpdate,
+    EcsOnUpdate,
+    EcsPostUpdate,
+    EcsPreRender,
+    EcsOnRender,
+    EcsPostRender,
+    EcsPhaseCount,
 } ecs_phase_t;
 
 /* Backward-compatible phase aliases. Prefer the Ecs* names in new code. */
@@ -1597,14 +1591,14 @@ typedef enum {
  * same phase.
  */
 typedef struct {
-  const char *name;
-  ecs_query_desc_t query;
-  void (*callback)(ecs_iter_t *);
-  uintptr_t user_data;
-  void (*user_data_dtor)(uintptr_t user_data);
-  ecs_phase_t phase;
-  ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
-  bool disabled;
+    const char *name;
+    ecs_query_desc_t query;
+    void (*callback)(ecs_iter_t *);
+    uintptr_t user_data;
+    void (*user_data_dtor)(uintptr_t user_data);
+    ecs_phase_t phase;
+    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
+    bool disabled;
 } ecs_system_desc_t;
 
 /*
