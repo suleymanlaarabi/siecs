@@ -4,12 +4,8 @@
 #include "datastructure/arena.h"
 #include "datastructure/vec.h"
 #include "siecs.h"
-#ifndef SIHTTP_H
 #include "sihttp.h"
-#endif
-#ifndef SIREFLECT_H
 #include "sireflect.h"
-#endif
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
 #include "storage/module_index.h"
@@ -80,6 +76,10 @@ ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void 
         };
         obs->callback(&observer_event);
     }
+}
+
+static inline bool ecs_is_deferred(void) {
+    return ecs_world.defer_depth != 0 || ecs_world.flushing_commands;
 }
 
 void ecs_bootstrap(void);

@@ -1,3 +1,4 @@
+#include "world_internal.h"
 #include <siecs_test.h>
 #include <stdlib.h>
 
@@ -79,7 +80,7 @@ static void order_second(ecs_iter_t *it) {
 
 static void no_query_system(ecs_iter_t *it) {
     test_not_null(it);
-        test_uint(1, it->count);
+    test_uint(1, it->count);
     system_calls++;
 }
 
@@ -140,7 +141,7 @@ void system_run(void) {
     reset_system_test_state();
 
     ecs_init();
-    
+
     ECS_COMPONENT_REGISTER(SystemPosition);
     ecs_entity_t entity = create_system_entity(41);
 
@@ -167,7 +168,7 @@ void system_phase_order(void) {
     reset_system_test_state();
 
     ecs_init();
-    
+
     ECS_COMPONENT_REGISTER(SystemPosition);
     create_system_entity(0);
 
@@ -210,7 +211,7 @@ void system_start_phases_run_once(void) {
     reset_system_test_state();
 
     ecs_init();
-    
+
     ECS_COMPONENT_REGISTER(SystemPosition);
     create_system_entity(0);
 
@@ -264,7 +265,7 @@ void system_after_order(void) {
     reset_system_test_state();
 
     ecs_init();
-    
+
     ECS_COMPONENT_REGISTER(SystemPosition);
     create_system_entity(0);
 
@@ -299,7 +300,7 @@ void system_enable(void) {
     reset_system_test_state();
 
     ecs_init();
-    
+
     ECS_COMPONENT_REGISTER(SystemPosition);
     create_system_entity(0);
 
@@ -331,7 +332,7 @@ void system_without_query_runs_once(void) {
     reset_system_test_state();
 
     ecs_init();
-    
+
     ecs_system(
         {
             .name = "NoQuery",
@@ -376,7 +377,7 @@ void system_callback_can_advance_iterator(void) {
     reset_system_test_state();
 
     ecs_init();
-    
+
     ECS_COMPONENT_REGISTER(SystemPosition);
     ECS_COMPONENT_REGISTER(SystemTag);
 
@@ -408,7 +409,7 @@ void system_skips_disabled_by_default(void) {
     reset_system_test_state();
 
     ecs_init();
-    
+
     ECS_COMPONENT_REGISTER(SystemPosition);
     ecs_entity_t enabled = create_system_entity(0);
     ecs_entity_t disabled = create_system_entity(0);
@@ -436,7 +437,7 @@ void system_can_run_on_disabled_when_requested(void) {
     reset_system_test_state();
 
     ecs_init();
-    
+
     ECS_COMPONENT_REGISTER(SystemPosition);
     ecs_entity_t enabled = create_system_entity(0);
     ecs_entity_t disabled = create_system_entity(0);
@@ -464,7 +465,7 @@ void system_defers_structural_changes_until_iteration_end(void) {
     reset_system_test_state();
 
     ecs_init();
-    
+
     ECS_COMPONENT_REGISTER(SystemPosition);
 
     ecs_entity_t first = create_system_entity(1);
@@ -495,7 +496,7 @@ void system_flushes_between_ordered_systems(void) {
     reset_system_test_state();
 
     ecs_init();
-    
+
     ECS_COMPONENT_REGISTER(SystemPosition);
     ECS_COMPONENT_REGISTER(SystemTag);
 
@@ -529,7 +530,7 @@ void system_flushes_between_ordered_systems(void) {
 
 void system_manual_defer_coalesces_to_final_state(void) {
     ecs_init();
-    
+
     ECS_COMPONENT_REGISTER(SystemBatchA);
     ECS_COMPONENT_REGISTER(SystemBatchB);
     ECS_COMPONENT_REGISTER(SystemBatchC);
@@ -565,7 +566,7 @@ void system_deferred_many_sets_survive_arena_growth(void) {
     enum { entity_count = 512 };
 
     ecs_init();
-        ECS_COMPONENT_REGISTER(SystemBatchA);
+    ECS_COMPONENT_REGISTER(SystemBatchA);
 
     ecs_entity_t entities[entity_count];
     for (int i = 0; i < entity_count; i++) {
@@ -587,7 +588,7 @@ void system_deferred_many_sets_survive_arena_growth(void) {
 
 void system_deferred_set_overwrite_keeps_latest_value(void) {
     ecs_init();
-        ECS_COMPONENT_REGISTER(SystemBatchA);
+    ECS_COMPONENT_REGISTER(SystemBatchA);
 
     ecs_entity_t entity = ecs_new();
     ecs_set(entity, SystemBatchA, { -1 });
@@ -604,7 +605,7 @@ void system_deferred_set_overwrite_keeps_latest_value(void) {
 
 void system_deferred_set_adds_required_components(void) {
     ecs_init();
-        ECS_COMPONENT_REGISTER(SystemBatchA);
+    ECS_COMPONENT_REGISTER(SystemBatchA);
     ECS_COMPONENT_REGISTER(SystemBatchB);
     ecs_with(ecs_id(SystemBatchA), ecs_id(SystemBatchB));
 
@@ -623,7 +624,7 @@ void system_quit_makes_progress_return_false(void) {
     reset_system_test_state();
 
     ecs_init();
-    
+
     ecs_system(
         {
             .name = "Quit",

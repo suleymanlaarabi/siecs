@@ -532,9 +532,6 @@ SIECS_API void ecs_defer_begin(void);
 /* End a defer scope. The outermost end flushes the command buffer. */
 SIECS_API void ecs_defer_end(void);
 
-/* Return whether mutations are currently being deferred or flushed. */
-SIECS_API bool ecs_is_deferred(void);
-
 /*
  * Return whether entity is alive in world.
  *

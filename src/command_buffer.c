@@ -130,11 +130,7 @@ void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id) {
     id_vec_push_unique(&command->remove_ids, id);
 }
 
-void ecs_command_buffer_set(
-        ecs_entity_t entity,
-    ecs_component_t id,
-    const void *data
-) {
+void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void *data) {
     ecs_entity_command_t *command = command_for_entity(entity);
     const ecs_component_record_t *record = ecs_component_index_get(&ecs_world.component_index, id);
 
@@ -155,11 +151,7 @@ void ecs_command_buffer_set(
     ecs_vec_push(&command->sets, &new_set, sizeof(ecs_deferred_set_t));
 }
 
-void ecs_command_buffer_move(
-        ecs_entity_t entity,
-    ecs_component_t id,
-    void *data
-) {
+void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data) {
     ecs_entity_command_t *command = command_for_entity(entity);
     const ecs_component_record_t *record = ecs_component_index_get(&ecs_world.component_index, id);
 
@@ -217,8 +209,7 @@ static void final_ids_push_sorted(ecs_vec_t *final_ids, ecs_component_t id) {
     ids[i] = id;
 }
 
-static void
-final_ids_collect_requirements(ecs_vec_t *final_ids, ecs_component_t id) {
+static void final_ids_collect_requirements(ecs_vec_t *final_ids, ecs_component_t id) {
     const ecs_component_record_t *record = ecs_component_index_get(&ecs_world.component_index, id);
     for (uint32_t i = 0; i < record->required_count; i++) {
         ecs_component_t required = record->required[i];
@@ -230,10 +221,8 @@ final_ids_collect_requirements(ecs_vec_t *final_ids, ecs_component_t id) {
     }
 }
 
-static ecs_type_t command_build_type(
-        const ecs_table_t *table,
-    const ecs_entity_command_t *command
-) {
+static ecs_type_t
+command_build_type(const ecs_table_t *table, const ecs_entity_command_t *command) {
     ecs_vec_t final_ids;
     ecs_vec_init(&final_ids, sizeof(ecs_component_t));
 
@@ -258,7 +247,7 @@ static ecs_type_t command_build_type(
 }
 
 static void command_emit_removed(
-        ecs_table_t *table,
+    ecs_table_t *table,
     ecs_entity_t entity,
     uint32_t row,
     const ecs_type_t *final_type
@@ -274,7 +263,8 @@ static void command_emit_removed(
         }
 
         void *data = ecs_table_component_at_column(table, i, row);
-        const ecs_component_record_t *record = ecs_component_index_get(&ecs_world.component_index, id);
+        const ecs_component_record_t *record =
+            ecs_component_index_get(&ecs_world.component_index, id);
         if (record->on_remove) {
             record->on_remove(entity, id, data);
         }
@@ -283,7 +273,7 @@ static void command_emit_removed(
 }
 
 static void command_emit_added(
-        const ecs_table_t *old_table,
+    const ecs_table_t *old_table,
     ecs_table_t *new_table,
     ecs_entity_t entity,
     uint32_t row
@@ -299,7 +289,8 @@ static void command_emit_added(
         }
 
         void *data = ecs_table_component_at_column(new_table, new_i, row);
-        const ecs_component_record_t *record = ecs_component_index_get(&ecs_world.component_index, id);
+        const ecs_component_record_t *record =
+            ecs_component_index_get(&ecs_world.component_index, id);
         if (record->on_add) {
             record->on_add(entity, id, data);
         }
@@ -328,7 +319,8 @@ static void command_apply_sets(ecs_entity_command_t *command) {
     ecs_deferred_set_t *sets = ecs_vec_data(&command->sets, ecs_deferred_set_t);
     for (uint32_t i = 0; i < command->sets.size && ecs_is_alive(command->entity); i++) {
         ecs_component_t id = sets[i].id;
-        const ecs_component_record_t *record = ecs_component_index_get(&ecs_world.component_index, id);
+        const ecs_component_record_t *record =
+            ecs_component_index_get(&ecs_world.component_index, id);
         ecs_entity_record_t *entity_record = ecs_get_record(command->entity);
         ecs_table_t *table = ecs_get_table(entity_record->table_id);
         uint16_t column = ecs_table_get_column_index(table, id);
@@ -421,18 +413,12 @@ void ecs_command_buffer_flush() {
     ecs_arena_reset(&ecs_world.arena_allocator);
 }
 
-void ecs_defer_begin(void) {
-        ecs_world.defer_depth++;
-}
+void ecs_defer_begin(void) { ecs_world.defer_depth++; }
 
 void ecs_defer_end(void) {
-        ecs_assert(ecs_world.defer_depth > 0, "ecs_defer_end called without ecs_defer_begin\n");
+    ecs_assert(ecs_world.defer_depth > 0, "ecs_defer_end called without ecs_defer_begin\n");
     ecs_world.defer_depth--;
     if (ecs_world.defer_depth == 0) {
         ecs_command_buffer_flush();
     }
-}
-
-bool ecs_is_deferred(void) {
-        return ecs_world.defer_depth != 0 || ecs_world.flushing_commands;
 }
