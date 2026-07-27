@@ -72,8 +72,7 @@ void rest_schema_returns_editor_contract(void) {
     ecs_init();
     ECS_COMPONENT_REGISTER(RestPosition);
 
-    sihttp_app_state_t state = {};
-    sihttp_request_t req = { .state = &state };
+    sihttp_request_t req = {};
     sihttp_response_t res = ecs_rest_get_schema(&req);
 
     test_int(200, res.status);
@@ -251,11 +250,8 @@ void rest_set_component_value_rejects_missing_field(void) {
     ecs_entity_t entity = ecs_new();
     ecs_set(entity, RestPosition, { 1.0f, 2.0f });
 
-    sihttp_response_t res = ecs_rest_set_entity_component(
-        entity,
-        ecs_id(RestPosition),
-        "{\"value\":{\"x\":30}}"
-    );
+    sihttp_response_t res =
+        ecs_rest_set_entity_component(entity, ecs_id(RestPosition), "{\"value\":{\"x\":30}}");
 
     test_int(400, res.status);
     RestPosition *position = ecs_get(entity, RestPosition);

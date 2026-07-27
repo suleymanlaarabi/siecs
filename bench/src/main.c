@@ -58,11 +58,8 @@ static void make_query_tables(
     free(tags);
 }
 
-static void make_owned_query_tables(
-    const ecs_component_t *fields,
-    uint32_t field_count,
-    uint32_t table_count
-) {
+static void
+make_owned_query_tables(const ecs_component_t *fields, uint32_t field_count, uint32_t table_count) {
     ecs_component_t *tags = malloc(sizeof(ecs_component_t) * table_count);
     register_components(tags, table_count);
     trivial_bench_value_t value = { .values = { 1, 2, 3, 4 } };

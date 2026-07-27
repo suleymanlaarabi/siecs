@@ -1,5 +1,10 @@
+#include "siecs/cpp/entity.hpp"
+#include "siecs/cpp/query.hpp"
+#include "siecs/cpp/system.hpp"
+#include "siecs/cpp/world.hpp"
 #include <concepts>
 #include <cstdint>
+#include <cstdio>
 #include <siecs.h>
 
 #include <cassert>
@@ -16,26 +21,13 @@ struct Gravity {
     float value;
 };
 
-struct Enemy;
-struct NoIntegrate;
+struct Enemy {};
+struct NoIntegrate {};
 
 int main() {
     ecs::init();
 
-    ecs::entity::create<Enemy>();
+    ecs::entity::create();
 
-    ecs::entity::create().is_a<Enemy>();
-
-    ecs::system().require<Position>();
-
-    ecs::system().require<Enemy>().each([](Position &pos, const Velocity &vel) { pos.x += vel.x; });
-
-    ecs::system()
-        .phase(EcsOnUpdate)
-        .exclude<Enemy>()
-        .each([](Velocity &vitesse, const Gravity &gravity) { vitesse.y += gravity.value; });
-
-    ecs::entity::create().add<Position, Velocity>();
-
-    ecs::run();
+    ecs::fini();
 }

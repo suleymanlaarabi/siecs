@@ -22,6 +22,7 @@ class entity {
 
   public:
     entity() noexcept = default;
+
     explicit entity(ecs_entity_t entity) noexcept : _entity(entity) {}
 
     static entity create() noexcept { return entity(ecs_new()); }
