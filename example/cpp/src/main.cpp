@@ -23,14 +23,20 @@ struct Gravity {
 };
 
 struct Enemy {};
+struct Voiture {};
 struct NoIntegrate {};
 
 int main() {
     ecs::init({ .rest = true, .target_fps = 60 });
 
-    ecs::entity::create<Enemy>().abstract();
+    ecs::entity::create<Voiture>().abstract();
+    ecs::entity::create<Enemy>().is_a<Voiture>().abstract();
 
-    ecs::run();
+    ecs::entity entity = ecs::entity::create().is_a<Enemy>();
 
-    ecs::fini();
+    if (entity.is<Enemy>() && entity.is<Voiture>()) {
+        puts("ok");
+    }
+
+    ecs::entity::create();
 }

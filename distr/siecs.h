@@ -1896,7 +1896,6 @@ template <typename T> static ecs_component_t ecs_cpp_component_id() {
 } // namespace ecs
 
 #pragma once
-
 #include <cstring>
 #include <string>
 
@@ -1917,6 +1916,11 @@ class defer_scope {
 
 class entity {
     ecs_entity_t _entity = 0;
+
+    template <typename> static ecs_entity_t &by_type() {
+        static ecs_entity_t id = 0;
+        return id;
+    }
 
   public:
     entity() noexcept = default;
@@ -2026,6 +2030,8 @@ class entity {
         return *this;
     }
 
+    template <typename T> bool is() { return ecs_is(_entity, ecs::entity::typed<T>()); }
+
     [[nodiscard]] bool is(entity target) const { return ecs_is(_entity, target._entity); }
 
     entity child_of(entity parent) {
@@ -2048,13 +2054,15 @@ class entity {
     [[nodiscard]] bool is_disabled() const { return has<Disabled>(); }
 
     template <typename T> static entity create(const char *name = nullptr) {
-        static ecs_entity_t id = 0;
+        ecs_entity_t &id = by_type<T>();
         if (id == 0 || !ecs_is_alive(id)) {
             const std::string generated = std::string(type_name<T>());
             id = create(name ? name : generated.c_str()).id();
         }
         return from(id);
     }
+
+    template <typename T> static entity typed() { return from(by_type<T>()); }
 };
 
 } // namespace ecs
