@@ -1,8 +1,6 @@
 #include "module.h"
 #include "siecs.h"
-#ifndef SIHTTP_H
 #include "sihttp.h"
-#endif
 #include "storage/system_index.h"
 #include "utils.h"
 #include "world_internal.h"

@@ -2,9 +2,7 @@
 #include "helper.h"
 #include "siecs.h"
 #include <stdio.h>
-#ifndef SIREFLECT_H
 #include "sireflect.h"
-#endif
 #include "storage/component_index.h"
 #include "utils.h"
 #include "world_internal.h"

@@ -4912,8 +4912,6 @@ void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_
 
 #endif
 
-#ifndef SIREFLECT_H
-#endif
 #ifndef SIECS_STORAGE_TABLE_INDEX_H
 #define SIECS_STORAGE_TABLE_INDEX_H
 #ifndef SIECS_TABLE_H
@@ -6145,9 +6143,6 @@ bool ecs_is_deferred(void) {
         return ecs_world.defer_depth != 0 || ecs_world.flushing_commands;
 }
 
-#ifndef SIREFLECT_H
-#endif
-
 static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
     uint32_t id = ecs_world.component_index.components.size;
     if (id == 0)
@@ -7269,8 +7264,6 @@ void ecs_remove_resource_rid(ecs_resource_t id) {
     ecs_resource_index_remove(&ecs_world.resource_index, id);
 }
 
-#ifndef SIHTTP_H
-#endif
 #include <time.h>
 
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
@@ -7974,11 +7967,6 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
     return filter;
 }
 
-#ifndef SIHTTP_H
-#endif
-#ifndef SIREFLECT_H
-#endif
-
 ecs_world_t ecs_world;
 static bool ecs_world_started;
 static bool ecs_world_finished;
@@ -8076,9 +8064,6 @@ sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req);
 
 #endif
 
-#ifndef SIHTTP_H
-#endif
-
 sihttp_response_t health(const sihttp_request_t *) {
     return sihttp_response({ .body = strdup("OK") });
 }
@@ -8130,9 +8115,6 @@ sihttp_response_t ecs_rest_error_response(int status, const char *message) {
 
     return ecs_rest_json_response(status, body);
 }
-
-#ifndef SIJSON_H
-#endif
 
 static bool entity_from_index(int64_t index, ecs_entity_t *out) {
     if (index <= 0 || (uint64_t)index >= ecs_world.entity_index.entities.size) {
@@ -8287,9 +8269,6 @@ sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req) {
         }
     );
 }
-
-#ifndef SIJSON_H
-#endif
 
 static void ensure_sijson_entity_type(void) {
     sireflect_register_struct(
@@ -8733,9 +8712,6 @@ void ecs_vec_remove_u64(ecs_vec_t *vec, uint64_t value) {
         }
     });
 }
-
-#ifndef SIREFLECT_H
-#endif
 
 void ecs_component_index_register(
     ecs_component_index_t *index,

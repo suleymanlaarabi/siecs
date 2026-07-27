@@ -2,9 +2,7 @@
 #include "rest_internal.h"
 #include "siecs.h"
 #include <string.h>
-#ifndef SIJSON_H
 #include "sijson.h"
-#endif
 #include "../storage/component_index.h"
 #include "../table.h"
 #include "../world_internal.h"

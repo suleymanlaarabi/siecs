@@ -1,7 +1,5 @@
 #include "rest_internal.h"
-#ifndef SIHTTP_H
 #include "sihttp.h"
-#endif
 #include <string.h>
 
 sihttp_response_t health(const sihttp_request_t *) {

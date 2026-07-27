@@ -1,9 +1,7 @@
 #include "component_index.h"
 #include "../datastructure/vec.h"
 #include "siecs.h"
-#ifndef SIREFLECT_H
 #include "sireflect.h"
-#endif
 #include <stdlib.h>
 #include <string.h>
 

@@ -1,10 +1,6 @@
 #include "siecs.h"
-#ifndef SIHTTP_H
 #include "sihttp.h"
-#endif
-#ifndef SIREFLECT_H
 #include "sireflect.h"
-#endif
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
 #include "storage/module_index.h"
