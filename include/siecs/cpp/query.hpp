@@ -192,6 +192,11 @@ class query {
         return *this;
     }
 
+    template <typename... T> query &optional() {
+        detail::append_terms<T...>(desc, term_index, EcsInOutOptional);
+        return *this;
+    }
+
     template <typename... T> query &exclude() {
         detail::append_terms<T...>(desc, term_index, EcsNot);
         return *this;

@@ -31,7 +31,7 @@ int main() {
 
     ecs::entity::create<Enemy>().abstract();
 
-    ecs::query().require<Abstract>().each([](ecs::entity entity) {
+    ecs::query().optional<Abstract>().each([](ecs::entity entity) {
         std::println("{}", entity.get<Name>().value);
     });
 
