@@ -46,6 +46,8 @@
           "mutable_does_not_match_shared_inherited_field",
           "reads_shared_and_writes_owned_field",
           "owned_override_wins_over_shared_field",
+          "each_receives_entity",
+          "system_each_receives_entity",
           "system_reads_shared_fields_with_interleaved_resource"
         ]
       },

@@ -114,6 +114,26 @@ void query_owned_override_wins_over_shared_field(void) {
     test_assert(cpp_query_velocity(entity)->x == 3.0f);
 }
 
+void query_each_receives_entity(void) {
+    ecs_test_scope _ecs_scope;
+
+    auto first = ecs::entity::create().set(CppQueryPosition{ .x = 1.0f });
+    auto second = ecs::entity::create().set(CppQueryPosition{ .x = 2.0f });
+    int calls = 0;
+    bool saw_first = false;
+    bool saw_second = false;
+
+    ecs::query().each([&](ecs::entity current, const CppQueryPosition &position) {
+        calls++;
+        saw_first |= current.id() == first.id() && position.x == 1.0f;
+        saw_second |= current.id() == second.id() && position.x == 2.0f;
+    });
+
+    test_int(2, calls);
+    test_true(saw_first);
+    test_true(saw_second);
+}
+
 void query_system_reads_shared_fields_with_interleaved_resource(void) {
     ecs_test_scope _ecs_scope;
     ecs::set_resource(CppQueryScale{ .value = 2.0f });
@@ -140,4 +160,24 @@ void query_system_reads_shared_fields_with_interleaved_resource(void) {
     test_int(2, calls);
     test_assert(cpp_query_velocity(a)->x == 15.0f);
     test_assert(cpp_query_velocity(b)->x == 16.0f);
+}
+
+void query_system_each_receives_entity(void) {
+    ecs_test_scope _ecs_scope;
+
+    auto target = ecs::entity::create().set(CppQueryPosition{ .x = 1.0f });
+    int calls = 0;
+    bool saw_target = false;
+
+    ecs::system("CppEntityArgument").each([&](ecs::entity current, CppQueryPosition &position) {
+        calls++;
+        saw_target = current.id() == target.id();
+        position.x += 1.0f;
+    });
+
+    ecs::progress();
+
+    test_int(1, calls);
+    test_true(saw_target);
+    test_assert(cpp_query_position(target)->x == 2.0f);
 }

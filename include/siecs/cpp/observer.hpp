@@ -51,12 +51,16 @@ template <typename T> static ecs_event_t ecs_cpp_event_id() {
 
 template <typename T> decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event) {
     using raw = std::remove_cvref_t<T>;
-    void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
-
-    if constexpr (std::is_const_v<std::remove_reference_t<T>>) {
-        return *static_cast<const raw *>(ptr);
+    if constexpr (is_entity_v<T>) {
+        return entity::from(event->entity);
     } else {
-        return *static_cast<raw *>(ptr);
+        void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
+
+        if constexpr (std::is_const_v<std::remove_reference_t<T>>) {
+            return *static_cast<const raw *>(ptr);
+        } else {
+            return *static_cast<raw *>(ptr);
+        }
     }
 }
 

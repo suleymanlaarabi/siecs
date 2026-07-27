@@ -2219,9 +2219,20 @@ namespace ecs {
 
 namespace detail {
 
+template <typename T> struct is_entity : std::false_type {};
+template <> struct is_entity<ecs::entity> : std::true_type {};
+
+template <typename T> inline constexpr bool is_entity_v = is_entity<std::remove_cvref_t<T>>::value;
+
 template <typename Args, std::size_t I> consteval std::size_t field_index_before() {
     return []<std::size_t... Is>(std::index_sequence<Is...>) {
-        return ((!is_res_v<std::tuple_element_t<Is, Args>> ? 1U : 0U) + ... + 0U);
+        return (
+            (!is_res_v<std::tuple_element_t<Is, Args>> &&
+                     !is_entity_v<std::tuple_element_t<Is, Args>>
+                 ? 1U
+                 : 0U) +
+            ... + 0U
+        );
     }(std::make_index_sequence<I>{});
 }
 
@@ -2233,6 +2244,12 @@ template <typename T> struct component_cursor {
     T *value;
     std::ptrdiff_t step;
 };
+
+struct entity_cursor {
+    ecs_entity_t *value;
+};
+
+inline entity cursor_get(entity_cursor &cursor) { return entity::from(*cursor.value); }
 
 template <typename T> inline decltype(auto) cursor_get(T &cursor) {
     if constexpr (is_res_v<T>)
@@ -2246,10 +2263,17 @@ template <bool OwnedOnly, typename T> inline void cursor_next(T &cursor) noexcep
         cursor.value += OwnedOnly ? 1 : cursor.step;
 }
 
+template <bool OwnedOnly> inline void cursor_next(entity_cursor &cursor) noexcept {
+    (void)OwnedOnly;
+    cursor.value++;
+}
+
 template <typename Args, std::size_t I, typename Resources>
 inline auto make_cursor(ecs_iter_t *it, Resources &resources, bool &has_shared) {
     using arg = std::tuple_element_t<I, Args>;
-    if constexpr (is_res_v<arg>) {
+    if constexpr (is_entity_v<arg>) {
+        return entity_cursor{ it->entities };
+    } else if constexpr (is_res_v<arg>) {
         return std::get<I>(resources);
     } else {
         constexpr std::size_t field = field_index_before<Args, I>();
@@ -2322,18 +2346,38 @@ inline void append_terms(ecs_query_desc_t &desc, uint16_t &term_index, ecs_term_
     (append_term(desc, term_index, ecs::detail::ecs_cpp_component_id<T>(), access), ...);
 }
 
+template <typename Args, std::size_t I>
+inline void append_callback_term(ecs_query_desc_t &desc, uint16_t &term_index) {
+    using T = std::tuple_element_t<I, Args>;
+    if constexpr (is_entity_v<T>) {
+        static_assert(I == 0, "ecs::entity must be the first callback argument");
+        static_assert(!std::is_reference_v<T>, "ecs::entity must be passed by value");
+    } else if constexpr (!is_res_v<T>) {
+        append_term(
+            desc,
+            term_index,
+            ecs::detail::ecs_cpp_component_id<std::remove_cvref_t<T>>(),
+            term_access<T>()
+        );
+    }
+}
+
+template <typename Args, std::size_t... Is>
+inline void append_callback_terms_impl(
+    ecs_query_desc_t &desc,
+    uint16_t &term_index,
+    std::index_sequence<Is...>
+) {
+    (append_callback_term<Args, Is>(desc, term_index), ...);
+}
+
 template <typename Args>
 inline void append_callback_terms(ecs_query_desc_t &desc, uint16_t &term_index) {
-    for_each_type<Args>([&]<typename T>() {
-        if constexpr (!is_res_v<T>) {
-            append_term(
-                desc,
-                term_index,
-                ecs::detail::ecs_cpp_component_id<std::remove_cvref_t<T>>(),
-                term_access<T>()
-            );
-        }
-    });
+    append_callback_terms_impl<Args>(
+        desc,
+        term_index,
+        std::make_index_sequence<std::tuple_size_v<Args>>{}
+    );
 }
 
 } // namespace detail
@@ -2342,6 +2386,7 @@ class query {
   protected:
     ecs_query_desc_t desc{};
     uint16_t term_index = 0;
+
   public:
     query() = default;
 
@@ -2364,10 +2409,6 @@ class query {
 
     template <typename F> void each(F &&func) {
         using args = typename function_traits<std::remove_reference_t<F>>::args_tuple;
-        static_assert(
-            detail::component_arg_count<args>() > 0,
-            "query callbacks must read at least one component"
-        );
 
         detail::append_callback_terms<args>(desc, term_index);
 
@@ -2443,12 +2484,16 @@ template <typename T> static ecs_event_t ecs_cpp_event_id() {
 
 template <typename T> decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event) {
     using raw = std::remove_cvref_t<T>;
-    void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
-
-    if constexpr (std::is_const_v<std::remove_reference_t<T>>) {
-        return *static_cast<const raw *>(ptr);
+    if constexpr (is_entity_v<T>) {
+        return entity::from(event->entity);
     } else {
-        return *static_cast<raw *>(ptr);
+        void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
+
+        if constexpr (std::is_const_v<std::remove_reference_t<T>>) {
+            return *static_cast<const raw *>(ptr);
+        } else {
+            return *static_cast<raw *>(ptr);
+        }
     }
 }
 
