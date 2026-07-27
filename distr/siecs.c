@@ -1,2601 +1,1246 @@
 #include "siecs.h"
-/* Embedded internal headers for standalone distribution. */
-#ifndef SIECS_HELPER_H
-#define SIECS_HELPER_H
+#ifndef SIHTTP_BUFFER_H
+#define SIHTTP_BUFFER_H
 
-#define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
-#define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
-
-#define ecs_entity(index, generation) (((uint64_t)(index) << 32) | (generation & 0xffffffff))
-
-#define ecs_first(id) ((uint32_t)((id) >> 32))
-#define ecs_second(id) ((uint32_t)((id) & 0xffffffff))
-
-#endif
-#ifndef SIECS_DATASTRUCTURE_IDMAP_H
-#define SIECS_DATASTRUCTURE_IDMAP_H
-#include <stdint.h>
+#include <stddef.h>
 
 typedef struct {
-    uint16_t *ids;
-    uint16_t capacity;
-} ecs_id_map_t;
+    char *data;
+    size_t len;
+    size_t cap;
+} sihttp_buffer_t;
 
-void ecs_id_map_init(ecs_id_map_t *map);
-void ecs_id_map_fini(ecs_id_map_t *map);
-
-void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id);
-
-static inline void ecs_id_map_set(ecs_id_map_t *map, uint16_t id, uint16_t value) {
-    ecs_id_map_ensure(map, id);
-    map->ids[id] = value;
-}
-
-static inline uint16_t ecs_id_map_at(const ecs_id_map_t *map, uint16_t id) { return map->ids[id]; }
-
-static inline uint16_t ecs_id_map_at_or_invalid(const ecs_id_map_t *map, uint16_t id) {
-    return map->capacity > id ? map->ids[id] : UINT16_MAX;
-}
+void sihttp_buffer_init(sihttp_buffer_t *buffer);
+void sihttp_buffer_fini(sihttp_buffer_t *buffer);
+int sihttp_buffer_append(sihttp_buffer_t *buffer, const char *data, size_t len);
 
 #endif
-#ifndef SIECS_DATASTRUCTURE_VEC_H
-#define SIECS_DATASTRUCTURE_VEC_H
-#include <stdbool.h>
-#include <stdint.h>
 
-typedef struct {
-    void *data;
-    uint32_t size;
-    uint32_t capacity;
-} ecs_vec_t;
-
-void ecs_vec_init(ecs_vec_t *vec, const uint32_t element_size);
-void ecs_vec_init_w_size(ecs_vec_t *vec, const uint32_t element_size, uint32_t size);
-void ecs_vec_fini(ecs_vec_t *vec);
-void ecs_vec_grow(ecs_vec_t *vec, const uint32_t element_size);
-
-// Ensure vec has at least `count` elements. New slots are zero-initialized.
-void ecs_vec_ensure(ecs_vec_t *vec, uint32_t count, const uint32_t element_size);
-
-// Copy element into the vec (memcpy). The pointer is not retained.
-// Safe to call repeatedly — any grow only invalidates the internal buffer, not
-// the source pointer.
-void ecs_vec_push(ecs_vec_t *vec, const void *element, const uint32_t element_size);
-
-// Reserve one slot and return a pointer to it (uninitialized).
-// WARNING: the returned pointer is invalidated by any subsequent push or grow
-// on the same vec. Finish all writes through this pointer before pushing again.
-static inline void *ecs_vec_push_empty(ecs_vec_t *vec, const uint32_t element_size) {
-    if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
-        ecs_vec_grow(vec, element_size);
-    }
-    void *ptr = (uint8_t *)vec->data + (vec->size * element_size);
-    vec->size++;
-    return ptr;
-}
-
-bool ecs_vec_contains_u16(const ecs_vec_t *vec, uint16_t value);
-void ecs_vec_remove_u16(ecs_vec_t *vec, uint16_t value);
-void ecs_vec_remove_u64(ecs_vec_t *vec, uint64_t value);
-
-// Specialized push for 2-byte types
-static inline void ecs_vec_push_u16(ecs_vec_t *vec, const uint16_t value) {
-    if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
-        ecs_vec_grow(vec, sizeof(uint16_t));
-    }
-    ((uint16_t *)vec->data)[vec->size++] = value;
-}
-
-// Specialized push for 8-byte types
-static inline void ecs_vec_push_u64(ecs_vec_t *vec, const uint64_t value) {
-    if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
-        ecs_vec_grow(vec, sizeof(uint64_t));
-    }
-    ((uint64_t *)vec->data)[vec->size++] = value;
-}
-
-void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_size);
-
-// Direct pointer access for fast iteration
-#define ecs_vec_get(vec, index, type) (&((const type *)(vec)->data)[index])
-#define ecs_vec_get_mut(vec, index, type) (&((type *)(vec)->data)[index])
-#define ecs_vec_remove_last(vec) ((vec)->size--)
-#define ecs_vec_clear(vec) ((vec)->size = 0)
-#define ecs_vec_data(vec, type) ((type *)(vec)->data)
-
-#define ecs_vec_iter(vec, type, value, ...)                                                        \
-    const type *__values = (vec)->data;                                                            \
-    const uint32_t __count = (vec)->size;                                                          \
-    for (uint32_t i = 0; i < __count; i++) {                                                       \
-        const type *value = &__values[i];                                                          \
-        __VA_ARGS__                                                                                \
-    }
-
-#endif
-#ifndef ECS_ARENA_H
-#define ECS_ARENA_H
+#ifndef SIHTTP_INTERNAL_H
+#define SIHTTP_INTERNAL_H
 
 #include <stddef.h>
 #include <stdint.h>
 
-typedef struct ecs_arena_block_s {
-    struct ecs_arena_block_s *next;
-    uint32_t capacity;
-    uint32_t cursor;
-    max_align_t data[];
-} ecs_arena_block_t;
-
-typedef struct {
-    ecs_arena_block_t *first;
-    ecs_arena_block_t *current;
-    ecs_arena_block_t *last;
-} ecs_arena_t;
-
-void ecs_arena_init(ecs_arena_t *allocator);
-void ecs_arena_fini(ecs_arena_t *allocator);
-void *ecs_arena_alloc_slow(ecs_arena_t *allocator, uint32_t size);
-
-static inline void *ecs_arena_alloc(ecs_arena_t *allocator, uint32_t size) {
-    ecs_arena_block_t *block = allocator->current;
-    const uint32_t alignment = (uint32_t)_Alignof(max_align_t);
-    const uint32_t cursor = (block->cursor + alignment - 1u) & ~(alignment - 1u);
-    if (ECS_LIKELY(cursor <= block->capacity && size <= block->capacity - cursor)) {
-        block->cursor = cursor + size;
-        return (uint8_t *)block->data + cursor;
-    }
-    return ecs_arena_alloc_slow(allocator, size);
-}
-
-static inline void ecs_arena_reset(ecs_arena_t *allocator) {
-    for (ecs_arena_block_t *block = allocator->first; block; block = block->next) {
-        block->cursor = 0;
-    }
-    allocator->current = allocator->first;
-}
-
-#endif
-#ifndef SIECS_TYPE_H
-#define SIECS_TYPE_H
-#include <stdint.h>
-#include <string.h>
-
-typedef struct {
-    uint16_t *ids;
-    uint16_t count;
-    // Table metadata stored in the alignment gap before base. It is not part of
-    // type identity; transient types may leave it zero until table creation.
-    uint16_t data_count;
-    uint32_t hash;
-    ecs_entity_t base;
-} ecs_type_t;
-
-ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
-ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
-ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
-
-uint64_t ecs_type_bloom(const ecs_type_t *type);
-
-
-void ecs_type_fini(ecs_type_t *type);
-
-static inline int ecs_type_equals(const ecs_type_t *a, const ecs_type_t *b) {
-    if (a->base != b->base)
-        return 0;
-    if (a->count != b->count)
-        return 0;
-    if (a->count == 0)
-        return 1;
-    return memcmp(a->ids, b->ids, (size_t)a->count * sizeof(uint16_t)) == 0;
-}
-
-#endif
-#ifndef SIECS_STORAGE_RESOURCE_INDEX_H
-#define SIECS_STORAGE_RESOURCE_INDEX_H
-
-#include <stdbool.h>
-#include <stdint.h>
-
-typedef struct {
-    ecs_resource_desc_t *records;
-    void **data;
-    bool *present;
-    uint64_t capacity;
-    uint64_t count;
-} ecs_resource_index_t;
-
-void ecs_resource_index_init(ecs_resource_index_t *index);
-void ecs_resource_index_fini(ecs_resource_index_t *index);
-
-ecs_resource_t ecs_resource_index_register(
-    ecs_resource_index_t *index,
-    ecs_resource_t id,
-    const ecs_resource_desc_t *desc
-);
-ecs_resource_t ecs_resource_index_find(const ecs_resource_index_t *index, const char *name);
-bool ecs_resource_index_is_registered(const ecs_resource_index_t *index, ecs_resource_t id);
-void ecs_resource_index_set(
-    ecs_resource_index_t *index,
-        ecs_resource_t id,
-    const void *data
-);
-void ecs_resource_index_move(
-    ecs_resource_index_t *index,
-        ecs_resource_t id,
-    void *data
-);
-void *ecs_resource_index_get(ecs_resource_index_t *index, ecs_resource_t id);
-bool ecs_resource_index_has(const ecs_resource_index_t *index, ecs_resource_t id);
-void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_resource_t id);
-
-#endif
-#ifndef SIECS_STORAGE_MODULE_INDEX_H
-#define SIECS_STORAGE_MODULE_INDEX_H
-
-
-typedef struct {
-    ecs_module_id_t *id;
-    const char *name;
-    ecs_vec_t observers;  // ecs_observer_id_t
-    ecs_vec_t systems;    // ecs_system_id_t
-    bool enabled;
-} ecs_module_t;
-
-typedef struct {
-    ecs_vec_t modules; // ecs_module_t
-} ecs_module_index_t;
-
-void ecs_module_index_init(ecs_module_index_t *index);
-void ecs_module_index_fini(ecs_module_index_t *index);
-
-ecs_module_id_t ecs_module_index_create(
-    ecs_module_index_t *index,
-    ecs_module_id_t *id,
-    const char *name
-);
-ecs_module_t *ecs_module_index_get(ecs_module_index_t *index, ecs_module_id_t module);
-const ecs_module_t *ecs_module_index_get_const(
-    const ecs_module_index_t *index,
-    ecs_module_id_t module
-);
-ecs_module_id_t ecs_module_index_find(const ecs_module_index_t *index, const ecs_module_id_t *id);
-
-#endif
-#ifndef SIECS_STORAGE_SYSTEM_INDEX_H
-#define SIECS_STORAGE_SYSTEM_INDEX_H
-#include <stdint.h>
+#define SIHTTP_MAX_HEADER_BYTES (16u * 1024u)
+#define SIHTTP_MAX_BODY_BYTES (1024u * 1024u)
+#define SIHTTP_MAX_HEADERS 64u
+#define SIHTTP_MAX_PARAMS 16u
 
 typedef struct {
     const char *name;
-    ecs_query_id_t qid;
-    void (*callback)(ecs_iter_t *);
-    uintptr_t user_data;
-    void (*user_data_dtor)(uintptr_t user_data);
-    ecs_phase_t phase;
-    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
-    bool enabled;
-} ecs_system_t;
+    const char *value;
+} sihttp_pair_t;
 
 typedef struct {
-    ecs_vec_t systems;
-    ecs_vec_t phase_order[EcsPhaseCount];
-    bool plan_dirty;
-} ecs_system_index_t;
-
-void ecs_system_index_init(ecs_system_index_t *index);
-void ecs_system_index_fini(ecs_system_index_t *index);
-
-ecs_system_id_t ecs_system_index_create(ecs_system_index_t *index, const ecs_system_t *system);
-ecs_system_t *ecs_system_index_get(ecs_system_index_t *index, ecs_system_id_t system);
-void ecs_system_index_build_plan(ecs_system_index_t *index);
-
-#endif
-#ifndef SIECS_STORAGE_ENTITY_INDEX_H
-#define SIECS_STORAGE_ENTITY_INDEX_H
-#include <stdint.h>
+    sihttp_request_t public_req;
+    char param_names[SIHTTP_MAX_PARAMS][32];
+    char param_values[SIHTTP_MAX_PARAMS][64];
+    sihttp_pair_t params[SIHTTP_MAX_PARAMS];
+    size_t param_count;
+    sihttp_pair_t query[SIHTTP_MAX_PARAMS];
+    size_t query_count;
+    char *storage;
+    size_t storage_len;
+} sihttp_request_internal_t;
 
 typedef struct {
-    uint16_t generation;
-    uint16_t table_id;
-    // Alive records store the row in their table. Dead records reuse this field
-    // as the next entity id in the free list headed by first_available.
-    uint32_t table_row;
-} ecs_entity_record_t;
+    int code;
+    size_t expected_len;
+} sihttp_parse_result_t;
 
-typedef struct {
-    ecs_vec_t entities;       // ecs_entity_record_t
-    uint32_t first_available; // UINT32_MAX when no dead entity can be reused
-} ecs_entity_index_t;
+void sihttp_set_error(const char *fmt, ...) SIHTTP_PRINTF_FORMAT(1, 2);
 
-#define ecs_entity_index_get_record(index, entity_id)                                              \
-    ecs_vec_get_mut((&(index)->entities), entity_id, ecs_entity_record_t)
+const char *sihttp_method_name(sihttp_method_t method);
+sihttp_method_t sihttp_method_from_name(const char *method, int *ok);
 
-static inline ecs_entity_t ecs_entity_index_create(ecs_entity_index_t *index, uint32_t row) {
-    uint32_t entity_id;
-    uint32_t generation;
-    if (index->first_available != UINT32_MAX) {
-        entity_id = index->first_available;
-        ecs_entity_record_t *record = ecs_entity_index_get_record(index, entity_id);
-        index->first_available = record->table_row;
-        generation = record->generation;
-        record->table_id = 0;
-        record->table_row = row;
-    } else {
-        entity_id = index->entities.size;
-        generation = 0;
-        ecs_entity_record_t *record = (ecs_entity_record_t *)
-            ecs_vec_push_empty(&index->entities, sizeof(ecs_entity_record_t));
-        *record = (ecs_entity_record_t){ .generation = 0, .table_row = row, .table_id = 0 };
-    }
-    return ecs_entity(entity_id, generation);
-}
+void sihttp_request_internal_init(sihttp_request_internal_t *req);
+void sihttp_request_internal_fini(sihttp_request_internal_t *req);
+int sihttp_request_add_param(sihttp_request_internal_t *req, const char *name, const char *value);
+int sihttp_request_parse(
+    sihttp_request_internal_t *req,
+    const char *data,
+    size_t len,
+    sihttp_app_state_t *state
+);
+sihttp_parse_result_t sihttp_request_parse_state(const char *data, size_t len);
 
-static inline bool ecs_entity_index_is_alive(const ecs_entity_index_t *index, ecs_entity_t entity) {
-    return ecs_entity_index_get_record(index, ecs_first(entity))->generation == ecs_second(entity);
-}
+char *sihttp_build_response(sihttp_response_t response, size_t *out_len);
+int sihttp_send_response(int fd, sihttp_response_t response);
 
-static inline void ecs_entity_index_kill(ecs_entity_index_t *index, uint32_t entity_id) {
-    ecs_entity_record_t *record = ecs_entity_index_get_record(index, entity_id);
-    record->generation += 1;
-    record->table_row = index->first_available;
-    record->table_id = UINT16_MAX;
-    index->first_available = entity_id;
-}
+typedef struct sihttp_route_table_s sihttp_route_table_t;
 
-void ecs_entity_index_init(ecs_entity_index_t *index);
-void ecs_entity_index_fini(ecs_entity_index_t *index);
-
-#endif
-#ifndef SIECS_STORAGE_COMPONENT_INDEX_H
-#define SIECS_STORAGE_COMPONENT_INDEX_H
-#ifndef SIREFLECT_H
-#endif
-#include <stdbool.h>
-#include <stdint.h>
-
-typedef struct {
-    uint16_t *required;
-    uint32_t required_count;
-    uint32_t size;
-    ecs_type_ops_t ops;
-    ecs_component_on_set_t on_set;
-    ecs_component_on_remove_t on_remove;
-    ecs_component_on_add_t on_add;
-    uint32_t relation_flags;
-    ecs_vec_t tables; // uint16_t
-    sireflect_handle_t reflection;
-    const sireflect_struct_desc_t *reflection_desc;
-} ecs_component_record_t;
-
-typedef struct ecs_component_index_s {
-    ecs_vec_t components; // ecs_component_record_t
-} ecs_component_index_t;
-
-void ecs_component_index_register(
-    ecs_component_index_t *index,
-    ecs_component_t id,
-    uint64_t size,
-    ecs_type_ops_t ops,
-    ecs_component_on_set_t on_set,
-    ecs_component_on_remove_t on_remove,
-    ecs_component_on_add_t on_add,
-    uint32_t relation_flags,
-    sireflect_handle_t reflection,
-    const sireflect_struct_desc_t *reflection_desc
+int sihttp_route_table_init(sihttp_route_table_t *table);
+void sihttp_route_table_fini(sihttp_route_table_t *table);
+int sihttp_route_table_add(
+    sihttp_route_table_t *table,
+    sihttp_method_t method,
+    const char *path,
+    sihttp_handler_t callback
+);
+sihttp_handler_t sihttp_route_table_match(
+    const sihttp_route_table_t *table,
+    sihttp_method_t method,
+    const char *path,
+    sihttp_request_internal_t *req,
+    int *method_not_allowed
 );
 
-#define ecs_component_index_get(index, id)                                                         \
-    ecs_vec_get(&(index)->components, id, ecs_component_record_t)
-#define ecs_component_index_get_mut(index, id)                                                     \
-    ecs_vec_get_mut(&(index)->components, id, ecs_component_record_t)
-
-void ecs_component_index_init(ecs_component_index_t *index);
-void ecs_component_index_fini(ecs_component_index_t *index);
-
-void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count);
-void ecs_component_value_dtor(const ecs_component_record_t *record, void *ptr, uint32_t count);
-void ecs_component_value_copy_ctor(
-    const ecs_component_record_t *record,
-    void *dst,
-    const void *src,
-    uint32_t count
-);
-void ecs_component_value_copy(
-    const ecs_component_record_t *record,
-    void *dst,
-    const void *src,
-    uint32_t count
-);
-void ecs_component_value_move_ctor(
-    const ecs_component_record_t *record,
-    void *dst,
-    void *src,
-    uint32_t count
-);
-void ecs_component_value_move(
-    const ecs_component_record_t *record,
-    void *dst,
-    void *src,
-    uint32_t count
-);
-
-#endif
-#ifndef SIECS_TABLE_H
-#define SIECS_TABLE_H
-#include <stdbool.h>
-#include <stdint.h>
-
-typedef enum {
-    EcsColumnTrivialMove = 1 << 0,
-    EcsColumnNoDtor = 1 << 1,
-    EcsColumnZeroCtor = 1 << 2,
-} ecs_column_flags_t;
-
-typedef struct {
-    void *data;
-    uint32_t size;
-    uint16_t remove_edge; // the table that has the component removed or UINT16_MAX if the edge is
-                          // not set
-    uint16_t flags;
-} ecs_column_t;
-
-typedef struct ecs_table_s {
-    ecs_id_map_t add_edge; // maps component id to the table that has the component added or column
-                           // index if the component is in the table
-    uint32_t entity_capacity;
-    uint32_t entity_count;
-    ecs_entity_t *entities;
-    ecs_column_t *cls;
-    uint16_t *data_columns;
-    ecs_type_t type;
-    uint64_t bloom;
-    ecs_vec_t observers_by_event; // ecs_vec_t per event id; each holds uint16_t observer ids.
-} ecs_table_t;
-
-struct ecs_component_index_s;
-
-void ecs_table_init(
-    ecs_table_t *table,
-    ecs_type_t type,
-    const struct ecs_component_index_s *component_index,
-    uint16_t table_id
-);
-void ecs_table_fini(ecs_table_t *table);
-uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity);
-// if the entity is not the last one, the last entity will be moved to the removed entity's
-// position, and the moved entity will be returned
-ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live);
-
-void *ecs_table_get_component(ecs_table_t *table, ecs_component_t component_id, uint32_t row);
-
-// Append an observer id to this table's dense list for the given event,
-// growing the per-event slot array on demand.
-void ecs_table_add_observer(ecs_table_t *table, uint16_t event, uint16_t observer_id);
-
-static inline uint16_t
-ecs_table_get_add_edge(const ecs_table_t *table, ecs_component_t component_id) {
-    return ecs_id_map_at_or_invalid(&table->add_edge, component_id);
-}
-
-static inline void *
-ecs_table_component_at_column(const ecs_table_t *table, uint16_t column_index, uint32_t row) {
-    ecs_column_t *column = &table->cls[column_index];
-    return column->size != 0 ? (uint8_t *)column->data + (column->size * row) : NULL;
-}
-
-static inline uint16_t
-ecs_table_column_or_invalid(const ecs_table_t *table, ecs_component_t component_id) {
-    uint16_t column_index = ecs_table_get_add_edge(table, component_id);
-    if (column_index < table->type.count && table->type.ids[column_index] == component_id) {
-        return column_index;
-    }
-    return UINT16_MAX;
-}
-
-bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id);
-bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base);
-
-static inline uint16_t
-ecs_table_get_column_index(const ecs_table_t *table, ecs_component_t component_id) {
-    return ecs_id_map_at(&table->add_edge, component_id);
-}
-
-static inline bool ecs_table_has_owned(const ecs_table_t *table, ecs_component_t component_id) {
-    return ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
-}
-
-void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bool *is_shared);
-
-#endif
-#ifndef SIECS_STORAGE_QUERY_INDEX_H
-#define SIECS_STORAGE_QUERY_INDEX_H
-#include <stdint.h>
-
-typedef struct {
-    uint64_t bloom;
-    ecs_entity_t is_a;
-    ecs_query_term_t *terms;
-    uint16_t term_count;
-    uint16_t field_count;
-    uint16_t field_mask;
-    bool fields_owned_only;
-} ecs_query_t;
-
-typedef struct ecs_query_cache_s {
-    ecs_query_t query;
-    ecs_vec_t table_ids; // uint16_t
-    void **fields_ptr;
-    uint32_t *field_kind_bits;
-    uint16_t field_table_capacity;
-    uint32_t active_index;
-    uint16_t next_free;
-    bool alive;
-} ecs_query_cache_t;
-
-typedef struct {
-    ecs_vec_t queries;
-    ecs_vec_t active_ids; // ecs_query_id_t
-    uint16_t first_free;
-} ecs_query_index_t;
-
-void ecs_query_index_init(ecs_query_index_t *index);
-void ecs_query_index_fini(ecs_query_index_t *index);
-uint16_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc);
-void ecs_query_index_update_matches(ecs_query_cache_t *query_cache);
-void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id);
-
-// Reusable query helpers shared with the observer index.
-void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query);
-void ecs_query_index_destroy(ecs_query_t *query);
-
-static inline bool ecs_query_term_requires_owned(ecs_query_term_t term) {
-    return term.access == EcsOut || term.access == EcsInOut || term.access == EcsInOutOptional;
-}
-
-static inline bool ecs_query_match_table(const ecs_query_t *query, const ecs_table_t *table) {
-    if (ECS_LIKELY((query->bloom & table->bloom) != query->bloom)) {
-        return false;
-    }
-
-    if (query->is_a && !ecs_table_is_a(table, query->is_a)) {
-        return false;
-    }
-
-    for (uint16_t i = 0; i < query->term_count; i++) {
-        ecs_query_term_t term = query->terms[i];
-        if (term.access == EcsInOptional || term.access == EcsInOutOptional) {
-            continue;
-        } else if (term.access == EcsNot) {
-            if (ecs_table_has(table, term.id)) {
-                return false;
-            }
-        } else if (ecs_query_term_requires_owned(term)) {
-            if (ecs_table_column_or_invalid(table, term.id) == UINT16_MAX) {
-                return false;
-            }
-        } else if (!ecs_table_has(table, term.id)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-#endif
-#ifndef SIECS_STORAGE_OBSERVER_INDEX_H
-#define SIECS_STORAGE_OBSERVER_INDEX_H
-#include <stdint.h>
-
-typedef struct {
-    ecs_event_t event;
-    ecs_query_t query;
-    ecs_observer_callback_t callback;
-    uintptr_t user_data;
-    bool enabled;
-} ecs_observer_t;
-
-typedef struct {
-    ecs_vec_t observers;  // ecs_observer_t
-    uint16_t event_count; // next free event id; starts past the builtin events
-} ecs_observer_index_t;
-
-void ecs_observer_index_init(ecs_observer_index_t *index);
-void ecs_observer_index_fini(ecs_observer_index_t *index);
-
-uint16_t ecs_observer_index_create(ecs_observer_index_t *index, const ecs_observer_desc_t *desc);
-
-// Cache a freshly created observer onto every existing table it matches.
-void ecs_observer_index_match_tables(
-    ecs_table_t *tables,
-    uint16_t table_count,
-    uint16_t observer_id
-);
-
-// Cache every existing observer that matches a freshly created table.
-void ecs_observer_index_add_table(ecs_table_t *table);
-
-#endif
-#ifndef SIECS_STORAGE_TABLE_INDEX_H
-#define SIECS_STORAGE_TABLE_INDEX_H
-#include <stdint.h>
-
-struct ecs_world_s;
-
-typedef struct {
-    uint16_t table_index; // UINT16_MAX for empty
-    uint16_t hash;
-} ecs_type_slot_t;
-
-typedef struct {
-    ecs_table_t *tables;
-    ecs_type_slot_t *slots;
-    uint16_t table_count;
-    uint16_t table_capacity;
-    uint8_t slot_shift; // slot_count = 1 << slot_shift
-} ecs_table_index_t;
-
-void ecs_table_index_init(ecs_table_index_t *map);
-void ecs_table_index_fini(ecs_table_index_t *map);
-
-#define ecs_table_index_at(map, index) (&(map)->tables[index])
-
-uint16_t ecs_table_index_get_or_create(
-    ecs_type_t type
-);
-
-#endif
-#ifndef SIECS_COMMAND_BUFFER_H
-#define SIECS_COMMAND_BUFFER_H
-
-#include <stdbool.h>
-#include <stdint.h>
-
-typedef struct ecs_world_s ecs_world_t;
-
-typedef struct {
-    ecs_component_t id;
-    void *data;
-} ecs_deferred_set_t;
-
-typedef struct {
-    ecs_entity_t entity;
-    bool kill;
-    bool has_base;
-    ecs_entity_t base;
-    ecs_vec_t add_ids;
-    ecs_vec_t remove_ids;
-    ecs_vec_t sets;
-} ecs_entity_command_t;
-
-typedef struct ecs_command_buffer_s {
-    ecs_vec_t commands;
-    uint32_t *entity_to_command;
-    uint32_t entity_capacity;
-} ecs_command_buffer_t;
-
-void ecs_command_buffer_init(ecs_command_buffer_t *buffer);
-void ecs_command_buffer_fini(ecs_command_buffer_t *buffer);
-
-void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id);
-void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id);
-void ecs_command_buffer_set(
-        ecs_entity_t entity,
-    ecs_component_t id,
-    const void *data
-);
-void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data);
-void ecs_command_buffer_kill(ecs_entity_t entity);
-void ecs_command_buffer_set_base(ecs_entity_t entity, ecs_entity_t target);
-void ecs_command_buffer_flush();
-
-void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t id);
-void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t id);
-void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t id, const void *data);
-void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t id, void *data);
-void ecs_kill_now(ecs_entity_t entity);
-void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target);
-
-#endif
-#ifndef SIECS_TABLE_MIGRATION_H
-#define SIECS_TABLE_MIGRATION_H
-#include <stdint.h>
-
-#define ECS_ADD_PLAN_MAX_COMPONENTS 64
-
-ecs_type_t ecs_type_with_requirements(
-        ecs_table_t *from_table,
-    ecs_component_t cid,
-    const ecs_component_record_t *crec
-);
-
-#ifndef NDEBUG
-bool ecs_component_requires(
-    const     ecs_component_t component,
-    ecs_component_t require
-);
-#endif
-
-void ecs_migrate_to_table(
-        ecs_entity_record_t *record,
-    ecs_entity_t entity,
-    ecs_table_t *from_table,
-    uint16_t to_table_id
-);
-
-void *ecs_migrate_add(
-        ecs_entity_record_t *record,
-    ecs_entity_t entity,
-    ecs_table_t *from_table,
-    ecs_table_t *to_table,
-    uint16_t to_table_id,
-    ecs_component_t added_id
-);
-
-void *ecs_migrate_add_many(
-        ecs_entity_record_t *record,
-    ecs_entity_t entity,
-    ecs_table_t *from_table,
-    ecs_table_t *to_table,
-    uint16_t to_table_id,
-    ecs_component_t requested_id
-);
-
-void ecs_migrate_remove(
-        ecs_entity_record_t *record,
-    ecs_entity_t entity,
-    ecs_table_t *from_table,
-    uint16_t to_table_id,
-    uint16_t col_idx
-);
-
-#endif
-#ifndef SIECS_MODULE_H
-#define SIECS_MODULE_H
-
-
-void ecs_module_record_system(ecs_system_id_t system);
-void ecs_module_record_observer(ecs_observer_id_t observer);
-
-#endif
-#ifndef SIECS_WORLD_INTERNAL_H
-#define SIECS_WORLD_INTERNAL_H
-#ifndef SIHTTP_H
-#endif
-#ifndef SIREFLECT_H
-#endif
-
-typedef struct ecs_world_s ecs_world_t;
-
-struct ecs_world_s {
-    ecs_entity_index_t entity_index;
-    ecs_component_index_t component_index;
-    ecs_table_index_t table_index;
-    ecs_query_index_t query_index;
-    ecs_observer_index_t observer_index;
-    ecs_system_index_t system_index;
-    ecs_module_index_t module_index;
-    ecs_resource_index_t resource_index;
-    ecs_module_id_t active_module;
-    sireflect_registry_t *sireflect_registry;
-    sihttp_server_t *server;
-    ecs_world_feat_desc_t features;
-    ecs_arena_t arena_allocator;
-    ecs_command_buffer_t commands;
-    uint32_t defer_depth;
-    bool flushing_commands;
-    bool did_start;
-    bool exit;
-    double delta_time;
-    double last_time;
+struct sihttp_server_s {
+    sihttp_app_state_t *state;
+    sihttp_route_table_t *routes;
+    int listen_fd;
+    uint16_t port;
+    int backlog;
+    int max_requests_per_poll;
+    int running;
 };
 
-extern ecs_world_t ecs_world;
+int sihttp_server_handle_client(sihttp_server_t *server, int client_fd);
+
+#endif
+
+#ifndef SIHTTP_ROUTE_H
+#define SIHTTP_ROUTE_H
 
 typedef struct {
-    ecs_entity_t target;
-} RelationTarget;
+    sihttp_method_t method;
+    char *path;
+    sihttp_handler_t callback;
+} sihttp_route_entry_t;
 
-typedef struct {
-    ecs_vec_t entities;
-} RelationSource;
-
-#define ecs_get_record(entity)                                                                     \
-    ecs_vec_get_mut(&ecs_world.entity_index.entities, ecs_first(entity), ecs_entity_record_t)
-#define ecs_get_table(tid) ecs_table_index_at(&ecs_world.table_index, tid)
-
-static inline void
-ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void *trigger_data) {
-    if (table->observers_by_event.size <= event) {
-        return;
-    }
-    const ecs_vec_t *list = ecs_vec_get(&table->observers_by_event, event, ecs_vec_t);
-    uint32_t n = list->size;
-    for (uint32_t i = 0; i < n; i++) {
-        uint16_t oid = *ecs_vec_get(list, i, uint16_t);
-        ecs_observer_t *obs =
-            ecs_vec_get_mut(&ecs_world.observer_index.observers, oid, ecs_observer_t);
-        if (!obs->enabled) {
-            continue;
-        }
-        ecs_observer_event_t observer_event = {
-            .entity = entity,
-            .event = event,
-            .user_data = obs->user_data,
-            .trigger_data = trigger_data,
-        };
-        obs->callback(&observer_event);
-    }
-}
-
-void ecs_bootstrap(void);
+struct sihttp_route_table_s {
+    sihttp_route_entry_t *entries;
+    size_t count;
+    size_t capacity;
+};
 
 #endif
-#ifndef ECS_ADDONS_H
-#define ECS_ADDONS_H
 
-void init_rest();
-
-#endif
-#ifndef SIECS_ADDONS_REST_INTERNAL_H
-#define SIECS_ADDONS_REST_INTERNAL_H
-
-#ifndef SIHTTP_H
-#endif
-#ifndef SIJSON_H
-#endif
-#ifndef SIREFLECT_H
-#endif
-
-sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body);
-sihttp_response_t ecs_rest_error_response(int status, const char *message);
-
-sijson_value_t ecs_rest_entity_json(ecs_entity_t entity);
-sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity);
-sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity);
-bool ecs_rest_entity_component_is_reflected(ecs_component_t component);
-sijson_value_t
-ecs_rest_entity_component_json(ecs_component_t component, const void *ptr);
-sihttp_response_t ecs_rest_set_entity_component(
-        ecs_entity_t entity,
-    ecs_component_t component,
-    const char *body
-);
-
-sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *req);
-sihttp_response_t ecs_rest_get_entity(const sihttp_request_t *req);
-sihttp_response_t ecs_rest_get_entity_children(const sihttp_request_t *req);
-sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req);
-sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req);
-sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req);
-
-#endif
-#ifndef SIECS_UTILS_H
-#define SIECS_UTILS_H
-#ifndef NDEBUG
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
-#define ecs_cid_valid(id) ((id) != 0)
-#define ecs_entity_valid(entity) (ecs_first(entity) != 0)
-
-#define ecs_assert(condition, ...) \
-    if (!(condition)) { \
-        fprintf(stderr, __VA_ARGS__); \
-        abort(); \
-    }
-
-#define ecs_assert_id_valid(id) ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
-#define ecs_assert_not_null(ptr) ecs_assert((ptr) != NULL, "null pointer: %s\n", #ptr)
-#define ecs_assert_entity_valid(entity) ecs_assert(ecs_entity_valid(entity), "invalid entity: %d, entity must be registered\n", ecs_first(entity))
-#define ecs_assert_is_alive(entity) ecs_assert(ecs_is_alive(entity), "entity is dead: %d\n", ecs_first(entity))
-
-#else
-#define ecs_assert(condition, ...)
-#define ecs_assert_id_valid(id)
-#define ecs_assert_not_null(ptr)
-#define ecs_assert_entity_valid(entity)
-#define ecs_assert_is_alive(entity)
-#endif
-
-#endif
-/* Embedded dependency implementations for standalone distribution. */
-
-#ifndef NDEBUG
-#include <stdio.h>
-#include <stdlib.h>
-
-void sireflect_assert_fail(
-    const char *condition,
-    const char *message,
-    const char *file,
-    int line,
-    const char *function
-) {
-    fprintf(stderr, "sireflect assertion failed: %s\n", message != NULL ? message : condition);
-    fprintf(stderr, "  condition: %s\n", condition != NULL ? condition : "(unknown)");
-    fprintf(stderr, "  location: %s:%d\n", file != NULL ? file : "(unknown)", line);
-    fprintf(stderr, "  function: %s\n", function != NULL ? function : "(unknown)");
-    abort();
-}
-#endif
-
-#ifndef SIREFLECT_ERROR_H
-#define SIREFLECT_ERROR_H
-
-void sireflect_error_clear(void);
-void sireflect_error_set(const char *message);
-
-#endif
-
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
-static char *sireflect_current_error = NULL;
+static char sihttp_error_buffer[256];
 
-static char *sireflect_error_dup(const char *message) {
-    sireflect_assert(message != NULL, "error message must not be NULL");
+void sihttp_set_error(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(sihttp_error_buffer, sizeof(sihttp_error_buffer), fmt, args);
+    va_end(args);
+}
 
-    const size_t len = strlen(message);
+SIHTTP_API const char *sihttp_error(void) {
+    return sihttp_error_buffer[0] ? sihttp_error_buffer : NULL;
+}
+
+static char *sihttp_static_body(const char *body) {
+    size_t len = strlen(body);
     char *copy = malloc(len + 1);
-    sireflect_assert(copy != NULL, "failed to allocate error message");
-
-    memcpy(copy, message, len + 1);
+    if (!copy) {
+        return NULL;
+    }
+    memcpy(copy, body, len + 1);
     return copy;
 }
 
-void sireflect_error_clear(void) {
-    free(sireflect_current_error);
-    sireflect_current_error = NULL;
+enum {
+    SIHTTP_DEFAULT_BACKLOG = 128,
+    SIHTTP_DEFAULT_MAX_REQUESTS_PER_POLL = 64,
+};
+
+static int sihttp_set_nonblocking(int fd) {
+    int flags = fcntl(fd, F_GETFL, 0);
+
+    if (flags == -1) {
+        return -1;
+    }
+
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        return -1;
+    }
+
+    return 0;
 }
 
-void sireflect_error_set(const char *message) {
-    sireflect_error_clear();
+static sihttp_response_t sihttp_error_response(int status, const char *body) {
+    return (sihttp_response_t){ .status = status, .body = sihttp_static_body(body) };
+}
 
-    if (message == NULL) {
+static sihttp_response_t sihttp_preflight_response(void) {
+    return (sihttp_response_t){ .status = 204, .body = sihttp_static_body("") };
+}
+
+SIHTTP_API sihttp_server_t *sihttp_server_init(const sihttp_server_desc_t *desc) {
+    sihttp_server_t *server;
+    int port = 0;
+    int backlog = SIHTTP_DEFAULT_BACKLOG;
+    int max_requests_per_poll = SIHTTP_DEFAULT_MAX_REQUESTS_PER_POLL;
+
+    if (desc) {
+        if (desc->port < 0 || desc->port > UINT16_MAX) {
+            sihttp_set_error("invalid server port: %d", desc->port);
+            return NULL;
+        }
+        port = desc->port;
+        backlog = desc->backlog > 0 ? desc->backlog : SIHTTP_DEFAULT_BACKLOG;
+        max_requests_per_poll = desc->max_requests_per_poll > 0
+            ? desc->max_requests_per_poll
+            : SIHTTP_DEFAULT_MAX_REQUESTS_PER_POLL;
+    }
+
+    server = calloc(1, sizeof(*server));
+    if (!server) {
+        sihttp_set_error("out of memory");
+        return NULL;
+    }
+
+    server->routes = malloc(sizeof(*server->routes));
+    if (!server->routes) {
+        free(server);
+        sihttp_set_error("out of memory");
+        return NULL;
+    }
+
+    sihttp_route_table_init(server->routes);
+    server->port = (uint16_t)port;
+    server->backlog = backlog;
+    server->max_requests_per_poll = max_requests_per_poll;
+    if (desc) {
+        server->state = desc->state;
+    }
+    server->listen_fd = -1;
+    return server;
+}
+
+SIHTTP_API void sihttp_server_fini(sihttp_server_t *server) {
+    if (!server) {
         return;
     }
 
-    sireflect_current_error = sireflect_error_dup(message);
+    sihttp_server_stop(server);
+    sihttp_route_table_fini(server->routes);
+    free(server->routes);
+    free(server);
 }
 
-const char *sireflect_error(void) {
-    return sireflect_current_error;
+SIHTTP_API int sihttp_server_listen(sihttp_server_t *server, const char *host, uint16_t port) {
+    int fd;
+    int yes = 1;
+    struct sockaddr_in addr;
+    socklen_t addr_len;
+
+    if (!server) {
+        sihttp_set_error("server is NULL");
+        return -1;
+    }
+
+    if (server->listen_fd != -1) {
+        sihttp_set_error("server is already listening");
+        return -1;
+    }
+
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == -1) {
+        sihttp_set_error("socket failed: %s", strerror(errno));
+        return -1;
+    }
+
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+
+    if (!host || strcmp(host, "") == 0 || strcmp(host, "0.0.0.0") == 0) {
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    } else if (inet_pton(AF_INET, host, &addr.sin_addr) != 1) {
+        close(fd);
+        sihttp_set_error("invalid IPv4 host: %s", host);
+        return -1;
+    }
+
+    if (bind(fd, (const struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        sihttp_set_error("bind failed: %s", strerror(errno));
+        close(fd);
+        return -1;
+    }
+
+    if (listen(fd, server->backlog) != 0) {
+        sihttp_set_error("listen failed: %s", strerror(errno));
+        close(fd);
+        return -1;
+    }
+
+    addr_len = sizeof(addr);
+    if (getsockname(fd, (struct sockaddr *)&addr, &addr_len) == 0) {
+        server->port = ntohs(addr.sin_port);
+    } else {
+        server->port = port;
+    }
+
+    server->listen_fd = fd;
+    return 0;
 }
 
-const sireflect_field_info_t *
-sireflect_field_info(const sireflect_registry_t *reg, sireflect_handle_t type, const char *field) {
-    sireflect_error_clear();
+SIHTTP_API uint16_t sihttp_server_port(const sihttp_server_t *server) {
+    return server ? server->port : 0;
+}
 
-    sireflect_assert(field != NULL, "field name must not be NULL");
+SIHTTP_API void sihttp_server_stop(sihttp_server_t *server) {
+    if (!server) {
+        return;
+    }
 
-    const sireflect_fields_t *fields = sireflect_type_fields(reg, type);
-    for (size_t i = 0; i < fields->field_count; i++) {
-        if (strcmp(fields->fields[i].name, field) == 0) {
-            return &fields->fields[i];
+    server->running = 0;
+    if (server->listen_fd != -1) {
+        int fd = server->listen_fd;
+        server->listen_fd = -1;
+        shutdown(fd, SHUT_RDWR);
+        close(fd);
+    }
+}
+
+int sihttp_server_handle_client(sihttp_server_t *server, int client_fd) {
+    sihttp_buffer_t buffer;
+    int status = 400;
+    sihttp_request_internal_t req;
+    int method_ok = 0;
+    sihttp_method_t method;
+    int method_not_allowed = 0;
+    sihttp_handler_t handler;
+    sihttp_response_t response;
+
+    sihttp_buffer_init(&buffer);
+
+    for (;;) {
+        char chunk[4096];
+        sihttp_parse_result_t parse_state;
+        ssize_t received = recv(client_fd, chunk, sizeof(chunk), 0);
+
+        if (received < 0) {
+            status = 400;
+            break;
+        }
+        if (received == 0) {
+            parse_state = sihttp_request_parse_state(buffer.data, buffer.len);
+            status = parse_state.code == 200 ? 200 : 400;
+            break;
+        }
+
+        if (sihttp_buffer_append(&buffer, chunk, (size_t)received) != 0) {
+            status = 500;
+            break;
+        }
+
+        parse_state = sihttp_request_parse_state(buffer.data, buffer.len);
+        if (parse_state.code == 200) {
+            status = 200;
+            break;
+        }
+        if (parse_state.code != 0) {
+            status = parse_state.code;
+            break;
+        }
+    }
+
+    if (status != 200) {
+        sihttp_send_response(client_fd, sihttp_error_response(status, ""));
+        sihttp_buffer_fini(&buffer);
+        return -1;
+    }
+
+    status = sihttp_request_parse(&req, buffer.data, buffer.len, server->state);
+    if (status != 200) {
+        sihttp_send_response(client_fd, sihttp_error_response(status, ""));
+        sihttp_buffer_fini(&buffer);
+        return -1;
+    }
+
+    method = sihttp_method_from_name(req.public_req.method, &method_ok);
+    if (!method_ok) {
+        sihttp_send_response(client_fd, sihttp_error_response(405, ""));
+        sihttp_request_internal_fini(&req);
+        sihttp_buffer_fini(&buffer);
+        return -1;
+    }
+
+    if (method == SIHTTP_METHOD_OPTIONS) {
+        sihttp_send_response(client_fd, sihttp_preflight_response());
+        sihttp_request_internal_fini(&req);
+        sihttp_buffer_fini(&buffer);
+        return 0;
+    }
+
+    handler = sihttp_route_table_match(
+        server->routes,
+        method,
+        req.public_req.path,
+        &req,
+        &method_not_allowed
+    );
+
+    if (!handler) {
+        sihttp_send_response(client_fd, sihttp_error_response(method_not_allowed ? 405 : 404, ""));
+        sihttp_request_internal_fini(&req);
+        sihttp_buffer_fini(&buffer);
+        return -1;
+    }
+
+    response = handler(&req.public_req);
+    if (sihttp_send_response(client_fd, response) != 0) {
+        status = 500;
+    }
+
+    sihttp_request_internal_fini(&req);
+    sihttp_buffer_fini(&buffer);
+    return status == 200 ? 0 : -1;
+}
+
+SIHTTP_API int sihttp_server_start(sihttp_server_t *server) {
+    if (!server) {
+        sihttp_set_error("server is NULL");
+        return -1;
+    }
+
+    if (server->listen_fd == -1 && sihttp_server_listen(server, NULL, server->port) != 0) {
+        return -1;
+    }
+
+    if (sihttp_set_nonblocking(server->listen_fd) != 0) {
+        sihttp_set_error("could not make server socket non-blocking: %s", strerror(errno));
+        return -1;
+    }
+
+    server->running = 1;
+    return 0;
+}
+
+SIHTTP_API int sihttp_server_poll(sihttp_server_t *server) {
+    int handled = 0;
+
+    if (!server) {
+        sihttp_set_error("server is NULL");
+        return -1;
+    }
+
+    if (!server->running && sihttp_server_start(server) != 0) {
+        return -1;
+    }
+
+    while (handled < server->max_requests_per_poll) {
+        int client_fd = accept(server->listen_fd, NULL, NULL);
+
+        if (client_fd == -1) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return handled;
+            }
+            if (!server->running || server->listen_fd == -1 || errno == EBADF || errno == EINVAL) {
+                return handled;
+            }
+
+            sihttp_set_error("accept failed: %s", strerror(errno));
+            return -1;
+        }
+
+        sihttp_server_handle_client(server, client_fd);
+        close(client_fd);
+        handled++;
+    }
+
+    return handled;
+}
+
+SIHTTP_API int sihttp_server_run(sihttp_server_t *server) {
+    if (!server) {
+        sihttp_set_error("server is NULL");
+        return -1;
+    }
+
+    if (server->listen_fd == -1 && sihttp_server_listen(server, NULL, server->port) != 0) {
+        return -1;
+    }
+
+    server->running = 1;
+    while (server->running) {
+        int client_fd = accept(server->listen_fd, NULL, NULL);
+        if (client_fd == -1) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                continue;
+            }
+            if (!server->running || server->listen_fd == -1 || errno == EBADF || errno == EINVAL) {
+                break;
+            }
+            sihttp_set_error("accept failed: %s", strerror(errno));
+            return -1;
+        }
+
+        sihttp_server_handle_client(server, client_fd);
+        close(client_fd);
+    }
+
+    return 0;
+}
+
+SIHTTP_API void
+sihttp_route_impl(sihttp_server_t *server, const char *path, const sihttp_handler_desc_t *desc) {
+    if (!server || !desc) {
+        sihttp_set_error("invalid route descriptor");
+        return;
+    }
+
+    if (sihttp_route_table_add(server->routes, desc->method, path, desc->callback) != 0) {
+        sihttp_set_error("could not add route: %s", path ? path : "(null)");
+    }
+}
+
+SIHTTP_API void sihttp_get(sihttp_server_t *server, const char *path, sihttp_handler_t callback) {
+    sihttp_route(server, path, { .method = SIHTTP_METHOD_GET, .callback = callback });
+}
+
+SIHTTP_API void sihttp_post(sihttp_server_t *server, const char *path, sihttp_handler_t callback) {
+    sihttp_route(server, path, { .method = SIHTTP_METHOD_POST, .callback = callback });
+}
+
+SIHTTP_API void sihttp_put(sihttp_server_t *server, const char *path, sihttp_handler_t callback) {
+    sihttp_route(server, path, { .method = SIHTTP_METHOD_PUT, .callback = callback });
+}
+
+SIHTTP_API void
+sihttp_delete(sihttp_server_t *server, const char *path, sihttp_handler_t callback) {
+    sihttp_route(server, path, { .method = SIHTTP_METHOD_DELETE, .callback = callback });
+}
+
+SIHTTP_API char *siformat(const char *fmt, ...) {
+    va_list args;
+    va_list copy;
+    int size;
+    char *str;
+
+    va_start(args, fmt);
+    va_copy(copy, args);
+
+    size = vsnprintf(NULL, 0, fmt, copy);
+    va_end(copy);
+
+    if (size < 0) {
+        va_end(args);
+        return NULL;
+    }
+
+    str = malloc((size_t)size + 1);
+    if (!str) {
+        va_end(args);
+        return NULL;
+    }
+
+    vsnprintf(str, (size_t)size + 1, fmt, args);
+    va_end(args);
+
+    return str;
+}
+
+void sihttp_buffer_init(sihttp_buffer_t *buffer) {
+    buffer->data = NULL;
+    buffer->len = 0;
+    buffer->cap = 0;
+}
+
+void sihttp_buffer_fini(sihttp_buffer_t *buffer) {
+    free(buffer->data);
+    buffer->data = NULL;
+    buffer->len = 0;
+    buffer->cap = 0;
+}
+
+int sihttp_buffer_append(sihttp_buffer_t *buffer, const char *data, size_t len) {
+    size_t required;
+
+    if (len == 0) {
+        return 0;
+    }
+
+    required = buffer->len + len;
+    if (required < buffer->len) {
+        return -1;
+    }
+
+    if (required > buffer->cap) {
+        size_t next = buffer->cap ? buffer->cap : 1024;
+        char *new_data;
+
+        while (next < required) {
+            size_t doubled = next * 2;
+            if (doubled < next) {
+                return -1;
+            }
+            next = doubled;
+        }
+
+        new_data = realloc(buffer->data, next);
+        if (!new_data) {
+            return -1;
+        }
+
+        buffer->data = new_data;
+        buffer->cap = next;
+    }
+
+    memcpy(buffer->data + buffer->len, data, len);
+    buffer->len += len;
+    return 0;
+}
+
+#include <ctype.h>
+#include <limits.h>
+
+static const char *sihttp_find_header_end_const(const char *data, size_t len) {
+    if (len < 4) {
+        return NULL;
+    }
+
+    for (size_t i = 0; i + 3 < len; i++) {
+        if (data[i] == '\r' && data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') {
+            return data + i;
         }
     }
 
     return NULL;
 }
 
-sireflect_handle_t
-sireflect_field_type(const sireflect_registry_t *reg, sireflect_handle_t type, const char *field) {
-    sireflect_error_clear();
+static char *sihttp_find_header_end(char *data, size_t len) {
+    if (len < 4) {
+        return NULL;
+    }
 
-    const sireflect_field_info_t *info = sireflect_field_info(reg, type, field);
-    sireflect_assert(info != NULL, "field must exist");
-    return info->type;
+    for (size_t i = 0; i + 3 < len; i++) {
+        if (data[i] == '\r' && data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') {
+            return data + i;
+        }
+    }
+
+    return NULL;
 }
 
-size_t
-sireflect_field_size(const sireflect_registry_t *reg, sireflect_handle_t ref, const char *field) {
-    sireflect_error_clear();
+static int sihttp_streq_icase(const char *a, const char *b) {
+    while (*a && *b) {
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) {
+            return 0;
+        }
+        a++;
+        b++;
+    }
 
-    const sireflect_field_info_t *info = sireflect_field_info(reg, ref, field);
-    sireflect_assert(info != NULL, "field must exist");
-    return info->size;
+    return *a == '\0' && *b == '\0';
 }
 
-const void *sireflect_field_ptr(
-    const sireflect_registry_t *reg,
-    sireflect_handle_t type,
-    const void *obj,
-    const char *field
-) {
-    sireflect_error_clear();
+static char *sihttp_trim(char *str) {
+    char *end;
 
-    sireflect_assert(obj != NULL, "object pointer must not be NULL");
+    while (*str && isspace((unsigned char)*str)) {
+        str++;
+    }
 
-    const sireflect_field_info_t *info = sireflect_field_info(reg, type, field);
-    sireflect_assert(info != NULL, "field must exist");
+    end = str + strlen(str);
+    while (end > str && isspace((unsigned char)end[-1])) {
+        end--;
+    }
+    *end = '\0';
 
-    return (const unsigned char *)obj + info->offset;
+    return str;
 }
 
-void *sireflect_field_mut_ptr(
-    const sireflect_registry_t *reg,
-    sireflect_handle_t type,
-    void *obj,
-    const char *field
-) {
-    sireflect_error_clear();
+static int sihttp_parse_size(const char *value, size_t *out) {
+    char *end = NULL;
+    unsigned long parsed;
 
-    sireflect_assert(obj != NULL, "object pointer must not be NULL");
-
-    const sireflect_field_info_t *info = sireflect_field_info(reg, type, field);
-    sireflect_assert(info != NULL, "field must exist");
-
-    return (unsigned char *)obj + info->offset;
-}
-
-int sireflect_field_copy(
-    const sireflect_registry_t *reg,
-    sireflect_handle_t type,
-    void *obj,
-    const char *field,
-    const void *value
-) {
-    sireflect_error_clear();
-
-    sireflect_assert(value != NULL, "source value pointer must not be NULL");
-
-    const sireflect_field_info_t *info = sireflect_field_info(reg, type, field);
-    if (info == NULL) {
+    errno = 0;
+    parsed = strtoul(value, &end, 10);
+    if (errno || end == value || *sihttp_trim(end) != '\0' || parsed > SIZE_MAX) {
         return -1;
     }
 
-    memcpy(sireflect_field_mut_ptr(reg, type, obj, field), value, info->size);
+    *out = (size_t)parsed;
     return 0;
 }
 
-#ifndef SIREFLECT_PARSER_H
-#define SIREFLECT_PARSER_H
+static int sihttp_add_pair(sihttp_pair_t *pairs, size_t *count, const char *name, const char *value) {
+    if (*count >= SIHTTP_MAX_PARAMS) {
+        return -1;
+    }
 
-bool sireflect_parse_struct_fields(
-    sireflect_registry_t *reg,
-    const char *struct_name,
-    const char *fields_src,
-    sireflect_field_info_t **out_fields,
-    size_t *out_field_count,
-    size_t struct_size,
-    size_t struct_align,
-    bool fail_fast
-);
-
-#endif
-
-#ifndef SIREFLECT_REGISTRY_H
-#define SIREFLECT_REGISTRY_H
-
-struct sireflect_registry_t {
-    sireflect_type_info_t *types;
-    size_t type_count;
-    size_t type_cap;
-};
-
-sireflect_handle_t sireflect_registry_add_type(
-    sireflect_registry_t *reg,
-    const char *name,
-    sireflect_kind_t kind,
-    size_t size,
-    size_t align,
-    sireflect_field_info_t *fields,
-    size_t field_count
-);
-
-sireflect_handle_t sireflect_registry_get_or_add_array_type(
-    sireflect_registry_t *reg,
-    sireflect_handle_t element_type,
-    size_t element_count
-);
-
-sireflect_handle_t
-sireflect_registry_get_or_add_pointer_type(sireflect_registry_t *reg, sireflect_handle_t pointee_type);
-
-sireflect_type_info_t *
-sireflect_registry_type_at(sireflect_registry_t *reg, sireflect_handle_t handle);
-
-const sireflect_type_info_t *
-sireflect_registry_const_type_at(const sireflect_registry_t *reg, sireflect_handle_t handle);
-
-#endif
-
-#include <ctype.h>
-#include <stdint.h>
-#include <stdio.h>
-
-#define SIREFLECT_MAX_ARRAY_DIMS 16
-
-typedef enum {
-    sireflect_token_ident,
-    sireflect_token_integer,
-    sireflect_token_lbrace,
-    sireflect_token_rbrace,
-    sireflect_token_lbracket,
-    sireflect_token_rbracket,
-    sireflect_token_star,
-    sireflect_token_comma,
-    sireflect_token_semicolon,
-    sireflect_token_unknown,
-    sireflect_token_end
-} sireflect_token_kind_t;
-
-typedef struct {
-    sireflect_token_kind_t kind;
-    const char *start;
-    size_t len;
-    size_t offset;
-    size_t line;
-    size_t column;
-} sireflect_token_t;
-
-typedef struct {
-    const char *src;
-    const char *struct_name;
-    const char *field_start;
-    size_t field_len;
-    size_t pos;
-    size_t line;
-    size_t column;
-    sireflect_token_t current;
-    char message[512];
-    bool failed;
-    bool fail_fast;
-} sireflect_parser_t;
-
-typedef struct {
-    const char *start;
-    size_t len;
-    char name[64];
-    int has_name;
-    size_t line;
-    size_t column;
-} sireflect_type_spec_t;
-
-static inline int sireflect_is_ident_start(char c) { return isalpha((unsigned char)c) || c == '_'; }
-
-static inline int sireflect_is_ident_char(char c) { return isalnum((unsigned char)c) || c == '_'; }
-
-static inline int sireflect_token_is_ident(sireflect_token_t token, const char *text) {
-    return token.kind == sireflect_token_ident && strlen(text) == token.len &&
-           strncmp(token.start, text, token.len) == 0;
+    pairs[*count].name = name;
+    pairs[*count].value = value;
+    (*count)++;
+    return 0;
 }
 
-static inline int sireflect_token_is_qualifier(sireflect_token_t token) {
-    return sireflect_token_is_ident(token, "const") || sireflect_token_is_ident(token, "volatile");
+static void sihttp_parse_query(sihttp_request_internal_t *req, char *query) {
+    char *cursor = query;
+    while (cursor && *cursor && req->query_count < SIHTTP_MAX_PARAMS) {
+        char *next = strchr(cursor, '&');
+        char *eq;
+
+        if (next) {
+            *next = '\0';
+            next++;
+        }
+
+        eq = strchr(cursor, '=');
+        if (eq) {
+            *eq = '\0';
+            sihttp_add_pair(req->query, &req->query_count, cursor, eq + 1);
+        }
+
+        cursor = next;
+    }
 }
 
-static inline void
-sireflect_type_spec_set(sireflect_type_spec_t *type, sireflect_token_t token) {
-    type->start = token.start;
-    type->len = token.len;
-    type->name[0] = '\0';
-    type->has_name = 0;
-    type->line = token.line;
-    type->column = token.column;
+void sihttp_request_internal_init(sihttp_request_internal_t *req) {
+    memset(req, 0, sizeof(*req));
 }
 
-static inline void sireflect_type_spec_set2(
-    sireflect_type_spec_t *type,
-    sireflect_token_t first,
-    sireflect_token_t second
+void sihttp_request_internal_fini(sihttp_request_internal_t *req) {
+    free(req->storage);
+    sihttp_request_internal_init(req);
+}
+
+int sihttp_request_add_param(sihttp_request_internal_t *req, const char *name, const char *value) {
+    size_t name_len;
+    size_t value_len;
+
+    if (req->param_count >= SIHTTP_MAX_PARAMS) {
+        return -1;
+    }
+
+    name_len = strlen(name);
+    value_len = strlen(value);
+    if (name_len >= sizeof(req->param_names[0]) || value_len >= sizeof(req->param_values[0])) {
+        return -1;
+    }
+
+    memcpy(req->param_names[req->param_count], name, name_len + 1);
+    memcpy(req->param_values[req->param_count], value, value_len + 1);
+    req->params[req->param_count].name = req->param_names[req->param_count];
+    req->params[req->param_count].value = req->param_values[req->param_count];
+    req->param_count++;
+    return 0;
+}
+
+const char *sihttp_method_name(sihttp_method_t method) {
+    switch (method) {
+    case SIHTTP_METHOD_GET:
+        return "GET";
+    case SIHTTP_METHOD_POST:
+        return "POST";
+    case SIHTTP_METHOD_PUT:
+        return "PUT";
+    case SIHTTP_METHOD_DELETE:
+        return "DELETE";
+    case SIHTTP_METHOD_OPTIONS:
+        return "OPTIONS";
+    }
+
+    return "GET";
+}
+
+sihttp_method_t sihttp_method_from_name(const char *method, int *ok) {
+    if (strcmp(method, "GET") == 0) {
+        *ok = 1;
+        return SIHTTP_METHOD_GET;
+    }
+    if (strcmp(method, "POST") == 0) {
+        *ok = 1;
+        return SIHTTP_METHOD_POST;
+    }
+    if (strcmp(method, "PUT") == 0) {
+        *ok = 1;
+        return SIHTTP_METHOD_PUT;
+    }
+    if (strcmp(method, "DELETE") == 0) {
+        *ok = 1;
+        return SIHTTP_METHOD_DELETE;
+    }
+    if (strcmp(method, "OPTIONS") == 0) {
+        *ok = 1;
+        return SIHTTP_METHOD_OPTIONS;
+    }
+
+    *ok = 0;
+    return SIHTTP_METHOD_GET;
+}
+
+sihttp_parse_result_t sihttp_request_parse_state(const char *data, size_t len) {
+    sihttp_parse_result_t result = { .code = 0, .expected_len = 0 };
+    const char *headers_end;
+    size_t header_len;
+    size_t content_length = 0;
+    char *copy;
+    char *line;
+
+    headers_end = sihttp_find_header_end_const(data, len);
+    if (!headers_end) {
+        if (len > SIHTTP_MAX_HEADER_BYTES) {
+            result.code = 413;
+        }
+        return result;
+    }
+
+    header_len = (size_t)(headers_end - data) + 4;
+    if (header_len > SIHTTP_MAX_HEADER_BYTES) {
+        result.code = 413;
+        return result;
+    }
+
+    copy = malloc(header_len + 1);
+    if (!copy) {
+        result.code = 500;
+        return result;
+    }
+    memcpy(copy, data, header_len);
+    copy[header_len] = '\0';
+
+    line = strstr(copy, "\r\n");
+    while (line) {
+        char *line_end;
+        char *colon;
+
+        line += 2;
+        if (*line == '\r' && line[1] == '\n') {
+            break;
+        }
+
+        line_end = strstr(line, "\r\n");
+        if (!line_end) {
+            break;
+        }
+        *line_end = '\0';
+
+        colon = strchr(line, ':');
+        if (colon) {
+            char *name;
+            char *value;
+
+            *colon = '\0';
+            name = sihttp_trim(line);
+            value = sihttp_trim(colon + 1);
+            if (sihttp_streq_icase(name, "Content-Length") && sihttp_parse_size(value, &content_length) != 0) {
+                free(copy);
+                result.code = 400;
+                return result;
+            }
+        }
+
+        line = line_end;
+    }
+
+    free(copy);
+
+    if (content_length > SIHTTP_MAX_BODY_BYTES) {
+        result.code = 413;
+        return result;
+    }
+
+    result.expected_len = header_len + content_length;
+    if (len >= result.expected_len) {
+        result.code = 200;
+    }
+    return result;
+}
+
+int sihttp_request_parse(
+    sihttp_request_internal_t *req,
+    const char *data,
+    size_t len,
+    sihttp_app_state_t *state
 ) {
-    const int len = snprintf(
-        type->name,
-        sizeof(type->name),
-        "%.*s %.*s",
-        (int)first.len,
-        first.start,
-        (int)second.len,
-        second.start
-    );
-    (void)len;
-    sireflect_indebug(
-        sireflect_assert(len > 0 && (size_t)len < sizeof(type->name), "type specifier is too long");
-    )
-    type->start = NULL;
-    type->len = 0;
-    type->has_name = 1;
-    type->line = first.line;
-    type->column = first.column;
-}
+    sihttp_parse_result_t state_result;
+    char *headers_end;
+    char *body;
+    char *request_line_end;
+    char *method;
+    char *target;
+    char *version;
+    char *query;
+    int method_ok = 0;
 
-static inline void sireflect_type_spec_set3(
-    sireflect_type_spec_t *type,
-    sireflect_token_t first,
-    sireflect_token_t second,
-    sireflect_token_t third
-) {
-    const int len = snprintf(
-        type->name,
-        sizeof(type->name),
-        "%.*s %.*s %.*s",
-        (int)first.len,
-        first.start,
-        (int)second.len,
-        second.start,
-        (int)third.len,
-        third.start
-    );
-    (void)len;
-    sireflect_indebug(
-        sireflect_assert(len > 0 && (size_t)len < sizeof(type->name), "type specifier is too long");
-    );
-    type->start = NULL;
-    type->len = 0;
-    type->has_name = 1;
-    type->line = first.line;
-    type->column = first.column;
-}
+    sihttp_request_internal_init(req);
 
-static inline const char *sireflect_token_kind_name(sireflect_token_kind_t kind) {
-    switch (kind) {
-    case sireflect_token_ident:
-        return "identifier";
-    case sireflect_token_integer:
-        return "integer";
-    case sireflect_token_lbrace:
-        return "'{'";
-    case sireflect_token_rbrace:
-        return "'}'";
-    case sireflect_token_lbracket:
-        return "'['";
-    case sireflect_token_rbracket:
-        return "']'";
-    case sireflect_token_star:
-        return "'*'";
-    case sireflect_token_comma:
-        return "','";
-    case sireflect_token_semicolon:
-        return "';'";
-    case sireflect_token_unknown:
-        return "unsupported token";
-    case sireflect_token_end:
-        return "end of input";
+    state_result = sihttp_request_parse_state(data, len);
+    if (state_result.code != 200) {
+        return state_result.code ? state_result.code : 400;
     }
 
-    return "unknown token";
-}
-
-static inline void
-sireflect_token_display(sireflect_token_t token, char *buffer, size_t buffer_size) {
-    if (token.kind == sireflect_token_end) {
-        snprintf(buffer, buffer_size, "end of input");
-        return;
+    req->storage = malloc(state_result.expected_len + 1);
+    if (!req->storage) {
+        return 500;
     }
 
-    if (token.len == 0) {
-        snprintf(buffer, buffer_size, "%s", sireflect_token_kind_name(token.kind));
-        return;
+    memcpy(req->storage, data, state_result.expected_len);
+    req->storage[state_result.expected_len] = '\0';
+    req->storage_len = state_result.expected_len;
+
+    headers_end = sihttp_find_header_end(req->storage, req->storage_len);
+    if (!headers_end) {
+        return 400;
+    }
+
+    body = headers_end + 4;
+    *headers_end = '\0';
+
+    request_line_end = strstr(req->storage, "\r\n");
+    if (!request_line_end) {
+        return 400;
+    }
+    *request_line_end = '\0';
+
+    method = req->storage;
+    target = strchr(method, ' ');
+    if (!target) {
+        return 400;
+    }
+    *target++ = '\0';
+
+    version = strchr(target, ' ');
+    if (!version) {
+        return 400;
+    }
+    *version++ = '\0';
+
+    if (strcmp(version, "HTTP/1.1") != 0 && strcmp(version, "HTTP/1.0") != 0) {
+        return 400;
+    }
+
+    query = strchr(target, '?');
+    if (query) {
+        *query++ = '\0';
+        sihttp_parse_query(req, query);
+    }
+
+    sihttp_method_from_name(method, &method_ok);
+    if (!method_ok) {
+        return 405;
+    }
+
+    req->public_req.method = method;
+    req->public_req.path = target;
+    req->public_req.body = body;
+    req->public_req.state = state;
+    return 200;
+}
+
+SIHTTP_API int64_t sihttp_param(const sihttp_request_t *public_req, const char *name) {
+    const sihttp_request_internal_t *req = (const sihttp_request_internal_t *)public_req;
+
+    for (size_t i = 0; i < req->param_count; i++) {
+        if (strcmp(req->params[i].name, name) == 0) {
+            return strtoll(req->params[i].value, NULL, 10);
+        }
+    }
+
+    for (size_t i = 0; i < req->query_count; i++) {
+        if (strcmp(req->query[i].name, name) == 0) {
+            return strtoll(req->query[i].value, NULL, 10);
+        }
+    }
+
+    return 0;
+}
+
+static const char *sihttp_status_reason(int status) {
+    switch (status) {
+    case 200:
+        return "OK";
+    case 201:
+        return "Created";
+    case 204:
+        return "No Content";
+    case 400:
+        return "Bad Request";
+    case 401:
+        return "Unauthorized";
+    case 403:
+        return "Forbidden";
+    case 404:
+        return "Not Found";
+    case 405:
+        return "Method Not Allowed";
+    case 413:
+        return "Payload Too Large";
+    case 500:
+        return "Internal Server Error";
+    }
+
+    return status >= 200 && status < 300 ? "OK" : "Error";
+}
+
+static const char *sihttp_content_type_name(sihttp_content_type_t content_type) {
+    switch (content_type) {
+    case SIHTTP_CONTENT_AUTO:
+    case SIHTTP_CONTENT_TEXT:
+        return "text/plain; charset=utf-8";
+    case SIHTTP_CONTENT_JSON:
+        return "application/json";
+    case SIHTTP_CONTENT_HTML:
+        return "text/html; charset=utf-8";
+    case SIHTTP_CONTENT_BINARY:
+        return "application/octet-stream";
+    }
+
+    return "text/plain; charset=utf-8";
+}
+
+static int sihttp_send_all(int fd, const char *data, size_t len) {
+    size_t sent = 0;
+    while (sent < len) {
+        ssize_t written = send(fd, data + sent, len - sent, MSG_NOSIGNAL);
+        if (written <= 0) {
+            return -1;
+        }
+        sent += (size_t)written;
+    }
+
+    return 0;
+}
+
+char *sihttp_build_response(sihttp_response_t response, size_t *out_len) {
+    int status = response.status == 0 ? 200 : response.status;
+    const char *reason = sihttp_status_reason(status);
+    const char *content_type = sihttp_content_type_name(response.content_type);
+    const char *body = response.body ? response.body : "";
+    size_t body_len = response.body ? strlen(response.body) : 0;
+    int header_len;
+    size_t total;
+    char *message;
+
+    header_len = snprintf(
+        NULL,
+        0,
+        "HTTP/1.1 %d %s\r\n"
+        "Content-Length: %zu\r\n"
+        "Content-Type: %s\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+        "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
+        "Connection: close\r\n"
+        "\r\n",
+        status,
+        reason,
+        body_len,
+        content_type
+    );
+    if (header_len < 0) {
+        return NULL;
+    }
+
+    total = (size_t)header_len + body_len;
+    message = malloc(total + 1);
+    if (!message) {
+        return NULL;
     }
 
     snprintf(
-        buffer,
-        buffer_size,
-        "%s '%.*s'",
-        sireflect_token_kind_name(token.kind),
-        (int)token.len,
-        token.start
-    );
-}
-
-static inline void
-sireflect_parser_context(sireflect_parser_t *parser, char *buffer, size_t buffer_size) {
-    if (parser->field_start != NULL) {
-        snprintf(
-            buffer,
-            buffer_size,
-            "struct '%s', field '%.*s'",
-            parser->struct_name != NULL ? parser->struct_name : "<unknown>",
-            (int)parser->field_len,
-            parser->field_start
-        );
-        return;
-    }
-
-    snprintf(
-        buffer,
-        buffer_size,
-        "struct '%s'",
-        parser->struct_name != NULL ? parser->struct_name : "<unknown>"
-    );
-}
-
-static inline void
-sireflect_parser_fail_at(sireflect_parser_t *parser, sireflect_token_t token, const char *message) {
-    char actual[96];
-    char context[160];
-
-    sireflect_token_display(token, actual, sizeof(actual));
-    sireflect_parser_context(parser, context, sizeof(context));
-
-    snprintf(
-        parser->message,
-        sizeof(parser->message),
-        "%s in %s at line %zu, column %zu: actual %s",
         message,
-        context,
-        token.line,
-        token.column,
-        actual
+        (size_t)header_len + 1,
+        "HTTP/1.1 %d %s\r\n"
+        "Content-Length: %zu\r\n"
+        "Content-Type: %s\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+        "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
+        "Connection: close\r\n"
+        "\r\n",
+        status,
+        reason,
+        body_len,
+        content_type
     );
+    memcpy(message + header_len, body, body_len);
+    message[total] = '\0';
 
-    parser->failed = true;
-    if (parser->fail_fast) {
-        sireflect_assert(false, parser->message);
+    if (out_len) {
+        *out_len = total;
     }
-    sireflect_error_set(parser->message);
+    return message;
 }
 
-static inline void sireflect_parser_unexpected(
-    sireflect_parser_t *parser,
-    sireflect_token_kind_t expected,
-    const char *context
-) {
-    char actual[96];
-    char parser_context[160];
+int sihttp_send_response(int fd, sihttp_response_t response) {
+    size_t len = 0;
+    char *message = sihttp_build_response(response, &len);
+    int result;
 
-    sireflect_token_display(parser->current, actual, sizeof(actual));
-    sireflect_parser_context(parser, parser_context, sizeof(parser_context));
-
-    snprintf(
-        parser->message,
-        sizeof(parser->message),
-        "unexpected token while parsing %s in %s at line %zu, column %zu: expected %s, actual %s",
-        context,
-        parser_context,
-        parser->current.line,
-        parser->current.column,
-        sireflect_token_kind_name(expected),
-        actual
-    );
-
-    parser->failed = true;
-    if (parser->fail_fast) {
-        sireflect_assert(false, parser->message);
-    }
-    sireflect_error_set(parser->message);
-}
-
-static inline void sireflect_parser_advance(sireflect_parser_t *parser) {
-    if (parser->src[parser->pos] == '\n') {
-        parser->line++;
-        parser->column = 1;
-    } else {
-        parser->column++;
+    if (!message) {
+        free(response.body);
+        return -1;
     }
 
-    parser->pos++;
-}
-
-static inline void sireflect_parser_next(sireflect_parser_t *parser) {
-    const char *src = parser->src;
-
-    while (isspace((unsigned char)src[parser->pos])) {
-        sireflect_parser_advance(parser);
-    }
-
-    const size_t start = parser->pos;
-    const size_t line = parser->line;
-    const size_t column = parser->column;
-    const char c = src[start];
-
-    if (c == '\0') {
-        parser->current = (sireflect_token_t){ sireflect_token_end, &src[start], 0, start, line, column };
-        return;
-    }
-
-    if (sireflect_is_ident_start(c)) {
-        sireflect_parser_advance(parser);
-        while (sireflect_is_ident_char(src[parser->pos])) {
-            sireflect_parser_advance(parser);
-        }
-
-        parser->current = (sireflect_token_t){
-            sireflect_token_ident,
-            &src[start],
-            parser->pos - start,
-            start,
-            line,
-            column,
-        };
-        return;
-    }
-
-    if (isdigit((unsigned char)c)) {
-        sireflect_parser_advance(parser);
-        while (isdigit((unsigned char)src[parser->pos])) {
-            sireflect_parser_advance(parser);
-        }
-
-        parser->current = (sireflect_token_t){
-            sireflect_token_integer,
-            &src[start],
-            parser->pos - start,
-            start,
-            line,
-            column,
-        };
-        return;
-    }
-
-    sireflect_parser_advance(parser);
-
-    switch (c) {
-    case '{':
-        parser->current = (sireflect_token_t){ sireflect_token_lbrace, &src[start], 1, start, line, column };
-        return;
-    case '}':
-        parser->current = (sireflect_token_t){ sireflect_token_rbrace, &src[start], 1, start, line, column };
-        return;
-    case '[':
-        parser->current =
-            (sireflect_token_t){ sireflect_token_lbracket, &src[start], 1, start, line, column };
-        return;
-    case ']':
-        parser->current =
-            (sireflect_token_t){ sireflect_token_rbracket, &src[start], 1, start, line, column };
-        return;
-    case '*':
-        parser->current = (sireflect_token_t){ sireflect_token_star, &src[start], 1, start, line, column };
-        return;
-    case ',':
-        parser->current = (sireflect_token_t){ sireflect_token_comma, &src[start], 1, start, line, column };
-        return;
-    case ';':
-        parser->current =
-            (sireflect_token_t){ sireflect_token_semicolon, &src[start], 1, start, line, column };
-        return;
-    default:
-        parser->current = (sireflect_token_t){ sireflect_token_unknown, &src[start], 1, start, line, column };
-        sireflect_parser_fail_at(
-            parser,
-            parser->current,
-            "unsupported syntax in reflected struct; supported fields are '<type> <name>;', '<type> <name>, <name>;', '<type> *<name>;', '<type> <name>[N][M];', and '<type> *<name>[N];'"
-        );
-    }
-}
-
-static inline void sireflect_parser_init(
-    sireflect_parser_t *parser,
-    const char *struct_name,
-    const char *src,
-    bool fail_fast
-) {
-    sireflect_assert(parser != NULL, "parser must not be NULL");
-    sireflect_assert(struct_name != NULL, "parser struct name must not be NULL");
-    sireflect_assert(src != NULL, "parser source must not be NULL");
-
-    parser->src = src;
-    parser->struct_name = struct_name;
-    parser->field_start = NULL;
-    parser->field_len = 0;
-    parser->pos = 0;
-    parser->line = 1;
-    parser->column = 1;
-    parser->message[0] = '\0';
-    parser->failed = false;
-    parser->fail_fast = fail_fast;
-    sireflect_parser_next(parser);
-}
-
-static inline sireflect_token_t
-sireflect_expect(sireflect_parser_t *parser, sireflect_token_kind_t kind, const char *context) {
-    sireflect_token_t token = parser->current;
-    if (token.kind != kind) {
-        sireflect_parser_unexpected(parser, kind, context);
-        return token;
-    }
-    sireflect_parser_next(parser);
-    return token;
-}
-
-static inline sireflect_token_t sireflect_expect_field_name(sireflect_parser_t *parser) {
-    sireflect_token_t token = parser->current;
-    if (token.kind != sireflect_token_ident || sireflect_token_is_qualifier(token)) {
-        sireflect_parser_unexpected(parser, sireflect_token_ident, "field name");
-        return token;
-    }
-
-    parser->field_start = token.start;
-    parser->field_len = token.len;
-    sireflect_parser_next(parser);
-    return token;
-}
-
-static inline uint32_t sireflect_parse_qualifiers(sireflect_parser_t *parser) {
-    uint32_t qualifiers = 0;
-
-    for (;;) {
-        if (sireflect_token_is_ident(parser->current, "const")) {
-            qualifiers |= SIREFLECT_QUAL_CONST;
-            sireflect_parser_next(parser);
-            continue;
-        }
-
-        if (sireflect_token_is_ident(parser->current, "volatile")) {
-            qualifiers |= SIREFLECT_QUAL_VOLATILE;
-            sireflect_parser_next(parser);
-            continue;
-        }
-
-        return qualifiers;
-    }
-}
-
-static inline void
-sireflect_fail_unsupported_type_specifier(sireflect_parser_t *parser, sireflect_token_t token) {
-    sireflect_parser_fail_at(
-        parser,
-        token,
-        "unsupported type specifier sequence; supported multi-token types are 'signed char', 'unsigned char', 'unsigned short', 'unsigned int', 'unsigned long', 'long long', and 'unsigned long long'"
-    );
-}
-
-static inline sireflect_type_spec_t sireflect_parse_type_specifier(sireflect_parser_t *parser) {
-    sireflect_token_t first = sireflect_expect(parser, sireflect_token_ident, "field type");
-    sireflect_type_spec_t type;
-    sireflect_type_spec_set(&type, first);
-    if (parser->failed) {
-        return type;
-    }
-
-    if (sireflect_token_is_ident(first, "signed")) {
-        if (!sireflect_token_is_ident(parser->current, "char")) {
-            sireflect_fail_unsupported_type_specifier(parser, parser->current);
-            return type;
-        }
-
-        sireflect_token_t second = parser->current;
-        sireflect_parser_next(parser);
-        sireflect_type_spec_set2(&type, first, second);
-        return type;
-    }
-
-    if (sireflect_token_is_ident(first, "long")) {
-        if (!sireflect_token_is_ident(parser->current, "long")) {
-            return type;
-        }
-
-        sireflect_token_t second = parser->current;
-        sireflect_parser_next(parser);
-        sireflect_type_spec_set2(&type, first, second);
-        return type;
-    }
-
-    if (sireflect_token_is_ident(first, "unsigned")) {
-        sireflect_token_t second = parser->current;
-
-        if (sireflect_token_is_ident(second, "char") || sireflect_token_is_ident(second, "short") ||
-            sireflect_token_is_ident(second, "int")) {
-            sireflect_parser_next(parser);
-            sireflect_type_spec_set2(&type, first, second);
-            return type;
-        }
-
-        if (sireflect_token_is_ident(second, "long")) {
-            sireflect_parser_next(parser);
-
-            if (sireflect_token_is_ident(parser->current, "long")) {
-                sireflect_token_t third = parser->current;
-                sireflect_parser_next(parser);
-                sireflect_type_spec_set3(&type, first, second, third);
-                return type;
-            }
-
-            sireflect_type_spec_set2(&type, first, second);
-            return type;
-        }
-
-        sireflect_fail_unsupported_type_specifier(parser, second);
-        return type;
-    }
-
-    return type;
-}
-
-static inline char *sireflect_dup_range(const char *start, size_t len) {
-    char *result = malloc(len + 1);
-    sireflect_assert(result != NULL, "failed to allocate parser string");
-
-    memcpy(result, start, len);
-    result[len] = '\0';
-
+    result = sihttp_send_all(fd, message, len);
+    free(message);
+    free(response.body);
     return result;
 }
 
-static inline size_t
-sireflect_parse_array_count(sireflect_parser_t *parser, sireflect_token_t token) {
-    size_t count = 0;
-
-    for (size_t i = 0; i < token.len; i++) {
-        const unsigned int digit = (unsigned int)(token.start[i] - '0');
-        if (count > (SIZE_MAX - digit) / 10) {
-            sireflect_parser_fail_at(parser, token, "array element count overflows size_t");
-            return 0;
-        }
-        count = count * 10 + digit;
+static char *sihttp_strdup(const char *str) {
+    size_t len = strlen(str);
+    char *copy = malloc(len + 1);
+    if (!copy) {
+        return NULL;
     }
 
-    if (count == 0) {
-        sireflect_parser_fail_at(parser, token, "array element count must be greater than zero");
-        return 0;
-    }
-
-    return count;
+    memcpy(copy, str, len + 1);
+    return copy;
 }
 
-static inline size_t
-sireflect_parse_array_dimensions(sireflect_parser_t *parser, size_t *counts, size_t max_count) {
-    size_t count = 0;
+static int
+sihttp_route_path_matches(const char *pattern, const char *path, sihttp_request_internal_t *req) {
+    const char *p = pattern;
+    const char *s = path;
 
-    while (parser->current.kind == sireflect_token_lbracket) {
-        sireflect_parser_next(parser);
+    while (*p && *s) {
+        if (*p == ':') {
+            const char *name_start;
+            const char *value_start;
+            size_t name_len;
+            size_t value_len;
+            char name[32];
+            char value[64];
+            int ok;
 
-        if (parser->current.kind == sireflect_token_rbracket) {
-            sireflect_parser_fail_at(parser, parser->current, "array element count is required");
-            return count;
-        }
-
-        if (parser->current.kind != sireflect_token_integer) {
-            sireflect_parser_fail_at(
-                parser,
-                parser->current,
-                "array element count must be a positive integer literal"
-            );
-            return count;
-        }
-
-        sireflect_token_t count_token = parser->current;
-        sireflect_parser_next(parser);
-
-        if (parser->current.kind != sireflect_token_rbracket) {
-            sireflect_parser_fail_at(parser, parser->current, "expected ']' after array element count");
-            return count;
-        }
-
-        if (count >= max_count) {
-            sireflect_parser_fail_at(parser, count_token, "too many array dimensions");
-            return count;
-        }
-
-        counts[count++] = sireflect_parse_array_count(parser, count_token);
-        if (parser->failed) {
-            return count;
-        }
-        sireflect_parser_next(parser);
-    }
-
-    return count;
-}
-
-static inline void sireflect_parse_declarator_shape(sireflect_parser_t *parser) {
-    size_t counts[SIREFLECT_MAX_ARRAY_DIMS];
-
-    parser->field_start = NULL;
-    parser->field_len = 0;
-
-    if (parser->current.kind == sireflect_token_star) {
-        sireflect_parser_next(parser);
-    }
-
-    sireflect_expect_field_name(parser);
-    if (parser->failed) {
-        return;
-    }
-    (void)sireflect_parse_array_dimensions(parser, counts, SIREFLECT_MAX_ARRAY_DIMS);
-}
-
-static inline size_t sireflect_parse_declaration_shape(sireflect_parser_t *parser) {
-    size_t count = 0;
-
-    (void)sireflect_parse_qualifiers(parser);
-    (void)sireflect_parse_type_specifier(parser);
-    if (parser->failed) {
-        return 0;
-    }
-
-    for (;;) {
-        sireflect_parse_declarator_shape(parser);
-        if (parser->failed) {
-            return 0;
-        }
-        count++;
-
-        if (parser->current.kind != sireflect_token_comma) {
-            break;
-        }
-
-        sireflect_parser_next(parser);
-    }
-
-    sireflect_expect(parser, sireflect_token_semicolon, "field terminator");
-    if (parser->failed) {
-        return 0;
-    }
-    return count;
-}
-
-static inline bool sireflect_count_fields(
-    const char *struct_name,
-    const char *fields_src,
-    bool fail_fast,
-    size_t *out_count
-) {
-    sireflect_parser_t parser;
-    size_t count = 0;
-
-    sireflect_parser_init(&parser, struct_name, fields_src, fail_fast);
-    sireflect_expect(&parser, sireflect_token_lbrace, "struct field list start");
-    if (parser.failed) {
-        return false;
-    }
-
-    while (parser.current.kind != sireflect_token_rbrace) {
-        count += sireflect_parse_declaration_shape(&parser);
-        if (parser.failed) {
-            return false;
-        }
-    }
-
-    sireflect_expect(&parser, sireflect_token_rbrace, "struct field list end");
-    if (parser.failed) {
-        return false;
-    }
-    sireflect_expect(&parser, sireflect_token_end, "trailing input after struct field list");
-    if (parser.failed) {
-        return false;
-    }
-
-    *out_count = count;
-    return true;
-}
-
-static inline size_t sireflect_align_up(size_t value, size_t align) {
-    sireflect_assert(align != 0, "alignment must not be zero");
-
-    const size_t remainder = value % align;
-    if (remainder == 0) {
-        return value;
-    }
-
-    return value + align - remainder;
-}
-
-static inline sireflect_handle_t sireflect_resolve_field_type(
-    sireflect_registry_t *reg,
-    sireflect_parser_t *parser,
-    sireflect_type_spec_t type
-) {
-    char *owned_name = NULL;
-    const char *type_name = type.name;
-
-    if (!type.has_name) {
-        owned_name = sireflect_dup_range(type.start, type.len);
-        type_name = owned_name;
-    }
-
-    sireflect_handle_t field_type = sireflect_type_by_name(reg, type_name);
-    if (field_type == SIREFLECT_INVALID_HANDLE) {
-        char context[160];
-
-        sireflect_parser_context(parser, context, sizeof(context));
-        snprintf(
-            parser->message,
-            sizeof(parser->message),
-            "unknown field type '%s' in %s at line %zu, column %zu; register the type before this struct or use a supported primitive alias",
-            type_name,
-            context,
-            type.line,
-            type.column
-        );
-        free(owned_name);
-        parser->failed = true;
-        if (parser->fail_fast) {
-            sireflect_assert(false, parser->message);
-        }
-        sireflect_error_set(parser->message);
-        return SIREFLECT_INVALID_HANDLE;
-    }
-
-    free(owned_name);
-    return field_type;
-}
-
-static inline void sireflect_parse_declarator(
-    sireflect_registry_t *reg,
-    sireflect_parser_t *parser,
-    sireflect_field_info_t *field,
-    sireflect_type_spec_t type,
-    uint32_t qualifiers,
-    size_t *offset,
-    size_t *max_align
-) {
-    parser->field_start = NULL;
-    parser->field_len = 0;
-
-    int is_pointer = 0;
-    size_t array_counts[SIREFLECT_MAX_ARRAY_DIMS];
-    size_t array_dim_count = 0;
-
-    if (parser->current.kind == sireflect_token_star) {
-        is_pointer = 1;
-        sireflect_parser_next(parser);
-    }
-
-    sireflect_token_t name_token = sireflect_expect_field_name(parser);
-    if (parser->failed) {
-        return;
-    }
-    array_dim_count =
-        sireflect_parse_array_dimensions(parser, array_counts, SIREFLECT_MAX_ARRAY_DIMS);
-    if (parser->failed) {
-        return;
-    }
-
-    sireflect_handle_t field_type = sireflect_resolve_field_type(reg, parser, type);
-    if (parser->failed) {
-        return;
-    }
-
-    if (is_pointer) {
-        field_type = sireflect_registry_get_or_add_pointer_type(reg, field_type);
-    }
-
-    for (size_t i = array_dim_count; i > 0; i--) {
-        field_type = sireflect_registry_get_or_add_array_type(reg, field_type, array_counts[i - 1]);
-    }
-
-    const sireflect_type_info_t *type_info = sireflect_type_info(reg, field_type);
-    sireflect_assert(type_info != NULL, "field type metadata must exist");
-
-    field->name = sireflect_dup_range(name_token.start, name_token.len);
-    field->type = field_type;
-    field->size = type_info->size;
-    field->align = type_info->align;
-    field->offset = sireflect_align_up(*offset, field->align);
-    field->qualifiers = qualifiers;
-
-    *offset = field->offset + field->size;
-    if (field->align > *max_align) {
-        *max_align = field->align;
-    }
-}
-
-static inline size_t sireflect_parse_declaration(
-    sireflect_registry_t *reg,
-    sireflect_parser_t *parser,
-    sireflect_field_info_t *fields,
-    size_t *offset,
-    size_t *max_align
-) {
-    size_t count = 0;
-    uint32_t qualifiers = sireflect_parse_qualifiers(parser);
-    sireflect_type_spec_t type = sireflect_parse_type_specifier(parser);
-    if (parser->failed) {
-        return 0;
-    }
-
-    for (;;) {
-        sireflect_parse_declarator(
-            reg,
-            parser,
-            &fields[count],
-            type,
-            qualifiers,
-            offset,
-            max_align
-        );
-        if (parser->failed) {
-            return 0;
-        }
-        count++;
-
-        if (parser->current.kind != sireflect_token_comma) {
-            break;
-        }
-
-        sireflect_parser_next(parser);
-    }
-
-    sireflect_expect(parser, sireflect_token_semicolon, "field terminator");
-    if (parser->failed) {
-        return 0;
-    }
-    return count;
-}
-
-static inline void sireflect_free_parsed_fields(sireflect_field_info_t *fields, size_t field_count) {
-    if (fields == NULL) {
-        return;
-    }
-
-    for (size_t i = 0; i < field_count; i++) {
-        free((char *)fields[i].name);
-    }
-
-    free(fields);
-}
-
-bool sireflect_parse_struct_fields(
-    sireflect_registry_t *reg,
-    const char *struct_name,
-    const char *fields_src,
-    sireflect_field_info_t **out_fields,
-    size_t *out_field_count,
-    size_t struct_size,
-    size_t struct_align,
-    bool fail_fast
-) {
-    (void)struct_size;
-    (void)struct_align;
-
-    sireflect_assert(reg != NULL, "registry must not be NULL");
-    sireflect_assert(struct_name != NULL, "struct name must not be NULL");
-    sireflect_assert(fields_src != NULL, "field source must not be NULL");
-    sireflect_assert(out_fields != NULL, "output field pointer must not be NULL");
-    sireflect_assert(out_field_count != NULL, "output field count pointer must not be NULL");
-
-    size_t field_count = 0;
-    if (!sireflect_count_fields(struct_name, fields_src, fail_fast, &field_count)) {
-        *out_fields = NULL;
-        *out_field_count = 0;
-        return false;
-    }
-
-    sireflect_field_info_t *fields = NULL;
-
-    if (field_count != 0) {
-        fields = calloc(field_count, sizeof(*fields));
-        sireflect_assert(fields != NULL, "failed to allocate field metadata");
-    }
-
-    sireflect_parser_t parser;
-    sireflect_parser_init(&parser, struct_name, fields_src, fail_fast);
-    sireflect_expect(&parser, sireflect_token_lbrace, "struct field list start");
-    if (parser.failed) {
-        sireflect_free_parsed_fields(fields, field_count);
-        *out_fields = NULL;
-        *out_field_count = 0;
-        return false;
-    }
-
-    size_t offset = 0;
-    size_t max_align = 1;
-
-    for (size_t i = 0; i < field_count;) {
-        const size_t parsed_count =
-            sireflect_parse_declaration(reg, &parser, &fields[i], &offset, &max_align);
-        if (parser.failed) {
-            sireflect_free_parsed_fields(fields, field_count);
-            *out_fields = NULL;
-            *out_field_count = 0;
-            return false;
-        }
-        i += parsed_count;
-    }
-
-    sireflect_expect(&parser, sireflect_token_rbrace, "struct field list end");
-    if (parser.failed) {
-        sireflect_free_parsed_fields(fields, field_count);
-        *out_fields = NULL;
-        *out_field_count = 0;
-        return false;
-    }
-    sireflect_expect(&parser, sireflect_token_end, "trailing input after struct field list");
-    if (parser.failed) {
-        sireflect_free_parsed_fields(fields, field_count);
-        *out_fields = NULL;
-        *out_field_count = 0;
-        return false;
-    }
-
-#ifndef NDEBUG
-    {
-        const size_t computed_size = sireflect_align_up(offset, struct_align);
-        if (computed_size != struct_size) {
-            if (fail_fast) {
-                sireflect_assert(false, "computed struct size does not match C layout");
+            p++;
+            name_start = p;
+            while (*p && *p != '/') {
+                p++;
             }
-            sireflect_error_set("computed struct size does not match C layout");
-            sireflect_free_parsed_fields(fields, field_count);
-            *out_fields = NULL;
-            *out_field_count = 0;
-            return false;
-        }
 
-        if (max_align > struct_align) {
-            if (fail_fast) {
-                sireflect_assert(false, "computed field alignment exceeds struct alignment");
+            value_start = s;
+            while (*s && *s != '/') {
+                s++;
             }
-            sireflect_error_set("computed field alignment exceeds struct alignment");
-            sireflect_free_parsed_fields(fields, field_count);
-            *out_fields = NULL;
-            *out_field_count = 0;
-            return false;
+
+            name_len = (size_t)(p - name_start);
+            value_len = (size_t)(s - value_start);
+            if (name_len == 0 || value_len == 0 || req->param_count >= SIHTTP_MAX_PARAMS) {
+                return 0;
+            }
+
+            if (name_len >= sizeof(name) || value_len >= sizeof(value)) {
+                return 0;
+            }
+            memcpy(name, name_start, name_len);
+            name[name_len] = '\0';
+            memcpy(value, value_start, value_len);
+            value[value_len] = '\0';
+
+            ok = sihttp_request_add_param(req, name, value) == 0;
+            if (!ok) {
+                return 0;
+            }
+        } else if (*p == *s) {
+            p++;
+            s++;
+        } else {
+            return 0;
         }
     }
-#endif
 
-    *out_fields = fields;
-    *out_field_count = field_count;
-    return true;
+    return *p == '\0' && *s == '\0';
 }
 
-static char *sireflect_dup_cstr(const char *str) {
-    sireflect_assert(str != NULL, "string must not be NULL");
-
-    const size_t len = strlen(str);
-    char *result = malloc(len + 1);
-    sireflect_assert(result != NULL, "failed to allocate string");
-
-    memcpy(result, str, len + 1);
-    return result;
+int sihttp_route_table_init(sihttp_route_table_t *table) {
+    table->entries = NULL;
+    table->count = 0;
+    table->capacity = 0;
+    return 0;
 }
 
-static char *
-sireflect_format_array_type_name(const sireflect_type_info_t *element, size_t element_count) {
-    sireflect_assert(element != NULL, "array element metadata must exist");
-
-    const char *suffix = strchr(element->name, '[');
-    if (element->kind != sireflect_kind_array || suffix == NULL) {
-        const int name_len = snprintf(NULL, 0, "%s[%zu]", element->name, element_count);
-        sireflect_assert(name_len > 0, "failed to format array type name");
-
-        char *name = malloc((size_t)name_len + 1);
-        sireflect_assert(name != NULL, "failed to allocate array type name");
-        snprintf(name, (size_t)name_len + 1, "%s[%zu]", element->name, element_count);
-        return name;
+void sihttp_route_table_fini(sihttp_route_table_t *table) {
+    for (size_t i = 0; i < table->count; i++) {
+        free(table->entries[i].path);
     }
-
-    const size_t prefix_len = (size_t)(suffix - element->name);
-    const int count_len = snprintf(NULL, 0, "[%zu]", element_count);
-    sireflect_assert(count_len > 0, "failed to format array dimension");
-
-    const size_t suffix_len = strlen(suffix);
-    char *name = malloc(prefix_len + (size_t)count_len + suffix_len + 1);
-    sireflect_assert(name != NULL, "failed to allocate array type name");
-
-    memcpy(name, element->name, prefix_len);
-    snprintf(name + prefix_len, (size_t)count_len + 1, "[%zu]", element_count);
-    memcpy(name + prefix_len + (size_t)count_len, suffix, suffix_len + 1);
-
-    return name;
+    free(table->entries);
+    table->entries = NULL;
+    table->count = 0;
+    table->capacity = 0;
 }
 
-static sireflect_handle_t sireflect_handle_from_index(size_t index) {
-    return (sireflect_handle_t)(index + 1);
-}
-
-static size_t sireflect_index_from_handle(sireflect_handle_t handle) {
-    sireflect_assert(handle != SIREFLECT_INVALID_HANDLE, "type handle must be valid");
-    return (size_t)(handle - 1);
-}
-
-static void sireflect_registry_reserve(sireflect_registry_t *reg, size_t min_cap) {
-    sireflect_assert(reg != NULL, "registry must not be NULL");
-
-    if (reg->type_cap >= min_cap) {
-        return;
-    }
-
-    size_t new_cap = reg->type_cap == 0 ? 16 : reg->type_cap * 2;
-    while (new_cap < min_cap) {
-        new_cap *= 2;
-    }
-
-    sireflect_type_info_t *types = realloc(reg->types, new_cap * sizeof(*types));
-    sireflect_assert(types != NULL, "failed to allocate type metadata");
-
-    reg->types = types;
-    reg->type_cap = new_cap;
-}
-
-sireflect_handle_t sireflect_registry_add_type(
-    sireflect_registry_t *reg,
-    const char *name,
-    sireflect_kind_t kind,
-    size_t size,
-    size_t align,
-    sireflect_field_info_t *fields,
-    size_t field_count
+int sihttp_route_table_add(
+    sihttp_route_table_t *table,
+    sihttp_method_t method,
+    const char *path,
+    sihttp_handler_t callback
 ) {
-    sireflect_assert(reg != NULL, "registry must not be NULL");
-    sireflect_assert(name != NULL, "type name must not be NULL");
-    sireflect_assert(size != 0 || kind == sireflect_kind_struct, "non-struct type size must not be zero");
-    sireflect_assert(align != 0, "type alignment must not be zero");
+    char *path_copy;
 
-    sireflect_registry_reserve(reg, reg->type_count + 1);
+    if (!path || path[0] != '/' || !callback) {
+        return -1;
+    }
 
-    const size_t index = reg->type_count++;
-    reg->types[index] = (sireflect_type_info_t){
-        .name = sireflect_dup_cstr(name),
-        .kind = kind,
-        .size = size,
-        .align = align,
-        .fields =
-            {
-                .fields = fields,
-                .field_count = field_count,
-            },
-        .element_type = SIREFLECT_INVALID_HANDLE,
-        .element_count = 0,
+    if (table->count == table->capacity) {
+        size_t next = table->capacity ? table->capacity * 2 : 8;
+        sihttp_route_entry_t *entries = realloc(table->entries, next * sizeof(*entries));
+        if (!entries) {
+            return -1;
+        }
+        table->entries = entries;
+        table->capacity = next;
+    }
+
+    path_copy = sihttp_strdup(path);
+    if (!path_copy) {
+        return -1;
+    }
+
+    table->entries[table->count++] = (sihttp_route_entry_t){
+        .method = method,
+        .path = path_copy,
+        .callback = callback,
     };
-
-    return sireflect_handle_from_index(index);
+    return 0;
 }
 
-sireflect_handle_t
-sireflect_registry_get_or_add_pointer_type(sireflect_registry_t *reg, sireflect_handle_t pointee_type) {
-    sireflect_assert(reg != NULL, "registry must not be NULL");
-    sireflect_assert(pointee_type != SIREFLECT_INVALID_HANDLE, "pointer pointee type must be valid");
-
-    for (size_t i = 0; i < reg->type_count; i++) {
-        const sireflect_type_info_t *type = &reg->types[i];
-        if (type->kind == sireflect_kind_pointer && type->element_type == pointee_type) {
-            return sireflect_handle_from_index(i);
-        }
-    }
-
-    const sireflect_type_info_t *pointee = sireflect_registry_const_type_at(reg, pointee_type);
-    sireflect_assert(pointee != NULL, "pointer pointee metadata must exist");
-
-    const int name_len = snprintf(NULL, 0, "%s*", pointee->name);
-    sireflect_assert(name_len > 0, "failed to format pointer type name");
-
-    char *name = malloc((size_t)name_len + 1);
-    sireflect_assert(name != NULL, "failed to allocate pointer type name");
-    snprintf(name, (size_t)name_len + 1, "%s*", pointee->name);
-
-    sireflect_handle_t pointer_type = sireflect_registry_add_type(
-        reg,
-        name,
-        sireflect_kind_pointer,
-        sizeof(ptr),
-        _Alignof(ptr),
-        NULL,
-        0
-    );
-    free(name);
-
-    sireflect_type_info_t *pointer_info = sireflect_registry_type_at(reg, pointer_type);
-    pointer_info->element_type = pointee_type;
-
-    return pointer_type;
-}
-
-sireflect_handle_t sireflect_registry_get_or_add_array_type(
-    sireflect_registry_t *reg,
-    sireflect_handle_t element_type,
-    size_t element_count
+sihttp_handler_t sihttp_route_table_match(
+    const sihttp_route_table_t *table,
+    sihttp_method_t method,
+    const char *path,
+    sihttp_request_internal_t *req,
+    int *method_not_allowed
 ) {
-    sireflect_assert(reg != NULL, "registry must not be NULL");
-    sireflect_assert(element_type != SIREFLECT_INVALID_HANDLE, "array element type must be valid");
-    sireflect_assert(element_count != 0, "array element count must not be zero");
+    *method_not_allowed = 0;
 
-    for (size_t i = 0; i < reg->type_count; i++) {
-        const sireflect_type_info_t *type = &reg->types[i];
-        if (type->kind == sireflect_kind_array && type->element_type == element_type &&
-            type->element_count == element_count) {
-            return sireflect_handle_from_index(i);
-        }
-    }
-
-    const sireflect_type_info_t *element = sireflect_registry_const_type_at(reg, element_type);
-    sireflect_assert(element != NULL, "array element metadata must exist");
-    sireflect_assert(element->size <= SIZE_MAX / element_count, "array type size overflows size_t");
-
-    char *name = sireflect_format_array_type_name(element, element_count);
-
-    sireflect_handle_t array_type = sireflect_registry_add_type(
-        reg,
-        name,
-        sireflect_kind_array,
-        element->size * element_count,
-        element->align,
-        NULL,
-        0
-    );
-    free(name);
-
-    sireflect_type_info_t *array_info = sireflect_registry_type_at(reg, array_type);
-    array_info->element_type = element_type;
-    array_info->element_count = element_count;
-
-    return array_type;
-}
-
-#define add_type(name, kind)                                                                       \
-    sireflect_registry_add_type(reg, #name, kind, sizeof(name), _Alignof(name), NULL, 0)
-
-#define add_named_type(c_type, reflected_name, kind)                                               \
-    sireflect_registry_add_type(reg, reflected_name, kind, sizeof(c_type), _Alignof(c_type), NULL, 0)
-
-static inline void sireflect_register_builtin_types(sireflect_registry_t *reg) {
-    add_type(u8, sireflect_kind_u8);
-    add_type(u16, sireflect_kind_u16);
-    add_type(u32, sireflect_kind_u32);
-    add_type(u64, sireflect_kind_u64);
-    add_type(i8, sireflect_kind_i8);
-    add_type(i16, sireflect_kind_i16);
-    add_type(i32, sireflect_kind_i32);
-    add_type(i64, sireflect_kind_i64);
-    add_type(f32, sireflect_kind_f32);
-    add_type(f64, sireflect_kind_f64);
-    add_type(bool, sireflect_kind_bool);
-    add_type(char, sireflect_kind_char);
-    add_type(ptr, sireflect_kind_ptr);
-
-    add_type(uint8_t, sireflect_kind_u8);
-    add_type(uint16_t, sireflect_kind_u16);
-    add_type(uint32_t, sireflect_kind_u32);
-    add_type(uint64_t, sireflect_kind_u64);
-    add_type(int8_t, sireflect_kind_i8);
-    add_type(int16_t, sireflect_kind_i16);
-    add_type(int32_t, sireflect_kind_i32);
-    add_type(int64_t, sireflect_kind_i64);
-
-    add_type(float, sireflect_kind_f32);
-    add_type(double, sireflect_kind_f64);
-    add_type(short, sireflect_kind_short);
-    add_type(int, sireflect_kind_int);
-    add_type(long, sireflect_kind_long);
-
-    add_named_type(signed char, "signed char", sireflect_kind_signed_char);
-    add_named_type(unsigned char, "unsigned char", sireflect_kind_unsigned_char);
-    add_named_type(unsigned short, "unsigned short", sireflect_kind_unsigned_short);
-    add_named_type(unsigned int, "unsigned int", sireflect_kind_unsigned_int);
-    add_named_type(unsigned long, "unsigned long", sireflect_kind_unsigned_long);
-    add_named_type(long long, "long long", sireflect_kind_long_long);
-    add_named_type(unsigned long long, "unsigned long long", sireflect_kind_unsigned_long_long);
-}
-
-sireflect_registry_t *sireflect_registry_init(void) {
-    sireflect_error_clear();
-
-    sireflect_registry_t *reg = calloc(1, sizeof(*reg));
-    sireflect_assert(reg != NULL, "registry must not be NULL");
-
-    sireflect_register_builtin_types(reg);
-    return reg;
-}
-
-void sireflect_registry_fini(sireflect_registry_t *reg) {
-    sireflect_error_clear();
-
-    if (reg == NULL) {
-        return;
-    }
-
-    for (size_t i = 0; i < reg->type_count; i++) {
-        sireflect_type_info_t *type = &reg->types[i];
-
-        free((char *)type->name);
-
-        for (size_t f = 0; f < type->fields.field_count; f++) {
-            free((char *)type->fields.fields[f].name);
+    for (size_t i = 0; i < table->count; i++) {
+        const sihttp_route_entry_t *entry = &table->entries[i];
+        size_t saved_count = req->param_count;
+        if (!sihttp_route_path_matches(entry->path, path, req)) {
+            req->param_count = saved_count;
+            continue;
         }
 
-        free(type->fields.fields);
-    }
-
-    free(reg->types);
-    free(reg);
-}
-
-sireflect_handle_t sireflect_type_by_name(const sireflect_registry_t *reg, const char *name) {
-    sireflect_error_clear();
-
-    sireflect_assert(reg != NULL, "registry must not be NULL");
-    sireflect_assert(name != NULL, "type name must not be NULL");
-
-    for (size_t i = 0; i < reg->type_count; i++) {
-        if (strcmp(reg->types[i].name, name) == 0) {
-            return sireflect_handle_from_index(i);
-        }
-    }
-
-    return SIREFLECT_INVALID_HANDLE;
-}
-
-const sireflect_type_info_t *
-sireflect_registry_const_type_at(const sireflect_registry_t *reg, sireflect_handle_t handle) {
-    sireflect_assert(reg != NULL, "registry must not be NULL");
-
-    const size_t index = sireflect_index_from_handle(handle);
-    sireflect_assert(index < reg->type_count, "type handle is out of range");
-
-    return &reg->types[index];
-}
-
-sireflect_type_info_t *
-sireflect_registry_type_at(sireflect_registry_t *reg, sireflect_handle_t handle) {
-    return (sireflect_type_info_t *)sireflect_registry_const_type_at(reg, handle);
-}
-
-sireflect_handle_t
-sireflect_try_register_struct(sireflect_registry_t *reg, const sireflect_struct_desc_t *desc) {
-    sireflect_error_clear();
-
-    if (reg == NULL || desc == NULL || desc->name == NULL || desc->fields == NULL ||
-        desc->align == 0) {
-        sireflect_error_set("invalid struct descriptor");
-        return SIREFLECT_INVALID_HANDLE;
-    }
-
-    sireflect_handle_t existing = sireflect_type_by_name(reg, desc->name);
-    if (existing != SIREFLECT_INVALID_HANDLE) {
-        const sireflect_type_info_t *type = sireflect_type_info(reg, existing);
-        if (type->kind != sireflect_kind_struct || type->size != desc->size ||
-            type->align != desc->align) {
-            sireflect_error_set("existing type is incompatible with struct descriptor");
-            return SIREFLECT_INVALID_HANDLE;
-        }
-        return existing;
-    }
-
-    sireflect_field_info_t *parsed_fields = NULL;
-    size_t field_count = 0;
-
-    if (!sireflect_parse_struct_fields(
-        reg,
-        desc->name,
-        desc->fields,
-        &parsed_fields,
-        &field_count,
-        desc->size,
-        desc->align,
-        false
-    )) {
-        return SIREFLECT_INVALID_HANDLE;
-    }
-
-    return sireflect_registry_add_type(
-        reg,
-        desc->name,
-        sireflect_kind_struct,
-        desc->size,
-        desc->align,
-        parsed_fields,
-        field_count
-    );
-}
-
-sireflect_handle_t
-sireflect_register_struct(sireflect_registry_t *reg, const sireflect_struct_desc_t *desc) {
-    sireflect_error_clear();
-
-    sireflect_assert(reg != NULL, "registry must not be NULL");
-    sireflect_assert(desc != NULL, "struct descriptor must not be NULL");
-    sireflect_assert(desc->name != NULL, "struct descriptor name must not be NULL");
-    sireflect_assert(desc->fields != NULL, "struct descriptor fields must not be NULL");
-    sireflect_assert(desc->align != 0, "struct descriptor alignment must not be zero");
-
-    sireflect_handle_t handle = SIREFLECT_INVALID_HANDLE;
-
-    if (reg != NULL && desc != NULL && desc->name != NULL && desc->fields != NULL &&
-        desc->align != 0) {
-        sireflect_handle_t existing = sireflect_type_by_name(reg, desc->name);
-        if (existing != SIREFLECT_INVALID_HANDLE) {
-            const sireflect_type_info_t *type = sireflect_type_info(reg, existing);
-            if (type->kind != sireflect_kind_struct || type->size != desc->size ||
-                type->align != desc->align) {
-                sireflect_assert(type->kind == sireflect_kind_struct, "existing type must be a struct");
-                sireflect_assert(
-                    type->size == desc->size,
-                    "existing struct size must match descriptor"
-                );
-                sireflect_assert(
-                    type->align == desc->align,
-                    "existing struct alignment must match descriptor"
-                );
-                return SIREFLECT_INVALID_HANDLE;
-            }
-            return existing;
+        if (entry->method == method) {
+            return entry->callback;
         }
 
-        sireflect_field_info_t *parsed_fields = NULL;
-        size_t field_count = 0;
-
-        if (sireflect_parse_struct_fields(
-                reg,
-                desc->name,
-                desc->fields,
-                &parsed_fields,
-                &field_count,
-                desc->size,
-                desc->align,
-                true
-            )) {
-            handle = sireflect_registry_add_type(
-                reg,
-                desc->name,
-                sireflect_kind_struct,
-                desc->size,
-                desc->align,
-                parsed_fields,
-                field_count
-            );
-        }
+        req->param_count = saved_count;
+        *method_not_allowed = 1;
     }
 
-    sireflect_assert(handle != SIREFLECT_INVALID_HANDLE, "failed to register struct");
-    return handle;
-}
-
-const char *sireflect_kind_name(sireflect_kind_t kind) {
-    sireflect_error_clear();
-
-    switch (kind) {
-    case sireflect_kind_u8:
-        return "u8";
-    case sireflect_kind_u16:
-        return "u16";
-    case sireflect_kind_u32:
-        return "u32";
-    case sireflect_kind_u64:
-        return "u64";
-    case sireflect_kind_i8:
-        return "i8";
-    case sireflect_kind_i16:
-        return "i16";
-    case sireflect_kind_i32:
-        return "i32";
-    case sireflect_kind_i64:
-        return "i64";
-    case sireflect_kind_f32:
-        return "f32";
-    case sireflect_kind_f64:
-        return "f64";
-    case sireflect_kind_bool:
-        return "bool";
-    case sireflect_kind_char:
-        return "char";
-    case sireflect_kind_short:
-        return "short";
-    case sireflect_kind_int:
-        return "int";
-    case sireflect_kind_long:
-        return "long";
-    case sireflect_kind_ptr:
-        return "ptr";
-    case sireflect_kind_pointer:
-        return "pointer";
-    case sireflect_kind_struct:
-        return "struct";
-    case sireflect_kind_array:
-        return "array";
-    case sireflect_kind_signed_char:
-        return "signed char";
-    case sireflect_kind_unsigned_char:
-        return "unsigned char";
-    case sireflect_kind_unsigned_short:
-        return "unsigned short";
-    case sireflect_kind_unsigned_int:
-        return "unsigned int";
-    case sireflect_kind_unsigned_long:
-        return "unsigned long";
-    case sireflect_kind_long_long:
-        return "long long";
-    case sireflect_kind_unsigned_long_long:
-        return "unsigned long long";
-    }
-
-    return "unknown";
-}
-
-bool sireflect_is_numeric(sireflect_kind_t kind) {
-    sireflect_error_clear();
-
-    switch (kind) {
-    case sireflect_kind_u8:
-    case sireflect_kind_u16:
-    case sireflect_kind_u32:
-    case sireflect_kind_u64:
-    case sireflect_kind_i8:
-    case sireflect_kind_i16:
-    case sireflect_kind_i32:
-    case sireflect_kind_i64:
-    case sireflect_kind_f32:
-    case sireflect_kind_f64:
-    case sireflect_kind_char:
-    case sireflect_kind_short:
-    case sireflect_kind_int:
-    case sireflect_kind_long:
-    case sireflect_kind_signed_char:
-    case sireflect_kind_unsigned_char:
-    case sireflect_kind_unsigned_short:
-    case sireflect_kind_unsigned_int:
-    case sireflect_kind_unsigned_long:
-    case sireflect_kind_long_long:
-    case sireflect_kind_unsigned_long_long:
-        return true;
-    case sireflect_kind_bool:
-    case sireflect_kind_ptr:
-    case sireflect_kind_pointer:
-    case sireflect_kind_struct:
-    case sireflect_kind_array:
-        return false;
-    }
-
-    return false;
-}
-
-const sireflect_type_info_t *
-sireflect_type_info(const sireflect_registry_t *reg, sireflect_handle_t ref) {
-    sireflect_error_clear();
-
-    return sireflect_registry_const_type_at(reg, ref);
-}
-
-const sireflect_fields_t *
-sireflect_type_fields(const sireflect_registry_t *reg, sireflect_handle_t ref) {
-    sireflect_error_clear();
-
-    const sireflect_type_info_t *type = sireflect_type_info(reg, ref);
-    return &type->fields;
-}
-
-size_t sireflect_type_size(const sireflect_registry_t *reg, sireflect_handle_t ref) {
-    sireflect_error_clear();
-
-    return sireflect_type_info(reg, ref)->size;
-}
-
-const char *sireflect_type_name(const sireflect_registry_t *reg, sireflect_handle_t ref) {
-    sireflect_error_clear();
-
-    return sireflect_type_info(reg, ref)->name;
-}
-
-bool sireflect_type_is_struct(const sireflect_type_info_t *info) {
-    sireflect_error_clear();
-
-    sireflect_assert(info != NULL, "type metadata must not be NULL");
-    return info->kind == sireflect_kind_struct;
-}
-
-bool sireflect_type_is_array(const sireflect_type_info_t *info) {
-    sireflect_error_clear();
-
-    sireflect_assert(info != NULL, "type metadata must not be NULL");
-    return info->kind == sireflect_kind_array;
-}
-
-bool sireflect_type_is_pointer(const sireflect_type_info_t *info) {
-    sireflect_error_clear();
-
-    sireflect_assert(info != NULL, "type metadata must not be NULL");
-    return info->kind == sireflect_kind_pointer;
-}
-
-sireflect_handle_t
-sireflect_type_element(const sireflect_registry_t *reg, sireflect_handle_t ref) {
-    sireflect_error_clear();
-
-    const sireflect_type_info_t *type = sireflect_type_info(reg, ref);
-    sireflect_assert(type->kind == sireflect_kind_array, "type must be an array");
-    return type->element_type;
-}
-
-size_t
-sireflect_type_element_count(const sireflect_registry_t *reg, sireflect_handle_t ref) {
-    sireflect_error_clear();
-
-    const sireflect_type_info_t *type = sireflect_type_info(reg, ref);
-    sireflect_assert(type->kind == sireflect_kind_array, "type must be an array");
-    return type->element_count;
-}
-
-sireflect_handle_t
-sireflect_type_pointee(const sireflect_registry_t *reg, sireflect_handle_t ref) {
-    sireflect_error_clear();
-
-    const sireflect_type_info_t *type = sireflect_type_info(reg, ref);
-    sireflect_assert(type->kind == sireflect_kind_pointer, "type must be a typed pointer");
-    return type->element_type;
+    return NULL;
 }
 
 #ifndef SIJSON_INTERNAL_H
 #define SIJSON_INTERNAL_H
-
 
 #include <ctype.h>
 #include <errno.h>
@@ -3113,8 +1758,6 @@ sijson_value_t sijson_parse(const char *json) {
     return value;
 }
 
-#include <limits.h>
-
 static sireflect_registry_t *g_registry;
 static void *g_from_json_buffer;
 static size_t g_from_json_capacity;
@@ -3320,6 +1963,7 @@ static bool sijson_write_reflected_field(
         return sijson_write_reflected_array(writer, field_type, field_ptr);
     case sireflect_kind_bool:
         break;
+    default:
     }
 
     return sijson_set_error("unsupported field type for serialization");
@@ -3518,11 +2162,8 @@ static bool sijson_assign_number(
 
 static bool sijson_assign_reflected(sireflect_handle_t type, void *ptr, sijson_value_t value);
 
-static bool sijson_assign_field(
-    const sireflect_type_info_t *field_type,
-    void *field_ptr,
-    sijson_value_t value
-);
+static bool
+sijson_assign_field(const sireflect_type_info_t *field_type, void *field_ptr, sijson_value_t value);
 
 static bool sijson_assign_array(
     const sireflect_type_info_t *array_type,
@@ -3624,6 +2265,7 @@ static bool sijson_assign_field(
         );
     case sireflect_kind_array:
         return sijson_assign_array(field_type, field_ptr, value);
+    default:
     }
 
     return sijson_set_error("unsupported field type for deserialization");
@@ -3777,6 +2419,7 @@ static void sijson_free_reflected_field(const sireflect_type_info_t *field_type,
     case sireflect_kind_short:
     case sireflect_kind_int:
     case sireflect_kind_long:
+    case sireflect_kind_function_pointer:
         return;
     }
 }
@@ -4393,1263 +3036,1787 @@ char *sijson_stringify(sijson_value_t value) {
     }
     return writer.data;
 }
-#ifndef SIHTTP_BUFFER_H
-#define SIHTTP_BUFFER_H
 
-#include <stddef.h>
-
-typedef struct {
-    char *data;
-    size_t len;
-    size_t cap;
-} sihttp_buffer_t;
-
-void sihttp_buffer_init(sihttp_buffer_t *buffer);
-void sihttp_buffer_fini(sihttp_buffer_t *buffer);
-int sihttp_buffer_append(sihttp_buffer_t *buffer, const char *data, size_t len);
-
-#endif
-#ifndef SIHTTP_INTERNAL_H
-#define SIHTTP_INTERNAL_H
-
-
-#include <stddef.h>
-#include <stdint.h>
-
-#define SIHTTP_MAX_HEADER_BYTES (16u * 1024u)
-#define SIHTTP_MAX_BODY_BYTES (1024u * 1024u)
-#define SIHTTP_MAX_HEADERS 64u
-#define SIHTTP_MAX_PARAMS 16u
-
-typedef struct {
-    const char *name;
-    const char *value;
-} sihttp_pair_t;
-
-typedef struct {
-    sihttp_request_t public_req;
-    char param_names[SIHTTP_MAX_PARAMS][32];
-    char param_values[SIHTTP_MAX_PARAMS][64];
-    sihttp_pair_t params[SIHTTP_MAX_PARAMS];
-    size_t param_count;
-    sihttp_pair_t query[SIHTTP_MAX_PARAMS];
-    size_t query_count;
-    char *storage;
-    size_t storage_len;
-} sihttp_request_internal_t;
-
-typedef struct {
-    int code;
-    size_t expected_len;
-} sihttp_parse_result_t;
-
-void sihttp_set_error(const char *fmt, ...) SIHTTP_PRINTF_FORMAT(1, 2);
-
-const char *sihttp_method_name(sihttp_method_t method);
-sihttp_method_t sihttp_method_from_name(const char *method, int *ok);
-
-void sihttp_request_internal_init(sihttp_request_internal_t *req);
-void sihttp_request_internal_fini(sihttp_request_internal_t *req);
-int sihttp_request_add_param(sihttp_request_internal_t *req, const char *name, const char *value);
-int sihttp_request_parse(
-    sihttp_request_internal_t *req,
-    const char *data,
-    size_t len,
-    sihttp_app_state_t *state
-);
-sihttp_parse_result_t sihttp_request_parse_state(const char *data, size_t len);
-
-char *sihttp_build_response(sihttp_response_t response, size_t *out_len);
-int sihttp_send_response(int fd, sihttp_response_t response);
-
-typedef struct sihttp_route_table_s sihttp_route_table_t;
-
-int sihttp_route_table_init(sihttp_route_table_t *table);
-void sihttp_route_table_fini(sihttp_route_table_t *table);
-int sihttp_route_table_add(
-    sihttp_route_table_t *table,
-    sihttp_method_t method,
-    const char *path,
-    sihttp_handler_t callback
-);
-sihttp_handler_t sihttp_route_table_match(
-    const sihttp_route_table_t *table,
-    sihttp_method_t method,
-    const char *path,
-    sihttp_request_internal_t *req,
-    int *method_not_allowed
-);
-
-struct sihttp_server_s {
-    sihttp_app_state_t *state;
-    sihttp_route_table_t *routes;
-    int listen_fd;
-    uint16_t port;
-    int backlog;
-    int max_requests_per_poll;
-    int running;
-};
-
-int sihttp_server_handle_client(sihttp_server_t *server, int client_fd);
-
-#endif
-#ifndef SIHTTP_ROUTE_H
-#define SIHTTP_ROUTE_H
-
-
-typedef struct {
-    sihttp_method_t method;
-    char *path;
-    sihttp_handler_t callback;
-} sihttp_route_entry_t;
-
-struct sihttp_route_table_s {
-    sihttp_route_entry_t *entries;
-    size_t count;
-    size_t capacity;
-};
-
-#endif
-
-#include <stdlib.h>
-#include <string.h>
-
-void sihttp_buffer_init(sihttp_buffer_t *buffer) {
-    buffer->data = NULL;
-    buffer->len = 0;
-    buffer->cap = 0;
-}
-
-void sihttp_buffer_fini(sihttp_buffer_t *buffer) {
-    free(buffer->data);
-    buffer->data = NULL;
-    buffer->len = 0;
-    buffer->cap = 0;
-}
-
-int sihttp_buffer_append(sihttp_buffer_t *buffer, const char *data, size_t len) {
-    size_t required;
-
-    if (len == 0) {
-        return 0;
-    }
-
-    required = buffer->len + len;
-    if (required < buffer->len) {
-        return -1;
-    }
-
-    if (required > buffer->cap) {
-        size_t next = buffer->cap ? buffer->cap : 1024;
-        char *new_data;
-
-        while (next < required) {
-            size_t doubled = next * 2;
-            if (doubled < next) {
-                return -1;
-            }
-            next = doubled;
-        }
-
-        new_data = realloc(buffer->data, next);
-        if (!new_data) {
-            return -1;
-        }
-
-        buffer->data = new_data;
-        buffer->cap = next;
-    }
-
-    memcpy(buffer->data + buffer->len, data, len);
-    buffer->len += len;
-    return 0;
-}
-
-#include <ctype.h>
-#include <errno.h>
-#include <limits.h>
-#include <stdlib.h>
-#include <string.h>
-
-static const char *sihttp_find_header_end_const(const char *data, size_t len) {
-    if (len < 4) {
-        return NULL;
-    }
-
-    for (size_t i = 0; i + 3 < len; i++) {
-        if (data[i] == '\r' && data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') {
-            return data + i;
-        }
-    }
-
-    return NULL;
-}
-
-static char *sihttp_find_header_end(char *data, size_t len) {
-    if (len < 4) {
-        return NULL;
-    }
-
-    for (size_t i = 0; i + 3 < len; i++) {
-        if (data[i] == '\r' && data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') {
-            return data + i;
-        }
-    }
-
-    return NULL;
-}
-
-static int sihttp_streq_icase(const char *a, const char *b) {
-    while (*a && *b) {
-        if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) {
-            return 0;
-        }
-        a++;
-        b++;
-    }
-
-    return *a == '\0' && *b == '\0';
-}
-
-static char *sihttp_trim(char *str) {
-    char *end;
-
-    while (*str && isspace((unsigned char)*str)) {
-        str++;
-    }
-
-    end = str + strlen(str);
-    while (end > str && isspace((unsigned char)end[-1])) {
-        end--;
-    }
-    *end = '\0';
-
-    return str;
-}
-
-static int sihttp_parse_size(const char *value, size_t *out) {
-    char *end = NULL;
-    unsigned long parsed;
-
-    errno = 0;
-    parsed = strtoul(value, &end, 10);
-    if (errno || end == value || *sihttp_trim(end) != '\0' || parsed > SIZE_MAX) {
-        return -1;
-    }
-
-    *out = (size_t)parsed;
-    return 0;
-}
-
-static int sihttp_add_pair(sihttp_pair_t *pairs, size_t *count, const char *name, const char *value) {
-    if (*count >= SIHTTP_MAX_PARAMS) {
-        return -1;
-    }
-
-    pairs[*count].name = name;
-    pairs[*count].value = value;
-    (*count)++;
-    return 0;
-}
-
-static void sihttp_parse_query(sihttp_request_internal_t *req, char *query) {
-    char *cursor = query;
-    while (cursor && *cursor && req->query_count < SIHTTP_MAX_PARAMS) {
-        char *next = strchr(cursor, '&');
-        char *eq;
-
-        if (next) {
-            *next = '\0';
-            next++;
-        }
-
-        eq = strchr(cursor, '=');
-        if (eq) {
-            *eq = '\0';
-            sihttp_add_pair(req->query, &req->query_count, cursor, eq + 1);
-        }
-
-        cursor = next;
-    }
-}
-
-void sihttp_request_internal_init(sihttp_request_internal_t *req) {
-    memset(req, 0, sizeof(*req));
-}
-
-void sihttp_request_internal_fini(sihttp_request_internal_t *req) {
-    free(req->storage);
-    sihttp_request_internal_init(req);
-}
-
-int sihttp_request_add_param(sihttp_request_internal_t *req, const char *name, const char *value) {
-    size_t name_len;
-    size_t value_len;
-
-    if (req->param_count >= SIHTTP_MAX_PARAMS) {
-        return -1;
-    }
-
-    name_len = strlen(name);
-    value_len = strlen(value);
-    if (name_len >= sizeof(req->param_names[0]) || value_len >= sizeof(req->param_values[0])) {
-        return -1;
-    }
-
-    memcpy(req->param_names[req->param_count], name, name_len + 1);
-    memcpy(req->param_values[req->param_count], value, value_len + 1);
-    req->params[req->param_count].name = req->param_names[req->param_count];
-    req->params[req->param_count].value = req->param_values[req->param_count];
-    req->param_count++;
-    return 0;
-}
-
-const char *sihttp_method_name(sihttp_method_t method) {
-    switch (method) {
-    case SIHTTP_METHOD_GET:
-        return "GET";
-    case SIHTTP_METHOD_POST:
-        return "POST";
-    case SIHTTP_METHOD_PUT:
-        return "PUT";
-    case SIHTTP_METHOD_DELETE:
-        return "DELETE";
-    case SIHTTP_METHOD_OPTIONS:
-        return "OPTIONS";
-    }
-
-    return "GET";
-}
-
-sihttp_method_t sihttp_method_from_name(const char *method, int *ok) {
-    if (strcmp(method, "GET") == 0) {
-        *ok = 1;
-        return SIHTTP_METHOD_GET;
-    }
-    if (strcmp(method, "POST") == 0) {
-        *ok = 1;
-        return SIHTTP_METHOD_POST;
-    }
-    if (strcmp(method, "PUT") == 0) {
-        *ok = 1;
-        return SIHTTP_METHOD_PUT;
-    }
-    if (strcmp(method, "DELETE") == 0) {
-        *ok = 1;
-        return SIHTTP_METHOD_DELETE;
-    }
-    if (strcmp(method, "OPTIONS") == 0) {
-        *ok = 1;
-        return SIHTTP_METHOD_OPTIONS;
-    }
-
-    *ok = 0;
-    return SIHTTP_METHOD_GET;
-}
-
-sihttp_parse_result_t sihttp_request_parse_state(const char *data, size_t len) {
-    sihttp_parse_result_t result = { .code = 0, .expected_len = 0 };
-    const char *headers_end;
-    size_t header_len;
-    size_t content_length = 0;
-    char *copy;
-    char *line;
-
-    headers_end = sihttp_find_header_end_const(data, len);
-    if (!headers_end) {
-        if (len > SIHTTP_MAX_HEADER_BYTES) {
-            result.code = 413;
-        }
-        return result;
-    }
-
-    header_len = (size_t)(headers_end - data) + 4;
-    if (header_len > SIHTTP_MAX_HEADER_BYTES) {
-        result.code = 413;
-        return result;
-    }
-
-    copy = malloc(header_len + 1);
-    if (!copy) {
-        result.code = 500;
-        return result;
-    }
-    memcpy(copy, data, header_len);
-    copy[header_len] = '\0';
-
-    line = strstr(copy, "\r\n");
-    while (line) {
-        char *line_end;
-        char *colon;
-
-        line += 2;
-        if (*line == '\r' && line[1] == '\n') {
-            break;
-        }
-
-        line_end = strstr(line, "\r\n");
-        if (!line_end) {
-            break;
-        }
-        *line_end = '\0';
-
-        colon = strchr(line, ':');
-        if (colon) {
-            char *name;
-            char *value;
-
-            *colon = '\0';
-            name = sihttp_trim(line);
-            value = sihttp_trim(colon + 1);
-            if (sihttp_streq_icase(name, "Content-Length") && sihttp_parse_size(value, &content_length) != 0) {
-                free(copy);
-                result.code = 400;
-                return result;
-            }
-        }
-
-        line = line_end;
-    }
-
-    free(copy);
-
-    if (content_length > SIHTTP_MAX_BODY_BYTES) {
-        result.code = 413;
-        return result;
-    }
-
-    result.expected_len = header_len + content_length;
-    if (len >= result.expected_len) {
-        result.code = 200;
-    }
-    return result;
-}
-
-int sihttp_request_parse(
-    sihttp_request_internal_t *req,
-    const char *data,
-    size_t len,
-    sihttp_app_state_t *state
-) {
-    sihttp_parse_result_t state_result;
-    char *headers_end;
-    char *body;
-    char *request_line_end;
-    char *method;
-    char *target;
-    char *version;
-    char *query;
-    int method_ok = 0;
-
-    sihttp_request_internal_init(req);
-
-    state_result = sihttp_request_parse_state(data, len);
-    if (state_result.code != 200) {
-        return state_result.code ? state_result.code : 400;
-    }
-
-    req->storage = malloc(state_result.expected_len + 1);
-    if (!req->storage) {
-        return 500;
-    }
-
-    memcpy(req->storage, data, state_result.expected_len);
-    req->storage[state_result.expected_len] = '\0';
-    req->storage_len = state_result.expected_len;
-
-    headers_end = sihttp_find_header_end(req->storage, req->storage_len);
-    if (!headers_end) {
-        return 400;
-    }
-
-    body = headers_end + 4;
-    *headers_end = '\0';
-
-    request_line_end = strstr(req->storage, "\r\n");
-    if (!request_line_end) {
-        return 400;
-    }
-    *request_line_end = '\0';
-
-    method = req->storage;
-    target = strchr(method, ' ');
-    if (!target) {
-        return 400;
-    }
-    *target++ = '\0';
-
-    version = strchr(target, ' ');
-    if (!version) {
-        return 400;
-    }
-    *version++ = '\0';
-
-    if (strcmp(version, "HTTP/1.1") != 0 && strcmp(version, "HTTP/1.0") != 0) {
-        return 400;
-    }
-
-    query = strchr(target, '?');
-    if (query) {
-        *query++ = '\0';
-        sihttp_parse_query(req, query);
-    }
-
-    sihttp_method_from_name(method, &method_ok);
-    if (!method_ok) {
-        return 405;
-    }
-
-    req->public_req.method = method;
-    req->public_req.path = target;
-    req->public_req.body = body;
-    req->public_req.state = state;
-    return 200;
-}
-
-SIHTTP_API int64_t sihttp_param(const sihttp_request_t *public_req, const char *name) {
-    const sihttp_request_internal_t *req = (const sihttp_request_internal_t *)public_req;
-
-    for (size_t i = 0; i < req->param_count; i++) {
-        if (strcmp(req->params[i].name, name) == 0) {
-            return strtoll(req->params[i].value, NULL, 10);
-        }
-    }
-
-    for (size_t i = 0; i < req->query_count; i++) {
-        if (strcmp(req->query[i].name, name) == 0) {
-            return strtoll(req->query[i].value, NULL, 10);
-        }
-    }
-
-    return 0;
-}
-
+#ifndef NDEBUG
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
 
-static const char *sihttp_status_reason(int status) {
-    switch (status) {
-    case 200:
-        return "OK";
-    case 201:
-        return "Created";
-    case 204:
-        return "No Content";
-    case 400:
-        return "Bad Request";
-    case 401:
-        return "Unauthorized";
-    case 403:
-        return "Forbidden";
-    case 404:
-        return "Not Found";
-    case 405:
-        return "Method Not Allowed";
-    case 413:
-        return "Payload Too Large";
-    case 500:
-        return "Internal Server Error";
-    }
+void sireflect_assert_fail(
+    const char *condition,
+    const char *message,
+    const char *file,
+    int line,
+    const char *function
+) {
+    fprintf(stderr, "sireflect assertion failed: %s\n", message != NULL ? message : condition);
+    fprintf(stderr, "  condition: %s\n", condition != NULL ? condition : "(unknown)");
+    fprintf(stderr, "  location: %s:%d\n", file != NULL ? file : "(unknown)", line);
+    fprintf(stderr, "  function: %s\n", function != NULL ? function : "(unknown)");
+    abort();
+}
+#endif
 
-    return status >= 200 && status < 300 ? "OK" : "Error";
+#ifndef SIREFLECT_ERROR_H
+#define SIREFLECT_ERROR_H
+
+void sireflect_error_clear(void);
+void sireflect_error_set(const char *message);
+
+#endif
+
+static char *sireflect_current_error = NULL;
+
+static char *sireflect_error_dup(const char *message) {
+    sireflect_assert(message != NULL, "error message must not be NULL");
+
+    const size_t len = strlen(message);
+    char *copy = malloc(len + 1);
+    sireflect_assert(copy != NULL, "failed to allocate error message");
+
+    memcpy(copy, message, len + 1);
+    return copy;
 }
 
-static const char *sihttp_content_type_name(sihttp_content_type_t content_type) {
-    switch (content_type) {
-    case SIHTTP_CONTENT_AUTO:
-    case SIHTTP_CONTENT_TEXT:
-        return "text/plain; charset=utf-8";
-    case SIHTTP_CONTENT_JSON:
-        return "application/json";
-    case SIHTTP_CONTENT_HTML:
-        return "text/html; charset=utf-8";
-    case SIHTTP_CONTENT_BINARY:
-        return "application/octet-stream";
-    }
-
-    return "text/plain; charset=utf-8";
+void sireflect_error_clear(void) {
+    free(sireflect_current_error);
+    sireflect_current_error = NULL;
 }
 
-static int sihttp_send_all(int fd, const char *data, size_t len) {
-    size_t sent = 0;
-    while (sent < len) {
-        ssize_t written = send(fd, data + sent, len - sent, MSG_NOSIGNAL);
-        if (written <= 0) {
-            return -1;
+void sireflect_error_set(const char *message) {
+    sireflect_error_clear();
+
+    if (message == NULL) {
+        return;
+    }
+
+    sireflect_current_error = sireflect_error_dup(message);
+}
+
+const char *sireflect_error(void) {
+    return sireflect_current_error;
+}
+
+const sireflect_field_info_t *
+sireflect_field_info(const sireflect_registry_t *reg, sireflect_handle_t type, const char *field) {
+    sireflect_error_clear();
+
+    sireflect_assert(field != NULL, "field name must not be NULL");
+
+    const sireflect_fields_t *fields = sireflect_type_fields(reg, type);
+    for (size_t i = 0; i < fields->field_count; i++) {
+        if (strcmp(fields->fields[i].name, field) == 0) {
+            return &fields->fields[i];
         }
-        sent += (size_t)written;
     }
 
+    return NULL;
+}
+
+sireflect_handle_t
+sireflect_field_type(const sireflect_registry_t *reg, sireflect_handle_t type, const char *field) {
+    sireflect_error_clear();
+
+    const sireflect_field_info_t *info = sireflect_field_info(reg, type, field);
+    sireflect_assert(info != NULL, "field must exist");
+    return info->type;
+}
+
+size_t
+sireflect_field_size(const sireflect_registry_t *reg, sireflect_handle_t ref, const char *field) {
+    sireflect_error_clear();
+
+    const sireflect_field_info_t *info = sireflect_field_info(reg, ref, field);
+    sireflect_assert(info != NULL, "field must exist");
+    return info->size;
+}
+
+const void *sireflect_field_ptr(
+    const sireflect_registry_t *reg,
+    sireflect_handle_t type,
+    const void *obj,
+    const char *field
+) {
+    sireflect_error_clear();
+
+    sireflect_assert(obj != NULL, "object pointer must not be NULL");
+
+    const sireflect_field_info_t *info = sireflect_field_info(reg, type, field);
+    sireflect_assert(info != NULL, "field must exist");
+
+    return (const unsigned char *)obj + info->offset;
+}
+
+void *sireflect_field_mut_ptr(
+    const sireflect_registry_t *reg,
+    sireflect_handle_t type,
+    void *obj,
+    const char *field
+) {
+    sireflect_error_clear();
+
+    sireflect_assert(obj != NULL, "object pointer must not be NULL");
+
+    const sireflect_field_info_t *info = sireflect_field_info(reg, type, field);
+    sireflect_assert(info != NULL, "field must exist");
+
+    return (unsigned char *)obj + info->offset;
+}
+
+int sireflect_field_copy(
+    const sireflect_registry_t *reg,
+    sireflect_handle_t type,
+    void *obj,
+    const char *field,
+    const void *value
+) {
+    sireflect_error_clear();
+
+    sireflect_assert(value != NULL, "source value pointer must not be NULL");
+
+    const sireflect_field_info_t *info = sireflect_field_info(reg, type, field);
+    if (info == NULL) {
+        return -1;
+    }
+
+    memcpy(sireflect_field_mut_ptr(reg, type, obj, field), value, info->size);
     return 0;
 }
 
-char *sihttp_build_response(sihttp_response_t response, size_t *out_len) {
-    int status = response.status == 0 ? 200 : response.status;
-    const char *reason = sihttp_status_reason(status);
-    const char *content_type = sihttp_content_type_name(response.content_type);
-    const char *body = response.body ? response.body : "";
-    size_t body_len = response.body ? strlen(response.body) : 0;
-    int header_len;
-    size_t total;
-    char *message;
+#ifndef SIREFLECT_PARSER_H
+#define SIREFLECT_PARSER_H
 
-    header_len = snprintf(
-        NULL,
-        0,
-        "HTTP/1.1 %d %s\r\n"
-        "Content-Length: %zu\r\n"
-        "Content-Type: %s\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
-        "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
-        "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
-        "Connection: close\r\n"
-        "\r\n",
-        status,
-        reason,
-        body_len,
-        content_type
+bool sireflect_parse_struct_fields(
+    sireflect_registry_t *reg,
+    const char *struct_name,
+    const char *fields_src,
+    sireflect_field_info_t **out_fields,
+    size_t *out_field_count,
+    size_t struct_size,
+    size_t struct_align,
+    bool fail_fast
+);
+
+#endif
+
+#ifndef SIREFLECT_REGISTRY_H
+#define SIREFLECT_REGISTRY_H
+
+struct sireflect_registry_t {
+    sireflect_type_info_t *types;
+    size_t type_count;
+    size_t type_cap;
+};
+
+sireflect_handle_t sireflect_registry_add_type(
+    sireflect_registry_t *reg,
+    const char *name,
+    sireflect_kind_t kind,
+    size_t size,
+    size_t align,
+    sireflect_field_info_t *fields,
+    size_t field_count
+);
+
+sireflect_handle_t sireflect_registry_get_or_add_array_type(
+    sireflect_registry_t *reg,
+    sireflect_handle_t element_type,
+    size_t element_count
+);
+
+sireflect_handle_t
+sireflect_registry_get_or_add_pointer_type(sireflect_registry_t *reg, sireflect_handle_t pointee_type);
+
+sireflect_handle_t sireflect_registry_get_or_add_function_pointer_type(
+    sireflect_registry_t *reg,
+    sireflect_handle_t return_type
+);
+
+sireflect_type_info_t *
+sireflect_registry_type_at(sireflect_registry_t *reg, sireflect_handle_t handle);
+
+const sireflect_type_info_t *
+sireflect_registry_const_type_at(const sireflect_registry_t *reg, sireflect_handle_t handle);
+
+#endif
+
+#include <stdint.h>
+
+#define SIREFLECT_MAX_ARRAY_DIMS 16
+
+typedef enum {
+    sireflect_token_ident,
+    sireflect_token_integer,
+    sireflect_token_lbrace,
+    sireflect_token_rbrace,
+    sireflect_token_lbracket,
+    sireflect_token_rbracket,
+    sireflect_token_lparen,
+    sireflect_token_rparen,
+    sireflect_token_star,
+    sireflect_token_comma,
+    sireflect_token_semicolon,
+    sireflect_token_unknown,
+    sireflect_token_end
+} sireflect_token_kind_t;
+
+typedef struct {
+    sireflect_token_kind_t kind;
+    const char *start;
+    size_t len;
+    size_t offset;
+    size_t line;
+    size_t column;
+} sireflect_token_t;
+
+typedef struct {
+    const char *src;
+    const char *struct_name;
+    const char *field_start;
+    size_t field_len;
+    size_t pos;
+    size_t line;
+    size_t column;
+    sireflect_token_t current;
+    char message[512];
+    bool failed;
+    bool fail_fast;
+} sireflect_parser_t;
+
+typedef struct {
+    const char *start;
+    size_t len;
+    char name[64];
+    int has_name;
+    size_t line;
+    size_t column;
+} sireflect_type_spec_t;
+
+static inline int sireflect_is_ident_start(char c) { return isalpha((unsigned char)c) || c == '_'; }
+
+static inline int sireflect_is_ident_char(char c) { return isalnum((unsigned char)c) || c == '_'; }
+
+static inline int sireflect_token_is_ident(sireflect_token_t token, const char *text) {
+    return token.kind == sireflect_token_ident && strlen(text) == token.len &&
+           strncmp(token.start, text, token.len) == 0;
+}
+
+static inline int sireflect_token_is_qualifier(sireflect_token_t token) {
+    return sireflect_token_is_ident(token, "const") || sireflect_token_is_ident(token, "volatile");
+}
+
+static inline void
+sireflect_type_spec_set(sireflect_type_spec_t *type, sireflect_token_t token) {
+    type->start = token.start;
+    type->len = token.len;
+    type->name[0] = '\0';
+    type->has_name = 0;
+    type->line = token.line;
+    type->column = token.column;
+}
+
+static inline void sireflect_type_spec_set2(
+    sireflect_type_spec_t *type,
+    sireflect_token_t first,
+    sireflect_token_t second
+) {
+    const int len = snprintf(
+        type->name,
+        sizeof(type->name),
+        "%.*s %.*s",
+        (int)first.len,
+        first.start,
+        (int)second.len,
+        second.start
     );
-    if (header_len < 0) {
-        return NULL;
+    (void)len;
+    sireflect_indebug(
+        sireflect_assert(len > 0 && (size_t)len < sizeof(type->name), "type specifier is too long");
+    )
+    type->start = NULL;
+    type->len = 0;
+    type->has_name = 1;
+    type->line = first.line;
+    type->column = first.column;
+}
+
+static inline void sireflect_type_spec_set3(
+    sireflect_type_spec_t *type,
+    sireflect_token_t first,
+    sireflect_token_t second,
+    sireflect_token_t third
+) {
+    const int len = snprintf(
+        type->name,
+        sizeof(type->name),
+        "%.*s %.*s %.*s",
+        (int)first.len,
+        first.start,
+        (int)second.len,
+        second.start,
+        (int)third.len,
+        third.start
+    );
+    (void)len;
+    sireflect_indebug(
+        sireflect_assert(len > 0 && (size_t)len < sizeof(type->name), "type specifier is too long");
+    );
+    type->start = NULL;
+    type->len = 0;
+    type->has_name = 1;
+    type->line = first.line;
+    type->column = first.column;
+}
+
+static inline const char *sireflect_token_kind_name(sireflect_token_kind_t kind) {
+    switch (kind) {
+    case sireflect_token_ident:
+        return "identifier";
+    case sireflect_token_integer:
+        return "integer";
+    case sireflect_token_lbrace:
+        return "'{'";
+    case sireflect_token_rbrace:
+        return "'}'";
+    case sireflect_token_lbracket:
+        return "'['";
+    case sireflect_token_rbracket:
+        return "']'";
+    case sireflect_token_lparen:
+        return "'('";
+    case sireflect_token_rparen:
+        return "')'";
+    case sireflect_token_star:
+        return "'*'";
+    case sireflect_token_comma:
+        return "','";
+    case sireflect_token_semicolon:
+        return "';'";
+    case sireflect_token_unknown:
+        return "unsupported token";
+    case sireflect_token_end:
+        return "end of input";
     }
 
-    total = (size_t)header_len + body_len;
-    message = malloc(total + 1);
-    if (!message) {
-        return NULL;
+    return "unknown token";
+}
+
+static inline void
+sireflect_token_display(sireflect_token_t token, char *buffer, size_t buffer_size) {
+    if (token.kind == sireflect_token_end) {
+        snprintf(buffer, buffer_size, "end of input");
+        return;
+    }
+
+    if (token.len == 0) {
+        snprintf(buffer, buffer_size, "%s", sireflect_token_kind_name(token.kind));
+        return;
     }
 
     snprintf(
-        message,
-        (size_t)header_len + 1,
-        "HTTP/1.1 %d %s\r\n"
-        "Content-Length: %zu\r\n"
-        "Content-Type: %s\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
-        "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
-        "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
-        "Connection: close\r\n"
-        "\r\n",
-        status,
-        reason,
-        body_len,
-        content_type
+        buffer,
+        buffer_size,
+        "%s '%.*s'",
+        sireflect_token_kind_name(token.kind),
+        (int)token.len,
+        token.start
     );
-    memcpy(message + header_len, body, body_len);
-    message[total] = '\0';
-
-    if (out_len) {
-        *out_len = total;
-    }
-    return message;
 }
 
-int sihttp_send_response(int fd, sihttp_response_t response) {
-    size_t len = 0;
-    char *message = sihttp_build_response(response, &len);
-    int result;
-
-    if (!message) {
-        free(response.body);
-        return -1;
+static inline void
+sireflect_parser_context(sireflect_parser_t *parser, char *buffer, size_t buffer_size) {
+    if (parser->field_start != NULL) {
+        snprintf(
+            buffer,
+            buffer_size,
+            "struct '%s', field '%.*s'",
+            parser->struct_name != NULL ? parser->struct_name : "<unknown>",
+            (int)parser->field_len,
+            parser->field_start
+        );
+        return;
     }
 
-    result = sihttp_send_all(fd, message, len);
-    free(message);
-    free(response.body);
-    return result;
+    snprintf(
+        buffer,
+        buffer_size,
+        "struct '%s'",
+        parser->struct_name != NULL ? parser->struct_name : "<unknown>"
+    );
 }
 
-#include <stdlib.h>
-#include <string.h>
+static inline void
+sireflect_parser_fail_at(sireflect_parser_t *parser, sireflect_token_t token, const char *message) {
+    char actual[96];
+    char context[160];
 
-static char *sihttp_strdup(const char *str) {
-    size_t len = strlen(str);
-    char *copy = malloc(len + 1);
-    if (!copy) {
-        return NULL;
+    sireflect_token_display(token, actual, sizeof(actual));
+    sireflect_parser_context(parser, context, sizeof(context));
+
+    snprintf(
+        parser->message,
+        sizeof(parser->message),
+        "%s in %s at line %zu, column %zu: actual %s",
+        message,
+        context,
+        token.line,
+        token.column,
+        actual
+    );
+
+    parser->failed = true;
+    if (parser->fail_fast) {
+        sireflect_assert(false, parser->message);
     }
-
-    memcpy(copy, str, len + 1);
-    return copy;
+    sireflect_error_set(parser->message);
 }
 
-static int
-sihttp_route_path_matches(const char *pattern, const char *path, sihttp_request_internal_t *req) {
-    const char *p = pattern;
-    const char *s = path;
-
-    while (*p && *s) {
-        if (*p == ':') {
-            const char *name_start;
-            const char *value_start;
-            size_t name_len;
-            size_t value_len;
-            char name[32];
-            char value[64];
-            int ok;
-
-            p++;
-            name_start = p;
-            while (*p && *p != '/') {
-                p++;
-            }
-
-            value_start = s;
-            while (*s && *s != '/') {
-                s++;
-            }
-
-            name_len = (size_t)(p - name_start);
-            value_len = (size_t)(s - value_start);
-            if (name_len == 0 || value_len == 0 || req->param_count >= SIHTTP_MAX_PARAMS) {
-                return 0;
-            }
-
-            if (name_len >= sizeof(name) || value_len >= sizeof(value)) {
-                return 0;
-            }
-            memcpy(name, name_start, name_len);
-            name[name_len] = '\0';
-            memcpy(value, value_start, value_len);
-            value[value_len] = '\0';
-
-            ok = sihttp_request_add_param(req, name, value) == 0;
-            if (!ok) {
-                return 0;
-            }
-        } else if (*p == *s) {
-            p++;
-            s++;
-        } else {
-            return 0;
-        }
-    }
-
-    return *p == '\0' && *s == '\0';
-}
-
-int sihttp_route_table_init(sihttp_route_table_t *table) {
-    table->entries = NULL;
-    table->count = 0;
-    table->capacity = 0;
-    return 0;
-}
-
-void sihttp_route_table_fini(sihttp_route_table_t *table) {
-    for (size_t i = 0; i < table->count; i++) {
-        free(table->entries[i].path);
-    }
-    free(table->entries);
-    table->entries = NULL;
-    table->count = 0;
-    table->capacity = 0;
-}
-
-int sihttp_route_table_add(
-    sihttp_route_table_t *table,
-    sihttp_method_t method,
-    const char *path,
-    sihttp_handler_t callback
+static inline void sireflect_parser_unexpected(
+    sireflect_parser_t *parser,
+    sireflect_token_kind_t expected,
+    const char *context
 ) {
-    char *path_copy;
+    char actual[96];
+    char parser_context[160];
 
-    if (!path || path[0] != '/' || !callback) {
-        return -1;
+    sireflect_token_display(parser->current, actual, sizeof(actual));
+    sireflect_parser_context(parser, parser_context, sizeof(parser_context));
+
+    snprintf(
+        parser->message,
+        sizeof(parser->message),
+        "unexpected token while parsing %s in %s at line %zu, column %zu: expected %s, actual %s",
+        context,
+        parser_context,
+        parser->current.line,
+        parser->current.column,
+        sireflect_token_kind_name(expected),
+        actual
+    );
+
+    parser->failed = true;
+    if (parser->fail_fast) {
+        sireflect_assert(false, parser->message);
     }
-
-    if (table->count == table->capacity) {
-        size_t next = table->capacity ? table->capacity * 2 : 8;
-        sihttp_route_entry_t *entries = realloc(table->entries, next * sizeof(*entries));
-        if (!entries) {
-            return -1;
-        }
-        table->entries = entries;
-        table->capacity = next;
-    }
-
-    path_copy = sihttp_strdup(path);
-    if (!path_copy) {
-        return -1;
-    }
-
-    table->entries[table->count++] = (sihttp_route_entry_t){
-        .method = method,
-        .path = path_copy,
-        .callback = callback,
-    };
-    return 0;
+    sireflect_error_set(parser->message);
 }
 
-sihttp_handler_t sihttp_route_table_match(
-    const sihttp_route_table_t *table,
-    sihttp_method_t method,
-    const char *path,
-    sihttp_request_internal_t *req,
-    int *method_not_allowed
-) {
-    *method_not_allowed = 0;
+static inline void sireflect_parser_advance(sireflect_parser_t *parser) {
+    if (parser->src[parser->pos] == '\n') {
+        parser->line++;
+        parser->column = 1;
+    } else {
+        parser->column++;
+    }
 
-    for (size_t i = 0; i < table->count; i++) {
-        const sihttp_route_entry_t *entry = &table->entries[i];
-        size_t saved_count = req->param_count;
-        if (!sihttp_route_path_matches(entry->path, path, req)) {
-            req->param_count = saved_count;
+    parser->pos++;
+}
+
+static inline void sireflect_parser_next(sireflect_parser_t *parser) {
+    const char *src = parser->src;
+
+    while (isspace((unsigned char)src[parser->pos])) {
+        sireflect_parser_advance(parser);
+    }
+
+    const size_t start = parser->pos;
+    const size_t line = parser->line;
+    const size_t column = parser->column;
+    const char c = src[start];
+
+    if (c == '\0') {
+        parser->current = (sireflect_token_t){ sireflect_token_end, &src[start], 0, start, line, column };
+        return;
+    }
+
+    if (sireflect_is_ident_start(c)) {
+        sireflect_parser_advance(parser);
+        while (sireflect_is_ident_char(src[parser->pos])) {
+            sireflect_parser_advance(parser);
+        }
+
+        parser->current = (sireflect_token_t){
+            sireflect_token_ident,
+            &src[start],
+            parser->pos - start,
+            start,
+            line,
+            column,
+        };
+        return;
+    }
+
+    if (isdigit((unsigned char)c)) {
+        sireflect_parser_advance(parser);
+        while (isdigit((unsigned char)src[parser->pos])) {
+            sireflect_parser_advance(parser);
+        }
+
+        parser->current = (sireflect_token_t){
+            sireflect_token_integer,
+            &src[start],
+            parser->pos - start,
+            start,
+            line,
+            column,
+        };
+        return;
+    }
+
+    sireflect_parser_advance(parser);
+
+    switch (c) {
+    case '{':
+        parser->current = (sireflect_token_t){ sireflect_token_lbrace, &src[start], 1, start, line, column };
+        return;
+    case '}':
+        parser->current = (sireflect_token_t){ sireflect_token_rbrace, &src[start], 1, start, line, column };
+        return;
+    case '[':
+        parser->current =
+            (sireflect_token_t){ sireflect_token_lbracket, &src[start], 1, start, line, column };
+        return;
+    case ']':
+        parser->current =
+            (sireflect_token_t){ sireflect_token_rbracket, &src[start], 1, start, line, column };
+        return;
+    case '(':
+        parser->current =
+            (sireflect_token_t){ sireflect_token_lparen, &src[start], 1, start, line, column };
+        return;
+    case ')':
+        parser->current =
+            (sireflect_token_t){ sireflect_token_rparen, &src[start], 1, start, line, column };
+        return;
+    case '*':
+        parser->current = (sireflect_token_t){ sireflect_token_star, &src[start], 1, start, line, column };
+        return;
+    case ',':
+        parser->current = (sireflect_token_t){ sireflect_token_comma, &src[start], 1, start, line, column };
+        return;
+    case ';':
+        parser->current =
+            (sireflect_token_t){ sireflect_token_semicolon, &src[start], 1, start, line, column };
+        return;
+    default:
+        parser->current = (sireflect_token_t){ sireflect_token_unknown, &src[start], 1, start, line, column };
+        sireflect_parser_fail_at(
+            parser,
+            parser->current,
+            "unsupported syntax in reflected struct; supported fields are '<type> <name>;', '<type> <name>, <name>;', '<type> *<name>;', '<type> (*<name>)();', '<type> <name>[N][M];', and '<type> *<name>[N];'"
+        );
+    }
+}
+
+static inline void sireflect_parser_init(
+    sireflect_parser_t *parser,
+    const char *struct_name,
+    const char *src,
+    bool fail_fast
+) {
+    sireflect_assert(parser != NULL, "parser must not be NULL");
+    sireflect_assert(struct_name != NULL, "parser struct name must not be NULL");
+    sireflect_assert(src != NULL, "parser source must not be NULL");
+
+    parser->src = src;
+    parser->struct_name = struct_name;
+    parser->field_start = NULL;
+    parser->field_len = 0;
+    parser->pos = 0;
+    parser->line = 1;
+    parser->column = 1;
+    parser->message[0] = '\0';
+    parser->failed = false;
+    parser->fail_fast = fail_fast;
+    sireflect_parser_next(parser);
+}
+
+static inline sireflect_token_t
+sireflect_expect(sireflect_parser_t *parser, sireflect_token_kind_t kind, const char *context) {
+    sireflect_token_t token = parser->current;
+    if (token.kind != kind) {
+        sireflect_parser_unexpected(parser, kind, context);
+        return token;
+    }
+    sireflect_parser_next(parser);
+    return token;
+}
+
+static inline sireflect_token_t sireflect_expect_field_name(sireflect_parser_t *parser) {
+    sireflect_token_t token = parser->current;
+    if (token.kind != sireflect_token_ident || sireflect_token_is_qualifier(token)) {
+        sireflect_parser_unexpected(parser, sireflect_token_ident, "field name");
+        return token;
+    }
+
+    parser->field_start = token.start;
+    parser->field_len = token.len;
+    sireflect_parser_next(parser);
+    return token;
+}
+
+static inline uint32_t sireflect_parse_qualifiers(sireflect_parser_t *parser) {
+    uint32_t qualifiers = 0;
+
+    for (;;) {
+        if (sireflect_token_is_ident(parser->current, "const")) {
+            qualifiers |= SIREFLECT_QUAL_CONST;
+            sireflect_parser_next(parser);
             continue;
         }
 
-        if (entry->method == method) {
-            return entry->callback;
+        if (sireflect_token_is_ident(parser->current, "volatile")) {
+            qualifiers |= SIREFLECT_QUAL_VOLATILE;
+            sireflect_parser_next(parser);
+            continue;
         }
 
-        req->param_count = saved_count;
-        *method_not_allowed = 1;
-    }
-
-    return NULL;
-}
-
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-
-SIHTTP_API char *siformat(const char *fmt, ...) {
-    va_list args;
-    va_list copy;
-    int size;
-    char *str;
-
-    va_start(args, fmt);
-    va_copy(copy, args);
-
-    size = vsnprintf(NULL, 0, fmt, copy);
-    va_end(copy);
-
-    if (size < 0) {
-        va_end(args);
-        return NULL;
-    }
-
-    str = malloc((size_t)size + 1);
-    if (!str) {
-        va_end(args);
-        return NULL;
-    }
-
-    vsnprintf(str, (size_t)size + 1, fmt, args);
-    va_end(args);
-
-    return str;
-}
-
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-static char sihttp_error_buffer[256];
-
-void sihttp_set_error(const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(sihttp_error_buffer, sizeof(sihttp_error_buffer), fmt, args);
-    va_end(args);
-}
-
-SIHTTP_API const char *sihttp_error(void) {
-    return sihttp_error_buffer[0] ? sihttp_error_buffer : NULL;
-}
-
-static char *sihttp_static_body(const char *body) {
-    size_t len = strlen(body);
-    char *copy = malloc(len + 1);
-    if (!copy) {
-        return NULL;
-    }
-    memcpy(copy, body, len + 1);
-    return copy;
-}
-
-enum {
-    SIHTTP_DEFAULT_BACKLOG = 128,
-    SIHTTP_DEFAULT_MAX_REQUESTS_PER_POLL = 64,
-};
-
-static int sihttp_set_nonblocking(int fd) {
-    int flags = fcntl(fd, F_GETFL, 0);
-
-    if (flags == -1) {
-        return -1;
-    }
-
-    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
-        return -1;
-    }
-
-    return 0;
-}
-
-static sihttp_response_t sihttp_error_response(int status, const char *body) {
-    return (sihttp_response_t){ .status = status, .body = sihttp_static_body(body) };
-}
-
-static sihttp_response_t sihttp_preflight_response(void) {
-    return (sihttp_response_t){ .status = 204, .body = sihttp_static_body("") };
-}
-
-SIHTTP_API sihttp_server_t *sihttp_server_init(const sihttp_server_desc_t *desc) {
-    sihttp_server_t *server;
-    int port = 0;
-    int backlog = SIHTTP_DEFAULT_BACKLOG;
-    int max_requests_per_poll = SIHTTP_DEFAULT_MAX_REQUESTS_PER_POLL;
-
-    if (desc) {
-        if (desc->port < 0 || desc->port > UINT16_MAX) {
-            sihttp_set_error("invalid server port: %d", desc->port);
-            return NULL;
-        }
-        port = desc->port;
-        backlog = desc->backlog > 0 ? desc->backlog : SIHTTP_DEFAULT_BACKLOG;
-        max_requests_per_poll = desc->max_requests_per_poll > 0
-            ? desc->max_requests_per_poll
-            : SIHTTP_DEFAULT_MAX_REQUESTS_PER_POLL;
-    }
-
-    server = calloc(1, sizeof(*server));
-    if (!server) {
-        sihttp_set_error("out of memory");
-        return NULL;
-    }
-
-    server->routes = malloc(sizeof(*server->routes));
-    if (!server->routes) {
-        free(server);
-        sihttp_set_error("out of memory");
-        return NULL;
-    }
-
-    sihttp_route_table_init(server->routes);
-    server->port = (uint16_t)port;
-    server->backlog = backlog;
-    server->max_requests_per_poll = max_requests_per_poll;
-    if (desc) {
-        server->state = desc->state;
-    }
-    server->listen_fd = -1;
-    return server;
-}
-
-SIHTTP_API void sihttp_server_fini(sihttp_server_t *server) {
-    if (!server) {
-        return;
-    }
-
-    sihttp_server_stop(server);
-    sihttp_route_table_fini(server->routes);
-    free(server->routes);
-    free(server);
-}
-
-SIHTTP_API int sihttp_server_listen(sihttp_server_t *server, const char *host, uint16_t port) {
-    int fd;
-    int yes = 1;
-    struct sockaddr_in addr;
-    socklen_t addr_len;
-
-    if (!server) {
-        sihttp_set_error("server is NULL");
-        return -1;
-    }
-
-    if (server->listen_fd != -1) {
-        sihttp_set_error("server is already listening");
-        return -1;
-    }
-
-    fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == -1) {
-        sihttp_set_error("socket failed: %s", strerror(errno));
-        return -1;
-    }
-
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-
-    if (!host || strcmp(host, "") == 0 || strcmp(host, "0.0.0.0") == 0) {
-        addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    } else if (inet_pton(AF_INET, host, &addr.sin_addr) != 1) {
-        close(fd);
-        sihttp_set_error("invalid IPv4 host: %s", host);
-        return -1;
-    }
-
-    if (bind(fd, (const struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        sihttp_set_error("bind failed: %s", strerror(errno));
-        close(fd);
-        return -1;
-    }
-
-    if (listen(fd, server->backlog) != 0) {
-        sihttp_set_error("listen failed: %s", strerror(errno));
-        close(fd);
-        return -1;
-    }
-
-    addr_len = sizeof(addr);
-    if (getsockname(fd, (struct sockaddr *)&addr, &addr_len) == 0) {
-        server->port = ntohs(addr.sin_port);
-    } else {
-        server->port = port;
-    }
-
-    server->listen_fd = fd;
-    return 0;
-}
-
-SIHTTP_API uint16_t sihttp_server_port(const sihttp_server_t *server) {
-    return server ? server->port : 0;
-}
-
-SIHTTP_API void sihttp_server_stop(sihttp_server_t *server) {
-    if (!server) {
-        return;
-    }
-
-    server->running = 0;
-    if (server->listen_fd != -1) {
-        int fd = server->listen_fd;
-        server->listen_fd = -1;
-        shutdown(fd, SHUT_RDWR);
-        close(fd);
+        return qualifiers;
     }
 }
 
-int sihttp_server_handle_client(sihttp_server_t *server, int client_fd) {
-    sihttp_buffer_t buffer;
-    int status = 400;
-    sihttp_request_internal_t req;
-    int method_ok = 0;
-    sihttp_method_t method;
-    int method_not_allowed = 0;
-    sihttp_handler_t handler;
-    sihttp_response_t response;
+static inline void
+sireflect_fail_unsupported_type_specifier(sireflect_parser_t *parser, sireflect_token_t token) {
+    sireflect_parser_fail_at(
+        parser,
+        token,
+        "unsupported type specifier sequence; supported multi-token types are 'signed char', 'unsigned char', 'unsigned short', 'unsigned int', 'unsigned long', 'long long', and 'unsigned long long'"
+    );
+}
 
-    sihttp_buffer_init(&buffer);
+static inline sireflect_type_spec_t sireflect_parse_type_specifier(sireflect_parser_t *parser) {
+    sireflect_token_t first = sireflect_expect(parser, sireflect_token_ident, "field type");
+    sireflect_type_spec_t type;
+    sireflect_type_spec_set(&type, first);
+    if (parser->failed) {
+        return type;
+    }
 
-    for (;;) {
-        char chunk[4096];
-        sihttp_parse_result_t parse_state;
-        ssize_t received = recv(client_fd, chunk, sizeof(chunk), 0);
-
-        if (received < 0) {
-            status = 400;
-            break;
-        }
-        if (received == 0) {
-            parse_state = sihttp_request_parse_state(buffer.data, buffer.len);
-            status = parse_state.code == 200 ? 200 : 400;
-            break;
+    if (sireflect_token_is_ident(first, "signed")) {
+        if (!sireflect_token_is_ident(parser->current, "char")) {
+            sireflect_fail_unsupported_type_specifier(parser, parser->current);
+            return type;
         }
 
-        if (sihttp_buffer_append(&buffer, chunk, (size_t)received) != 0) {
-            status = 500;
-            break;
+        sireflect_token_t second = parser->current;
+        sireflect_parser_next(parser);
+        sireflect_type_spec_set2(&type, first, second);
+        return type;
+    }
+
+    if (sireflect_token_is_ident(first, "long")) {
+        if (!sireflect_token_is_ident(parser->current, "long")) {
+            return type;
         }
 
-        parse_state = sihttp_request_parse_state(buffer.data, buffer.len);
-        if (parse_state.code == 200) {
-            status = 200;
-            break;
+        sireflect_token_t second = parser->current;
+        sireflect_parser_next(parser);
+        sireflect_type_spec_set2(&type, first, second);
+        return type;
+    }
+
+    if (sireflect_token_is_ident(first, "unsigned")) {
+        sireflect_token_t second = parser->current;
+
+        if (sireflect_token_is_ident(second, "char") || sireflect_token_is_ident(second, "short") ||
+            sireflect_token_is_ident(second, "int")) {
+            sireflect_parser_next(parser);
+            sireflect_type_spec_set2(&type, first, second);
+            return type;
         }
-        if (parse_state.code != 0) {
-            status = parse_state.code;
-            break;
+
+        if (sireflect_token_is_ident(second, "long")) {
+            sireflect_parser_next(parser);
+
+            if (sireflect_token_is_ident(parser->current, "long")) {
+                sireflect_token_t third = parser->current;
+                sireflect_parser_next(parser);
+                sireflect_type_spec_set3(&type, first, second, third);
+                return type;
+            }
+
+            sireflect_type_spec_set2(&type, first, second);
+            return type;
         }
+
+        sireflect_fail_unsupported_type_specifier(parser, second);
+        return type;
     }
 
-    if (status != 200) {
-        sihttp_send_response(client_fd, sihttp_error_response(status, ""));
-        sihttp_buffer_fini(&buffer);
-        return -1;
+    return type;
+}
+
+static inline char *sireflect_dup_range(const char *start, size_t len) {
+    char *result = malloc(len + 1);
+    sireflect_assert(result != NULL, "failed to allocate parser string");
+
+    memcpy(result, start, len);
+    result[len] = '\0';
+
+    return result;
+}
+
+static inline size_t
+sireflect_parse_array_count(sireflect_parser_t *parser, sireflect_token_t token) {
+    size_t count = 0;
+
+    for (size_t i = 0; i < token.len; i++) {
+        const unsigned int digit = (unsigned int)(token.start[i] - '0');
+        if (count > (SIZE_MAX - digit) / 10) {
+            sireflect_parser_fail_at(parser, token, "array element count overflows size_t");
+            return 0;
+        }
+        count = count * 10 + digit;
     }
 
-    status = sihttp_request_parse(&req, buffer.data, buffer.len, server->state);
-    if (status != 200) {
-        sihttp_send_response(client_fd, sihttp_error_response(status, ""));
-        sihttp_buffer_fini(&buffer);
-        return -1;
-    }
-
-    method = sihttp_method_from_name(req.public_req.method, &method_ok);
-    if (!method_ok) {
-        sihttp_send_response(client_fd, sihttp_error_response(405, ""));
-        sihttp_request_internal_fini(&req);
-        sihttp_buffer_fini(&buffer);
-        return -1;
-    }
-
-    if (method == SIHTTP_METHOD_OPTIONS) {
-        sihttp_send_response(client_fd, sihttp_preflight_response());
-        sihttp_request_internal_fini(&req);
-        sihttp_buffer_fini(&buffer);
+    if (count == 0) {
+        sireflect_parser_fail_at(parser, token, "array element count must be greater than zero");
         return 0;
     }
 
-    handler = sihttp_route_table_match(
-        server->routes,
-        method,
-        req.public_req.path,
-        &req,
-        &method_not_allowed
-    );
-
-    if (!handler) {
-        sihttp_send_response(client_fd, sihttp_error_response(method_not_allowed ? 405 : 404, ""));
-        sihttp_request_internal_fini(&req);
-        sihttp_buffer_fini(&buffer);
-        return -1;
-    }
-
-    response = handler(&req.public_req);
-    if (sihttp_send_response(client_fd, response) != 0) {
-        status = 500;
-    }
-
-    sihttp_request_internal_fini(&req);
-    sihttp_buffer_fini(&buffer);
-    return status == 200 ? 0 : -1;
+    return count;
 }
 
-SIHTTP_API int sihttp_server_start(sihttp_server_t *server) {
-    if (!server) {
-        sihttp_set_error("server is NULL");
-        return -1;
-    }
+static inline size_t
+sireflect_parse_array_dimensions(sireflect_parser_t *parser, size_t *counts, size_t max_count) {
+    size_t count = 0;
 
-    if (server->listen_fd == -1 && sihttp_server_listen(server, NULL, server->port) != 0) {
-        return -1;
-    }
+    while (parser->current.kind == sireflect_token_lbracket) {
+        sireflect_parser_next(parser);
 
-    if (sihttp_set_nonblocking(server->listen_fd) != 0) {
-        sihttp_set_error("could not make server socket non-blocking: %s", strerror(errno));
-        return -1;
-    }
-
-    server->running = 1;
-    return 0;
-}
-
-SIHTTP_API int sihttp_server_poll(sihttp_server_t *server) {
-    int handled = 0;
-
-    if (!server) {
-        sihttp_set_error("server is NULL");
-        return -1;
-    }
-
-    if (!server->running && sihttp_server_start(server) != 0) {
-        return -1;
-    }
-
-    while (handled < server->max_requests_per_poll) {
-        int client_fd = accept(server->listen_fd, NULL, NULL);
-
-        if (client_fd == -1) {
-            if (errno == EINTR) {
-                continue;
-            }
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                return handled;
-            }
-            if (!server->running || server->listen_fd == -1 || errno == EBADF || errno == EINVAL) {
-                return handled;
-            }
-
-            sihttp_set_error("accept failed: %s", strerror(errno));
-            return -1;
+        if (parser->current.kind == sireflect_token_rbracket) {
+            sireflect_parser_fail_at(parser, parser->current, "array element count is required");
+            return count;
         }
 
-        sihttp_server_handle_client(server, client_fd);
-        close(client_fd);
-        handled++;
-    }
-
-    return handled;
-}
-
-SIHTTP_API int sihttp_server_run(sihttp_server_t *server) {
-    if (!server) {
-        sihttp_set_error("server is NULL");
-        return -1;
-    }
-
-    if (server->listen_fd == -1 && sihttp_server_listen(server, NULL, server->port) != 0) {
-        return -1;
-    }
-
-    server->running = 1;
-    while (server->running) {
-        int client_fd = accept(server->listen_fd, NULL, NULL);
-        if (client_fd == -1) {
-            if (errno == EINTR) {
-                continue;
-            }
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                continue;
-            }
-            if (!server->running || server->listen_fd == -1 || errno == EBADF || errno == EINVAL) {
-                break;
-            }
-            sihttp_set_error("accept failed: %s", strerror(errno));
-            return -1;
+        if (parser->current.kind != sireflect_token_integer) {
+            sireflect_parser_fail_at(
+                parser,
+                parser->current,
+                "array element count must be a positive integer literal"
+            );
+            return count;
         }
 
-        sihttp_server_handle_client(server, client_fd);
-        close(client_fd);
+        sireflect_token_t count_token = parser->current;
+        sireflect_parser_next(parser);
+
+        if (parser->current.kind != sireflect_token_rbracket) {
+            sireflect_parser_fail_at(parser, parser->current, "expected ']' after array element count");
+            return count;
+        }
+
+        if (count >= max_count) {
+            sireflect_parser_fail_at(parser, count_token, "too many array dimensions");
+            return count;
+        }
+
+        counts[count++] = sireflect_parse_array_count(parser, count_token);
+        if (parser->failed) {
+            return count;
+        }
+        sireflect_parser_next(parser);
     }
 
-    return 0;
+    return count;
 }
 
-SIHTTP_API void
-sihttp_route_impl(sihttp_server_t *server, const char *path, const sihttp_handler_desc_t *desc) {
-    if (!server || !desc) {
-        sihttp_set_error("invalid route descriptor");
+static inline void sireflect_parse_declarator_shape(sireflect_parser_t *parser) {
+    size_t counts[SIREFLECT_MAX_ARRAY_DIMS];
+
+    parser->field_start = NULL;
+    parser->field_len = 0;
+
+    if (parser->current.kind == sireflect_token_lparen) {
+        sireflect_expect(parser, sireflect_token_lparen, "function pointer declarator");
+        sireflect_expect(parser, sireflect_token_star, "function pointer declarator");
+        (void)sireflect_expect_field_name(parser);
+        sireflect_expect(parser, sireflect_token_rparen, "function pointer declarator");
+        sireflect_expect(parser, sireflect_token_lparen, "function pointer parameters");
+        sireflect_expect(parser, sireflect_token_rparen, "function pointer parameters");
+    } else {
+        if (parser->current.kind == sireflect_token_star) {
+            sireflect_parser_next(parser);
+        }
+
+        sireflect_expect_field_name(parser);
+    }
+
+    (void)sireflect_parse_array_dimensions(parser, counts, SIREFLECT_MAX_ARRAY_DIMS);
+}
+
+static inline size_t sireflect_parse_declaration_shape(sireflect_parser_t *parser) {
+    size_t count = 0;
+
+    (void)sireflect_parse_qualifiers(parser);
+    (void)sireflect_parse_type_specifier(parser);
+    if (parser->failed) {
+        return 0;
+    }
+
+    for (;;) {
+        sireflect_parse_declarator_shape(parser);
+        if (parser->failed) {
+            return 0;
+        }
+        count++;
+
+        if (parser->current.kind != sireflect_token_comma) {
+            break;
+        }
+
+        sireflect_parser_next(parser);
+    }
+
+    sireflect_expect(parser, sireflect_token_semicolon, "field terminator");
+    if (parser->failed) {
+        return 0;
+    }
+    return count;
+}
+
+static inline bool sireflect_count_fields(
+    const char *struct_name,
+    const char *fields_src,
+    bool fail_fast,
+    size_t *out_count
+) {
+    sireflect_parser_t parser;
+    size_t count = 0;
+
+    sireflect_parser_init(&parser, struct_name, fields_src, fail_fast);
+    sireflect_expect(&parser, sireflect_token_lbrace, "struct field list start");
+    if (parser.failed) {
+        return false;
+    }
+
+    while (parser.current.kind != sireflect_token_rbrace) {
+        count += sireflect_parse_declaration_shape(&parser);
+        if (parser.failed) {
+            return false;
+        }
+    }
+
+    sireflect_expect(&parser, sireflect_token_rbrace, "struct field list end");
+    if (parser.failed) {
+        return false;
+    }
+    sireflect_expect(&parser, sireflect_token_end, "trailing input after struct field list");
+    if (parser.failed) {
+        return false;
+    }
+
+    *out_count = count;
+    return true;
+}
+
+static inline size_t sireflect_align_up(size_t value, size_t align) {
+    sireflect_assert(align != 0, "alignment must not be zero");
+
+    const size_t remainder = value % align;
+    if (remainder == 0) {
+        return value;
+    }
+
+    return value + align - remainder;
+}
+
+static inline sireflect_handle_t sireflect_resolve_field_type(
+    sireflect_registry_t *reg,
+    sireflect_parser_t *parser,
+    sireflect_type_spec_t type
+) {
+    char *owned_name = NULL;
+    const char *type_name = type.name;
+
+    if (!type.has_name) {
+        owned_name = sireflect_dup_range(type.start, type.len);
+        type_name = owned_name;
+    }
+
+    sireflect_handle_t field_type = sireflect_type_by_name(reg, type_name);
+    if (field_type == SIREFLECT_INVALID_HANDLE) {
+        char context[160];
+
+        sireflect_parser_context(parser, context, sizeof(context));
+        snprintf(
+            parser->message,
+            sizeof(parser->message),
+            "unknown field type '%s' in %s at line %zu, column %zu; register the type before this struct or use a supported primitive alias",
+            type_name,
+            context,
+            type.line,
+            type.column
+        );
+        free(owned_name);
+        parser->failed = true;
+        if (parser->fail_fast) {
+            sireflect_assert(false, parser->message);
+        }
+        sireflect_error_set(parser->message);
+        return SIREFLECT_INVALID_HANDLE;
+    }
+
+    free(owned_name);
+    return field_type;
+}
+
+static inline void sireflect_parse_declarator(
+    sireflect_registry_t *reg,
+    sireflect_parser_t *parser,
+    sireflect_field_info_t *field,
+    sireflect_type_spec_t type,
+    uint32_t qualifiers,
+    size_t *offset,
+    size_t *max_align
+) {
+    parser->field_start = NULL;
+    parser->field_len = 0;
+
+    int is_pointer = 0;
+    int is_function_pointer = 0;
+    size_t array_counts[SIREFLECT_MAX_ARRAY_DIMS];
+    size_t array_dim_count = 0;
+    sireflect_token_t name_token;
+
+    if (parser->current.kind == sireflect_token_lparen) {
+        is_function_pointer = 1;
+        sireflect_expect(parser, sireflect_token_lparen, "function pointer declarator");
+        sireflect_expect(parser, sireflect_token_star, "function pointer declarator");
+        name_token = sireflect_expect_field_name(parser);
+        sireflect_expect(parser, sireflect_token_rparen, "function pointer declarator");
+        sireflect_expect(parser, sireflect_token_lparen, "function pointer parameters");
+        sireflect_expect(parser, sireflect_token_rparen, "function pointer parameters");
+    } else {
+        if (parser->current.kind == sireflect_token_star) {
+            is_pointer = 1;
+            sireflect_parser_next(parser);
+        }
+
+        name_token = sireflect_expect_field_name(parser);
+    }
+    if (parser->failed) {
         return;
     }
 
-    if (sihttp_route_table_add(server->routes, desc->method, path, desc->callback) != 0) {
-        sihttp_set_error("could not add route: %s", path ? path : "(null)");
+    array_dim_count =
+        sireflect_parse_array_dimensions(parser, array_counts, SIREFLECT_MAX_ARRAY_DIMS);
+    if (parser->failed) {
+        return;
+    }
+
+    sireflect_handle_t field_type = sireflect_resolve_field_type(reg, parser, type);
+    if (parser->failed) {
+        return;
+    }
+
+    if (is_function_pointer) {
+        field_type = sireflect_registry_get_or_add_function_pointer_type(reg, field_type);
+    } else if (is_pointer) {
+        field_type = sireflect_registry_get_or_add_pointer_type(reg, field_type);
+    }
+
+    for (size_t i = array_dim_count; i > 0; i--) {
+        field_type = sireflect_registry_get_or_add_array_type(reg, field_type, array_counts[i - 1]);
+    }
+
+    const sireflect_type_info_t *type_info = sireflect_type_info(reg, field_type);
+    sireflect_assert(type_info != NULL, "field type metadata must exist");
+
+    field->name = sireflect_dup_range(name_token.start, name_token.len);
+    field->type = field_type;
+    field->size = type_info->size;
+    field->align = type_info->align;
+    field->offset = sireflect_align_up(*offset, field->align);
+    field->qualifiers = qualifiers;
+
+    *offset = field->offset + field->size;
+    if (field->align > *max_align) {
+        *max_align = field->align;
     }
 }
 
-SIHTTP_API void sihttp_get(sihttp_server_t *server, const char *path, sihttp_handler_t callback) {
-    sihttp_route(server, path, { .method = SIHTTP_METHOD_GET, .callback = callback });
+static inline size_t sireflect_parse_declaration(
+    sireflect_registry_t *reg,
+    sireflect_parser_t *parser,
+    sireflect_field_info_t *fields,
+    size_t *offset,
+    size_t *max_align
+) {
+    size_t count = 0;
+    uint32_t qualifiers = sireflect_parse_qualifiers(parser);
+    sireflect_type_spec_t type = sireflect_parse_type_specifier(parser);
+    if (parser->failed) {
+        return 0;
+    }
+
+    for (;;) {
+        sireflect_parse_declarator(
+            reg,
+            parser,
+            &fields[count],
+            type,
+            qualifiers,
+            offset,
+            max_align
+        );
+        if (parser->failed) {
+            return 0;
+        }
+        count++;
+
+        if (parser->current.kind != sireflect_token_comma) {
+            break;
+        }
+
+        sireflect_parser_next(parser);
+    }
+
+    sireflect_expect(parser, sireflect_token_semicolon, "field terminator");
+    if (parser->failed) {
+        return 0;
+    }
+    return count;
 }
 
-SIHTTP_API void sihttp_post(sihttp_server_t *server, const char *path, sihttp_handler_t callback) {
-    sihttp_route(server, path, { .method = SIHTTP_METHOD_POST, .callback = callback });
+static inline void sireflect_free_parsed_fields(sireflect_field_info_t *fields, size_t field_count) {
+    if (fields == NULL) {
+        return;
+    }
+
+    for (size_t i = 0; i < field_count; i++) {
+        free((char *)fields[i].name);
+    }
+
+    free(fields);
 }
 
-SIHTTP_API void sihttp_put(sihttp_server_t *server, const char *path, sihttp_handler_t callback) {
-    sihttp_route(server, path, { .method = SIHTTP_METHOD_PUT, .callback = callback });
+bool sireflect_parse_struct_fields(
+    sireflect_registry_t *reg,
+    const char *struct_name,
+    const char *fields_src,
+    sireflect_field_info_t **out_fields,
+    size_t *out_field_count,
+    size_t struct_size,
+    size_t struct_align,
+    bool fail_fast
+) {
+    (void)struct_size;
+    (void)struct_align;
+
+    sireflect_assert(reg != NULL, "registry must not be NULL");
+    sireflect_assert(struct_name != NULL, "struct name must not be NULL");
+    sireflect_assert(fields_src != NULL, "field source must not be NULL");
+    sireflect_assert(out_fields != NULL, "output field pointer must not be NULL");
+    sireflect_assert(out_field_count != NULL, "output field count pointer must not be NULL");
+
+    size_t field_count = 0;
+    if (!sireflect_count_fields(struct_name, fields_src, fail_fast, &field_count)) {
+        *out_fields = NULL;
+        *out_field_count = 0;
+        return false;
+    }
+
+    sireflect_field_info_t *fields = NULL;
+
+    if (field_count != 0) {
+        fields = calloc(field_count, sizeof(*fields));
+        sireflect_assert(fields != NULL, "failed to allocate field metadata");
+    }
+
+    sireflect_parser_t parser;
+    sireflect_parser_init(&parser, struct_name, fields_src, fail_fast);
+    sireflect_expect(&parser, sireflect_token_lbrace, "struct field list start");
+    if (parser.failed) {
+        sireflect_free_parsed_fields(fields, field_count);
+        *out_fields = NULL;
+        *out_field_count = 0;
+        return false;
+    }
+
+    size_t offset = 0;
+    size_t max_align = 1;
+
+    for (size_t i = 0; i < field_count;) {
+        const size_t parsed_count =
+            sireflect_parse_declaration(reg, &parser, &fields[i], &offset, &max_align);
+        if (parser.failed) {
+            sireflect_free_parsed_fields(fields, field_count);
+            *out_fields = NULL;
+            *out_field_count = 0;
+            return false;
+        }
+        i += parsed_count;
+    }
+
+    sireflect_expect(&parser, sireflect_token_rbrace, "struct field list end");
+    if (parser.failed) {
+        sireflect_free_parsed_fields(fields, field_count);
+        *out_fields = NULL;
+        *out_field_count = 0;
+        return false;
+    }
+    sireflect_expect(&parser, sireflect_token_end, "trailing input after struct field list");
+    if (parser.failed) {
+        sireflect_free_parsed_fields(fields, field_count);
+        *out_fields = NULL;
+        *out_field_count = 0;
+        return false;
+    }
+
+#ifndef NDEBUG
+    {
+        const size_t computed_size = sireflect_align_up(offset, struct_align);
+        if (computed_size != struct_size) {
+            if (fail_fast) {
+                sireflect_assert(false, "computed struct size does not match C layout");
+            }
+            sireflect_error_set("computed struct size does not match C layout");
+            sireflect_free_parsed_fields(fields, field_count);
+            *out_fields = NULL;
+            *out_field_count = 0;
+            return false;
+        }
+
+        if (max_align > struct_align) {
+            if (fail_fast) {
+                sireflect_assert(false, "computed field alignment exceeds struct alignment");
+            }
+            sireflect_error_set("computed field alignment exceeds struct alignment");
+            sireflect_free_parsed_fields(fields, field_count);
+            *out_fields = NULL;
+            *out_field_count = 0;
+            return false;
+        }
+    }
+#endif
+
+    *out_fields = fields;
+    *out_field_count = field_count;
+    return true;
 }
 
-SIHTTP_API void
-sihttp_delete(sihttp_server_t *server, const char *path, sihttp_handler_t callback) {
-    sihttp_route(server, path, { .method = SIHTTP_METHOD_DELETE, .callback = callback });
+static char *sireflect_dup_cstr(const char *str) {
+    sireflect_assert(str != NULL, "string must not be NULL");
+
+    const size_t len = strlen(str);
+    char *result = malloc(len + 1);
+    sireflect_assert(result != NULL, "failed to allocate string");
+
+    memcpy(result, str, len + 1);
+    return result;
 }
+
+static char *
+sireflect_format_array_type_name(const sireflect_type_info_t *element, size_t element_count) {
+    sireflect_assert(element != NULL, "array element metadata must exist");
+
+    const char *suffix = strchr(element->name, '[');
+    if (element->kind != sireflect_kind_array || suffix == NULL) {
+        const int name_len = snprintf(NULL, 0, "%s[%zu]", element->name, element_count);
+        sireflect_assert(name_len > 0, "failed to format array type name");
+
+        char *name = malloc((size_t)name_len + 1);
+        sireflect_assert(name != NULL, "failed to allocate array type name");
+        snprintf(name, (size_t)name_len + 1, "%s[%zu]", element->name, element_count);
+        return name;
+    }
+
+    const size_t prefix_len = (size_t)(suffix - element->name);
+    const int count_len = snprintf(NULL, 0, "[%zu]", element_count);
+    sireflect_assert(count_len > 0, "failed to format array dimension");
+
+    const size_t suffix_len = strlen(suffix);
+    char *name = malloc(prefix_len + (size_t)count_len + suffix_len + 1);
+    sireflect_assert(name != NULL, "failed to allocate array type name");
+
+    memcpy(name, element->name, prefix_len);
+    snprintf(name + prefix_len, (size_t)count_len + 1, "[%zu]", element_count);
+    memcpy(name + prefix_len + (size_t)count_len, suffix, suffix_len + 1);
+
+    return name;
+}
+
+static sireflect_handle_t sireflect_handle_from_index(size_t index) {
+    return (sireflect_handle_t)(index + 1);
+}
+
+static size_t sireflect_index_from_handle(sireflect_handle_t handle) {
+    sireflect_assert(handle != SIREFLECT_INVALID_HANDLE, "type handle must be valid");
+    return (size_t)(handle - 1);
+}
+
+static void sireflect_registry_reserve(sireflect_registry_t *reg, size_t min_cap) {
+    sireflect_assert(reg != NULL, "registry must not be NULL");
+
+    if (reg->type_cap >= min_cap) {
+        return;
+    }
+
+    size_t new_cap = reg->type_cap == 0 ? 16 : reg->type_cap * 2;
+    while (new_cap < min_cap) {
+        new_cap *= 2;
+    }
+
+    sireflect_type_info_t *types = realloc(reg->types, new_cap * sizeof(*types));
+    sireflect_assert(types != NULL, "failed to allocate type metadata");
+
+    reg->types = types;
+    reg->type_cap = new_cap;
+}
+
+sireflect_handle_t sireflect_registry_add_type(
+    sireflect_registry_t *reg,
+    const char *name,
+    sireflect_kind_t kind,
+    size_t size,
+    size_t align,
+    sireflect_field_info_t *fields,
+    size_t field_count
+) {
+    sireflect_assert(reg != NULL, "registry must not be NULL");
+    sireflect_assert(name != NULL, "type name must not be NULL");
+    sireflect_assert(size != 0 || kind == sireflect_kind_struct, "non-struct type size must not be zero");
+    sireflect_assert(align != 0, "type alignment must not be zero");
+
+    sireflect_registry_reserve(reg, reg->type_count + 1);
+
+    const size_t index = reg->type_count++;
+    reg->types[index] = (sireflect_type_info_t){
+        .name = sireflect_dup_cstr(name),
+        .kind = kind,
+        .size = size,
+        .align = align,
+        .fields =
+            {
+                .fields = fields,
+                .field_count = field_count,
+            },
+        .element_type = SIREFLECT_INVALID_HANDLE,
+        .element_count = 0,
+    };
+
+    return sireflect_handle_from_index(index);
+}
+
+sireflect_handle_t
+sireflect_registry_get_or_add_pointer_type(sireflect_registry_t *reg, sireflect_handle_t pointee_type) {
+    sireflect_assert(reg != NULL, "registry must not be NULL");
+    sireflect_assert(pointee_type != SIREFLECT_INVALID_HANDLE, "pointer pointee type must be valid");
+
+    for (size_t i = 0; i < reg->type_count; i++) {
+        const sireflect_type_info_t *type = &reg->types[i];
+        if (type->kind == sireflect_kind_pointer && type->element_type == pointee_type) {
+            return sireflect_handle_from_index(i);
+        }
+    }
+
+    const sireflect_type_info_t *pointee = sireflect_registry_const_type_at(reg, pointee_type);
+    sireflect_assert(pointee != NULL, "pointer pointee metadata must exist");
+
+    const int name_len = snprintf(NULL, 0, "%s*", pointee->name);
+    sireflect_assert(name_len > 0, "failed to format pointer type name");
+
+    char *name = malloc((size_t)name_len + 1);
+    sireflect_assert(name != NULL, "failed to allocate pointer type name");
+    snprintf(name, (size_t)name_len + 1, "%s*", pointee->name);
+
+    sireflect_handle_t pointer_type = sireflect_registry_add_type(
+        reg,
+        name,
+        sireflect_kind_pointer,
+        sizeof(ptr),
+        _Alignof(ptr),
+        NULL,
+        0
+    );
+    free(name);
+
+    sireflect_type_info_t *pointer_info = sireflect_registry_type_at(reg, pointer_type);
+    pointer_info->element_type = pointee_type;
+
+    return pointer_type;
+}
+
+sireflect_handle_t sireflect_registry_get_or_add_function_pointer_type(
+    sireflect_registry_t *reg,
+    sireflect_handle_t return_type
+) {
+    sireflect_assert(reg != NULL, "registry must not be NULL");
+    sireflect_assert(return_type != SIREFLECT_INVALID_HANDLE, "function return type must be valid");
+
+    for (size_t i = 0; i < reg->type_count; i++) {
+        const sireflect_type_info_t *type = &reg->types[i];
+        if (type->kind == sireflect_kind_function_pointer && type->element_type == return_type) {
+            return sireflect_handle_from_index(i);
+        }
+    }
+
+    const sireflect_type_info_t *return_info = sireflect_registry_const_type_at(reg, return_type);
+    sireflect_assert(return_info != NULL, "function return type metadata must exist");
+
+    const int name_len = snprintf(NULL, 0, "%s(*)()", return_info->name);
+    sireflect_assert(name_len > 0, "failed to format function pointer type name");
+
+    char *name = malloc((size_t)name_len + 1);
+    sireflect_assert(name != NULL, "failed to allocate function pointer type name");
+    snprintf(name, (size_t)name_len + 1, "%s(*)()", return_info->name);
+
+    sireflect_handle_t function_pointer_type = sireflect_registry_add_type(
+        reg,
+        name,
+        sireflect_kind_function_pointer,
+        sizeof(ptr),
+        _Alignof(ptr),
+        NULL,
+        0
+    );
+    free(name);
+
+    sireflect_type_info_t *function_pointer_info =
+        sireflect_registry_type_at(reg, function_pointer_type);
+    function_pointer_info->element_type = return_type;
+
+    return function_pointer_type;
+}
+
+sireflect_handle_t sireflect_registry_get_or_add_array_type(
+    sireflect_registry_t *reg,
+    sireflect_handle_t element_type,
+    size_t element_count
+) {
+    sireflect_assert(reg != NULL, "registry must not be NULL");
+    sireflect_assert(element_type != SIREFLECT_INVALID_HANDLE, "array element type must be valid");
+    sireflect_assert(element_count != 0, "array element count must not be zero");
+
+    for (size_t i = 0; i < reg->type_count; i++) {
+        const sireflect_type_info_t *type = &reg->types[i];
+        if (type->kind == sireflect_kind_array && type->element_type == element_type &&
+            type->element_count == element_count) {
+            return sireflect_handle_from_index(i);
+        }
+    }
+
+    const sireflect_type_info_t *element = sireflect_registry_const_type_at(reg, element_type);
+    sireflect_assert(element != NULL, "array element metadata must exist");
+    sireflect_assert(element->size <= SIZE_MAX / element_count, "array type size overflows size_t");
+
+    char *name = sireflect_format_array_type_name(element, element_count);
+
+    sireflect_handle_t array_type = sireflect_registry_add_type(
+        reg,
+        name,
+        sireflect_kind_array,
+        element->size * element_count,
+        element->align,
+        NULL,
+        0
+    );
+    free(name);
+
+    sireflect_type_info_t *array_info = sireflect_registry_type_at(reg, array_type);
+    array_info->element_type = element_type;
+    array_info->element_count = element_count;
+
+    return array_type;
+}
+
+#define add_type(name, kind)                                                                       \
+    sireflect_registry_add_type(reg, #name, kind, sizeof(name), _Alignof(name), NULL, 0)
+
+#define add_named_type(c_type, reflected_name, kind)                                               \
+    sireflect_registry_add_type(reg, reflected_name, kind, sizeof(c_type), _Alignof(c_type), NULL, 0)
+
+static inline void sireflect_register_builtin_types(sireflect_registry_t *reg) {
+    add_type(u8, sireflect_kind_u8);
+    add_type(u16, sireflect_kind_u16);
+    add_type(u32, sireflect_kind_u32);
+    add_type(u64, sireflect_kind_u64);
+    add_type(i8, sireflect_kind_i8);
+    add_type(i16, sireflect_kind_i16);
+    add_type(i32, sireflect_kind_i32);
+    add_type(i64, sireflect_kind_i64);
+    add_type(f32, sireflect_kind_f32);
+    add_type(f64, sireflect_kind_f64);
+    add_type(bool, sireflect_kind_bool);
+    add_type(char, sireflect_kind_char);
+    add_type(ptr, sireflect_kind_ptr);
+
+    add_type(uint8_t, sireflect_kind_u8);
+    add_type(uint16_t, sireflect_kind_u16);
+    add_type(uint32_t, sireflect_kind_u32);
+    add_type(uint64_t, sireflect_kind_u64);
+    add_type(int8_t, sireflect_kind_i8);
+    add_type(int16_t, sireflect_kind_i16);
+    add_type(int32_t, sireflect_kind_i32);
+    add_type(int64_t, sireflect_kind_i64);
+
+    add_type(float, sireflect_kind_f32);
+    add_type(double, sireflect_kind_f64);
+    add_type(short, sireflect_kind_short);
+    add_type(int, sireflect_kind_int);
+    add_type(long, sireflect_kind_long);
+
+    add_named_type(signed char, "signed char", sireflect_kind_signed_char);
+    add_named_type(unsigned char, "unsigned char", sireflect_kind_unsigned_char);
+    add_named_type(unsigned short, "unsigned short", sireflect_kind_unsigned_short);
+    add_named_type(unsigned int, "unsigned int", sireflect_kind_unsigned_int);
+    add_named_type(unsigned long, "unsigned long", sireflect_kind_unsigned_long);
+    add_named_type(long long, "long long", sireflect_kind_long_long);
+    add_named_type(unsigned long long, "unsigned long long", sireflect_kind_unsigned_long_long);
+}
+
+sireflect_registry_t *sireflect_registry_init(void) {
+    sireflect_error_clear();
+
+    sireflect_registry_t *reg = calloc(1, sizeof(*reg));
+    sireflect_assert(reg != NULL, "registry must not be NULL");
+
+    sireflect_register_builtin_types(reg);
+    return reg;
+}
+
+void sireflect_registry_fini(sireflect_registry_t *reg) {
+    sireflect_error_clear();
+
+    if (reg == NULL) {
+        return;
+    }
+
+    for (size_t i = 0; i < reg->type_count; i++) {
+        sireflect_type_info_t *type = &reg->types[i];
+
+        free((char *)type->name);
+
+        for (size_t f = 0; f < type->fields.field_count; f++) {
+            free((char *)type->fields.fields[f].name);
+        }
+
+        free(type->fields.fields);
+    }
+
+    free(reg->types);
+    free(reg);
+}
+
+sireflect_handle_t sireflect_type_by_name(const sireflect_registry_t *reg, const char *name) {
+    sireflect_error_clear();
+
+    sireflect_assert(reg != NULL, "registry must not be NULL");
+    sireflect_assert(name != NULL, "type name must not be NULL");
+
+    for (size_t i = 0; i < reg->type_count; i++) {
+        if (strcmp(reg->types[i].name, name) == 0) {
+            return sireflect_handle_from_index(i);
+        }
+    }
+
+    return SIREFLECT_INVALID_HANDLE;
+}
+
+const sireflect_type_info_t *
+sireflect_registry_const_type_at(const sireflect_registry_t *reg, sireflect_handle_t handle) {
+    sireflect_assert(reg != NULL, "registry must not be NULL");
+
+    const size_t index = sireflect_index_from_handle(handle);
+    sireflect_assert(index < reg->type_count, "type handle is out of range");
+
+    return &reg->types[index];
+}
+
+sireflect_type_info_t *
+sireflect_registry_type_at(sireflect_registry_t *reg, sireflect_handle_t handle) {
+    return (sireflect_type_info_t *)sireflect_registry_const_type_at(reg, handle);
+}
+
+sireflect_handle_t
+sireflect_try_register_struct(sireflect_registry_t *reg, const sireflect_struct_desc_t *desc) {
+    sireflect_error_clear();
+
+    if (reg == NULL || desc == NULL || desc->name == NULL || desc->fields == NULL ||
+        desc->align == 0) {
+        sireflect_error_set("invalid struct descriptor");
+        return SIREFLECT_INVALID_HANDLE;
+    }
+
+    sireflect_handle_t existing = sireflect_type_by_name(reg, desc->name);
+    if (existing != SIREFLECT_INVALID_HANDLE) {
+        const sireflect_type_info_t *type = sireflect_type_info(reg, existing);
+        if (type->kind != sireflect_kind_struct || type->size != desc->size ||
+            type->align != desc->align) {
+            sireflect_error_set("existing type is incompatible with struct descriptor");
+            return SIREFLECT_INVALID_HANDLE;
+        }
+        return existing;
+    }
+
+    sireflect_field_info_t *parsed_fields = NULL;
+    size_t field_count = 0;
+
+    if (!sireflect_parse_struct_fields(
+        reg,
+        desc->name,
+        desc->fields,
+        &parsed_fields,
+        &field_count,
+        desc->size,
+        desc->align,
+        false
+    )) {
+        return SIREFLECT_INVALID_HANDLE;
+    }
+
+    return sireflect_registry_add_type(
+        reg,
+        desc->name,
+        sireflect_kind_struct,
+        desc->size,
+        desc->align,
+        parsed_fields,
+        field_count
+    );
+}
+
+sireflect_handle_t
+sireflect_register_struct(sireflect_registry_t *reg, const sireflect_struct_desc_t *desc) {
+    sireflect_error_clear();
+
+    sireflect_assert(reg != NULL, "registry must not be NULL");
+    sireflect_assert(desc != NULL, "struct descriptor must not be NULL");
+    sireflect_assert(desc->name != NULL, "struct descriptor name must not be NULL");
+    sireflect_assert(desc->fields != NULL, "struct descriptor fields must not be NULL");
+    sireflect_assert(desc->align != 0, "struct descriptor alignment must not be zero");
+
+    sireflect_handle_t handle = SIREFLECT_INVALID_HANDLE;
+
+    if (reg != NULL && desc != NULL && desc->name != NULL && desc->fields != NULL &&
+        desc->align != 0) {
+        sireflect_handle_t existing = sireflect_type_by_name(reg, desc->name);
+        if (existing != SIREFLECT_INVALID_HANDLE) {
+            const sireflect_type_info_t *type = sireflect_type_info(reg, existing);
+            if (type->kind != sireflect_kind_struct || type->size != desc->size ||
+                type->align != desc->align) {
+                sireflect_assert(type->kind == sireflect_kind_struct, "existing type must be a struct");
+                sireflect_assert(
+                    type->size == desc->size,
+                    "existing struct size must match descriptor"
+                );
+                sireflect_assert(
+                    type->align == desc->align,
+                    "existing struct alignment must match descriptor"
+                );
+                return SIREFLECT_INVALID_HANDLE;
+            }
+            return existing;
+        }
+
+        sireflect_field_info_t *parsed_fields = NULL;
+        size_t field_count = 0;
+
+        if (sireflect_parse_struct_fields(
+                reg,
+                desc->name,
+                desc->fields,
+                &parsed_fields,
+                &field_count,
+                desc->size,
+                desc->align,
+                true
+            )) {
+            handle = sireflect_registry_add_type(
+                reg,
+                desc->name,
+                sireflect_kind_struct,
+                desc->size,
+                desc->align,
+                parsed_fields,
+                field_count
+            );
+        }
+    }
+
+    sireflect_assert(handle != SIREFLECT_INVALID_HANDLE, "failed to register struct");
+    return handle;
+}
+
+const char *sireflect_kind_name(sireflect_kind_t kind) {
+    sireflect_error_clear();
+
+    switch (kind) {
+    case sireflect_kind_u8:
+        return "u8";
+    case sireflect_kind_u16:
+        return "u16";
+    case sireflect_kind_u32:
+        return "u32";
+    case sireflect_kind_u64:
+        return "u64";
+    case sireflect_kind_i8:
+        return "i8";
+    case sireflect_kind_i16:
+        return "i16";
+    case sireflect_kind_i32:
+        return "i32";
+    case sireflect_kind_i64:
+        return "i64";
+    case sireflect_kind_f32:
+        return "f32";
+    case sireflect_kind_f64:
+        return "f64";
+    case sireflect_kind_bool:
+        return "bool";
+    case sireflect_kind_char:
+        return "char";
+    case sireflect_kind_short:
+        return "short";
+    case sireflect_kind_int:
+        return "int";
+    case sireflect_kind_long:
+        return "long";
+    case sireflect_kind_ptr:
+        return "ptr";
+    case sireflect_kind_pointer:
+        return "pointer";
+    case sireflect_kind_struct:
+        return "struct";
+    case sireflect_kind_array:
+        return "array";
+    case sireflect_kind_signed_char:
+        return "signed char";
+    case sireflect_kind_unsigned_char:
+        return "unsigned char";
+    case sireflect_kind_unsigned_short:
+        return "unsigned short";
+    case sireflect_kind_unsigned_int:
+        return "unsigned int";
+    case sireflect_kind_unsigned_long:
+        return "unsigned long";
+    case sireflect_kind_long_long:
+        return "long long";
+    case sireflect_kind_unsigned_long_long:
+        return "unsigned long long";
+    case sireflect_kind_function_pointer:
+        return "function pointer";
+    }
+
+    return "unknown";
+}
+
+bool sireflect_is_numeric(sireflect_kind_t kind) {
+    sireflect_error_clear();
+
+    switch (kind) {
+    case sireflect_kind_u8:
+    case sireflect_kind_u16:
+    case sireflect_kind_u32:
+    case sireflect_kind_u64:
+    case sireflect_kind_i8:
+    case sireflect_kind_i16:
+    case sireflect_kind_i32:
+    case sireflect_kind_i64:
+    case sireflect_kind_f32:
+    case sireflect_kind_f64:
+    case sireflect_kind_char:
+    case sireflect_kind_short:
+    case sireflect_kind_int:
+    case sireflect_kind_long:
+    case sireflect_kind_signed_char:
+    case sireflect_kind_unsigned_char:
+    case sireflect_kind_unsigned_short:
+    case sireflect_kind_unsigned_int:
+    case sireflect_kind_unsigned_long:
+    case sireflect_kind_long_long:
+    case sireflect_kind_unsigned_long_long:
+        return true;
+    case sireflect_kind_bool:
+    case sireflect_kind_ptr:
+    case sireflect_kind_pointer:
+    case sireflect_kind_struct:
+    case sireflect_kind_array:
+    case sireflect_kind_function_pointer:
+        return false;
+    }
+
+    return false;
+}
+
+const sireflect_type_info_t *
+sireflect_type_info(const sireflect_registry_t *reg, sireflect_handle_t ref) {
+    sireflect_error_clear();
+
+    return sireflect_registry_const_type_at(reg, ref);
+}
+
+const sireflect_fields_t *
+sireflect_type_fields(const sireflect_registry_t *reg, sireflect_handle_t ref) {
+    sireflect_error_clear();
+
+    const sireflect_type_info_t *type = sireflect_type_info(reg, ref);
+    return &type->fields;
+}
+
+size_t sireflect_type_size(const sireflect_registry_t *reg, sireflect_handle_t ref) {
+    sireflect_error_clear();
+
+    return sireflect_type_info(reg, ref)->size;
+}
+
+const char *sireflect_type_name(const sireflect_registry_t *reg, sireflect_handle_t ref) {
+    sireflect_error_clear();
+
+    return sireflect_type_info(reg, ref)->name;
+}
+
+bool sireflect_type_is_struct(const sireflect_type_info_t *info) {
+    sireflect_error_clear();
+
+    sireflect_assert(info != NULL, "type metadata must not be NULL");
+    return info->kind == sireflect_kind_struct;
+}
+
+bool sireflect_type_is_array(const sireflect_type_info_t *info) {
+    sireflect_error_clear();
+
+    sireflect_assert(info != NULL, "type metadata must not be NULL");
+    return info->kind == sireflect_kind_array;
+}
+
+bool sireflect_type_is_pointer(const sireflect_type_info_t *info) {
+    sireflect_error_clear();
+
+    sireflect_assert(info != NULL, "type metadata must not be NULL");
+    return info->kind == sireflect_kind_pointer || info->kind == sireflect_kind_function_pointer;
+}
+
+sireflect_handle_t
+sireflect_type_element(const sireflect_registry_t *reg, sireflect_handle_t ref) {
+    sireflect_error_clear();
+
+    const sireflect_type_info_t *type = sireflect_type_info(reg, ref);
+    sireflect_assert(type->kind == sireflect_kind_array, "type must be an array");
+    return type->element_type;
+}
+
+size_t
+sireflect_type_element_count(const sireflect_registry_t *reg, sireflect_handle_t ref) {
+    sireflect_error_clear();
+
+    const sireflect_type_info_t *type = sireflect_type_info(reg, ref);
+    sireflect_assert(type->kind == sireflect_kind_array, "type must be an array");
+    return type->element_count;
+}
+
+sireflect_handle_t
+sireflect_type_pointee(const sireflect_registry_t *reg, sireflect_handle_t ref) {
+    sireflect_error_clear();
+
+    const sireflect_type_info_t *type = sireflect_type_info(reg, ref);
+    sireflect_assert(
+        type->kind == sireflect_kind_pointer || type->kind == sireflect_kind_function_pointer,
+        "type must be a typed pointer"
+    );
+    return type->element_type;
+}
+
 #ifndef ECS_ADDONS_H
 #define ECS_ADDONS_H
 
@@ -6552,10 +5719,6 @@ void ecs_migrate_remove(
 
 #endif
 
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
 #define ECS_COMMAND_NONE UINT32_MAX
 
 static inline void id_vec_push_unique(ecs_vec_t *vec, ecs_component_t id) {
@@ -6982,7 +6145,6 @@ bool ecs_is_deferred(void) {
         return ecs_world.defer_depth != 0 || ecs_world.flushing_commands;
 }
 
-#include <stdio.h>
 #ifndef SIREFLECT_H
 #endif
 

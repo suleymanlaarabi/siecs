@@ -53,6 +53,7 @@ distr:
 	@sh tools/rebuild_distr.sh
 
 check-distr:
+	set -e; \
 	tmp_dir=$$(mktemp -d /tmp/siecs-check-distr.XXXXXX); \
 	trap 'rm -rf "$$tmp_dir"' EXIT; \
 	sh tools/rebuild_distr.sh "$$tmp_dir"; \

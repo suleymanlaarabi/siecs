@@ -9,7 +9,8 @@
     "use": ["sireflect", "sijson", "sihttp"],
     "amalgamate": [
       {
-        "path": "distr"
+        "path": "distr",
+        "dependencies": true
       }
     ]
   },
@@ -34,6 +35,22 @@
       "sireflect": "https://github.com/suleymanlaarabi/sireflect",
       "sijson": "https://github.com/suleymanlaarabi/sijson",
       "sihttp": "https://github.com/suleymanlaarabi/sihttp"
+    },
+    "refs": {
+      "default": {
+        "sireflect": {
+          "branch": "main",
+          "commit": "3f435504ac3542ca923ee74f2c9153f3de951524"
+        },
+        "sijson": {
+          "branch": "main",
+          "commit": "e41812033fa7600d12e34d403ce0f6bde2f2136d"
+        },
+        "sihttp": {
+          "branch": "main",
+          "commit": "1012c8cd532fdd05cf423a814e3c4f33d629b7dc"
+        }
+      }
     }
   }
 }
