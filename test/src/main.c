@@ -10,6 +10,7 @@
 
 // Testsuite 'entity'
 void entity_create(void);
+void entity_create_has_default_name(void);
 void entity_with(void);
 void entity_is_a_moves_entity_to_type_with_base(void);
 void entity_is_a_keeps_local_component_data(void);
@@ -120,6 +121,10 @@ bake_test_case entity_testcases[] = {
     {
         "create",
         entity_create
+    },
+    {
+        "create_has_default_name",
+        entity_create_has_default_name
     },
     {
         "with",
@@ -504,7 +509,7 @@ static bake_test_suite suites[] = {
         "entity",
         NULL,
         NULL,
-        7,
+        8,
         entity_testcases
     },
     {

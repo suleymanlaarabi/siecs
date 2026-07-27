@@ -23,6 +23,7 @@
         "id": "entity",
         "testcases": [
           "create",
+          "create_has_default_name",
           "with",
           "is_a_moves_entity_to_type_with_base",
           "is_a_keeps_local_component_data",

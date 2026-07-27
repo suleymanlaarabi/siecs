@@ -1,7 +1,6 @@
 #include "addons/addons.h"
 #include "datastructure/vec.h"
 #include "siecs.h"
-#include "type.h"
 #ifndef SIREFLECT_H
 #include "sireflect.h"
 #endif
@@ -13,10 +12,9 @@ ECS_COMPONENT_DEFINE(Name);
 ECS_TAG_DEFINE(Disabled);
 ECS_TAG_DEFINE(Abstract);
 
-static ecs_component_t default_components[] = { 0 };
-
 void ecs_bootstrap() {
     // Reserve identifiers used to represent false return values.
+    ecs_table_index_get_or_create((ecs_type_t){ 0 });
     ecs_vec_push_u64(&ecs_world.entity_index.entities, 0);
     ecs_component({ .name = "Invalid" });
 
@@ -36,7 +34,5 @@ void ecs_bootstrap() {
     ECS_COMPONENT_REGISTER(Disabled);
     ECS_COMPONENT_REGISTER(Abstract);
 
-    default_components[0] = ecs_id(Name);
-    ecs_table_index_get_or_create((ecs_type_t){ .ids = default_components, .count = 1 });
     init_rest();
 }

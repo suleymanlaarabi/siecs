@@ -18,6 +18,15 @@ void entity_create(void) {
     ecs_fini();
 }
 
+void entity_create_has_default_name(void) {
+    ecs_init();
+
+    ecs_entity_t entity = ecs_new();
+    test_str("(1, 0)", ecs_entity_name(entity));
+
+    ecs_fini();
+}
+
 void entity_with(void) {
     ecs_init();
     
