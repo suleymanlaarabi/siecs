@@ -16,15 +16,10 @@
 namespace ecs {
 
 inline void init_cpp_state() {
-    detail::world_generation++;
     detail::component_type<Disabled>::id = ecs_id(Disabled);
     detail::component_type<Name>::id = ecs_id(Name);
     detail::component_type<ChildOf>::id = ecs_id(ChildOf);
     detail::component_type<Abstract>::id = ecs_id(Abstract);
-    detail::component_type<Disabled>::generation = detail::world_generation;
-    detail::component_type<Name>::generation = detail::world_generation;
-    detail::component_type<ChildOf>::generation = detail::world_generation;
-    detail::component_type<Abstract>::generation = detail::world_generation;
 }
 inline void init() {
     ecs_init();
@@ -84,9 +79,8 @@ template <typename T> static void import_module_callback(const void *ptr) {
 }
 
 template <typename T> [[nodiscard]] module_ref<T> import(T module) {
-    if (detail::module_type<T>::generation != detail::world_generation) {
-        detail::module_type<T>::id = 0;
-        detail::module_type<T>::generation = detail::world_generation;
+    if (detail::module_type<T>::id != 0) {
+        return module_ref<T>(detail::module_type<T>::id);
     }
     static const std::string name = std::string(type_name<T>());
     ecs_module_desc_t desc = {
@@ -107,10 +101,7 @@ template <typename T, typename... Args>
 }
 
 template <typename T> [[nodiscard]] module_ref<T> module() noexcept {
-    return module_ref<T>(
-        detail::module_type<T>::generation == detail::world_generation ? detail::module_type<T>::id
-                                                                       : 0
-    );
+    return module_ref<T>(detail::module_type<T>::id);
 }
 
 template <typename T> [[nodiscard]] observer<T> observe() { return observer<T>(); }

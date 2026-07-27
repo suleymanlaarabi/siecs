@@ -15,11 +15,8 @@ namespace ecs {
 
 namespace detail {
 
-inline uint64_t world_generation;
-
 template <typename T> struct component_type {
     static inline ecs_component_t id = 0;
-    static inline uint64_t generation = 0;
 };
 
 template <typename T, typename = void> struct is_complete : std::false_type {};
@@ -111,12 +108,8 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
 
 template <typename T> static ecs_component_t ecs_cpp_component_id() {
     ecs_component_t &cid = detail::component_type<T>::id;
-    uint64_t &generation = detail::component_type<T>::generation;
 
-    if (generation != detail::world_generation) {
-        cid = 0;
-        generation = detail::world_generation;
-    }
+    if (cid != 0) return cid;
 
     static sireflect_struct_desc_t reflection = {
         .name = strdup(std::string(type_name<T>()).c_str()),
@@ -144,7 +137,7 @@ template <typename T> static ecs_component_t ecs_cpp_component_id() {
         .struct_desc = &reflection,
     };
 
-    if (cid == 0) cid = ecs_component_init(&desc);
+    cid = ecs_component_init(&desc);
 
     return cid;
 }

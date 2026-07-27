@@ -36,7 +36,6 @@ namespace detail {
 
 template <typename T> struct module_type {
     static inline ecs_module_id_t id;
-    static inline uint64_t generation;
 };
 
 template <typename T>

@@ -20,17 +20,10 @@ namespace detail {
 
 template <typename T> struct event_type {
     static inline ecs_event_t id = UINT16_MAX;
-    static inline uint64_t generation;
 };
 
 template <typename T> static ecs_event_t ecs_cpp_event_id() {
     ecs_event_t &eid = detail::event_type<T>::id;
-    uint64_t &generation = detail::event_type<T>::generation;
-
-    if (generation != detail::world_generation) {
-        eid = UINT16_MAX;
-        generation = detail::world_generation;
-    }
 
     if constexpr (std::is_same_v<T, OnAdd>) {
         eid = EcsOnAdd;
@@ -41,8 +34,6 @@ template <typename T> static ecs_event_t ecs_cpp_event_id() {
     } else {
         if (eid == UINT16_MAX) {
             eid = ecs_event();
-        } else {
-            ecs_event_register(&eid);
         }
     }
 

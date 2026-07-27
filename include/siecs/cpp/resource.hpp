@@ -24,7 +24,6 @@ namespace detail {
 
 template <typename T> struct resource_type {
     static inline ecs_resource_t id;
-    static inline uint64_t generation;
 };
 
 template <typename T> struct is_res : std::false_type {};
@@ -50,12 +49,8 @@ struct no_resource {};
 template <typename T> static ecs_resource_t ecs_cpp_resource_id() {
     using type = std::remove_cv_t<T>;
     ecs_resource_t &rid = detail::resource_type<type>::id;
-    uint64_t &generation = detail::resource_type<type>::generation;
 
-    if (generation != detail::world_generation) {
-        rid = 0;
-        generation = detail::world_generation;
-    }
+    if (rid != 0) return rid;
 
     static const std::string name = std::string(type_name<type>());
 
@@ -67,15 +62,13 @@ template <typename T> static ecs_resource_t ecs_cpp_resource_id() {
         .on_remove = nullptr,
     };
 
-    if (rid == 0) rid = ecs_resource_init(&desc);
+    rid = ecs_resource_init(&desc);
     return rid;
 }
 
 template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {
     using type = std::remove_cv_t<T>;
-    ecs_resource_t &rid = detail::resource_type<type>::id;
-
-    return detail::resource_type<type>::generation == detail::world_generation ? rid : 0;
+    return detail::resource_type<type>::id;
 }
 
 namespace detail {

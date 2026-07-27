@@ -1758,11 +1758,8 @@ namespace ecs {
 
 namespace detail {
 
-inline uint64_t world_generation;
-
 template <typename T> struct component_type {
     static inline ecs_component_t id = 0;
-    static inline uint64_t generation = 0;
 };
 
 template <typename T, typename = void> struct is_complete : std::false_type {};
@@ -1854,12 +1851,8 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
 
 template <typename T> static ecs_component_t ecs_cpp_component_id() {
     ecs_component_t &cid = detail::component_type<T>::id;
-    uint64_t &generation = detail::component_type<T>::generation;
 
-    if (generation != detail::world_generation) {
-        cid = 0;
-        generation = detail::world_generation;
-    }
+    if (cid != 0) return cid;
 
     static sireflect_struct_desc_t reflection = {
         .name = strdup(std::string(type_name<T>()).c_str()),
@@ -1887,7 +1880,7 @@ template <typename T> static ecs_component_t ecs_cpp_component_id() {
         .struct_desc = &reflection,
     };
 
-    if (cid == 0) cid = ecs_component_init(&desc);
+    cid = ecs_component_init(&desc);
 
     return cid;
 }
@@ -2103,7 +2096,6 @@ namespace detail {
 
 template <typename T> struct module_type {
     static inline ecs_module_id_t id;
-    static inline uint64_t generation;
 };
 
 template <typename T>
@@ -2196,7 +2188,6 @@ namespace detail {
 
 template <typename T> struct resource_type {
     static inline ecs_resource_t id;
-    static inline uint64_t generation;
 };
 
 template <typename T> struct is_res : std::false_type {};
@@ -2222,12 +2213,8 @@ struct no_resource {};
 template <typename T> static ecs_resource_t ecs_cpp_resource_id() {
     using type = std::remove_cv_t<T>;
     ecs_resource_t &rid = detail::resource_type<type>::id;
-    uint64_t &generation = detail::resource_type<type>::generation;
 
-    if (generation != detail::world_generation) {
-        rid = 0;
-        generation = detail::world_generation;
-    }
+    if (rid != 0) return rid;
 
     static const std::string name = std::string(type_name<type>());
 
@@ -2239,15 +2226,13 @@ template <typename T> static ecs_resource_t ecs_cpp_resource_id() {
         .on_remove = nullptr,
     };
 
-    if (rid == 0) rid = ecs_resource_init(&desc);
+    rid = ecs_resource_init(&desc);
     return rid;
 }
 
 template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {
     using type = std::remove_cv_t<T>;
-    ecs_resource_t &rid = detail::resource_type<type>::id;
-
-    return detail::resource_type<type>::generation == detail::world_generation ? rid : 0;
+    return detail::resource_type<type>::id;
 }
 
 namespace detail {
@@ -2529,17 +2514,10 @@ namespace detail {
 
 template <typename T> struct event_type {
     static inline ecs_event_t id = UINT16_MAX;
-    static inline uint64_t generation;
 };
 
 template <typename T> static ecs_event_t ecs_cpp_event_id() {
     ecs_event_t &eid = detail::event_type<T>::id;
-    uint64_t &generation = detail::event_type<T>::generation;
-
-    if (generation != detail::world_generation) {
-        eid = UINT16_MAX;
-        generation = detail::world_generation;
-    }
 
     if constexpr (std::is_same_v<T, OnAdd>) {
         eid = EcsOnAdd;
@@ -2550,8 +2528,6 @@ template <typename T> static ecs_event_t ecs_cpp_event_id() {
     } else {
         if (eid == UINT16_MAX) {
             eid = ecs_event();
-        } else {
-            ecs_event_register(&eid);
         }
     }
 
@@ -2712,15 +2688,10 @@ class system : protected query {
 namespace ecs {
 
 inline void init_cpp_state() {
-    detail::world_generation++;
     detail::component_type<Disabled>::id = ecs_id(Disabled);
     detail::component_type<Name>::id = ecs_id(Name);
     detail::component_type<ChildOf>::id = ecs_id(ChildOf);
     detail::component_type<Abstract>::id = ecs_id(Abstract);
-    detail::component_type<Disabled>::generation = detail::world_generation;
-    detail::component_type<Name>::generation = detail::world_generation;
-    detail::component_type<ChildOf>::generation = detail::world_generation;
-    detail::component_type<Abstract>::generation = detail::world_generation;
 }
 inline void init() {
     ecs_init();
@@ -2780,9 +2751,8 @@ template <typename T> static void import_module_callback(const void *ptr) {
 }
 
 template <typename T> [[nodiscard]] module_ref<T> import(T module) {
-    if (detail::module_type<T>::generation != detail::world_generation) {
-        detail::module_type<T>::id = 0;
-        detail::module_type<T>::generation = detail::world_generation;
+    if (detail::module_type<T>::id != 0) {
+        return module_ref<T>(detail::module_type<T>::id);
     }
     static const std::string name = std::string(type_name<T>());
     ecs_module_desc_t desc = {
@@ -2803,10 +2773,7 @@ template <typename T, typename... Args>
 }
 
 template <typename T> [[nodiscard]] module_ref<T> module() noexcept {
-    return module_ref<T>(
-        detail::module_type<T>::generation == detail::world_generation ? detail::module_type<T>::id
-                                                                       : 0
-    );
+    return module_ref<T>(detail::module_type<T>::id);
 }
 
 template <typename T> [[nodiscard]] observer<T> observe() { return observer<T>(); }
