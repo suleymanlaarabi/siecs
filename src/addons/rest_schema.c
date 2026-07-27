@@ -15,7 +15,7 @@ static bool ecs_rest_component_is_reflected(ecs_component_t id) {
         return false;
     }
 
-    const ecs_component_record_t *record = ecs_component_index_get(&ecs_world.component_index, id);
+    const ecs_component_record_t *record = ecs_component_index_get(id);
     return record->reflection != SIREFLECT_INVALID_HANDLE;
 }
 
@@ -139,8 +139,7 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req) {
             continue;
         }
 
-        const ecs_component_record_t *record =
-            ecs_component_index_get(&ecs_world.component_index, (ecs_component_t)i);
+        const ecs_component_record_t *record = ecs_component_index_get((ecs_component_t)i);
         ecs_rest_collect_component_types(&types, record);
         sijson_array_push(components, ecs_rest_component_json((ecs_component_t)i, record));
     }

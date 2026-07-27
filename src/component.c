@@ -1,12 +1,12 @@
 #include "datastructure/vec.h"
 #include "helper.h"
 #include "siecs.h"
-#include <stdio.h>
 #include "sireflect.h"
 #include "storage/component_index.h"
 #include "utils.h"
 #include "world_internal.h"
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -78,8 +78,7 @@ void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) 
 
     const ecs_entity_t *entities = source_data->entities.data;
     const uint32_t count = source_data->entities.size;
-    const ecs_component_record_t *crec =
-        ecs_component_index_get(&ecs_world.component_index, component);
+    const ecs_component_record_t *crec = ecs_component_index_get(component);
     const bool cascade_delete = crec->relation_flags & EcsRelationCascadeDelete;
 
     // Prevent recursive calls to RelationOnRemove when removing relation from child
@@ -100,8 +99,7 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
     ecs_assert_not_null(desc);
 
     if (*id != 0 && *id < ecs_world.component_index.components.size) {
-        const ecs_component_record_t *existing =
-            ecs_component_index_get(&ecs_world.component_index, *id);
+        const ecs_component_record_t *existing = ecs_component_index_get(*id);
         if (existing->tables.data) {
             return *id;
         }
@@ -124,7 +122,6 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
 
         ecs_component_t component = *id;
         ecs_component_index_register(
-            &ecs_world.component_index,
             component,
             desc->size,
             desc->ops,
@@ -138,7 +135,6 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
 
         ecs_component_t source = component + 1;
         ecs_component_index_register(
-            &ecs_world.component_index,
             source,
             desc->relation_flags & EcsRelationOneToOne ? sizeof(RelationTarget)
                                                        : sizeof(RelationSource),
@@ -158,7 +154,6 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
 
         ecs_component_t component = *id;
         ecs_component_index_register(
-            &ecs_world.component_index,
             component,
             desc->size,
             desc->ops,

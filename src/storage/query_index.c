@@ -10,13 +10,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-void ecs_query_index_init(ecs_query_index_t *index) {
+void ecs_query_index_init() {
+    ecs_query_index_t *index = &ecs_world.query_index;
     ecs_vec_init(&index->queries, sizeof(ecs_query_cache_t));
     ecs_vec_init(&index->active_ids, sizeof(ecs_query_id_t));
     index->first_free = UINT16_MAX;
 }
 
-void ecs_query_index_fini(ecs_query_index_t *index) {
+void ecs_query_index_fini() {
+    ecs_query_index_t *index = &ecs_world.query_index;
     const ecs_query_id_t *active_ids = index->active_ids.data;
     for (uint32_t i = 0; i < index->active_ids.size; i++) {
         ecs_query_cache_t *cache =
@@ -30,9 +32,7 @@ void ecs_query_index_fini(ecs_query_index_t *index) {
     ecs_vec_fini(&index->queries);
 }
 
-void ecs_query_index_destroy(ecs_query_t *query) {
-    free(query->terms);
-}
+void ecs_query_index_destroy(ecs_query_t *query) { free(query->terms); }
 
 static uint16_t ecs_query_count_terms(const ecs_query_term_t *terms) {
     uint16_t i = 0;
@@ -175,8 +175,7 @@ ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, ui
         const uint32_t slot_count = (uint32_t)capacity * field_count;
         cache->fields_ptr = realloc(cache->fields_ptr, sizeof(void *) * slot_count);
         if (!cache->query.fields_owned_only && field_count != 0) {
-            cache->field_kind_bits =
-                realloc(cache->field_kind_bits, sizeof(uint32_t) * capacity);
+            cache->field_kind_bits = realloc(cache->field_kind_bits, sizeof(uint32_t) * capacity);
         }
         cache->field_table_capacity = capacity;
     }
@@ -243,7 +242,8 @@ ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, ui
     }
 }
 
-ecs_query_id_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc) {
+ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
+    ecs_query_index_t *index = &ecs_world.query_index;
     ecs_query_id_t id;
     ecs_query_cache_t *query_cache;
 
@@ -276,8 +276,7 @@ static ecs_component_t ecs_query_rarest_positive_term(const ecs_query_t *query) 
     for (uint16_t i = 0; i < query->term_count; i++) {
         if (ecs_query_term_is_positive(query->terms[i])) {
             const ecs_component_t component = query->terms[i].id;
-            const uint32_t table_count =
-                ecs_component_index_get(&ecs_world.component_index, component)->tables.size;
+            const uint32_t table_count = ecs_component_index_get(component)->tables.size;
             if (table_count < rarest_table_count) {
                 rarest = component;
                 rarest_table_count = table_count;
@@ -295,8 +294,7 @@ void ecs_query_index_update_matches(ecs_query_cache_t *query_cache) {
     uint16_t component = ecs_query_rarest_positive_term(&query_cache->query);
 
     if (ECS_LIKELY(component)) {
-        const ecs_vec_t *tables_vec =
-            &ecs_component_index_get(&ecs_world.component_index, component)->tables;
+        const ecs_vec_t *tables_vec = &ecs_component_index_get(component)->tables;
 
         ecs_vec_iter(tables_vec, uint16_t, table_index, {
             const ecs_table_t *table = &ecs_world.table_index.tables[*table_index];

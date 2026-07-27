@@ -1,5 +1,4 @@
 #pragma once
-
 #include "siecs/cpp/component.hpp"
 #include "siecs/cpp/type.hpp"
 #include <cassert>
@@ -36,11 +35,9 @@ template <typename T> struct res_value<ecs::res<T>> {
     using type = T;
 };
 
-template <typename T>
-using res_value_t = typename res_value<std::remove_cvref_t<T>>::type;
+template <typename T> using res_value_t = typename res_value<std::remove_cvref_t<T>>::type;
 
-template <typename T>
-using resource_value_t = std::remove_cv_t<res_value_t<T>>;
+template <typename T> using resource_value_t = std::remove_cv_t<res_value_t<T>>;
 
 struct no_resource {};
 
@@ -50,7 +47,8 @@ template <typename T> static ecs_resource_t ecs_cpp_resource_id() {
     using type = std::remove_cv_t<T>;
     ecs_resource_t &rid = detail::resource_type<type>::id;
 
-    if (rid != 0) return rid;
+    if (rid != 0)
+        return rid;
 
     static const std::string name = std::string(type_name<type>());
 
@@ -85,8 +83,7 @@ template <typename Arg> inline auto make_resource_arg() {
     }
 }
 
-template <typename Args, std::size_t... Is>
-inline auto make_resources(std::index_sequence<Is...>) {
+template <typename Args, std::size_t... Is> inline auto make_resources(std::index_sequence<Is...>) {
     return std::tuple{ make_resource_arg<std::tuple_element_t<Is, Args>>()... };
 }
 

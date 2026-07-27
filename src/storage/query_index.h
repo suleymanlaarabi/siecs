@@ -33,9 +33,9 @@ typedef struct {
     uint16_t first_free;
 } ecs_query_index_t;
 
-void ecs_query_index_init(ecs_query_index_t *index);
-void ecs_query_index_fini(ecs_query_index_t *index);
-uint16_t ecs_query_index_create(ecs_query_index_t *index, const ecs_query_desc_t *desc);
+void ecs_query_index_init();
+void ecs_query_index_fini();
+uint16_t ecs_query_index_create(const ecs_query_desc_t *desc);
 void ecs_query_index_update_matches(ecs_query_cache_t *query_cache);
 void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id);
 

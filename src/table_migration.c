@@ -4,7 +4,7 @@
 #include <string.h>
 
 static inline void move_column(
-        const ecs_table_t *from_table,
+    const ecs_table_t *from_table,
     const uint16_t from_col,
     const uint32_t from_row,
     ecs_table_t *to_table,
@@ -20,16 +20,11 @@ static inline void move_column(
     }
 
     ecs_component_t component = from_table->type.ids[from_col];
-    const ecs_component_record_t *record =
-        ecs_component_index_get(&ecs_world.component_index, component);
+    const ecs_component_record_t *record = ecs_component_index_get(component);
     ecs_component_value_move_ctor(record, dst, src, 1);
 }
 
-static inline void ctor_column(
-        const ecs_table_t *table,
-    const uint16_t col,
-    const uint32_t row
-) {
+static inline void ctor_column(const ecs_table_t *table, const uint16_t col, const uint32_t row) {
     const ecs_column_t *column = &table->cls[col];
     if (column->size == 0) {
         return;
@@ -42,30 +37,24 @@ static inline void ctor_column(
     }
 
     ecs_component_t component = table->type.ids[col];
-    const ecs_component_record_t *record =
-        ecs_component_index_get(&ecs_world.component_index, component);
+    const ecs_component_record_t *record = ecs_component_index_get(component);
     ecs_component_value_ctor(record, dst, 1);
 }
 
-static inline void dtor_column(
-        const ecs_table_t *table,
-    const uint16_t col,
-    const uint32_t row
-) {
+static inline void dtor_column(const ecs_table_t *table, const uint16_t col, const uint32_t row) {
     const ecs_column_t *column = &table->cls[col];
     if (column->flags & EcsColumnNoDtor) {
         return;
     }
 
     ecs_component_t component = table->type.ids[col];
-    const ecs_component_record_t *record =
-        ecs_component_index_get(&ecs_world.component_index, component);
+    const ecs_component_record_t *record = ecs_component_index_get(component);
     void *ptr = ecs_table_component_at_column(table, col, row);
     ecs_component_value_dtor(record, ptr, 1);
 }
 
 static inline void finish_migration(
-        ecs_entity_record_t *record,
+    ecs_entity_record_t *record,
     const ecs_entity_t entity,
     ecs_table_t *from_table,
     const uint32_t old_row,
@@ -82,7 +71,7 @@ static inline void finish_migration(
 }
 
 void ecs_migrate_to_table(
-        ecs_entity_record_t *record,
+    ecs_entity_record_t *record,
     const ecs_entity_t entity,
     ecs_table_t *from_table,
     const uint16_t to_table_id
@@ -119,7 +108,7 @@ void ecs_migrate_to_table(
 }
 
 void *ecs_migrate_add(
-        ecs_entity_record_t *record,
+    ecs_entity_record_t *record,
     const ecs_entity_t entity,
     ecs_table_t *from_table,
     ecs_table_t *to_table,
@@ -150,7 +139,7 @@ void *ecs_migrate_add(
 }
 
 void *ecs_migrate_add_many(
-        ecs_entity_record_t *record,
+    ecs_entity_record_t *record,
     const ecs_entity_t entity,
     ecs_table_t *from_table,
     ecs_table_t *to_table,
@@ -195,7 +184,7 @@ void *ecs_migrate_add_many(
 }
 
 void ecs_migrate_remove(
-        ecs_entity_record_t *record,
+    ecs_entity_record_t *record,
     ecs_entity_t entity,
     ecs_table_t *from_table,
     uint16_t to_table_id,

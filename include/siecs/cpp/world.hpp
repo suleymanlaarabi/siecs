@@ -1,6 +1,4 @@
 #pragma once
-
-#include "siecs.h"
 #include "siecs/cpp/component.hpp"
 #include "siecs/cpp/entity.hpp"
 #include "siecs/cpp/module.hpp"

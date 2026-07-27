@@ -1,8 +1,8 @@
+#include "../storage/component_index.h"
+#include "../world_internal.h"
 #include "rest_internal.h"
 #include "siecs.h"
 #include "sijson.h"
-#include "../storage/component_index.h"
-#include "../world_internal.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,16 +24,11 @@ bool ecs_rest_entity_component_is_reflected(ecs_component_t component) {
         return false;
     }
 
-    const ecs_component_record_t *record =
-        ecs_component_index_get(&ecs_world.component_index, component);
-    return record->reflection != SIREFLECT_INVALID_HANDLE &&
-           record->reflection_desc != NULL;
+    const ecs_component_record_t *record = ecs_component_index_get(component);
+    return record->reflection != SIREFLECT_INVALID_HANDLE && record->reflection_desc != NULL;
 }
 
-static bool validate_component_shape(
-        const ecs_component_record_t *record,
-    sijson_value_t value
-) {
+static bool validate_component_shape(const ecs_component_record_t *record, sijson_value_t value) {
     const sireflect_fields_t *fields =
         sireflect_type_fields(ecs_world.sireflect_registry, record->reflection);
     if (sijson_type(value) != SIJSON_OBJECT || sijson_object_len(value) != fields->field_count) {
@@ -74,10 +69,8 @@ static sijson_value_t component_value_json(const ecs_component_record_t *record,
     return value ? value : sijson_make_null();
 }
 
-sijson_value_t
-ecs_rest_entity_component_json(ecs_component_t component_id, const void *ptr) {
-    const ecs_component_record_t *record =
-        ecs_component_index_get(&ecs_world.component_index, component_id);
+sijson_value_t ecs_rest_entity_component_json(ecs_component_t component_id, const void *ptr) {
+    const ecs_component_record_t *record = ecs_component_index_get(component_id);
     const sireflect_type_info_t *type =
         sireflect_type_info(ecs_world.sireflect_registry, record->reflection);
 
@@ -89,7 +82,7 @@ ecs_rest_entity_component_json(ecs_component_t component_id, const void *ptr) {
 }
 
 sihttp_response_t ecs_rest_set_entity_component(
-        ecs_entity_t entity,
+    ecs_entity_t entity,
     ecs_component_t component,
     const char *body_text
 ) {
@@ -111,8 +104,7 @@ sihttp_response_t ecs_rest_set_entity_component(
         return ecs_rest_error_response(400, "invalid json body");
     }
 
-    const ecs_component_record_t *record =
-        ecs_component_index_get(&ecs_world.component_index, component);
+    const ecs_component_record_t *record = ecs_component_index_get(component);
     if (!validate_component_shape(record, value)) {
         return ecs_rest_error_response(400, "invalid component value");
     }

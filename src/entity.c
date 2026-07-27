@@ -15,14 +15,14 @@
 ecs_entity_t ecs_new(void) {
     ecs_table_t *table = ecs_get_table(0);
 
-    ecs_entity_t entity = ecs_entity_index_create(&ecs_world.entity_index, table->entity_count);
+    ecs_entity_t entity = ecs_entity_index_create(table->entity_count);
     ecs_table_add_entity(table, entity);
 
     return entity;
 }
 
 bool ecs_is_alive(const ecs_entity_t entity) {
-    return ecs_entity_index_is_alive(&ecs_world.entity_index, entity);
+    return ecs_entity_index_is_alive(entity);
 }
 
 #ifndef NDEBUG
@@ -60,8 +60,7 @@ static inline void ecs_entity_rebase(
         }
 
         ecs_component_t component = from_table->type.ids[col];
-        const ecs_component_record_t *crec =
-            ecs_component_index_get(&ecs_world.component_index, component);
+        const ecs_component_record_t *crec = ecs_component_index_get(component);
         ecs_component_value_move_ctor(crec, dst, src, 1);
     }
 
@@ -161,8 +160,7 @@ void ecs_kill_now(ecs_entity_t entity) {
         }
 
         void *removed_data = ecs_table_component_at_column(table, col_idx, record->table_row);
-        const ecs_component_record_t *crec =
-            ecs_component_index_get(&ecs_world.component_index, component);
+        const ecs_component_record_t *crec = ecs_component_index_get(component);
 
         if (crec->on_remove) {
             crec->on_remove(entity, component, removed_data);
@@ -194,7 +192,7 @@ void ecs_kill_now(ecs_entity_t entity) {
         ecs_get_record(moved)->table_row = record->table_row;
     }
 
-    ecs_entity_index_kill(&ecs_world.entity_index, ecs_first(entity));
+    ecs_entity_index_kill(ecs_first(entity));
 }
 
 void ecs_kill(ecs_entity_t entity) {

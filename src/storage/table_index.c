@@ -55,7 +55,8 @@ ecs_table_index_insert_slot(ecs_table_index_t *map, uint32_t hash, uint16_t tabl
     map->slots[slot_idx].table_index = table_index;
 }
 
-void ecs_table_index_init(ecs_table_index_t *map) {
+void ecs_table_index_init() {
+    ecs_table_index_t *map = &ecs_world.table_index;
     map->table_count = 0;
     map->table_capacity = 1;
     map->tables = malloc(sizeof(ecs_table_t) * map->table_capacity);
@@ -63,7 +64,8 @@ void ecs_table_index_init(ecs_table_index_t *map) {
     ecs_table_index_init_slots(map);
 }
 
-void ecs_table_index_fini(ecs_table_index_t *map) {
+void ecs_table_index_fini() {
+    ecs_table_index_t *map = &ecs_world.table_index;
     for (uint16_t i = 0; i < map->table_count; i++) {
         ecs_table_fini(&map->tables[i]);
     }
@@ -122,8 +124,7 @@ static void ecs_table_index_register_inherited_components(
             }
 
             table->bloom |= 1ull << (component % 64);
-            ecs_component_record_t *record =
-                ecs_component_index_get_mut(&ecs_world.component_index, component);
+            ecs_component_record_t *record = ecs_component_index_get_mut(component);
             ecs_vec_push_u16(&record->tables, table_id);
         }
 
@@ -132,7 +133,6 @@ static void ecs_table_index_register_inherited_components(
 }
 
 uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
-    const ecs_component_index_t *component_index = &ecs_world.component_index;
     ecs_table_index_t *map = &ecs_world.table_index;
     uint32_t hash = ecs_type_hash(type);
     uint16_t hash_fingerprint = ecs_type_hash_fingerprint(hash);
@@ -142,7 +142,7 @@ uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
     // Fast path: lookup
     while (map->slots[slot_idx].table_index != ECS_TABLE_SLOT_EMPTY) {
         if (ECS_LIKELY(map->slots[slot_idx].hash == hash_fingerprint)) {
-            const ecs_table_t *table = ecs_table_index_at(map, map->slots[slot_idx].table_index);
+            const ecs_table_t *table = ecs_table_index_at(map->slots[slot_idx].table_index);
             if (ECS_LIKELY(ecs_type_equals(&table->type, &type))) {
                 ecs_type_fini(&type);
                 return (uint16_t)map->slots[slot_idx].table_index;
@@ -170,14 +170,14 @@ uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
     ecs_table_t new_table;
     // Persist the hash while transferring ownership of the type to the table.
     type.hash = hash;
-    ecs_table_init(&new_table, type, component_index, table_idx);
+    ecs_table_init(&new_table, type, table_idx);
     map->tables[table_idx] = new_table;
     ecs_table_index_register_inherited_components(&map->tables[table_idx], table_idx);
 
     map->slots[slot_idx].hash = hash_fingerprint;
     map->slots[slot_idx].table_index = table_idx;
 
-    ecs_query_index_add_table(ecs_table_index_at(map, table_idx), table_idx);
-    ecs_observer_index_add_table(ecs_table_index_at(map, table_idx));
+    ecs_query_index_add_table(ecs_table_index_at(table_idx), table_idx);
+    ecs_observer_index_add_table(ecs_table_index_at(table_idx));
     return (uint16_t)table_idx;
 }

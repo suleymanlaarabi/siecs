@@ -21,11 +21,11 @@ typedef struct {
     bool plan_dirty;
 } ecs_system_index_t;
 
-void ecs_system_index_init(ecs_system_index_t *index);
-void ecs_system_index_fini(ecs_system_index_t *index);
+void ecs_system_index_init();
+void ecs_system_index_fini();
 
-ecs_system_id_t ecs_system_index_create(ecs_system_index_t *index, const ecs_system_t *system);
-ecs_system_t *ecs_system_index_get(ecs_system_index_t *index, ecs_system_id_t system);
-void ecs_system_index_build_plan(ecs_system_index_t *index);
+ecs_system_id_t ecs_system_index_create(const ecs_system_t *system);
+ecs_system_t *ecs_system_index_get(ecs_system_id_t system);
+void ecs_system_index_build_plan();
 
 #endif

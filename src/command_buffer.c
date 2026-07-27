@@ -23,8 +23,7 @@ static inline void deferred_set_fini(ecs_deferred_set_t *set) {
     if (!set->data) {
         return;
     }
-    const ecs_component_record_t *record =
-        ecs_component_index_get(&ecs_world.component_index, set->id);
+    const ecs_component_record_t *record = ecs_component_index_get(set->id);
     ecs_component_value_dtor(record, set->data, 1);
     set->data = NULL;
 }
@@ -67,13 +66,15 @@ static inline void command_fini(ecs_entity_command_t *command) {
     ecs_vec_fini(&command->sets);
 }
 
-void ecs_command_buffer_init(ecs_command_buffer_t *buffer) {
+void ecs_command_buffer_init() {
+    ecs_command_buffer_t *buffer = &ecs_world.commands;
     ecs_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
     buffer->entity_to_command = NULL;
     buffer->entity_capacity = 0;
 }
 
-void ecs_command_buffer_fini(ecs_command_buffer_t *buffer) {
+void ecs_command_buffer_fini() {
+    ecs_command_buffer_t *buffer = &ecs_world.commands;
     ecs_entity_command_t *commands = ecs_vec_data(&buffer->commands, ecs_entity_command_t);
     for (uint32_t i = 0; i < buffer->commands.size; i++) {
         command_fini(&commands[i]);
@@ -132,7 +133,7 @@ void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id) {
 
 void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void *data) {
     ecs_entity_command_t *command = command_for_entity(entity);
-    const ecs_component_record_t *record = ecs_component_index_get(&ecs_world.component_index, id);
+    const ecs_component_record_t *record = ecs_component_index_get(id);
 
     ecs_vec_remove_u16(&command->remove_ids, id);
     id_vec_push_unique(&command->add_ids, id);
@@ -153,7 +154,7 @@ void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void 
 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data) {
     ecs_entity_command_t *command = command_for_entity(entity);
-    const ecs_component_record_t *record = ecs_component_index_get(&ecs_world.component_index, id);
+    const ecs_component_record_t *record = ecs_component_index_get(id);
 
     ecs_vec_remove_u16(&command->remove_ids, id);
     id_vec_push_unique(&command->add_ids, id);
@@ -210,7 +211,7 @@ static void final_ids_push_sorted(ecs_vec_t *final_ids, ecs_component_t id) {
 }
 
 static void final_ids_collect_requirements(ecs_vec_t *final_ids, ecs_component_t id) {
-    const ecs_component_record_t *record = ecs_component_index_get(&ecs_world.component_index, id);
+    const ecs_component_record_t *record = ecs_component_index_get(id);
     for (uint32_t i = 0; i < record->required_count; i++) {
         ecs_component_t required = record->required[i];
         if (ecs_vec_contains_u16(final_ids, required)) {
@@ -263,8 +264,7 @@ static void command_emit_removed(
         }
 
         void *data = ecs_table_component_at_column(table, i, row);
-        const ecs_component_record_t *record =
-            ecs_component_index_get(&ecs_world.component_index, id);
+        const ecs_component_record_t *record = ecs_component_index_get(id);
         if (record->on_remove) {
             record->on_remove(entity, id, data);
         }
@@ -289,8 +289,7 @@ static void command_emit_added(
         }
 
         void *data = ecs_table_component_at_column(new_table, new_i, row);
-        const ecs_component_record_t *record =
-            ecs_component_index_get(&ecs_world.component_index, id);
+        const ecs_component_record_t *record = ecs_component_index_get(id);
         if (record->on_add) {
             record->on_add(entity, id, data);
         }
@@ -319,8 +318,7 @@ static void command_apply_sets(ecs_entity_command_t *command) {
     ecs_deferred_set_t *sets = ecs_vec_data(&command->sets, ecs_deferred_set_t);
     for (uint32_t i = 0; i < command->sets.size && ecs_is_alive(command->entity); i++) {
         ecs_component_t id = sets[i].id;
-        const ecs_component_record_t *record =
-            ecs_component_index_get(&ecs_world.component_index, id);
+        const ecs_component_record_t *record = ecs_component_index_get(id);
         ecs_entity_record_t *entity_record = ecs_get_record(command->entity);
         ecs_table_t *table = ecs_get_table(entity_record->table_id);
         uint16_t column = ecs_table_get_column_index(table, id);

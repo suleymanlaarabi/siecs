@@ -1,5 +1,6 @@
 #include "resource_index.h"
 #include "../utils.h"
+#include "../world_internal.h"
 #include "siecs.h"
 #include <stdint.h>
 #include <stdlib.h>
@@ -115,7 +116,8 @@ static void ecs_resource_index_ensure(ecs_resource_index_t *index, ecs_resource_
     index->capacity = capacity;
 }
 
-void ecs_resource_index_init(ecs_resource_index_t *index) {
+void ecs_resource_index_init() {
+    ecs_resource_index_t *index = &ecs_world.resource_index;
     index->records = NULL;
     index->data = NULL;
     index->present = NULL;
@@ -123,7 +125,8 @@ void ecs_resource_index_init(ecs_resource_index_t *index) {
     index->count = 1;
 }
 
-void ecs_resource_index_fini(ecs_resource_index_t *index) {
+void ecs_resource_index_fini() {
+    ecs_resource_index_t *index = &ecs_world.resource_index;
     for (uint64_t id = 1; id < index->capacity; id++) {
         if (!index->present[id]) {
             continue;
@@ -143,7 +146,8 @@ void ecs_resource_index_fini(ecs_resource_index_t *index) {
 }
 
 ecs_resource_t
-ecs_resource_index_register(ecs_resource_index_t *index, ecs_resource_t id, const ecs_resource_desc_t *desc) {
+ecs_resource_index_register(ecs_resource_t id, const ecs_resource_desc_t *desc) {
+    ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_assert_not_null(desc);
     ecs_assert_not_null(desc->name);
     ecs_assert_id_valid(id);
@@ -159,7 +163,8 @@ ecs_resource_index_register(ecs_resource_index_t *index, ecs_resource_t id, cons
     return id;
 }
 
-ecs_resource_t ecs_resource_index_find(const ecs_resource_index_t *index, const char *name) {
+ecs_resource_t ecs_resource_index_find(const char *name) {
+    const ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_assert_not_null(name);
     for (uint32_t id = 1; id < index->count; id++) {
         if (index->records[id].name && strcmp(index->records[id].name, name) == 0) return id;
@@ -167,15 +172,16 @@ ecs_resource_t ecs_resource_index_find(const ecs_resource_index_t *index, const 
     return 0;
 }
 
-bool ecs_resource_index_is_registered(const ecs_resource_index_t *index, ecs_resource_t id) {
+bool ecs_resource_index_is_registered(ecs_resource_t id) {
+    const ecs_resource_index_t *index = &ecs_world.resource_index;
     return id != 0 && id < index->count && id < index->capacity && index->records[id].name != NULL;
 }
 
 void ecs_resource_index_set(
-    ecs_resource_index_t *index,
-        ecs_resource_t id,
+    ecs_resource_t id,
     const void *data
 ) {
+    ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_resource_index_assert_registered(index, id);
 
     const ecs_resource_desc_t *record = &index->records[id];
@@ -200,10 +206,10 @@ void ecs_resource_index_set(
 }
 
 void ecs_resource_index_move(
-    ecs_resource_index_t *index,
-        ecs_resource_t id,
+    ecs_resource_t id,
     void *data
 ) {
+    ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_resource_index_assert_registered(index, id);
 
     ecs_resource_desc_t *record = &index->records[id];
@@ -227,7 +233,8 @@ void ecs_resource_index_move(
     }
 }
 
-void *ecs_resource_index_get(ecs_resource_index_t *index, ecs_resource_t id) {
+void *ecs_resource_index_get(ecs_resource_t id) {
+    ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_resource_index_assert_registered(index, id);
     if (!index->present[id]) {
         return NULL;
@@ -236,12 +243,14 @@ void *ecs_resource_index_get(ecs_resource_index_t *index, ecs_resource_t id) {
     return index->data[id];
 }
 
-bool ecs_resource_index_has(const ecs_resource_index_t *index, ecs_resource_t id) {
+bool ecs_resource_index_has(ecs_resource_t id) {
+    const ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_resource_index_assert_registered(index, id);
     return index->present[id];
 }
 
-void ecs_resource_index_remove(ecs_resource_index_t *index, ecs_resource_t id) {
+void ecs_resource_index_remove(ecs_resource_t id) {
+    ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_resource_index_assert_registered(index, id);
     if (!index->present[id]) {
         return;

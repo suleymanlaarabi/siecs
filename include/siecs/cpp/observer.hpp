@@ -1,5 +1,4 @@
 #pragma once
-
 #include "siecs/cpp/component.hpp"
 #include "siecs/cpp/function_traits.hpp"
 #include "siecs/cpp/query.hpp"

@@ -22,7 +22,7 @@ static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query
 }
 
 ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) {
-    ecs_query_id_t qid = ecs_query_index_create(&ecs_world.query_index, desc);
+    ecs_query_id_t qid = ecs_query_index_create(desc);
     ecs_query_index_update_matches(
         ecs_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t)
     );

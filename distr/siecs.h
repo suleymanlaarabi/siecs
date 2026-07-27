@@ -1290,9 +1290,6 @@ SIECS_API void ecs_defer_begin(void);
 /* End a defer scope. The outermost end flushes the command buffer. */
 SIECS_API void ecs_defer_end(void);
 
-/* Return whether mutations are currently being deferred or flushed. */
-SIECS_API bool ecs_is_deferred(void);
-
 /*
  * Return whether entity is alive in world.
  *
@@ -1711,7 +1708,6 @@ SIECS_API void ecs_system_disable(ecs_system_id_t system);
 #define SIECS_PUBLIC_CPP_HPP
 
 #pragma once
-
 #pragma once
 #pragma once
 
@@ -2068,7 +2064,6 @@ class entity {
 } // namespace ecs
 
 #pragma once
-
 #include <cassert>
 #include <concepts>
 
@@ -2120,7 +2115,6 @@ concept module_list_initializable =
 } // namespace ecs
 
 #pragma once
-
 #pragma once
 #include <tuple>
 #include <type_traits>
@@ -2173,7 +2167,6 @@ namespace ecs {
 
 #pragma once
 #pragma once
-
 #include <cassert>
 #include <string>
 #include <tuple>
@@ -2208,11 +2201,9 @@ template <typename T> struct res_value<ecs::res<T>> {
     using type = T;
 };
 
-template <typename T>
-using res_value_t = typename res_value<std::remove_cvref_t<T>>::type;
+template <typename T> using res_value_t = typename res_value<std::remove_cvref_t<T>>::type;
 
-template <typename T>
-using resource_value_t = std::remove_cv_t<res_value_t<T>>;
+template <typename T> using resource_value_t = std::remove_cv_t<res_value_t<T>>;
 
 struct no_resource {};
 
@@ -2222,7 +2213,8 @@ template <typename T> static ecs_resource_t ecs_cpp_resource_id() {
     using type = std::remove_cv_t<T>;
     ecs_resource_t &rid = detail::resource_type<type>::id;
 
-    if (rid != 0) return rid;
+    if (rid != 0)
+        return rid;
 
     static const std::string name = std::string(type_name<type>());
 
@@ -2257,8 +2249,7 @@ template <typename Arg> inline auto make_resource_arg() {
     }
 }
 
-template <typename Args, std::size_t... Is>
-inline auto make_resources(std::index_sequence<Is...>) {
+template <typename Args, std::size_t... Is> inline auto make_resources(std::index_sequence<Is...>) {
     return std::tuple{ make_resource_arg<std::tuple_element_t<Is, Args>>()... };
 }
 

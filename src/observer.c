@@ -24,7 +24,7 @@ ecs_event_t ecs_event_register(ecs_event_t *id) {
 
 ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
         ecs_assert(desc->callback != NULL, "Observer callback cannot be NULL");
-    ecs_observer_id_t oid = ecs_observer_index_create(&ecs_world.observer_index, desc);
+    ecs_observer_id_t oid = ecs_observer_index_create(desc);
     ecs_observer_index_match_tables(
                 ecs_world.table_index.tables,
         ecs_world.table_index.table_count,

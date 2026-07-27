@@ -8,12 +8,14 @@
 
 #define ECS_BUILTIN_EVENT_COUNT 3 // EcsOnAdd, EcsOnRemove, EcsOnSet
 
-void ecs_observer_index_init(ecs_observer_index_t *index) {
+void ecs_observer_index_init() {
+    ecs_observer_index_t *index = &ecs_world.observer_index;
     ecs_vec_init(&index->observers, sizeof(ecs_observer_t));
     index->event_count = ECS_BUILTIN_EVENT_COUNT;
 }
 
-void ecs_observer_index_fini(ecs_observer_index_t *index) {
+void ecs_observer_index_fini() {
+    ecs_observer_index_t *index = &ecs_world.observer_index;
     for (uint32_t i = 0; i < index->observers.size; i++) {
         ecs_observer_t *obs = ecs_vec_get_mut(&index->observers, i, ecs_observer_t);
         ecs_query_index_destroy(&obs->query);
@@ -21,7 +23,8 @@ void ecs_observer_index_fini(ecs_observer_index_t *index) {
     ecs_vec_fini(&index->observers);
 }
 
-uint16_t ecs_observer_index_create(ecs_observer_index_t *index, const ecs_observer_desc_t *desc) {
+uint16_t ecs_observer_index_create(const ecs_observer_desc_t *desc) {
+    ecs_observer_index_t *index = &ecs_world.observer_index;
     ecs_observer_t *obs = ecs_vec_push_empty(&index->observers, sizeof(ecs_observer_t));
     obs->event = desc->on;
     obs->callback = desc->callback;

@@ -28,14 +28,14 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
 
     memcpy(sys.after, desc->after, sizeof(sys.after));
 
-    ecs_system_id_t system = ecs_system_index_create(&ecs_world.system_index, &sys);
+    ecs_system_id_t system = ecs_system_index_create(&sys);
     ecs_module_record_system(system);
     return system;
 }
 
 void ecs_run_system(ecs_system_id_t system) {
 
-    ecs_system_t *sys = ecs_system_index_get(&ecs_world.system_index, system);
+    ecs_system_t *sys = ecs_system_index_get(system);
     if (!sys->enabled) {
         return;
     }
@@ -64,7 +64,7 @@ void ecs_run_phase(ecs_phase_t phase) {
 
     ecs_system_index_t *index = &ecs_world.system_index;
     if (index->plan_dirty) {
-        ecs_system_index_build_plan(index);
+        ecs_system_index_build_plan();
     }
 
     ecs_vec_t *order = &index->phase_order[phase];
@@ -136,7 +136,7 @@ void ecs_run(void) {
 
 void ecs_system_enable(ecs_system_id_t system) {
 
-    ecs_system_t *sys = ecs_system_index_get(&ecs_world.system_index, system);
+    ecs_system_t *sys = ecs_system_index_get(system);
     if (sys->enabled == true) {
         return;
     }
@@ -147,7 +147,7 @@ void ecs_system_enable(ecs_system_id_t system) {
 
 void ecs_system_disable(ecs_system_id_t system) {
 
-    ecs_system_t *sys = ecs_system_index_get(&ecs_world.system_index, system);
+    ecs_system_t *sys = ecs_system_index_get(system);
     if (sys->enabled == false) {
         return;
     }

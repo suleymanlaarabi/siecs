@@ -11,7 +11,6 @@
 void ecs_table_init(
     ecs_table_t *table,
     ecs_type_t type,
-    const ecs_component_index_t *component_index,
     uint16_t table_id
 ) {
     table->type = type;
@@ -28,7 +27,7 @@ void ecs_table_init(
     ecs_id_map_init(&table->add_edge);
 
     for (uint16_t i = 0; i < type.count; i++) {
-        ecs_component_record_t *rec = ecs_component_index_get_mut(component_index, type.ids[i]);
+        ecs_component_record_t *rec = ecs_component_index_get_mut(type.ids[i]);
         ecs_vec_push_u16(&rec->tables, table_id);
         table->cls[i].size = rec->size;
         table->cls[i].data = rec->size != 0 ? calloc(table->entity_capacity, rec->size) : NULL;
@@ -73,7 +72,7 @@ static inline void ecs_table_grow(ecs_table_t *table) {
         }
 
         const ecs_component_record_t *record =
-            ecs_component_index_get(&ecs_world.component_index, table->type.ids[column_index]);
+            ecs_component_index_get(table->type.ids[column_index]);
         void *new_data = malloc((size_t)new_capacity * column->size);
         ecs_assert_not_null(new_data);
         ecs_component_value_move_ctor(record, new_data, column->data, table->entity_count);
@@ -94,8 +93,7 @@ uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
 
 // if the entity is not the last one, the last entity will be moved to the removed entity's
 // position, and the moved entity will be returned
-ecs_entity_t
-ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) {
+ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) {
     ecs_entity_t removed_entity = table->entities[row];
     uint32_t last_row = table->entity_count - 1;
     if (row_values_live) {
@@ -106,7 +104,7 @@ ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) 
                 continue;
             }
             const ecs_component_record_t *record =
-                ecs_component_index_get(&ecs_world.component_index, table->type.ids[column_index]);
+                ecs_component_index_get(table->type.ids[column_index]);
             void *ptr = (char *)column->data + (column->size * row);
             ecs_component_value_dtor(record, ptr, 1);
         }
@@ -124,7 +122,7 @@ ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) 
                 continue;
             }
             const ecs_component_record_t *record =
-                ecs_component_index_get(&ecs_world.component_index, table->type.ids[column_index]);
+                ecs_component_index_get(table->type.ids[column_index]);
             ecs_component_value_move_ctor(record, dst, src, 1);
         }
         table->entity_count -= 1;
@@ -154,8 +152,7 @@ void ecs_table_add_observer(ecs_table_t *table, uint16_t event, uint16_t observe
 static void ecs_table_fini_component_values(ecs_table_t *table) {
     for (uint16_t c = 0; c < table->type.count; c++) {
         ecs_component_t component = table->type.ids[c];
-        const ecs_component_record_t *crec =
-            ecs_component_index_get(&ecs_world.component_index, component);
+        const ecs_component_record_t *crec = ecs_component_index_get(component);
 
         if (crec->relation_flags & EcsRelationSource) {
             if (!(crec->relation_flags & EcsRelationOneToOne)) {
@@ -198,10 +195,7 @@ void ecs_table_fini(ecs_table_t *table) {
     ecs_type_fini(&table->type);
 }
 
-bool ecs_table_has(
-    const ecs_table_t *table,
-    ecs_component_t component_id
-) {
+bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
     if (ecs_table_column_or_invalid(table, component_id) != UINT16_MAX) {
         return true;
     }
@@ -242,11 +236,7 @@ bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
     return false;
 }
 
-void *ecs_table_field(
-        const ecs_table_t *table,
-    ecs_component_t component_id,
-    bool *is_shared
-) {
+void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bool *is_shared) {
     uint16_t cidx = ecs_table_column_or_invalid(table, component_id);
     if (cidx != UINT16_MAX) {
         *is_shared = false;

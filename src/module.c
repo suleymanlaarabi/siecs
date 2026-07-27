@@ -7,12 +7,12 @@ ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
     ecs_assert_not_null(desc->name);
     ecs_assert_not_null(desc->import);
 
-    ecs_module_id_t existing = ecs_module_index_find(&ecs_world.module_index, desc->id);
+    ecs_module_id_t existing = ecs_module_index_find(desc->id);
     if (existing) {
         return existing;
     }
 
-    ecs_module_id_t module = ecs_module_index_create(&ecs_world.module_index, desc->id, desc->name);
+    ecs_module_id_t module = ecs_module_index_create(desc->id, desc->name);
     if (desc->id) {
         *desc->id = module;
     }
@@ -31,7 +31,7 @@ ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
 
 void ecs_module_enable(ecs_module_id_t module) {
     
-    ecs_module_t *record = ecs_module_index_get(&ecs_world.module_index, module);
+    ecs_module_t *record = ecs_module_index_get(module);
     if (record->enabled) {
         return;
     }
@@ -50,12 +50,12 @@ void ecs_module_enable(ecs_module_id_t module) {
 }
 
 ecs_module_id_t ecs_module_find(const ecs_module_id_t *id) {
-    return ecs_module_index_find(&ecs_world.module_index, id);
+    return ecs_module_index_find(id);
 }
 
 void ecs_module_disable(ecs_module_id_t module) {
     
-    ecs_module_t *record = ecs_module_index_get(&ecs_world.module_index, module);
+    ecs_module_t *record = ecs_module_index_get(module);
     if (!record->enabled) {
         return;
     }
@@ -74,7 +74,7 @@ void ecs_module_disable(ecs_module_id_t module) {
 }
 
 bool ecs_module_is_enabled(const ecs_module_id_t module) {
-        return ecs_module_index_get_const(&ecs_world.module_index, module)->enabled;
+        return ecs_module_index_get_const(module)->enabled;
 }
 
 void ecs_module_record_system(ecs_system_id_t system) {
@@ -83,7 +83,7 @@ void ecs_module_record_system(ecs_system_id_t system) {
         return;
     }
 
-    ecs_module_t *record = ecs_module_index_get(&ecs_world.module_index, module);
+    ecs_module_t *record = ecs_module_index_get(module);
     ecs_vec_push_u16(&record->systems, system);
 }
 
@@ -93,6 +93,6 @@ void ecs_module_record_observer(ecs_observer_id_t observer) {
         return;
     }
 
-    ecs_module_t *record = ecs_module_index_get(&ecs_world.module_index, module);
+    ecs_module_t *record = ecs_module_index_get(module);
     ecs_vec_push(&record->observers, &observer, sizeof(ecs_observer_id_t));
 }

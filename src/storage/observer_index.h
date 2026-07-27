@@ -19,10 +19,10 @@ typedef struct {
     uint16_t event_count; // next free event id; starts past the builtin events
 } ecs_observer_index_t;
 
-void ecs_observer_index_init(ecs_observer_index_t *index);
-void ecs_observer_index_fini(ecs_observer_index_t *index);
+void ecs_observer_index_init();
+void ecs_observer_index_fini();
 
-uint16_t ecs_observer_index_create(ecs_observer_index_t *index, const ecs_observer_desc_t *desc);
+uint16_t ecs_observer_index_create(const ecs_observer_desc_t *desc);
 
 // Cache a freshly created observer onto every existing table it matches.
 void ecs_observer_index_match_tables(

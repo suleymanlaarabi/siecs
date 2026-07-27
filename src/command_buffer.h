@@ -29,8 +29,8 @@ typedef struct ecs_command_buffer_s {
     uint32_t entity_capacity;
 } ecs_command_buffer_t;
 
-void ecs_command_buffer_init(ecs_command_buffer_t *buffer);
-void ecs_command_buffer_fini(ecs_command_buffer_t *buffer);
+void ecs_command_buffer_init();
+void ecs_command_buffer_fini();
 
 void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id);
 void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id);

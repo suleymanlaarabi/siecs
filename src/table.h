@@ -35,12 +35,9 @@ typedef struct ecs_table_s {
     ecs_vec_t observers_by_event; // ecs_vec_t per event id; each holds uint16_t observer ids.
 } ecs_table_t;
 
-struct ecs_component_index_s;
-
 void ecs_table_init(
     ecs_table_t *table,
     ecs_type_t type,
-    const struct ecs_component_index_s *component_index,
     uint16_t table_id
 );
 void ecs_table_fini(ecs_table_t *table);

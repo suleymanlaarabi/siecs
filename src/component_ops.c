@@ -33,8 +33,7 @@ static void ecs_emit_added_components(
         }
 
         void *data = ecs_table_component_at_column(to_table, to_i, row);
-        const ecs_component_record_t *crec =
-            ecs_component_index_get(&ecs_world.component_index, added);
+        const ecs_component_record_t *crec = ecs_component_index_get(added);
         if (crec->on_add) {
             crec->on_add(entity, added, data);
         }
@@ -57,7 +56,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
         return;
     }
 
-    const ecs_component_record_t *crec = ecs_component_index_get(&ecs_world.component_index, cid);
+    const ecs_component_record_t *crec = ecs_component_index_get(cid);
 
     if (crec->required_count == 0) {
         if (edge == UINT16_MAX) {
@@ -143,7 +142,7 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
 
     void *removed_data = ecs_table_component_at_column(table, col_idx, record->table_row);
 
-    const ecs_component_record_t *crec = ecs_component_index_get(&ecs_world.component_index, cid);
+    const ecs_component_record_t *crec = ecs_component_index_get(cid);
     if (crec->on_remove) {
         crec->on_remove(entity, cid, removed_data);
         table = ecs_get_table(from_id);
@@ -215,7 +214,7 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
     ecs_assert_is_alive(entity);
 
     ecs_add_cid_now(entity, cid);
-    const ecs_component_record_t *crec = ecs_component_index_get(&ecs_world.component_index, cid);
+    const ecs_component_record_t *crec = ecs_component_index_get(cid);
     ecs_entity_record_t *record = ecs_get_record(entity);
     ecs_table_t *table = ecs_get_table(record->table_id);
     uint16_t col_idx = ecs_table_get_column_index(table, cid);
@@ -252,7 +251,7 @@ void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
 
     bool had_value = ecs_has_cid_owned(entity, cid);
     ecs_add_cid_now(entity, cid);
-    const ecs_component_record_t *crec = ecs_component_index_get(&ecs_world.component_index, cid);
+    const ecs_component_record_t *crec = ecs_component_index_get(cid);
     ecs_entity_record_t *record = ecs_get_record(entity);
     ecs_table_t *table = ecs_get_table(record->table_id);
     uint16_t col_idx = ecs_table_get_column_index(table, cid);
@@ -315,8 +314,7 @@ void ecs_with(ecs_component_t component, ecs_component_t require) {
     );
 #endif
 
-    ecs_component_record_t *record =
-        ecs_component_index_get_mut(&ecs_world.component_index, component);
+    ecs_component_record_t *record = ecs_component_index_get_mut(component);
 
     ecs_assert(record->tables.size == 0, "component already used cannot register requirement");
 

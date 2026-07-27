@@ -27,7 +27,7 @@ static inline void ecs_add_plan_push(ecs_add_plan_t *plan, ecs_component_t id) {
 }
 
 static inline void ecs_add_plan_collect_requirements(
-        ecs_table_t *from_table,
+    ecs_table_t *from_table,
     ecs_add_plan_t *plan,
     const ecs_component_record_t *crec
 ) {
@@ -37,8 +37,7 @@ static inline void ecs_add_plan_collect_requirements(
             continue;
         }
 
-        const ecs_component_record_t *required_rec =
-            ecs_component_index_get(&ecs_world.component_index, required);
+        const ecs_component_record_t *required_rec = ecs_component_index_get(required);
         if (required_rec->required_count) {
             ecs_add_plan_collect_requirements(from_table, plan, required_rec);
         }
@@ -59,7 +58,7 @@ static inline void ecs_sort_component_ids(ecs_component_t *ids, uint16_t count) 
 }
 
 ecs_type_t ecs_type_with_requirements(
-        ecs_table_t *from_table,
+    ecs_table_t *from_table,
     ecs_component_t cid,
     const ecs_component_record_t *crec
 ) {
@@ -99,12 +98,8 @@ ecs_type_t ecs_type_with_requirements(
 }
 
 #ifndef NDEBUG
-bool ecs_component_requires(
-    const     ecs_component_t component,
-    ecs_component_t require
-) {
-    const ecs_component_record_t *record =
-        ecs_component_index_get(&ecs_world.component_index, component);
+bool ecs_component_requires(const ecs_component_t component, ecs_component_t require) {
+    const ecs_component_record_t *record = ecs_component_index_get(component);
 
     for (uint32_t i = 0; i < record->required_count; i++) {
         ecs_component_t current = record->required[i];

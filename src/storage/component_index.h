@@ -27,7 +27,6 @@ typedef struct ecs_component_index_s {
 } ecs_component_index_t;
 
 void ecs_component_index_register(
-    ecs_component_index_t *index,
     ecs_component_t id,
     uint64_t size,
     ecs_type_ops_t ops,
@@ -39,13 +38,13 @@ void ecs_component_index_register(
     const sireflect_struct_desc_t *reflection_desc
 );
 
-#define ecs_component_index_get(index, id)                                                         \
-    ecs_vec_get(&(index)->components, id, ecs_component_record_t)
-#define ecs_component_index_get_mut(index, id)                                                     \
-    ecs_vec_get_mut(&(index)->components, id, ecs_component_record_t)
+#define ecs_component_index_get(id)                                                                \
+    ecs_vec_get(&ecs_world.component_index.components, id, ecs_component_record_t)
+#define ecs_component_index_get_mut(id)                                                           \
+    ecs_vec_get_mut(&ecs_world.component_index.components, id, ecs_component_record_t)
 
-void ecs_component_index_init(ecs_component_index_t *index);
-void ecs_component_index_fini(ecs_component_index_t *index);
+void ecs_component_index_init();
+void ecs_component_index_fini();
 
 void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count);
 void ecs_component_value_dtor(const ecs_component_record_t *record, void *ptr, uint32_t count);

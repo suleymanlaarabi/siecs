@@ -1,4 +1,5 @@
 #include "arena.h"
+#include "../world_internal.h"
 #include <stdlib.h>
 
 #define ECS_ARENA_INITIAL_CAPACITY 4096u
@@ -9,7 +10,8 @@ static ecs_arena_block_t *ecs_arena_block_new(uint32_t capacity) {
     return block;
 }
 
-void ecs_arena_init(ecs_arena_t *allocator) {
+void ecs_arena_init() {
+    ecs_arena_t *allocator = &ecs_world.arena_allocator;
     ecs_arena_block_t *block = ecs_arena_block_new(ECS_ARENA_INITIAL_CAPACITY);
     *allocator = (ecs_arena_t){
         .first = block,
@@ -47,7 +49,8 @@ void *ecs_arena_alloc_slow(ecs_arena_t *allocator, uint32_t size) {
     return block->data;
 }
 
-void ecs_arena_fini(ecs_arena_t *allocator) {
+void ecs_arena_fini() {
+    ecs_arena_t *allocator = &ecs_world.arena_allocator;
     ecs_arena_block_t *block = allocator->first;
     while (block) {
         ecs_arena_block_t *next = block->next;

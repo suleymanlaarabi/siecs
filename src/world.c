@@ -24,16 +24,16 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     }
     ecs_world_started = true;
 
-    ecs_entity_index_init(&ecs_world.entity_index);
-    ecs_component_index_init(&ecs_world.component_index);
-    ecs_table_index_init(&ecs_world.table_index);
-    ecs_query_index_init(&ecs_world.query_index);
-    ecs_observer_index_init(&ecs_world.observer_index);
-    ecs_system_index_init(&ecs_world.system_index);
-    ecs_module_index_init(&ecs_world.module_index);
-    ecs_resource_index_init(&ecs_world.resource_index);
-    ecs_arena_init(&ecs_world.arena_allocator);
-    ecs_command_buffer_init(&ecs_world.commands);
+    ecs_entity_index_init();
+    ecs_component_index_init();
+    ecs_table_index_init();
+    ecs_query_index_init();
+    ecs_observer_index_init();
+    ecs_system_index_init();
+    ecs_module_index_init();
+    ecs_resource_index_init();
+    ecs_arena_init();
+    ecs_command_buffer_init();
     ecs_world.active_module = 0;
     ecs_world.features = *features;
     ecs_world.defer_depth = 0;
@@ -54,16 +54,16 @@ void ecs_fini(void) {
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
     ecs_world_finished = true;
 
-    ecs_resource_index_fini(&ecs_world.resource_index);
-    ecs_table_index_fini(&ecs_world.table_index);
-    ecs_entity_index_fini(&ecs_world.entity_index);
-    ecs_component_index_fini(&ecs_world.component_index);
-    ecs_query_index_fini(&ecs_world.query_index);
-    ecs_observer_index_fini(&ecs_world.observer_index);
-    ecs_system_index_fini(&ecs_world.system_index);
-    ecs_module_index_fini(&ecs_world.module_index);
-    ecs_command_buffer_fini(&ecs_world.commands);
-    ecs_arena_fini(&ecs_world.arena_allocator);
+    ecs_resource_index_fini();
+    ecs_table_index_fini();
+    ecs_entity_index_fini();
+    ecs_component_index_fini();
+    ecs_query_index_fini();
+    ecs_observer_index_fini();
+    ecs_system_index_fini();
+    ecs_module_index_fini();
+    ecs_command_buffer_fini();
+    ecs_arena_fini();
     sireflect_registry_fini(ecs_world.sireflect_registry);
 
     if (ecs_world.features.rest) {

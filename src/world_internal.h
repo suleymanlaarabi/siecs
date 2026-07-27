@@ -52,7 +52,7 @@ typedef struct {
 
 #define ecs_get_record(entity)                                                                     \
     ecs_vec_get_mut(&ecs_world.entity_index.entities, ecs_first(entity), ecs_entity_record_t)
-#define ecs_get_table(tid) ecs_table_index_at(&ecs_world.table_index, tid)
+#define ecs_get_table(tid) ecs_table_index_at(tid)
 
 static inline void
 ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void *trigger_data) {
