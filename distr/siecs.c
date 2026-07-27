@@ -5745,39 +5745,6 @@ void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_
 
 #endif
 
-#ifndef SIREFLECT_H
-#endif
-#ifndef SIECS_STORAGE_TABLE_INDEX_H
-#define SIECS_STORAGE_TABLE_INDEX_H
-#ifndef SIECS_TABLE_H
-#define SIECS_TABLE_H
-#ifndef SIECS_DATASTRUCTURE_IDMAP_H
-#define SIECS_DATASTRUCTURE_IDMAP_H
-#include <stdint.h>
-
-typedef struct {
-    uint16_t *ids;
-    uint16_t capacity;
-} ecs_id_map_t;
-
-void ecs_id_map_init(ecs_id_map_t *map);
-void ecs_id_map_fini(ecs_id_map_t *map);
-
-void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id);
-
-static inline void ecs_id_map_set(ecs_id_map_t *map, uint16_t id, uint16_t value) {
-    ecs_id_map_ensure(map, id);
-    map->ids[id] = value;
-}
-
-static inline uint16_t ecs_id_map_at(const ecs_id_map_t *map, uint16_t id) { return map->ids[id]; }
-
-static inline uint16_t ecs_id_map_at_or_invalid(const ecs_id_map_t *map, uint16_t id) {
-    return map->capacity > id ? map->ids[id] : UINT16_MAX;
-}
-
-#endif
-
 #ifndef SIECS_TYPE_H
 #define SIECS_TYPE_H
 #include <stdint.h>
@@ -5809,6 +5776,39 @@ static inline int ecs_type_equals(const ecs_type_t *a, const ecs_type_t *b) {
     if (a->count == 0)
         return 1;
     return memcmp(a->ids, b->ids, (size_t)a->count * sizeof(uint16_t)) == 0;
+}
+
+#endif
+
+#ifndef SIREFLECT_H
+#endif
+#ifndef SIECS_STORAGE_TABLE_INDEX_H
+#define SIECS_STORAGE_TABLE_INDEX_H
+#ifndef SIECS_TABLE_H
+#define SIECS_TABLE_H
+#ifndef SIECS_DATASTRUCTURE_IDMAP_H
+#define SIECS_DATASTRUCTURE_IDMAP_H
+#include <stdint.h>
+
+typedef struct {
+    uint16_t *ids;
+    uint16_t capacity;
+} ecs_id_map_t;
+
+void ecs_id_map_init(ecs_id_map_t *map);
+void ecs_id_map_fini(ecs_id_map_t *map);
+
+void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id);
+
+static inline void ecs_id_map_set(ecs_id_map_t *map, uint16_t id, uint16_t value) {
+    ecs_id_map_ensure(map, id);
+    map->ids[id] = value;
+}
+
+static inline uint16_t ecs_id_map_at(const ecs_id_map_t *map, uint16_t id) { return map->ids[id]; }
+
+static inline uint16_t ecs_id_map_at_or_invalid(const ecs_id_map_t *map, uint16_t id) {
+    return map->capacity > id ? map->ids[id] : UINT16_MAX;
 }
 
 #endif
@@ -6444,9 +6444,10 @@ ECS_COMPONENT_DEFINE(Name);
 ECS_TAG_DEFINE(Disabled);
 ECS_TAG_DEFINE(Abstract);
 
+static ecs_component_t default_components[] = { 0 };
+
 void ecs_bootstrap() {
     // Reserve identifiers used to represent false return values.
-    ecs_table_index_get_or_create((ecs_type_t){ 0 });
     ecs_vec_push_u64(&ecs_world.entity_index.entities, 0);
     ecs_component({ .name = "Invalid" });
 
@@ -6466,6 +6467,8 @@ void ecs_bootstrap() {
     ECS_COMPONENT_REGISTER(Disabled);
     ECS_COMPONENT_REGISTER(Abstract);
 
+    default_components[0] = ecs_id(Name);
+    ecs_table_index_get_or_create((ecs_type_t){ .ids = default_components, .count = 1 });
     init_rest();
 }
 
@@ -7594,8 +7597,11 @@ ecs_entity_t ecs_new(void) {
     ecs_table_t *table = ecs_get_table(0);
 
     ecs_entity_t entity = ecs_entity_index_create(&ecs_world.entity_index, table->entity_count);
-    ecs_table_add_entity(table, entity);
+    uint32_t row = ecs_table_add_entity(table, entity);
 
+    ((Name *)table->cls[0].data)[row] = (Name){
+        .value = siformat("(%d, %d)", ecs_first(entity), ecs_second(entity)),
+    };
     return entity;
 }
 
@@ -7787,17 +7793,7 @@ void ecs_kill(ecs_entity_t entity) {
     ecs_kill_now(entity);
 }
 
-const char *ecs_entity_name(ecs_entity_t entity) {
-    static char *buff = NULL;
-    if (ecs_has(entity, Name)) {
-        return ecs_get(entity, Name)->value;
-    }
-    if (!buff) {
-        buff = calloc(20, sizeof(char));
-    }
-    sprintf(buff, "(%d, %d)", ecs_first(entity), ecs_second(entity));
-    return buff;
-}
+const char *ecs_entity_name(ecs_entity_t entity) { return ecs_get(entity, Name)->value; }
 
 #ifndef SIECS_MODULE_H
 #define SIECS_MODULE_H

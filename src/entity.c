@@ -1,5 +1,6 @@
 #include "command_buffer.h"
 #include "datastructure/vec.h"
+#include "helper.h"
 #include "siecs.h"
 #include "storage/component_index.h"
 #include "table.h"
@@ -16,8 +17,11 @@ ecs_entity_t ecs_new(void) {
     ecs_table_t *table = ecs_get_table(0);
 
     ecs_entity_t entity = ecs_entity_index_create(&ecs_world.entity_index, table->entity_count);
-    ecs_table_add_entity(table, entity);
+    uint32_t row = ecs_table_add_entity(table, entity);
 
+    ((Name *)table->cls[0].data)[row] = (Name){
+        .value = siformat("(%d, %d)", ecs_first(entity), ecs_second(entity)),
+    };
     return entity;
 }
 
@@ -209,14 +213,4 @@ void ecs_kill(ecs_entity_t entity) {
     ecs_kill_now(entity);
 }
 
-const char *ecs_entity_name(ecs_entity_t entity) {
-    static char *buff = NULL;
-    if (ecs_has(entity, Name)) {
-        return ecs_get(entity, Name)->value;
-    }
-    if (!buff) {
-        buff = calloc(20, sizeof(char));
-    }
-    sprintf(buff, "(%d, %d)", ecs_first(entity), ecs_second(entity));
-    return buff;
-}
+const char *ecs_entity_name(ecs_entity_t entity) { return ecs_get(entity, Name)->value; }
