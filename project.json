@@ -20,6 +20,25 @@
             "use": ["sihttp"]
           }
         ]
+      },
+      {
+        "path": "distr",
+        "prefix": "siecs_no_addons",
+        "disable-flags": [
+          "SIECS_HAS_NAMES",
+          "SIECS_HAS_META",
+          "SIECS_HAS_REST"
+        ],
+        "dependencies": [
+          {
+            "when": "SIECS_HAS_META",
+            "use": ["sireflect", "sijson"]
+          },
+          {
+            "when": "SIECS_HAS_REST",
+            "use": ["sihttp"]
+          }
+        ]
       }
     ]
   },

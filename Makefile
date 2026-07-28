@@ -62,6 +62,8 @@ check-distr:
 	sh tools/rebuild_distr.sh "$$tmp_dir"; \
 	diff -u distr/siecs.c "$$tmp_dir/distr/siecs.c"; \
 	diff -u distr/siecs.h "$$tmp_dir/distr/siecs.h"; \
+	diff -u distr/siecs_no_addons.c "$$tmp_dir/distr/siecs_no_addons.c"; \
+	diff -u distr/siecs_no_addons.h "$$tmp_dir/distr/siecs_no_addons.h"; \
 	diff -u include/siecs/bake_config.h "$$tmp_dir/include/siecs/bake_config.h"
 
 check-distr-standalone:

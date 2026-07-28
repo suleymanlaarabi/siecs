@@ -6,7 +6,6 @@ out_root=${1:-$repo_root}
 work_dir=$(mktemp -d /tmp/siecs-distr-build.XXXXXX)
 bake_bin=${BAKE:-bake}
 host_bake_home=$("$bake_bin" env | sed -n 's/^BAKE_HOME=//p')
-host_bake_target=$("$bake_bin" env | sed -n 's/^BAKE_TARGET=//p')
 export BAKE_HOME="$work_dir/.bake"
 
 cleanup() {
@@ -20,11 +19,8 @@ cp -R "$repo_root/project.json" "$repo_root/include" "$repo_root/src" "$work_dir
 cd "$work_dir"
 
 mkdir -p "$BAKE_HOME/include" "$BAKE_HOME/lib" "$BAKE_HOME/meta" "$BAKE_HOME/src"
-isolated_bake_target=$("$bake_bin" env | sed -n 's/^BAKE_TARGET=//p')
-mkdir -p "$isolated_bake_target/lib"
 cp -R "$host_bake_home/include/." "$BAKE_HOME/include/"
 cp "$host_bake_home"/lib/libbake_*.so "$BAKE_HOME/lib/"
-cp -R "$host_bake_target/lib/." "$isolated_bake_target/lib/"
 for pkg in \
     bake.amalgamate bake.lang.c bake.lang.cpp bake.test bake.util \
     sireflect sijson sihttp
@@ -52,4 +48,6 @@ done
 mkdir -p "$out_root/distr" "$out_root/include/siecs"
 cp distr/siecs.c "$out_root/distr/siecs.c"
 cp distr/siecs.h "$out_root/distr/siecs.h"
+cp distr/siecs_no_addons.c "$out_root/distr/siecs_no_addons.c"
+cp distr/siecs_no_addons.h "$out_root/distr/siecs_no_addons.h"
 cp include/siecs/bake_config.h "$out_root/include/siecs/bake_config.h"
