@@ -8,10 +8,14 @@ export default defineConfig({
   markdown: {
     remarkPlugins: [languageExamples],
   },
+  server: {
+    port: 5050
+  },
   integrations: [
     starlight({
       title: 'SIECS',
       description: 'Documentation for the SIECS entity component system.',
+      customCss: ['./src/styles/custom.css'],
       sidebar: [
         { label: 'Overview', link: '/' },
         {

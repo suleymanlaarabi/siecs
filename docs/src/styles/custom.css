@@ -1,0 +1,90 @@
+/* A restrained monochrome palette inspired by Vercel's documentation. */
+:root,
+:root[data-theme='light'] {
+	--sl-color-white: #111;
+	--sl-color-gray-1: #262626;
+	--sl-color-gray-2: #404040;
+	--sl-color-gray-3: #737373;
+	--sl-color-gray-4: #a3a3a3;
+	--sl-color-gray-5: #e5e5e5;
+	--sl-color-gray-6: #fafafa;
+	--sl-color-gray-7: #fdfdfd;
+	--sl-color-black: #fff;
+
+	--sl-color-accent-low: #f5f5f5;
+	--sl-color-accent: #404040;
+	--sl-color-accent-high: #262626;
+	--sl-color-text: #404040;
+	--sl-color-text-accent: #262626;
+	--sl-color-text-invert: #fff;
+	--sl-color-bg: #fff;
+	--sl-color-bg-nav: rgba(255, 255, 255, 0.92);
+	--sl-color-bg-sidebar: #fff;
+	--sl-color-bg-inline-code: #f5f5f5;
+	--sl-color-bg-accent: #f5f5f5;
+	--sl-color-hairline-light: #ededed;
+	--sl-color-hairline: #eaeaea;
+	--sl-color-hairline-shade: #fdfdfd;
+	--sl-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+	--sl-font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+}
+
+:root[data-theme='dark'] {
+	--sl-color-white: #fff;
+	--sl-color-gray-1: #f5f5f5;
+	--sl-color-gray-2: #d4d4d4;
+	--sl-color-gray-3: #a3a3a3;
+	--sl-color-gray-4: #737373;
+	--sl-color-gray-5: #525252;
+	--sl-color-gray-6: #1a1a1a;
+	--sl-color-black: #000;
+
+	--sl-color-accent-low: #262626;
+	--sl-color-accent: #d4d4d4;
+	--sl-color-accent-high: #f5f5f5;
+	--sl-color-text: #d4d4d4;
+	--sl-color-text-accent: #f5f5f5;
+	--sl-color-text-invert: #fff;
+	--sl-color-bg: #000;
+	--sl-color-bg-nav: rgba(0, 0, 0, 0.92);
+	--sl-color-bg-sidebar: #000;
+	--sl-color-bg-inline-code: #1a1a1a;
+	--sl-color-bg-accent: #1f1f1f;
+	--sl-color-hairline-light: #292929;
+	--sl-color-hairline: #242424;
+	--sl-color-hairline-shade: #0d0d0d;
+}
+
+starlight-theme-select,
+.header {
+	backdrop-filter: blur(12px);
+}
+
+main {
+	--sl-content-gap-y: 1.25rem;
+}
+
+.sl-markdown-content :is(h1, h2, h3, h4) {
+	letter-spacing: -0.025em;
+}
+
+.sl-markdown-content :is(code, pre) {
+	border-color: var(--sl-color-hairline-light);
+}
+
+.sl-markdown-content :not(pre) > code {
+	border: 1px solid var(--sl-color-hairline-light);
+}
+
+/* Keep the navigation quiet and make the current page a subtle state. */
+[data-theme='dark'] .sidebar-content a[aria-current='page'],
+[data-theme='dark'] .sidebar-content a[aria-current='page']:hover {
+	color: var(--sl-color-white);
+	background-color: #1f1f1f;
+}
+
+[data-theme='light'] .sidebar-content a[aria-current='page'],
+[data-theme='light'] .sidebar-content a[aria-current='page']:hover {
+	color: var(--sl-color-gray-1);
+	background-color: #f5f5f5;
+}
