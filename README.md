@@ -17,9 +17,6 @@ scheduled systems, relations, and runtime reflection.
 
 - [Website](https://siecs.dev/)
 - [Documentation](https://docs.siecs.dev/)
-- [ECS for C](https://siecs.dev/ecs-for-c/)
-- [ECS for C++](https://siecs.dev/ecs-for-cpp/)
-- [Performance and benchmarks](https://siecs.dev/benchmarks/)
 
 > [!CAUTION]
 > **Experimental project.**
