@@ -12,10 +12,6 @@
         "path": "distr",
         "dependencies": [
           {
-            "when": "1",
-            "use": ["sicore"]
-          },
-          {
             "when": "SIECS_HAS_META",
             "use": ["sireflect", "sijson"]
           },
@@ -35,10 +31,6 @@
         ],
         "dependencies": [
           {
-            "when": "1",
-            "use": ["sicore"]
-          },
-          {
             "when": "SIECS_HAS_META",
             "use": ["sireflect", "sijson"]
           },
@@ -55,12 +47,13 @@
     "cpp-standard": "c++23",
     "export-symbols": true,
     "include": ["src"],
+    "cflags": ["-DSICORE_VEC"],
     "${os linux}": {
       "lib": ["pthread"],
       "${cfg debug}": {
         "export-symbols": true
       },
-      "cflags": ["-D_POSIX_C_SOURCE=200809L", "-DSICORE_VEC", "-DSICORE_HAS_VEC=1"],
+      "cflags": ["-D_POSIX_C_SOURCE=200809L"],
       "${cfg sanitize}": {
         "export-symbols": true
       }
