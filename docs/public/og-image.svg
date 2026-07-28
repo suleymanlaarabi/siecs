@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#171717" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111"/>
+      <stop offset="1" stop-color="#000"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#fade)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect x="72" y="72" width="1056" height="486" rx="20" fill="#050505" stroke="#292929"/>
+  <text x="128" y="208" fill="#fff" font-family="Arial, Helvetica, sans-serif"
+        font-size="92" font-weight="700" letter-spacing="-4">SIECS</text>
+  <text x="128" y="302" fill="#d4d4d4" font-family="Arial, Helvetica, sans-serif"
+        font-size="46" font-weight="500" letter-spacing="-1">
+    Archetype ECS for C and C++
+  </text>
+  <text x="128" y="382" fill="#8a8a8a" font-family="Arial, Helvetica, sans-serif"
+        font-size="28">
+    Entities · Components · Queries · Systems
+  </text>
+  <line x1="128" y1="438" x2="1072" y2="438" stroke="#292929"/>
+  <text x="128" y="500" fill="#a3a3a3" font-family="Arial, Helvetica, sans-serif"
+        font-size="24">docs.siecs.dev</text>
+</svg>

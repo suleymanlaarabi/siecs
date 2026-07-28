@@ -1,6 +1,6 @@
 ---
 title: Entities
-description: Entity handles, liveness, and destruction.
+description: Create, validate, and destroy entities while understanding handle lifetime, liveness, and generation safety.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 import LanguageExample from '../../components/LanguageExample.astro';
@@ -24,7 +24,7 @@ auto entity = ecs::entity::create();
 New entities start alive and have no user components.
 
 For abstract entities, bases, and inherited components, see
-[Inheritance](./inheritance/).
+[Inheritance](../inheritance/).
 
 ## Liveness
 

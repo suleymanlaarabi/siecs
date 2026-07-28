@@ -1,0 +1,100 @@
+---
+title: Designing with SIECS
+description: Understand the runtime model, storage choices, structural-change costs, and when the library fits an application.
+---
+
+SIECS is a compact archetype runtime implemented in C with a typed C++ wrapper.
+Its design favors explicit ownership, batch iteration, a small
+public surface, and the same storage model across both languages.
+
+This page documents the decisions and costs behind that design. It is intended
+as a technical selection guide, not a benchmark.
+
+## Runtime And Language Model
+
+The C API in `<siecs.h>` is the runtime contract. It exposes explicit entity,
+component, query, system, observer, module, relation, and resource APIs.
+
+The C++ API is a header-only typed layer over that runtime. It infers query
+terms from callback parameters and manages C++ component lifecycle operations,
+while entities and storage remain owned by SIECS.
+
+Choose the C API when a project needs a direct C ABI, explicit descriptors, or
+C-first integration. Choose the C++ API when typed entities, inferred callback
+terms, and C++ object lifecycle support improve the application code.
+
+## Storage Model
+
+SIECS groups entities into tables by exact component set. Queries match tables
+and iterate contiguous component columns in batches.
+
+This design favors workloads where:
+
+- systems repeatedly process many entities with similar component sets;
+- component values change more often than component membership;
+- data-oriented iteration matters more than object-oriented dispatch;
+- query shapes are known and reused.
+
+Read [Archetype storage](../archetype-ecs/) for the complete storage
+model.
+
+## Structural Change Cost
+
+Adding or removing a component can move an entity to another archetype table.
+The cost is visible and predictable, but it is not zero.
+
+SIECS therefore distinguishes two kinds of mutation:
+
+- value mutation updates data already present in a table column;
+- structural mutation changes the component set and may migrate the entity.
+
+Applications with stable archetypes can keep most per-frame work in contiguous
+arrays. Applications that continuously add and remove many independent
+components should account for migration cost in their own workload.
+
+## Queries And Scheduling
+
+Persistent queries cache matching table identifiers. Systems own persistent
+queries and run in explicit phases through `ecs_progress()` or
+`ecs_run_phase()`.
+
+This makes the execution order inspectable:
+
+- query terms define the data a system reads or writes;
+- phases define broad execution order;
+- `after` dependencies order systems inside a phase;
+- structural mutation rules remain explicit to the application.
+
+## Runtime Scope
+
+The core runtime includes:
+
+- entities, components, tags, and resources;
+- archetype queries and batch iterators;
+- systems and ordered phases;
+- observers and custom events;
+- relations and inheritance;
+- reusable modules;
+- reflection-backed component metadata.
+
+The REST explorer is an optional addon for tools. It is not required by the
+core storage or iteration path.
+
+## Project Fit
+
+SIECS is designed for C or C++ applications that want an explicit ECS
+runtime, archetype storage, and a compact API that can be embedded without
+adopting a complete game engine.
+
+Evaluate it against a real application workload when:
+
+- structural changes are unusually frequent;
+- most entities have unique component combinations;
+- a project requires a particular engine-specific scheduler or editor;
+- performance claims depend on a specific compiler, platform, or entity shape.
+
+The [performance guide](../performance/) explains the intended hot path without
+claiming universal benchmark results.
+
+Continue with the [C++ API](../cpp/), [ECS theory](../theory/), or
+[API reference](../reference/api/).

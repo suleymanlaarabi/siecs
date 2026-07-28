@@ -1,11 +1,9 @@
 ---
-title: SIECS
-description: User guide for the SIECS C entity component system.
+title: SIECS Documentation
+description: Technical documentation for SIECS, including the C and C++ APIs, storage model, queries, systems, and optional tooling.
 ---
 SIECS is a small archetype ECS library with a compact C23 API, C++23 wrapper,
 reflection, modules, and an optional REST explorer for tools.
-
-The public user API is exposed by:
 
 The public header is `<siecs.h>` in all supported language integrations.
 
@@ -24,13 +22,28 @@ The current API is centered around:
 | Relation | Component that stores an entity target, such as `ChildOf`. |
 | Resource | One typed value stored on the world, not on entities. |
 
-## What to read first
+## Getting Started
 
-1. [Getting started](./getting-started/) for a complete minimal program.
-2. [ECS theory](./theory/) for the storage and iteration model.
-3. [Components](./components/) and [resources](./resources/) for data modeling.
-4. [Queries](./queries/) for iteration with `ecs_iter_t`.
-5. [Systems](./systems/) for scheduled logic.
-6. [Observers and events](./observers/) for `EcsOnAdd`, `EcsOnRemove`, `EcsOnSet`, and custom events.
-7. [Performance guide](./performance/) before writing hot-path code.
-8. [API reference](./reference/api/) for the public symbols.
+- [Getting started](./getting-started/) builds a complete minimal program.
+- [C++ API](./cpp/) documents the typed wrapper.
+- [Cookbook](./cookbook/) collects focused examples.
+
+## Manuals
+
+- [ECS theory](./theory/) and [archetype storage](./archetype-ecs/) explain the
+  data model.
+- [Entities](./entities/), [components](./components/), and
+  [resources](./resources/) cover stored data.
+- [Queries](./queries/) and [systems](./systems/) cover iteration and
+  scheduling.
+- [Observers](./observers/), [relations](./relations/), and
+  [inheritance](./inheritance/) cover events and entity relationships.
+- [Modules](./modules/) cover reusable registration units.
+
+## Guides And Reference
+
+- [Designing with SIECS](./ecs-design/) documents the runtime's
+  tradeoffs.
+- [Performance](./performance/) covers hot-path rules.
+- [REST explorer](./rest/) documents the optional tooling API.
+- [API reference](./reference/api/) lists the public C symbols.

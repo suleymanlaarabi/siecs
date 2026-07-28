@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Minimal SIECS program using typed components.
+description: Install SIECS, configure a C or C++ project, and build a minimal program with components and systems.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 import LanguageExample from '../../components/LanguageExample.astro';
@@ -51,7 +51,7 @@ The standalone distribution embeds SIECS and its public C dependencies.
 </TabItem>
 <TabItem label="C++">
 
-For a C++23 project, include the same public header and link the SIECS C runtime.
+For a C++ project, include the same public header and link the SIECS C runtime.
 
 ```cpp
 #include <siecs.h>
@@ -98,7 +98,7 @@ Compile the C source with `cc -std=c23`.
 #include <siecs.h>
 ```
 
-The C++23 API is a header-only wrapper around the C runtime. Link the SIECS C
+The C++ API is a header-only wrapper around the C runtime. Link the SIECS C
 library with your application.
 
 </TabItem>
@@ -302,3 +302,10 @@ the component may be absent.
 `ecs_set()` adds the component when needed, then writes the value.
 
 Entities passed to API functions must come from the same world.
+
+## Next Steps
+
+- Read the [C++ API](../cpp/) when using the typed wrapper.
+- Learn about [archetype storage](../archetype-ecs/).
+- Use the [cookbook](../cookbook/) for focused patterns.
+- Check the [performance guide](../performance/) before writing hot loops.

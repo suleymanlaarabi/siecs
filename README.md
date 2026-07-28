@@ -1,16 +1,27 @@
 ![SIECS](assets/banner.png)
 
-[![Documentation](https://img.shields.io/badge/docs-siecs-blue?style=for-the-badge&color=blue)](https://suleymanlaarabi.github.io/siecs/)
+[![Website](https://img.shields.io/badge/site-siecs.dev-111111?style=for-the-badge)](https://siecs.dev/)
+[![Documentation](https://img.shields.io/badge/docs-docs.siecs.dev-111111?style=for-the-badge)](https://docs.siecs.dev/)
 [![actions](https://img.shields.io/github/actions/workflow/status/suleymanlaarabi/siecs/ci.yml?branch=main&style=for-the-badge)](https://github.com/suleymanlaarabi/siecs/actions?query=workflow%3ACI)
 [![Discord Chat](https://img.shields.io/discord/1516852124724629664.svg?style=for-the-badge&color=%235a64f6)](https://discord.gg/p35WBXpyK4)
 
-`siecs` is an entity component system with a compact C API inspired by the way Flecs lets you describe data, create entities, and run logic over matching component sets.
+SIECS is an archetype entity component system for C and C++. It provides a
+compact C runtime, a typed C++ API, contiguous table storage, cached queries,
+scheduled systems, relations, and runtime reflection.
 
 - Fast core with zero runtime dependencies.
 - Modern type-safe C++23 API.
 - Built-in support for entity hierarchies and entity relations.
 - C modules for grouping components, systems, and observers behind one import.
 - Integrated reflection framework with JSON serialization and deserialization.
+
+## Project links
+
+- [Website](https://siecs.dev/)
+- [Documentation](https://docs.siecs.dev/)
+- [ECS for C](https://siecs.dev/ecs-for-c/)
+- [ECS for C++](https://siecs.dev/ecs-for-cpp/)
+- [Performance and benchmarks](https://siecs.dev/benchmarks/)
 
 > [!CAUTION]
 > **Experimental project.**
