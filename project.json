@@ -12,6 +12,10 @@
         "path": "distr",
         "dependencies": [
           {
+            "when": "1",
+            "use": ["sicore"]
+          },
+          {
             "when": "SIECS_HAS_META",
             "use": ["sireflect", "sijson"]
           },
@@ -30,6 +34,10 @@
           "SIECS_HAS_REST"
         ],
         "dependencies": [
+          {
+            "when": "1",
+            "use": ["sicore"]
+          },
           {
             "when": "SIECS_HAS_META",
             "use": ["sireflect", "sijson"]
