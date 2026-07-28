@@ -2,7 +2,6 @@
 #define SIECS_STORAGE_QUERY_INDEX_H
 #include "../helper.h"
 #include "../table.h"
-#include "sicore_vec.h"
 #include "siecs.h"
 #include <stdint.h>
 

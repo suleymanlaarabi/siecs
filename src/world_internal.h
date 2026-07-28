@@ -2,7 +2,6 @@
 #define SIECS_WORLD_INTERNAL_H
 #include "command_buffer.h"
 #include "datastructure/arena.h"
-#include "sicore_vec.h"
 #include "siecs.h"
 #if SIECS_HAS_REST && !defined(SIHTTP_H)
 #include "sihttp.h"

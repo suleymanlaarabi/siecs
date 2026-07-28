@@ -1,6 +1,5 @@
 #ifndef SIECS_STORAGE_COMPONENT_INDEX_H
 #define SIECS_STORAGE_COMPONENT_INDEX_H
-#include "sicore_vec.h"
 #include "siecs.h"
 #if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"

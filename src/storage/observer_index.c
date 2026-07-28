@@ -2,7 +2,6 @@
 #include "../table.h"
 #include "../world_internal.h"
 #include "query_index.h"
-#include "sicore_vec.h"
 #include "siecs.h"
 #include <stdint.h>
 

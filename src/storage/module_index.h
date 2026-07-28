@@ -1,7 +1,6 @@
 #ifndef SIECS_STORAGE_MODULE_INDEX_H
 #define SIECS_STORAGE_MODULE_INDEX_H
 
-#include "sicore_vec.h"
 #include "siecs.h"
 
 typedef struct {

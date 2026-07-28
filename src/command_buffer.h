@@ -1,7 +1,6 @@
 #ifndef SIECS_COMMAND_BUFFER_H
 #define SIECS_COMMAND_BUFFER_H
 
-#include "sicore_vec.h"
 #include "siecs.h"
 #include <stdbool.h>
 #include <stdint.h>

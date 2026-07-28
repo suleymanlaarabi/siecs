@@ -1,6 +1,5 @@
 #ifndef SIECS_STORAGE_SYSTEM_INDEX_H
 #define SIECS_STORAGE_SYSTEM_INDEX_H
-#include "sicore_vec.h"
 #include "siecs.h"
 #include <stdint.h>
 

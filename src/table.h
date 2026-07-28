@@ -2,7 +2,6 @@
 #define SIECS_TABLE_H
 #include "datastructure/idmap.h"
 #include "helper.h"
-#include "sicore_vec.h"
 #include "siecs.h"
 #include "type.h"
 #include <stdbool.h>

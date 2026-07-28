@@ -1,5 +1,4 @@
 #include "module.h"
-#include "sicore_vec.h"
 #include "siecs.h"
 #include "storage/observer_index.h"
 #include "utils.h"

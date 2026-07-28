@@ -2,7 +2,6 @@
 #include "./storage/component_index.h"
 #include "./type.h"
 #include "datastructure/idmap.h"
-#include "sicore_vec.h"
 #include "utils.h"
 #include "world_internal.h"
 #include <stdlib.h>

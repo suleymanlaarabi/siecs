@@ -1,7 +1,6 @@
 #include "system_index.h"
 #include "../utils.h"
 #include "../world_internal.h"
-#include "sicore_vec.h"
 #include <stdint.h>
 #include <stdlib.h>
 

@@ -6,11 +6,15 @@
     "description": "Small ECS library",
     "public": true,
     "clangd": true,
-    "use": ["sireflect", "sijson", "sihttp", "sicore"],
+    "use": ["sicore", "sireflect", "sijson", "sihttp"],
     "amalgamate": [
       {
         "path": "distr",
         "dependencies": [
+          {
+            "when": "SICORE_VEC",
+            "use": ["sicore"]
+          },
           {
             "when": "SIECS_HAS_META",
             "use": ["sireflect", "sijson"]
@@ -31,6 +35,10 @@
         ],
         "dependencies": [
           {
+            "when": "SICORE_VEC",
+            "use": ["sicore"]
+          },
+          {
             "when": "SIECS_HAS_META",
             "use": ["sireflect", "sijson"]
           },
@@ -47,7 +55,6 @@
     "cpp-standard": "c++23",
     "export-symbols": true,
     "include": ["src"],
-    "cflags": ["-DSICORE_VEC"],
     "${os linux}": {
       "lib": ["pthread"],
       "${cfg debug}": {

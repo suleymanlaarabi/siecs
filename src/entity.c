@@ -1,5 +1,4 @@
 #include "command_buffer.h"
-#include "sicore_vec.h"
 #include "siecs.h"
 #include "storage/component_index.h"
 #include "table.h"

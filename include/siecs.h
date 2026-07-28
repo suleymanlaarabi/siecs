@@ -7,6 +7,10 @@
 
 #include "siecs/config.h"
 
+#if SICORE_VEC
+#include <sicore.h>
+#endif
+
 #if SIECS_HAS_META
 #ifndef SIJSON_H
 #include <sijson.h>

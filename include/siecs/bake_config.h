@@ -18,10 +18,10 @@
 #define SIECS_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
+#include <sicore.h>
 #include <sireflect.h>
 #include <sijson.h>
 #include <sihttp.h>
-#include <sicore.h>
 
 /* Convenience macro for exporting symbols */
 #ifndef siecs_STATIC

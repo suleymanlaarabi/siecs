@@ -4,7 +4,6 @@
 #include "../world_internal.h"
 #include "component_index.h"
 #include "helper.h"
-#include "sicore_vec.h"
 #include "siecs.h"
 #include <stdint.h>
 #include <stdlib.h>

@@ -1,5 +1,4 @@
 #include "addons/addons.h"
-#include "sicore_vec.h"
 #include "siecs.h"
 #if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"
