@@ -42,7 +42,7 @@ export default defineConfig({
         },
         {
           label: 'Production',
-          items: ['performance', 'internals'],
+          items: ['performance'],
         },
         {
           label: 'Reference',
