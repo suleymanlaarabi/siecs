@@ -21,9 +21,7 @@ typedef struct {
 #define ecs_entity_index_get_record(entity_id)                                                     \
     ecs_vec_get_mut(&ecs_world.entity_index.entities, entity_id, ecs_entity_record_t)
 
-ecs_entity_t ecs_entity_index_create(uint32_t row);
 bool ecs_entity_index_is_alive(ecs_entity_t entity);
-void ecs_entity_index_kill(uint32_t entity_id);
 
 void ecs_entity_index_init();
 void ecs_entity_index_fini();

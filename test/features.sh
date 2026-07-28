@@ -193,6 +193,13 @@ has_symbol "$build_dir/libsiecs_distr_rest.so" "sihttp_"
 assert_no_symbol "$build_dir/libsiecs_distr_rest.so" \
     "ecs_(component|entity|module|resource|system)_name|ecs_resource_find"
 
+build_distr_variant default \
+    "" \
+    "-DEXPECT_NAMES=1 -DEXPECT_META=1 -DEXPECT_REST=1"
+has_symbol "$build_dir/libsiecs_distr_default.so" "ecs_entity_name"
+has_symbol "$build_dir/libsiecs_distr_default.so" "sireflect_"
+has_symbol "$build_dir/libsiecs_distr_default.so" "sihttp_"
+
 if "$cc" -std=c23 -DSIECS_CUSTOM_BUILD -DSIECS_REST \
     -I"$repo_root/include" -fsyntax-only "$repo_root/test/standalone/config.c" \
     >/dev/null 2>&1; then

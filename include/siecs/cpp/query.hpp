@@ -199,6 +199,27 @@ inline void append_term(
     };
 }
 
+inline void append_callback_component_term(
+    ecs_query_desc_t &desc,
+    uint16_t &term_index,
+    ecs_component_t id,
+    ecs_term_access_t access
+) {
+    for (uint16_t i = 0; i < term_index; i++) {
+        if (desc.terms[i].id != id || desc.terms[i].access != EcsFilter) {
+            continue;
+        }
+
+        for (uint16_t j = i; j + 1 < term_index; j++) {
+            desc.terms[j] = desc.terms[j + 1];
+        }
+        term_index--;
+        break;
+    }
+
+    append_term(desc, term_index, id, access);
+}
+
 template <typename... T>
 inline void append_terms(ecs_query_desc_t &desc, uint16_t &term_index, ecs_term_access_t access) {
     (append_term(desc, term_index, ecs::detail::ecs_cpp_component_id<T>(), access), ...);
@@ -214,14 +235,14 @@ inline void append_callback_term(ecs_query_desc_t &desc, uint16_t &term_index) {
         static_assert(I == 0, "ecs::observer_event must be the first callback argument");
         static_assert(!std::is_reference_v<T>, "ecs::observer_event must be passed by value");
     } else if constexpr (is_optional_v<T>) {
-        append_term(
+        append_callback_component_term(
             desc,
             term_index,
             ecs::detail::ecs_cpp_component_id<std::remove_cv_t<optional_value_t<T>>>(),
             optional_term_access<T>()
         );
     } else if constexpr (!is_res_v<T>) {
-        append_term(
+        append_callback_component_term(
             desc,
             term_index,
             ecs::detail::ecs_cpp_component_id<std::remove_cvref_t<T>>(),
@@ -252,9 +273,38 @@ inline void append_callback_terms(ecs_query_desc_t &desc, uint16_t &term_index) 
 
 class query_handle {
     ecs_query_id_t _id = 0;
+    ecs_query_desc_t _base_desc{};
+    uint16_t _base_term_index = 0;
+    ecs_query_desc_t _active_desc{};
+    uint16_t _active_term_index = 0;
+    bool _has_base_desc = false;
+    bool _has_active_desc = false;
+
+    static bool desc_equals(
+        const ecs_query_desc_t &left,
+        uint16_t left_term_index,
+        const ecs_query_desc_t &right,
+        uint16_t right_term_index
+    ) {
+        if (left.is_a != right.is_a || left_term_index != right_term_index) {
+            return false;
+        }
+        for (uint16_t i = 0; i < left_term_index; i++) {
+            if (left.terms[i].id != right.terms[i].id ||
+                left.terms[i].access != right.terms[i].access) {
+                return false;
+            }
+        }
+        return true;
+    }
 
   public:
     explicit query_handle(ecs_query_id_t id) noexcept : _id(id) {}
+    query_handle(const ecs_query_desc_t &desc, uint16_t term_index)
+        : _id(ecs_query_init(&desc)),
+          _base_desc(desc),
+          _base_term_index(term_index),
+          _has_base_desc(true) {}
     ~query_handle() {
         if (_id != 0) ecs_query_fini(_id);
     }
@@ -262,13 +312,32 @@ class query_handle {
     query_handle(const query_handle &) = delete;
     query_handle &operator=(const query_handle &) = delete;
 
-    query_handle(query_handle &&other) noexcept : _id(other._id) { other._id = 0; }
+    query_handle(query_handle &&other) noexcept
+        : _id(other._id),
+          _base_desc(other._base_desc),
+          _base_term_index(other._base_term_index),
+          _active_desc(other._active_desc),
+          _active_term_index(other._active_term_index),
+          _has_base_desc(other._has_base_desc),
+          _has_active_desc(other._has_active_desc) {
+        other._id = 0;
+        other._has_base_desc = false;
+        other._has_active_desc = false;
+    }
 
     query_handle &operator=(query_handle &&other) noexcept {
         if (this != &other) {
             if (_id != 0) ecs_query_fini(_id);
             _id = other._id;
+            _base_desc = other._base_desc;
+            _base_term_index = other._base_term_index;
+            _active_desc = other._active_desc;
+            _active_term_index = other._active_term_index;
+            _has_base_desc = other._has_base_desc;
+            _has_active_desc = other._has_active_desc;
             other._id = 0;
+            other._has_base_desc = false;
+            other._has_active_desc = false;
         }
         return *this;
     }
@@ -278,6 +347,22 @@ class query_handle {
     template <typename F> void each(F &&func) {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
+
+        if (_has_base_desc) {
+            ecs_query_desc_t desc = _base_desc;
+            uint16_t term_index = _base_term_index;
+            detail::append_callback_terms<args>(desc, term_index);
+
+            if (!_has_active_desc ||
+                !desc_equals(desc, term_index, _active_desc, _active_term_index)) {
+                if (_id != 0) ecs_query_fini(_id);
+                _id = ecs_query_init(&desc);
+                _active_desc = desc;
+                _active_term_index = term_index;
+                _has_active_desc = true;
+            }
+        }
+
         callback state(std::forward<F>(func));
         auto resources = detail::make_resources<args>();
         ecs_iter_t it = ecs_query_iter(_id);
@@ -317,7 +402,7 @@ class query {
 
     ecs_query_id_t build() { return ecs_query_init(&desc); }
 
-    query_handle build_handle() { return query_handle(build()); }
+    query_handle build_handle() { return query_handle(desc, term_index); }
 
     template <typename F> void each(F &&func) {
         using args = typename function_traits<std::remove_reference_t<F>>::args_tuple;
