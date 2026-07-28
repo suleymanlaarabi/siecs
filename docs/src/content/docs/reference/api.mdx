@@ -1,8 +1,7 @@
 ---
 title: API Reference
-description: Reference for the public C types, functions, descriptors, macros, events, and lifecycle APIs in siecs.h.
+description: Reference for the public C API and the typed C++ wrapper in SIECS.
 ---
-import LanguageExample from '../../../components/LanguageExample.astro';
 
 Include the public API with:
 
@@ -20,6 +19,7 @@ Include the public API with:
 | `ecs_system_id_t` | System id. Id `0` is reserved. |
 | `ecs_event_t` | Observer event id. |
 | `ecs_module_id_t` | Module id. Id `0` is reserved. |
+| `ecs_resource_t` | Resource id in the separate resource id space. |
 | `ecs_observer_id_t` | Observer id. |
 | `ecs_iter_t` | Query iterator. Users may read `count`. |
 
@@ -28,6 +28,9 @@ Include the public API with:
 ```c
 void ecs_init(void);
 void ecs_init_w_features(const ecs_world_feat_desc_t *features);
+bool ecs_progress(void);
+void ecs_run(void);
+void ecs_quit(void);
 void ecs_fini(void);
 ```
 
@@ -56,8 +59,8 @@ Built-in components declared by the public API:
 ```c
 ECS_RELATION_DECLARE(ChildOf);
 ECS_COMPONENT_DECLARE(Name, { char *value; });
-ECS_COMPONENT_DECLARE(Disabled, {});
-ECS_COMPONENT_DECLARE(Abstract, {});
+ECS_TAG_DECLARE(Disabled);
+ECS_TAG_DECLARE(Abstract);
 ```
 
 `Disabled` excludes an entity from queries by default. A query can match
@@ -70,12 +73,17 @@ component add, set, or remove operations from normal application code.
 ```c
 #define ecs_component(...)
 ecs_component_t ecs_component_init(const ecs_component_desc_t *desc);
+ecs_component_t ecs_component_register(
+    ecs_component_t *id,
+    const ecs_component_desc_t *desc
+);
 ```
 
 ```c
 typedef struct {
     const char *name;
     uint64_t size;
+    ecs_type_ops_t ops;
     ecs_component_on_set_t on_set;
     ecs_component_on_remove_t on_remove;
     ecs_component_on_add_t on_add;
@@ -88,10 +96,13 @@ typedef struct {
 
 ```c
 ecs_entity_t ecs_new(void);
+const char *ecs_entity_name(ecs_entity_t entity);
+void ecs_defer_begin(void);
+void ecs_defer_end(void);
 bool ecs_is_alive(const ecs_entity_t entity);
-void ecs_kill(ecs_entity_t entity);
-void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
+void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
+void ecs_kill(ecs_entity_t entity);
 ```
 
 `ecs_is_a()` creates an inheritance link from `entity` to `target`.
@@ -116,9 +127,11 @@ Id-based functions:
 void ecs_add_cid(ecs_entity_t entity, ecs_component_t id);
 void ecs_remove_cid(ecs_entity_t entity, ecs_component_t id);
 bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id);
+bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id);
 void *ecs_get_cid(ecs_entity_t entity, ecs_component_t id);
 void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
 void ecs_set_cid(ecs_entity_t entity, ecs_component_t id, const void *data);
+void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data);
 ```
 
 `ecs_get()` and `ecs_get_cid()` assume the component exists. Use
@@ -160,9 +173,20 @@ ecs_remove_resource(Time);
 Id-based functions:
 
 ```c
+typedef struct {
+    const char *name;
+    uint64_t size;
+    ecs_type_ops_t ops;
+    ecs_resource_hook_t on_set;
+    ecs_resource_hook_t on_remove;
+} ecs_resource_desc_t;
+
 ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc);
 ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
+ecs_resource_t ecs_resource_find(const char *name);
+bool ecs_resource_is_registered_rid(ecs_resource_t id);
 void ecs_set_resource_rid(ecs_resource_t id, const void *data);
+void ecs_move_resource_rid(ecs_resource_t id, void *data);
 void *ecs_resource_rid(ecs_resource_t id);
 void *ecs_try_resource_rid(ecs_resource_t id);
 bool ecs_has_resource_rid(const ecs_resource_t id);
@@ -178,8 +202,12 @@ the world is destroyed.
 
 ```c
 #define ecs_query(...)
-uint32_t ecs_query_init(const ecs_query_desc_t *query);
+ecs_query_id_t ecs_query_init(const ecs_query_desc_t *query);
 void ecs_query_fini(ecs_query_id_t qid);
+uint32_t ecs_query_count(ecs_query_id_t qid);
+
+#define ecs_query_each(it, i, ...)
+#define ecs_query_entities(entity, ...)
 ```
 
 ```c
@@ -199,13 +227,14 @@ typedef struct {
 } ecs_query_term_t;
 
 typedef struct {
-    ecs_query_term_t terms[16];
+    ecs_query_term_t terms[ECS_QUERY_TERM_CAPACITY];
     ecs_entity_t is_a;
 } ecs_query_desc_t;
 ```
 
 `is_a` restricts the query to entities that inherit from the given target. The
-match is transitive through the inheritance chain.
+match is transitive through the inheritance chain. A query must contain at
+least one term or an `is_a` target.
 
 ```c
 ecs_in(Component);
@@ -215,6 +244,8 @@ ecs_in_optional(Component);
 ecs_inout_optional(Component);
 ecs_filter(Component);
 ecs_not(Component);
+ecs_in_source(Component);
+ecs_not_source(Component);
 ```
 
 `ecs_field()` returns `EcsIn`, `EcsOut`, `EcsInOut`, `EcsInOptional`, and
@@ -228,8 +259,17 @@ systems, and observers.
 ```c
 ecs_iter_t ecs_query_iter(ecs_query_id_t query_id);
 bool ecs_iter_next(ecs_iter_t *it);
+typedef enum {
+    EcsFieldNone,
+    EcsFieldOwned,
+    EcsFieldShared,
+} ecs_field_kind_t;
+ecs_field_kind_t ecs_field_kind(const ecs_iter_t *it, uint16_t field_index);
 void *ecs_field(ecs_iter_t *it, uint16_t field_index);
+bool ecs_field_is_shared(ecs_iter_t *it, uint16_t field_index);
 ```
+
+`ecs_field_kind()` distinguishes owned, shared, and absent optional fields.
 
 ## Observers
 
@@ -242,6 +282,7 @@ void *ecs_field(ecs_iter_t *it, uint16_t field_index);
 ```c
 #define ecs_observer(...)
 ecs_event_t ecs_event(void);
+ecs_event_t ecs_event_register(ecs_event_t *id);
 ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc);
 void ecs_observer_enable(ecs_observer_id_t id);
 void ecs_observer_disable(ecs_observer_id_t id);
@@ -278,7 +319,7 @@ receive events.
 ```c
 ECS_MODULE_DECLARE(Name, { /* settings */ });
 ECS_MODULE_DEFINE(Name);
-ECS_MODULE_IMPORT(world, Name, { /* settings */ });
+ECS_MODULE_IMPORT(Name, { /* settings */ });
 ```
 
 `ECS_MODULE_DECLARE(Name, ...)` generates `Name_props_t` for the typed module
@@ -315,6 +356,8 @@ Enabling and disabling a module affects only captured systems and observers.
 ECS_RELATION_DECLARE(Name);
 ECS_RELATION_DEFINE(Name, flags);
 ecs_source(Name);
+ecs_in_source(Name);
+ecs_not_source(Name);
 ```
 
 `ChildOf` is declared by the public API and registered during world bootstrap.
@@ -350,8 +393,10 @@ typedef struct {
     const char *name;
     ecs_query_desc_t query;
     void (*callback)(ecs_iter_t *);
+    uintptr_t user_data;
+    void (*user_data_dtor)(uintptr_t user_data);
     ecs_phase_t phase;
-    ecs_system_id_t after[4];
+    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
     bool disabled;
 } ecs_system_desc_t;
 ```
@@ -360,15 +405,17 @@ typedef struct {
 #define ecs_system(...)
 ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc);
 bool ecs_progress(void);
+void ecs_run(void);
 void ecs_run_phase(ecs_phase_t phase);
 void ecs_run_system(ecs_system_id_t system);
 void ecs_system_enable(ecs_system_id_t system);
 void ecs_system_disable(ecs_system_id_t system);
 ```
 
-`after` declares systems that must run first in the same phase. System id `0` is
-reserved, so an empty `after` array is written as `{ 0 }` or omitted. Dependency
-cycles and cross-phase dependencies are debug assertion failures.
+`after` declares systems that must run first in the same phase. It accepts up to
+`ECS_SYSTEM_AFTER_CAPACITY` system ids. System id `0` is reserved, so an empty
+`after` array is written as `{ 0 }` or omitted. Dependency cycles and
+cross-phase dependencies are debug assertion failures.
 
 Example:
 
@@ -391,4 +438,222 @@ ecs_system({
 });
 
 ecs_progress();
+```
+
+## C++ API
+
+The C++ API is a header-only typed wrapper over the C runtime. Include
+`<siecs.h>` for the complete facade, or include a header from
+`<siecs/cpp/>` when only one public wrapper is needed. The built-in C component
+types such as `Disabled`, `Abstract`, `Name`, and `ChildOf` remain in the global
+namespace.
+
+### World
+
+```cpp
+ecs::init();
+ecs::progress();
+ecs::run();
+ecs::run_phase(EcsOnUpdate);
+ecs::quit();
+ecs::fini();
+```
+
+Initialize with optional features when needed:
+
+```cpp
+ecs::init({ .rest = true, .target_fps = 60 });
+ecs::fini();
+```
+
+`ecs::init()` and `ecs::fini()` manage the process-wide world. The wrapper does
+not provide an RAII world object, so applications must call `ecs::fini()` when
+the world is no longer needed.
+
+### Components and entities
+
+```cpp
+#include <cassert>
+
+struct Position { float x, y; };
+
+auto entity = ecs::entity::create()
+    .set(Position{ .x = 1.0f, .y = 2.0f });
+
+auto &position = entity.get<Position>();
+position.x += 1.0f;
+entity.add<Disabled>();
+entity.remove<Disabled>();
+assert(entity.has<Position>());
+if (auto *nullable = entity.try_get<Position>()) {
+    nullable->y += 1.0f;
+}
+auto id = entity.id();
+assert(ecs::entity::from(id).is_alive());
+assert(!ecs::entity::null().is_alive());
+auto named = ecs::entity::create("player");
+named.kill();
+```
+
+Typed components are registered automatically on first use. The entity API also
+provides `kill()`, `is_alive()`, `is(entity)`, `enable()`, `disable()`,
+`is_enabled()`, and `is_disabled()`.
+
+Use `ecs::component<T>()` when a C API descriptor needs the typed component id.
+
+Typed entities create one stable entity for a C++ type and optionally assign a
+name:
+
+```cpp
+struct Player {};
+auto player = ecs::entity::create<Player>("player");
+auto player_type = ecs::entity::typed<Player>();
+```
+
+Inheritance uses `abstract()`, `is_a(...)`, and `is_a<T>()`:
+
+```cpp
+auto prototype = ecs::entity::create().set(Position{ 0.0f, 0.0f }).abstract();
+auto instance = ecs::entity::create().is_a(prototype);
+auto another = ecs::instantiate(prototype);
+```
+
+`child_of(parent)` assigns the built-in `ChildOf` relation. Register custom
+relation types with `ecs::relation<T>(flags)` and retrieve their internal source
+id with `ecs::relation_source<T>()`.
+
+### Queries
+
+```cpp
+ecs::query()
+    .require<Position>()
+    .exclude<Disabled>()
+    .each([](ecs::entity current, Position &position) {
+        position.x += static_cast<float>(current.id() != 0);
+    });
+
+auto first = ecs::query().require<Position>().first();
+```
+
+The builder also provides `optional<T>()`, `is_a(target)`, `build()`, and
+`build_handle()`. A
+callback can receive `ecs::entity` as its first argument. `each()` and `first()`
+are one-shot operations; they create and destroy the underlying C query. A
+`query_handle` owns a persistent query id and releases it automatically:
+
+```cpp
+ecs::query().require<Position>().each([](Position &position) {
+    position.x += 1.0f;
+});
+```
+
+Optional callback fields use `ecs::optional<T>`. The value converts to `false`
+when the component is absent for the current table and supports `get()`,
+`operator->`, and `operator*` when present.
+
+### Systems
+
+```cpp
+auto move = ecs::system("Move")
+    .require<Position>()
+    .phase(EcsOnUpdate)
+    .each([](Position &position) {
+        position.x += 1.0f;
+    });
+```
+
+`ecs::system` supports `require<T...>()`, `optional<T...>()`, `exclude<T...>()`,
+`phase()`, `after()`, `disabled()`, and `each()`. Callback component terms are
+inferred from their parameter types. Resource parameters do not become query
+terms:
+
+```cpp
+ecs::system("Move").each([](ecs::res<const Time> time, Position &position) {
+    position.x += time->dt;
+});
+```
+
+System ids can be controlled through the C++ helpers:
+
+```cpp
+ecs::disable_system(move);
+ecs::enable_system(move);
+ecs::run_system(move);
+```
+
+### Resources
+
+```cpp
+ecs::set_resource(Time{ .dt = 0.016f });
+auto time = ecs::resource_handle<Time>();
+time.get().dt += 0.001f;
+if (auto *maybe_time = time.try_get()) {
+    maybe_time->dt += 0.001f;
+}
+bool exists = time.has();
+time.remove();
+```
+
+`ecs::res<T>` is the callback and observer view type. It supports `operator->`,
+`operator*`, and `get()`. `ecs::resource_handle<T>` provides typed `set()`,
+`get()`, `try_get()`, `has()`, and `remove()` operations.
+
+### Observers and events
+
+Built-in events use `ecs::OnAdd`, `ecs::OnRemove`, and `ecs::OnSet`. Custom events
+are represented by an empty C++ type:
+
+```cpp
+struct Damaged {};
+
+ecs::observe<Damaged>().each([](Health &health) {
+    health.value -= 1;
+});
+
+ecs::trigger<Damaged>(entity);
+```
+
+`ecs::event<T>()` returns the custom event id associated with `T`; `observe<T>()`
+and `trigger<T>()` use that id automatically.
+
+Observer callbacks must be stateless and must receive at least one component
+argument. They may also receive `ecs::entity` first and `ecs::res<T>` resource
+arguments. Add `ecs::observer_event` as the first callback argument to access
+`target()`, `id()`, `user_data()`, and typed `trigger_data<T>()`.
+
+### Modules
+
+```cpp
+#include <cassert>
+
+struct Physics {
+    float gravity;
+
+    void import() {
+        ecs::system("Move").each([](Position &position) {
+            position.x += 1.0f;
+        });
+    }
+};
+
+auto physics = ecs::import<Physics>(9.81f);
+auto same_module = ecs::module<Physics>();
+physics.disable();
+same_module.enable();
+assert(same_module.is_enabled());
+```
+
+`module_ref<T>` also provides `id()` and an explicit boolean conversion. Module
+imports are idempotent in the active world; the first properties value wins.
+
+### C++ Reflection
+
+Plain C++ component structs are stored and queried, but their REST schema has no
+fields by default. Add the `reflected(...)` declaration when a component must
+be serialized or exposed through the REST explorer:
+
+```cpp
+struct Position {
+    reflected(float x; float y;);
+};
 ```

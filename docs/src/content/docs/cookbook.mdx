@@ -3,7 +3,6 @@ title: Cookbook
 description: Practical patterns for worlds, game loops, relationships, optional queries, events, and disabled entities.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
-import LanguageExample from '../../components/LanguageExample.astro';
 
 ## Minimal World
 
@@ -19,11 +18,12 @@ ecs_fini();
 ```cpp
 ecs::init();
 auto entity = ecs::entity::create();
+ecs::fini();
 ```
 </TabItem>
 </Tabs>
 
-## Game Loop With Time
+## Game Loop with Time
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -33,7 +33,7 @@ ECS_COMPONENT(Position, { float x; });
 ECS_COMPONENT(Velocity, { float x; });
 
 static void Move(ecs_iter_t *it) {
-    const Time *time = ecs_get_resource_read(it->world, Time);
+    const Time *time = ecs_get_resource_read(Time);
     Position *p = ecs_field(it, 0);
     const Velocity *v = ecs_field(it, 1);
     for (uint32_t i = 0; i < it->count; i++) p[i].x += v[i].x * time->dt;
@@ -55,7 +55,7 @@ ecs::system("Move").each([](ecs::res<const Time> time,
 </TabItem>
 </Tabs>
 
-## Parent And Child
+## Parent and Child
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -89,22 +89,31 @@ ecs_query_id_t q = ecs_query({
 ```cpp
 auto query = ecs::query()
     .require<Position>()
-    .each([](Position &position) {
-        // Query optional data through the C API when needed.
-        (void)position;
-    });
+    .optional<Velocity>();
 ```
 </TabItem>
 </Tabs>
 
-## React To A Component Set
+The C++ callback can receive an `ecs::optional<const Velocity>` value:
+
+```cpp
+ecs::query().require<Position>().each(
+    [](Position &position, ecs::optional<const Velocity> velocity) {
+        if (velocity) position.x += velocity->x;
+    }
+);
+```
+
+## React to a Component Set
 
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
+#include <stdio.h>
+
 static void OnPositionSet(ecs_observer_event_t *event) {
     const Position *incoming = event->trigger_data;
-    (void)incoming;
+    printf("position.x = %f\n", incoming->x);
 }
 
 ecs_observer({
@@ -116,6 +125,8 @@ ecs_observer({
 </TabItem>
 <TabItem label="C++">
 ```cpp
+#include <iostream>
+
 ecs::observe<ecs::OnSet>().each([](const Position &position) {
     std::cout << position.x << '\n';
 });
@@ -123,7 +134,7 @@ ecs::observe<ecs::OnSet>().each([](const Position &position) {
 </TabItem>
 </Tabs>
 
-## Pause Entities With Disabled
+## Pause Entities with Disabled
 
 <Tabs syncKey="language">
 <TabItem label="C">

@@ -3,7 +3,6 @@ title: Resources
 description: Store and access values held once per world, including use from systems, hooks, and the id-based API.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
-import LanguageExample from '../../components/LanguageExample.astro';
 
 Resources are typed values stored once per world. Use them for state that is
 unique to the world, not attached to each entity: frame time, input state,
@@ -14,7 +13,7 @@ Resources have their own `ecs_resource_t` ids. They do not consume component
 ids, they are not added to an entity, they are not query terms, and they do not
 consume an `ecs_field()` slot.
 
-## Declare A Resource
+## Declare a Resource
 
 Resources are declared once and stored per world:
 
@@ -28,7 +27,7 @@ ECS_RESOURCE_DECLARE(Time, {
 });
 
 ECS_RESOURCE_DEFINE(Time);
-ECS_RESOURCE_REGISTER(world, Time);
+ECS_RESOURCE_REGISTER(Time);
 ```
 
 </TabItem>
@@ -45,7 +44,7 @@ ecs::set_resource(Time{ .dt = 0.016f });
 The resource macros intentionally mirror component macros, but resources are
 registered in a dedicated resource registry.
 
-## Set And Read
+## Set and Read
 
 `ecs_set_resource()` creates or replaces the resource value:
 
@@ -124,7 +123,7 @@ const auto *read_time = ecs::try_resource<const Time>();
 `ecs_get_resource()` and `ecs_get_resource_read()` assert when the resource does not
 exist. The `try` variants return `NULL`.
 
-## Presence And Removal
+## Presence and Removal
 
 Check whether a resource exists with `ecs_has_resource()`:
 
@@ -165,16 +164,16 @@ ecs::remove_resource<Time>();
 
 Removing a missing resource is a no-op.
 
-## Use Resources In C Systems
+## Use Resources in C Systems
 
-In C, systems receive an `ecs_iter_t *`. Read resources from `it->world` before
-the entity loop:
+In C, systems receive an `ecs_iter_t *`. Read resources from the active world
+before the entity loop:
 
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
 static void move_system(ecs_iter_t *it) {
-    const Time *time = ecs_get_resource_read(it->world, Time);
+    const Time *time = ecs_get_resource_read(Time);
     Position *positions = ecs_field(it, 0);
     const Velocity *velocities = ecs_field(it, 1);
 
@@ -211,10 +210,12 @@ ecs::system("Move").each([](
 The resource is not part of the query. The system above matches entities with
 `Position` and `Velocity`; it does not require entities to have `Time`.
 
-## Id-Based API
+## ID-based API
 
 Typed helpers are wrappers around the id-based API:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 void ecs_set_resource_rid(ecs_resource_t id, const void *data);
 void *ecs_resource_rid(ecs_resource_t id);
@@ -222,9 +223,21 @@ void *ecs_try_resource_rid(ecs_resource_t id);
 bool ecs_has_resource_rid(const ecs_resource_t id);
 void ecs_remove_resource_rid(ecs_resource_t id);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+Time time_value{ .dt = 0.016f };
+auto time = ecs::resource_handle<Time>();
+time.set(time_value);
+time.get().dt += 0.001f;
+```
+</TabItem>
+</Tabs>
 
 This is useful for generic module code:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_resource_t time_id = ecs_id(Time);
 
@@ -233,6 +246,21 @@ if (ecs_has_resource_rid(time_id)) {
     /* use time */
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+#include <cstdio>
+
+auto time = ecs::resource_handle<const Time>();
+
+if (time.has()) {
+    if (time.get().dt >= 0.0f) {
+        std::printf("valid time\n");
+    }
+}
+```
+</TabItem>
+</Tabs>
 
 ## Hooks
 
@@ -243,20 +271,38 @@ Resources have dedicated resource hooks:
 - `on_remove` also runs during `ecs_fini()` for resources still present in the
   world.
 
-Hooks receive only the world and the resource value pointer.
+Hooks receive only the resource value pointer. The callback does not receive a
+world argument.
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 static void on_time_set(const void *data) {
-    (void)world;
-
     const Time *time = data;
     if (time->dt < 0.0f) {
         /* reject or record invalid data */
     }
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+#include <cstdlib>
 
-## Performance Notes
+static void on_time_set(const Time &time) {
+    if (time.dt < 0.0f) {
+        std::abort();
+    }
+}
+
+ecs::resource_hooks<Time> hooks{ .on_set = on_time_set };
+auto time = ecs::resource_handle<Time>(hooks);
+time.set(Time{ .dt = 0.016f });
+```
+</TabItem>
+</Tabs>
+
+## Performance notes
 
 Resource lookup is a direct index by `ecs_resource_t`, so access is O(1). The
 value is stored once in the world and is independent from table iteration.

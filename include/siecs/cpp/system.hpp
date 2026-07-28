@@ -24,6 +24,8 @@ template <typename Callback> static void system_callback_dtor(uintptr_t user_dat
 class system : protected query {
     const char *name;
     ecs_phase_t _phase = EcsOnUpdate;
+    ecs_system_id_t _after[ECS_SYSTEM_AFTER_CAPACITY]{};
+    bool _disabled = false;
 
   public:
     explicit system(const char *name = "unnamed") : name(name) {}
@@ -48,6 +50,22 @@ class system : protected query {
         return *this;
     }
 
+    system &after(ecs_system_id_t dependency) {
+        for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY; i++) {
+            if (_after[i] == 0) {
+                _after[i] = dependency;
+                return *this;
+            }
+        }
+        assert(false && "too many system dependencies");
+        return *this;
+    }
+
+    system &disabled(bool value = true) {
+        _disabled = value;
+        return *this;
+    }
+
     template <typename F> ecs_system_id_t each(F &&func) {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
@@ -61,10 +79,19 @@ class system : protected query {
             .user_data = reinterpret_cast<uintptr_t>(state),
             .user_data_dtor = detail::system_callback_dtor<callback>,
             .phase = _phase,
+            .disabled = _disabled,
         };
+
+        for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY; i++) {
+            system_desc.after[i] = _after[i];
+        }
 
         return ecs_system_init(&system_desc);
     }
 };
+
+inline void run_system(ecs_system_id_t id) { ecs_run_system(id); }
+inline void enable_system(ecs_system_id_t id) { ecs_system_enable(id); }
+inline void disable_system(ecs_system_id_t id) { ecs_system_disable(id); }
 
 } // namespace ecs

@@ -3,12 +3,12 @@ title: Systems and Scheduling
 description: Create systems, run query callbacks, order execution phases, and handle structural changes safely.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
-import LanguageExample from '../../components/LanguageExample.astro';
 
-Systems are named callbacks attached to a query. They are the usual way to run
-game or application logic over matching entities.
+Systems are named callbacks attached to a query. In C, callbacks receive an
+iterator; in C++, callback parameters infer typed query terms. Systems are the
+usual way to run game or application logic over matching entities.
 
-## Create A System
+## Create a System
 
 A system callback receives an `ecs_iter_t *`. Each call gives a batch of matching
 entities for the system query.
@@ -76,9 +76,11 @@ ecs_system({
 </TabItem>
 <TabItem label="C++">
 ```cpp
+#include <cstdio>
+
 ecs::system("PausedDebug")
-    .each([](const Position &position, const ecs::Disabled &) {
-        (void)position;
+    .each([](const Position &position, const Disabled &) {
+        std::printf("%f\n", position.x);
     });
 ```
 </TabItem>
@@ -86,14 +88,14 @@ ecs::system("PausedDebug")
 
 ## Use Resources
 
-Resources are unique values stored on the world. In C systems, read them through
-`it->world` before the entity loop:
+Resources are unique values stored on the world. In C systems, read them from
+the active world before the entity loop:
 
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
 static void move_system(ecs_iter_t *it) {
-    const Time *time = ecs_get_resource_read(it->world, Time);
+    const Time *time = ecs_get_resource_read(Time);
     Position *positions = ecs_field(it, 0);
     const Velocity *velocities = ecs_field(it, 1);
 
@@ -174,8 +176,8 @@ ecs_run_system(Move);
 </TabItem>
 <TabItem label="C++">
 ```cpp
-ecs_run_phase(EcsOnUpdate);
-ecs_run_system(Move);
+ecs::run_phase(EcsOnUpdate);
+ecs::run_system(Move);
 ```
 </TabItem>
 </Tabs>
@@ -189,7 +191,7 @@ system. This is useful for tests or explicit one-off work.
 `OnPreUpdate`, `OnUpdate`, `OnPostUpdate`, and `OnRender` are compatibility
 aliases for the matching `Ecs*` phase names.
 
-## Order Systems In A Phase
+## Order Systems in a Phase
 
 Systems in different phases are ordered by the phase list above. Inside one
 phase, use `after` when a system depends on another system having run first:
@@ -215,25 +217,29 @@ ecs_system({
 </TabItem>
 <TabItem label="C++">
 ```cpp
-// The C++ system builder currently uses the raw descriptor for `after` links.
-ecs_system_id_t integrate = ecs_system({
-    .name = "Integrate",
-    .phase = EcsOnUpdate,
-    .query = { .terms = { ecs_inout(ecs::component<Position>()),
-                          ecs_in(ecs::component<Velocity>()) } },
-    .callback = integrate_system,
-});
+ecs_system_id_t integrate = ecs::system("Integrate")
+    .phase(EcsOnUpdate)
+    .each([](Position &position, const Velocity &velocity) {
+        position.x += velocity.x;
+    });
+
+ecs::system("SyncTransform")
+    .phase(EcsOnUpdate)
+    .after(integrate)
+    .each([](const Position &, Transform &transform) {
+        transform.x = 0.0f;
+    });
 ```
 </TabItem>
 </Tabs>
 
-`after` accepts up to four system ids. System id `0` is reserved, so an omitted
-or zero-filled `after` array means no dependency.
+`after()` accepts up to `ECS_SYSTEM_AFTER_CAPACITY` system ids. System id `0` is
+reserved, so an omitted or zero-filled dependency list means no dependency.
 
 Dependencies must point to systems in the same phase. Dependency cycles and
 cross-phase dependencies are debug assertion failures.
 
-## Enable Or Disable A System
+## Enable or Disable a System
 
 Systems are enabled by default. Create a disabled system with `.disabled = true`
 or toggle it later:
@@ -256,9 +262,10 @@ ecs_system_disable(Damage);
 <TabItem label="C++">
 ```cpp
 ecs_system_id_t damage = ecs::system("Damage")
+    .disabled()
     .each([](Health &health) { health.value -= 1; });
-ecs_system_disable(damage);
-ecs_system_enable(damage);
+ecs::enable_system(damage);
+ecs::disable_system(damage);
 ```
 </TabItem>
 </Tabs>
@@ -278,8 +285,10 @@ batch. Updating those component values in place is expected:
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-Health *health = ecs_field(it, 0);
-health[i].value -= 1;
+    Health *health = ecs_field(it, 0);
+    for (uint32_t i = 0; i < it->count; i++) {
+        health[i].value -= 1;
+    }
 ```
 </TabItem>
 <TabItem label="C++">
@@ -297,16 +306,34 @@ API explicitly documents that the operation is safe for iteration.
 
 ## Descriptor Reference
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 typedef struct {
     const char *name;
     ecs_query_desc_t query;
     void (*callback)(ecs_iter_t *);
+    uintptr_t user_data;
+    void (*user_data_dtor)(uintptr_t user_data);
     ecs_phase_t phase;
-    ecs_system_id_t after[4];
+    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
     bool disabled;
 } ecs_system_desc_t;
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto move = ecs::system("Move")
+    .require<Position>()
+    .phase(EcsOnUpdate)
+    .after(integrate)
+    .disabled()
+    .each([](Position &position) {
+        position.x += 1.0f;
+    });
+```
+</TabItem>
+</Tabs>
 
 | Field | Meaning |
 | --- | --- |

@@ -3,7 +3,6 @@ title: Getting Started
 description: Install SIECS, configure a C or C++ project, and build a minimal program with components and systems.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
-import LanguageExample from '../../components/LanguageExample.astro';
 
 This page shows the normal user flow and the supported ways to consume SIECS.
 
@@ -11,7 +10,7 @@ If you are new to ECS, read [ECS Theory](../theory/) after this page. The short
 version is: entities are ids, components are data, and systems run over batches
 of entities that match a query.
 
-## Quick Start
+## Quick start
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -33,8 +32,8 @@ ECS_COMPONENT_DECLARE(Position, {
 ECS_COMPONENT_DEFINE(Position);
 
 int main(void) {
-ecs_init();
-    ECS_COMPONENT_REGISTER(world, Position);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(Position);
     ecs_entity_t entity = ecs_new();
     ecs_set(entity, Position, { .x = 10.0f, .y = 20.0f });
     Position *position = ecs_get(entity, Position);
@@ -64,6 +63,7 @@ int main() {
     ecs::init();
     auto entity = ecs::entity::create();
     entity.set(Position{ .x = 10.0f, .y = 20.0f });
+    ecs::fini();
     return 0;
 }
 ```
@@ -78,7 +78,7 @@ c++ -std=c++23 -I. main.cpp siecs.o -pthread -o my_app
 </TabItem>
 </Tabs>
 
-## Language Setup
+## Language setup
 
 The same SIECS runtime can be consumed from C or C++:
 
@@ -104,7 +104,7 @@ library with your application.
 </TabItem>
 </Tabs>
 
-## Bake Example
+## Bake example
 
 Use Bake if your project already uses Bake or if you want the same setup as the
 repository tests.
@@ -148,14 +148,14 @@ C++
 }
 ```
 
-## Manual Source Build
+## Manual source build
 
 For custom build systems, compile the C sources from this repository's `src/`
 directory and also compile the public C dependencies used by SIECS:
 
-- `sireflect`: `https://github.com/suleymanlaarabi/sireflect`
-- `sijson`: `https://github.com/suleymanlaarabi/sijson`
-- `sihttp`: `https://github.com/suleymanlaarabi/sihttp`
+- [`sireflect`](https://github.com/suleymanlaarabi/sireflect)
+- [`sijson`](https://github.com/suleymanlaarabi/sijson)
+- [`sihttp`](https://github.com/suleymanlaarabi/sihttp)
 
 Expose these include directories to your application:
 
@@ -179,7 +179,7 @@ Use these compile definitions for static builds:
 
 On Linux, link `pthread`.
 
-## Minimal Program
+## Minimal program
 
 The runtime flow from the standalone example is:
 
@@ -203,8 +203,8 @@ ECS_COMPONENT_DECLARE(Position, {
 ECS_COMPONENT_DEFINE(Position);
 
 int main(void) {
-ecs_init();
-    ECS_COMPONENT_REGISTER(world, Position);
+    ecs_init();
+    ECS_COMPONENT_REGISTER(Position);
 
     ecs_entity_t entity = ecs_new();
     ecs_set(entity, Position, { .x = 10.0f, .y = 20.0f });
@@ -229,8 +229,7 @@ int main() {
     ecs::init();
     auto entity = ecs::entity::create();
     entity.set(Position{ .x = 10.0f, .y = 20.0f });
-    const bool present = entity.has<Position>();
-    (void)present;
+    ecs::fini();
     return 0;
 }
 ```
@@ -238,10 +237,12 @@ int main() {
 </TabItem>
 </Tabs>
 
-## Minimal System
+## Minimal system
 
 Most applications create systems instead of manually querying every frame:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ECS_COMPONENT(Velocity, {
     float x;
@@ -267,21 +268,44 @@ ecs_system({
 
 ecs_progress();
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::system("Move")
+    .phase(EcsOnUpdate)
+    .each([](Position &position, const Velocity &velocity) {
+        position.x += velocity.x;
+        position.y += velocity.y;
+    });
+
+ecs::progress();
+```
+</TabItem>
+</Tabs>
 
 Systems own persistent queries internally, so they are the usual choice for
 repeated frame logic.
 
-## Include Path
+## Include path
 
 Applications include the public header:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 #include <siecs.h>
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+#include <siecs.h>
+```
+</TabItem>
+</Tabs>
 
 The old `ecs/world.h` header is not part of the current public API.
 
-## Build With Bake
+## Build with Bake
 
 Bake is the maintainer build for this repository and remains supported for
 consuming Bake projects.
@@ -294,7 +318,7 @@ bake rebuild test
 bake run test
 ```
 
-## Important Contracts
+## Important contracts
 
 `ecs_get()` assumes the component exists on the entity. Use `ecs_try_get()` when
 the component may be absent.
@@ -303,7 +327,7 @@ the component may be absent.
 
 Entities passed to API functions must come from the same world.
 
-## Next Steps
+## Next steps
 
 - Learn about [archetype storage](../archetype-ecs/).
 - Use the [cookbook](../cookbook/) for focused patterns.

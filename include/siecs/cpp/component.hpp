@@ -13,11 +13,48 @@
 
 namespace ecs {
 
+template <typename T> struct component_hooks {
+    using on_set_t = void (*)(ecs_entity_t, const T &, T &);
+    using on_remove_t = void (*)(ecs_entity_t, T &);
+    using on_add_t = void (*)(ecs_entity_t, T &);
+
+    on_set_t on_set = nullptr;
+    on_remove_t on_remove = nullptr;
+    on_add_t on_add = nullptr;
+};
+
 namespace detail {
 
 template <typename T> struct component_type {
     static inline ecs_component_t id = 0;
 };
+
+template <typename T> struct component_hook_state {
+    static inline component_hooks<T> hooks{};
+};
+
+template <typename T>
+static void component_on_set(
+    ecs_entity_t entity,
+    ecs_component_t,
+    const void *new_value,
+    void *current_value
+) {
+    auto callback = component_hook_state<T>::hooks.on_set;
+    if (callback != nullptr) {
+        callback(entity, *static_cast<const T *>(new_value), *static_cast<T *>(current_value));
+    }
+}
+
+template <typename T> static void component_on_remove(ecs_entity_t entity, ecs_component_t, void *value) {
+    auto callback = component_hook_state<T>::hooks.on_remove;
+    if (callback != nullptr) callback(entity, *static_cast<T *>(value));
+}
+
+template <typename T> static void component_on_add(ecs_entity_t entity, ecs_component_t, void *value) {
+    auto callback = component_hook_state<T>::hooks.on_add;
+    if (callback != nullptr) callback(entity, *static_cast<T *>(value));
+}
 
 template <typename T, typename = void> struct is_complete : std::false_type {};
 
@@ -106,7 +143,11 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
     }
 }
 
-template <typename T> static ecs_component_t ecs_cpp_component_id() {
+template <typename T>
+static ecs_component_t ecs_cpp_component_id(
+    uint32_t relation_flags = 0,
+    const component_hooks<T> *hooks = nullptr
+) {
     ecs_component_t &cid = detail::component_type<T>::id;
 
     if (cid != 0) return cid;
@@ -126,14 +167,16 @@ template <typename T> static ecs_component_t ecs_cpp_component_id() {
         reflection.align = _Alignof(T);
     }
 
+    if (hooks != nullptr) component_hook_state<T>::hooks = *hooks;
+
     ecs_component_desc_t desc = {
         .name = reflection.name,
         .size = sisizeof<T>(),
         .ops = value_ops<T>(),
-        .on_set = nullptr,
-        .on_remove = nullptr,
-        .on_add = nullptr,
-        .relation_flags = 0,
+        .on_set = hooks && hooks->on_set ? component_on_set<T> : nullptr,
+        .on_remove = hooks && hooks->on_remove ? component_on_remove<T> : nullptr,
+        .on_add = hooks && hooks->on_add ? component_on_add<T> : nullptr,
+        .relation_flags = relation_flags ? EcsRelationTarget | relation_flags : 0,
         .struct_desc = &reflection,
     };
 

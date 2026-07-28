@@ -10,7 +10,7 @@ public surface, and the same storage model across both languages.
 This page documents the decisions and costs behind that design. It is intended
 as a technical selection guide, not a benchmark.
 
-## Runtime And Language Model
+## Runtime and Language Model
 
 The C API in `<siecs.h>` is the runtime contract. It exposes explicit entity,
 component, query, system, observer, module, relation, and resource APIs.
@@ -38,7 +38,7 @@ This design favors workloads where:
 Read [Archetype storage](../archetype-ecs/) for the complete storage
 model.
 
-## Structural Change Cost
+## Structural change cost
 
 Adding or removing a component can move an entity to another archetype table.
 The cost is visible and predictable, but it is not zero.
@@ -52,7 +52,7 @@ Applications with stable archetypes can keep most per-frame work in contiguous
 arrays. Applications that continuously add and remove many independent
 components should account for migration cost in their own workload.
 
-## Queries And Scheduling
+## Queries and Scheduling
 
 Persistent queries cache matching table identifiers. Systems own persistent
 queries and run in explicit phases through `ecs_progress()` or
@@ -65,7 +65,7 @@ This makes the execution order inspectable:
 - `after` dependencies order systems inside a phase;
 - structural mutation rules remain explicit to the application.
 
-## Runtime Scope
+## Runtime scope
 
 The core runtime includes:
 
@@ -80,7 +80,7 @@ The core runtime includes:
 The REST explorer is an optional addon for tools. It is not required by the
 core storage or iteration path.
 
-## Project Fit
+## Project fit
 
 SIECS is designed for C or C++ applications that want an explicit ECS
 runtime, archetype storage, and a compact API that can be embedded without

@@ -3,7 +3,6 @@ title: Performance
 description: Keep hot code efficient with persistent queries, contiguous data, tight terms, and structural changes outside iteration.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
-import LanguageExample from '../../components/LanguageExample.astro';
 
 SIECS is optimized around table iteration. The main goal is to keep hot code in
 contiguous component arrays and keep structural changes out of tight loops.
@@ -29,7 +28,7 @@ while (ecs_iter_next(&it)) {
 </TabItem>
 <TabItem label="C++">
 ```cpp
-ecs::query().each([](Position &position, const Velocity &velocity) {
+ecs::system("Move").each([](Position &position, const Velocity &velocity) {
     position.x += velocity.x;
 });
 ```
@@ -46,7 +45,7 @@ loop. Resolve resources before the loop:
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-const Time *time = ecs_get_resource_read(it->world, Time);
+const Time *time = ecs_get_resource_read(Time);
 Position *p = ecs_field(it, 0);
 const Velocity *v = ecs_field(it, 1);
 
@@ -57,16 +56,16 @@ for (uint32_t i = 0; i < it->count; i++) {
 </TabItem>
 <TabItem label="C++">
 ```cpp
-ecs::query().each([](ecs::res<const Time> time,
-                     Position &position,
-                     const Velocity &velocity) {
+ecs::system("Move").each([](ecs::res<const Time> time,
+                              Position &position,
+                              const Velocity &velocity) {
     position.x += velocity.x * time->dt;
 });
 ```
 </TabItem>
 </Tabs>
 
-## Tags Are Cheap In Storage
+## Tags Are Cheap in Storage
 
 Tags are zero-sized components. They do not allocate component data columns, but
 adding or removing a tag is still a structural change because the entity moves
@@ -75,7 +74,7 @@ to a different archetype table.
 Use tags freely for stable state such as `Player`, `Selected`, or `Visible`.
 Avoid toggling many tags inside a hot iteration loop.
 
-## Avoid Structural Changes In Hot Loops
+## Avoid Structural Changes in Hot Loops
 
 These operations can migrate an entity to another table:
 
@@ -93,7 +92,7 @@ terms only when one query really benefits from handling both table shapes. Two
 smaller queries are sometimes clearer and faster than one query with many
 optional branches.
 
-## Module And System Costs
+## Module and System Costs
 
 Modules add no work to table iteration. Enable/disable only toggles captured
 systems and observers. System ordering is resolved into per-phase execution

@@ -3,7 +3,6 @@ title: Components
 description: Declare, register, access, remove, reflect, and serialize components from C and C++.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
-import LanguageExample from '../../components/LanguageExample.astro';
 
 Components are data types registered in a world. They can be used through typed
 macros or directly through `ecs_component_t` ids.
@@ -12,7 +11,7 @@ Resources use a separate id space and are stored once per world instead of once
 per entity. Use a component for per-entity data, and a resource for unique world
 state such as time, input, renderer state, or shared config.
 
-## Typed Components
+## Typed components
 
 Components are declared once and registered with each world:
 
@@ -26,7 +25,7 @@ ECS_COMPONENT_DECLARE(Position, {
 });
 
 ECS_COMPONENT_DEFINE(Position);
-ECS_COMPONENT_REGISTER(world, Position);
+ECS_COMPONENT_REGISTER(Position);
 ```
 
 </TabItem>
@@ -43,8 +42,17 @@ entity.set(Position{ .x = 1.0f, .y = 2.0f });
 </TabItem>
 </Tabs>
 
+In C++, the typed wrapper registers a component automatically on first use. Use
+the `reflected(...)` declaration when its fields must be visible to the REST
+explorer or JSON serialization:
 
-## Set And Read
+```cpp
+struct Position {
+    reflected(float x; float y;);
+};
+```
+
+## Set and Read
 
 `ecs_set()` adds the component if needed, then writes the value:
 
@@ -96,7 +104,7 @@ if (Position *position = entity.try_get<Position>()) {
 </TabItem>
 </Tabs>
 
-## Add, Remove, Has
+## Add, remove, and check components
 
 Use the typed operation for components that do not need an immediate value:
 
@@ -181,15 +189,17 @@ ecs_query({
 <TabItem label="C++">
 ```cpp
 ecs::query().require<Position>().require<Disabled>().each(
-    [](Position &) { /* process disabled entities */ });
+    [](Position &position) { position.x += 1.0f; });
 ```
 </TabItem>
 </Tabs>
 
-## Component Requirements
+## Component requirements
 
 Use `ecs_with()` when adding one component should also add another component:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_with(ecs_id(Renderable), ecs_id(Transform));
 
@@ -197,16 +207,26 @@ ecs_add(entity, Renderable);
 
 /* Transform was added first. */
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::component_requires<Renderable, Transform>();
+entity.add<Renderable>();
+```
+</TabItem>
+</Tabs>
 
 This only affects future adds. It does not rewrite existing entities.
 
 Requirement cycles are invalid. In debug builds, cycles are asserted when
 calling `ecs_with()`.
 
-## Id-Based Components
+## ID-based components
 
 For generic code, register a component from a descriptor:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 typedef struct {
     float x;
@@ -218,32 +238,63 @@ ecs_component_t position_id = ecs_component({
     .size = sizeof(Position),
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto position_id = ecs::component<Position>();
+```
+</TabItem>
+</Tabs>
 
 Then use the `_cid` functions:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_set_cid(entity, position_id, &(Position){ .x = 1.0f, .y = 2.0f });
 
 Position *position = ecs_get_cid(entity, position_id);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+Position value{ .x = 1.0f, .y = 2.0f };
+entity.set(value);
+auto &position = entity.get<Position>();
+```
+</TabItem>
+</Tabs>
 
-## Reflection And JSON
+## Reflection and JSON
 
 Typed component macros register reflection metadata through `sireflect` and
 `sijson`:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ECS_COMPONENT(Position, {
     float x;
     float y;
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Position {
+    reflected(float x; float y;);
+};
+```
+</TabItem>
+</Tabs>
 
 That metadata is used by the REST explorer to list component schemas and
 serialize reflected component values. Components registered only with a raw
 descriptor are reflected only when `struct_desc` points to a valid
 `sireflect_struct_desc_t` produced by the reflection layer:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_component_t position_id = ecs_component({
     .name = "Position",
@@ -251,15 +302,33 @@ ecs_component_t position_id = ecs_component({
     .struct_desc = position_reflection_desc,
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto position_id = ecs::component<Position>();
+```
+</TabItem>
+</Tabs>
+
+The C++ wrapper creates reflection metadata from `reflected(...)` declarations.
+For a runtime descriptor assembled dynamically, use the C descriptor API from
+C++.
 
 If a component has no reflection metadata, SIECS can still store and query it,
 but the REST explorer cannot show or edit its fields.
+
+Plain C++ structs are stored and queried normally, but have no reflected fields
+unless they use `reflected(...)`.
 
 ## Hooks
 
 Component descriptors can provide lifecycle hooks:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
+#include <stdio.h>
+
 static void on_set_position(
     ecs_entity_t entity,
     ecs_component_t component,
@@ -268,13 +337,23 @@ static void on_set_position(
 ) {
     const Position *incoming = new_value;
     Position *stored = current_value;
-    (void)world;
-    (void)entity;
-    (void)component;
-    (void)incoming;
-    (void)stored;
+    printf("old=%f new=%f", stored->x, incoming->x);
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+#include <cstdio>
+
+static void on_set_position(ecs_entity_t, const Position &incoming, Position &stored) {
+    std::printf("old=%f new=%f", stored.x, incoming.x);
+}
+
+ecs::component_hooks<Position> hooks{ .on_set = on_set_position };
+auto position_id = ecs::component(hooks);
+```
+</TabItem>
+</Tabs>
 
 `on_set` receives the new value passed to `ecs_set()` or `ecs_set_cid()`. The
 stored value is still the previous value until the hook returns.

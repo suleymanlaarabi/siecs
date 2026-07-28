@@ -2,7 +2,7 @@
 title: Archetype Storage
 description: Understand table storage, contiguous component columns, query matching, structural changes, and sparse-set tradeoffs.
 ---
-import LanguageExample from '../../components/LanguageExample.astro';
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 An archetype entity component system groups entities by their exact set of
 components. Every distinct component set identifies a table, and every
@@ -11,7 +11,7 @@ component stored by that table has a contiguous column.
 SIECS uses this model to turn an ECS query into iteration over matching tables
 instead of repeated lookups across unrelated component stores.
 
-## Archetypes Represent Component Sets
+## Archetypes represent component sets
 
 Consider three entities:
 
@@ -27,7 +27,7 @@ The tree belongs to another table because it does not have `Velocity`.
 An entity handle identifies a row in one of these tables. The handle is stable
 while its storage location may change.
 
-## Tables Store Contiguous Columns
+## Tables store contiguous columns
 
 Conceptually, the moving-actor table is laid out as separate arrays:
 
@@ -45,11 +45,13 @@ for every row.
 Tags are zero-sized components. They participate in the archetype identity and
 query matching without adding a data column.
 
-## Queries Match Tables First
+## Queries match tables first
 
 A persistent SIECS query records the table identifiers that satisfy its terms.
 Iteration then returns one matching table batch at a time:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_id_t moving = ecs_query({
     .terms = {
@@ -59,6 +61,18 @@ ecs_query_id_t moving = ecs_query({
     },
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto moving = ecs::system("Move")
+    .require<Position, Velocity>()
+    .require<Visible>()
+    .each([](Position &position, const Velocity &velocity) {
+        position.x += velocity.x;
+    });
+```
+</TabItem>
+</Tabs>
 
 `Position` and `Velocity` produce fields. `Visible` only constrains matching, so
 it does not consume a field index.
@@ -67,7 +81,7 @@ When a compatible table is created later, the query index can associate that
 table with the persistent query. This keeps repeated iteration focused on
 matching storage.
 
-## Structural Changes Move Entities
+## Structural changes move entities
 
 Changing an existing component value writes into the current column. Changing
 the component set is different:
@@ -82,7 +96,7 @@ Operations such as `ecs_add()`, `ecs_remove()`, and setting a previously absent
 component are structural changes. They are valid operations, but they should
 not dominate a hot iteration loop.
 
-## Archetypes And Sparse Sets
+## Archetypes and Sparse Sets
 
 Both models can implement a capable ECS, but they optimize different work:
 
@@ -100,7 +114,7 @@ when many entities keep stable component sets and systems repeatedly process
 large matching batches. A sparse-set design can be attractive when independent
 component insertion and removal dominates the workload.
 
-## What This Means In SIECS
+## What This Means in SIECS
 
 - Keep persistent queries for repeated work.
 - Resolve query fields once per batch.

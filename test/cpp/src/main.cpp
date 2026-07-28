@@ -8,6 +8,9 @@
 
 #include <test.h>
 
+// Testsuite 'api'
+void api_cpp_wrapper_helpers(void);
+
 // Testsuite 'entity_state'
 void entity_state_enable_disable(void);
 void entity_state_disabled_entities_are_skipped(void);
@@ -55,6 +58,13 @@ void module_import_double_import(void);
 // Testsuite 'module_state'
 void module_state_lookup_empty(void);
 void module_state_enable(void);
+
+bake_test_case api_testcases[] = {
+    {
+        "cpp_wrapper_helpers",
+        api_cpp_wrapper_helpers
+    }
+};
 
 bake_test_case entity_state_testcases[] = {
     {
@@ -221,6 +231,13 @@ bake_test_case module_state_testcases[] = {
 
 static bake_test_suite suites[] = {
     {
+        "api",
+        NULL,
+        NULL,
+        1,
+        api_testcases
+    },
+    {
         "entity_state",
         NULL,
         NULL,
@@ -265,5 +282,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.cpp.test", argc, argv, suites, 6);
+    return bake_test_run("siecs.cpp.test", argc, argv, suites, 7);
 }

@@ -1752,11 +1752,48 @@ template <class T> consteval std::string_view type_name() {
 
 namespace ecs {
 
+template <typename T> struct component_hooks {
+    using on_set_t = void (*)(ecs_entity_t, const T &, T &);
+    using on_remove_t = void (*)(ecs_entity_t, T &);
+    using on_add_t = void (*)(ecs_entity_t, T &);
+
+    on_set_t on_set = nullptr;
+    on_remove_t on_remove = nullptr;
+    on_add_t on_add = nullptr;
+};
+
 namespace detail {
 
 template <typename T> struct component_type {
     static inline ecs_component_t id = 0;
 };
+
+template <typename T> struct component_hook_state {
+    static inline component_hooks<T> hooks{};
+};
+
+template <typename T>
+static void component_on_set(
+    ecs_entity_t entity,
+    ecs_component_t,
+    const void *new_value,
+    void *current_value
+) {
+    auto callback = component_hook_state<T>::hooks.on_set;
+    if (callback != nullptr) {
+        callback(entity, *static_cast<const T *>(new_value), *static_cast<T *>(current_value));
+    }
+}
+
+template <typename T> static void component_on_remove(ecs_entity_t entity, ecs_component_t, void *value) {
+    auto callback = component_hook_state<T>::hooks.on_remove;
+    if (callback != nullptr) callback(entity, *static_cast<T *>(value));
+}
+
+template <typename T> static void component_on_add(ecs_entity_t entity, ecs_component_t, void *value) {
+    auto callback = component_hook_state<T>::hooks.on_add;
+    if (callback != nullptr) callback(entity, *static_cast<T *>(value));
+}
 
 template <typename T, typename = void> struct is_complete : std::false_type {};
 
@@ -1845,7 +1882,11 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
     }
 }
 
-template <typename T> static ecs_component_t ecs_cpp_component_id() {
+template <typename T>
+static ecs_component_t ecs_cpp_component_id(
+    uint32_t relation_flags = 0,
+    const component_hooks<T> *hooks = nullptr
+) {
     ecs_component_t &cid = detail::component_type<T>::id;
 
     if (cid != 0) return cid;
@@ -1865,14 +1906,16 @@ template <typename T> static ecs_component_t ecs_cpp_component_id() {
         reflection.align = _Alignof(T);
     }
 
+    if (hooks != nullptr) component_hook_state<T>::hooks = *hooks;
+
     ecs_component_desc_t desc = {
         .name = reflection.name,
         .size = sisizeof<T>(),
         .ops = value_ops<T>(),
-        .on_set = nullptr,
-        .on_remove = nullptr,
-        .on_add = nullptr,
-        .relation_flags = 0,
+        .on_set = hooks && hooks->on_set ? component_on_set<T> : nullptr,
+        .on_remove = hooks && hooks->on_remove ? component_on_remove<T> : nullptr,
+        .on_add = hooks && hooks->on_add ? component_on_add<T> : nullptr,
+        .relation_flags = relation_flags ? EcsRelationTarget | relation_flags : 0,
         .struct_desc = &reflection,
     };
 
@@ -2174,6 +2217,43 @@ namespace ecs {
 
 namespace ecs {
 
+template <typename T> struct resource_hooks {
+    using on_set_t = void (*)(const T &);
+    using on_remove_t = void (*)(const T &);
+
+    on_set_t on_set = nullptr;
+    on_remove_t on_remove = nullptr;
+};
+
+template <typename T> class resource_ref {
+    using value_type = std::remove_cv_t<T>;
+    ecs_resource_t _id;
+
+  public:
+    explicit resource_ref(ecs_resource_t id) noexcept : _id(id) {}
+
+    template <typename U = T>
+        requires(!std::is_const_v<U>)
+    void set(const value_type &value) const {
+        ecs_set_resource_rid(_id, &value);
+    }
+
+    template <typename U = T>
+        requires(!std::is_const_v<U>)
+    void set(value_type &&value) const {
+        ecs_move_resource_rid(_id, &value);
+    }
+
+    [[nodiscard]] T *try_get() const noexcept {
+        return static_cast<T *>(ecs_try_resource_rid(_id));
+    }
+
+    [[nodiscard]] T &get() const { return *static_cast<T *>(ecs_resource_rid(_id)); }
+    [[nodiscard]] bool has() const { return ecs_has_resource_rid(_id); }
+    void remove() const { ecs_remove_resource_rid(_id); }
+    [[nodiscard]] ecs_resource_t id() const noexcept { return _id; }
+};
+
 template <typename T> class res {
     T *_ptr = nullptr;
 
@@ -2207,9 +2287,24 @@ template <typename T> using resource_value_t = std::remove_cv_t<res_value_t<T>>;
 
 struct no_resource {};
 
+template <typename T> struct resource_hook_state {
+    static inline resource_hooks<T> hooks{};
+};
+
+template <typename T> static void resource_on_set(const void *ptr) {
+    auto callback = resource_hook_state<T>::hooks.on_set;
+    if (callback != nullptr) callback(*static_cast<const T *>(ptr));
+}
+
+template <typename T> static void resource_on_remove(const void *ptr) {
+    auto callback = resource_hook_state<T>::hooks.on_remove;
+    if (callback != nullptr) callback(*static_cast<const T *>(ptr));
+}
+
 } // namespace detail
 
-template <typename T> static ecs_resource_t ecs_cpp_resource_id() {
+template <typename T>
+static ecs_resource_t ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) {
     using type = std::remove_cv_t<T>;
     ecs_resource_t &rid = detail::resource_type<type>::id;
 
@@ -2218,16 +2313,26 @@ template <typename T> static ecs_resource_t ecs_cpp_resource_id() {
 
     static const std::string name = std::string(type_name<type>());
 
+    if (hooks != nullptr) detail::resource_hook_state<type>::hooks = *hooks;
+
     ecs_resource_desc_t desc = {
         .name = name.c_str(),
         .size = sizeof(type),
         .ops = detail::value_ops<type>(),
-        .on_set = nullptr,
-        .on_remove = nullptr,
+        .on_set = hooks && hooks->on_set ? detail::resource_on_set<type> : nullptr,
+        .on_remove = hooks && hooks->on_remove ? detail::resource_on_remove<type> : nullptr,
     };
 
     rid = ecs_resource_init(&desc);
     return rid;
+}
+
+template <typename T> resource_ref<T> resource_handle() {
+    return resource_ref<T>(ecs_cpp_resource_id<T>());
+}
+
+template <typename T> resource_ref<T> resource_handle(const resource_hooks<std::remove_cv_t<T>> &hooks) {
+    return resource_ref<T>(ecs_cpp_resource_id<T>(&hooks));
 }
 
 template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {
@@ -2272,10 +2377,39 @@ template <typename Args> inline auto make_resources() {
 
 namespace ecs {
 
+template <typename T> class optional {
+    T *_ptr = nullptr;
+
+  public:
+    explicit optional(T *ptr) noexcept : _ptr(ptr) {}
+
+    [[nodiscard]] explicit operator bool() const noexcept { return _ptr != nullptr; }
+    [[nodiscard]] T *get() const noexcept { return _ptr; }
+    [[nodiscard]] T *operator->() const noexcept { return _ptr; }
+    [[nodiscard]] T &operator*() const noexcept { return *_ptr; }
+};
+
 namespace detail {
 
 template <typename T> struct is_entity : std::false_type {};
 template <> struct is_entity<ecs::entity> : std::true_type {};
+
+template <typename T> struct is_observer_event : std::false_type {};
+template <typename T>
+inline constexpr bool is_observer_event_v = is_observer_event<std::remove_cvref_t<T>>::value;
+
+template <typename T> struct is_optional : std::false_type {};
+template <typename T> struct is_optional<ecs::optional<T>> : std::true_type {};
+
+template <typename T> inline constexpr bool is_optional_v = is_optional<std::remove_cvref_t<T>>::value;
+
+template <typename T> struct optional_value;
+template <typename T> struct optional_value<ecs::optional<T>> {
+    using type = T;
+};
+
+template <typename T>
+using optional_value_t = typename optional_value<std::remove_cvref_t<T>>::type;
 
 template <typename T> inline constexpr bool is_entity_v = is_entity<std::remove_cvref_t<T>>::value;
 
@@ -2283,7 +2417,8 @@ template <typename Args, std::size_t I> consteval std::size_t field_index_before
     return []<std::size_t... Is>(std::index_sequence<Is...>) {
         return (
             (!is_res_v<std::tuple_element_t<Is, Args>> &&
-                     !is_entity_v<std::tuple_element_t<Is, Args>>
+                     !is_entity_v<std::tuple_element_t<Is, Args>> &&
+                     !is_observer_event_v<std::tuple_element_t<Is, Args>>
                  ? 1U
                  : 0U) +
             ... + 0U
@@ -2304,7 +2439,16 @@ struct entity_cursor {
     ecs_entity_t *value;
 };
 
+template <typename T> struct optional_cursor {
+    T *value;
+    std::ptrdiff_t step;
+};
+
 inline entity cursor_get(entity_cursor &cursor) { return entity::from(*cursor.value); }
+
+template <typename T> inline optional<T> cursor_get(optional_cursor<T> &cursor) {
+    return optional<T>(cursor.value);
+}
 
 template <typename T> inline decltype(auto) cursor_get(T &cursor) {
     if constexpr (is_res_v<T>)
@@ -2323,11 +2467,28 @@ template <bool OwnedOnly> inline void cursor_next(entity_cursor &cursor) noexcep
     cursor.value++;
 }
 
+template <bool OwnedOnly, typename T>
+inline void cursor_next(optional_cursor<T> &cursor) noexcept {
+    if (cursor.value != nullptr) {
+        cursor.value += OwnedOnly ? 1 : cursor.step;
+    }
+}
+
 template <typename Args, std::size_t I, typename Resources>
 inline auto make_cursor(ecs_iter_t *it, Resources &resources, bool &has_shared) {
     using arg = std::tuple_element_t<I, Args>;
     if constexpr (is_entity_v<arg>) {
         return entity_cursor{ it->entities };
+    } else if constexpr (is_optional_v<arg>) {
+        constexpr std::size_t field = field_index_before<Args, I>();
+        using value_type = optional_value_t<arg>;
+        auto *value = static_cast<value_type *>(ecs_field(it, static_cast<uint16_t>(field)));
+        bool shared = false;
+        if constexpr (std::is_const_v<value_type>) {
+            shared = ecs_field_is_shared(it, static_cast<uint16_t>(field));
+            has_shared |= shared;
+        }
+        return optional_cursor<value_type>{ value, shared ? 0U : 1U };
     } else if constexpr (is_res_v<arg>) {
         return std::get<I>(resources);
     } else {
@@ -2383,6 +2544,11 @@ template <typename T> consteval ecs_term_access_t term_access() {
     return std::is_const_v<std::remove_reference_t<T>> ? EcsIn : EcsInOut;
 }
 
+template <typename T> consteval ecs_term_access_t optional_term_access() {
+    using value_type = optional_value_t<T>;
+    return std::is_const_v<value_type> ? EcsInOptional : EcsInOutOptional;
+}
+
 inline void append_term(
     ecs_query_desc_t &desc,
     uint16_t &term_index,
@@ -2407,6 +2573,16 @@ inline void append_callback_term(ecs_query_desc_t &desc, uint16_t &term_index) {
     if constexpr (is_entity_v<T>) {
         static_assert(I == 0, "ecs::entity must be the first callback argument");
         static_assert(!std::is_reference_v<T>, "ecs::entity must be passed by value");
+    } else if constexpr (is_observer_event_v<T>) {
+        static_assert(I == 0, "ecs::observer_event must be the first callback argument");
+        static_assert(!std::is_reference_v<T>, "ecs::observer_event must be passed by value");
+    } else if constexpr (is_optional_v<T>) {
+        append_term(
+            desc,
+            term_index,
+            ecs::detail::ecs_cpp_component_id<std::remove_cv_t<optional_value_t<T>>>(),
+            optional_term_access<T>()
+        );
     } else if constexpr (!is_res_v<T>) {
         append_term(
             desc,
@@ -2437,6 +2613,43 @@ inline void append_callback_terms(ecs_query_desc_t &desc, uint16_t &term_index) 
 
 } // namespace detail
 
+class query_handle {
+    ecs_query_id_t _id = 0;
+
+  public:
+    explicit query_handle(ecs_query_id_t id) noexcept : _id(id) {}
+    ~query_handle() {
+        if (_id != 0) ecs_query_fini(_id);
+    }
+
+    query_handle(const query_handle &) = delete;
+    query_handle &operator=(const query_handle &) = delete;
+
+    query_handle(query_handle &&other) noexcept : _id(other._id) { other._id = 0; }
+
+    query_handle &operator=(query_handle &&other) noexcept {
+        if (this != &other) {
+            if (_id != 0) ecs_query_fini(_id);
+            _id = other._id;
+            other._id = 0;
+        }
+        return *this;
+    }
+
+    [[nodiscard]] ecs_query_id_t id() const noexcept { return _id; }
+
+    template <typename F> void each(F &&func) {
+        using callback = std::remove_cvref_t<F>;
+        using args = typename function_traits<callback>::args_tuple;
+        callback state(std::forward<F>(func));
+        auto resources = detail::make_resources<args>();
+        ecs_iter_t it = ecs_query_iter(_id);
+        while (ecs_iter_next(&it)) {
+            detail::run_batch<callback, args>(state, &it, resources);
+        }
+    }
+};
+
 class query {
   protected:
     ecs_query_desc_t desc{};
@@ -2466,6 +2679,8 @@ class query {
     }
 
     ecs_query_id_t build() { return ecs_query_init(&desc); }
+
+    query_handle build_handle() { return query_handle(build()); }
 
     template <typename F> void each(F &&func) {
         using args = typename function_traits<std::remove_reference_t<F>>::args_tuple;
@@ -2509,7 +2724,28 @@ struct OnAdd {};
 struct OnSet {};
 struct OnRemove {};
 
+class observer_event {
+    ecs_observer_event_t *_event;
+
+  public:
+    explicit observer_event(ecs_observer_event_t *event) noexcept : _event(event) {}
+
+    [[nodiscard]] entity target() const noexcept { return entity::from(_event->entity); }
+    [[nodiscard]] ecs_event_t id() const noexcept { return _event->event; }
+    [[nodiscard]] uintptr_t user_data() const noexcept { return _event->user_data; }
+
+    template <typename T> [[nodiscard]] T *user_data() const noexcept {
+        return reinterpret_cast<T *>(_event->user_data);
+    }
+
+    template <typename T> [[nodiscard]] const T *trigger_data() const noexcept {
+        return static_cast<const T *>(_event->trigger_data);
+    }
+};
+
 namespace detail {
+
+template <> struct is_observer_event<ecs::observer_event> : std::true_type {};
 
 template <typename T> struct event_type {
     static inline ecs_event_t id = UINT16_MAX;
@@ -2535,7 +2771,9 @@ template <typename T> static ecs_event_t ecs_cpp_event_id() {
 
 template <typename T> decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event) {
     using raw = std::remove_cvref_t<T>;
-    if constexpr (is_entity_v<T>) {
+    if constexpr (is_observer_event_v<T>) {
+        return observer_event(event);
+    } else if constexpr (is_entity_v<T>) {
         return entity::from(event->entity);
     } else {
         void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
@@ -2578,9 +2816,20 @@ void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
 } // namespace detail
 
 template <typename T> class observer : public query {
+    uintptr_t _user_data = 0;
 
   public:
     observer() = default;
+
+    observer &user_data(uintptr_t value) {
+        _user_data = value;
+        return *this;
+    }
+
+    template <typename U> observer &user_data(U *value) {
+        _user_data = reinterpret_cast<uintptr_t>(value);
+        return *this;
+    }
 
     template <typename F> ecs_observer_id_t each(F &&) {
         using callback = std::remove_cvref_t<F>;
@@ -2602,6 +2851,7 @@ template <typename T> class observer : public query {
             .on = detail::ecs_cpp_event_id<T>(),
             .query = this->desc,
             .callback = detail::ecs_cpp_observer_callback<callback, args>,
+            .user_data = _user_data,
         };
 
         return ecs_observer_init(&observer_desc);
@@ -2635,6 +2885,8 @@ template <typename Callback> static void system_callback_dtor(uintptr_t user_dat
 class system : protected query {
     const char *name;
     ecs_phase_t _phase = EcsOnUpdate;
+    ecs_system_id_t _after[ECS_SYSTEM_AFTER_CAPACITY]{};
+    bool _disabled = false;
 
   public:
     explicit system(const char *name = "unnamed") : name(name) {}
@@ -2659,6 +2911,22 @@ class system : protected query {
         return *this;
     }
 
+    system &after(ecs_system_id_t dependency) {
+        for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY; i++) {
+            if (_after[i] == 0) {
+                _after[i] = dependency;
+                return *this;
+            }
+        }
+        assert(false && "too many system dependencies");
+        return *this;
+    }
+
+    system &disabled(bool value = true) {
+        _disabled = value;
+        return *this;
+    }
+
     template <typename F> ecs_system_id_t each(F &&func) {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
@@ -2672,11 +2940,20 @@ class system : protected query {
             .user_data = reinterpret_cast<uintptr_t>(state),
             .user_data_dtor = detail::system_callback_dtor<callback>,
             .phase = _phase,
+            .disabled = _disabled,
         };
+
+        for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY; i++) {
+            system_desc.after[i] = _after[i];
+        }
 
         return ecs_system_init(&system_desc);
     }
 };
+
+inline void run_system(ecs_system_id_t id) { ecs_run_system(id); }
+inline void enable_system(ecs_system_id_t id) { ecs_system_enable(id); }
+inline void disable_system(ecs_system_id_t id) { ecs_system_disable(id); }
 
 } // namespace ecs
 
@@ -2710,6 +2987,22 @@ template <typename T> inline ecs_component_t component() {
     return detail::ecs_cpp_component_id<T>();
 }
 
+template <typename T> inline ecs_component_t component(const component_hooks<T> &hooks) {
+    return detail::ecs_cpp_component_id<T>(0, &hooks);
+}
+
+template <typename Component, typename Required> inline void component_requires() {
+    ecs_with(component<Component>(), component<Required>());
+}
+
+template <typename T> inline ecs_component_t relation(ecs_relation_flags_t flags = {}) {
+    return detail::ecs_cpp_component_id<T>(flags);
+}
+
+template <typename T> inline ecs_component_t relation_source() {
+    return relation<T>() + 1;
+}
+
 template <typename T> inline void set_resource(T &&value) {
     using type = std::remove_cvref_t<T>;
     if constexpr (std::is_lvalue_reference_v<T>) {
@@ -2722,6 +3015,10 @@ template <typename T> inline void set_resource(T &&value) {
 template <typename T> [[nodiscard]] inline T &resource() {
     using type = std::remove_cv_t<T>;
     return *static_cast<T *>(ecs_resource_rid(ecs_cpp_resource_id<type>()));
+}
+
+template <typename T> [[nodiscard]] inline ecs_resource_t resource_id() {
+    return ecs_cpp_resource_id<std::remove_cv_t<T>>();
 }
 
 template <typename T> [[nodiscard]] inline T *try_resource() {

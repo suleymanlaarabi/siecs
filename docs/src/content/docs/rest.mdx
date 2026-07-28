@@ -3,7 +3,6 @@ title: REST Explorer API
 description: Inspect and modify a running world through the optional REST API for entities, components, and schemas.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
-import LanguageExample from '../../components/LanguageExample.astro';
 
 The REST addon is intended for editor and explorer tooling. Enable it when
 creating the world:
@@ -117,13 +116,14 @@ Component mutation is component-level: the client submits the full component
 value for one entity and one component. This keeps the server simple and avoids
 partial-update ambiguity for structs.
 
-The update route accepts the full JSON value for the reflected component:
+The update route accepts the full JSON value for the reflected component under
+the `value` property:
 
 ```http
 PUT /entities/12/components/4
 Content-Type: application/json
 
-{ "x": 10, "y": 20 }
+{ "value": { "x": 10, "y": 20 } }
 ```
 
 Editor clients should fetch `/schema`, fetch `/entities/:index`, render form

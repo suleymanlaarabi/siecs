@@ -3,7 +3,6 @@ title: Relations
 description: Model entity relationships with relation components, targets, ChildOf hierarchies, and explicit lifecycle rules.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
-import LanguageExample from '../../components/LanguageExample.astro';
 
 Relations are components that store an entity target.
 
@@ -34,7 +33,7 @@ typedef struct {
 </TabItem>
 <TabItem label="C++">
 ```cpp
-// ChildOf is provided by the SIECS C++ wrapper.
+child.child_of(parent);
 ```
 </TabItem>
 </Tabs>
@@ -48,7 +47,7 @@ Declare and define a relation:
 ```c
 ECS_RELATION_DECLARE(Targets);
 ECS_RELATION_DEFINE(Targets, 0);
-ECS_COMPONENT_REGISTER(world, Targets);
+ECS_COMPONENT_REGISTER(Targets);
 ecs_set(entity, Targets, { .target = other_entity });
 ```
 </TabItem>
@@ -56,8 +55,7 @@ ecs_set(entity, Targets, { .target = other_entity });
 ```cpp
 struct Targets { ecs::entity target; };
 
-// The wrapper can store the relation value, but it has no helper for
-// ECS_RELATION_DEFINE flags such as cascade deletion.
+ecs::relation<Targets>(EcsRelationCascadeDelete);
 entity.set(Targets{ .target = other_entity });
 ```
 </TabItem>
@@ -80,7 +78,7 @@ ecs_component_t source_id = ecs_source(Targets);
 </TabItem>
 <TabItem label="C++">
 ```cpp
-// Source components are internal; use the relation component itself.
+ecs_component_t source_id = ecs::relation_source<Targets>();
 ```
 </TabItem>
 </Tabs>

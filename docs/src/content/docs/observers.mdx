@@ -3,11 +3,10 @@ title: Observers and Events
 description: React to component lifecycle changes and custom events with observers in C and C++.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
-import LanguageExample from '../../components/LanguageExample.astro';
 
 Observers run callbacks when an event is emitted for an entity matching a query.
 
-## Built-In Events
+## Built-in events
 
 SIECS currently exposes three built-in events:
 
@@ -17,15 +16,17 @@ SIECS currently exposes three built-in events:
 | `EcsOnRemove` | A component is removed from an entity. |
 | `EcsOnSet` | A component value is set with `ecs_set()` or `ecs_set_cid()`. |
 
-## Create An Observer
+## Create an observer
 
 <Tabs syncKey="language">
 <TabItem label="C">
 
 ```c
+#include <stdio.h>
+
 static void on_position_set(ecs_observer_event_t *event) {
     const Position *value = event->trigger_data;
-    (void)value;
+    printf("position.x = %f\n", value->x);
 }
 
 ecs_observer({
@@ -39,6 +40,8 @@ ecs_observer({
 <TabItem label="C++">
 
 ```cpp
+#include <iostream>
+
 ecs::observe<ecs::OnSet>().each([](const Position &position) {
     std::cout << position.x << '\n';
 });
@@ -49,10 +52,16 @@ ecs::observe<ecs::OnSet>().each([](const Position &position) {
 
 `callback` is required.
 
+The C++ observer callback receives typed component storage. Add an
+`ecs::observer_event` callback argument when the new `OnSet` value or callback
+context is required.
+
 Observer queries follow the same matching rules as normal queries. Entities with
 the built-in `Disabled` component do not trigger matching observers unless the
 observer query mentions `Disabled` explicitly:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_observer({
     .on = EcsOnSet,
@@ -62,12 +71,23 @@ ecs_observer({
     .callback = on_disabled_position_set,
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::observe<ecs::OnSet>()
+    .require<Disabled>()
+    .each([](const Position &, const Disabled &) {});
+```
+</TabItem>
+</Tabs>
 
 Observers are enabled by default. Use `ecs_observer_disable()` and
 `ecs_observer_enable()` to toggle an observer without unregistering it.
 
 Pass small callback context through `user_data` when needed:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_observer({
     .on = EcsOnSet,
@@ -76,11 +96,26 @@ ecs_observer({
     .user_data = (uintptr_t)counter_ptr,
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+uint32_t counter = 0;
+ecs::observe<ecs::OnSet>()
+    .user_data(&counter)
+    .each([](ecs::observer_event event, const Position &) {
+        auto *value = event.user_data<uint32_t>();
+        ++*value;
+    });
+```
+</TabItem>
+</Tabs>
 
 ## Event Payload
 
 The callback receives `ecs_observer_event_t`:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 typedef struct {
     ecs_entity_t entity;
@@ -89,6 +124,20 @@ typedef struct {
     const void *trigger_data;
 } ecs_observer_event_t;
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+#include <iostream>
+
+ecs::observe<ecs::OnSet>().each([](
+    ecs::observer_event event,
+    const Position &
+) {
+    std::cout << event.trigger_data<Position>()->x << '\n';
+});
+```
+</TabItem>
+</Tabs>
 
 `trigger_data` depends on the event:
 
@@ -108,6 +157,8 @@ Component hooks run before matching observers for the same operation.
 
 Create custom event ids with `ecs_event()`:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_event_t Damaged = ecs_event();
 
@@ -122,3 +173,18 @@ ecs_observer({
 Damage damage = { .amount = 10 };
 ecs_observer_trigger(entity, Damaged, &damage);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Damaged {};
+struct Damage { int amount; };
+
+ecs::observe<Damaged>().each([](Health &health) {
+    health.value -= 1;
+});
+
+Damage damage{ .amount = 10 };
+ecs::trigger<Damaged>(entity, &damage);
+```
+</TabItem>
+</Tabs>

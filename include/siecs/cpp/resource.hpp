@@ -8,6 +8,43 @@
 
 namespace ecs {
 
+template <typename T> struct resource_hooks {
+    using on_set_t = void (*)(const T &);
+    using on_remove_t = void (*)(const T &);
+
+    on_set_t on_set = nullptr;
+    on_remove_t on_remove = nullptr;
+};
+
+template <typename T> class resource_ref {
+    using value_type = std::remove_cv_t<T>;
+    ecs_resource_t _id;
+
+  public:
+    explicit resource_ref(ecs_resource_t id) noexcept : _id(id) {}
+
+    template <typename U = T>
+        requires(!std::is_const_v<U>)
+    void set(const value_type &value) const {
+        ecs_set_resource_rid(_id, &value);
+    }
+
+    template <typename U = T>
+        requires(!std::is_const_v<U>)
+    void set(value_type &&value) const {
+        ecs_move_resource_rid(_id, &value);
+    }
+
+    [[nodiscard]] T *try_get() const noexcept {
+        return static_cast<T *>(ecs_try_resource_rid(_id));
+    }
+
+    [[nodiscard]] T &get() const { return *static_cast<T *>(ecs_resource_rid(_id)); }
+    [[nodiscard]] bool has() const { return ecs_has_resource_rid(_id); }
+    void remove() const { ecs_remove_resource_rid(_id); }
+    [[nodiscard]] ecs_resource_t id() const noexcept { return _id; }
+};
+
 template <typename T> class res {
     T *_ptr = nullptr;
 
@@ -41,9 +78,24 @@ template <typename T> using resource_value_t = std::remove_cv_t<res_value_t<T>>;
 
 struct no_resource {};
 
+template <typename T> struct resource_hook_state {
+    static inline resource_hooks<T> hooks{};
+};
+
+template <typename T> static void resource_on_set(const void *ptr) {
+    auto callback = resource_hook_state<T>::hooks.on_set;
+    if (callback != nullptr) callback(*static_cast<const T *>(ptr));
+}
+
+template <typename T> static void resource_on_remove(const void *ptr) {
+    auto callback = resource_hook_state<T>::hooks.on_remove;
+    if (callback != nullptr) callback(*static_cast<const T *>(ptr));
+}
+
 } // namespace detail
 
-template <typename T> static ecs_resource_t ecs_cpp_resource_id() {
+template <typename T>
+static ecs_resource_t ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) {
     using type = std::remove_cv_t<T>;
     ecs_resource_t &rid = detail::resource_type<type>::id;
 
@@ -52,16 +104,26 @@ template <typename T> static ecs_resource_t ecs_cpp_resource_id() {
 
     static const std::string name = std::string(type_name<type>());
 
+    if (hooks != nullptr) detail::resource_hook_state<type>::hooks = *hooks;
+
     ecs_resource_desc_t desc = {
         .name = name.c_str(),
         .size = sizeof(type),
         .ops = detail::value_ops<type>(),
-        .on_set = nullptr,
-        .on_remove = nullptr,
+        .on_set = hooks && hooks->on_set ? detail::resource_on_set<type> : nullptr,
+        .on_remove = hooks && hooks->on_remove ? detail::resource_on_remove<type> : nullptr,
     };
 
     rid = ecs_resource_init(&desc);
     return rid;
+}
+
+template <typename T> resource_ref<T> resource_handle() {
+    return resource_ref<T>(ecs_cpp_resource_id<T>());
+}
+
+template <typename T> resource_ref<T> resource_handle(const resource_hooks<std::remove_cv_t<T>> &hooks) {
+    return resource_ref<T>(ecs_cpp_resource_id<T>(&hooks));
 }
 
 template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {

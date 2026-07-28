@@ -37,6 +37,22 @@ template <typename T> inline ecs_component_t component() {
     return detail::ecs_cpp_component_id<T>();
 }
 
+template <typename T> inline ecs_component_t component(const component_hooks<T> &hooks) {
+    return detail::ecs_cpp_component_id<T>(0, &hooks);
+}
+
+template <typename Component, typename Required> inline void component_requires() {
+    ecs_with(component<Component>(), component<Required>());
+}
+
+template <typename T> inline ecs_component_t relation(ecs_relation_flags_t flags = {}) {
+    return detail::ecs_cpp_component_id<T>(flags);
+}
+
+template <typename T> inline ecs_component_t relation_source() {
+    return relation<T>() + 1;
+}
+
 template <typename T> inline void set_resource(T &&value) {
     using type = std::remove_cvref_t<T>;
     if constexpr (std::is_lvalue_reference_v<T>) {
@@ -49,6 +65,10 @@ template <typename T> inline void set_resource(T &&value) {
 template <typename T> [[nodiscard]] inline T &resource() {
     using type = std::remove_cv_t<T>;
     return *static_cast<T *>(ecs_resource_rid(ecs_cpp_resource_id<type>()));
+}
+
+template <typename T> [[nodiscard]] inline ecs_resource_t resource_id() {
+    return ecs_cpp_resource_id<std::remove_cv_t<T>>();
 }
 
 template <typename T> [[nodiscard]] inline T *try_resource() {

@@ -11,8 +11,8 @@ The current API is centered around:
 
 | Concept | Role |
 | --- | --- |
-| World | Owns all ECS storage. Create with `ecs_init()`, destroy with `ecs_fini()`. |
-| Entity | `ecs_entity_t` handle created by `ecs_new()`. |
+| World | Owns all ECS storage. Create with `ecs_init()` or `ecs::init()`, destroy with `ecs_fini()` or `ecs::fini()`. |
+| Entity | `ecs_entity_t` handle created by `ecs_new()` or `ecs::entity::create()`. |
 | Component | Registered data type identified by `ecs_component_t`. |
 | Query | Cached matcher over archetype tables. |
 | Iterator | Batch iterator returned by `ecs_query_iter()`. |
@@ -39,10 +39,10 @@ The current API is centered around:
   [inheritance](./inheritance/) cover events and entity relationships.
 - [Modules](./modules/) cover reusable registration units.
 
-## Guides And Reference
+## Guides and Reference
 
 - [Designing with SIECS](./ecs-design/) documents the runtime's
   tradeoffs.
 - [Performance](./performance/) covers hot-path rules.
 - [REST explorer](./rest/) documents the optional tooling API.
-- [API reference](./reference/api/) lists the public C symbols.
+- [API reference](./reference/api/) lists the public C symbols and the typed C++ wrapper.

@@ -11,7 +11,7 @@ share the same default values.
 An entity can inherit from one base. That base must be marked with the built-in
 `Abstract` component.
 
-## Create A Base
+## Create a Base
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -45,7 +45,7 @@ abstract.
 Use a normal entity instead of an abstract one when you need to keep mutating its
 components directly.
 
-## Create An Instance
+## Create an Instance
 
 Create another entity and link it to the abstract base with `ecs_is_a()`:
 
@@ -136,10 +136,8 @@ const Health *instance_health = ecs_get(instance, Health);
 </TabItem>
 <TabItem label="C++">
 ```cpp
-const auto *base_health = static_cast<const Health *>(
-    ecs_get_cid(base.id(), ecs::component<Health>()));
-const auto *instance_health = static_cast<const Health *>(
-    ecs_get_cid(instance.id(), ecs::component<Health>()));
+const auto &base_health = base.get<Health>();
+const auto &instance_health = instance.get<Health>();
 ```
 </TabItem>
 </Tabs>
@@ -163,13 +161,14 @@ if (ecs_is(instance, base)) {
 <TabItem label="C++">
 ```cpp
 if (instance.is(base)) {
-    // instance inherits from base
+    std::puts("inherits");
 }
 ```
 </TabItem>
 </Tabs>
 
-`ecs_is()` checks whether the entity is directly linked to the target.
+`ecs_is()` checks whether the entity inherits from the target, including
+transitive inheritance through intermediate bases.
 
 ## Query Matching
 
@@ -185,7 +184,7 @@ ecs_query_id_t q = ecs_query({
 
 ecs_iter_t it = ecs_query_iter(q);
 while (ecs_iter_next(&it)) {
-    Health *health = ecs_field(&it, 0);
+    const Health *health = ecs_field(&it, 0);
 
     for (uint32_t i = 0; i < it.count; i++) {
         if (ecs_field_is_shared(&it, 0)) {
@@ -201,19 +200,20 @@ while (ecs_iter_next(&it)) {
 </TabItem>
 <TabItem label="C++">
 ```cpp
+#include <cstdio>
+
 ecs::query().require<Health>().each([](const Health &health) {
-    // A const callback can read owned or inherited Health.
-    printf("%d\\n", health.value);
+    printf("%d\n", health.value);
 });
 ```
 </TabItem>
 </Tabs>
 
-When a field is inherited, `it.field_kinds[index]` is `EcsFieldShared`. The
-pointer returned by `ecs_field()` points to the component stored on the base, not
-to an array with one element per entity.
+When a field is inherited, `ecs_field_kind(&it, index)` returns `EcsFieldShared`.
+The pointer returned by `ecs_field()` points to the component stored on the
+base, not to an array with one element per entity.
 
-When a field is owned by the matched entities, `it.field_kinds[index]` is
+When a field is owned by the matched entities, `ecs_field_kind(&it, index)` is
 `EcsFieldOwned`. The pointer is a normal component array indexed with `i`.
 
 The inheritance rules for query fields are:
@@ -241,7 +241,6 @@ ecs_query_id_t q = ecs_query({
 <TabItem label="C++">
 ```cpp
 ecs::query().each([](Health &health) {
-    // Mutable terms match only entity-owned Health.
     health.value += 1;
 });
 ```
@@ -264,9 +263,8 @@ ecs_query_id_t q = ecs_query({
 </TabItem>
 <TabItem label="C++">
 ```cpp
-// The C++ query builder has no optional writable-term helper yet.
-ecs_query_id_t q = ecs_query({
-    .terms = { ecs_inout_optional(ecs::component<Health>()) },
+ecs::query().each([](ecs::optional<Health> health) {
+    if (health) health->value += 1;
 });
 ```
 </TabItem>
@@ -275,7 +273,7 @@ ecs_query_id_t q = ecs_query({
 For an entity that only inherits `Health`, this field is `EcsFieldNone` and
 `ecs_field()` returns `NULL`.
 
-## Restrict A Query To A Base
+## Restrict a Query to a Base
 
 Queries can be restricted to entities that inherit from a base with
 `ecs_query_desc_t.is_a`:
@@ -295,7 +293,6 @@ ecs::query()
     .is_a(base.id())
     .require<Position>()
     .each([](const Position &position) {
-        (void)position;
     });
 ```
 </TabItem>

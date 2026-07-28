@@ -1,6 +1,5 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
-import languageExamples from './src/plugins/language-examples';
 
 const structuredData = {
   '@context': 'https://schema.org',
@@ -30,9 +29,6 @@ const structuredData = {
 export default defineConfig({
   site: 'https://docs.siecs.dev',
   base: '/',
-  markdown: {
-    remarkPlugins: [languageExamples],
-  },
   server: {
     port: 5050
   },

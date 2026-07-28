@@ -15,7 +15,28 @@ struct OnAdd {};
 struct OnSet {};
 struct OnRemove {};
 
+class observer_event {
+    ecs_observer_event_t *_event;
+
+  public:
+    explicit observer_event(ecs_observer_event_t *event) noexcept : _event(event) {}
+
+    [[nodiscard]] entity target() const noexcept { return entity::from(_event->entity); }
+    [[nodiscard]] ecs_event_t id() const noexcept { return _event->event; }
+    [[nodiscard]] uintptr_t user_data() const noexcept { return _event->user_data; }
+
+    template <typename T> [[nodiscard]] T *user_data() const noexcept {
+        return reinterpret_cast<T *>(_event->user_data);
+    }
+
+    template <typename T> [[nodiscard]] const T *trigger_data() const noexcept {
+        return static_cast<const T *>(_event->trigger_data);
+    }
+};
+
 namespace detail {
+
+template <> struct is_observer_event<ecs::observer_event> : std::true_type {};
 
 template <typename T> struct event_type {
     static inline ecs_event_t id = UINT16_MAX;
@@ -41,7 +62,9 @@ template <typename T> static ecs_event_t ecs_cpp_event_id() {
 
 template <typename T> decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event) {
     using raw = std::remove_cvref_t<T>;
-    if constexpr (is_entity_v<T>) {
+    if constexpr (is_observer_event_v<T>) {
+        return observer_event(event);
+    } else if constexpr (is_entity_v<T>) {
         return entity::from(event->entity);
     } else {
         void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
@@ -84,9 +107,20 @@ void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
 } // namespace detail
 
 template <typename T> class observer : public query {
+    uintptr_t _user_data = 0;
 
   public:
     observer() = default;
+
+    observer &user_data(uintptr_t value) {
+        _user_data = value;
+        return *this;
+    }
+
+    template <typename U> observer &user_data(U *value) {
+        _user_data = reinterpret_cast<uintptr_t>(value);
+        return *this;
+    }
 
     template <typename F> ecs_observer_id_t each(F &&) {
         using callback = std::remove_cvref_t<F>;
@@ -108,6 +142,7 @@ template <typename T> class observer : public query {
             .on = detail::ecs_cpp_event_id<T>(),
             .query = this->desc,
             .callback = detail::ecs_cpp_observer_callback<callback, args>,
+            .user_data = _user_data,
         };
 
         return ecs_observer_init(&observer_desc);

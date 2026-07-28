@@ -3,10 +3,11 @@ title: Queries
 description: Create persistent queries and iterate table batches with required, excluded, optional, and writable components.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
-import LanguageExample from '../../components/LanguageExample.astro';
 
-Queries match archetype tables and return component arrays in batches.
-## Create A Query
+Queries match archetype tables and return batches. The C API exposes component
+arrays through `ecs_field()`; the C++ API passes typed components to callbacks.
+
+## Create a Query
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -29,7 +30,13 @@ auto moving = ecs::query()
 </TabItem>
 </Tabs>
 
-The `terms` array is a zero-terminated list of component terms.
+The C++ builder creates a query when `each()`, `first()`, or `build()` is
+called. `each()` and `first()` are one-shot operations: they build and destroy
+the underlying C query for that call. Use a C++ system for repeated frame work,
+or call `build()` and iterate the returned id with the C iterator API.
+
+The `terms` array is a zero-terminated list of component terms. A query must
+contain at least one term or an `is_a` target.
 
 | Term | Meaning |
 | --- | --- |
@@ -54,15 +61,28 @@ mention `Disabled`.
 Use `is_a` when a query should only match entities that inherit from a specific
 base entity:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_id_t enemies = ecs_query({
     .is_a = enemy_base,
     .terms = { ecs_in(Position) },
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto enemies = ecs::query()
+    .is_a(enemy_base)
+    .require<Position>();
+```
+</TabItem>
+</Tabs>
 
 ## Iterate
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_iter_t it = ecs_query_iter(moving);
 
@@ -76,6 +96,18 @@ while (ecs_iter_next(&it)) {
     }
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().require<Position>().require<Velocity>().each(
+    [](Position &position, const Velocity &velocity) {
+        position.x += velocity.x;
+        position.y += velocity.y;
+    }
+);
+```
+</TabItem>
+</Tabs>
 
 `ecs_iter_next()` advances to the next non-empty batch. `it.count` is the number
 of entities in the current batch.
@@ -96,46 +128,109 @@ ecs::query().each([](ecs::res<const Time> time,
 });
 ```
 
-## Required And Excluded Components
+## Required and Excluded Components
 
 Use `ecs_filter` when a component must exist but does not need to be returned:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_id_t visible_positions = ecs_query({
     .terms = { ecs_inout(Position), ecs_filter(Visible) },
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().require<Position>().require<Visible>().each(
+    [](Position &position) {
+        position.x += 1.0f;
+    }
+);
+```
+</TabItem>
+</Tabs>
 
 Use `ecs_not` to skip entities with a component:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_id_t active_positions = ecs_query({
     .terms = { ecs_inout(Position), ecs_not(Disabled) },
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().require<Position>().exclude<Disabled>().each(
+    [](Position &position) {
+        position.x += 1.0f;
+    }
+);
+```
+</TabItem>
+</Tabs>
 
 The `ecs_not(Disabled)` term is implicit for normal queries, so the previous
 example can usually be written as:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_id_t active_positions = ecs_query({
     .terms = { ecs_inout(Position) },
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().require<Position>().each([](Position &position) {
+    position.x += 1.0f;
+});
+```
+</TabItem>
+</Tabs>
 
 To match disabled entities, mention `Disabled` explicitly:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_id_t disabled_positions = ecs_query({
     .terms = { ecs_inout(Position), ecs_filter(Disabled) },
 });
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().require<Position>().require<Disabled>().each(
+    [](Position &position) {
+        position.x += 1.0f;
+    }
+);
+```
+</TabItem>
+</Tabs>
 
 ## Optional Components
+
+The C++ wrapper accepts `ecs::optional<T>` callback parameters. It passes an
+empty value when the optional field is absent for the current table:
+
+```cpp
+ecs::query().require<Position>().each(
+    [](Position &position, ecs::optional<const Velocity> velocity) {
+        if (velocity) position.x += velocity->x;
+    }
+);
+```
 
 Optional terms let one query handle tables where a component may or may not be
 present:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_id_t q = ecs_query({
     .terms = { ecs_inout(Position), ecs_in_optional(Velocity) },
@@ -153,6 +248,19 @@ while (ecs_iter_next(&it)) {
     }
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().require<Position>().each(
+    [](Position &position, ecs::optional<const Velocity> velocity) {
+        if (velocity) {
+            position.x += velocity->x;
+        }
+    }
+);
+```
+</TabItem>
+</Tabs>
 
 The optional field pointer is either a component array for the whole batch or
 `NULL` for the whole batch. It does not vary per entity inside the same batch.
@@ -161,21 +269,48 @@ The optional field pointer is either a component array for the whole batch or
 
 `ecs_query_each()` is useful for setup, tests, tools, and short one-off scans:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_each(it, i, ecs_in(Position)) {
     const Position *positions = ecs_field(&it, 0);
-    (void)positions[i];
+    positions[i].x += 1.0f;
 }
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().each([](Position &position) {
+    position.x += 1.0f;
+});
+```
+</TabItem>
+</Tabs>
 
 It creates and destroys a temporary query. For repeated frame work, create a
-persistent query once and iterate it with `ecs_query_iter()`.
+persistent C++ handle once and iterate it with `build_handle()`:
 
-## Destroy A Query
+```cpp
+auto moving = ecs::query().require<Position>().build_handle();
+moving.each([](Position &position) {
+    position.x += 1.0f;
+});
+```
 
+## Destroy a Query
+
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_query_fini(moving);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().require<Position>().each([](Position &) {});
+```
+</TabItem>
+</Tabs>
 
-Destroy queries before destroying the world if you no longer need them. The
-world also owns query storage and releases it during `ecs_fini()`.
+The C++ `each()` helper owns temporary queries. `query_handle` owns a persistent
+query id and releases it automatically when it leaves scope.

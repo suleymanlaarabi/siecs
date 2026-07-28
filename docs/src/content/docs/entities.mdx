@@ -3,7 +3,6 @@ title: Entities
 description: Create, validate, and destroy entities while understanding handle lifetime, liveness, and generation safety.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
-import LanguageExample from '../../components/LanguageExample.astro';
 
 Entities are `ecs_entity_t` handles created by a world.
 
@@ -41,7 +40,7 @@ if (ecs_is_alive(entity)) {
 <TabItem label="C++">
 ```cpp
 if (entity.is_alive()) {
-    // entity can be used
+    entity.disable();
 }
 ```
 </TabItem>
