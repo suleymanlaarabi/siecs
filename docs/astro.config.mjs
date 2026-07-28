@@ -114,7 +114,7 @@ export default defineConfig({
         },
         {
           label: 'Guides',
-          items: ['ecs-design', 'performance'],
+          items: ['ecs-design'],
         },
         {
           label: 'Addons',

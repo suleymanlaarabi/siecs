@@ -43,6 +43,5 @@ The current API is centered around:
 
 - [Designing with SIECS](./ecs-design/) documents the runtime's
   tradeoffs.
-- [Performance](./performance/) covers hot-path rules.
 - [REST explorer](./rest/) documents the optional tooling API.
 - [API reference](./reference/api/) lists the public C symbols and the typed C++ wrapper.
