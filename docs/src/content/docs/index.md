@@ -25,7 +25,6 @@ The current API is centered around:
 ## Getting Started
 
 - [Getting started](./getting-started/) builds a complete minimal program.
-- [C++ API](./cpp/) documents the typed wrapper.
 - [Cookbook](./cookbook/) collects focused examples.
 
 ## Manuals
