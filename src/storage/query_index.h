@@ -13,7 +13,6 @@ typedef struct {
     uint16_t term_count;
     uint16_t field_count;
     uint16_t field_mask;
-    bool fields_owned_only;
 } ecs_query_t;
 
 typedef struct ecs_query_cache_s {
@@ -38,6 +37,7 @@ void ecs_query_index_fini();
 uint16_t ecs_query_index_create(const ecs_query_desc_t *desc);
 void ecs_query_index_update_matches(ecs_query_cache_t *query_cache);
 void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id);
+void ecs_query_index_refresh_table_fields(const ecs_table_t *table, uint16_t table_id);
 
 // Reusable query helpers shared with the observer index.
 void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query);

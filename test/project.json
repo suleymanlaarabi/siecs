@@ -113,7 +113,8 @@
           "is_a_excludes_other_bases",
           "is_a_matches_transitive_base",
           "is_a_with_component_terms",
-          "ids_stay_valid_after_temporary_query_fini"
+          "ids_stay_valid_after_temporary_query_fini",
+          "fields_refresh_after_table_growth"
         ]
       },
       {

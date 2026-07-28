@@ -86,6 +86,7 @@ void query_is_a_excludes_other_bases(void);
 void query_is_a_matches_transitive_base(void);
 void query_is_a_with_component_terms(void);
 void query_ids_stay_valid_after_temporary_query_fini(void);
+void query_fields_refresh_after_table_growth(void);
 
 // Testsuite 'system'
 void system_run(void);
@@ -406,6 +407,10 @@ bake_test_case query_testcases[] = {
     {
         "ids_stay_valid_after_temporary_query_fini",
         query_ids_stay_valid_after_temporary_query_fini
+    },
+    {
+        "fields_refresh_after_table_growth",
+        query_fields_refresh_after_table_growth
     }
 };
 
@@ -574,7 +579,7 @@ static bake_test_suite suites[] = {
         "query",
         NULL,
         NULL,
-        19,
+        20,
         query_testcases
     },
     {

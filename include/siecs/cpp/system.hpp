@@ -1,4 +1,5 @@
 #pragma once
+#include "siecs.h"
 #include "siecs/cpp/query.hpp"
 
 namespace ecs {
@@ -79,8 +80,7 @@ class system : protected query {
         callback *state = new callback(std::forward<F>(func));
 
         ecs_system_desc_t system_desc = {
-            SIECS_NAME_INIT(name)
-            .query = this->desc,
+            SIECS_NAME_INIT(name).query = this->desc,
             .callback = detail::system_callback<callback, args>,
             .user_data = reinterpret_cast<uintptr_t>(state),
             .user_data_dtor = detail::system_callback_dtor<callback>,

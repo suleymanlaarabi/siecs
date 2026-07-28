@@ -1,5 +1,6 @@
 #include "siecs/cpp/entity.hpp"
 #include "siecs/cpp/query.hpp"
+#include "siecs/cpp/resource.hpp"
 #include "siecs/cpp/system.hpp"
 #include "siecs/cpp/world.hpp"
 #include <concepts>
@@ -33,6 +34,10 @@ int main() {
     ecs::entity::create<Enemy>().is_a<Voiture>().abstract();
 
     ecs::entity entity = ecs::entity::create().is_a<Enemy>();
+
+    auto sys = ecs::system().each([]() {});
+
+    ecs::system().after(sys);
 
     if (entity.is<Enemy>() && entity.is<Voiture>()) {
         puts("ok");

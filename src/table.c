@@ -80,6 +80,10 @@ static inline void ecs_table_grow(ecs_table_t *table) {
         column->data = new_data;
     }
     table->entity_capacity = new_capacity;
+    ecs_query_index_refresh_table_fields(
+        table,
+        (uint16_t)(table - ecs_world.table_index.tables)
+    );
 }
 
 uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
@@ -240,7 +244,7 @@ void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bo
     uint16_t cidx = ecs_table_column_or_invalid(table, component_id);
     if (cidx != UINT16_MAX) {
         *is_shared = false;
-        return &table->cls[cidx].data;
+        return table->cls[cidx].data;
     }
 
     ecs_entity_t base = table->type.base;

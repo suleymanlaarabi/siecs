@@ -67,13 +67,12 @@ bool ecs_iter_next(ecs_iter_t *it) {
         it->field_kind_bits = 0;
     } else {
         it->ptrs = &it->cache->fields_ptr[it->table_idx * it->cache->query.field_count];
-        it->field_kind_bits = it->cache->query.fields_owned_only
-                                  ? UINT32_MAX
-                                  : it->cache->field_kind_bits[it->table_idx];
+        it->field_kind_bits = it->cache->field_kind_bits[it->table_idx];
     }
     it->entities = ecs_world.table_index.tables[tids[it->table_idx]].entities;
     return true;
 }
+
 void ecs_query_fini(ecs_query_id_t qid) {
     ecs_assert(qid < ecs_world.query_index.queries.size, "invalid query id: %u\n", qid);
 

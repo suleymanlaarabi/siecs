@@ -563,3 +563,33 @@ void query_ids_stay_valid_after_temporary_query_fini(void) {
     ecs_query_fini(persistent);
     ecs_fini();
 }
+
+void query_fields_refresh_after_table_growth(void) {
+    query_test_world();
+
+    ecs_entity_t first = ecs_new();
+    ecs_set(first, QueryPosition, { 1 });
+
+    ecs_query_id_t query = ecs_query({ .terms = { ecs_inout(QueryPosition) } });
+
+    ecs_entity_t last = 0;
+    for (int32_t i = 2; i <= 64; i++) {
+        last = ecs_new();
+        ecs_set(last, QueryPosition, { i });
+    }
+
+    ecs_iter_t it = ecs_query_iter(query);
+    test_true(ecs_iter_next(&it));
+    QueryPosition *positions = ecs_field(&it, 0);
+    test_int(64, it.count);
+    for (uint32_t i = 0; i < it.count; i++) {
+        positions[i].value += 100;
+    }
+    test_false(ecs_iter_next(&it));
+
+    test_int(101, ecs_get(first, QueryPosition)->value);
+    test_int(164, ecs_get(last, QueryPosition)->value);
+
+    ecs_query_fini(query);
+    ecs_fini();
+}

@@ -138,18 +138,11 @@ void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
 
     query->field_count = 0;
     query->field_mask = 0;
-    query->fields_owned_only = true;
     for (uint16_t i = 0; i < query->term_count; i++) {
         if (ecs_query_term_is_field(query->terms[i])) {
             query->field_mask |= (uint16_t)(1u << i);
             query->field_count++;
-            if (!ecs_query_term_requires_owned(query->terms[i])) {
-                query->fields_owned_only = false;
-            }
         }
-    }
-    if (query->field_count == 0) {
-        query->fields_owned_only = false;
     }
 
     query->bloom = 0;
@@ -160,50 +153,17 @@ void ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
     }
 }
 
-static void
-ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t table_id) {
-    ecs_vec_push_u16(&cache->table_ids, table_id);
-    const uint16_t table_count = cache->table_ids.size;
+static void ecs_query_cache_set_table_fields(
+    ecs_query_cache_t *cache,
+    const ecs_table_t *table,
+    uint16_t table_index
+) {
     const uint16_t field_count = cache->query.field_count;
-
-    if (table_count > cache->field_table_capacity) {
-        uint16_t capacity = cache->field_table_capacity ? cache->field_table_capacity : 4;
-        while (capacity < table_count) {
-            capacity *= 2;
-        }
-
-        const uint32_t slot_count = (uint32_t)capacity * field_count;
-        cache->fields_ptr = realloc(cache->fields_ptr, sizeof(void *) * slot_count);
-        if (!cache->query.fields_owned_only && field_count != 0) {
-            cache->field_kind_bits = realloc(cache->field_kind_bits, sizeof(uint32_t) * capacity);
-        }
-        cache->field_table_capacity = capacity;
-    }
-
-    const uint32_t base = (uint32_t)(table_count - 1) * field_count;
+    const uint32_t base = (uint32_t)table_index * field_count;
     uint16_t remaining_fields = cache->query.field_mask;
     uint16_t field_index = 0;
-
-    if (cache->query.fields_owned_only) {
-        while (remaining_fields) {
-            const uint16_t term_index = (uint16_t)__builtin_ctz((unsigned)remaining_fields);
-            remaining_fields &= (uint16_t)(remaining_fields - 1);
-            const ecs_query_term_t term = cache->query.terms[term_index];
-            const uint16_t column = ecs_table_column_or_invalid(table, term.id);
-            void *field_ptr = column == UINT16_MAX ? NULL : &table->cls[column].data;
-
-            ecs_assert(
-                field_ptr || term.access == EcsInOutOptional,
-                "query cache matched table without owned field component: %d\n",
-                term.id
-            );
-
-            cache->fields_ptr[base + field_index++] = field_ptr;
-        }
-        return;
-    }
-
     uint32_t field_kind_bits = 0;
+
     while (remaining_fields) {
         const uint16_t term_index = (uint16_t)__builtin_ctz((unsigned)remaining_fields);
         remaining_fields &= (uint16_t)(remaining_fields - 1);
@@ -214,7 +174,7 @@ ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, ui
         if (ecs_query_term_requires_owned(term)) {
             uint16_t column = ecs_table_column_or_invalid(table, term.id);
             if (column != UINT16_MAX) {
-                field_ptr = &table->cls[column].data;
+                field_ptr = table->cls[column].data;
                 field_kind = EcsFieldOwned;
             }
         } else {
@@ -237,8 +197,31 @@ ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, ui
         field_index++;
     }
 
+    cache->field_kind_bits[table_index] = field_kind_bits;
+}
+
+static void
+ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t table_id) {
+    ecs_vec_push_u16(&cache->table_ids, table_id);
+    const uint16_t table_count = cache->table_ids.size;
+    const uint16_t field_count = cache->query.field_count;
+
+    if (table_count > cache->field_table_capacity) {
+        uint16_t capacity = cache->field_table_capacity ? cache->field_table_capacity : 4;
+        while (capacity < table_count) {
+            capacity *= 2;
+        }
+
+        const uint32_t slot_count = (uint32_t)capacity * field_count;
+        cache->fields_ptr = realloc(cache->fields_ptr, sizeof(void *) * slot_count);
+        if (field_count != 0) {
+            cache->field_kind_bits = realloc(cache->field_kind_bits, sizeof(uint32_t) * capacity);
+        }
+        cache->field_table_capacity = capacity;
+    }
+
     if (field_count != 0) {
-        cache->field_kind_bits[table_count - 1] = field_kind_bits;
+        ecs_query_cache_set_table_fields(cache, table, table_count - 1);
     }
 }
 
@@ -322,6 +305,26 @@ void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id) {
             ecs_vec_get_mut(&ecs_world.query_index.queries, active_ids[i], ecs_query_cache_t);
         if (ecs_query_match_table(&cache->query, table)) {
             ecs_query_cache_add_table(cache, table, table_id);
+        }
+    }
+}
+
+void ecs_query_index_refresh_table_fields(const ecs_table_t *table, uint16_t table_id) {
+    const ecs_query_id_t *active_ids = ecs_world.query_index.active_ids.data;
+
+    for (uint32_t i = 0; i < ecs_world.query_index.active_ids.size; i++) {
+        ecs_query_cache_t *cache =
+            ecs_vec_get_mut(&ecs_world.query_index.queries, active_ids[i], ecs_query_cache_t);
+        if (cache->query.field_count == 0) {
+            continue;
+        }
+
+        const uint16_t *table_ids = cache->table_ids.data;
+        for (uint16_t table_index = 0; table_index < cache->table_ids.size; table_index++) {
+            if (table_ids[table_index] == table_id) {
+                ecs_query_cache_set_table_fields(cache, table, table_index);
+                break;
+            }
         }
     }
 }
