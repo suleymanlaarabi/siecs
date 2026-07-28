@@ -18,7 +18,7 @@
 #define SIECS_EXAMPLE_C_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
-/* No dependencies */
+#include <siecs.h>
 
 #endif
 
