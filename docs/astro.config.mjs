@@ -3,8 +3,8 @@ import starlight from '@astrojs/starlight';
 import languageExamples from './src/plugins/language-examples';
 
 export default defineConfig({
-  site: 'https://suleymanlaarabi.github.io',
-  base: '/siecs',
+  site: 'https://docs.siecs.dev',
+  base: '/',
   markdown: {
     remarkPlugins: [languageExamples],
   },
