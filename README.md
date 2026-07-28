@@ -1,7 +1,5 @@
 ![SIECS](assets/banner.png)
 
-[![Website](https://img.shields.io/badge/site-siecs.dev-111111?style=for-the-badge)](https://siecs.dev/)
-[![Documentation](https://img.shields.io/badge/docs-docs.siecs.dev-111111?style=for-the-badge)](https://docs.siecs.dev/)
 [![actions](https://img.shields.io/github/actions/workflow/status/suleymanlaarabi/siecs/ci.yml?branch=main&style=for-the-badge)](https://github.com/suleymanlaarabi/siecs/actions?query=workflow%3ACI)
 [![Discord Chat](https://img.shields.io/discord/1516852124724629664.svg?style=for-the-badge&color=%235a64f6)](https://discord.gg/p35WBXpyK4)
 
