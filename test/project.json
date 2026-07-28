@@ -158,10 +158,6 @@
           "disabled_import",
           "double_import_is_noop"
         ]
-      },
-      {
-        "id": "vec",
-        "testcases": ["u16_contains_and_remove"]
       }
     ]
   }

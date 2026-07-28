@@ -1,8 +1,8 @@
 #ifndef SIECS_STORAGE_SYSTEM_INDEX_H
 #define SIECS_STORAGE_SYSTEM_INDEX_H
-#include <stdint.h>
-#include "../datastructure/vec.h"
+#include "sicore_vec.h"
 #include "siecs.h"
+#include <stdint.h>
 
 typedef struct {
 #if SIECS_HAS_NAMES
@@ -18,8 +18,8 @@ typedef struct {
 } ecs_system_t;
 
 typedef struct {
-    ecs_vec_t systems;
-    ecs_vec_t phase_order[EcsPhaseCount];
+    sicore_vec_t systems;
+    sicore_vec_t phase_order[EcsPhaseCount];
     bool plan_dirty;
 } ecs_system_index_t;
 

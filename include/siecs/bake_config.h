@@ -21,6 +21,7 @@
 #include <sireflect.h>
 #include <sijson.h>
 #include <sihttp.h>
+#include <sicore.h>
 
 /* Convenience macro for exporting symbols */
 #ifndef siecs_STATIC

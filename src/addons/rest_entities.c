@@ -19,7 +19,7 @@ static bool entity_from_index(int64_t index, ecs_entity_t *out) {
     }
 
     ecs_entity_record_t *record =
-        ecs_vec_get_mut(&ecs_world.entity_index.entities, (uint32_t)index, ecs_entity_record_t);
+        sicore_vec_get_mut(&ecs_world.entity_index.entities, (uint32_t)index, ecs_entity_record_t);
     if (record->table_id == UINT16_MAX) {
         return false;
     }
@@ -57,7 +57,7 @@ sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity) {
     }
 
     for (uint32_t i = 0; i < source->entities.size; i++) {
-        ecs_entity_t child = *ecs_vec_get(&source->entities, i, ecs_entity_t);
+        ecs_entity_t child = *sicore_vec_get(&source->entities, i, ecs_entity_t);
         if (entity_is_alive(child)) {
             sijson_array_push(children, ecs_rest_entity_json(child));
         }

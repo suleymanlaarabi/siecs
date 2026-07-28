@@ -6,7 +6,7 @@
     "description": "Small ECS library",
     "public": true,
     "clangd": true,
-    "use": ["sireflect", "sijson", "sihttp"],
+    "use": ["sireflect", "sijson", "sihttp", "sicore"],
     "amalgamate": [
       {
         "path": "distr",
@@ -52,7 +52,7 @@
       "${cfg debug}": {
         "export-symbols": true
       },
-      "cflags": ["-D_POSIX_C_SOURCE=200809L"],
+      "cflags": ["-D_POSIX_C_SOURCE=200809L", "-DSICORE_VEC", "-DSICORE_HAS_VEC=1"],
       "${cfg sanitize}": {
         "export-symbols": true
       }
@@ -62,23 +62,8 @@
     "repositories": {
       "sireflect": "https://github.com/suleymanlaarabi/sireflect",
       "sijson": "https://github.com/suleymanlaarabi/sijson",
-      "sihttp": "https://github.com/suleymanlaarabi/sihttp"
-    },
-    "refs": {
-      "default": {
-        "sireflect": {
-          "branch": "main",
-          "commit": "3f435504ac3542ca923ee74f2c9153f3de951524"
-        },
-        "sijson": {
-          "branch": "main",
-          "commit": "e41812033fa7600d12e34d403ce0f6bde2f2136d"
-        },
-        "sihttp": {
-          "branch": "main",
-          "commit": "1012c8cd532fdd05cf423a814e3c4f33d629b7dc"
-        }
-      }
+      "sihttp": "https://github.com/suleymanlaarabi/sihttp",
+      "sicore":  "https://github.com/suleymanlaarabi/sicore"
     }
   }
 }

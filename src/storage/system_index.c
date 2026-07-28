@@ -1,7 +1,7 @@
 #include "system_index.h"
-#include "../datastructure/vec.h"
 #include "../utils.h"
 #include "../world_internal.h"
+#include "sicore_vec.h"
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -13,7 +13,7 @@ static void ecs_system_index_plan_one(
     ecs_system_index_t *index,
     ecs_system_id_t system,
     uint8_t *state,
-    ecs_vec_t *order
+    sicore_vec_t *order
 ) {
     if (!ecs_system_id_valid(index, system)) {
         ecs_assert(false, "invalid system dependency: %u\n", system);
@@ -43,29 +43,29 @@ static void ecs_system_index_plan_one(
             continue;
         }
 
-    ecs_system_t *dep = ecs_system_index_get(after);
+        ecs_system_t *dep = ecs_system_index_get(after);
         if (dep->phase != sys->phase) {
             ecs_assert(false, "system dependency must be in the same phase\n");
             continue;
         }
 
-    ecs_system_index_plan_one(index, after, state, order);
+        ecs_system_index_plan_one(index, after, state, order);
     }
 
     state[system] = 2;
 
     if (sys->enabled) {
-        ecs_vec_push_u16(order, system);
+        sicore_vec_push_u16(order, system);
     }
 }
 
 void ecs_system_index_init() {
     ecs_system_index_t *index = &ecs_world.system_index;
-    ecs_vec_init(&index->systems, sizeof(ecs_system_t));
-    ecs_vec_ensure(&index->systems, 1, sizeof(ecs_system_t));
+    sicore_vec_init(&index->systems, sizeof(ecs_system_t));
+    sicore_vec_ensure(&index->systems, 1, sizeof(ecs_system_t));
 
     for (uint32_t i = 0; i < EcsPhaseCount; i++) {
-        ecs_vec_init(&index->phase_order[i], sizeof(ecs_system_id_t));
+        sicore_vec_init(&index->phase_order[i], sizeof(ecs_system_id_t));
     }
 
     index->plan_dirty = true;
@@ -73,7 +73,7 @@ void ecs_system_index_init() {
 
 ecs_system_id_t ecs_system_index_create(const ecs_system_t *system) {
     ecs_system_index_t *index = &ecs_world.system_index;
-    ecs_vec_push(&index->systems, system, sizeof(ecs_system_t));
+    sicore_vec_push(&index->systems, system, sizeof(ecs_system_t));
     index->plan_dirty = true;
     return index->systems.size - 1;
 }
@@ -81,13 +81,13 @@ ecs_system_id_t ecs_system_index_create(const ecs_system_t *system) {
 ecs_system_t *ecs_system_index_get(ecs_system_id_t system) {
     ecs_system_index_t *index = &ecs_world.system_index;
     ecs_assert(ecs_system_id_valid(index, system), "invalid system id: %u\n", system);
-    return ecs_vec_get_mut(&index->systems, system, ecs_system_t);
+    return sicore_vec_get_mut(&index->systems, system, ecs_system_t);
 }
 
 void ecs_system_index_build_plan() {
     ecs_system_index_t *index = &ecs_world.system_index;
     for (uint32_t i = 0; i < EcsPhaseCount; i++) {
-        ecs_vec_clear(&index->phase_order[i]);
+        sicore_vec_clear(&index->phase_order[i]);
     }
 
     uint8_t *state = calloc(index->systems.size, sizeof(uint8_t));
@@ -110,7 +110,7 @@ void ecs_system_index_build_plan() {
 
 void ecs_system_index_fini() {
     ecs_system_index_t *index = &ecs_world.system_index;
-    ecs_system_t *systems = ecs_vec_data(&index->systems, ecs_system_t);
+    ecs_system_t *systems = sicore_vec_data(&index->systems, ecs_system_t);
     for (uint32_t i = 1; i < index->systems.size; i++) {
         if (systems[i].user_data_dtor) {
             systems[i].user_data_dtor(systems[i].user_data);
@@ -118,8 +118,8 @@ void ecs_system_index_fini() {
     }
 
     for (uint32_t i = 0; i < EcsPhaseCount; i++) {
-        ecs_vec_fini(&index->phase_order[i]);
+        sicore_vec_fini(&index->phase_order[i]);
     }
 
-    ecs_vec_fini(&index->systems);
+    sicore_vec_fini(&index->systems);
 }

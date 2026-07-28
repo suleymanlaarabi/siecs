@@ -4,94 +4,7 @@
 
 #endif
 
-#ifndef SIECS_DATASTRUCTURE_VEC_H
-#define SIECS_DATASTRUCTURE_VEC_H
-#ifndef SIECS_HELPER_H
-#define SIECS_HELPER_H
-
-#define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
-#define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
-
-#define ecs_entity(index, generation) (((uint64_t)(index) << 32) | (generation & 0xffffffff))
-
-#define ecs_first(id) ((uint32_t)((id) >> 32))
-#define ecs_second(id) ((uint32_t)((id) & 0xffffffff))
-
-#endif
-
-#include <stdbool.h>
-#include <stdint.h>
-
-typedef struct {
-    void *data;
-    uint32_t size;
-    uint32_t capacity;
-} ecs_vec_t;
-
-void ecs_vec_init(ecs_vec_t *vec, const uint32_t element_size);
-void ecs_vec_init_w_size(ecs_vec_t *vec, const uint32_t element_size, uint32_t size);
-void ecs_vec_fini(ecs_vec_t *vec);
-void ecs_vec_grow(ecs_vec_t *vec, const uint32_t element_size);
-
-// Ensure vec has at least `count` elements. New slots are zero-initialized.
-void ecs_vec_ensure(ecs_vec_t *vec, uint32_t count, const uint32_t element_size);
-
-// Copy element into the vec (memcpy). The pointer is not retained.
-// Safe to call repeatedly — any grow only invalidates the internal buffer, not
-// the source pointer.
-void ecs_vec_push(ecs_vec_t *vec, const void *element, const uint32_t element_size);
-
-// Reserve one slot and return a pointer to it (uninitialized).
-// WARNING: the returned pointer is invalidated by any subsequent push or grow
-// on the same vec. Finish all writes through this pointer before pushing again.
-static inline void *ecs_vec_push_empty(ecs_vec_t *vec, const uint32_t element_size) {
-    if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
-        ecs_vec_grow(vec, element_size);
-    }
-    void *ptr = (uint8_t *)vec->data + (vec->size * element_size);
-    vec->size++;
-    return ptr;
-}
-
-bool ecs_vec_contains_u16(const ecs_vec_t *vec, uint16_t value);
-void ecs_vec_remove_u16(ecs_vec_t *vec, uint16_t value);
-void ecs_vec_remove_u64(ecs_vec_t *vec, uint64_t value);
-
-// Specialized push for 2-byte types
-static inline void ecs_vec_push_u16(ecs_vec_t *vec, const uint16_t value) {
-    if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
-        ecs_vec_grow(vec, sizeof(uint16_t));
-    }
-    ((uint16_t *)vec->data)[vec->size++] = value;
-}
-
-// Specialized push for 8-byte types
-static inline void ecs_vec_push_u64(ecs_vec_t *vec, const uint64_t value) {
-    if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
-        ecs_vec_grow(vec, sizeof(uint64_t));
-    }
-    ((uint64_t *)vec->data)[vec->size++] = value;
-}
-
-void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_size);
-
-// Direct pointer access for fast iteration
-#define ecs_vec_get(vec, index, type) (&((const type *)(vec)->data)[index])
-#define ecs_vec_get_mut(vec, index, type) (&((type *)(vec)->data)[index])
-#define ecs_vec_remove_last(vec) ((vec)->size--)
-#define ecs_vec_clear(vec) ((vec)->size = 0)
-#define ecs_vec_data(vec, type) ((type *)(vec)->data)
-
-#define ecs_vec_iter(vec, type, value, ...)                                                        \
-    const type *__values = (vec)->data;                                                            \
-    const uint32_t __count = (vec)->size;                                                          \
-    for (uint32_t i = 0; i < __count; i++) {                                                       \
-        const type *value = &__values[i];                                                          \
-        __VA_ARGS__                                                                                \
-    }
-
-#endif
-
+#include "sicore_vec.h"
 #ifndef SIECS_STORAGE_TABLE_INDEX_H
 #define SIECS_STORAGE_TABLE_INDEX_H
 #ifndef SIECS_TABLE_H
@@ -123,6 +36,20 @@ static inline uint16_t ecs_id_map_at_or_invalid(const ecs_id_map_t *map, uint16_
 
 #endif
 
+#ifndef SIECS_HELPER_H
+#define SIECS_HELPER_H
+
+#define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
+#define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
+
+#define ecs_entity(index, generation) (((uint64_t)(index) << 32) | (generation & 0xffffffff))
+
+#define ecs_first(id) ((uint32_t)((id) >> 32))
+#define ecs_second(id) ((uint32_t)((id) & 0xffffffff))
+
+#endif
+
+#include "sicore_vec.h"
 #ifndef SIECS_TYPE_H
 #define SIECS_TYPE_H
 #include <stdint.h>
@@ -185,14 +112,10 @@ typedef struct ecs_table_s {
     uint16_t *data_columns;
     ecs_type_t type;
     uint64_t bloom;
-    ecs_vec_t observers_by_event; // ecs_vec_t per event id; each holds uint16_t observer ids.
+    sicore_vec_t observers_by_event; // sicore_vec_t per event id; each holds uint16_t observer ids.
 } ecs_table_t;
 
-void ecs_table_init(
-    ecs_table_t *table,
-    ecs_type_t type,
-    uint16_t table_id
-);
+void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id);
 void ecs_table_fini(ecs_table_t *table);
 uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity);
 // if the entity is not the last one, the last entity will be moved to the removed entity's
@@ -274,6 +197,7 @@ uint16_t ecs_table_index_get_or_create(
 #ifndef SIECS_COMMAND_BUFFER_H
 #define SIECS_COMMAND_BUFFER_H
 
+#include "sicore_vec.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -289,13 +213,13 @@ typedef struct {
     bool kill;
     bool has_base;
     ecs_entity_t base;
-    ecs_vec_t add_ids;
-    ecs_vec_t remove_ids;
-    ecs_vec_t sets;
+    sicore_vec_t add_ids;
+    sicore_vec_t remove_ids;
+    sicore_vec_t sets;
 } ecs_entity_command_t;
 
 typedef struct ecs_command_buffer_s {
-    ecs_vec_t commands;
+    sicore_vec_t commands;
     uint32_t *entity_to_command;
     uint32_t entity_capacity;
 } ecs_command_buffer_t;
@@ -305,11 +229,7 @@ void ecs_command_buffer_fini();
 
 void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id);
 void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id);
-void ecs_command_buffer_set(
-        ecs_entity_t entity,
-    ecs_component_t id,
-    const void *data
-);
+void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void *data);
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data);
 void ecs_command_buffer_kill(ecs_entity_t entity);
 void ecs_command_buffer_set_base(ecs_entity_t entity, ecs_entity_t target);
@@ -367,8 +287,10 @@ static inline void ecs_arena_reset(ecs_arena_t *allocator) {
 
 #endif
 
+#include "sicore_vec.h"
 #ifndef SIECS_STORAGE_COMPONENT_INDEX_H
 #define SIECS_STORAGE_COMPONENT_INDEX_H
+#include "sicore_vec.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -381,11 +303,11 @@ typedef struct {
     ecs_component_on_remove_t on_remove;
     ecs_component_on_add_t on_add;
     uint32_t relation_flags;
-    ecs_vec_t tables; // uint16_t
+    sicore_vec_t tables; // uint16_t
 } ecs_component_record_t;
 
 typedef struct ecs_component_index_s {
-    ecs_vec_t components; // ecs_component_record_t
+    sicore_vec_t components; // ecs_component_record_t
 } ecs_component_index_t;
 
 void ecs_component_index_register(
@@ -399,9 +321,9 @@ void ecs_component_index_register(
 );
 
 #define ecs_component_index_get(id)                                                                \
-    ecs_vec_get(&ecs_world.component_index.components, id, ecs_component_record_t)
-#define ecs_component_index_get_mut(id)                                                           \
-    ecs_vec_get_mut(&ecs_world.component_index.components, id, ecs_component_record_t)
+    sicore_vec_get(&ecs_world.component_index.components, id, ecs_component_record_t)
+#define ecs_component_index_get_mut(id)                                                            \
+    sicore_vec_get_mut(&ecs_world.component_index.components, id, ecs_component_record_t)
 
 void ecs_component_index_init();
 void ecs_component_index_fini();
@@ -437,6 +359,7 @@ void ecs_component_value_move(
 
 #ifndef SIECS_STORAGE_ENTITY_INDEX_H
 #define SIECS_STORAGE_ENTITY_INDEX_H
+#include "sicore_vec.h"
 #include <stdint.h>
 
 typedef struct {
@@ -448,12 +371,12 @@ typedef struct {
 } ecs_entity_record_t;
 
 typedef struct {
-    ecs_vec_t entities;       // ecs_entity_record_t
+    sicore_vec_t entities;    // ecs_entity_record_t
     uint32_t first_available; // UINT32_MAX when no dead entity can be reused
 } ecs_entity_index_t;
 
 #define ecs_entity_index_get_record(entity_id)                                                     \
-    ecs_vec_get_mut(&ecs_world.entity_index.entities, entity_id, ecs_entity_record_t)
+    sicore_vec_get_mut(&ecs_world.entity_index.entities, entity_id, ecs_entity_record_t)
 
 bool ecs_entity_index_is_alive(ecs_entity_t entity);
 
@@ -465,15 +388,17 @@ void ecs_entity_index_fini();
 #ifndef SIECS_STORAGE_MODULE_INDEX_H
 #define SIECS_STORAGE_MODULE_INDEX_H
 
+#include "sicore_vec.h"
+
 typedef struct {
     ecs_module_id_t *id;
-    ecs_vec_t observers;  // ecs_observer_id_t
-    ecs_vec_t systems;    // ecs_system_id_t
+    sicore_vec_t observers; // ecs_observer_id_t
+    sicore_vec_t systems;   // ecs_system_id_t
     bool enabled;
 } ecs_module_t;
 
 typedef struct {
-    ecs_vec_t modules; // ecs_module_t
+    sicore_vec_t modules; // ecs_module_t
 } ecs_module_index_t;
 
 void ecs_module_index_init();
@@ -492,6 +417,7 @@ ecs_module_id_t ecs_module_index_find(const ecs_module_id_t *id);
 #define SIECS_STORAGE_OBSERVER_INDEX_H
 #ifndef SIECS_STORAGE_QUERY_INDEX_H
 #define SIECS_STORAGE_QUERY_INDEX_H
+#include "sicore_vec.h"
 #include <stdint.h>
 
 typedef struct {
@@ -505,7 +431,7 @@ typedef struct {
 
 typedef struct ecs_query_cache_s {
     ecs_query_t query;
-    ecs_vec_t table_ids; // uint16_t
+    sicore_vec_t table_ids; // uint16_t
     void **fields_ptr;
     uint32_t *field_kind_bits;
     uint16_t field_table_capacity;
@@ -515,8 +441,8 @@ typedef struct ecs_query_cache_s {
 } ecs_query_cache_t;
 
 typedef struct {
-    ecs_vec_t queries;
-    ecs_vec_t active_ids; // ecs_query_id_t
+    sicore_vec_t queries;
+    sicore_vec_t active_ids; // ecs_query_id_t
     uint16_t first_free;
 } ecs_query_index_t;
 
@@ -565,6 +491,7 @@ static inline bool ecs_query_match_table(const ecs_query_t *query, const ecs_tab
 
 #endif
 
+#include "sicore_vec.h"
 #include <stdint.h>
 
 typedef struct {
@@ -576,8 +503,8 @@ typedef struct {
 } ecs_observer_t;
 
 typedef struct {
-    ecs_vec_t observers;  // ecs_observer_t
-    uint16_t event_count; // next free event id; starts past the builtin events
+    sicore_vec_t observers; // ecs_observer_t
+    uint16_t event_count;   // next free event id; starts past the builtin events
 } ecs_observer_index_t;
 
 void ecs_observer_index_init();
@@ -643,6 +570,7 @@ void ecs_resource_index_remove(ecs_resource_t id);
 
 #ifndef SIECS_STORAGE_SYSTEM_INDEX_H
 #define SIECS_STORAGE_SYSTEM_INDEX_H
+#include "sicore_vec.h"
 #include <stdint.h>
 
 typedef struct {
@@ -656,8 +584,8 @@ typedef struct {
 } ecs_system_t;
 
 typedef struct {
-    ecs_vec_t systems;
-    ecs_vec_t phase_order[EcsPhaseCount];
+    sicore_vec_t systems;
+    sicore_vec_t phase_order[EcsPhaseCount];
     bool plan_dirty;
 } ecs_system_index_t;
 
@@ -700,11 +628,11 @@ typedef struct {
 } RelationTarget;
 
 typedef struct {
-    ecs_vec_t entities;
+    sicore_vec_t entities;
 } RelationSource;
 
 #define ecs_get_record(entity)                                                                     \
-    ecs_vec_get_mut(&ecs_world.entity_index.entities, ecs_first(entity), ecs_entity_record_t)
+    sicore_vec_get_mut(&ecs_world.entity_index.entities, ecs_first(entity), ecs_entity_record_t)
 #define ecs_get_table(tid) ecs_table_index_at(tid)
 
 static inline void
@@ -712,12 +640,12 @@ ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void 
     if (table->observers_by_event.size <= event) {
         return;
     }
-    const ecs_vec_t *list = ecs_vec_get(&table->observers_by_event, event, ecs_vec_t);
+    const sicore_vec_t *list = sicore_vec_get(&table->observers_by_event, event, sicore_vec_t);
     uint32_t n = list->size;
     for (uint32_t i = 0; i < n; i++) {
-        uint16_t oid = *ecs_vec_get(list, i, uint16_t);
+        uint16_t oid = *sicore_vec_get(list, i, uint16_t);
         ecs_observer_t *obs =
-            ecs_vec_get_mut(&ecs_world.observer_index.observers, oid, ecs_observer_t);
+            sicore_vec_get_mut(&ecs_world.observer_index.observers, oid, ecs_observer_t);
         if (!obs->enabled) {
             continue;
         }
@@ -746,7 +674,7 @@ ECS_TAG_DEFINE(Abstract);
 void ecs_bootstrap() {
     // Reserve identifiers used to represent false return values.
     ecs_table_index_get_or_create((ecs_type_t){ 0 });
-    ecs_vec_push_u64(&ecs_world.entity_index.entities, 0);
+    sicore_vec_push_u64(&ecs_world.entity_index.entities, 0);
     ecs_component({ SIECS_NAME_INIT("Invalid") });
 
     ECS_COMPONENT_REGISTER(ChildOf);
@@ -844,9 +772,9 @@ void ecs_migrate_remove(
 
 #define ECS_COMMAND_NONE UINT32_MAX
 
-static inline void id_vec_push_unique(ecs_vec_t *vec, ecs_component_t id) {
-    if (!ecs_vec_contains_u16(vec, id)) {
-        ecs_vec_push_u16(vec, id);
+static inline void id_vec_push_unique(sicore_vec_t *vec, ecs_component_t id) {
+    if (!sicore_vec_contains_u16(vec, id)) {
+        sicore_vec_push_u16(vec, id);
     }
 }
 
@@ -859,19 +787,19 @@ static inline void deferred_set_fini(ecs_deferred_set_t *set) {
     set->data = NULL;
 }
 
-static inline void set_vec_remove(ecs_vec_t *vec, ecs_component_t id) {
-    ecs_deferred_set_t *sets = ecs_vec_data(vec, ecs_deferred_set_t);
+static inline void set_vec_remove(sicore_vec_t *vec, ecs_component_t id) {
+    ecs_deferred_set_t *sets = sicore_vec_data(vec, ecs_deferred_set_t);
     for (uint32_t i = 0; i < vec->size; i++) {
         if (sets[i].id == id) {
             deferred_set_fini(&sets[i]);
-            ecs_vec_remove_fast(vec, i, sizeof(ecs_deferred_set_t));
+            sicore_vec_remove_fast(vec, i, sizeof(ecs_deferred_set_t));
             return;
         }
     }
 }
 
-static inline ecs_deferred_set_t *set_vec_find(ecs_vec_t *vec, ecs_component_t id) {
-    ecs_deferred_set_t *sets = ecs_vec_data(vec, ecs_deferred_set_t);
+static inline ecs_deferred_set_t *set_vec_find(sicore_vec_t *vec, ecs_component_t id) {
+    ecs_deferred_set_t *sets = sicore_vec_data(vec, ecs_deferred_set_t);
     for (uint32_t i = 0; i < vec->size; i++) {
         if (sets[i].id == id) {
             return &sets[i];
@@ -882,35 +810,35 @@ static inline ecs_deferred_set_t *set_vec_find(ecs_vec_t *vec, ecs_component_t i
 
 static inline void command_init(ecs_entity_command_t *command, ecs_entity_t entity) {
     *command = (ecs_entity_command_t){ .entity = entity };
-    ecs_vec_init(&command->add_ids, sizeof(ecs_component_t));
-    ecs_vec_init(&command->remove_ids, sizeof(ecs_component_t));
-    ecs_vec_init(&command->sets, sizeof(ecs_deferred_set_t));
+    sicore_vec_init(&command->add_ids, sizeof(ecs_component_t));
+    sicore_vec_init(&command->remove_ids, sizeof(ecs_component_t));
+    sicore_vec_init(&command->sets, sizeof(ecs_deferred_set_t));
 }
 
 static inline void command_fini(ecs_entity_command_t *command) {
-    ecs_deferred_set_t *sets = ecs_vec_data(&command->sets, ecs_deferred_set_t);
+    ecs_deferred_set_t *sets = sicore_vec_data(&command->sets, ecs_deferred_set_t);
     for (uint32_t i = 0; i < command->sets.size; i++) {
         deferred_set_fini(&sets[i]);
     }
-    ecs_vec_fini(&command->add_ids);
-    ecs_vec_fini(&command->remove_ids);
-    ecs_vec_fini(&command->sets);
+    sicore_vec_fini(&command->add_ids);
+    sicore_vec_fini(&command->remove_ids);
+    sicore_vec_fini(&command->sets);
 }
 
 void ecs_command_buffer_init() {
     ecs_command_buffer_t *buffer = &ecs_world.commands;
-    ecs_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
+    sicore_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
     buffer->entity_to_command = NULL;
     buffer->entity_capacity = 0;
 }
 
 void ecs_command_buffer_fini() {
     ecs_command_buffer_t *buffer = &ecs_world.commands;
-    ecs_entity_command_t *commands = ecs_vec_data(&buffer->commands, ecs_entity_command_t);
+    ecs_entity_command_t *commands = sicore_vec_data(&buffer->commands, ecs_entity_command_t);
     for (uint32_t i = 0; i < buffer->commands.size; i++) {
         command_fini(&commands[i]);
     }
-    ecs_vec_fini(&buffer->commands);
+    sicore_vec_fini(&buffer->commands);
     free(buffer->entity_to_command);
 }
 
@@ -938,12 +866,12 @@ static ecs_entity_command_t *command_for_entity(ecs_entity_t entity) {
 
     uint32_t command_index = buffer->entity_to_command[entity_id];
     if (command_index != ECS_COMMAND_NONE) {
-        return ecs_vec_get_mut(&buffer->commands, command_index, ecs_entity_command_t);
+        return sicore_vec_get_mut(&buffer->commands, command_index, ecs_entity_command_t);
     }
 
     command_index = buffer->commands.size;
     ecs_entity_command_t *command =
-        ecs_vec_push_empty(&buffer->commands, sizeof(ecs_entity_command_t));
+        sicore_vec_push_empty(&buffer->commands, sizeof(ecs_entity_command_t));
     command_init(command, entity);
     buffer->entity_to_command[entity_id] = command_index;
     return command;
@@ -951,13 +879,13 @@ static ecs_entity_command_t *command_for_entity(ecs_entity_t entity) {
 
 void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id) {
     ecs_entity_command_t *command = command_for_entity(entity);
-    ecs_vec_remove_u16(&command->remove_ids, id);
+    sicore_vec_remove_u16(&command->remove_ids, id);
     id_vec_push_unique(&command->add_ids, id);
 }
 
 void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id) {
     ecs_entity_command_t *command = command_for_entity(entity);
-    ecs_vec_remove_u16(&command->add_ids, id);
+    sicore_vec_remove_u16(&command->add_ids, id);
     set_vec_remove(&command->sets, id);
     id_vec_push_unique(&command->remove_ids, id);
 }
@@ -966,7 +894,7 @@ void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void 
     ecs_entity_command_t *command = command_for_entity(entity);
     const ecs_component_record_t *record = ecs_component_index_get(id);
 
-    ecs_vec_remove_u16(&command->remove_ids, id);
+    sicore_vec_remove_u16(&command->remove_ids, id);
     id_vec_push_unique(&command->add_ids, id);
 
     ecs_deferred_set_t *set = set_vec_find(&command->sets, id);
@@ -980,14 +908,14 @@ void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void 
     void *copy = ecs_arena_alloc(&ecs_world.arena_allocator, size);
     ecs_component_value_copy_ctor(record, copy, data, 1);
     ecs_deferred_set_t new_set = { .id = id, .data = copy };
-    ecs_vec_push(&command->sets, &new_set, sizeof(ecs_deferred_set_t));
+    sicore_vec_push(&command->sets, &new_set, sizeof(ecs_deferred_set_t));
 }
 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data) {
     ecs_entity_command_t *command = command_for_entity(entity);
     const ecs_component_record_t *record = ecs_component_index_get(id);
 
-    ecs_vec_remove_u16(&command->remove_ids, id);
+    sicore_vec_remove_u16(&command->remove_ids, id);
     id_vec_push_unique(&command->add_ids, id);
 
     ecs_deferred_set_t *set = set_vec_find(&command->sets, id);
@@ -1001,20 +929,20 @@ void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data
     void *copy = ecs_arena_alloc(&ecs_world.arena_allocator, size);
     ecs_component_value_move_ctor(record, copy, data, 1);
     ecs_deferred_set_t new_set = { .id = id, .data = copy };
-    ecs_vec_push(&command->sets, &new_set, sizeof(ecs_deferred_set_t));
+    sicore_vec_push(&command->sets, &new_set, sizeof(ecs_deferred_set_t));
 }
 
 void ecs_command_buffer_kill(ecs_entity_t entity) {
     ecs_entity_command_t *command = command_for_entity(entity);
     command->kill = true;
     command->has_base = false;
-    ecs_vec_clear(&command->add_ids);
-    ecs_vec_clear(&command->remove_ids);
-    ecs_deferred_set_t *sets = ecs_vec_data(&command->sets, ecs_deferred_set_t);
+    sicore_vec_clear(&command->add_ids);
+    sicore_vec_clear(&command->remove_ids);
+    ecs_deferred_set_t *sets = sicore_vec_data(&command->sets, ecs_deferred_set_t);
     for (uint32_t i = 0; i < command->sets.size; i++) {
         deferred_set_fini(&sets[i]);
     }
-    ecs_vec_clear(&command->sets);
+    sicore_vec_clear(&command->sets);
 }
 
 void ecs_command_buffer_set_base(ecs_entity_t entity, ecs_entity_t target) {
@@ -1023,8 +951,8 @@ void ecs_command_buffer_set_base(ecs_entity_t entity, ecs_entity_t target) {
     command->base = target;
 }
 
-static void final_ids_push_sorted(ecs_vec_t *final_ids, ecs_component_t id) {
-    ecs_component_t *ids = ecs_vec_data(final_ids, ecs_component_t);
+static void final_ids_push_sorted(sicore_vec_t *final_ids, ecs_component_t id) {
+    ecs_component_t *ids = sicore_vec_data(final_ids, ecs_component_t);
     uint32_t i = 0;
     while (i < final_ids->size && ids[i] < id) {
         i++;
@@ -1033,19 +961,19 @@ static void final_ids_push_sorted(ecs_vec_t *final_ids, ecs_component_t id) {
         return;
     }
 
-    ecs_vec_push_empty(final_ids, sizeof(ecs_component_t));
-    ids = ecs_vec_data(final_ids, ecs_component_t);
+    sicore_vec_push_empty(final_ids, sizeof(ecs_component_t));
+    ids = sicore_vec_data(final_ids, ecs_component_t);
     for (uint32_t j = final_ids->size - 1; j > i; j--) {
         ids[j] = ids[j - 1];
     }
     ids[i] = id;
 }
 
-static void final_ids_collect_requirements(ecs_vec_t *final_ids, ecs_component_t id) {
+static void final_ids_collect_requirements(sicore_vec_t *final_ids, ecs_component_t id) {
     const ecs_component_record_t *record = ecs_component_index_get(id);
     for (uint32_t i = 0; i < record->required_count; i++) {
         ecs_component_t required = record->required[i];
-        if (ecs_vec_contains_u16(final_ids, required)) {
+        if (sicore_vec_contains_u16(final_ids, required)) {
             continue;
         }
         final_ids_collect_requirements(final_ids, required);
@@ -1055,24 +983,24 @@ static void final_ids_collect_requirements(ecs_vec_t *final_ids, ecs_component_t
 
 static ecs_type_t
 command_build_type(const ecs_table_t *table, const ecs_entity_command_t *command) {
-    ecs_vec_t final_ids;
-    ecs_vec_init(&final_ids, sizeof(ecs_component_t));
+    sicore_vec_t final_ids;
+    sicore_vec_init(&final_ids, sizeof(ecs_component_t));
 
     for (uint16_t i = 0; i < table->type.count; i++) {
         ecs_component_t id = table->type.ids[i];
-        if (!ecs_vec_contains_u16(&command->remove_ids, id)) {
-            ecs_vec_push_u16(&final_ids, id);
+        if (!sicore_vec_contains_u16(&command->remove_ids, id)) {
+            sicore_vec_push_u16(&final_ids, id);
         }
     }
 
-    const ecs_component_t *adds = ecs_vec_data(&command->add_ids, ecs_component_t);
+    const ecs_component_t *adds = sicore_vec_data(&command->add_ids, ecs_component_t);
     for (uint32_t i = 0; i < command->add_ids.size; i++) {
         final_ids_collect_requirements(&final_ids, adds[i]);
         final_ids_push_sorted(&final_ids, adds[i]);
     }
 
     return (ecs_type_t){
-        .ids = ecs_vec_data(&final_ids, ecs_component_t),
+        .ids = sicore_vec_data(&final_ids, ecs_component_t),
         .count = (uint16_t)final_ids.size,
         .base = command->has_base ? command->base : table->type.base,
     };
@@ -1136,7 +1064,7 @@ static bool command_type_unchanged(const ecs_table_t *table, const ecs_entity_co
         return false;
     }
 
-    const ecs_component_t *adds = ecs_vec_data(&command->add_ids, ecs_component_t);
+    const ecs_component_t *adds = sicore_vec_data(&command->add_ids, ecs_component_t);
     for (uint32_t i = 0; i < command->add_ids.size; i++) {
         if (!ecs_table_has_owned(table, adds[i])) {
             return false;
@@ -1146,7 +1074,7 @@ static bool command_type_unchanged(const ecs_table_t *table, const ecs_entity_co
 }
 
 static void command_apply_sets(ecs_entity_command_t *command) {
-    ecs_deferred_set_t *sets = ecs_vec_data(&command->sets, ecs_deferred_set_t);
+    ecs_deferred_set_t *sets = sicore_vec_data(&command->sets, ecs_deferred_set_t);
     for (uint32_t i = 0; i < command->sets.size && ecs_is_alive(command->entity); i++) {
         ecs_component_t id = sets[i].id;
         const ecs_component_record_t *record = ecs_component_index_get(id);
@@ -1223,10 +1151,10 @@ void ecs_command_buffer_flush() {
 
     ecs_world.flushing_commands = true;
     while (buffer->commands.size != 0) {
-        ecs_vec_t commands = buffer->commands;
-        ecs_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
+        sicore_vec_t commands = buffer->commands;
+        sicore_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
 
-        ecs_entity_command_t *items = ecs_vec_data(&commands, ecs_entity_command_t);
+        ecs_entity_command_t *items = sicore_vec_data(&commands, ecs_entity_command_t);
         for (uint32_t i = 0; i < commands.size; i++) {
             uint32_t entity_id = ecs_first(items[i].entity);
             buffer->entity_to_command[entity_id] = ECS_COMMAND_NONE;
@@ -1236,7 +1164,7 @@ void ecs_command_buffer_flush() {
             command_apply(&items[i]);
             command_fini(&items[i]);
         }
-        ecs_vec_fini(&commands);
+        sicore_vec_fini(&commands);
     }
     ecs_world.flushing_commands = false;
     ecs_arena_reset(&ecs_world.arena_allocator);
@@ -1283,7 +1211,7 @@ void RelationOnSet(
     if (old_target_data->target) {
         RelationSource *source = ecs_get_cid(old_target_data->target, source_component);
 
-        ecs_vec_remove_u64(&source->entities, entity);
+        sicore_vec_remove_u64(&source->entities, entity);
         if (source->entities.size == 0) {
             ecs_remove_cid(old_target_data->target, source_component);
         }
@@ -1291,11 +1219,11 @@ void RelationOnSet(
 
     if (ecs_has_cid(target_data->target, source_component)) {
         RelationSource *source_data = ecs_get_cid(target_data->target, source_component);
-        ecs_vec_push_u64(&source_data->entities, entity);
+        sicore_vec_push_u64(&source_data->entities, entity);
     } else {
         RelationSource source_data = {};
-        ecs_vec_init(&source_data.entities, sizeof(ecs_entity_t));
-        ecs_vec_push_u64(&source_data.entities, entity);
+        sicore_vec_init(&source_data.entities, sizeof(ecs_entity_t));
+        sicore_vec_push_u64(&source_data.entities, entity);
         ecs_set_cid(target_data->target, source_component, &source_data);
     }
 }
@@ -1310,7 +1238,7 @@ void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr)
         return;
     }
 
-    ecs_vec_remove_u64(&target_source_data->entities, entity);
+    sicore_vec_remove_u64(&target_source_data->entities, entity);
 
     if (target_source_data->entities.size == 0) {
         ecs_remove_cid(target_data->target, source_component);
@@ -1335,7 +1263,7 @@ void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) 
         }
     }
 
-    ecs_vec_fini(&source_data->entities);
+    sicore_vec_fini(&source_data->entities);
 }
 
 ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
@@ -1845,7 +1773,7 @@ static inline ecs_entity_t ecs_entity_index_create(uint32_t row) {
         entity_id = index->entities.size;
         generation = 0;
         ecs_entity_record_t *record =
-            ecs_vec_push_empty(&index->entities, sizeof(ecs_entity_record_t));
+            sicore_vec_push_empty(&index->entities, sizeof(ecs_entity_record_t));
         *record = (ecs_entity_record_t){ .generation = 0, .table_row = row, .table_id = 0 };
     }
     return ecs_entity(entity_id, generation);
@@ -2054,7 +1982,7 @@ void ecs_module_record_observer(ecs_observer_id_t observer);
 #endif
 
 ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
-        ecs_assert_not_null(desc);
+    ecs_assert_not_null(desc);
     ecs_assert_not_null(desc->import);
 
     ecs_module_id_t existing = ecs_module_index_find(desc->id);
@@ -2082,18 +2010,18 @@ ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
 }
 
 void ecs_module_enable(ecs_module_id_t module) {
-    
+
     ecs_module_t *record = ecs_module_index_get(module);
     if (record->enabled) {
         return;
     }
 
-    const ecs_system_id_t *systems = ecs_vec_data(&record->systems, ecs_system_id_t);
+    const ecs_system_id_t *systems = sicore_vec_data(&record->systems, ecs_system_id_t);
     for (uint32_t i = 0; i < record->systems.size; i++) {
         ecs_system_enable(systems[i]);
     }
 
-    const ecs_observer_id_t *observers = ecs_vec_data(&record->observers, ecs_observer_id_t);
+    const ecs_observer_id_t *observers = sicore_vec_data(&record->observers, ecs_observer_id_t);
     for (uint32_t i = 0; i < record->observers.size; i++) {
         ecs_observer_enable(observers[i]);
     }
@@ -2101,23 +2029,21 @@ void ecs_module_enable(ecs_module_id_t module) {
     record->enabled = true;
 }
 
-ecs_module_id_t ecs_module_find(const ecs_module_id_t *id) {
-    return ecs_module_index_find(id);
-}
+ecs_module_id_t ecs_module_find(const ecs_module_id_t *id) { return ecs_module_index_find(id); }
 
 void ecs_module_disable(ecs_module_id_t module) {
-    
+
     ecs_module_t *record = ecs_module_index_get(module);
     if (!record->enabled) {
         return;
     }
 
-    const ecs_system_id_t *systems = ecs_vec_data(&record->systems, ecs_system_id_t);
+    const ecs_system_id_t *systems = sicore_vec_data(&record->systems, ecs_system_id_t);
     for (uint32_t i = 0; i < record->systems.size; i++) {
         ecs_system_disable(systems[i]);
     }
 
-    const ecs_observer_id_t *observers = ecs_vec_data(&record->observers, ecs_observer_id_t);
+    const ecs_observer_id_t *observers = sicore_vec_data(&record->observers, ecs_observer_id_t);
     for (uint32_t i = 0; i < record->observers.size; i++) {
         ecs_observer_disable(observers[i]);
     }
@@ -2126,7 +2052,7 @@ void ecs_module_disable(ecs_module_id_t module) {
 }
 
 bool ecs_module_is_enabled(const ecs_module_id_t module) {
-        return ecs_module_index_get_const(module)->enabled;
+    return ecs_module_index_get_const(module)->enabled;
 }
 
 void ecs_module_record_system(ecs_system_id_t system) {
@@ -2136,7 +2062,7 @@ void ecs_module_record_system(ecs_system_id_t system) {
     }
 
     ecs_module_t *record = ecs_module_index_get(module);
-    ecs_vec_push_u16(&record->systems, system);
+    sicore_vec_push_u16(&record->systems, system);
 }
 
 void ecs_module_record_observer(ecs_observer_id_t observer) {
@@ -2146,13 +2072,13 @@ void ecs_module_record_observer(ecs_observer_id_t observer) {
     }
 
     ecs_module_t *record = ecs_module_index_get(module);
-    ecs_vec_push(&record->observers, &observer, sizeof(ecs_observer_id_t));
+    sicore_vec_push(&record->observers, &observer, sizeof(ecs_observer_id_t));
 }
 
 ecs_event_t ecs_event(void) { return ecs_world.observer_index.event_count++; }
 
 ecs_event_t ecs_event_register(ecs_event_t *id) {
-        ecs_assert_not_null(id);
+    ecs_assert_not_null(id);
 
     if (*id == UINT16_MAX) {
         *id = ecs_event();
@@ -2167,10 +2093,10 @@ ecs_event_t ecs_event_register(ecs_event_t *id) {
 }
 
 ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
-        ecs_assert(desc->callback != NULL, "Observer callback cannot be NULL");
+    ecs_assert(desc->callback != NULL, "Observer callback cannot be NULL");
     ecs_observer_id_t oid = ecs_observer_index_create(desc);
     ecs_observer_index_match_tables(
-                ecs_world.table_index.tables,
+        ecs_world.table_index.tables,
         ecs_world.table_index.table_count,
         oid
     );
@@ -2179,19 +2105,15 @@ ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
 }
 
 void ecs_observer_enable(ecs_observer_id_t id) {
-    ecs_vec_get_mut(&ecs_world.observer_index.observers, id, ecs_observer_t)->enabled = true;
+    sicore_vec_get_mut(&ecs_world.observer_index.observers, id, ecs_observer_t)->enabled = true;
 }
 
 void ecs_observer_disable(ecs_observer_id_t id) {
-    ecs_vec_get_mut(&ecs_world.observer_index.observers, id, ecs_observer_t)->enabled = false;
+    sicore_vec_get_mut(&ecs_world.observer_index.observers, id, ecs_observer_t)->enabled = false;
 }
 
-void ecs_observer_trigger(
-        ecs_entity_t entity,
-    ecs_event_t event,
-    const void *trigger_data
-) {
-        ecs_assert_entity_valid(entity);
+void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *trigger_data) {
+    ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
     ecs_entity_record_t *record = ecs_get_record(entity);
@@ -2200,23 +2122,23 @@ void ecs_observer_trigger(
 }
 
 static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query_id_t qid) {
-    ecs_query_cache_t *cache = ecs_vec_get_mut(&index->queries, qid, ecs_query_cache_t);
+    ecs_query_cache_t *cache = sicore_vec_get_mut(&index->queries, qid, ecs_query_cache_t);
     uint32_t active_index = cache->active_index;
     uint32_t last_index = index->active_ids.size - 1;
 
     if (active_index != last_index) {
-        ecs_query_id_t moved = *ecs_vec_get(&index->active_ids, last_index, ecs_query_id_t);
+        ecs_query_id_t moved = *sicore_vec_get(&index->active_ids, last_index, ecs_query_id_t);
         ((ecs_query_id_t *)index->active_ids.data)[active_index] = moved;
-        ecs_vec_get_mut(&index->queries, moved, ecs_query_cache_t)->active_index = active_index;
+        sicore_vec_get_mut(&index->queries, moved, ecs_query_cache_t)->active_index = active_index;
     }
 
-    ecs_vec_remove_last(&index->active_ids);
+    sicore_vec_remove_last(&index->active_ids);
 }
 
 ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) {
     ecs_query_id_t qid = ecs_query_index_create(desc);
     ecs_query_index_update_matches(
-        ecs_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t)
+        sicore_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t)
     );
     return qid;
 }
@@ -2225,7 +2147,7 @@ ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
     ecs_assert(query_id < ecs_world.query_index.queries.size, "invalid query id: %u\n", query_id);
 
     ecs_query_cache_t *cache =
-        ecs_vec_get_mut(&ecs_world.query_index.queries, query_id, ecs_query_cache_t);
+        sicore_vec_get_mut(&ecs_world.query_index.queries, query_id, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", query_id);
     return (ecs_iter_t){
         .cache = cache,
@@ -2237,7 +2159,7 @@ ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
 
 uint32_t ecs_query_count(ecs_query_id_t query_id) {
     ecs_query_cache_t *cache =
-        ecs_vec_get_mut(&ecs_world.query_index.queries, query_id, ecs_query_cache_t);
+        sicore_vec_get_mut(&ecs_world.query_index.queries, query_id, ecs_query_cache_t);
     uint16_t *tids = cache->table_ids.data;
 
     uint32_t count = 0;
@@ -2269,13 +2191,13 @@ void ecs_query_fini(ecs_query_id_t qid) {
     ecs_assert(qid < ecs_world.query_index.queries.size, "invalid query id: %u\n", qid);
 
     ecs_query_cache_t *cache =
-        ecs_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t);
+        sicore_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", qid);
 
     ecs_query_index_destroy(&cache->query);
     free(cache->fields_ptr);
     free(cache->field_kind_bits);
-    ecs_vec_fini(&cache->table_ids);
+    sicore_vec_fini(&cache->table_ids);
     cache->fields_ptr = NULL;
     cache->field_kind_bits = NULL;
     cache->field_table_capacity = 0;
@@ -2408,9 +2330,9 @@ void ecs_run_phase(ecs_phase_t phase) {
         ecs_system_index_build_plan();
     }
 
-    ecs_vec_t *order = &index->phase_order[phase];
+    sicore_vec_t *order = &index->phase_order[phase];
     for (uint32_t i = 0; i < order->size; i++) {
-        ecs_system_id_t system = *ecs_vec_get(order, i, ecs_system_id_t);
+        ecs_system_id_t system = *sicore_vec_get(order, i, ecs_system_id_t);
         ecs_run_system(system);
     }
 }
@@ -2493,11 +2415,7 @@ void ecs_system_disable(ecs_system_id_t system) {
     ecs_world.system_index.plan_dirty = true;
 }
 
-void ecs_table_init(
-    ecs_table_t *table,
-    ecs_type_t type,
-    uint16_t table_id
-) {
+void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     table->type = type;
     table->entity_capacity = 1;
     table->entity_count = 0;
@@ -2508,12 +2426,12 @@ void ecs_table_init(
     table->data_columns = type.count == 0 ? NULL : malloc(sizeof(uint16_t) * type.count);
     table->bloom = ecs_type_bloom(&type);
 
-    ecs_vec_init(&table->observers_by_event, sizeof(ecs_vec_t));
+    sicore_vec_init(&table->observers_by_event, sizeof(sicore_vec_t));
     ecs_id_map_init(&table->add_edge);
 
     for (uint16_t i = 0; i < type.count; i++) {
         ecs_component_record_t *rec = ecs_component_index_get_mut(type.ids[i]);
-        ecs_vec_push_u16(&rec->tables, table_id);
+        sicore_vec_push_u16(&rec->tables, table_id);
         table->cls[i].size = rec->size;
         table->cls[i].data = rec->size != 0 ? calloc(table->entity_capacity, rec->size) : NULL;
         if (rec->size != 0) {
@@ -2565,10 +2483,7 @@ static inline void ecs_table_grow(ecs_table_t *table) {
         column->data = new_data;
     }
     table->entity_capacity = new_capacity;
-    ecs_query_index_refresh_table_fields(
-        table,
-        (uint16_t)(table - ecs_world.table_index.tables)
-    );
+    ecs_query_index_refresh_table_fields(table, (uint16_t)(table - ecs_world.table_index.tables));
 }
 
 uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
@@ -2630,12 +2545,12 @@ void *ecs_table_get_component(ecs_table_t *table, ecs_component_t component_id, 
 }
 
 void ecs_table_add_observer(ecs_table_t *table, uint16_t event, uint16_t observer_id) {
-    ecs_vec_ensure(&table->observers_by_event, event + 1, sizeof(ecs_vec_t));
-    ecs_vec_t *list = ecs_vec_get_mut(&table->observers_by_event, event, ecs_vec_t);
+    sicore_vec_ensure(&table->observers_by_event, event + 1, sizeof(sicore_vec_t));
+    sicore_vec_t *list = sicore_vec_get_mut(&table->observers_by_event, event, sicore_vec_t);
     if (list->capacity == 0) {
-        ecs_vec_init(list, sizeof(uint16_t));
+        sicore_vec_init(list, sizeof(uint16_t));
     }
-    ecs_vec_push_u16(list, observer_id);
+    sicore_vec_push_u16(list, observer_id);
 }
 
 static void ecs_table_fini_component_values(ecs_table_t *table) {
@@ -2647,7 +2562,7 @@ static void ecs_table_fini_component_values(ecs_table_t *table) {
             if (!(crec->relation_flags & EcsRelationOneToOne)) {
                 for (uint32_t row = 0; row < table->entity_count; row++) {
                     RelationSource *source = ecs_table_component_at_column(table, c, row);
-                    ecs_vec_fini(&source->entities);
+                    sicore_vec_fini(&source->entities);
                 }
             }
             continue;
@@ -2674,9 +2589,9 @@ void ecs_table_fini(ecs_table_t *table) {
         free(table->cls[i].data);
     }
     for (uint32_t e = 0; e < table->observers_by_event.size; e++) {
-        ecs_vec_fini(ecs_vec_get_mut(&table->observers_by_event, e, ecs_vec_t));
+        sicore_vec_fini(sicore_vec_get_mut(&table->observers_by_event, e, sicore_vec_t));
     }
-    ecs_vec_fini(&table->observers_by_event);
+    sicore_vec_fini(&table->observers_by_event);
     ecs_id_map_fini(&table->add_edge);
     free(table->entities);
     free(table->cls);
@@ -3162,94 +3077,6 @@ void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id) {
     }
 }
 
-void ecs_vec_init(ecs_vec_t *vec, uint32_t element_size) {
-    vec->data = malloc(element_size); // Start with 1 elements
-    vec->size = 0;
-    vec->capacity = 1;
-}
-
-void ecs_vec_init_w_size(ecs_vec_t *vec, uint32_t element_size, uint32_t size) {
-    vec->data = malloc(element_size * size);
-    vec->size = 0;
-    vec->capacity = size;
-}
-
-void ecs_vec_fini(ecs_vec_t *vec) { free(vec->data); }
-
-void ecs_vec_grow(ecs_vec_t *vec, uint32_t element_size) {
-    vec->capacity *= 2;
-    vec->data = realloc(vec->data, element_size * vec->capacity);
-}
-
-void ecs_vec_push(ecs_vec_t *vec, const void *element, const uint32_t element_size) {
-    if (ECS_UNLIKELY(vec->size >= vec->capacity)) {
-        ecs_vec_grow(vec, element_size);
-    }
-    memcpy((uint8_t *)vec->data + (vec->size * element_size), element, element_size);
-    vec->size++;
-}
-
-void ecs_vec_ensure(ecs_vec_t *vec, uint32_t count, const uint32_t element_size) {
-    if (count <= vec->size)
-        return;
-    while (vec->capacity < count)
-        ecs_vec_grow(vec, element_size);
-    memset((uint8_t *)vec->data + vec->size * element_size, 0, (count - vec->size) * element_size);
-    vec->size = count;
-}
-
-void ecs_vec_remove_fast(ecs_vec_t *vec, uint32_t index, const uint32_t element_size) {
-    if (index < vec->size - 1) {
-        void *dst = (uint8_t *)vec->data + (index * element_size);
-        const void *src = (uint8_t *)vec->data + ((vec->size - 1) * element_size);
-        memcpy(dst, src, element_size);
-    }
-    vec->size--;
-}
-
-bool ecs_vec_contains_u16(const ecs_vec_t *vec, const uint16_t value) {
-    ecs_vec_iter(vec, uint16_t, current, {
-        if (*current == value) {
-            return true;
-        }
-    });
-    return false;
-}
-
-static inline void ecs_vec_remove_fast_u16(ecs_vec_t *vec, uint32_t index) {
-    if (index < vec->size - 1) {
-        uint16_t *data = vec->data;
-        data[index] = data[vec->size - 1];
-    }
-    vec->size--;
-}
-
-void ecs_vec_remove_u16(ecs_vec_t *vec, const uint16_t value) {
-    ecs_vec_iter(vec, uint16_t, current, {
-        if (*current == value) {
-            ecs_vec_remove_fast_u16(vec, i);
-            return;
-        }
-    });
-}
-
-static inline void ecs_vec_remove_fast_u64(ecs_vec_t *vec, uint32_t index) {
-    if (index < vec->size - 1) {
-        uint64_t *data = vec->data;
-        data[index] = data[vec->size - 1];
-    }
-    vec->size--;
-}
-
-void ecs_vec_remove_u64(ecs_vec_t *vec, uint64_t value) {
-    ecs_vec_iter(vec, uint64_t, current, {
-        if (*current == value) {
-            ecs_vec_remove_fast_u64(vec, i);
-            return;
-        }
-    });
-}
-
 void ecs_component_index_register(
     ecs_component_t id,
     uint64_t size,
@@ -3259,14 +3086,14 @@ void ecs_component_index_register(
     ecs_component_on_add_t on_add,
     uint32_t relation_flags
 ) {
-    ecs_vec_ensure(
+    sicore_vec_ensure(
         &ecs_world.component_index.components,
         (uint32_t)id + 1,
         sizeof(ecs_component_record_t)
     );
 
     ecs_component_record_t *existing =
-        ecs_vec_get_mut(&ecs_world.component_index.components, id, ecs_component_record_t);
+        sicore_vec_get_mut(&ecs_world.component_index.components, id, ecs_component_record_t);
     if (existing->tables.data) {
         return;
     }
@@ -3282,13 +3109,17 @@ void ecs_component_index_register(
         .relation_flags = relation_flags,
         .tables = { 0 },
     };
-    ecs_vec_init(&record.tables, sizeof(uint16_t));
+    sicore_vec_init(&record.tables, sizeof(uint16_t));
 
     *existing = record;
 }
 
 void ecs_component_index_init() {
-    ecs_vec_init_w_size(&ecs_world.component_index.components, sizeof(ecs_component_record_t), 256);
+    sicore_vec_init_w_size(
+        &ecs_world.component_index.components,
+        sizeof(ecs_component_record_t),
+        256
+    );
 }
 
 void ecs_component_index_fini() {
@@ -3296,9 +3127,9 @@ void ecs_component_index_fini() {
 
     for (uint32_t i = 0; i < ecs_world.component_index.components.size; i++) {
         free(records[i].required);
-        ecs_vec_fini(&records[i].tables);
+        sicore_vec_fini(&records[i].tables);
     }
-    ecs_vec_fini(&ecs_world.component_index.components);
+    sicore_vec_fini(&ecs_world.component_index.components);
 }
 
 void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count) {
@@ -3410,11 +3241,11 @@ bool ecs_entity_index_is_alive(ecs_entity_t entity) {
 
 void ecs_entity_index_init() {
     ecs_entity_index_t *index = &ecs_world.entity_index;
-    ecs_vec_init_w_size(&index->entities, sizeof(ecs_entity_record_t), 256);
+    sicore_vec_init_w_size(&index->entities, sizeof(ecs_entity_record_t), 256);
     index->first_available = UINT32_MAX;
 }
 
-void ecs_entity_index_fini() { ecs_vec_fini(&ecs_world.entity_index.entities); }
+void ecs_entity_index_fini() { sicore_vec_fini(&ecs_world.entity_index.entities); }
 
 static bool ecs_module_id_valid(const ecs_module_index_t *index, ecs_module_id_t module) {
     return module != 0 && module < index->modules.size;
@@ -3426,8 +3257,8 @@ static void ecs_module_record_init(
 ) {
     module->id = id;
     module->enabled = true;
-    ecs_vec_init(&module->observers, sizeof(ecs_observer_id_t));
-    ecs_vec_init(&module->systems, sizeof(ecs_system_id_t));
+    sicore_vec_init(&module->observers, sizeof(ecs_observer_id_t));
+    sicore_vec_init(&module->systems, sizeof(ecs_system_id_t));
 }
 
 static void ecs_module_record_fini(ecs_module_t *module) {
@@ -3435,23 +3266,23 @@ static void ecs_module_record_fini(ecs_module_t *module) {
         *module->id = 0;
     }
 
-    ecs_vec_fini(&module->observers);
-    ecs_vec_fini(&module->systems);
+    sicore_vec_fini(&module->observers);
+    sicore_vec_fini(&module->systems);
 }
 
 void ecs_module_index_init() {
     ecs_module_index_t *index = &ecs_world.module_index;
-    ecs_vec_init(&index->modules, sizeof(ecs_module_t));
-    ecs_vec_ensure(&index->modules, 1, sizeof(ecs_module_t));
+    sicore_vec_init(&index->modules, sizeof(ecs_module_t));
+    sicore_vec_ensure(&index->modules, 1, sizeof(ecs_module_t));
 }
 
 void ecs_module_index_fini() {
     ecs_module_index_t *index = &ecs_world.module_index;
     for (uint32_t i = 1; i < index->modules.size; i++) {
-        ecs_module_t *module = ecs_vec_get_mut(&index->modules, i, ecs_module_t);
+        ecs_module_t *module = sicore_vec_get_mut(&index->modules, i, ecs_module_t);
         ecs_module_record_fini(module);
     }
-    ecs_vec_fini(&index->modules);
+    sicore_vec_fini(&index->modules);
 }
 
 ecs_module_id_t ecs_module_index_create(
@@ -3463,22 +3294,20 @@ ecs_module_id_t ecs_module_index_create(
         &module,
         id
     );
-    ecs_vec_push(&index->modules, &module, sizeof(ecs_module_t));
+    sicore_vec_push(&index->modules, &module, sizeof(ecs_module_t));
     return index->modules.size - 1;
 }
 
 ecs_module_t *ecs_module_index_get(ecs_module_id_t module) {
     ecs_module_index_t *index = &ecs_world.module_index;
     ecs_assert(ecs_module_id_valid(index, module), "invalid module id: %u\n", module);
-    return ecs_vec_get_mut(&index->modules, module, ecs_module_t);
+    return sicore_vec_get_mut(&index->modules, module, ecs_module_t);
 }
 
-const ecs_module_t *ecs_module_index_get_const(
-    ecs_module_id_t module
-) {
+const ecs_module_t *ecs_module_index_get_const(ecs_module_id_t module) {
     const ecs_module_index_t *index = &ecs_world.module_index;
     ecs_assert(ecs_module_id_valid(index, module), "invalid module id: %u\n", module);
-    return ecs_vec_get(&index->modules, module, ecs_module_t);
+    return sicore_vec_get(&index->modules, module, ecs_module_t);
 }
 
 ecs_module_id_t ecs_module_index_find(const ecs_module_id_t *id) {
@@ -3499,22 +3328,22 @@ ecs_module_id_t ecs_module_index_find(const ecs_module_id_t *id) {
 
 void ecs_observer_index_init() {
     ecs_observer_index_t *index = &ecs_world.observer_index;
-    ecs_vec_init(&index->observers, sizeof(ecs_observer_t));
+    sicore_vec_init(&index->observers, sizeof(ecs_observer_t));
     index->event_count = ECS_BUILTIN_EVENT_COUNT;
 }
 
 void ecs_observer_index_fini() {
     ecs_observer_index_t *index = &ecs_world.observer_index;
     for (uint32_t i = 0; i < index->observers.size; i++) {
-        ecs_observer_t *obs = ecs_vec_get_mut(&index->observers, i, ecs_observer_t);
+        ecs_observer_t *obs = sicore_vec_get_mut(&index->observers, i, ecs_observer_t);
         ecs_query_index_destroy(&obs->query);
     }
-    ecs_vec_fini(&index->observers);
+    sicore_vec_fini(&index->observers);
 }
 
 uint16_t ecs_observer_index_create(const ecs_observer_desc_t *desc) {
     ecs_observer_index_t *index = &ecs_world.observer_index;
-    ecs_observer_t *obs = ecs_vec_push_empty(&index->observers, sizeof(ecs_observer_t));
+    ecs_observer_t *obs = sicore_vec_push_empty(&index->observers, sizeof(ecs_observer_t));
     obs->event = desc->on;
     obs->callback = desc->callback;
     obs->user_data = desc->user_data;
@@ -3524,12 +3353,12 @@ uint16_t ecs_observer_index_create(const ecs_observer_desc_t *desc) {
 }
 
 void ecs_observer_index_match_tables(
-        ecs_table_t *tables,
+    ecs_table_t *tables,
     uint16_t table_count,
     uint16_t observer_id
 ) {
     ecs_observer_t *obs =
-        ecs_vec_get_mut(&ecs_world.observer_index.observers, observer_id, ecs_observer_t);
+        sicore_vec_get_mut(&ecs_world.observer_index.observers, observer_id, ecs_observer_t);
     for (uint16_t i = 0; i < table_count; i++) {
         if (ecs_query_match_table(&obs->query, &tables[i])) {
             ecs_table_add_observer(&tables[i], obs->event, observer_id);
@@ -3539,7 +3368,8 @@ void ecs_observer_index_match_tables(
 
 void ecs_observer_index_add_table(ecs_table_t *table) {
     for (uint32_t i = 0; i < ecs_world.observer_index.observers.size; i++) {
-        ecs_observer_t *obs = ecs_vec_get_mut(&ecs_world.observer_index.observers, i, ecs_observer_t);
+        ecs_observer_t *obs =
+            sicore_vec_get_mut(&ecs_world.observer_index.observers, i, ecs_observer_t);
         if (ecs_query_match_table(&obs->query, table)) {
             ecs_table_add_observer(table, obs->event, i);
         }
@@ -3548,8 +3378,8 @@ void ecs_observer_index_add_table(ecs_table_t *table) {
 
 void ecs_query_index_init() {
     ecs_query_index_t *index = &ecs_world.query_index;
-    ecs_vec_init(&index->queries, sizeof(ecs_query_cache_t));
-    ecs_vec_init(&index->active_ids, sizeof(ecs_query_id_t));
+    sicore_vec_init(&index->queries, sizeof(ecs_query_cache_t));
+    sicore_vec_init(&index->active_ids, sizeof(ecs_query_id_t));
     index->first_free = UINT16_MAX;
 }
 
@@ -3558,14 +3388,14 @@ void ecs_query_index_fini() {
     const ecs_query_id_t *active_ids = index->active_ids.data;
     for (uint32_t i = 0; i < index->active_ids.size; i++) {
         ecs_query_cache_t *cache =
-            ecs_vec_get_mut(&index->queries, active_ids[i], ecs_query_cache_t);
-        ecs_vec_fini(&cache->table_ids);
+            sicore_vec_get_mut(&index->queries, active_ids[i], ecs_query_cache_t);
+        sicore_vec_fini(&cache->table_ids);
         free(cache->fields_ptr);
         free(cache->field_kind_bits);
         ecs_query_index_destroy(&cache->query);
     }
-    ecs_vec_fini(&index->active_ids);
-    ecs_vec_fini(&index->queries);
+    sicore_vec_fini(&index->active_ids);
+    sicore_vec_fini(&index->queries);
 }
 
 void ecs_query_index_destroy(ecs_query_t *query) { free(query->terms); }
@@ -3738,7 +3568,7 @@ static void ecs_query_cache_set_table_fields(
 
 static void
 ecs_query_cache_add_table(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t table_id) {
-    ecs_vec_push_u16(&cache->table_ids, table_id);
+    sicore_vec_push_u16(&cache->table_ids, table_id);
     const uint16_t table_count = cache->table_ids.size;
     const uint16_t field_count = cache->query.field_count;
 
@@ -3768,22 +3598,22 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
 
     if (index->first_free != UINT16_MAX) {
         id = index->first_free;
-        query_cache = ecs_vec_get_mut(&index->queries, id, ecs_query_cache_t);
+        query_cache = sicore_vec_get_mut(&index->queries, id, ecs_query_cache_t);
         index->first_free = query_cache->next_free;
     } else {
-        query_cache = ecs_vec_push_empty(&index->queries, sizeof(ecs_query_cache_t));
+        query_cache = sicore_vec_push_empty(&index->queries, sizeof(ecs_query_cache_t));
         id = index->queries.size - 1;
     }
 
     ecs_query_from_desc(desc, &query_cache->query);
-    ecs_vec_init(&query_cache->table_ids, sizeof(uint16_t));
+    sicore_vec_init(&query_cache->table_ids, sizeof(uint16_t));
     query_cache->fields_ptr = NULL;
     query_cache->field_kind_bits = NULL;
     query_cache->field_table_capacity = 0;
     query_cache->active_index = index->active_ids.size;
     query_cache->next_free = UINT16_MAX;
     query_cache->alive = true;
-    ecs_vec_push_u16(&index->active_ids, id);
+    sicore_vec_push_u16(&index->active_ids, id);
 
     return id;
 }
@@ -3813,9 +3643,9 @@ void ecs_query_index_update_matches(ecs_query_cache_t *query_cache) {
     uint16_t component = ecs_query_rarest_positive_term(&query_cache->query);
 
     if (ECS_LIKELY(component)) {
-        const ecs_vec_t *tables_vec = &ecs_component_index_get(component)->tables;
+        const sicore_vec_t *tables_vec = &ecs_component_index_get(component)->tables;
 
-        ecs_vec_iter(tables_vec, uint16_t, table_index, {
+        sicore_vec_iter(tables_vec, uint16_t, table_index, {
             const ecs_table_t *table = &ecs_world.table_index.tables[*table_index];
 
             if (ecs_query_match_table(&query_cache->query, table)) {
@@ -3838,7 +3668,7 @@ void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id) {
     const ecs_query_id_t *active_ids = ecs_world.query_index.active_ids.data;
     for (uint32_t i = 0; i < ecs_world.query_index.active_ids.size; i++) {
         ecs_query_cache_t *cache =
-            ecs_vec_get_mut(&ecs_world.query_index.queries, active_ids[i], ecs_query_cache_t);
+            sicore_vec_get_mut(&ecs_world.query_index.queries, active_ids[i], ecs_query_cache_t);
         if (ecs_query_match_table(&cache->query, table)) {
             ecs_query_cache_add_table(cache, table, table_id);
         }
@@ -3850,7 +3680,7 @@ void ecs_query_index_refresh_table_fields(const ecs_table_t *table, uint16_t tab
 
     for (uint32_t i = 0; i < ecs_world.query_index.active_ids.size; i++) {
         ecs_query_cache_t *cache =
-            ecs_vec_get_mut(&ecs_world.query_index.queries, active_ids[i], ecs_query_cache_t);
+            sicore_vec_get_mut(&ecs_world.query_index.queries, active_ids[i], ecs_query_cache_t);
         if (cache->query.field_count == 0) {
             continue;
         }
@@ -4145,7 +3975,7 @@ static void ecs_system_index_plan_one(
     ecs_system_index_t *index,
     ecs_system_id_t system,
     uint8_t *state,
-    ecs_vec_t *order
+    sicore_vec_t *order
 ) {
     if (!ecs_system_id_valid(index, system)) {
         ecs_assert(false, "invalid system dependency: %u\n", system);
@@ -4175,29 +4005,29 @@ static void ecs_system_index_plan_one(
             continue;
         }
 
-    ecs_system_t *dep = ecs_system_index_get(after);
+        ecs_system_t *dep = ecs_system_index_get(after);
         if (dep->phase != sys->phase) {
             ecs_assert(false, "system dependency must be in the same phase\n");
             continue;
         }
 
-    ecs_system_index_plan_one(index, after, state, order);
+        ecs_system_index_plan_one(index, after, state, order);
     }
 
     state[system] = 2;
 
     if (sys->enabled) {
-        ecs_vec_push_u16(order, system);
+        sicore_vec_push_u16(order, system);
     }
 }
 
 void ecs_system_index_init() {
     ecs_system_index_t *index = &ecs_world.system_index;
-    ecs_vec_init(&index->systems, sizeof(ecs_system_t));
-    ecs_vec_ensure(&index->systems, 1, sizeof(ecs_system_t));
+    sicore_vec_init(&index->systems, sizeof(ecs_system_t));
+    sicore_vec_ensure(&index->systems, 1, sizeof(ecs_system_t));
 
     for (uint32_t i = 0; i < EcsPhaseCount; i++) {
-        ecs_vec_init(&index->phase_order[i], sizeof(ecs_system_id_t));
+        sicore_vec_init(&index->phase_order[i], sizeof(ecs_system_id_t));
     }
 
     index->plan_dirty = true;
@@ -4205,7 +4035,7 @@ void ecs_system_index_init() {
 
 ecs_system_id_t ecs_system_index_create(const ecs_system_t *system) {
     ecs_system_index_t *index = &ecs_world.system_index;
-    ecs_vec_push(&index->systems, system, sizeof(ecs_system_t));
+    sicore_vec_push(&index->systems, system, sizeof(ecs_system_t));
     index->plan_dirty = true;
     return index->systems.size - 1;
 }
@@ -4213,13 +4043,13 @@ ecs_system_id_t ecs_system_index_create(const ecs_system_t *system) {
 ecs_system_t *ecs_system_index_get(ecs_system_id_t system) {
     ecs_system_index_t *index = &ecs_world.system_index;
     ecs_assert(ecs_system_id_valid(index, system), "invalid system id: %u\n", system);
-    return ecs_vec_get_mut(&index->systems, system, ecs_system_t);
+    return sicore_vec_get_mut(&index->systems, system, ecs_system_t);
 }
 
 void ecs_system_index_build_plan() {
     ecs_system_index_t *index = &ecs_world.system_index;
     for (uint32_t i = 0; i < EcsPhaseCount; i++) {
-        ecs_vec_clear(&index->phase_order[i]);
+        sicore_vec_clear(&index->phase_order[i]);
     }
 
     uint8_t *state = calloc(index->systems.size, sizeof(uint8_t));
@@ -4242,7 +4072,7 @@ void ecs_system_index_build_plan() {
 
 void ecs_system_index_fini() {
     ecs_system_index_t *index = &ecs_world.system_index;
-    ecs_system_t *systems = ecs_vec_data(&index->systems, ecs_system_t);
+    ecs_system_t *systems = sicore_vec_data(&index->systems, ecs_system_t);
     for (uint32_t i = 1; i < index->systems.size; i++) {
         if (systems[i].user_data_dtor) {
             systems[i].user_data_dtor(systems[i].user_data);
@@ -4250,10 +4080,10 @@ void ecs_system_index_fini() {
     }
 
     for (uint32_t i = 0; i < EcsPhaseCount; i++) {
-        ecs_vec_fini(&index->phase_order[i]);
+        sicore_vec_fini(&index->phase_order[i]);
     }
 
-    ecs_vec_fini(&index->systems);
+    sicore_vec_fini(&index->systems);
 }
 
 #define INITIAL_SLOT_SHIFT 12
@@ -4356,10 +4186,7 @@ static bool ecs_table_index_inherits_component_before(
     return false;
 }
 
-static void ecs_table_index_register_inherited_components(
-        ecs_table_t *table,
-    uint16_t table_id
-) {
+static void ecs_table_index_register_inherited_components(ecs_table_t *table, uint16_t table_id) {
     ecs_entity_t base = table->type.base;
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
@@ -4374,7 +4201,7 @@ static void ecs_table_index_register_inherited_components(
 
             table->bloom |= 1ull << (component % 64);
             ecs_component_record_t *record = ecs_component_index_get_mut(component);
-            ecs_vec_push_u16(&record->tables, table_id);
+            sicore_vec_push_u16(&record->tables, table_id);
         }
 
         base = base_table->type.base;

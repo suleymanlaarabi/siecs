@@ -2,7 +2,7 @@
 #define SIECS_WORLD_INTERNAL_H
 #include "command_buffer.h"
 #include "datastructure/arena.h"
-#include "datastructure/vec.h"
+#include "sicore_vec.h"
 #include "siecs.h"
 #if SIECS_HAS_REST && !defined(SIHTTP_H)
 #include "sihttp.h"
@@ -55,11 +55,11 @@ typedef struct {
 } RelationTarget;
 
 typedef struct {
-    ecs_vec_t entities;
+    sicore_vec_t entities;
 } RelationSource;
 
 #define ecs_get_record(entity)                                                                     \
-    ecs_vec_get_mut(&ecs_world.entity_index.entities, ecs_first(entity), ecs_entity_record_t)
+    sicore_vec_get_mut(&ecs_world.entity_index.entities, ecs_first(entity), ecs_entity_record_t)
 #define ecs_get_table(tid) ecs_table_index_at(tid)
 
 static inline void
@@ -67,12 +67,12 @@ ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void 
     if (table->observers_by_event.size <= event) {
         return;
     }
-    const ecs_vec_t *list = ecs_vec_get(&table->observers_by_event, event, ecs_vec_t);
+    const sicore_vec_t *list = sicore_vec_get(&table->observers_by_event, event, sicore_vec_t);
     uint32_t n = list->size;
     for (uint32_t i = 0; i < n; i++) {
-        uint16_t oid = *ecs_vec_get(list, i, uint16_t);
+        uint16_t oid = *sicore_vec_get(list, i, uint16_t);
         ecs_observer_t *obs =
-            ecs_vec_get_mut(&ecs_world.observer_index.observers, oid, ecs_observer_t);
+            sicore_vec_get_mut(&ecs_world.observer_index.observers, oid, ecs_observer_t);
         if (!obs->enabled) {
             continue;
         }

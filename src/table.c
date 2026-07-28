@@ -2,17 +2,13 @@
 #include "./storage/component_index.h"
 #include "./type.h"
 #include "datastructure/idmap.h"
-#include "datastructure/vec.h"
+#include "sicore_vec.h"
 #include "utils.h"
 #include "world_internal.h"
 #include <stdlib.h>
 #include <string.h>
 
-void ecs_table_init(
-    ecs_table_t *table,
-    ecs_type_t type,
-    uint16_t table_id
-) {
+void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     table->type = type;
     table->entity_capacity = 1;
     table->entity_count = 0;
@@ -23,12 +19,12 @@ void ecs_table_init(
     table->data_columns = type.count == 0 ? NULL : malloc(sizeof(uint16_t) * type.count);
     table->bloom = ecs_type_bloom(&type);
 
-    ecs_vec_init(&table->observers_by_event, sizeof(ecs_vec_t));
+    sicore_vec_init(&table->observers_by_event, sizeof(sicore_vec_t));
     ecs_id_map_init(&table->add_edge);
 
     for (uint16_t i = 0; i < type.count; i++) {
         ecs_component_record_t *rec = ecs_component_index_get_mut(type.ids[i]);
-        ecs_vec_push_u16(&rec->tables, table_id);
+        sicore_vec_push_u16(&rec->tables, table_id);
         table->cls[i].size = rec->size;
         table->cls[i].data = rec->size != 0 ? calloc(table->entity_capacity, rec->size) : NULL;
         if (rec->size != 0) {
@@ -80,10 +76,7 @@ static inline void ecs_table_grow(ecs_table_t *table) {
         column->data = new_data;
     }
     table->entity_capacity = new_capacity;
-    ecs_query_index_refresh_table_fields(
-        table,
-        (uint16_t)(table - ecs_world.table_index.tables)
-    );
+    ecs_query_index_refresh_table_fields(table, (uint16_t)(table - ecs_world.table_index.tables));
 }
 
 uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
@@ -145,12 +138,12 @@ void *ecs_table_get_component(ecs_table_t *table, ecs_component_t component_id, 
 }
 
 void ecs_table_add_observer(ecs_table_t *table, uint16_t event, uint16_t observer_id) {
-    ecs_vec_ensure(&table->observers_by_event, event + 1, sizeof(ecs_vec_t));
-    ecs_vec_t *list = ecs_vec_get_mut(&table->observers_by_event, event, ecs_vec_t);
+    sicore_vec_ensure(&table->observers_by_event, event + 1, sizeof(sicore_vec_t));
+    sicore_vec_t *list = sicore_vec_get_mut(&table->observers_by_event, event, sicore_vec_t);
     if (list->capacity == 0) {
-        ecs_vec_init(list, sizeof(uint16_t));
+        sicore_vec_init(list, sizeof(uint16_t));
     }
-    ecs_vec_push_u16(list, observer_id);
+    sicore_vec_push_u16(list, observer_id);
 }
 
 static void ecs_table_fini_component_values(ecs_table_t *table) {
@@ -162,7 +155,7 @@ static void ecs_table_fini_component_values(ecs_table_t *table) {
             if (!(crec->relation_flags & EcsRelationOneToOne)) {
                 for (uint32_t row = 0; row < table->entity_count; row++) {
                     RelationSource *source = ecs_table_component_at_column(table, c, row);
-                    ecs_vec_fini(&source->entities);
+                    sicore_vec_fini(&source->entities);
                 }
             }
             continue;
@@ -189,9 +182,9 @@ void ecs_table_fini(ecs_table_t *table) {
         free(table->cls[i].data);
     }
     for (uint32_t e = 0; e < table->observers_by_event.size; e++) {
-        ecs_vec_fini(ecs_vec_get_mut(&table->observers_by_event, e, ecs_vec_t));
+        sicore_vec_fini(sicore_vec_get_mut(&table->observers_by_event, e, sicore_vec_t));
     }
-    ecs_vec_fini(&table->observers_by_event);
+    sicore_vec_fini(&table->observers_by_event);
     ecs_id_map_fini(&table->add_edge);
     free(table->entities);
     free(table->cls);

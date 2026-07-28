@@ -1,5 +1,5 @@
 #include "component_index.h"
-#include "../datastructure/vec.h"
+#include "sicore_vec.h"
 #include "siecs.h"
 #if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"
@@ -25,14 +25,14 @@ void ecs_component_index_register(
     const sireflect_struct_desc_t *reflection_desc
 #endif
 ) {
-    ecs_vec_ensure(
+    sicore_vec_ensure(
         &ecs_world.component_index.components,
         (uint32_t)id + 1,
         sizeof(ecs_component_record_t)
     );
 
     ecs_component_record_t *existing =
-        ecs_vec_get_mut(&ecs_world.component_index.components, id, ecs_component_record_t);
+        sicore_vec_get_mut(&ecs_world.component_index.components, id, ecs_component_record_t);
     if (existing->tables.data) {
         return;
     }
@@ -55,13 +55,17 @@ void ecs_component_index_register(
         .reflection_desc = reflection_desc,
 #endif
     };
-    ecs_vec_init(&record.tables, sizeof(uint16_t));
+    sicore_vec_init(&record.tables, sizeof(uint16_t));
 
     *existing = record;
 }
 
 void ecs_component_index_init() {
-    ecs_vec_init_w_size(&ecs_world.component_index.components, sizeof(ecs_component_record_t), 256);
+    sicore_vec_init_w_size(
+        &ecs_world.component_index.components,
+        sizeof(ecs_component_record_t),
+        256
+    );
 }
 
 void ecs_component_index_fini() {
@@ -69,9 +73,9 @@ void ecs_component_index_fini() {
 
     for (uint32_t i = 0; i < ecs_world.component_index.components.size; i++) {
         free(records[i].required);
-        ecs_vec_fini(&records[i].tables);
+        sicore_vec_fini(&records[i].tables);
     }
-    ecs_vec_fini(&ecs_world.component_index.components);
+    sicore_vec_fini(&ecs_world.component_index.components);
 }
 
 void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count) {

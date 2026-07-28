@@ -38,9 +38,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
 }
 
 #if SIECS_HAS_NAMES
-const char *ecs_system_name(ecs_system_id_t system) {
-    return ecs_system_index_get(system)->name;
-}
+const char *ecs_system_name(ecs_system_id_t system) { return ecs_system_index_get(system)->name; }
 #endif
 
 void ecs_run_system(ecs_system_id_t system) {
@@ -77,9 +75,9 @@ void ecs_run_phase(ecs_phase_t phase) {
         ecs_system_index_build_plan();
     }
 
-    ecs_vec_t *order = &index->phase_order[phase];
+    sicore_vec_t *order = &index->phase_order[phase];
     for (uint32_t i = 0; i < order->size; i++) {
-        ecs_system_id_t system = *ecs_vec_get(order, i, ecs_system_id_t);
+        ecs_system_id_t system = *sicore_vec_get(order, i, ecs_system_id_t);
         ecs_run_system(system);
     }
 }

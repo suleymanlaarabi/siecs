@@ -19,8 +19,8 @@ static void ecs_module_record_init(
     module->name = name;
 #endif
     module->enabled = true;
-    ecs_vec_init(&module->observers, sizeof(ecs_observer_id_t));
-    ecs_vec_init(&module->systems, sizeof(ecs_system_id_t));
+    sicore_vec_init(&module->observers, sizeof(ecs_observer_id_t));
+    sicore_vec_init(&module->systems, sizeof(ecs_system_id_t));
 }
 
 static void ecs_module_record_fini(ecs_module_t *module) {
@@ -28,23 +28,23 @@ static void ecs_module_record_fini(ecs_module_t *module) {
         *module->id = 0;
     }
 
-    ecs_vec_fini(&module->observers);
-    ecs_vec_fini(&module->systems);
+    sicore_vec_fini(&module->observers);
+    sicore_vec_fini(&module->systems);
 }
 
 void ecs_module_index_init() {
     ecs_module_index_t *index = &ecs_world.module_index;
-    ecs_vec_init(&index->modules, sizeof(ecs_module_t));
-    ecs_vec_ensure(&index->modules, 1, sizeof(ecs_module_t));
+    sicore_vec_init(&index->modules, sizeof(ecs_module_t));
+    sicore_vec_ensure(&index->modules, 1, sizeof(ecs_module_t));
 }
 
 void ecs_module_index_fini() {
     ecs_module_index_t *index = &ecs_world.module_index;
     for (uint32_t i = 1; i < index->modules.size; i++) {
-        ecs_module_t *module = ecs_vec_get_mut(&index->modules, i, ecs_module_t);
+        ecs_module_t *module = sicore_vec_get_mut(&index->modules, i, ecs_module_t);
         ecs_module_record_fini(module);
     }
-    ecs_vec_fini(&index->modules);
+    sicore_vec_fini(&index->modules);
 }
 
 ecs_module_id_t ecs_module_index_create(
@@ -64,22 +64,20 @@ ecs_module_id_t ecs_module_index_create(
         name
 #endif
     );
-    ecs_vec_push(&index->modules, &module, sizeof(ecs_module_t));
+    sicore_vec_push(&index->modules, &module, sizeof(ecs_module_t));
     return index->modules.size - 1;
 }
 
 ecs_module_t *ecs_module_index_get(ecs_module_id_t module) {
     ecs_module_index_t *index = &ecs_world.module_index;
     ecs_assert(ecs_module_id_valid(index, module), "invalid module id: %u\n", module);
-    return ecs_vec_get_mut(&index->modules, module, ecs_module_t);
+    return sicore_vec_get_mut(&index->modules, module, ecs_module_t);
 }
 
-const ecs_module_t *ecs_module_index_get_const(
-    ecs_module_id_t module
-) {
+const ecs_module_t *ecs_module_index_get_const(ecs_module_id_t module) {
     const ecs_module_index_t *index = &ecs_world.module_index;
     ecs_assert(ecs_module_id_valid(index, module), "invalid module id: %u\n", module);
-    return ecs_vec_get(&index->modules, module, ecs_module_t);
+    return sicore_vec_get(&index->modules, module, ecs_module_t);
 }
 
 ecs_module_id_t ecs_module_index_find(const ecs_module_id_t *id) {

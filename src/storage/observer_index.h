@@ -1,8 +1,8 @@
 #ifndef SIECS_STORAGE_OBSERVER_INDEX_H
 #define SIECS_STORAGE_OBSERVER_INDEX_H
-#include "../datastructure/vec.h"
 #include "../table.h"
 #include "query_index.h"
+#include "sicore_vec.h"
 #include "siecs.h"
 #include <stdint.h>
 
@@ -15,8 +15,8 @@ typedef struct {
 } ecs_observer_t;
 
 typedef struct {
-    ecs_vec_t observers;  // ecs_observer_t
-    uint16_t event_count; // next free event id; starts past the builtin events
+    sicore_vec_t observers; // ecs_observer_t
+    uint16_t event_count;   // next free event id; starts past the builtin events
 } ecs_observer_index_t;
 
 void ecs_observer_index_init();

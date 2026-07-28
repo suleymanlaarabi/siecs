@@ -7,8 +7,8 @@ bool ecs_entity_index_is_alive(ecs_entity_t entity) {
 
 void ecs_entity_index_init() {
     ecs_entity_index_t *index = &ecs_world.entity_index;
-    ecs_vec_init_w_size(&index->entities, sizeof(ecs_entity_record_t), 256);
+    sicore_vec_init_w_size(&index->entities, sizeof(ecs_entity_record_t), 256);
     index->first_available = UINT32_MAX;
 }
 
-void ecs_entity_index_fini() { ecs_vec_fini(&ecs_world.entity_index.entities); }
+void ecs_entity_index_fini() { sicore_vec_fini(&ecs_world.entity_index.entities); }

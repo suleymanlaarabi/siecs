@@ -1,4 +1,4 @@
-#include "datastructure/vec.h"
+#include "sicore_vec.h"
 #include "helper.h"
 #include "siecs.h"
 #if SIECS_HAS_META && !defined(SIREFLECT_H)
@@ -41,7 +41,7 @@ void RelationOnSet(
     if (old_target_data->target) {
         RelationSource *source = ecs_get_cid(old_target_data->target, source_component);
 
-        ecs_vec_remove_u64(&source->entities, entity);
+        sicore_vec_remove_u64(&source->entities, entity);
         if (source->entities.size == 0) {
             ecs_remove_cid(old_target_data->target, source_component);
         }
@@ -49,11 +49,11 @@ void RelationOnSet(
 
     if (ecs_has_cid(target_data->target, source_component)) {
         RelationSource *source_data = ecs_get_cid(target_data->target, source_component);
-        ecs_vec_push_u64(&source_data->entities, entity);
+        sicore_vec_push_u64(&source_data->entities, entity);
     } else {
         RelationSource source_data = {};
-        ecs_vec_init(&source_data.entities, sizeof(ecs_entity_t));
-        ecs_vec_push_u64(&source_data.entities, entity);
+        sicore_vec_init(&source_data.entities, sizeof(ecs_entity_t));
+        sicore_vec_push_u64(&source_data.entities, entity);
         ecs_set_cid(target_data->target, source_component, &source_data);
     }
 }
@@ -68,7 +68,7 @@ void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr)
         return;
     }
 
-    ecs_vec_remove_u64(&target_source_data->entities, entity);
+    sicore_vec_remove_u64(&target_source_data->entities, entity);
 
     if (target_source_data->entities.size == 0) {
         ecs_remove_cid(target_data->target, source_component);
@@ -93,7 +93,7 @@ void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) 
         }
     }
 
-    ecs_vec_fini(&source_data->entities);
+    sicore_vec_fini(&source_data->entities);
 }
 
 ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
@@ -196,9 +196,11 @@ ecs_component_t ecs_component_init(const ecs_component_desc_t *desc) {
 
 #if SIECS_HAS_NAMES
 const char *ecs_component_name(ecs_component_t component) {
-    ecs_assert(component != 0 && component < ecs_world.component_index.components.size,
+    ecs_assert(
+        component != 0 && component < ecs_world.component_index.components.size,
         "invalid component id: %u\n",
-        component);
+        component
+    );
     return ecs_component_index_get(component)->name;
 }
 #endif

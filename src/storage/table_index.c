@@ -107,10 +107,7 @@ static bool ecs_table_index_inherits_component_before(
     return false;
 }
 
-static void ecs_table_index_register_inherited_components(
-        ecs_table_t *table,
-    uint16_t table_id
-) {
+static void ecs_table_index_register_inherited_components(ecs_table_t *table, uint16_t table_id) {
     ecs_entity_t base = table->type.base;
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
@@ -125,7 +122,7 @@ static void ecs_table_index_register_inherited_components(
 
             table->bloom |= 1ull << (component % 64);
             ecs_component_record_t *record = ecs_component_index_get_mut(component);
-            ecs_vec_push_u16(&record->tables, table_id);
+            sicore_vec_push_u16(&record->tables, table_id);
         }
 
         base = base_table->type.base;

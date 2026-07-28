@@ -1,5 +1,5 @@
 #include "command_buffer.h"
-#include "datastructure/vec.h"
+#include "sicore_vec.h"
 #include "siecs.h"
 #include "storage/component_index.h"
 #include "table.h"
@@ -29,7 +29,7 @@ static inline ecs_entity_t ecs_entity_index_create(uint32_t row) {
         entity_id = index->entities.size;
         generation = 0;
         ecs_entity_record_t *record =
-            ecs_vec_push_empty(&index->entities, sizeof(ecs_entity_record_t));
+            sicore_vec_push_empty(&index->entities, sizeof(ecs_entity_record_t));
         *record = (ecs_entity_record_t){ .generation = 0, .table_row = row, .table_id = 0 };
     }
     return ecs_entity(entity_id, generation);

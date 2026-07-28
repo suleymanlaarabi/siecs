@@ -121,9 +121,6 @@ void module_enable(void);
 void module_disabled_import(void);
 void module_double_import_is_noop(void);
 
-// Testsuite 'vec'
-void vec_u16_contains_and_remove(void);
-
 bake_test_case entity_testcases[] = {
     {
         "create",
@@ -531,13 +528,6 @@ bake_test_case module_testcases[] = {
     }
 };
 
-bake_test_case vec_testcases[] = {
-    {
-        "u16_contains_and_remove",
-        vec_u16_contains_and_remove
-    }
-};
-
 
 static bake_test_suite suites[] = {
     {
@@ -602,16 +592,9 @@ static bake_test_suite suites[] = {
         NULL,
         5,
         module_testcases
-    },
-    {
-        "vec",
-        NULL,
-        NULL,
-        1,
-        vec_testcases
     }
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 10);
+    return bake_test_run("siecs.test", argc, argv, suites, 9);
 }

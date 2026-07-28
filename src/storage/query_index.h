@@ -1,8 +1,8 @@
 #ifndef SIECS_STORAGE_QUERY_INDEX_H
 #define SIECS_STORAGE_QUERY_INDEX_H
-#include "../datastructure/vec.h"
 #include "../helper.h"
 #include "../table.h"
+#include "sicore_vec.h"
 #include "siecs.h"
 #include <stdint.h>
 
@@ -17,7 +17,7 @@ typedef struct {
 
 typedef struct ecs_query_cache_s {
     ecs_query_t query;
-    ecs_vec_t table_ids; // uint16_t
+    sicore_vec_t table_ids; // uint16_t
     void **fields_ptr;
     uint32_t *field_kind_bits;
     uint16_t field_table_capacity;
@@ -27,8 +27,8 @@ typedef struct ecs_query_cache_s {
 } ecs_query_cache_t;
 
 typedef struct {
-    ecs_vec_t queries;
-    ecs_vec_t active_ids; // ecs_query_id_t
+    sicore_vec_t queries;
+    sicore_vec_t active_ids; // ecs_query_id_t
     uint16_t first_free;
 } ecs_query_index_t;
 

@@ -1,7 +1,7 @@
 #ifndef SIECS_STORAGE_MODULE_INDEX_H
 #define SIECS_STORAGE_MODULE_INDEX_H
 
-#include "../datastructure/vec.h"
+#include "sicore_vec.h"
 #include "siecs.h"
 
 typedef struct {
@@ -9,13 +9,13 @@ typedef struct {
 #if SIECS_HAS_NAMES
     const char *name;
 #endif
-    ecs_vec_t observers;  // ecs_observer_id_t
-    ecs_vec_t systems;    // ecs_system_id_t
+    sicore_vec_t observers; // ecs_observer_id_t
+    sicore_vec_t systems;   // ecs_system_id_t
     bool enabled;
 } ecs_module_t;
 
 typedef struct {
-    ecs_vec_t modules; // ecs_module_t
+    sicore_vec_t modules; // ecs_module_t
 } ecs_module_index_t;
 
 void ecs_module_index_init();

@@ -1,7 +1,7 @@
 #ifndef SIECS_STORAGE_ENTITY_INDEX_H
 #define SIECS_STORAGE_ENTITY_INDEX_H
-#include "../datastructure/vec.h"
 #include "helper.h"
+#include "sicore_vec.h"
 #include "siecs.h"
 #include <stdint.h>
 
@@ -14,12 +14,12 @@ typedef struct {
 } ecs_entity_record_t;
 
 typedef struct {
-    ecs_vec_t entities;       // ecs_entity_record_t
+    sicore_vec_t entities;    // ecs_entity_record_t
     uint32_t first_available; // UINT32_MAX when no dead entity can be reused
 } ecs_entity_index_t;
 
 #define ecs_entity_index_get_record(entity_id)                                                     \
-    ecs_vec_get_mut(&ecs_world.entity_index.entities, entity_id, ecs_entity_record_t)
+    sicore_vec_get_mut(&ecs_world.entity_index.entities, entity_id, ecs_entity_record_t)
 
 bool ecs_entity_index_is_alive(ecs_entity_t entity);
 

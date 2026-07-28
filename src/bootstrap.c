@@ -1,5 +1,5 @@
 #include "addons/addons.h"
-#include "datastructure/vec.h"
+#include "sicore_vec.h"
 #include "siecs.h"
 #if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"
@@ -17,7 +17,7 @@ ECS_TAG_DEFINE(Abstract);
 void ecs_bootstrap() {
     // Reserve identifiers used to represent false return values.
     ecs_table_index_get_or_create((ecs_type_t){ 0 });
-    ecs_vec_push_u64(&ecs_world.entity_index.entities, 0);
+    sicore_vec_push_u64(&ecs_world.entity_index.entities, 0);
     ecs_component({ SIECS_NAME_INIT("Invalid") });
 
 #if SIECS_HAS_META

@@ -1,8 +1,8 @@
 #ifndef SIECS_COMMAND_BUFFER_H
 #define SIECS_COMMAND_BUFFER_H
 
+#include "sicore_vec.h"
 #include "siecs.h"
-#include "datastructure/vec.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -18,13 +18,13 @@ typedef struct {
     bool kill;
     bool has_base;
     ecs_entity_t base;
-    ecs_vec_t add_ids;
-    ecs_vec_t remove_ids;
-    ecs_vec_t sets;
+    sicore_vec_t add_ids;
+    sicore_vec_t remove_ids;
+    sicore_vec_t sets;
 } ecs_entity_command_t;
 
 typedef struct ecs_command_buffer_s {
-    ecs_vec_t commands;
+    sicore_vec_t commands;
     uint32_t *entity_to_command;
     uint32_t entity_capacity;
 } ecs_command_buffer_t;
@@ -34,11 +34,7 @@ void ecs_command_buffer_fini();
 
 void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id);
 void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id);
-void ecs_command_buffer_set(
-        ecs_entity_t entity,
-    ecs_component_t id,
-    const void *data
-);
+void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void *data);
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data);
 void ecs_command_buffer_kill(ecs_entity_t entity);
 void ecs_command_buffer_set_base(ecs_entity_t entity, ecs_entity_t target);
