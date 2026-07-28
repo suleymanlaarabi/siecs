@@ -1,0 +1,17 @@
+{
+  "id": "siecs_meta_deps",
+  "type": "package",
+  "value": {
+    "use": ["sireflect", "sijson"],
+    "amalgamate": [
+      {
+        "path": "distr",
+        "prefix": "siecs",
+        "dependencies": true
+      }
+    ]
+  },
+  "lang.c": {
+    "c-standard": "c23"
+  }
+}

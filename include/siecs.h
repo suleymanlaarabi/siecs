@@ -5,7 +5,30 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 
-#include "siecs/bake_config.h"
+#include "siecs/config.h"
+
+#if SIECS_HAS_META
+#ifndef SIJSON_H
+#include <sijson.h>
+#endif
+#ifndef SIREFLECT_H
+#include <sireflect.h>
+#endif
+#endif
+
+#ifndef siecs_STATIC
+#if defined(siecs_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
+#define SIECS_API __declspec(dllexport)
+#elif defined(siecs_EXPORTS)
+#define SIECS_API __attribute__((__visibility__("default")))
+#elif defined(_MSC_VER)
+#define SIECS_API __declspec(dllimport)
+#else
+#define SIECS_API
+#endif
+#else
+#define SIECS_API
+#endif
 
 #ifdef __cplusplus
 #ifndef _Alignof
@@ -14,6 +37,7 @@
 #endif
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -184,7 +208,9 @@ typedef struct {
     ecs_component_on_remove_t on_remove;
     ecs_component_on_add_t on_add;
     uint32_t relation_flags;
+#if SIECS_HAS_META
     const sireflect_struct_desc_t *struct_desc;
+#endif
 } ecs_component_desc_t;
 
 /*
@@ -291,8 +317,10 @@ SIECS_API void ecs_init(void);
 
 /* World feature descriptor. */
 typedef struct {
+#if SIECS_HAS_REST
     /* Start the REST explorer server when the rest addon is built in. */
     bool rest;
+#endif
 
     /* Target frames per second for the world's update loop. */
     uint16_t target_fps;
@@ -316,10 +344,27 @@ SIECS_API void ecs_quit(void);
  * Use in headers:
  *   ECS_COMPONENT_DECLARE(Position, { float x; float y; });
  */
+#if SIECS_HAS_META
 #define ECS_COMPONENT_DECLARE(cname, ...)                                                          \
     SIJSON_DECLARE(cname, __VA_ARGS__)                                                             \
     extern ecs_component_t ecs_id(cname);                                                          \
     extern ecs_component_desc_t ecs_id(cname##_desc)
+#define SIECS_COMPONENT_META_DEFINE(cname) SIJSON_DEFINE(cname)
+#define SIECS_COMPONENT_META_INIT(cname) .struct_desc = &sireflect_desc(cname),
+#define SIECS_TAG_META_DEFINE(cname)                                                               \
+    static const sireflect_struct_desc_t sireflect_desc(                                           \
+        cname                                                                                      \
+    ) = { .name = #cname, .fields = "{}", .size = 0, .align = 1 };
+#else
+#define ECS_COMPONENT_DECLARE(cname, ...)                                                          \
+    typedef struct cname cname;                                                                    \
+    struct cname __VA_ARGS__;                                                                      \
+    extern ecs_component_t ecs_id(cname);                                                          \
+    extern ecs_component_desc_t ecs_id(cname##_desc)
+#define SIECS_COMPONENT_META_DEFINE(cname)
+#define SIECS_COMPONENT_META_INIT(cname)
+#define SIECS_TAG_META_DEFINE(cname)
+#endif
 
 /*
  * Define a component declared with ECS_COMPONENT_DECLARE.
@@ -328,11 +373,10 @@ SIECS_API void ecs_quit(void);
  *   ECS_COMPONENT_DEFINE(Position);
  */
 #define ECS_COMPONENT_DEFINE(cname, ...)                                                           \
-    SIJSON_DEFINE(cname)                                                                           \
-    ecs_component_desc_t ecs_id(cname##_desc) = { .name = #cname,                                  \
+    SIECS_COMPONENT_META_DEFINE(cname)                                                             \
+    ecs_component_desc_t ecs_id(cname##_desc) = { SIECS_NAME_INIT(#cname)                          \
                                                   .size = sizeof(cname),                           \
-                                                  .struct_desc = &sireflect_desc(cname),           \
-                                                  __VA_ARGS__ };                                   \
+                                                  SIECS_COMPONENT_META_INIT(cname) __VA_ARGS__ };  \
     ecs_component_t ecs_id(cname) = 0
 
 /*
@@ -350,12 +394,10 @@ SIECS_API void ecs_quit(void);
 
 /* Define a tag component declared with ECS_TAG_DECLARE. */
 #define ECS_TAG_DEFINE(cname)                                                                      \
-    static const sireflect_struct_desc_t sireflect_desc(                                           \
-        cname                                                                                      \
-    ) = { .name = #cname, .fields = "{}", .size = 0, .align = 1 };                                 \
-    ecs_component_desc_t ecs_id(cname##_desc) = { .name = #cname,                                  \
+    SIECS_TAG_META_DEFINE(cname)                                                                   \
+    ecs_component_desc_t ecs_id(cname##_desc) = { SIECS_NAME_INIT(#cname)                          \
                                                   .size = 0,                                       \
-                                                  .struct_desc = &sireflect_desc(cname) };         \
+                                                  SIECS_COMPONENT_META_INIT(cname) };              \
     ecs_component_t ecs_id(cname) = 0
 
 /* Declare and define a tag component in one translation unit. */
@@ -418,7 +460,7 @@ SIECS_API void ecs_quit(void);
  */
 #define ECS_MODULE_IMPORT(module_name, ...)                                                        \
     (ecs_id(module_name) = ecs_module_init(&(ecs_module_desc_t){                                   \
-         .name = #module_name,                                                                     \
+         SIECS_NAME_INIT(#module_name)                                                             \
          .id = &ecs_id(module_name),                                                               \
          .import = ecs_id(module_name##_import_wrapper),                                           \
          .desc = &(module_name##_props_t)__VA_ARGS__,                                              \
@@ -448,6 +490,11 @@ SIECS_API void ecs_module_enable(ecs_module_id_t module);
 
 SIECS_API ecs_module_id_t ecs_module_find(const ecs_module_id_t *id);
 
+#if SIECS_HAS_NAMES
+/* Return the registered module name. */
+SIECS_API const char *ecs_module_name(ecs_module_id_t module);
+#endif
+
 /* Disable systems and observers recorded during module import. */
 SIECS_API void ecs_module_disable(ecs_module_id_t module);
 
@@ -466,9 +513,9 @@ SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
  */
 #define ECS_RELATION_DEFINE(cname, flags)                                                          \
     ecs_component_desc_t ecs_id(cname##_desc) = {                                                  \
-        .name = #cname,                                                                            \
+        SIECS_NAME_INIT(#cname)                                                                    \
         .size = sizeof(cname),                                                                     \
-        .struct_desc = &sireflect_desc(cname),                                                     \
+        SIECS_COMPONENT_META_INIT(cname)                                                           \
         .relation_flags = EcsRelationTarget | (flags),                                             \
     };                                                                                             \
     ecs_component_t ecs_id(cname) = 0
@@ -492,8 +539,10 @@ SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
 /* Builtin relation for parent/child relationships. */
 ECS_RELATION_DECLARE(ChildOf);
 
+#if SIECS_HAS_NAMES
 /* Builtin component for entity names. */
 ECS_COMPONENT_DECLARE(Name, { char *value; });
+#endif
 
 /* Builtin tag excluded from queries by default. */
 ECS_TAG_DECLARE(Disabled);
@@ -520,11 +569,18 @@ SIECS_API ecs_component_t ecs_component_init(const ecs_component_desc_t *desc);
 SIECS_API ecs_component_t
 ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc);
 
+#if SIECS_HAS_NAMES
+/* Return the registered component name. */
+SIECS_API const char *ecs_component_name(ecs_component_t component);
+#endif
+
 /* Create a new alive entity in world. world must not be NULL. */
 SIECS_API ecs_entity_t ecs_new(void);
 
-/* Get entity name */
+#if SIECS_HAS_NAMES
+/* Get the explicit entity name or a generated "(index, generation)" name. */
 SIECS_API const char *ecs_entity_name(ecs_entity_t entity);
+#endif
 
 /* Begin deferring ECS mutations into the world's command buffer. */
 SIECS_API void ecs_defer_begin(void);
@@ -672,7 +728,7 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
     extern ecs_resource_desc_t ecs_id(rname##_desc)
 
 #define ECS_RESOURCE_DEFINE(rname, ...)                                                            \
-    ecs_resource_desc_t ecs_id(rname##_desc) = { .name = #rname,                                   \
+    ecs_resource_desc_t ecs_id(rname##_desc) = { SIECS_NAME_INIT(#rname)                           \
                                                  .size = sizeof(rname),                            \
                                                  __VA_ARGS__ };                                    \
     ecs_resource_t ecs_id(rname) = 0
@@ -713,7 +769,10 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
 #define ecs_try_resource_read(rname) ecs_try_get_resource_read(rname)
 
 SIECS_API ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
+#if SIECS_HAS_NAMES
 SIECS_API ecs_resource_t ecs_resource_find(const char *name);
+SIECS_API const char *ecs_resource_name(ecs_resource_t resource);
+#endif
 SIECS_API bool ecs_resource_is_registered_rid(ecs_resource_t id);
 SIECS_API ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc);
 SIECS_API void ecs_set_resource_rid(ecs_resource_t id, const void *data);
@@ -923,6 +982,11 @@ typedef struct {
 
 /* Register a system and return its id. System id 0 is reserved. */
 SIECS_API ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc);
+
+#if SIECS_HAS_NAMES
+/* Return the registered system name. */
+SIECS_API const char *ecs_system_name(ecs_system_id_t system);
+#endif
 
 /* Run all enabled systems in phase order. */
 SIECS_API bool ecs_progress(void);

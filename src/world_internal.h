@@ -4,8 +4,12 @@
 #include "datastructure/arena.h"
 #include "datastructure/vec.h"
 #include "siecs.h"
+#if SIECS_HAS_REST && !defined(SIHTTP_H)
 #include "sihttp.h"
+#endif
+#if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"
+#endif
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
 #include "storage/module_index.h"
@@ -27,8 +31,12 @@ struct ecs_world_s {
     ecs_module_index_t module_index;
     ecs_resource_index_t resource_index;
     ecs_module_id_t active_module;
+#if SIECS_HAS_META
     sireflect_registry_t *sireflect_registry;
+#endif
+#if SIECS_HAS_REST
     sihttp_server_t *server;
+#endif
     ecs_world_feat_desc_t features;
     ecs_arena_t arena_allocator;
     ecs_command_buffer_t commands;

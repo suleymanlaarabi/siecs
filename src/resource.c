@@ -13,9 +13,16 @@ ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc) {
         return ecs_resource_index_register(ecs_resource_alloc_id(), desc);
 }
 
+#if SIECS_HAS_NAMES
 ecs_resource_t ecs_resource_find(const char *name) {
     return ecs_resource_index_find(name);
 }
+
+const char *ecs_resource_name(ecs_resource_t resource) {
+    ecs_assert(ecs_resource_index_is_registered(resource), "invalid resource id: %u\n", resource);
+    return ecs_world.resource_index.records[resource].name;
+}
+#endif
 
 bool ecs_resource_is_registered_rid(ecs_resource_t id) {
     return ecs_resource_index_is_registered(id);

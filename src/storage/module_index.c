@@ -6,9 +6,18 @@ static bool ecs_module_id_valid(const ecs_module_index_t *index, ecs_module_id_t
     return module != 0 && module < index->modules.size;
 }
 
-static void ecs_module_record_init(ecs_module_t *module, ecs_module_id_t *id, const char *name) {
+static void ecs_module_record_init(
+    ecs_module_t *module,
+    ecs_module_id_t *id
+#if SIECS_HAS_NAMES
+    ,
+    const char *name
+#endif
+) {
     module->id = id;
+#if SIECS_HAS_NAMES
     module->name = name;
+#endif
     module->enabled = true;
     ecs_vec_init(&module->observers, sizeof(ecs_observer_id_t));
     ecs_vec_init(&module->systems, sizeof(ecs_system_id_t));
@@ -39,12 +48,22 @@ void ecs_module_index_fini() {
 }
 
 ecs_module_id_t ecs_module_index_create(
-    ecs_module_id_t *id,
+    ecs_module_id_t *id
+#if SIECS_HAS_NAMES
+    ,
     const char *name
+#endif
 ) {
     ecs_module_index_t *index = &ecs_world.module_index;
     ecs_module_t module;
-    ecs_module_record_init(&module, id, name);
+    ecs_module_record_init(
+        &module,
+        id
+#if SIECS_HAS_NAMES
+        ,
+        name
+#endif
+    );
     ecs_vec_push(&index->modules, &module, sizeof(ecs_module_t));
     return index->modules.size - 1;
 }

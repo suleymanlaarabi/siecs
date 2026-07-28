@@ -1,7 +1,9 @@
 #include "datastructure/vec.h"
 #include "helper.h"
 #include "siecs.h"
+#if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"
+#endif
 #include "storage/component_index.h"
 #include "utils.h"
 #include "world_internal.h"
@@ -105,8 +107,8 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
         }
     }
 
+#if SIECS_HAS_META
     sireflect_handle_t reflection = SIREFLECT_INVALID_HANDLE;
-
     if (ECS_LIKELY(desc->struct_desc)) {
         reflection = sireflect_try_register_struct(ecs_world.sireflect_registry, desc->struct_desc);
 
@@ -114,6 +116,7 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
             puts(sireflect_error());
         }
     }
+#endif
 
     if (ECS_UNLIKELY(desc->relation_flags & EcsRelationTarget)) {
         if (*id == 0) {
@@ -123,28 +126,40 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
         ecs_component_t component = *id;
         ecs_component_index_register(
             component,
+#if SIECS_HAS_NAMES
+            desc->name,
+#endif
             desc->size,
             desc->ops,
             RelationOnSet,
             RelationOnRemove,
             desc->on_add,
-            desc->relation_flags,
+            desc->relation_flags
+#if SIECS_HAS_META
+            ,
             reflection,
             desc->struct_desc
+#endif
         );
 
         ecs_component_t source = component + 1;
         ecs_component_index_register(
             source,
+#if SIECS_HAS_NAMES
+            NULL,
+#endif
             desc->relation_flags & EcsRelationOneToOne ? sizeof(RelationTarget)
                                                        : sizeof(RelationSource),
             (ecs_type_ops_t){ 0 },
             NULL,
             RelationSourceOnRemove,
             desc->on_add,
-            (desc->relation_flags & ~EcsRelationTarget) | EcsRelationSource,
+            (desc->relation_flags & ~EcsRelationTarget) | EcsRelationSource
+#if SIECS_HAS_META
+            ,
             SIREFLECT_INVALID_HANDLE,
             NULL
+#endif
         );
         return component;
     } else {
@@ -155,14 +170,20 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
         ecs_component_t component = *id;
         ecs_component_index_register(
             component,
+#if SIECS_HAS_NAMES
+            desc->name,
+#endif
             desc->size,
             desc->ops,
             desc->on_set,
             desc->on_remove,
             desc->on_add,
-            0,
+            0
+#if SIECS_HAS_META
+            ,
             reflection,
             desc->struct_desc
+#endif
         );
         return component;
     }
@@ -172,3 +193,12 @@ ecs_component_t ecs_component_init(const ecs_component_desc_t *desc) {
     ecs_component_t id = 0;
     return ecs_component_register(&id, desc);
 }
+
+#if SIECS_HAS_NAMES
+const char *ecs_component_name(ecs_component_t component) {
+    ecs_assert(component != 0 && component < ecs_world.component_index.components.size,
+        "invalid component id: %u\n",
+        component);
+    return ecs_component_index_get(component)->name;
+}
+#endif

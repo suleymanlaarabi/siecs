@@ -11,6 +11,7 @@
 // Testsuite 'entity'
 void entity_create(void);
 void entity_create_has_default_name(void);
+void entity_explicit_name_overrides_default(void);
 void entity_with(void);
 void entity_is_a_moves_entity_to_type_with_base(void);
 void entity_is_a_keeps_local_component_data(void);
@@ -20,6 +21,7 @@ void entity_is_with_multiple_depth(void);
 
 // Testsuite 'component'
 void component_reflection(void);
+void component_name_returns_registered_name(void);
 void component_on_add(void);
 void component_lifecycle_ops_are_used_for_storage_moves(void);
 void component_deferred_set_overwrite_preserves_lifecycle(void);
@@ -38,6 +40,7 @@ void component_table_index_resize_preserves_type_hashes(void);
 void component_table_resolves_recursive_base_components(void);
 
 // Testsuite 'rest'
+void rest_disabled_runtime_does_not_create_server(void);
 void rest_schema_returns_editor_contract(void);
 void rest_entity_detail_returns_editor_state(void);
 void rest_entity_children_returns_direct_children(void);
@@ -50,6 +53,7 @@ void rest_set_component_value_rejects_non_reflected_component(void);
 
 // Testsuite 'resource'
 void resource_set_get(void);
+void resource_name_lookup(void);
 void resource_try_get_missing(void);
 void resource_remove(void);
 void resource_replace(void);
@@ -85,6 +89,7 @@ void query_ids_stay_valid_after_temporary_query_fini(void);
 
 // Testsuite 'system'
 void system_run(void);
+void system_name_returns_registered_name(void);
 void system_phase_order(void);
 void system_start_phases_run_once(void);
 void system_after_order(void);
@@ -110,6 +115,7 @@ void observer_on_remove_runs_when_entity_is_killed(void);
 
 // Testsuite 'module'
 void module_import_registers_runtime(void);
+void module_name_returns_imported_name(void);
 void module_enable(void);
 void module_disabled_import(void);
 void module_double_import_is_noop(void);
@@ -125,6 +131,10 @@ bake_test_case entity_testcases[] = {
     {
         "create_has_default_name",
         entity_create_has_default_name
+    },
+    {
+        "explicit_name_overrides_default",
+        entity_explicit_name_overrides_default
     },
     {
         "with",
@@ -156,6 +166,10 @@ bake_test_case component_testcases[] = {
     {
         "reflection",
         component_reflection
+    },
+    {
+        "name_returns_registered_name",
+        component_name_returns_registered_name
     },
     {
         "on_add",
@@ -225,6 +239,10 @@ bake_test_case component_testcases[] = {
 
 bake_test_case rest_testcases[] = {
     {
+        "disabled_runtime_does_not_create_server",
+        rest_disabled_runtime_does_not_create_server
+    },
+    {
         "schema_returns_editor_contract",
         rest_schema_returns_editor_contract
     },
@@ -266,6 +284,10 @@ bake_test_case resource_testcases[] = {
     {
         "set_get",
         resource_set_get
+    },
+    {
+        "name_lookup",
+        resource_name_lookup
     },
     {
         "try_get_missing",
@@ -393,6 +415,10 @@ bake_test_case system_testcases[] = {
         system_run
     },
     {
+        "name_returns_registered_name",
+        system_name_returns_registered_name
+    },
+    {
         "phase_order",
         system_phase_order
     },
@@ -483,6 +509,10 @@ bake_test_case module_testcases[] = {
         module_import_registers_runtime
     },
     {
+        "name_returns_imported_name",
+        module_name_returns_imported_name
+    },
+    {
         "enable",
         module_enable
     },
@@ -509,28 +539,28 @@ static bake_test_suite suites[] = {
         "entity",
         NULL,
         NULL,
-        8,
+        9,
         entity_testcases
     },
     {
         "component",
         NULL,
         NULL,
-        17,
+        18,
         component_testcases
     },
     {
         "rest",
         NULL,
         NULL,
-        9,
+        10,
         rest_testcases
     },
     {
         "resource",
         NULL,
         NULL,
-        7,
+        8,
         resource_testcases
     },
     {
@@ -551,7 +581,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        17,
+        18,
         system_testcases
     },
     {
@@ -565,7 +595,7 @@ static bake_test_suite suites[] = {
         "module",
         NULL,
         NULL,
-        4,
+        5,
         module_testcases
     },
     {

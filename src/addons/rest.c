@@ -1,12 +1,16 @@
+#include "siecs/config.h"
+#if SIECS_HAS_REST
 #include "rest_internal.h"
+#ifndef SIHTTP_H
 #include "sihttp.h"
+#endif
 #include <string.h>
 
 sihttp_response_t health(const sihttp_request_t *) {
     return sihttp_response({ .body = strdup("OK") });
 }
 
-void init_rest() {
+void init_rest(void) {
     ecs_world.server = sihttp_server(
         {
             .port = 4040,
@@ -26,7 +30,6 @@ void init_rest() {
     );
     sihttp_get(ecs_world.server, "/entities/:index", ecs_rest_get_entity);
 
-    if (ecs_world.features.rest) {
-        sihttp_server_start(ecs_world.server);
-    }
+    sihttp_server_start(ecs_world.server);
 }
+#endif

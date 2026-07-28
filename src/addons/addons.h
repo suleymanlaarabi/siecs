@@ -2,6 +2,8 @@
 #define ECS_ADDONS_H
 #include <siecs.h>
 
-void init_rest();
+#if SIECS_HAS_REST
+void init_rest(void);
+#endif
 
 #endif

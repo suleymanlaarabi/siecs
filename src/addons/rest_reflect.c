@@ -1,8 +1,12 @@
+#include "siecs/config.h"
+#if SIECS_HAS_REST
 #include "../storage/component_index.h"
 #include "../world_internal.h"
 #include "rest_internal.h"
 #include "siecs.h"
+#ifndef SIJSON_H
 #include "sijson.h"
+#endif
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -123,3 +127,4 @@ sihttp_response_t ecs_rest_set_entity_component(
         ecs_rest_entity_component_json(component, ecs_get_cid(entity, component))
     );
 }
+#endif

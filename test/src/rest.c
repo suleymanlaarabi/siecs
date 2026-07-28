@@ -68,6 +68,14 @@ static void rest_assert_no_extra_schema_fields(sijson_value_t schema) {
     }
 }
 
+void rest_disabled_runtime_does_not_create_server(void) {
+    ecs_init();
+
+    test_assert(ecs_world.server == NULL);
+
+    ecs_fini();
+}
+
 void rest_schema_returns_editor_contract(void) {
     ecs_init();
     ECS_COMPONENT_REGISTER(RestPosition);

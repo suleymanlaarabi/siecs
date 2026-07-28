@@ -34,9 +34,13 @@ class entity {
     static entity create() noexcept { return entity(ecs_new()); }
     static entity create(const char *name) {
         entity value = create();
+#if SIECS_HAS_NAMES
         if (name != nullptr) {
             value.set<Name>({ .value = strdup(name) });
         }
+#else
+        (void)name;
+#endif
         return value;
     }
 
@@ -160,8 +164,13 @@ class entity {
     template <typename T> static entity create(const char *name = nullptr) {
         ecs_entity_t &id = by_type<T>();
         if (id == 0 || !ecs_is_alive(id)) {
+#if SIECS_HAS_NAMES
             const std::string generated = std::string(type_name<T>());
             id = create(name ? name : generated.c_str()).id();
+#else
+            (void)name;
+            id = create().id();
+#endif
         }
         return from(id);
     }

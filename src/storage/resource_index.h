@@ -6,8 +6,21 @@
 #include <stdint.h>
 
 typedef struct {
-    ecs_resource_desc_t *records;
+#if SIECS_HAS_NAMES
+    const char *name;
+#endif
+    uint64_t size;
+    ecs_type_ops_t ops;
+    ecs_resource_hook_t on_set;
+    ecs_resource_hook_t on_remove;
+} ecs_resource_record_t;
+
+typedef struct {
+    ecs_resource_record_t *records;
     void **data;
+#if !SIECS_HAS_NAMES
+    bool *registered;
+#endif
     bool *present;
     uint64_t capacity;
     uint64_t count;
@@ -20,7 +33,9 @@ ecs_resource_t ecs_resource_index_register(
     ecs_resource_t id,
     const ecs_resource_desc_t *desc
 );
+#if SIECS_HAS_NAMES
 ecs_resource_t ecs_resource_index_find(const char *name);
+#endif
 bool ecs_resource_index_is_registered(ecs_resource_t id);
 void ecs_resource_index_set(
     ecs_resource_t id,

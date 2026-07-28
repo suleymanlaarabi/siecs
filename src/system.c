@@ -1,6 +1,8 @@
 #include "module.h"
 #include "siecs.h"
+#if SIECS_HAS_REST && !defined(SIHTTP_H)
 #include "sihttp.h"
+#endif
 #include "storage/system_index.h"
 #include "utils.h"
 #include "world_internal.h"
@@ -17,7 +19,9 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     ecs_assert(desc->phase < EcsPhaseCount, "invalid system phase: %u\n", desc->phase);
 
     ecs_system_t sys = {
+#if SIECS_HAS_NAMES
         .name = desc->name,
+#endif
         .qid = desc->query.terms[0].id ? ecs_query_init(&desc->query) : ECS_SYSTEM_NO_QUERY,
         .callback = desc->callback,
         .user_data = desc->user_data,
@@ -32,6 +36,12 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     ecs_module_record_system(system);
     return system;
 }
+
+#if SIECS_HAS_NAMES
+const char *ecs_system_name(ecs_system_id_t system) {
+    return ecs_system_index_get(system)->name;
+}
+#endif
 
 void ecs_run_system(ecs_system_id_t system) {
 
@@ -113,9 +123,11 @@ bool ecs_progress(void) {
         ecs_run_phase(phase);
     }
 
+#if SIECS_HAS_REST
     if (ecs_world.features.rest) {
         sihttp_server_poll(ecs_world.server);
     }
+#endif
 
     if (ecs_world.features.target_fps) {
         double target_dt = 1.0 / (double)ecs_world.features.target_fps;

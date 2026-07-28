@@ -1,8 +1,12 @@
+#include "siecs/config.h"
+#if SIECS_HAS_REST
 #include "helper.h"
 #include "rest_internal.h"
 #include "siecs.h"
 #include <string.h>
+#ifndef SIJSON_H
 #include "sijson.h"
+#endif
 #include "../storage/component_index.h"
 #include "../table.h"
 #include "../world_internal.h"
@@ -32,7 +36,9 @@ static bool entity_is_alive(ecs_entity_t entity) {
 sijson_value_t ecs_rest_entity_json(ecs_entity_t entity) {
     sijson_value_t object = sijson_make_object();
 
+#if SIECS_HAS_NAMES
     sijson_object_set(object, "name", sijson_make_string(ecs_entity_name(entity)));
+#endif
     sijson_object_set(object, "index", sijson_make_number(ecs_first(entity)));
     sijson_object_set(object, "generation", sijson_make_number(ecs_second(entity)));
     sijson_object_set(
@@ -62,7 +68,9 @@ sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity) {
 sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
     sijson_value_t detail = sijson_make_object();
 
+#if SIECS_HAS_NAMES
     sijson_object_set(detail, "name", sijson_make_string(ecs_entity_name(entity)));
+#endif
     sijson_object_set(detail, "index", sijson_make_number(ecs_first(entity)));
     sijson_object_set(detail, "generation", sijson_make_number(ecs_second(entity)));
 
@@ -162,3 +170,4 @@ sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req) {
         }
     );
 }
+#endif

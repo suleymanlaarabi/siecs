@@ -24,6 +24,7 @@
         "testcases": [
           "create",
           "create_has_default_name",
+          "explicit_name_overrides_default",
           "with",
           "is_a_moves_entity_to_type_with_base",
           "is_a_keeps_local_component_data",
@@ -36,6 +37,7 @@
         "id": "component",
         "testcases": [
           "reflection",
+          "name_returns_registered_name",
           "on_add",
           "lifecycle_ops_are_used_for_storage_moves",
           "deferred_set_overwrite_preserves_lifecycle",
@@ -57,6 +59,7 @@
       {
         "id": "rest",
         "testcases": [
+          "disabled_runtime_does_not_create_server",
           "schema_returns_editor_contract",
           "entity_detail_returns_editor_state",
           "entity_children_returns_direct_children",
@@ -72,6 +75,7 @@
         "id": "resource",
         "testcases": [
           "set_get",
+          "name_lookup",
           "try_get_missing",
           "remove",
           "replace",
@@ -116,6 +120,7 @@
         "id": "system",
         "testcases": [
           "run",
+          "name_returns_registered_name",
           "phase_order",
           "start_phases_run_once",
           "after_order",
@@ -147,6 +152,7 @@
         "id": "module",
         "testcases": [
           "import_registers_runtime",
+          "name_returns_imported_name",
           "enable",
           "disabled_import",
           "double_import_is_noop"

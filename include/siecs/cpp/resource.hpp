@@ -102,12 +102,14 @@ static ecs_resource_t ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<
     if (rid != 0)
         return rid;
 
+#if SIECS_HAS_NAMES
     static const std::string name = std::string(type_name<type>());
+#endif
 
     if (hooks != nullptr) detail::resource_hook_state<type>::hooks = *hooks;
 
     ecs_resource_desc_t desc = {
-        .name = name.c_str(),
+        SIECS_NAME_INIT(name.c_str())
         .size = sizeof(type),
         .ops = detail::value_ops<type>(),
         .on_set = hooks && hooks->on_set ? detail::resource_on_set<type> : nullptr,

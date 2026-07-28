@@ -116,6 +116,17 @@ void resource_set_get(void) {
     ecs_fini();
 }
 
+void resource_name_lookup(void) {
+    ecs_init();
+    ECS_RESOURCE_REGISTER(ResourceTime);
+
+    test_str("ResourceTime", ecs_resource_name(ecs_id(ResourceTime)));
+    test_int(ecs_id(ResourceTime), ecs_resource_find("ResourceTime"));
+    test_int(0, ecs_resource_find("MissingResource"));
+
+    ecs_fini();
+}
+
 void resource_try_get_missing(void) {
     ecs_init();
     ECS_RESOURCE_REGISTER(ResourceTime);

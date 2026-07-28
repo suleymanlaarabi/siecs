@@ -15,7 +15,9 @@ namespace ecs {
 
 inline void init_cpp_state() {
     detail::component_type<Disabled>::id = ecs_id(Disabled);
+#if SIECS_HAS_NAMES
     detail::component_type<Name>::id = ecs_id(Name);
+#endif
     detail::component_type<ChildOf>::id = ecs_id(ChildOf);
     detail::component_type<Abstract>::id = ecs_id(Abstract);
 }
@@ -100,9 +102,11 @@ template <typename T> [[nodiscard]] module_ref<T> import(T module) {
     if (detail::module_type<T>::id != 0) {
         return module_ref<T>(detail::module_type<T>::id);
     }
+#if SIECS_HAS_NAMES
     static const std::string name = std::string(type_name<T>());
+#endif
     ecs_module_desc_t desc = {
-        .name = name.c_str(),
+        SIECS_NAME_INIT(name.c_str())
         .id = &detail::module_type<T>::id,
         .import = import_module_callback<T>,
         .desc = &module,

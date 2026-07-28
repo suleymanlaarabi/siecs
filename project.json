@@ -10,7 +10,7 @@
     "amalgamate": [
       {
         "path": "distr",
-        "dependencies": true
+        "dependencies": false
       }
     ]
   },

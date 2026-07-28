@@ -164,6 +164,23 @@ void system_run(void) {
     ecs_fini();
 }
 
+void system_name_returns_registered_name(void) {
+    reset_system_test_state();
+
+    ecs_init();
+    ecs_system_id_t system = ecs_system(
+        {
+            .name = "NamedSystem",
+            .phase = EcsOnUpdate,
+            .callback = count_system,
+        }
+    );
+
+    test_str("NamedSystem", ecs_system_name(system));
+
+    ecs_fini();
+}
+
 void system_phase_order(void) {
     reset_system_test_state();
 

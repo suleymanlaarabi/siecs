@@ -234,6 +234,15 @@ void component_reflection(void) {
     ecs_fini();
 }
 
+void component_name_returns_registered_name(void) {
+    ecs_init();
+
+    ECS_COMPONENT_REGISTER(Position);
+    test_str("Position", ecs_component_name(ecs_id(Position)));
+
+    ecs_fini();
+}
+
 void component_on_add(void) {
     reset_hook_state();
 

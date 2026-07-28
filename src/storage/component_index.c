@@ -1,21 +1,29 @@
 #include "component_index.h"
 #include "../datastructure/vec.h"
 #include "siecs.h"
+#if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"
+#endif
 #include "world_internal.h"
 #include <stdlib.h>
 #include <string.h>
 
 void ecs_component_index_register(
     ecs_component_t id,
+#if SIECS_HAS_NAMES
+    const char *name,
+#endif
     uint64_t size,
     ecs_type_ops_t ops,
     ecs_component_on_set_t on_set,
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
-    uint32_t relation_flags,
+    uint32_t relation_flags
+#if SIECS_HAS_META
+    ,
     sireflect_handle_t reflection,
     const sireflect_struct_desc_t *reflection_desc
+#endif
 ) {
     ecs_vec_ensure(
         &ecs_world.component_index.components,
@@ -30,6 +38,9 @@ void ecs_component_index_register(
     }
 
     ecs_component_record_t record = {
+#if SIECS_HAS_NAMES
+        .name = name,
+#endif
         .required = NULL,
         .required_count = 0,
         .size = size,
@@ -39,8 +50,10 @@ void ecs_component_index_register(
         .on_add = on_add,
         .relation_flags = relation_flags,
         .tables = { 0 },
+#if SIECS_HAS_META
         .reflection = reflection,
         .reflection_desc = reflection_desc,
+#endif
     };
     ecs_vec_init(&record.tables, sizeof(uint16_t));
 

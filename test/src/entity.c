@@ -1,6 +1,8 @@
 #include "siecs.h"
 #include "world_internal.h"
 #include <siecs_test.h>
+#include <stdlib.h>
+#include <string.h>
 
 ECS_COMPONENT_DECLARE(Transform, { int value; });
 ECS_COMPONENT_DECLARE(Renderable, { int value; });
@@ -24,6 +26,18 @@ void entity_create_has_default_name(void) {
     ecs_entity_t entity = ecs_new();
     test_str("(1, 0)", ecs_entity_name(entity));
 
+    ecs_fini();
+}
+
+void entity_explicit_name_overrides_default(void) {
+    ecs_init();
+
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, Name, { strdup("Player") });
+
+    test_str("Player", ecs_entity_name(entity));
+
+    free(ecs_get(entity, Name)->value);
     ecs_fini();
 }
 

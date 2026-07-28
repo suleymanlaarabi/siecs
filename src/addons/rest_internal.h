@@ -1,6 +1,10 @@
 #ifndef SIECS_ADDONS_REST_INTERNAL_H
 #define SIECS_ADDONS_REST_INTERNAL_H
 
+#include "siecs/config.h"
+
+#if SIECS_HAS_REST
+
 #include "siecs.h"
 #ifndef SIHTTP_H
 #include "sihttp.h"
@@ -35,4 +39,5 @@ sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req);
 
+#endif
 #endif

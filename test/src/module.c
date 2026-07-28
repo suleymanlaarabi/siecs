@@ -114,6 +114,17 @@ void module_import_registers_runtime(void) {
     ecs_fini();
 }
 
+void module_name_returns_imported_name(void) {
+    module_reset();
+
+    ecs_init();
+    ecs_module_id_t module = ECS_MODULE_IMPORT(module_physics, { .velocity = 4 });
+
+    test_str("module_physics", ecs_module_name(module));
+
+    ecs_fini();
+}
+
 void module_enable(void) {
     module_reset();
 

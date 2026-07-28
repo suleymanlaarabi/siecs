@@ -1,3 +1,5 @@
+#include "siecs/config.h"
+#if SIECS_HAS_REST
 #include "../storage/component_index.h"
 #include "rest_internal.h"
 #include <stdbool.h>
@@ -159,3 +161,4 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req) {
 
     return ecs_rest_json_response(200, schema);
 }
+#endif

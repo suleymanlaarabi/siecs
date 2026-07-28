@@ -8,7 +8,9 @@
 #include "utils.h"
 #include "world_internal.h"
 #include <stdint.h>
+#if SIECS_HAS_NAMES
 #include <stdio.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 
@@ -207,6 +209,7 @@ void ecs_kill(ecs_entity_t entity) {
     ecs_kill_now(entity);
 }
 
+#if SIECS_HAS_NAMES
 const char *ecs_entity_name(ecs_entity_t entity) {
     static char *buff = NULL;
     if (ecs_has(entity, Name)) {
@@ -218,3 +221,4 @@ const char *ecs_entity_name(ecs_entity_t entity) {
     sprintf(buff, "(%d, %d)", ecs_first(entity), ecs_second(entity));
     return buff;
 }
+#endif

@@ -4,7 +4,9 @@
 
 ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
         ecs_assert_not_null(desc);
+#if SIECS_HAS_NAMES
     ecs_assert_not_null(desc->name);
+#endif
     ecs_assert_not_null(desc->import);
 
     ecs_module_id_t existing = ecs_module_index_find(desc->id);
@@ -12,7 +14,13 @@ ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
         return existing;
     }
 
-    ecs_module_id_t module = ecs_module_index_create(desc->id, desc->name);
+    ecs_module_id_t module = ecs_module_index_create(
+        desc->id
+#if SIECS_HAS_NAMES
+        ,
+        desc->name
+#endif
+    );
     if (desc->id) {
         *desc->id = module;
     }
@@ -52,6 +60,12 @@ void ecs_module_enable(ecs_module_id_t module) {
 ecs_module_id_t ecs_module_find(const ecs_module_id_t *id) {
     return ecs_module_index_find(id);
 }
+
+#if SIECS_HAS_NAMES
+const char *ecs_module_name(ecs_module_id_t module) {
+    return ecs_module_index_get_const(module)->name;
+}
+#endif
 
 void ecs_module_disable(ecs_module_id_t module) {
     

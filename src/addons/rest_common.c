@@ -1,3 +1,5 @@
+#include "siecs/config.h"
+#if SIECS_HAS_REST
 #include "rest_internal.h"
 #include <stdlib.h>
 #include <string.h>
@@ -24,3 +26,4 @@ sihttp_response_t ecs_rest_error_response(int status, const char *message) {
 
     return ecs_rest_json_response(status, body);
 }
+#endif

@@ -22,13 +22,19 @@ template <typename Callback> static void system_callback_dtor(uintptr_t user_dat
 } // namespace detail
 
 class system : protected query {
+#if SIECS_HAS_NAMES
     const char *name;
+#endif
     ecs_phase_t _phase = EcsOnUpdate;
     ecs_system_id_t _after[ECS_SYSTEM_AFTER_CAPACITY]{};
     bool _disabled = false;
 
   public:
+#if SIECS_HAS_NAMES
     explicit system(const char *name = "unnamed") : name(name) {}
+#else
+    explicit system(const char *name = nullptr) { (void)name; }
+#endif
 
     template <typename... T> system &require() {
         query::require<T...>();
@@ -73,7 +79,7 @@ class system : protected query {
         callback *state = new callback(std::forward<F>(func));
 
         ecs_system_desc_t system_desc = {
-            .name = name,
+            SIECS_NAME_INIT(name)
             .query = this->desc,
             .callback = detail::system_callback<callback, args>,
             .user_data = reinterpret_cast<uintptr_t>(state),
