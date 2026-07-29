@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
+#include <print>
 #include <siecs.h>
 
 #include <cassert>
@@ -28,20 +29,12 @@ struct Voiture {};
 struct NoIntegrate {};
 
 int main() {
-    ecs::init({ .rest = true, .target_fps = 60 });
+    ecs::init({ .rest = false, .target_fps = 60 });
 
-    ecs::entity::create<Voiture>().abstract();
-    ecs::entity::create<Enemy>().is_a<Voiture>().abstract();
+    std::println("{}", ecs::entity::lookup("Enemy").id());
 
-    ecs::entity entity = ecs::entity::create().is_a<Enemy>();
+    ecs::entity::create<Enemy>();
+    ecs::entity::create("Enemy");
 
-    auto sys = ecs::system().each([]() {});
-
-    ecs::system().after(sys);
-
-    if (entity.is<Enemy>() && entity.is<Voiture>()) {
-        puts("ok");
-    }
-
-    ecs::entity::create();
+    std::println("{}", ecs::entity::lookup("Enemy").id());
 }

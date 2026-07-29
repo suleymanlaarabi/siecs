@@ -1,6 +1,8 @@
 #include "command_buffer.h"
+#include "helper.h"
 #include "siecs.h"
 #include "storage/component_index.h"
+#include "storage/entity_index.h"
 #include "table.h"
 #include "table_migration.h"
 #include "type.h"
@@ -103,6 +105,16 @@ bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
     }
     return ecs_is(base, target);
 }
+
+#if SIECS_HAS_NAMES
+ecs_entity_t ecs_lookup(const char *key) {
+    uint32_t index = sicore_map_get(&name_map, key);
+    if (index == UINT32_MAX) {
+        return 0;
+    }
+    return ecs_entity(index, ecs_entity_index_get_record(index)->generation);
+}
+#endif
 
 void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     ecs_assert_entity_valid(entity);

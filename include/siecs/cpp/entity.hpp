@@ -31,9 +31,25 @@ class entity {
 
     explicit entity(ecs_entity_t entity) noexcept : _entity(entity) {}
 
+#if SIECS_HAS_NAMES
+    static inline entity lookup(const std::string &name) {
+        return entity::from(ecs_lookup(name.c_str()));
+    }
+#endif
+
     static entity create() noexcept { return entity(ecs_new()); }
+
     static entity create(const char *name) {
-        entity value = create();
+#if SIECS_HAS_NAMES
+        entity value = lookup(name);
+
+        if (value) {
+            return value;
+        }
+#endif
+
+        value = create();
+
 #if SIECS_HAS_NAMES
         if (name != nullptr) {
             value.set<Name>({ .value = strdup(name) });
@@ -48,6 +64,8 @@ class entity {
     static entity null() noexcept { return from(static_cast<ecs_entity_t>(0)); }
     [[nodiscard]] ecs_entity_t id() const noexcept { return _entity; }
     operator ecs_entity_t() const noexcept { return _entity; }
+
+    operator bool() { return _entity != 0; }
 
     template <typename... T>
         requires(sizeof...(T) > 0)

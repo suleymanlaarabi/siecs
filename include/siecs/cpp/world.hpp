@@ -1,4 +1,5 @@
 #pragma once
+#include "siecs.h"
 #include "siecs/cpp/component.hpp"
 #include "siecs/cpp/entity.hpp"
 #include "siecs/cpp/module.hpp"
@@ -51,9 +52,7 @@ template <typename T> inline ecs_component_t relation(ecs_relation_flags_t flags
     return detail::ecs_cpp_component_id<T>(flags);
 }
 
-template <typename T> inline ecs_component_t relation_source() {
-    return relation<T>() + 1;
-}
+template <typename T> inline ecs_component_t relation_source() { return relation<T>() + 1; }
 
 template <typename T> inline void set_resource(T &&value) {
     using type = std::remove_cvref_t<T>;
@@ -106,8 +105,7 @@ template <typename T> [[nodiscard]] module_ref<T> import(T module) {
     static const std::string name = std::string(type_name<T>());
 #endif
     ecs_module_desc_t desc = {
-        SIECS_NAME_INIT(name.c_str())
-        .id = &detail::module_type<T>::id,
+        SIECS_NAME_INIT(name.c_str()).id = &detail::module_type<T>::id,
         .import = import_module_callback<T>,
         .desc = &module,
         .desc_size = sizeof(T),

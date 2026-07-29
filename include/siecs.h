@@ -378,8 +378,7 @@ SIECS_API void ecs_quit(void);
  */
 #define ECS_COMPONENT_DEFINE(cname, ...)                                                           \
     SIECS_COMPONENT_META_DEFINE(cname)                                                             \
-    ecs_component_desc_t ecs_id(cname##_desc) = { SIECS_NAME_INIT(#cname)                          \
-                                                  .size = sizeof(cname),                           \
+    ecs_component_desc_t ecs_id(cname##_desc) = { SIECS_NAME_INIT(#cname).size = sizeof(cname),    \
                                                   SIECS_COMPONENT_META_INIT(cname) __VA_ARGS__ };  \
     ecs_component_t ecs_id(cname) = 0
 
@@ -399,8 +398,7 @@ SIECS_API void ecs_quit(void);
 /* Define a tag component declared with ECS_TAG_DECLARE. */
 #define ECS_TAG_DEFINE(cname)                                                                      \
     SIECS_TAG_META_DEFINE(cname)                                                                   \
-    ecs_component_desc_t ecs_id(cname##_desc) = { SIECS_NAME_INIT(#cname)                          \
-                                                  .size = 0,                                       \
+    ecs_component_desc_t ecs_id(cname##_desc) = { SIECS_NAME_INIT(#cname).size = 0,                \
                                                   SIECS_COMPONENT_META_INIT(cname) };              \
     ecs_component_t ecs_id(cname) = 0
 
@@ -464,8 +462,7 @@ SIECS_API void ecs_quit(void);
  */
 #define ECS_MODULE_IMPORT(module_name, ...)                                                        \
     (ecs_id(module_name) = ecs_module_init(&(ecs_module_desc_t){                                   \
-         SIECS_NAME_INIT(#module_name)                                                             \
-         .id = &ecs_id(module_name),                                                               \
+         SIECS_NAME_INIT(#module_name).id = &ecs_id(module_name),                                  \
          .import = ecs_id(module_name##_import_wrapper),                                           \
          .desc = &(module_name##_props_t)__VA_ARGS__,                                              \
          .desc_size = sizeof(module_name##_props_t),                                               \
@@ -517,10 +514,8 @@ SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
  */
 #define ECS_RELATION_DEFINE(cname, flags)                                                          \
     ecs_component_desc_t ecs_id(cname##_desc) = {                                                  \
-        SIECS_NAME_INIT(#cname)                                                                    \
-        .size = sizeof(cname),                                                                     \
-        SIECS_COMPONENT_META_INIT(cname)                                                           \
-        .relation_flags = EcsRelationTarget | (flags),                                             \
+        SIECS_NAME_INIT(#cname).size = sizeof(cname),                                              \
+        SIECS_COMPONENT_META_INIT(cname).relation_flags = EcsRelationTarget | (flags),             \
     };                                                                                             \
     ecs_component_t ecs_id(cname) = 0
 
@@ -576,6 +571,8 @@ ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc);
 #if SIECS_HAS_NAMES
 /* Return the registered component name. */
 SIECS_API const char *ecs_component_name(ecs_component_t component);
+
+ecs_entity_t ecs_lookup(const char *key);
 #endif
 
 /* Create a new alive entity in world. world must not be NULL. */
@@ -732,8 +729,7 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
     extern ecs_resource_desc_t ecs_id(rname##_desc)
 
 #define ECS_RESOURCE_DEFINE(rname, ...)                                                            \
-    ecs_resource_desc_t ecs_id(rname##_desc) = { SIECS_NAME_INIT(#rname)                           \
-                                                 .size = sizeof(rname),                            \
+    ecs_resource_desc_t ecs_id(rname##_desc) = { SIECS_NAME_INIT(#rname).size = sizeof(rname),     \
                                                  __VA_ARGS__ };                                    \
     ecs_resource_t ecs_id(rname) = 0
 

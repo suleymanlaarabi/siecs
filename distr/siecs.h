@@ -286,6 +286,7 @@ void sicore_vec_remove_fast(sicore_vec_t *vec, uint32_t index, const uint32_t el
 #endif
 
 #if SICORE_HAS_MAP
+
 typedef struct {
     uint8_t *ctrl;
     void *entries;
@@ -302,6 +303,7 @@ uint32_t sicore_map_get(const sicore_map_t *map, const char *key);
 
 bool sicore_map_has(const sicore_map_t *map, const char *key);
 void sicore_map_set(sicore_map_t *map, const char *key, uint32_t value);
+bool sicore_map_unset(sicore_map_t *map, const char *key);
 #endif
 
 #ifdef __cplusplus
@@ -1408,8 +1410,7 @@ SIECS_API void ecs_quit(void);
  */
 #define ECS_COMPONENT_DEFINE(cname, ...)                                                           \
     SIECS_COMPONENT_META_DEFINE(cname)                                                             \
-    ecs_component_desc_t ecs_id(cname##_desc) = { SIECS_NAME_INIT(#cname)                          \
-                                                  .size = sizeof(cname),                           \
+    ecs_component_desc_t ecs_id(cname##_desc) = { SIECS_NAME_INIT(#cname).size = sizeof(cname),    \
                                                   SIECS_COMPONENT_META_INIT(cname) __VA_ARGS__ };  \
     ecs_component_t ecs_id(cname) = 0
 
@@ -1429,8 +1430,7 @@ SIECS_API void ecs_quit(void);
 /* Define a tag component declared with ECS_TAG_DECLARE. */
 #define ECS_TAG_DEFINE(cname)                                                                      \
     SIECS_TAG_META_DEFINE(cname)                                                                   \
-    ecs_component_desc_t ecs_id(cname##_desc) = { SIECS_NAME_INIT(#cname)                          \
-                                                  .size = 0,                                       \
+    ecs_component_desc_t ecs_id(cname##_desc) = { SIECS_NAME_INIT(#cname).size = 0,                \
                                                   SIECS_COMPONENT_META_INIT(cname) };              \
     ecs_component_t ecs_id(cname) = 0
 
@@ -1494,8 +1494,7 @@ SIECS_API void ecs_quit(void);
  */
 #define ECS_MODULE_IMPORT(module_name, ...)                                                        \
     (ecs_id(module_name) = ecs_module_init(&(ecs_module_desc_t){                                   \
-         SIECS_NAME_INIT(#module_name)                                                             \
-         .id = &ecs_id(module_name),                                                               \
+         SIECS_NAME_INIT(#module_name).id = &ecs_id(module_name),                                  \
          .import = ecs_id(module_name##_import_wrapper),                                           \
          .desc = &(module_name##_props_t)__VA_ARGS__,                                              \
          .desc_size = sizeof(module_name##_props_t),                                               \
@@ -1547,10 +1546,8 @@ SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
  */
 #define ECS_RELATION_DEFINE(cname, flags)                                                          \
     ecs_component_desc_t ecs_id(cname##_desc) = {                                                  \
-        SIECS_NAME_INIT(#cname)                                                                    \
-        .size = sizeof(cname),                                                                     \
-        SIECS_COMPONENT_META_INIT(cname)                                                           \
-        .relation_flags = EcsRelationTarget | (flags),                                             \
+        SIECS_NAME_INIT(#cname).size = sizeof(cname),                                              \
+        SIECS_COMPONENT_META_INIT(cname).relation_flags = EcsRelationTarget | (flags),             \
     };                                                                                             \
     ecs_component_t ecs_id(cname) = 0
 
@@ -1606,6 +1603,8 @@ ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc);
 #if SIECS_HAS_NAMES
 /* Return the registered component name. */
 SIECS_API const char *ecs_component_name(ecs_component_t component);
+
+ecs_entity_t ecs_lookup(const char *key);
 #endif
 
 /* Create a new alive entity in world. world must not be NULL. */
@@ -1762,8 +1761,7 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
     extern ecs_resource_desc_t ecs_id(rname##_desc)
 
 #define ECS_RESOURCE_DEFINE(rname, ...)                                                            \
-    ecs_resource_desc_t ecs_id(rname##_desc) = { SIECS_NAME_INIT(#rname)                           \
-                                                 .size = sizeof(rname),                            \
+    ecs_resource_desc_t ecs_id(rname##_desc) = { SIECS_NAME_INIT(#rname).size = sizeof(rname),     \
                                                  __VA_ARGS__ };                                    \
     ecs_resource_t ecs_id(rname) = 0
 
@@ -2313,9 +2311,25 @@ class entity {
 
     explicit entity(ecs_entity_t entity) noexcept : _entity(entity) {}
 
+#if SIECS_HAS_NAMES
+    static inline entity lookup(const std::string &name) {
+        return entity::from(ecs_lookup(name.c_str()));
+    }
+#endif
+
     static entity create() noexcept { return entity(ecs_new()); }
+
     static entity create(const char *name) {
-        entity value = create();
+#if SIECS_HAS_NAMES
+        entity value = lookup(name);
+
+        if (value) {
+            return value;
+        }
+#endif
+
+        value = create();
+
 #if SIECS_HAS_NAMES
         if (name != nullptr) {
             value.set<Name>({ .value = strdup(name) });
@@ -2330,6 +2344,8 @@ class entity {
     static entity null() noexcept { return from(static_cast<ecs_entity_t>(0)); }
     [[nodiscard]] ecs_entity_t id() const noexcept { return _entity; }
     operator ecs_entity_t() const noexcept { return _entity; }
+
+    operator bool() { return _entity != 0; }
 
     template <typename... T>
         requires(sizeof...(T) > 0)
@@ -3449,9 +3465,7 @@ template <typename T> inline ecs_component_t relation(ecs_relation_flags_t flags
     return detail::ecs_cpp_component_id<T>(flags);
 }
 
-template <typename T> inline ecs_component_t relation_source() {
-    return relation<T>() + 1;
-}
+template <typename T> inline ecs_component_t relation_source() { return relation<T>() + 1; }
 
 template <typename T> inline void set_resource(T &&value) {
     using type = std::remove_cvref_t<T>;
@@ -3504,8 +3518,7 @@ template <typename T> [[nodiscard]] module_ref<T> import(T module) {
     static const std::string name = std::string(type_name<T>());
 #endif
     ecs_module_desc_t desc = {
-        SIECS_NAME_INIT(name.c_str())
-        .id = &detail::module_type<T>::id,
+        SIECS_NAME_INIT(name.c_str()).id = &detail::module_type<T>::id,
         .import = import_module_callback<T>,
         .desc = &module,
         .desc_size = sizeof(T),
