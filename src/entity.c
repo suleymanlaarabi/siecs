@@ -61,40 +61,6 @@ static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_en
 }
 #endif
 
-static inline void ecs_entity_rebase(
-    ecs_entity_record_t *record,
-    ecs_entity_t entity,
-    ecs_table_t *from_table,
-    uint16_t to_table_id
-) {
-    ecs_table_t *to_table = ecs_get_table(to_table_id);
-    uint32_t old_row = record->table_row;
-    uint32_t new_row = ecs_table_add_entity(to_table, entity);
-
-    for (uint16_t i = 0; i < from_table->type.data_count; i++) {
-        uint16_t col = from_table->data_columns[i];
-        const ecs_column_t *column = &from_table->cls[col];
-        void *src = ecs_table_component_at_column(from_table, col, old_row);
-        void *dst = ecs_table_component_at_column(to_table, col, new_row);
-        if (column->flags & EcsColumnTrivialMove) {
-            memcpy(dst, src, column->size);
-            continue;
-        }
-
-        ecs_component_t component = from_table->type.ids[col];
-        const ecs_component_record_t *crec = ecs_component_index_get(component);
-        ecs_component_value_move_ctor(crec, dst, src, 1);
-    }
-
-    ecs_entity_t moved = ecs_table_remove_entity(from_table, old_row, false);
-    if (moved != entity) {
-        ecs_get_record(moved)->table_row = old_row;
-    }
-
-    record->table_id = to_table_id;
-    record->table_row = new_row;
-}
-
 bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
     ecs_entity_t base = ecs_get_table(ecs_get_record(entity)->table_id)->type.base;
     if (base == target) {
@@ -147,7 +113,7 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     }
 
     from_table = ecs_get_table(from_table_id);
-    ecs_entity_rebase(record, entity, from_table, to_table_id);
+    ecs_migrate_same_layout(record, entity, from_table, to_table_id);
 }
 
 void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
@@ -220,10 +186,7 @@ void ecs_kill_now(ecs_entity_t entity) {
     table = ecs_get_table(record->table_id);
 
     // Remove from table
-    ecs_entity_t moved = ecs_table_remove_entity(table, record->table_row, true);
-    if (moved != entity) {
-        ecs_get_record(moved)->table_row = record->table_row;
-    }
+    ecs_table_remove_entity_update_record(table, entity, record->table_row, true);
 
     ecs_entity_index_kill(ecs_first(entity));
 }

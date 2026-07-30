@@ -2,6 +2,7 @@
 #include "./storage/component_index.h"
 #include "./type.h"
 #include "datastructure/idmap.h"
+#include "table_ops.h"
 #include "utils.h"
 #include "world_internal.h"
 #include <stdlib.h>
@@ -95,14 +96,7 @@ ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_
     if (row_values_live) {
         for (uint16_t i = 0; i < table->type.data_count; i++) {
             uint16_t column_index = table->data_columns[i];
-            ecs_column_t *column = &table->cls[column_index];
-            if (column->flags & EcsColumnNoDtor) {
-                continue;
-            }
-            const ecs_component_record_t *record =
-                ecs_component_index_get(table->type.ids[column_index]);
-            void *ptr = (char *)column->data + (column->size * row);
-            ecs_component_value_dtor(record, ptr, 1);
+            ecs_table_dtor_column(table, column_index, row);
         }
     }
     if (row != last_row) {
@@ -110,16 +104,7 @@ ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_
         table->entities[row] = moved_entity;
         for (uint16_t i = 0; i < table->type.data_count; i++) {
             uint16_t column_index = table->data_columns[i];
-            ecs_column_t *column = &table->cls[column_index];
-            void *src = (char *)column->data + (column->size * last_row);
-            void *dst = (char *)column->data + (column->size * row);
-            if (column->flags & EcsColumnTrivialMove) {
-                memcpy(dst, src, column->size);
-                continue;
-            }
-            const ecs_component_record_t *record =
-                ecs_component_index_get(table->type.ids[column_index]);
-            ecs_component_value_move_ctor(record, dst, src, 1);
+            ecs_table_move_column(table, column_index, last_row, table, column_index, row);
         }
         table->entity_count -= 1;
         return moved_entity;
@@ -196,6 +181,7 @@ bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
         return true;
     }
 
+    // Abstract is not inherited for query matching; only exclude tables that own it.
     if (component_id == ecs_id(Abstract)) {
         return false;
     }
@@ -214,9 +200,7 @@ bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
 }
 
 bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
-    if (base == 0) {
-        return true;
-    }
+    ecs_assert_entity_valid(base);
 
     ecs_entity_t current = table->type.base;
     while (current != 0) {

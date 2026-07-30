@@ -1,5 +1,6 @@
 #include "command_buffer.h"
 #include "datastructure/arena.h"
+#include "event_ops.h"
 #include "storage/component_index.h"
 #include "storage/table_index.h"
 #include "table.h"
@@ -272,31 +273,6 @@ static void command_emit_removed(
     }
 }
 
-static void command_emit_added(
-    const ecs_table_t *old_table,
-    ecs_table_t *new_table,
-    ecs_entity_t entity,
-    uint32_t row
-) {
-    uint16_t old_i = 0;
-    for (uint16_t new_i = 0; new_i < new_table->type.count; new_i++) {
-        ecs_component_t id = new_table->type.ids[new_i];
-        while (old_i < old_table->type.count && old_table->type.ids[old_i] < id) {
-            old_i++;
-        }
-        if (old_i < old_table->type.count && old_table->type.ids[old_i] == id) {
-            continue;
-        }
-
-        void *data = ecs_table_component_at_column(new_table, new_i, row);
-        const ecs_component_record_t *record = ecs_component_index_get(id);
-        if (record->on_add) {
-            record->on_add(entity, id, data);
-        }
-        ecs_emit(new_table, entity, EcsOnAdd, data);
-    }
-}
-
 static bool command_type_unchanged(const ecs_table_t *table, const ecs_entity_command_t *command) {
     if (command->remove_ids.size != 0) {
         return false;
@@ -375,7 +351,7 @@ static void command_apply(ecs_entity_command_t *command) {
         ecs_migrate_to_table(record, command->entity, old_table, new_table_id);
         record = ecs_get_record(command->entity);
         ecs_table_t *new_table = ecs_get_table(record->table_id);
-        command_emit_added(emit_old_table, new_table, command->entity, record->table_row);
+        ecs_emit_added_components(emit_old_table, new_table, command->entity, record->table_row);
     } else {
         ecs_type_fini(&final_type);
     }
