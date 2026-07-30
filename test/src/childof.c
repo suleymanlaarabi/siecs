@@ -1,4 +1,6 @@
 #include "siecs.h"
+#include "storage/component_index.h"
+#include "world_internal.h"
 #include <siecs_test.h>
 
 ECS_RELATION_DECLARE(Targets);
@@ -61,6 +63,21 @@ void childof_relation_remove_updates_source(void) {
     test_false(ecs_has_cid(target, ecs_source(Targets)));
     test_true(ecs_is_alive(source));
     test_true(ecs_is_alive(target));
+
+    ecs_fini();
+}
+
+void childof_relation_source_has_storage_dtor(void) {
+    ecs_init();
+
+    ECS_COMPONENT_REGISTER(Targets);
+
+    const ecs_component_record_t *source_record = ecs_component_index_get(ecs_source(Targets));
+    test_not_null(source_record->ops.dtor);
+
+    ecs_entity_t target = ecs_new();
+    ecs_entity_t source = ecs_new();
+    ecs_set(source, Targets, { target });
 
     ecs_fini();
 }

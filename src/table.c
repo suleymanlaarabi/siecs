@@ -136,11 +136,9 @@ static void ecs_table_fini_component_values(ecs_table_t *table) {
         const ecs_component_record_t *crec = ecs_component_index_get(component);
 
         if (crec->relation_flags & EcsRelationSource) {
-            if (!(crec->relation_flags & EcsRelationOneToOne)) {
-                for (uint32_t row = 0; row < table->entity_count; row++) {
-                    RelationSource *source = ecs_table_component_at_column(table, c, row);
-                    sicore_vec_fini(&source->entities);
-                }
+            for (uint32_t row = 0; row < table->entity_count; row++) {
+                void *ptr = ecs_table_component_at_column(table, c, row);
+                ecs_component_value_dtor(crec, ptr, 1);
             }
             continue;
         }

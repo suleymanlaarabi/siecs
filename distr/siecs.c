@@ -6828,6 +6828,13 @@ void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr)
     }
 }
 
+static void RelationSourceDtor(void *ptr, uint32_t count) {
+    RelationSource *source_data = ptr;
+    for (uint32_t i = 0; i < count; i++) {
+        sicore_vec_fini(&source_data[i].entities);
+    }
+}
+
 void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) {
     RelationSource *source_data = ptr;
 
@@ -6846,7 +6853,6 @@ void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) 
         }
     }
 
-    sicore_vec_fini(&source_data->entities);
 }
 
 ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
@@ -6903,7 +6909,9 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
 #endif
             desc->relation_flags & EcsRelationOneToOne ? sizeof(RelationTarget)
                                                        : sizeof(RelationSource),
-            (ecs_type_ops_t){ 0 },
+            (ecs_type_ops_t){
+                .dtor = desc->relation_flags & EcsRelationOneToOne ? NULL : RelationSourceDtor,
+            },
             NULL,
             RelationSourceOnRemove,
             desc->on_add,
@@ -8196,11 +8204,9 @@ static void ecs_table_fini_component_values(ecs_table_t *table) {
         const ecs_component_record_t *crec = ecs_component_index_get(component);
 
         if (crec->relation_flags & EcsRelationSource) {
-            if (!(crec->relation_flags & EcsRelationOneToOne)) {
-                for (uint32_t row = 0; row < table->entity_count; row++) {
-                    RelationSource *source = ecs_table_component_at_column(table, c, row);
-                    sicore_vec_fini(&source->entities);
-                }
+            for (uint32_t row = 0; row < table->entity_count; row++) {
+                void *ptr = ecs_table_component_at_column(table, c, row);
+                ecs_component_value_dtor(crec, ptr, 1);
             }
             continue;
         }
@@ -8241,6 +8247,7 @@ bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
         return true;
     }
 
+    // Abstract is not inherited for query matching; only exclude tables that own it.
     if (component_id == ecs_id(Abstract)) {
         return false;
     }
@@ -8259,9 +8266,7 @@ bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
 }
 
 bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
-    if (base == 0) {
-        return true;
-    }
+    ecs_assert_entity_valid(base);
 
     ecs_entity_t current = table->type.base;
     while (current != 0) {

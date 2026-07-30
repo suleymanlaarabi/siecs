@@ -65,6 +65,7 @@ void resource_hooks(void);
 void childof_kill_parent(void);
 void childof_relation_without_cascade_keeps_related_alive(void);
 void childof_relation_remove_updates_source(void);
+void childof_relation_source_has_storage_dtor(void);
 
 // Testsuite 'query'
 void query_terms_field_order(void);
@@ -325,6 +326,10 @@ bake_test_case childof_testcases[] = {
     {
         "relation_remove_updates_source",
         childof_relation_remove_updates_source
+    },
+    {
+        "relation_source_has_storage_dtor",
+        childof_relation_source_has_storage_dtor
     }
 };
 
@@ -562,7 +567,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        3,
+        4,
         childof_testcases
     },
     {

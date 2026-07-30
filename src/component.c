@@ -74,6 +74,13 @@ void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr)
     }
 }
 
+static void RelationSourceDtor(void *ptr, uint32_t count) {
+    RelationSource *source_data = ptr;
+    for (uint32_t i = 0; i < count; i++) {
+        sicore_vec_fini(&source_data[i].entities);
+    }
+}
+
 void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) {
     RelationSource *source_data = ptr;
 
@@ -92,7 +99,6 @@ void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) 
         }
     }
 
-    sicore_vec_fini(&source_data->entities);
 }
 
 ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
@@ -149,7 +155,9 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
 #endif
             desc->relation_flags & EcsRelationOneToOne ? sizeof(RelationTarget)
                                                        : sizeof(RelationSource),
-            (ecs_type_ops_t){ 0 },
+            (ecs_type_ops_t){
+                .dtor = desc->relation_flags & EcsRelationOneToOne ? NULL : RelationSourceDtor,
+            },
             NULL,
             RelationSourceOnRemove,
             desc->on_add,
