@@ -22,6 +22,7 @@ static inline double time_ms(void) {
 
 #define arg(name, value) const uint32_t name = value
 
+/* Stable output format consumed by tools/bench_compare.py: [bench] name: elapsed_ms ms. */
 #define BENCH(...)                                                                                 \
     do {                                                                                           \
         double __bench_start_time = time_ms();                                                     \

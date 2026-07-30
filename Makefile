@@ -2,15 +2,37 @@ BAKE_HOME := $(shell bake env | sed -n 's/^BAKE_HOME=//p')
 DEPS_INCLUDE := -I$(BAKE_HOME)/include
 QUIET_BAKE = grep -Ev '^\[[[:space:]]*(test|build|run|runall|[0-9]+%)|^cmd:|^path:'
 
-.PHONY: clean bench test test-c test-c-release test-cpp test-cpp-release test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release act-ci act-docs act
+.PHONY: clean bench bench-query bench-migrate bench-remove bench-add bench-create bench-compare test test-c test-c-release test-cpp test-cpp-release test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release act-ci act-docs act
 
 ACT ?= act
 ACT_PLATFORM ?= ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
 
-bench:
+define run-bench
 	@bake rebuild --cfg release >/dev/null
 	@bake rebuild bench --cfg release >/dev/null
-	@bake run bench --cfg release
+	@bake run bench --cfg release $(1)
+endef
+
+bench:
+	$(call run-bench,)
+
+bench-query:
+	$(call run-bench,-- query)
+
+bench-migrate:
+	$(call run-bench,-- migrate)
+
+bench-remove:
+	$(call run-bench,-- remove)
+
+bench-add:
+	$(call run-bench,-- add)
+
+bench-create:
+	$(call run-bench,-- create)
+
+bench-compare:
+	@python3 tools/bench_compare.py $(if $(SCOPE),--scope $(SCOPE),) $(if $(RUNS),--runs $(RUNS),) $(if $(THRESHOLD),--threshold $(THRESHOLD),)
 
 clean:
 	@rm -rf build-consumer-c build-consumer-cpp >/dev/null

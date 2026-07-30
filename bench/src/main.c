@@ -1,6 +1,24 @@
 #include "siecs.h"
 #include <bench.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
+
+static bool should_run_bench(const char *scope, const char *bench_name) {
+    if (!scope) {
+        return true;
+    }
+
+    size_t scope_length = strlen(scope);
+    return strncmp(scope, bench_name, scope_length) == 0 && bench_name[scope_length] == '_';
+}
+
+#define run_scoped_bench(scope, id)                                                                \
+    do {                                                                                            \
+        if (should_run_bench(scope, #id)) {                                                        \
+            run_bench(id);                                                                         \
+        }                                                                                          \
+    } while (0)
 
 static void register_components(ecs_component_t *cids, uint32_t cid_count) {
     for (uint32_t i = 0; i < cid_count; i++) {
@@ -75,6 +93,34 @@ make_owned_query_tables(const ecs_component_t *fields, uint32_t field_count, uin
     free(tags);
 }
 
+static void make_varied_query_tables(
+    const ecs_component_t *positive,
+    uint32_t positive_count,
+    const ecs_component_t *excluded,
+    uint32_t excluded_count,
+    uint32_t table_count
+) {
+    ecs_component_t *tags = malloc(sizeof(ecs_component_t) * table_count);
+    register_components(tags, table_count);
+
+    for (uint32_t i = 0; i < table_count; i++) {
+        ecs_entity_t entity = ecs_new();
+        for (uint32_t j = 0; j < positive_count; j++) {
+            if (j == 0 || i % (j + 2) != 0) {
+                ecs_add_cid(entity, positive[j]);
+            }
+        }
+        for (uint32_t j = 0; j < excluded_count; j++) {
+            if (i % (j + 7) == 0) {
+                ecs_add_cid(entity, excluded[j]);
+            }
+        }
+        ecs_add_cid(entity, tags[i]);
+    }
+
+    free(tags);
+}
+
 static ecs_query_desc_t
 make_query_desc(const ecs_component_t *fields, uint32_t field_count, ecs_term_access_t access) {
     ecs_query_desc_t desc = { 0 };
@@ -85,7 +131,7 @@ make_query_desc(const ecs_component_t *fields, uint32_t field_count, ecs_term_ac
 }
 
 BENCH_SETUP(query_init_rarest_positive, {
-    arg(table_count, 4096);
+    arg(table_count, 6000);
     arg(rare_table_count, 8);
     arg(iter_count, 2000);
 
@@ -109,7 +155,7 @@ BENCH_SETUP(query_init_rarest_positive, {
 
 BENCH_SETUP(query_init_owned_fields, {
     arg(field_count, 8);
-    arg(table_count, 256);
+    arg(table_count, 6000);
     arg(iter_count, 1000);
 
     ecs_component_t fields[field_count];
@@ -127,8 +173,8 @@ BENCH_SETUP(query_init_owned_fields, {
 
 BENCH_SETUP(query_iter_owned_fields, {
     arg(field_count, 8);
-    arg(table_count, 256);
-    arg(iter_count, 10000);
+    arg(table_count, 6000);
+    arg(iter_count, 2000);
 
     ecs_component_t fields[field_count];
     register_trivial_data_components(fields, field_count);
@@ -153,6 +199,118 @@ BENCH_SETUP(query_iter_owned_fields, {
         abort();
     }
     ecs_query_fini(query);
+});
+
+BENCH_SETUP(query_init_three_positive_one_not, {
+    arg(table_count, 6000);
+    arg(iter_count, 1000);
+
+    ecs_component_t positive[3];
+    ecs_component_t excluded;
+    register_components(positive, 3);
+    excluded = ecs_component({});
+    make_varied_query_tables(positive, 3, &excluded, 1, table_count);
+
+    ecs_query_desc_t desc = {
+        .terms = {
+            { .id = positive[0], .access = EcsFilter },
+            { .id = positive[1], .access = EcsFilter },
+            { .id = positive[2], .access = EcsFilter },
+            { .id = excluded, .access = EcsNot },
+        },
+    };
+
+    BENCH({
+        for (uint32_t i = 0; i < iter_count; i++) {
+            ecs_query_id_t query = ecs_query_init(&desc);
+            ecs_query_fini(query);
+        }
+    });
+});
+
+BENCH_SETUP(query_init_four_positive_one_not, {
+    arg(table_count, 6000);
+    arg(iter_count, 1000);
+
+    ecs_component_t positive[4];
+    ecs_component_t excluded;
+    register_components(positive, 4);
+    excluded = ecs_component({});
+    make_varied_query_tables(positive, 4, &excluded, 1, table_count);
+
+    ecs_query_desc_t desc = {
+        .terms = {
+            { .id = positive[0], .access = EcsFilter },
+            { .id = positive[1], .access = EcsFilter },
+            { .id = positive[2], .access = EcsFilter },
+            { .id = positive[3], .access = EcsFilter },
+            { .id = excluded, .access = EcsNot },
+        },
+    };
+
+    BENCH({
+        for (uint32_t i = 0; i < iter_count; i++) {
+            ecs_query_id_t query = ecs_query_init(&desc);
+            ecs_query_fini(query);
+        }
+    });
+});
+
+BENCH_SETUP(query_init_three_positive_two_not, {
+    arg(table_count, 6000);
+    arg(iter_count, 1000);
+
+    ecs_component_t positive[3];
+    ecs_component_t excluded[2];
+    register_components(positive, 3);
+    register_components(excluded, 2);
+    make_varied_query_tables(positive, 3, excluded, 2, table_count);
+
+    ecs_query_desc_t desc = {
+        .terms = {
+            { .id = positive[0], .access = EcsFilter },
+            { .id = positive[1], .access = EcsFilter },
+            { .id = positive[2], .access = EcsFilter },
+            { .id = excluded[0], .access = EcsNot },
+            { .id = excluded[1], .access = EcsNot },
+        },
+    };
+
+    BENCH({
+        for (uint32_t i = 0; i < iter_count; i++) {
+            ecs_query_id_t query = ecs_query_init(&desc);
+            ecs_query_fini(query);
+        }
+    });
+});
+
+BENCH_SETUP(query_init_four_positive_two_not, {
+    arg(table_count, 6000);
+    arg(iter_count, 1000);
+
+    ecs_component_t positive[4];
+    ecs_component_t excluded[2];
+    register_components(positive, 4);
+    register_components(excluded, 2);
+    make_varied_query_tables(positive, 4, excluded, 2, table_count);
+
+    ecs_query_desc_t desc = {
+        .terms = {
+            { .id = positive[0], .access = EcsFilter },
+            { .id = positive[1], .access = EcsFilter },
+            { .id = positive[2], .access = EcsFilter },
+            { .id = positive[3], .access = EcsFilter },
+            { .id = excluded[0], .access = EcsNot },
+            { .id = excluded[1], .access = EcsNot },
+        },
+    };
+
+    BENCH({
+        for (uint32_t i = 0; i < iter_count; i++) {
+            ecs_query_id_t query = ecs_query_init(&desc);
+            ecs_query_fini(query);
+        }
+    });
 });
 
 BENCH_SETUP(migrate_trivial_columns, {
@@ -370,24 +528,31 @@ BENCH_SETUP(create_wide_tables_across_index_resize, {
 });
 
 int main(int argc, char *argv[]) {
-    (void)argc;
-    (void)argv;
+    const char *scope = argc > 1 ? argv[1] : NULL;
+    if (argc > 2) {
+        fprintf(stderr, "usage: %s [scope]\n", argv[0]);
+        return 1;
+    }
 
-    run_bench(query_init_rarest_positive);
-    run_bench(query_init_owned_fields);
-    run_bench(query_iter_owned_fields);
-    run_bench(migrate_trivial_columns);
-    run_bench(remove_trivial_rows);
-    run_bench(add_one_component_cold_edge);
-    run_bench(add_one_component_hot_edge);
-    run_bench(add_many_components_no_required);
-    run_bench(add_required_direct_cold_edge);
-    run_bench(add_required_direct_hot_edge);
-    run_bench(add_required_chain_hot_edge);
-    run_bench(add_required_to_existing_component);
-    run_bench(add_duplicate_component);
-    run_bench(add_many_components_wide_no_required);
-    run_bench(create_wide_tables_across_index_resize);
+    run_scoped_bench(scope, query_init_rarest_positive);
+    run_scoped_bench(scope, query_init_owned_fields);
+    run_scoped_bench(scope, query_iter_owned_fields);
+    run_scoped_bench(scope, query_init_three_positive_one_not);
+    run_scoped_bench(scope, query_init_four_positive_one_not);
+    run_scoped_bench(scope, query_init_three_positive_two_not);
+    run_scoped_bench(scope, query_init_four_positive_two_not);
+    run_scoped_bench(scope, migrate_trivial_columns);
+    run_scoped_bench(scope, remove_trivial_rows);
+    run_scoped_bench(scope, add_one_component_cold_edge);
+    run_scoped_bench(scope, add_one_component_hot_edge);
+    run_scoped_bench(scope, add_many_components_no_required);
+    run_scoped_bench(scope, add_required_direct_cold_edge);
+    run_scoped_bench(scope, add_required_direct_hot_edge);
+    run_scoped_bench(scope, add_required_chain_hot_edge);
+    run_scoped_bench(scope, add_required_to_existing_component);
+    run_scoped_bench(scope, add_duplicate_component);
+    run_scoped_bench(scope, add_many_components_wide_no_required);
+    run_scoped_bench(scope, create_wide_tables_across_index_resize);
 
     return 0;
 }
