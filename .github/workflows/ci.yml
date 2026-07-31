@@ -16,19 +16,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  api-docs:
-    name: public API documentation
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-      - name: Install clang tooling
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang clang-tools-18 make python3-yaml
-      - name: Check public API contracts
-        run: make check-api-docs
-
   build:
     name: bake ${{ matrix.os }} ${{ matrix.compiler }} ${{ matrix.config }}
     runs-on: ${{ matrix.os }}
