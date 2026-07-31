@@ -20,6 +20,25 @@ void entity_create(void) {
     ecs_fini();
 }
 
+void entity_reuses_id_with_new_generation_after_kill(void) {
+    ecs_init();
+
+    ecs_entity_t dead = ecs_new();
+    uint32_t dead_index = ecs_first(dead);
+    uint32_t dead_generation = ecs_second(dead);
+    ecs_kill(dead);
+
+    test_false(ecs_is_alive(dead));
+
+    ecs_entity_t recycled = ecs_new();
+    test_int((int)dead_index, (int)ecs_first(recycled));
+    test_int((int)(dead_generation + 1), (int)ecs_second(recycled));
+    test_true(ecs_is_alive(recycled));
+    test_false(ecs_is_alive(dead));
+
+    ecs_fini();
+}
+
 void entity_create_has_default_name(void) {
     ecs_init();
 

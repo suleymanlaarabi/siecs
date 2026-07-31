@@ -478,6 +478,27 @@ void component_add_zeroes_reused_component_slot(void) {
     ecs_fini();
 }
 
+void component_double_add_and_remove_are_noops(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(HookComponent);
+    reset_hook_state();
+
+    ecs_entity_t entity = ecs_new();
+    ecs_add(entity, HookComponent);
+    ecs_set(entity, HookComponent, { 9 });
+
+    ecs_add(entity, HookComponent);
+    test_int(1, (int)hook_add_calls);
+    test_int(9, ecs_get(entity, HookComponent)->value);
+
+    ecs_remove(entity, HookComponent);
+    ecs_remove(entity, HookComponent);
+    test_int(1, (int)hook_remove_calls);
+    test_false(ecs_has(entity, HookComponent));
+
+    ecs_fini();
+}
+
 void component_many_tags_preserve_data_on_migration(void) {
     ecs_init();
     ecs_component_t tags[15];

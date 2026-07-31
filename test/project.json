@@ -23,6 +23,7 @@
         "id": "entity",
         "testcases": [
           "create",
+          "reuses_id_with_new_generation_after_kill",
           "create_has_default_name",
           "explicit_name_overrides_default",
           "with",
@@ -46,6 +47,7 @@
           "add_with_required_emits_each_on_add_once",
           "add_with_required_accepts_sixteen_component_plan",
           "add_zeroes_reused_component_slot",
+          "double_add_and_remove_are_noops",
           "many_tags_preserve_data_on_migration",
           "many_tags_swap_remove_preserves_moved_entity_data",
           "same_local_type_with_different_base_creates_different_tables",
