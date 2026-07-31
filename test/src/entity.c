@@ -85,7 +85,6 @@ void entity_is_a_moves_entity_to_type_with_base(void) {
 
     ecs_entity_t base = ecs_new();
     ecs_add(base, Transform);
-    ecs_add(base, Abstract);
 
     ecs_entity_t entity = ecs_new();
     ecs_add(entity, Renderable);
@@ -97,6 +96,34 @@ void entity_is_a_moves_entity_to_type_with_base(void) {
 
     test_assert(table->type.base == base);
     test_true(ecs_has(entity, Renderable));
+
+    ecs_fini();
+}
+
+void entity_is_a_marks_base_abstract(void) {
+    ecs_init();
+
+    ecs_entity_t base = ecs_new();
+    ecs_entity_t entity = ecs_new();
+    ecs_is_a(entity, base);
+
+    test_true(ecs_has_cid_owned(base, ecs_id(Abstract)));
+    test_true(ecs_is(entity, base));
+
+    ecs_fini();
+}
+
+void entity_deferred_is_a_marks_base_abstract(void) {
+    ecs_init();
+
+    ecs_entity_t base = ecs_new();
+    ecs_entity_t entity = ecs_new();
+    ecs_defer_begin();
+    ecs_is_a(entity, base);
+    ecs_defer_end();
+
+    test_true(ecs_has_cid_owned(base, ecs_id(Abstract)));
+    test_true(ecs_is(entity, base));
 
     ecs_fini();
 }

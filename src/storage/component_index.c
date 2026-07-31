@@ -7,6 +7,30 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if SIECS_HAS_META
+static sireflect_struct_desc_t *
+ecs_component_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
+    if (!desc) {
+        return NULL;
+    }
+
+    sireflect_struct_desc_t *copy = malloc(sizeof *copy);
+    if (!copy) {
+        abort();
+    }
+    *copy = (sireflect_struct_desc_t){
+        .name = strdup(desc->name),
+        .fields = strdup(desc->fields),
+        .size = desc->size,
+        .align = desc->align,
+    };
+    if (!copy->name || !copy->fields) {
+        abort();
+    }
+    return copy;
+}
+#endif
+
 void ecs_component_index_register(
     ecs_component_t id,
 #if SIECS_HAS_NAMES
@@ -20,7 +44,7 @@ void ecs_component_index_register(
     uint32_t relation_flags
 #if SIECS_HAS_META
     ,
-    sireflect_handle_t reflection,
+    sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
 #endif
 ) {
@@ -36,10 +60,28 @@ void ecs_component_index_register(
         return;
     }
 
-    ecs_component_record_t record = {
+    ecs_component_info_t *info = malloc(sizeof *info);
+    if (!info) {
+        abort();
+    }
+    *info = (ecs_component_info_t){
 #if SIECS_HAS_NAMES
-        .name = name,
+        .name = name ? strdup(name) : NULL,
 #endif
+        .size = size,
+        .relation_flags = relation_flags,
+#if SIECS_HAS_META
+        .type = type,
+#endif
+    };
+#if SIECS_HAS_NAMES
+    if (name && !info->name) {
+        abort();
+    }
+#endif
+
+    ecs_component_record_t record = {
+        .info = info,
         .required = NULL,
         .required_count = 0,
         .size = size,
@@ -50,8 +92,7 @@ void ecs_component_index_register(
         .relation_flags = relation_flags,
         .tables = { 0 },
 #if SIECS_HAS_META
-        .reflection = reflection,
-        .reflection_desc = reflection_desc,
+        .reflection_desc = ecs_component_reflection_desc_copy(reflection_desc),
 #endif
     };
     sicore_vec_init(&record.tables, sizeof(uint16_t));
@@ -71,6 +112,19 @@ void ecs_component_index_fini() {
     ecs_component_record_t *records = ecs_world.component_index.components.data;
 
     for (uint32_t i = 0; i < ecs_world.component_index.components.size; i++) {
+        if (records[i].info) {
+#if SIECS_HAS_NAMES
+            free((char *)records[i].info->name);
+#endif
+            free(records[i].info);
+        }
+#if SIECS_HAS_META
+        if (records[i].reflection_desc) {
+            free((char *)records[i].reflection_desc->name);
+            free((char *)records[i].reflection_desc->fields);
+            free((void *)records[i].reflection_desc);
+        }
+#endif
         free(records[i].required);
         sicore_vec_fini(&records[i].tables);
     }

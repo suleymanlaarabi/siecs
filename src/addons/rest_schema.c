@@ -18,7 +18,7 @@ static bool ecs_rest_component_is_reflected(ecs_component_t id) {
     }
 
     const ecs_component_record_t *record = ecs_component_index_get(id);
-    return record->reflection != SIREFLECT_INVALID_HANDLE;
+    return record->info->type != SIREFLECT_INVALID_HANDLE;
 }
 
 static sijson_value_t ecs_rest_field_json(const sireflect_field_info_t *field) {
@@ -33,9 +33,9 @@ static sijson_value_t
 ecs_rest_component_json(ecs_component_t id, const ecs_component_record_t *record) {
     sijson_value_t fields_json = sijson_make_array();
     const sireflect_type_info_t *type =
-        sireflect_type_info(ecs_world.sireflect_registry, record->reflection);
+        sireflect_type_info(sijson_default_registry(), record->info->type);
     const sireflect_fields_t *fields =
-        sireflect_type_fields(ecs_world.sireflect_registry, record->reflection);
+        sireflect_type_fields(sijson_default_registry(), record->info->type);
     for (size_t i = 0; i < fields->field_count; i++) {
         sijson_array_push(fields_json, ecs_rest_field_json(&fields->fields[i]));
     }
@@ -44,7 +44,7 @@ ecs_rest_component_json(ecs_component_t id, const ecs_component_record_t *record
     sijson_object_set(object, "id", sijson_make_number(id));
     sijson_object_set(object, "name", sijson_make_string(type && type->name ? type->name : ""));
     sijson_object_set(object, "isRelation", sijson_make_bool(record->relation_flags != 0));
-    sijson_object_set(object, "type", sijson_make_number(record->reflection));
+    sijson_object_set(object, "type", sijson_make_number(record->info->type));
     sijson_object_set(object, "fields", fields_json);
 
     return object;
@@ -76,10 +76,10 @@ static void ecs_rest_type_set_add(ecs_rest_type_set_t *set, sireflect_handle_t i
 
 static void
 ecs_rest_collect_component_types(ecs_rest_type_set_t *set, const ecs_component_record_t *record) {
-    ecs_rest_type_set_add(set, record->reflection);
+    ecs_rest_type_set_add(set, record->info->type);
 
     const sireflect_fields_t *fields =
-        sireflect_type_fields(ecs_world.sireflect_registry, record->reflection);
+        sireflect_type_fields(sijson_default_registry(), record->info->type);
     for (size_t i = 0; i < fields->field_count; i++) {
         ecs_rest_type_set_add(set, fields->fields[i].type);
     }
@@ -108,7 +108,7 @@ static const char *ecs_rest_editor_type(sireflect_handle_t id, const sireflect_t
 
     if (type->kind == sireflect_kind_pointer) {
         const sireflect_type_info_t *element =
-            sireflect_type_info(ecs_world.sireflect_registry, type->element_type);
+            sireflect_type_info(sijson_default_registry(), type->element_type);
         if (element && element->kind == sireflect_kind_char) {
             return "string";
         }
@@ -119,7 +119,7 @@ static const char *ecs_rest_editor_type(sireflect_handle_t id, const sireflect_t
 }
 
 static sijson_value_t ecs_rest_type_json(sireflect_handle_t id) {
-    const sireflect_type_info_t *type = sireflect_type_info(ecs_world.sireflect_registry, id);
+    const sireflect_type_info_t *type = sireflect_type_info(sijson_default_registry(), id);
 
     sijson_value_t object = sijson_make_object();
     sijson_object_set(object, "id", sijson_make_number(id));
@@ -136,7 +136,7 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req) {
     sijson_clean();
 
     sijson_value_t components = sijson_make_array();
-    for (uint32_t i = 2; i < ecs_world.component_index.components.size; i++) {
+    for (uint32_t i = 1; i < ecs_world.component_index.components.size; i++) {
         if (!ecs_rest_component_is_reflected((ecs_component_t)i)) {
             continue;
         }

@@ -817,6 +817,7 @@ static inline void ecs_arena_reset(ecs_arena_t *allocator) {
 #include <stdint.h>
 
 typedef struct {
+    ecs_component_info_t *info;
     uint16_t *required;
     uint32_t required_count;
     uint32_t size;
@@ -1811,8 +1812,6 @@ void ecs_defer_end(void) {
 
 static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
     uint32_t id = ecs_world.component_index.components.size;
-    if (id == 0)
-        id = 1;
     ecs_assert(id + count <= UINT16_MAX, "component id overflow\n");
     return id;
 }
@@ -1896,14 +1895,16 @@ void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) 
             ecs_remove_cid(entities[i], component - 1);
         }
     }
-
 }
 
-ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
+static ecs_component_t ecs_component_register_type(
+    ecs_component_t *id,
+    const ecs_component_desc_t *desc
+) {
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
 
-    if (*id != 0 && *id < ecs_world.component_index.components.size) {
+    if (*id != 0) {
         const ecs_component_record_t *existing = ecs_component_index_get(*id);
         if (existing->tables.data) {
             return *id;
@@ -1959,44 +1960,28 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
     }
 }
 
+ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
+    return ecs_component_register_type(id, desc);
+}
+
 ecs_component_t ecs_component_init(const ecs_component_desc_t *desc) {
     ecs_component_t id = 0;
     return ecs_component_register(&id, desc);
 }
 
+const ecs_component_info_t *ecs_component_info(ecs_component_t component) {
+    if (component == 0 || component >= ecs_world.component_index.components.size) {
+        return NULL;
+    }
+    return ecs_component_index_get(component)->info;
+}
+
 #define ecs_assert_can_be_updated(entity, ...)                                                     \
     ecs_assert(!ecs_has_cid_owned(entity, ecs_id(Abstract)), __VA_ARGS__)
 
-static inline void ecs_get_owned_cid_location(
-    ecs_entity_t entity,
-    ecs_component_t cid,
-    ecs_entity_record_t **record_out,
-    ecs_table_t **table_out,
-    void **data_out
-) {
-    ecs_entity_record_t *record = ecs_get_record(entity);
+#define entity_edit(entity, table, record)                                                         \
+    ecs_entity_record_t *record = ecs_get_record(entity);                                          \
     ecs_table_t *table = ecs_get_table(record->table_id);
-    uint16_t col_idx = ecs_table_get_column_index(table, cid);
-
-    *record_out = record;
-    *table_out = table;
-    *data_out = ecs_table_component_at_column(table, col_idx, record->table_row);
-}
-
-static inline void ecs_run_on_set(
-    ecs_entity_t entity,
-    ecs_component_t cid,
-    const void *data,
-    const ecs_component_record_t *record,
-    ecs_entity_record_t **entity_record,
-    ecs_table_t **table,
-    void **component_data
-) {
-    if (record->on_set) {
-        record->on_set(entity, cid, data, *component_data);
-        ecs_get_owned_cid_location(entity, cid, entity_record, table, component_data);
-    }
-}
 
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_id_valid(cid);
@@ -2102,7 +2087,6 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
     if (crec->on_remove) {
         crec->on_remove(entity, cid, removed_data);
-        table = ecs_get_table(from_id);
     }
     ecs_emit(table, entity, EcsOnRemove, removed_data);
 
@@ -2122,14 +2106,15 @@ void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_remove_cid_now(entity, cid);
 }
 
-void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
-    ecs_assert_id_valid(cid);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
-
-    const ecs_entity_record_t *record = ecs_get_record(entity);
+/*
+ * Resolve an owned or inherited component from a live entity record.
+ * The record and every base in its type chain are trusted SIECS invariants;
+ * callers perform the public entity validation before entering this helper.
+ */
+static inline void *
+ecs_component_get_from_record(const ecs_entity_record_t *record, ecs_component_t component) {
     ecs_table_t *table = ecs_get_table(record->table_id);
-    uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
+    uint16_t col_idx = ecs_table_column_or_invalid(table, component);
     if (col_idx != UINT16_MAX) {
         return ecs_table_component_at_column(table, col_idx, record->table_row);
     }
@@ -2139,7 +2124,7 @@ void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
         const ecs_entity_record_t *base_record = ecs_get_record(base);
         ecs_table_t *base_table = ecs_get_table(base_record->table_id);
 
-        col_idx = ecs_table_column_or_invalid(base_table, cid);
+        col_idx = ecs_table_column_or_invalid(base_table, component);
         if (col_idx != UINT16_MAX) {
             return ecs_table_component_at_column(base_table, col_idx, base_record->table_row);
         }
@@ -2150,19 +2135,19 @@ void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
     return NULL;
 }
 
-void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) {
+void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
-    const ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_table_t *table = ecs_get_table(record->table_id);
+    return ecs_component_get_from_record(ecs_get_record(entity), cid);
+}
 
-    uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
-    if (col_idx != UINT16_MAX) {
-        return ecs_table_component_at_column(table, col_idx, record->table_row);
-    }
-    return NULL;
+void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) {
+    ecs_assert_id_valid(cid);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(entity);
+    return ecs_component_get_from_record(ecs_get_record(entity), cid);
 }
 
 void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data) {
@@ -2171,15 +2156,17 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
     ecs_assert_is_alive(entity);
 
     ecs_add_cid_now(entity, cid);
+    ecs_defer_begin();
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
-    ecs_entity_record_t *record;
-    ecs_table_t *table;
-    void *dst;
-    ecs_get_owned_cid_location(entity, cid, &record, &table, &dst);
+    entity_edit(entity, table, record);
+    void *dst = ecs_table_get_component(table, cid, record->table_row);
 
-    ecs_run_on_set(entity, cid, data, crec, &record, &table, &dst);
+    if (crec->on_set) {
+        crec->on_set(entity, cid, data, dst);
+    }
     ecs_emit(table, entity, EcsOnSet, data);
     ecs_component_value_copy(crec, dst, data, 1);
+    ecs_defer_end();
 }
 
 void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
@@ -2203,12 +2190,12 @@ void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
     bool had_value = ecs_has_cid_owned(entity, cid);
     ecs_add_cid_now(entity, cid);
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
-    ecs_entity_record_t *record;
-    ecs_table_t *table;
-    void *dst;
-    ecs_get_owned_cid_location(entity, cid, &record, &table, &dst);
+    entity_edit(entity, table, record);
+    void *dst = ecs_table_get_component(table, cid, record->table_row);
 
-    ecs_run_on_set(entity, cid, data, crec, &record, &table, &dst);
+    if (crec->on_set) {
+        crec->on_set(entity, cid, data, dst);
+    }
     ecs_emit(table, entity, EcsOnSet, data);
     if (had_value || crec->ops.ctor) {
         ecs_component_value_move(crec, dst, data, 1);
@@ -2456,10 +2443,9 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
         ecs_first(entity),
         ecs_first(target)
     );
-    ecs_assert(
-        ecs_has_cid_owned(target, ecs_id(Abstract)),
-        "An entity can only inherit from an abstract entity."
-    );
+    if (!ecs_has_cid_owned(target, ecs_id(Abstract))) {
+        ecs_add_cid_now(target, ecs_id(Abstract));
+    }
 
     ecs_entity_record_t *record = ecs_get_record(entity);
     uint16_t from_table_id = record->table_id;
@@ -2485,6 +2471,7 @@ void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
     ecs_assert_is_alive(target);
 
     if (ecs_is_deferred()) {
+        ecs_add_cid(target, ecs_id(Abstract));
         ecs_command_buffer_set_base(entity, target);
         return;
     }
@@ -3481,7 +3468,6 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world.exit = false;
     ecs_world.delta_time = 0;
     ecs_world.last_time = 0;
-
     ecs_bootstrap();
 }
 
@@ -3501,7 +3487,6 @@ void ecs_fini(void) {
     ecs_module_index_fini();
     ecs_command_buffer_fini();
     ecs_arena_fini();
-
     ecs_world_started = false;
 }
 
@@ -3604,7 +3589,17 @@ void ecs_component_index_register(
         return;
     }
 
+    ecs_component_info_t *info = malloc(sizeof *info);
+    if (!info) {
+        abort();
+    }
+    *info = (ecs_component_info_t){
+        .size = size,
+        .relation_flags = relation_flags,
+    };
+
     ecs_component_record_t record = {
+        .info = info,
         .required = NULL,
         .required_count = 0,
         .size = size,
@@ -3632,6 +3627,9 @@ void ecs_component_index_fini() {
     ecs_component_record_t *records = ecs_world.component_index.components.data;
 
     for (uint32_t i = 0; i < ecs_world.component_index.components.size; i++) {
+        if (records[i].info) {
+            free(records[i].info);
+        }
         free(records[i].required);
         sicore_vec_fini(&records[i].tables);
     }

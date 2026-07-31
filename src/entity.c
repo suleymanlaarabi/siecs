@@ -94,10 +94,9 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
         ecs_first(entity),
         ecs_first(target)
     );
-    ecs_assert(
-        ecs_has_cid_owned(target, ecs_id(Abstract)),
-        "An entity can only inherit from an abstract entity."
-    );
+    if (!ecs_has_cid_owned(target, ecs_id(Abstract))) {
+        ecs_add_cid_now(target, ecs_id(Abstract));
+    }
 
     ecs_entity_record_t *record = ecs_get_record(entity);
     uint16_t from_table_id = record->table_id;
@@ -123,6 +122,7 @@ void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
     ecs_assert_is_alive(target);
 
     if (ecs_is_deferred()) {
+        ecs_add_cid(target, ecs_id(Abstract));
         ecs_command_buffer_set_base(entity, target);
         return;
     }

@@ -687,6 +687,9 @@ bool sireflect_parse_struct_fields(
     size_t *out_field_count,
     size_t struct_size,
     size_t struct_align,
+    size_t *out_struct_size,
+    size_t *out_struct_align,
+    bool validate_layout,
     bool fail_fast
 );
 
@@ -1594,16 +1597,18 @@ bool sireflect_parse_struct_fields(
     size_t *out_field_count,
     size_t struct_size,
     size_t struct_align,
+    size_t *out_struct_size,
+    size_t *out_struct_align,
+    bool validate_layout,
     bool fail_fast
 ) {
-    (void)struct_size;
-    (void)struct_align;
-
     sireflect_assert(reg != NULL, "registry must not be NULL");
     sireflect_assert(struct_name != NULL, "struct name must not be NULL");
     sireflect_assert(fields_src != NULL, "field source must not be NULL");
     sireflect_assert(out_fields != NULL, "output field pointer must not be NULL");
     sireflect_assert(out_field_count != NULL, "output field count pointer must not be NULL");
+    sireflect_assert(out_struct_size != NULL, "output struct size must not be NULL");
+    sireflect_assert(out_struct_align != NULL, "output struct alignment must not be NULL");
 
     size_t field_count = 0;
     if (!sireflect_count_fields(struct_name, fields_src, fail_fast, &field_count)) {
@@ -1660,7 +1665,7 @@ bool sireflect_parse_struct_fields(
     }
 
 #ifndef NDEBUG
-    {
+    if (validate_layout) {
         const size_t computed_size = sireflect_align_up(offset, struct_align);
         if (computed_size != struct_size) {
             if (fail_fast) {
@@ -1684,10 +1689,16 @@ bool sireflect_parse_struct_fields(
             return false;
         }
     }
+#else
+    (void)struct_size;
+    (void)struct_align;
+    (void)validate_layout;
 #endif
 
     *out_fields = fields;
     *out_field_count = field_count;
+    *out_struct_align = max_align;
+    *out_struct_size = sireflect_align_up(offset, max_align);
     return true;
 }
 
@@ -2047,6 +2058,8 @@ sireflect_try_register_struct(sireflect_registry_t *reg, const sireflect_struct_
 
     sireflect_field_info_t *parsed_fields = NULL;
     size_t field_count = 0;
+    size_t parsed_size = 0;
+    size_t parsed_align = 0;
 
     if (!sireflect_parse_struct_fields(
         reg,
@@ -2056,6 +2069,9 @@ sireflect_try_register_struct(sireflect_registry_t *reg, const sireflect_struct_
         &field_count,
         desc->size,
         desc->align,
+        &parsed_size,
+        &parsed_align,
+        true,
         false
     )) {
         return SIREFLECT_INVALID_HANDLE;
@@ -2107,6 +2123,8 @@ sireflect_register_struct(sireflect_registry_t *reg, const sireflect_struct_desc
 
         sireflect_field_info_t *parsed_fields = NULL;
         size_t field_count = 0;
+        size_t parsed_size = 0;
+        size_t parsed_align = 0;
 
         if (sireflect_parse_struct_fields(
                 reg,
@@ -2116,6 +2134,9 @@ sireflect_register_struct(sireflect_registry_t *reg, const sireflect_struct_desc
                 &field_count,
                 desc->size,
                 desc->align,
+                &parsed_size,
+                &parsed_align,
+                true,
                 true
             )) {
             handle = sireflect_registry_add_type(
@@ -2132,6 +2153,59 @@ sireflect_register_struct(sireflect_registry_t *reg, const sireflect_struct_desc
 
     sireflect_assert(handle != SIREFLECT_INVALID_HANDLE, "failed to register struct");
     return handle;
+}
+
+sireflect_handle_t sireflect_try_register_dynamic_struct(
+    sireflect_registry_t *reg,
+    const char *name,
+    const char *fields
+) {
+    sireflect_error_clear();
+
+    if (reg == NULL || name == NULL || fields == NULL) {
+        sireflect_error_set("invalid dynamic struct descriptor");
+        return SIREFLECT_INVALID_HANDLE;
+    }
+
+    sireflect_handle_t existing = sireflect_type_by_name(reg, name);
+    if (existing != SIREFLECT_INVALID_HANDLE) {
+        if (!sireflect_type_is_struct(sireflect_type_info(reg, existing))) {
+            sireflect_error_set("existing type is not a struct");
+            return SIREFLECT_INVALID_HANDLE;
+        }
+        return existing;
+    }
+
+    sireflect_field_info_t *parsed_fields = NULL;
+    size_t field_count = 0;
+    size_t size = 0;
+    size_t align = 0;
+
+    if (!sireflect_parse_struct_fields(
+            reg,
+            name,
+            fields,
+            &parsed_fields,
+            &field_count,
+            0,
+            1,
+            &size,
+            &align,
+            false,
+            false
+        )) {
+        return SIREFLECT_INVALID_HANDLE;
+    }
+
+    return sireflect_registry_add_type(
+        reg,
+        name,
+        sireflect_kind_struct,
+        size,
+        align,
+        parsed_fields,
+        field_count
+    );
 }
 
 const char *sireflect_kind_name(sireflect_kind_t kind) {
@@ -5664,9 +5738,7 @@ static inline void ecs_arena_reset(ecs_arena_t *allocator) {
 #include <stdint.h>
 
 typedef struct {
-#if SIECS_HAS_NAMES
-    const char *name;
-#endif
+    ecs_component_info_t *info;
     uint16_t *required;
     uint32_t required_count;
     uint32_t size;
@@ -5677,7 +5749,6 @@ typedef struct {
     uint32_t relation_flags;
     sicore_vec_t tables; // uint16_t
 #if SIECS_HAS_META
-    sireflect_handle_t reflection;
     const sireflect_struct_desc_t *reflection_desc;
 #endif
 } ecs_component_record_t;
@@ -5699,7 +5770,7 @@ void ecs_component_index_register(
     uint32_t relation_flags
 #if SIECS_HAS_META
     ,
-    sireflect_handle_t reflection,
+    sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
 #endif
 );
@@ -6006,9 +6077,6 @@ struct ecs_world_s {
     ecs_module_index_t module_index;
     ecs_resource_index_t resource_index;
     ecs_module_id_t active_module;
-#if SIECS_HAS_META
-    sireflect_registry_t *sireflect_registry;
-#endif
 #if SIECS_HAS_REST
     sihttp_server_t *server;
 #endif
@@ -6127,7 +6195,7 @@ void ecs_bootstrap() {
 #if SIECS_HAS_META
     // Register the ecs_entity_t struct reflection.
     sireflect_register_struct(
-        ecs_world.sireflect_registry,
+        sijson_default_registry(),
         &(sireflect_struct_desc_t){
             .name = "ecs_entity_t",
             .fields = "{ uint32_t id; uint32_t generation; }",
@@ -6764,11 +6832,11 @@ void ecs_defer_end(void) {
 
 #if SIECS_HAS_META && !defined(SIREFLECT_H)
 #endif
+#if SIECS_HAS_META && !defined(SIJSON_H)
+#endif
 
 static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
     uint32_t id = ecs_world.component_index.components.size;
-    if (id == 0)
-        id = 1;
     ecs_assert(id + count <= UINT16_MAX, "component id overflow\n");
     return id;
 }
@@ -6852,30 +6920,25 @@ void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) 
             ecs_remove_cid(entities[i], component - 1);
         }
     }
-
 }
 
-ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
+static ecs_component_t ecs_component_register_type(
+    ecs_component_t *id,
+    const ecs_component_desc_t *desc
+#if SIECS_HAS_META
+    ,
+    sireflect_handle_t type
+#endif
+) {
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
 
-    if (*id != 0 && *id < ecs_world.component_index.components.size) {
+    if (*id != 0) {
         const ecs_component_record_t *existing = ecs_component_index_get(*id);
         if (existing->tables.data) {
             return *id;
         }
     }
-
-#if SIECS_HAS_META
-    sireflect_handle_t reflection = SIREFLECT_INVALID_HANDLE;
-    if (ECS_LIKELY(desc->struct_desc)) {
-        reflection = sireflect_try_register_struct(ecs_world.sireflect_registry, desc->struct_desc);
-
-        if (ECS_UNLIKELY(reflection == SIREFLECT_INVALID_HANDLE)) {
-            puts(sireflect_error());
-        }
-    }
-#endif
 
     if (ECS_UNLIKELY(desc->relation_flags & EcsRelationTarget)) {
         if (*id == 0) {
@@ -6896,7 +6959,7 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
             desc->relation_flags
 #if SIECS_HAS_META
             ,
-            reflection,
+            type,
             desc->struct_desc
 #endif
         );
@@ -6942,7 +7005,7 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
             0
 #if SIECS_HAS_META
             ,
-            reflection,
+            type,
             desc->struct_desc
 #endif
         );
@@ -6950,10 +7013,74 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
     }
 }
 
+ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
+#if SIECS_HAS_META
+    sireflect_handle_t type = SIREFLECT_INVALID_HANDLE;
+    if (ECS_LIKELY(desc && desc->struct_desc)) {
+        type = sireflect_try_register_struct(sijson_default_registry(), desc->struct_desc);
+        if (ECS_UNLIKELY(type == SIREFLECT_INVALID_HANDLE)) {
+            puts(sireflect_error());
+        }
+    }
+    return ecs_component_register_type(id, desc, type);
+#else
+    return ecs_component_register_type(id, desc);
+#endif
+}
+
 ecs_component_t ecs_component_init(const ecs_component_desc_t *desc) {
     ecs_component_t id = 0;
     return ecs_component_register(&id, desc);
 }
+
+const ecs_component_info_t *ecs_component_info(ecs_component_t component) {
+    if (component == 0 || component >= ecs_world.component_index.components.size) {
+        return NULL;
+    }
+    return ecs_component_index_get(component)->info;
+}
+
+#if SIECS_HAS_META
+ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc) {
+    sireflect_registry_t *registry = sijson_default_registry();
+    sireflect_handle_t type =
+        sireflect_try_register_dynamic_struct(registry, desc->name, desc->fields);
+    if (type == SIREFLECT_INVALID_HANDLE) {
+        return 0;
+    }
+
+    for (uint32_t i = 1; i < ecs_world.component_index.components.size; i++) {
+        const ecs_component_info_t *info = ecs_component_index_get((ecs_component_t)i)->info;
+        if (info && info->type == type) {
+            return (ecs_component_t)i;
+        }
+    }
+
+    const sireflect_type_info_t *info = sireflect_type_info(registry, type);
+    sireflect_struct_desc_t reflection = {
+        .name = desc->name,
+        .fields = desc->fields,
+        .size = info->size,
+        .align = info->align,
+    };
+    ecs_component_desc_t component = {
+        .size = info->size,
+        .struct_desc = &reflection,
+    };
+#if SIECS_HAS_NAMES
+    component.name = desc->name;
+#endif
+    ecs_component_t id = 0;
+    return ecs_component_register_type(&id, &component, type);
+}
+
+ecs_component_t ecs_tag_init(const char *name) {
+    return ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
+        .name = name,
+        .fields = "{}",
+    });
+}
+#endif
 
 #if SIECS_HAS_NAMES
 const char *ecs_component_name(ecs_component_t component) {
@@ -6962,43 +7089,16 @@ const char *ecs_component_name(ecs_component_t component) {
         "invalid component id: %u\n",
         component
     );
-    return ecs_component_index_get(component)->name;
+    return ecs_component_index_get(component)->info->name;
 }
 #endif
 
 #define ecs_assert_can_be_updated(entity, ...)                                                     \
     ecs_assert(!ecs_has_cid_owned(entity, ecs_id(Abstract)), __VA_ARGS__)
 
-static inline void ecs_get_owned_cid_location(
-    ecs_entity_t entity,
-    ecs_component_t cid,
-    ecs_entity_record_t **record_out,
-    ecs_table_t **table_out,
-    void **data_out
-) {
-    ecs_entity_record_t *record = ecs_get_record(entity);
+#define entity_edit(entity, table, record)                                                         \
+    ecs_entity_record_t *record = ecs_get_record(entity);                                          \
     ecs_table_t *table = ecs_get_table(record->table_id);
-    uint16_t col_idx = ecs_table_get_column_index(table, cid);
-
-    *record_out = record;
-    *table_out = table;
-    *data_out = ecs_table_component_at_column(table, col_idx, record->table_row);
-}
-
-static inline void ecs_run_on_set(
-    ecs_entity_t entity,
-    ecs_component_t cid,
-    const void *data,
-    const ecs_component_record_t *record,
-    ecs_entity_record_t **entity_record,
-    ecs_table_t **table,
-    void **component_data
-) {
-    if (record->on_set) {
-        record->on_set(entity, cid, data, *component_data);
-        ecs_get_owned_cid_location(entity, cid, entity_record, table, component_data);
-    }
-}
 
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_id_valid(cid);
@@ -7104,7 +7204,6 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
     if (crec->on_remove) {
         crec->on_remove(entity, cid, removed_data);
-        table = ecs_get_table(from_id);
     }
     ecs_emit(table, entity, EcsOnRemove, removed_data);
 
@@ -7124,14 +7223,15 @@ void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_remove_cid_now(entity, cid);
 }
 
-void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
-    ecs_assert_id_valid(cid);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
-
-    const ecs_entity_record_t *record = ecs_get_record(entity);
+/*
+ * Resolve an owned or inherited component from a live entity record.
+ * The record and every base in its type chain are trusted SIECS invariants;
+ * callers perform the public entity validation before entering this helper.
+ */
+static inline void *
+ecs_component_get_from_record(const ecs_entity_record_t *record, ecs_component_t component) {
     ecs_table_t *table = ecs_get_table(record->table_id);
-    uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
+    uint16_t col_idx = ecs_table_column_or_invalid(table, component);
     if (col_idx != UINT16_MAX) {
         return ecs_table_component_at_column(table, col_idx, record->table_row);
     }
@@ -7141,7 +7241,7 @@ void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
         const ecs_entity_record_t *base_record = ecs_get_record(base);
         ecs_table_t *base_table = ecs_get_table(base_record->table_id);
 
-        col_idx = ecs_table_column_or_invalid(base_table, cid);
+        col_idx = ecs_table_column_or_invalid(base_table, component);
         if (col_idx != UINT16_MAX) {
             return ecs_table_component_at_column(base_table, col_idx, base_record->table_row);
         }
@@ -7152,19 +7252,19 @@ void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
     return NULL;
 }
 
-void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) {
+void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
-    const ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_table_t *table = ecs_get_table(record->table_id);
+    return ecs_component_get_from_record(ecs_get_record(entity), cid);
+}
 
-    uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
-    if (col_idx != UINT16_MAX) {
-        return ecs_table_component_at_column(table, col_idx, record->table_row);
-    }
-    return NULL;
+void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) {
+    ecs_assert_id_valid(cid);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(entity);
+    return ecs_component_get_from_record(ecs_get_record(entity), cid);
 }
 
 void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data) {
@@ -7173,15 +7273,17 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
     ecs_assert_is_alive(entity);
 
     ecs_add_cid_now(entity, cid);
+    ecs_defer_begin();
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
-    ecs_entity_record_t *record;
-    ecs_table_t *table;
-    void *dst;
-    ecs_get_owned_cid_location(entity, cid, &record, &table, &dst);
+    entity_edit(entity, table, record);
+    void *dst = ecs_table_get_component(table, cid, record->table_row);
 
-    ecs_run_on_set(entity, cid, data, crec, &record, &table, &dst);
+    if (crec->on_set) {
+        crec->on_set(entity, cid, data, dst);
+    }
     ecs_emit(table, entity, EcsOnSet, data);
     ecs_component_value_copy(crec, dst, data, 1);
+    ecs_defer_end();
 }
 
 void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
@@ -7205,12 +7307,12 @@ void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
     bool had_value = ecs_has_cid_owned(entity, cid);
     ecs_add_cid_now(entity, cid);
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
-    ecs_entity_record_t *record;
-    ecs_table_t *table;
-    void *dst;
-    ecs_get_owned_cid_location(entity, cid, &record, &table, &dst);
+    entity_edit(entity, table, record);
+    void *dst = ecs_table_get_component(table, cid, record->table_row);
 
-    ecs_run_on_set(entity, cid, data, crec, &record, &table, &dst);
+    if (crec->on_set) {
+        crec->on_set(entity, cid, data, dst);
+    }
     ecs_emit(table, entity, EcsOnSet, data);
     if (had_value || crec->ops.ctor) {
         ecs_component_value_move(crec, dst, data, 1);
@@ -7472,10 +7574,9 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
         ecs_first(entity),
         ecs_first(target)
     );
-    ecs_assert(
-        ecs_has_cid_owned(target, ecs_id(Abstract)),
-        "An entity can only inherit from an abstract entity."
-    );
+    if (!ecs_has_cid_owned(target, ecs_id(Abstract))) {
+        ecs_add_cid_now(target, ecs_id(Abstract));
+    }
 
     ecs_entity_record_t *record = ecs_get_record(entity);
     uint16_t from_table_id = record->table_id;
@@ -7501,6 +7602,7 @@ void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
     ecs_assert_is_alive(target);
 
     if (ecs_is_deferred()) {
+        ecs_add_cid(target, ecs_id(Abstract));
         ecs_command_buffer_set_base(entity, target);
         return;
     }
@@ -8522,8 +8624,6 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
 
 #if SIECS_HAS_REST && !defined(SIHTTP_H)
 #endif
-#if SIECS_HAS_META && !defined(SIREFLECT_H)
-#endif
 
 ecs_world_t ecs_world;
 static bool ecs_world_started;
@@ -8558,10 +8658,6 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
 #endif
     ecs_world.delta_time = 0;
     ecs_world.last_time = 0;
-#if SIECS_HAS_META
-    ecs_world.sireflect_registry = sireflect_registry_init();
-#endif
-
     ecs_bootstrap();
 }
 
@@ -8581,10 +8677,6 @@ void ecs_fini(void) {
     ecs_module_index_fini();
     ecs_command_buffer_fini();
     ecs_arena_fini();
-#if SIECS_HAS_META
-    sireflect_registry_fini(ecs_world.sireflect_registry);
-#endif
-
 #if SIECS_HAS_REST
     if (ecs_world.features.rest) {
         sihttp_server_stop(ecs_world.server);
@@ -8867,30 +8959,18 @@ sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req) {
 #include <stdlib.h>
 #include <string.h>
 
-static void ensure_sijson_entity_type(void) {
-    sireflect_register_struct(
-        sijson_default_registry(),
-        &(sireflect_struct_desc_t){
-            .name = "ecs_entity_t",
-            .fields = "{ uint32_t id; uint32_t generation; }",
-            .size = sizeof(ecs_entity_t),
-            .align = _Alignof(ecs_entity_t),
-        }
-    );
-}
-
 bool ecs_rest_entity_component_is_reflected(ecs_component_t component) {
     if (component >= ecs_world.component_index.components.size) {
         return false;
     }
 
     const ecs_component_record_t *record = ecs_component_index_get(component);
-    return record->reflection != SIREFLECT_INVALID_HANDLE && record->reflection_desc != NULL;
+    return record->info->type != SIREFLECT_INVALID_HANDLE && record->reflection_desc != NULL;
 }
 
 static bool validate_component_shape(const ecs_component_record_t *record, sijson_value_t value) {
     const sireflect_fields_t *fields =
-        sireflect_type_fields(ecs_world.sireflect_registry, record->reflection);
+        sireflect_type_fields(sijson_default_registry(), record->info->type);
     if (sijson_type(value) != SIJSON_OBJECT || sijson_object_len(value) != fields->field_count) {
         return false;
     }
@@ -8916,9 +8996,7 @@ static bool validate_component_shape(const ecs_component_record_t *record, sijso
 }
 
 static sijson_value_t component_value_json(const ecs_component_record_t *record, const void *ptr) {
-    ensure_sijson_entity_type();
-
-    sireflect_handle_t ref = SIREFLECT_INVALID_HANDLE;
+    sireflect_handle_t ref = record->info->type;
     char *json = sijson_to_json_impl(&ref, record->reflection_desc, ptr);
     if (!json) {
         return sijson_make_null();
@@ -8932,7 +9010,7 @@ static sijson_value_t component_value_json(const ecs_component_record_t *record,
 sijson_value_t ecs_rest_entity_component_json(ecs_component_t component_id, const void *ptr) {
     const ecs_component_record_t *record = ecs_component_index_get(component_id);
     const sireflect_type_info_t *type =
-        sireflect_type_info(ecs_world.sireflect_registry, record->reflection);
+        sireflect_type_info(sijson_default_registry(), record->info->type);
 
     sijson_value_t component = sijson_make_object();
     sijson_object_set(component, "id", sijson_make_number(component_id));
@@ -8970,7 +9048,7 @@ sihttp_response_t ecs_rest_set_entity_component(
     }
 
     char *json = sijson_stringify(value);
-    sireflect_handle_t ref = SIREFLECT_INVALID_HANDLE;
+    sireflect_handle_t ref = record->info->type;
     void *decoded = json ? sijson_from_json_impl(&ref, record->reflection_desc, json) : NULL;
     free(json);
     if (!decoded || sijson_error()) {
@@ -9002,7 +9080,7 @@ static bool ecs_rest_component_is_reflected(ecs_component_t id) {
     }
 
     const ecs_component_record_t *record = ecs_component_index_get(id);
-    return record->reflection != SIREFLECT_INVALID_HANDLE;
+    return record->info->type != SIREFLECT_INVALID_HANDLE;
 }
 
 static sijson_value_t ecs_rest_field_json(const sireflect_field_info_t *field) {
@@ -9017,9 +9095,9 @@ static sijson_value_t
 ecs_rest_component_json(ecs_component_t id, const ecs_component_record_t *record) {
     sijson_value_t fields_json = sijson_make_array();
     const sireflect_type_info_t *type =
-        sireflect_type_info(ecs_world.sireflect_registry, record->reflection);
+        sireflect_type_info(sijson_default_registry(), record->info->type);
     const sireflect_fields_t *fields =
-        sireflect_type_fields(ecs_world.sireflect_registry, record->reflection);
+        sireflect_type_fields(sijson_default_registry(), record->info->type);
     for (size_t i = 0; i < fields->field_count; i++) {
         sijson_array_push(fields_json, ecs_rest_field_json(&fields->fields[i]));
     }
@@ -9028,7 +9106,7 @@ ecs_rest_component_json(ecs_component_t id, const ecs_component_record_t *record
     sijson_object_set(object, "id", sijson_make_number(id));
     sijson_object_set(object, "name", sijson_make_string(type && type->name ? type->name : ""));
     sijson_object_set(object, "isRelation", sijson_make_bool(record->relation_flags != 0));
-    sijson_object_set(object, "type", sijson_make_number(record->reflection));
+    sijson_object_set(object, "type", sijson_make_number(record->info->type));
     sijson_object_set(object, "fields", fields_json);
 
     return object;
@@ -9060,10 +9138,10 @@ static void ecs_rest_type_set_add(ecs_rest_type_set_t *set, sireflect_handle_t i
 
 static void
 ecs_rest_collect_component_types(ecs_rest_type_set_t *set, const ecs_component_record_t *record) {
-    ecs_rest_type_set_add(set, record->reflection);
+    ecs_rest_type_set_add(set, record->info->type);
 
     const sireflect_fields_t *fields =
-        sireflect_type_fields(ecs_world.sireflect_registry, record->reflection);
+        sireflect_type_fields(sijson_default_registry(), record->info->type);
     for (size_t i = 0; i < fields->field_count; i++) {
         ecs_rest_type_set_add(set, fields->fields[i].type);
     }
@@ -9092,7 +9170,7 @@ static const char *ecs_rest_editor_type(sireflect_handle_t id, const sireflect_t
 
     if (type->kind == sireflect_kind_pointer) {
         const sireflect_type_info_t *element =
-            sireflect_type_info(ecs_world.sireflect_registry, type->element_type);
+            sireflect_type_info(sijson_default_registry(), type->element_type);
         if (element && element->kind == sireflect_kind_char) {
             return "string";
         }
@@ -9103,7 +9181,7 @@ static const char *ecs_rest_editor_type(sireflect_handle_t id, const sireflect_t
 }
 
 static sijson_value_t ecs_rest_type_json(sireflect_handle_t id) {
-    const sireflect_type_info_t *type = sireflect_type_info(ecs_world.sireflect_registry, id);
+    const sireflect_type_info_t *type = sireflect_type_info(sijson_default_registry(), id);
 
     sijson_value_t object = sijson_make_object();
     sijson_object_set(object, "id", sijson_make_number(id));
@@ -9120,7 +9198,7 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req) {
     sijson_clean();
 
     sijson_value_t components = sijson_make_array();
-    for (uint32_t i = 2; i < ecs_world.component_index.components.size; i++) {
+    for (uint32_t i = 1; i < ecs_world.component_index.components.size; i++) {
         if (!ecs_rest_component_is_reflected((ecs_component_t)i)) {
             continue;
         }
@@ -9226,6 +9304,30 @@ void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id) {
 #if SIECS_HAS_META && !defined(SIREFLECT_H)
 #endif
 
+#if SIECS_HAS_META
+static sireflect_struct_desc_t *
+ecs_component_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
+    if (!desc) {
+        return NULL;
+    }
+
+    sireflect_struct_desc_t *copy = malloc(sizeof *copy);
+    if (!copy) {
+        abort();
+    }
+    *copy = (sireflect_struct_desc_t){
+        .name = strdup(desc->name),
+        .fields = strdup(desc->fields),
+        .size = desc->size,
+        .align = desc->align,
+    };
+    if (!copy->name || !copy->fields) {
+        abort();
+    }
+    return copy;
+}
+#endif
+
 void ecs_component_index_register(
     ecs_component_t id,
 #if SIECS_HAS_NAMES
@@ -9239,7 +9341,7 @@ void ecs_component_index_register(
     uint32_t relation_flags
 #if SIECS_HAS_META
     ,
-    sireflect_handle_t reflection,
+    sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
 #endif
 ) {
@@ -9255,10 +9357,28 @@ void ecs_component_index_register(
         return;
     }
 
-    ecs_component_record_t record = {
+    ecs_component_info_t *info = malloc(sizeof *info);
+    if (!info) {
+        abort();
+    }
+    *info = (ecs_component_info_t){
 #if SIECS_HAS_NAMES
-        .name = name,
+        .name = name ? strdup(name) : NULL,
 #endif
+        .size = size,
+        .relation_flags = relation_flags,
+#if SIECS_HAS_META
+        .type = type,
+#endif
+    };
+#if SIECS_HAS_NAMES
+    if (name && !info->name) {
+        abort();
+    }
+#endif
+
+    ecs_component_record_t record = {
+        .info = info,
         .required = NULL,
         .required_count = 0,
         .size = size,
@@ -9269,8 +9389,7 @@ void ecs_component_index_register(
         .relation_flags = relation_flags,
         .tables = { 0 },
 #if SIECS_HAS_META
-        .reflection = reflection,
-        .reflection_desc = reflection_desc,
+        .reflection_desc = ecs_component_reflection_desc_copy(reflection_desc),
 #endif
     };
     sicore_vec_init(&record.tables, sizeof(uint16_t));
@@ -9290,6 +9409,19 @@ void ecs_component_index_fini() {
     ecs_component_record_t *records = ecs_world.component_index.components.data;
 
     for (uint32_t i = 0; i < ecs_world.component_index.components.size; i++) {
+        if (records[i].info) {
+#if SIECS_HAS_NAMES
+            free((char *)records[i].info->name);
+#endif
+            free(records[i].info);
+        }
+#if SIECS_HAS_META
+        if (records[i].reflection_desc) {
+            free((char *)records[i].reflection_desc->name);
+            free((char *)records[i].reflection_desc->fields);
+            free((void *)records[i].reflection_desc);
+        }
+#endif
         free(records[i].required);
         sicore_vec_fini(&records[i].tables);
     }

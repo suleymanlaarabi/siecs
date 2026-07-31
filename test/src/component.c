@@ -30,6 +30,65 @@ ECS_COMPONENT_DECLARE(Velocity, {
 
 ECS_COMPONENT_DEFINE(Velocity);
 
+void component_dynamic_component_layout_and_info(void) {
+    ecs_init();
+
+    ecs_component_t mixed = ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
+        .name = "DynamicMixedComponent",
+        .fields = "{ u8 a; f64 b; u32 c; }",
+    });
+    ecs_component_t tag = ecs_tag_init("DynamicInfoTag");
+
+    test_assert(mixed != 0);
+    test_assert(tag != 0);
+    test_int(mixed, ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
+                        .name = "DynamicMixedComponent",
+                        .fields = "{ u8 a; f64 b; u32 c; }",
+                    }));
+
+    const ecs_component_info_t *mixed_info = ecs_component_info(mixed);
+    const ecs_component_info_t *tag_info = ecs_component_info(tag);
+    test_not_null((void *)mixed_info);
+    test_str("DynamicMixedComponent", mixed_info->name);
+    test_uint(mixed_info->size, 24);
+    test_uint(tag_info->size, 0);
+    test_uint(
+        mixed_info->type,
+        sireflect_type_by_name(sijson_default_registry(), "DynamicMixedComponent")
+    );
+
+    const sireflect_fields_t *fields =
+        sireflect_type_fields(sijson_default_registry(), mixed_info->type);
+    test_uint(fields->field_count, 3);
+    test_uint(fields->fields[0].offset, 0);
+    test_uint(fields->fields[1].offset, 8);
+    test_uint(fields->fields[2].offset, 16);
+    test_null(ecs_component_info(0));
+    test_int(0, ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
+                    .name = "BadDynamicComponent",
+                    .fields = "{ Missing value; }",
+                }));
+
+    ecs_fini();
+}
+
+void component_component_info_is_stable(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(Position);
+
+    const ecs_component_info_t *before = ecs_component_info(ecs_id(Position));
+    for (uint32_t i = 0; i < 512; i++) {
+        ecs_component({ .size = sizeof(uint32_t) });
+    }
+    const ecs_component_info_t *after = ecs_component_info(ecs_id(Position));
+
+    test_ptr(before, after);
+    test_uint(after->size, sizeof(Position));
+    test_str(after->name, "Position");
+
+    ecs_fini();
+}
+
 ECS_COMPONENT_DECLARE(HookComponent, { int value; });
 ECS_COMPONENT_DECLARE(RequiredA, { int value; });
 ECS_COMPONENT_DECLARE(RequiredB, { int value; });
@@ -632,6 +691,22 @@ void component_tag_components_have_no_storage(void) {
     ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
     test_int(0, table->type.data_count);
     test_null(table->data_columns);
+
+    ecs_fini();
+}
+
+void component_try_get_handles_missing_and_inherited(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(Position);
+
+    ecs_entity_t base = ecs_new();
+    ecs_set(base, Position, { 1, 2 });
+    ecs_entity_t entity = ecs_new();
+    ecs_is_a(entity, base);
+
+    ecs_entity_t missing = ecs_new();
+    test_null(ecs_try_get_cid(missing, ecs_id(Position)));
+    test_ptr(ecs_try_get(entity, Position), ecs_get(base, Position));
 
     ecs_fini();
 }

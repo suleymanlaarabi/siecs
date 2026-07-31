@@ -564,6 +564,16 @@ sireflect_register_struct(sireflect_registry_t *reg, const sireflect_struct_desc
 sireflect_handle_t
 sireflect_try_register_struct(sireflect_registry_t *reg, const sireflect_struct_desc_t *desc);
 
+/*
+ * Tries to register a dynamic struct and derives its C layout from the
+ * registered field types. Returns SIREFLECT_INVALID_HANDLE on invalid input.
+ */
+sireflect_handle_t sireflect_try_register_dynamic_struct(
+    sireflect_registry_t *reg,
+    const char *name,
+    const char *fields
+);
+
 /* Finds a type handle by name, or SIREFLECT_INVALID_HANDLE if missing. */
 sireflect_handle_t sireflect_type_by_name(const sireflect_registry_t *reg, const char *name);
 
@@ -1263,6 +1273,26 @@ typedef struct {
 #endif
 } ecs_component_desc_t;
 
+/* Immutable metadata for a registered component. */
+typedef struct {
+#if SIECS_HAS_NAMES
+    const char *name;
+#endif
+    uint64_t size;
+    uint32_t relation_flags;
+#if SIECS_HAS_META
+    sireflect_handle_t type;
+#endif
+} ecs_component_info_t;
+
+#if SIECS_HAS_META
+/* Dynamic reflected component descriptor. Sireflect derives size and alignment. */
+typedef struct {
+    const char *name;
+    const char *fields;
+} ecs_dynamic_component_desc_t;
+#endif
+
 /*
  * Resource hook function type.
  *
@@ -1637,6 +1667,18 @@ SIECS_API ecs_component_t ecs_component_init(const ecs_component_desc_t *desc);
 SIECS_API ecs_component_t
 ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc);
 
+/* Return immutable component metadata stable until ecs_fini(), or NULL for an invalid id. */
+SIECS_API const ecs_component_info_t *ecs_component_info(ecs_component_t component);
+
+#if SIECS_HAS_META
+/* Register a reflected component whose C layout is derived by Sireflect. Returns 0 on error. */
+SIECS_API ecs_component_t
+ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc);
+
+/* Register a zero-sized reflected tag. Returns 0 on error. */
+SIECS_API ecs_component_t ecs_tag_init(const char *name);
+#endif
+
 #if SIECS_HAS_NAMES
 /* Return the registered component name. */
 SIECS_API const char *ecs_component_name(ecs_component_t component);
@@ -1671,7 +1713,10 @@ SIECS_API bool ecs_is_alive(const ecs_entity_t entity);
  * belong to the active world; zero or stale handles return false. */
 SIECS_API bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
 
-/* Add an inheritance link from entity to target; both handles must be live. */
+/*
+ * Add an inheritance link from entity to target; both handles must be live.
+ * The target is made Abstract automatically.
+ */
 SIECS_API void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 
 /* Destroy an alive entity and remove all of its components. */
@@ -1764,7 +1809,10 @@ SIECS_API void *ecs_get_cid(ecs_entity_t entity, ecs_component_t id);
 /* Get a typed component pointer, or NULL if the entity does not have it. */
 #define ecs_try_get(entity, cname) ((cname *)ecs_try_get_cid(entity, ecs_id(cname)))
 
-/* Get a component pointer by id, or NULL if the entity does not have it. */
+/*
+ * Get an owned or inherited component pointer by id.
+ * The entity must be valid and alive; returns NULL only when the component is absent.
+ */
 SIECS_API void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
 
 /*

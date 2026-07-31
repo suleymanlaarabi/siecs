@@ -63,7 +63,7 @@ void ecs_bootstrap() {
 #if SIECS_HAS_META
     // Register the ecs_entity_t struct reflection.
     sireflect_register_struct(
-        ecs_world.sireflect_registry,
+        sijson_default_registry(),
         &(sireflect_struct_desc_t){
             .name = "ecs_entity_t",
             .fields = "{ uint32_t id; uint32_t generation; }",

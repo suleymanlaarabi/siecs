@@ -4,6 +4,7 @@
 #include "helper.h"
 #include "siecs.h"
 #include "storage/component_index.h"
+#include "storage/entity_index.h"
 #include "storage/table_index.h"
 #include "table.h"
 #include "table_migration.h"
@@ -17,36 +18,9 @@
 #define ecs_assert_can_be_updated(entity, ...)                                                     \
     ecs_assert(!ecs_has_cid_owned(entity, ecs_id(Abstract)), __VA_ARGS__)
 
-static inline void ecs_get_owned_cid_location(
-    ecs_entity_t entity,
-    ecs_component_t cid,
-    ecs_entity_record_t **record_out,
-    ecs_table_t **table_out,
-    void **data_out
-) {
-    ecs_entity_record_t *record = ecs_get_record(entity);
+#define entity_edit(entity, table, record)                                                         \
+    ecs_entity_record_t *record = ecs_get_record(entity);                                          \
     ecs_table_t *table = ecs_get_table(record->table_id);
-    uint16_t col_idx = ecs_table_get_column_index(table, cid);
-
-    *record_out = record;
-    *table_out = table;
-    *data_out = ecs_table_component_at_column(table, col_idx, record->table_row);
-}
-
-static inline void ecs_run_on_set(
-    ecs_entity_t entity,
-    ecs_component_t cid,
-    const void *data,
-    const ecs_component_record_t *record,
-    ecs_entity_record_t **entity_record,
-    ecs_table_t **table,
-    void **component_data
-) {
-    if (record->on_set) {
-        record->on_set(entity, cid, data, *component_data);
-        ecs_get_owned_cid_location(entity, cid, entity_record, table, component_data);
-    }
-}
 
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_id_valid(cid);
@@ -152,7 +126,6 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
     if (crec->on_remove) {
         crec->on_remove(entity, cid, removed_data);
-        table = ecs_get_table(from_id);
     }
     ecs_emit(table, entity, EcsOnRemove, removed_data);
 
@@ -172,14 +145,15 @@ void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_remove_cid_now(entity, cid);
 }
 
-void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
-    ecs_assert_id_valid(cid);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
-
-    const ecs_entity_record_t *record = ecs_get_record(entity);
+/*
+ * Resolve an owned or inherited component from a live entity record.
+ * The record and every base in its type chain are trusted SIECS invariants;
+ * callers perform the public entity validation before entering this helper.
+ */
+static inline void *
+ecs_component_get_from_record(const ecs_entity_record_t *record, ecs_component_t component) {
     ecs_table_t *table = ecs_get_table(record->table_id);
-    uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
+    uint16_t col_idx = ecs_table_column_or_invalid(table, component);
     if (col_idx != UINT16_MAX) {
         return ecs_table_component_at_column(table, col_idx, record->table_row);
     }
@@ -189,7 +163,7 @@ void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
         const ecs_entity_record_t *base_record = ecs_get_record(base);
         ecs_table_t *base_table = ecs_get_table(base_record->table_id);
 
-        col_idx = ecs_table_column_or_invalid(base_table, cid);
+        col_idx = ecs_table_column_or_invalid(base_table, component);
         if (col_idx != UINT16_MAX) {
             return ecs_table_component_at_column(base_table, col_idx, base_record->table_row);
         }
@@ -200,19 +174,19 @@ void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
     return NULL;
 }
 
-void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) {
+void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
 
-    const ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_table_t *table = ecs_get_table(record->table_id);
+    return ecs_component_get_from_record(ecs_get_record(entity), cid);
+}
 
-    uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
-    if (col_idx != UINT16_MAX) {
-        return ecs_table_component_at_column(table, col_idx, record->table_row);
-    }
-    return NULL;
+void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) {
+    ecs_assert_id_valid(cid);
+    ecs_assert_entity_valid(entity);
+    ecs_assert_is_alive(entity);
+    return ecs_component_get_from_record(ecs_get_record(entity), cid);
 }
 
 void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data) {
@@ -221,15 +195,17 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
     ecs_assert_is_alive(entity);
 
     ecs_add_cid_now(entity, cid);
+    ecs_defer_begin();
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
-    ecs_entity_record_t *record;
-    ecs_table_t *table;
-    void *dst;
-    ecs_get_owned_cid_location(entity, cid, &record, &table, &dst);
+    entity_edit(entity, table, record);
+    void *dst = ecs_table_get_component(table, cid, record->table_row);
 
-    ecs_run_on_set(entity, cid, data, crec, &record, &table, &dst);
+    if (crec->on_set) {
+        crec->on_set(entity, cid, data, dst);
+    }
     ecs_emit(table, entity, EcsOnSet, data);
     ecs_component_value_copy(crec, dst, data, 1);
+    ecs_defer_end();
 }
 
 void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
@@ -253,12 +229,12 @@ void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
     bool had_value = ecs_has_cid_owned(entity, cid);
     ecs_add_cid_now(entity, cid);
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
-    ecs_entity_record_t *record;
-    ecs_table_t *table;
-    void *dst;
-    ecs_get_owned_cid_location(entity, cid, &record, &table, &dst);
+    entity_edit(entity, table, record);
+    void *dst = ecs_table_get_component(table, cid, record->table_row);
 
-    ecs_run_on_set(entity, cid, data, crec, &record, &table, &dst);
+    if (crec->on_set) {
+        crec->on_set(entity, cid, data, dst);
+    }
     ecs_emit(table, entity, EcsOnSet, data);
     if (had_value || crec->ops.ctor) {
         ecs_component_value_move(crec, dst, data, 1);

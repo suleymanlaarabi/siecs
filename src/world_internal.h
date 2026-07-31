@@ -30,9 +30,6 @@ struct ecs_world_s {
     ecs_module_index_t module_index;
     ecs_resource_index_t resource_index;
     ecs_module_id_t active_module;
-#if SIECS_HAS_META
-    sireflect_registry_t *sireflect_registry;
-#endif
 #if SIECS_HAS_REST
     sihttp_server_t *server;
 #endif

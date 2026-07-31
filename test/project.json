@@ -4,7 +4,7 @@
   "value": {
     "public": false,
     "clangd": true,
-    "use": ["siecs", "sijson", "sicore"]
+    "use": ["siecs", "sijson", "sireflect", "sicore"]
   },
   "lang.c": {
     "c-standard": "c23",
@@ -31,6 +31,8 @@
           "is_a_keeps_local_component_data",
           "is_a_same_target_is_noop",
           "is_a_different_target_creates_different_table",
+          "is_a_marks_base_abstract",
+          "deferred_is_a_marks_base_abstract",
           "is_with_multiple_depth"
         ]
       },
@@ -38,6 +40,8 @@
         "id": "component",
         "testcases": [
           "reflection",
+          "dynamic_component_layout_and_info",
+          "component_info_is_stable",
           "name_returns_registered_name",
           "on_add",
           "lifecycle_ops_are_used_for_storage_moves",
@@ -53,6 +57,7 @@
           "same_local_type_with_different_base_creates_different_tables",
           "type_add_remove_preserves_base",
           "tag_components_have_no_storage",
+          "try_get_handles_missing_and_inherited",
           "table_type_tracks_data_columns",
           "table_index_resize_preserves_type_hashes",
           "table_resolves_recursive_base_components"

@@ -515,6 +515,12 @@ typedef struct {
     uint32_t relation_flags;
 } ecs_component_desc_t;
 
+/* Immutable metadata for a registered component. */
+typedef struct {
+    uint64_t size;
+    uint32_t relation_flags;
+} ecs_component_info_t;
+
 /*
  * Resource hook function type.
  *
@@ -861,6 +867,9 @@ SIECS_API ecs_component_t ecs_component_init(const ecs_component_desc_t *desc);
 SIECS_API ecs_component_t
 ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc);
 
+/* Return immutable component metadata stable until ecs_fini(), or NULL for an invalid id. */
+SIECS_API const ecs_component_info_t *ecs_component_info(ecs_component_t component);
+
 /* Create a new alive entity in world. world must not be NULL. */
 SIECS_API ecs_entity_t ecs_new(void);
 
@@ -882,7 +891,10 @@ SIECS_API bool ecs_is_alive(const ecs_entity_t entity);
  * belong to the active world; zero or stale handles return false. */
 SIECS_API bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
 
-/* Add an inheritance link from entity to target; both handles must be live. */
+/*
+ * Add an inheritance link from entity to target; both handles must be live.
+ * The target is made Abstract automatically.
+ */
 SIECS_API void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 
 /* Destroy an alive entity and remove all of its components. */
@@ -975,7 +987,10 @@ SIECS_API void *ecs_get_cid(ecs_entity_t entity, ecs_component_t id);
 /* Get a typed component pointer, or NULL if the entity does not have it. */
 #define ecs_try_get(entity, cname) ((cname *)ecs_try_get_cid(entity, ecs_id(cname)))
 
-/* Get a component pointer by id, or NULL if the entity does not have it. */
+/*
+ * Get an owned or inherited component pointer by id.
+ * The entity must be valid and alive; returns NULL only when the component is absent.
+ */
 SIECS_API void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
 
 /*

@@ -3,6 +3,9 @@
 #if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"
 #endif
+#if SIECS_HAS_META && !defined(SIJSON_H)
+#include "sijson.h"
+#endif
 #include "storage/component_index.h"
 #include "utils.h"
 #include "world_internal.h"
@@ -13,8 +16,6 @@
 
 static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
     uint32_t id = ecs_world.component_index.components.size;
-    if (id == 0)
-        id = 1;
     ecs_assert(id + count <= UINT16_MAX, "component id overflow\n");
     return id;
 }
@@ -98,30 +99,25 @@ void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) 
             ecs_remove_cid(entities[i], component - 1);
         }
     }
-
 }
 
-ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
+static ecs_component_t ecs_component_register_type(
+    ecs_component_t *id,
+    const ecs_component_desc_t *desc
+#if SIECS_HAS_META
+    ,
+    sireflect_handle_t type
+#endif
+) {
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
 
-    if (*id != 0 && *id < ecs_world.component_index.components.size) {
+    if (*id != 0) {
         const ecs_component_record_t *existing = ecs_component_index_get(*id);
         if (existing->tables.data) {
             return *id;
         }
     }
-
-#if SIECS_HAS_META
-    sireflect_handle_t reflection = SIREFLECT_INVALID_HANDLE;
-    if (ECS_LIKELY(desc->struct_desc)) {
-        reflection = sireflect_try_register_struct(ecs_world.sireflect_registry, desc->struct_desc);
-
-        if (ECS_UNLIKELY(reflection == SIREFLECT_INVALID_HANDLE)) {
-            puts(sireflect_error());
-        }
-    }
-#endif
 
     if (ECS_UNLIKELY(desc->relation_flags & EcsRelationTarget)) {
         if (*id == 0) {
@@ -142,7 +138,7 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
             desc->relation_flags
 #if SIECS_HAS_META
             ,
-            reflection,
+            type,
             desc->struct_desc
 #endif
         );
@@ -188,7 +184,7 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
             0
 #if SIECS_HAS_META
             ,
-            reflection,
+            type,
             desc->struct_desc
 #endif
         );
@@ -196,10 +192,76 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
     }
 }
 
+ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
+#if SIECS_HAS_META
+    sireflect_handle_t type = SIREFLECT_INVALID_HANDLE;
+    if (ECS_LIKELY(desc && desc->struct_desc)) {
+        type = sireflect_try_register_struct(sijson_default_registry(), desc->struct_desc);
+        if (ECS_UNLIKELY(type == SIREFLECT_INVALID_HANDLE)) {
+            puts(sireflect_error());
+        }
+    }
+    return ecs_component_register_type(id, desc, type);
+#else
+    return ecs_component_register_type(id, desc);
+#endif
+}
+
 ecs_component_t ecs_component_init(const ecs_component_desc_t *desc) {
     ecs_component_t id = 0;
     return ecs_component_register(&id, desc);
 }
+
+const ecs_component_info_t *ecs_component_info(ecs_component_t component) {
+    if (component == 0 || component >= ecs_world.component_index.components.size) {
+        return NULL;
+    }
+    return ecs_component_index_get(component)->info;
+}
+
+#if SIECS_HAS_META
+ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc) {
+    sireflect_registry_t *registry = sijson_default_registry();
+    sireflect_handle_t type =
+        sireflect_try_register_dynamic_struct(registry, desc->name, desc->fields);
+    if (type == SIREFLECT_INVALID_HANDLE) {
+        return 0;
+    }
+
+    
+
+    for (uint32_t i = 1; i < ecs_world.component_index.components.size; i++) {
+        const ecs_component_info_t *info = ecs_component_index_get((ecs_component_t)i)->info;
+        if (info && info->type == type) {
+            return (ecs_component_t)i;
+        }
+    }
+
+    const sireflect_type_info_t *info = sireflect_type_info(registry, type);
+    sireflect_struct_desc_t reflection = {
+        .name = desc->name,
+        .fields = desc->fields,
+        .size = info->size,
+        .align = info->align,
+    };
+    ecs_component_desc_t component = {
+        .size = info->size,
+        .struct_desc = &reflection,
+    };
+#if SIECS_HAS_NAMES
+    component.name = desc->name;
+#endif
+    ecs_component_t id = 0;
+    return ecs_component_register_type(&id, &component, type);
+}
+
+ecs_component_t ecs_tag_init(const char *name) {
+    return ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
+        .name = name,
+        .fields = "{}",
+    });
+}
+#endif
 
 #if SIECS_HAS_NAMES
 const char *ecs_component_name(ecs_component_t component) {
@@ -208,6 +270,6 @@ const char *ecs_component_name(ecs_component_t component) {
         "invalid component id: %u\n",
         component
     );
-    return ecs_component_index_get(component)->name;
+    return ecs_component_index_get(component)->info->name;
 }
 #endif

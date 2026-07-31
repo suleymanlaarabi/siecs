@@ -8,9 +8,7 @@
 #include <stdint.h>
 
 typedef struct {
-#if SIECS_HAS_NAMES
-    const char *name;
-#endif
+    ecs_component_info_t *info;
     uint16_t *required;
     uint32_t required_count;
     uint32_t size;
@@ -21,7 +19,6 @@ typedef struct {
     uint32_t relation_flags;
     sicore_vec_t tables; // uint16_t
 #if SIECS_HAS_META
-    sireflect_handle_t reflection;
     const sireflect_struct_desc_t *reflection_desc;
 #endif
 } ecs_component_record_t;
@@ -43,7 +40,7 @@ void ecs_component_index_register(
     uint32_t relation_flags
 #if SIECS_HAS_META
     ,
-    sireflect_handle_t reflection,
+    sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
 #endif
 );

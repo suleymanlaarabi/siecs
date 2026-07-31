@@ -18,10 +18,14 @@ void entity_is_a_moves_entity_to_type_with_base(void);
 void entity_is_a_keeps_local_component_data(void);
 void entity_is_a_same_target_is_noop(void);
 void entity_is_a_different_target_creates_different_table(void);
+void entity_is_a_marks_base_abstract(void);
+void entity_deferred_is_a_marks_base_abstract(void);
 void entity_is_with_multiple_depth(void);
 
 // Testsuite 'component'
 void component_reflection(void);
+void component_dynamic_component_layout_and_info(void);
+void component_component_info_is_stable(void);
 void component_name_returns_registered_name(void);
 void component_on_add(void);
 void component_lifecycle_ops_are_used_for_storage_moves(void);
@@ -37,6 +41,7 @@ void component_many_tags_swap_remove_preserves_moved_entity_data(void);
 void component_same_local_type_with_different_base_creates_different_tables(void);
 void component_type_add_remove_preserves_base(void);
 void component_tag_components_have_no_storage(void);
+void component_try_get_handles_missing_and_inherited(void);
 void component_table_type_tracks_data_columns(void);
 void component_table_index_resize_preserves_type_hashes(void);
 void component_table_resolves_recursive_base_components(void);
@@ -162,6 +167,14 @@ bake_test_case entity_testcases[] = {
         entity_is_a_different_target_creates_different_table
     },
     {
+        "is_a_marks_base_abstract",
+        entity_is_a_marks_base_abstract
+    },
+    {
+        "deferred_is_a_marks_base_abstract",
+        entity_deferred_is_a_marks_base_abstract
+    },
+    {
         "is_with_multiple_depth",
         entity_is_with_multiple_depth
     }
@@ -171,6 +184,14 @@ bake_test_case component_testcases[] = {
     {
         "reflection",
         component_reflection
+    },
+    {
+        "dynamic_component_layout_and_info",
+        component_dynamic_component_layout_and_info
+    },
+    {
+        "component_info_is_stable",
+        component_component_info_is_stable
     },
     {
         "name_returns_registered_name",
@@ -231,6 +252,10 @@ bake_test_case component_testcases[] = {
     {
         "tag_components_have_no_storage",
         component_tag_components_have_no_storage
+    },
+    {
+        "try_get_handles_missing_and_inherited",
+        component_try_get_handles_missing_and_inherited
     },
     {
         "table_type_tracks_data_columns",
@@ -549,14 +574,14 @@ static bake_test_suite suites[] = {
         "entity",
         NULL,
         NULL,
-        10,
+        12,
         entity_testcases
     },
     {
         "component",
         NULL,
         NULL,
-        19,
+        22,
         component_testcases
     },
     {
