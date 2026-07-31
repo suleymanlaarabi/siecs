@@ -9,6 +9,34 @@ Include the public API with:
 #include <siecs.h>
 ```
 
+See [API stability and documentation policy](/reference/stability/) for
+preconditions, edge-case conventions, experimental APIs, and the compatibility
+policy applied to every declaration.
+
+## C++ wrapper
+
+The typed wrapper is included by `siecs/cpp.hpp` (or automatically by
+`siecs.h` in C++ builds). Its public types
+are `ecs::entity`, `ecs::query`, `ecs::query_handle`, `ecs::system`,
+`ecs::observer<T>`, `ecs::observer_event`, `ecs::module_ref<T>`,
+`ecs::resource_ref<T>`, `ecs::resource_hooks<T>`, and
+`ecs::component_hooks<T>`. Free functions in `ecs` mirror world lifecycle
+(`init`, `fini`, `quit`, `progress`, `run`, `run_phase`), registration
+(`component`, `relation`, `relation_source`, `component_requires`), resources
+(`set_resource`, `resource`, `try_resource`, `has_resource`,
+`remove_resource`), modules (`import`, `module`), observers (`observe`,
+`event`, `trigger`), and systems (`run_system`, `enable_system`,
+`disable_system`).
+
+All typed handles are non-owning values: the world must be initialized, and a
+handle must not be used after `fini` or entity destruction. `entity::get` and
+`resource` require the value to exist; use `try_get`/`try_resource` when
+absence is valid. `entity::set` and `set_resource` copy lvalues and move
+rvalues, invoking the registered C++ lifecycle operations. Callback arguments
+are valid only for the callback invocation. Template constraints and
+overloads are documented in the corresponding public header; `detail::`
+names are implementation details and are not part of the API.
+
 ## Core Types
 
 | Type | Meaning |

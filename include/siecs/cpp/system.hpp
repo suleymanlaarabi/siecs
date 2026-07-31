@@ -22,6 +22,7 @@ template <typename Callback> static void system_callback_dtor(uintptr_t user_dat
 
 } // namespace detail
 
+/** Fluent typed system builder; the resulting C system owns its callback. */
 class system : protected query {
 #if SIECS_HAS_NAMES
     const char *name;
@@ -32,31 +33,37 @@ class system : protected query {
 
   public:
 #if SIECS_HAS_NAMES
+    /** Construct a system descriptor with an optional diagnostic name. */
     explicit system(const char *name = "unnamed") : name(name) {}
 #else
     explicit system(const char *name = nullptr) { (void)name; }
 #endif
 
+    /** Add required filter terms to the system query. */
     template <typename... T> system &require() {
         query::require<T...>();
         return *this;
     }
 
+    /** Add optional component terms to the system query. */
     template <typename... T> system &optional() {
         query::optional<T...>();
         return *this;
     }
 
+    /** Add exclusion terms to the system query. */
     template <typename... T> system &exclude() {
         query::exclude<T...>();
         return *this;
     }
 
+    /** Select the phase in which the system is scheduled. */
     system &phase(ecs_phase_t _phase) {
         this->_phase = _phase;
         return *this;
     }
 
+    /** Add a same-phase dependency; capacity is `ECS_SYSTEM_AFTER_CAPACITY`. */
     system &after(ecs_system_id_t dependency) {
         for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY; i++) {
             if (_after[i] == 0) {
@@ -68,11 +75,13 @@ class system : protected query {
         return *this;
     }
 
+    /** Set whether the system starts disabled when registered. */
     system &disabled(bool value = true) {
         _disabled = value;
         return *this;
     }
 
+    /** Register the callback and return the owned system id. */
     template <typename F> ecs_system_id_t each(F &&func) {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
@@ -96,8 +105,11 @@ class system : protected query {
     }
 };
 
+/** Run one enabled system immediately. */
 inline void run_system(ecs_system_id_t id) { ecs_run_system(id); }
+/** Enable a registered system. */
 inline void enable_system(ecs_system_id_t id) { ecs_system_enable(id); }
+/** Disable a registered system. */
 inline void disable_system(ecs_system_id_t id) { ecs_system_disable(id); }
 
 } // namespace ecs

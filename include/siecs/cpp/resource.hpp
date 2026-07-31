@@ -8,6 +8,7 @@
 
 namespace ecs {
 
+/** Optional callbacks invoked around replacement/removal of resource `T`. */
 template <typename T> struct resource_hooks {
     using on_set_t = void (*)(const T &);
     using on_remove_t = void (*)(const T &);
@@ -16,43 +17,57 @@ template <typename T> struct resource_hooks {
     on_remove_t on_remove = nullptr;
 };
 
+/** Non-owning, typed handle to one per-world resource value. */
 template <typename T> class resource_ref {
     using value_type = std::remove_cv_t<T>;
     ecs_resource_t _id;
 
   public:
+    /** Adopt a registered resource id; the world owns the storage. */
     explicit resource_ref(ecs_resource_t id) noexcept : _id(id) {}
 
     template <typename U = T>
         requires(!std::is_const_v<U>)
+    /** Copy `value` into the resource; the resource must be writable. */
     void set(const value_type &value) const {
         ecs_set_resource_rid(_id, &value);
     }
 
     template <typename U = T>
         requires(!std::is_const_v<U>)
+    /** Move `value` into the resource, consuming its source state. */
     void set(value_type &&value) const {
         ecs_move_resource_rid(_id, &value);
     }
 
+    /** Return storage or null when the resource is absent. */
     [[nodiscard]] T *try_get() const noexcept {
         return static_cast<T *>(ecs_try_resource_rid(_id));
     }
 
+    /** Return storage; calling this when absent is invalid. */
     [[nodiscard]] T &get() const { return *static_cast<T *>(ecs_resource_rid(_id)); }
+    /** Return whether the resource currently exists. */
     [[nodiscard]] bool has() const { return ecs_has_resource_rid(_id); }
+    /** Remove the resource if present. */
     void remove() const { ecs_remove_resource_rid(_id); }
+    /** Return the underlying resource id. */
     [[nodiscard]] ecs_resource_t id() const noexcept { return _id; }
 };
 
+/** Borrowed resource argument passed to typed system/observer callbacks. */
 template <typename T> class res {
     T *_ptr = nullptr;
 
   public:
+    /** Construct from callback-owned storage; `ptr` must not be null. */
     explicit res(T *ptr) noexcept : _ptr(ptr) { assert(ptr != nullptr); }
 
+    /** Access the borrowed resource member. */
     [[nodiscard]] T *operator->() const noexcept { return _ptr; }
+    /** Access the borrowed resource value. */
     [[nodiscard]] T &operator*() const noexcept { return *_ptr; }
+    /** Return the borrowed pointer without transferring ownership. */
     [[nodiscard]] T *get() const noexcept { return _ptr; }
 };
 
@@ -94,6 +109,7 @@ template <typename T> static void resource_on_remove(const void *ptr) {
 
 } // namespace detail
 
+/** Register `T` and return a typed resource handle, installing hooks once. */
 template <typename T>
 static ecs_resource_t ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) {
     using type = std::remove_cv_t<T>;
@@ -120,10 +136,12 @@ static ecs_resource_t ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<
     return rid;
 }
 
+/** Create a typed resource handle and lazily register its descriptor. */
 template <typename T> resource_ref<T> resource_handle() {
     return resource_ref<T>(ecs_cpp_resource_id<T>());
 }
 
+/** Create a typed resource handle with lifecycle hooks. */
 template <typename T> resource_ref<T> resource_handle(const resource_hooks<std::remove_cv_t<T>> &hooks) {
     return resource_ref<T>(ecs_cpp_resource_id<T>(&hooks));
 }

@@ -15,6 +15,7 @@
 
 namespace ecs {
 
+/** Lifecycle callbacks for a typed component; callbacks do not own references. */
 template <typename T> struct component_hooks {
     using on_set_t = void (*)(ecs_entity_t, const T &, T &);
     using on_remove_t = void (*)(ecs_entity_t, T &);

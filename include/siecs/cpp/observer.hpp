@@ -11,24 +11,34 @@
 
 namespace ecs {
 
+/** Event tag for component additions. */
 struct OnAdd {};
+/** Event tag for component updates. */
 struct OnSet {};
+/** Event tag for component removals. */
 struct OnRemove {};
 
+/** Typed, callback-lifetime view of an observer event. */
 class observer_event {
     ecs_observer_event_t *_event;
 
   public:
+    /** Wrap a non-null C event payload; the wrapper does not own it. */
     explicit observer_event(ecs_observer_event_t *event) noexcept : _event(event) {}
 
+    /** Return the entity that emitted the event. */
     [[nodiscard]] entity target() const noexcept { return entity::from(_event->entity); }
+    /** Return the event id. */
     [[nodiscard]] ecs_event_t id() const noexcept { return _event->event; }
+    /** Return opaque user data supplied when the observer was created. */
     [[nodiscard]] uintptr_t user_data() const noexcept { return _event->user_data; }
 
+    /** Interpret user data as a borrowed pointer of type `T`. */
     template <typename T> [[nodiscard]] T *user_data() const noexcept {
         return reinterpret_cast<T *>(_event->user_data);
     }
 
+    /** Interpret trigger payload as a borrowed const pointer of type `T`. */
     template <typename T> [[nodiscard]] const T *trigger_data() const noexcept {
         return static_cast<const T *>(_event->trigger_data);
     }
@@ -106,22 +116,27 @@ void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
 
 } // namespace detail
 
+/** Typed observer builder; callbacks must be stateless and default constructible. */
 template <typename T> class observer : public query {
     uintptr_t _user_data = 0;
 
   public:
+    /** Start an empty observer query for event tag `T`. */
     observer() = default;
 
+    /** Set opaque callback user data; the pointer is borrowed, not deleted. */
     observer &user_data(uintptr_t value) {
         _user_data = value;
         return *this;
     }
 
+    /** Store a typed user-data pointer for callback lifetime. */
     template <typename U> observer &user_data(U *value) {
         _user_data = reinterpret_cast<uintptr_t>(value);
         return *this;
     }
 
+    /** Register the callback and return its observer id. */
     template <typename F> ecs_observer_id_t each(F &&) {
         using callback = std::remove_cvref_t<F>;
         static_assert(

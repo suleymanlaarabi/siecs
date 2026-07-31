@@ -14,15 +14,21 @@
 
 namespace ecs {
 
+/** Nullable view for an optional query field; it never owns `T`. */
 template <typename T> class optional {
     T *_ptr = nullptr;
 
   public:
+    /** Construct from the current iterator field pointer, possibly null. */
     explicit optional(T *ptr) noexcept : _ptr(ptr) {}
 
+    /** Return true when the optional field exists in the current table. */
     [[nodiscard]] explicit operator bool() const noexcept { return _ptr != nullptr; }
+    /** Return the field pointer, or null when absent. */
     [[nodiscard]] T *get() const noexcept { return _ptr; }
+    /** Dereference the present field; caller must test the optional first. */
     [[nodiscard]] T *operator->() const noexcept { return _ptr; }
+    /** Dereference the present field; caller must test the optional first. */
     [[nodiscard]] T &operator*() const noexcept { return *_ptr; }
 };
 
@@ -271,6 +277,7 @@ inline void append_callback_terms(ecs_query_desc_t &desc, uint16_t &term_index) 
 
 } // namespace detail
 
+/** Move-only RAII owner of a persistent query id. */
 class query_handle {
     ecs_query_id_t _id = 0;
     ecs_query_desc_t _base_desc{};
@@ -299,19 +306,24 @@ class query_handle {
     }
 
   public:
+    /** Adopt an existing query id; the handle destroys it on scope exit. */
     explicit query_handle(ecs_query_id_t id) noexcept : _id(id) {}
+    /** Build and own a query from its descriptor and term count. */
     query_handle(const ecs_query_desc_t &desc, uint16_t term_index)
         : _id(ecs_query_init(&desc)),
           _base_desc(desc),
           _base_term_index(term_index),
           _has_base_desc(true) {}
+    /** Destroy the owned query, if any. */
     ~query_handle() {
         if (_id != 0) ecs_query_fini(_id);
     }
 
+    /** Query handles cannot be copied because they own a C query id. */
     query_handle(const query_handle &) = delete;
     query_handle &operator=(const query_handle &) = delete;
 
+    /** Transfer query ownership from `other`; `other` becomes empty. */
     query_handle(query_handle &&other) noexcept
         : _id(other._id),
           _base_desc(other._base_desc),
@@ -325,6 +337,7 @@ class query_handle {
         other._has_active_desc = false;
     }
 
+    /** Replace this query by moving ownership from `other`. */
     query_handle &operator=(query_handle &&other) noexcept {
         if (this != &other) {
             if (_id != 0) ecs_query_fini(_id);
@@ -342,8 +355,10 @@ class query_handle {
         return *this;
     }
 
+    /** Return the owned query id, or zero for an empty/moved-from handle. */
     [[nodiscard]] ecs_query_id_t id() const noexcept { return _id; }
 
+    /** Iterate matching entities; callback arguments must be valid references. */
     template <typename F> void each(F &&func) {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
@@ -372,38 +387,47 @@ class query_handle {
     }
 };
 
+/** Fluent typed query builder; `build_handle` owns the resulting query. */
 class query {
   protected:
     ecs_query_desc_t desc{};
     uint16_t term_index = 0;
 
   public:
+    /** Construct an empty query descriptor. */
     query() = default;
 
+    /** Add required, non-returned filter terms. */
     template <typename... T> query &require() {
         detail::append_terms<T...>(desc, term_index, EcsFilter);
         return *this;
     }
 
+    /** Add optional read/write component terms. */
     template <typename... T> query &optional() {
         detail::append_terms<T...>(desc, term_index, EcsInOutOptional);
         return *this;
     }
 
+    /** Add terms that must be absent from matching tables. */
     template <typename... T> query &exclude() {
         detail::append_terms<T...>(desc, term_index, EcsNot);
         return *this;
     }
 
+    /** Restrict matches to entities inheriting from `target`. */
     query &is_a(ecs_entity_t target) {
         desc.is_a = target;
         return *this;
     }
 
+    /** Build a raw query id; caller must eventually call `ecs_query_fini`. */
     ecs_query_id_t build() { return ecs_query_init(&desc); }
 
+    /** Build a move-only RAII query handle. */
     query_handle build_handle() { return query_handle(desc, term_index); }
 
+    /** Build, iterate, and destroy a temporary query around `func`. */
     template <typename F> void each(F &&func) {
         using args = typename function_traits<std::remove_reference_t<F>>::args_tuple;
 
@@ -418,6 +442,7 @@ class query {
         ecs_query_fini(qid);
     }
 
+    /** Return the first match, or `entity::null()` when no table matches. */
     entity first() {
         ecs_query_id_t qid = this->build();
         ecs_iter_t it = ecs_query_iter(qid);

@@ -1091,15 +1091,24 @@ extern "C" {
 /* Public handle types. A zero id is reserved internally and is not user data.
  */
 typedef uint64_t ecs_entity_t;
+/* Component id in the active world's component namespace. */
 typedef uint16_t ecs_component_t;
+/* Opaque query id returned by ecs_query_init. */
 typedef uint16_t ecs_query_id_t;
+/* Opaque system id returned by ecs_system_init. */
 typedef uint16_t ecs_system_id_t;
+/* Observer event id; builtin values are EcsOnAdd/EcsOnRemove/EcsOnSet. */
 typedef uint16_t ecs_event_t;
+/* Opaque module id returned by ecs_module_init. */
 typedef uint16_t ecs_module_id_t;
+/* Resource id in the separate resource namespace. */
 typedef uint16_t ecs_resource_t;
+/* Observer id returned by ecs_observer_init. */
 typedef uint32_t ecs_observer_id_t;
 
+/* Maximum number of terms accepted by a query descriptor. */
 #define ECS_QUERY_TERM_CAPACITY 16
+/* Maximum number of explicit same-phase system dependencies. */
 #define ECS_SYSTEM_AFTER_CAPACITY 16
 
 /*
@@ -1161,6 +1170,7 @@ typedef struct {
     const void *trigger_data;
 } ecs_observer_event_t;
 
+/* Observer callback; event storage is valid only during the callback. */
 typedef void (*ecs_observer_callback_t)(ecs_observer_event_t *event);
 
 /* Called after a component slot is added and zero-initialized. */
@@ -1198,10 +1208,14 @@ typedef void (*ecs_component_on_remove_t)(
  * for ctor, no-op for dtor, and memcpy for copy/move operations.
  */
 typedef void (*ecs_type_ctor_t)(void *dst, uint32_t count);
+/* Destroy count live values at ptr. */
 typedef void (*ecs_type_dtor_t)(void *ptr, uint32_t count);
+/* Copy-construct or assign count values from src to dst. */
 typedef void (*ecs_type_copy_t)(void *dst, const void *src, uint32_t count);
+/* Move-construct or assign count values, consuming src. */
 typedef void (*ecs_type_move_t)(void *dst, void *src, uint32_t count);
 
+/* Iterator storage returned by ecs_query_iter; ptrs/entities are batch views. */
 typedef struct {
     ecs_type_ctor_t ctor;
     ecs_type_dtor_t dtor;
@@ -1320,31 +1334,49 @@ typedef struct {
  *   });
  */
 #ifdef __cplusplus
+/* Match a required component and expose it as a read-only field. */
 #define ecs_in(cname)                                                                              \
     ecs_query_term_t { ecs_id(cname), EcsIn }
+/* Match a required component and expose it as a writable field. */
 #define ecs_out(cname)                                                                             \
     ecs_query_term_t { ecs_id(cname), EcsOut }
+/* Match a required component and expose it as a read/write field. */
 #define ecs_inout(cname)                                                                           \
     ecs_query_term_t { ecs_id(cname), EcsInOut }
+/* Match an optional component as a read-only field, or NULL when absent. */
 #define ecs_in_optional(cname)                                                                     \
     ecs_query_term_t { ecs_id(cname), EcsInOptional }
+/* Match an optional component as a read/write field, or NULL when absent. */
 #define ecs_inout_optional(cname)                                                                  \
     ecs_query_term_t { ecs_id(cname), EcsInOutOptional }
+/* Match a component without exposing a field pointer. */
 #define ecs_filter(cname)                                                                          \
     ecs_query_term_t { ecs_id(cname), EcsFilter }
+/* Exclude entities that contain the component. */
 #define ecs_not(cname)                                                                             \
     ecs_query_term_t { ecs_id(cname), EcsNot }
 #else
+/* C spellings of the typed query term helpers. */
 #define ecs_in(cname) ((ecs_query_term_t){ ecs_id(cname), EcsIn })
+/* Writable required field. */
 #define ecs_out(cname) ((ecs_query_term_t){ ecs_id(cname), EcsOut })
+/* Read/write required field. */
 #define ecs_inout(cname) ((ecs_query_term_t){ ecs_id(cname), EcsInOut })
+/* Optional read-only field. */
 #define ecs_in_optional(cname) ((ecs_query_term_t){ ecs_id(cname), EcsInOptional })
+/* Deprecated compatibility alias for ecs_in_optional; use ecs_in_optional. */
 #define ecs_optional ecs_in_optional
+/* Optional read/write field. */
 #define ecs_inout_optional(cname) ((ecs_query_term_t){ ecs_id(cname), EcsInOutOptional })
+/* Filter-only required component. */
 #define ecs_filter(cname) ((ecs_query_term_t){ ecs_id(cname), EcsFilter })
+/* Excluded component. */
 #define ecs_not(cname) ((ecs_query_term_t){ ecs_id(cname), EcsNot })
+/* Experimental reverse-relation source field; storage layout may change. */
 #define ecs_in_source(cname) ((ecs_query_term_t){ ecs_source(cname), EcsIn })
+/* Experimental reverse-relation exclusion; storage layout may change. */
 #define ecs_not_source(cname) ((ecs_query_term_t){ ecs_source(cname), EcsNot })
+/* Experimental reverse-relation filter; storage layout may change. */
 #define ecs_filter_source(cname) ((ecs_query_term_t){ ecs_source(cname), EcsFilter })
 #endif
 
@@ -1381,6 +1413,7 @@ SIECS_API void ecs_quit(void);
  *   ECS_COMPONENT_DECLARE(Position, { float x; float y; });
  */
 #if SIECS_HAS_META
+/* Declare a component type and its descriptor in a public header. */
 #define ECS_COMPONENT_DECLARE(cname, ...)                                                          \
     SIJSON_DECLARE(cname, __VA_ARGS__)                                                             \
     extern ecs_component_t ecs_id(cname);                                                          \
@@ -1392,6 +1425,7 @@ SIECS_API void ecs_quit(void);
         cname                                                                                      \
     ) = { .name = #cname, .fields = "{}", .size = 0, .align = 1 };
 #else
+/* Declare a component type and its descriptor without reflection metadata. */
 #define ECS_COMPONENT_DECLARE(cname, ...)                                                          \
     typedef struct cname cname;                                                                    \
     struct cname __VA_ARGS__;                                                                      \
@@ -1521,6 +1555,7 @@ SIECS_API ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc);
 /* Enable systems and observers recorded during module import. */
 SIECS_API void ecs_module_enable(ecs_module_id_t module);
 
+/* Resolve a module id from stable id storage; returns 0 when not imported. */
 SIECS_API ecs_module_id_t ecs_module_find(const ecs_module_id_t *id);
 
 #if SIECS_HAS_NAMES
@@ -1544,6 +1579,7 @@ SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
  *   ECS_RELATION_DECLARE(ParentOf);
  *   ECS_RELATION_DEFINE(ParentOf, EcsRelationCascadeDelete);
  */
+/* Define a relation descriptor and its stable id storage. */
 #define ECS_RELATION_DEFINE(cname, flags)                                                          \
     ecs_component_desc_t ecs_id(cname##_desc) = {                                                  \
         SIECS_NAME_INIT(#cname).size = sizeof(cname),                                              \
@@ -1551,6 +1587,7 @@ SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
     };                                                                                             \
     ecs_component_t ecs_id(cname) = 0
 
+/* Declare and define a relation in one translation unit. */
 #define ECS_RELATION(cname, flags)                                                                 \
     ECS_RELATION_DECLARE(cname);                                                                   \
     ECS_RELATION_DEFINE(cname, flags)
@@ -1604,6 +1641,7 @@ ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc);
 /* Return the registered component name. */
 SIECS_API const char *ecs_component_name(ecs_component_t component);
 
+/* Look up a live entity by its registered name; returns 0 when absent. */
 ecs_entity_t ecs_lookup(const char *key);
 #endif
 
@@ -1629,8 +1667,11 @@ SIECS_API void ecs_defer_end(void);
  */
 SIECS_API bool ecs_is_alive(const ecs_entity_t entity);
 
-bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
+/* Return whether entity is target or inherits from target. Both handles must
+ * belong to the active world; zero or stale handles return false. */
+SIECS_API bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
 
+/* Add an inheritance link from entity to target; both handles must be live. */
 SIECS_API void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 
 /* Destroy an alive entity and remove all of its components. */
@@ -1664,6 +1705,7 @@ SIECS_API void ecs_kill(ecs_entity_t entity);
         for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)                              \
             for (uint32_t i = 0; i < it.count; i++)
 
+/* Iterate entity ids instead of exposing component fields. */
 #define ecs_query_entities(entity, ...)                                                            \
     for (ecs_query_id_t _q = ecs_query({ { __VA_ARGS__ } }); _q; ecs_query_fini(_q), _q = 0)       \
         for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)                              \
@@ -1700,6 +1742,7 @@ SIECS_API void ecs_remove_cid(ecs_entity_t entity, ecs_component_t id);
 
 /* Return whether an alive entity has a component id. */
 SIECS_API bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id);
+/* Return whether the entity owns the component rather than inheriting it. */
 bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id);
 
 /*
@@ -1740,6 +1783,8 @@ SIECS_API void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
  * if needed.
  */
 SIECS_API void ecs_set_cid(ecs_entity_t entity, ecs_component_t id, const void *data);
+/* Move a component value into an entity, consuming data with the registered
+ * move operation. data must point to an initialized value of the component. */
 SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data);
 
 /*
@@ -1760,13 +1805,16 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
     extern ecs_resource_t ecs_id(rname);                                                           \
     extern ecs_resource_desc_t ecs_id(rname##_desc)
 
+/* Define a resource descriptor and its stable id storage. */
 #define ECS_RESOURCE_DEFINE(rname, ...)                                                            \
     ecs_resource_desc_t ecs_id(rname##_desc) = { SIECS_NAME_INIT(#rname).size = sizeof(rname),     \
                                                  __VA_ARGS__ };                                    \
     ecs_resource_t ecs_id(rname) = 0
 
+/* Register a declared resource in the active world. */
 #define ECS_RESOURCE_REGISTER(rname) ecs_resource_register(&ecs_id(rname), &ecs_id(rname##_desc))
 
+/* Declare and define a resource in one translation unit. */
 #define ECS_RESOURCE(rname, ...)                                                                   \
     ECS_RESOURCE_DECLARE(rname, __VA_ARGS__);                                                      \
     ECS_RESOURCE_DEFINE(rname)
@@ -1781,10 +1829,12 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
 
 /* Get a world resource. The resource must exist. */
 #define ecs_get_resource(rname) ((rname *)ecs_resource_rid(ecs_id(rname)))
+/* Get a const world resource. The resource must exist. */
 #define ecs_get_resource_read(rname) ((const rname *)ecs_resource_rid(ecs_id(rname)))
 
 /* Get a world resource, or NULL if it does not exist. */
 #define ecs_try_get_resource(rname) ((rname *)ecs_try_resource_rid(ecs_id(rname)))
+/* Get a const world resource, or NULL if it does not exist. */
 #define ecs_try_get_resource_read(rname) ((const rname *)ecs_try_resource_rid(ecs_id(rname)))
 
 /* Return whether a world resource exists. */
@@ -1793,25 +1843,39 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
 /* Remove a world resource if it exists. */
 #define ecs_remove_resource(rname) ecs_remove_resource_rid(ecs_id(rname))
 
-/* Backward-compatible resource aliases. Prefer the ecs_get_resource names in
- * new code. */
+/* Deprecated compatibility aliases. Prefer ecs_get_resource* in new code;
+ * removal requires a major release. */
 #define ecs_resource(rname) ecs_get_resource(rname)
+/* Deprecated read-only alias for ecs_get_resource_read. */
 #define ecs_resource_read(rname) ecs_get_resource_read(rname)
+/* Deprecated nullable alias for ecs_try_get_resource. */
 #define ecs_try_resource(rname) ecs_try_get_resource(rname)
+/* Deprecated nullable read-only alias for ecs_try_get_resource_read. */
 #define ecs_try_resource_read(rname) ecs_try_get_resource_read(rname)
 
+/* Register a resource descriptor in the active world and return its id. */
 SIECS_API ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
 #if SIECS_HAS_NAMES
+/* Find a registered resource by name; returns 0 when absent. */
 SIECS_API ecs_resource_t ecs_resource_find(const char *name);
+/* Return the registered resource name; pointer remains owned by the world. */
 SIECS_API const char *ecs_resource_name(ecs_resource_t resource);
 #endif
+/* Return whether a resource id is registered in the active world. */
 SIECS_API bool ecs_resource_is_registered_rid(ecs_resource_t id);
+/* Register a resource using stable id storage; returns the resulting id. */
 SIECS_API ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc);
+/* Copy or move data into a registered resource. */
 SIECS_API void ecs_set_resource_rid(ecs_resource_t id, const void *data);
+/* Move an initialized resource value into storage and consume the source. */
 SIECS_API void ecs_move_resource_rid(ecs_resource_t id, void *data);
+/* Return a resource pointer (resource must exist), or NULL for try access. */
 SIECS_API void *ecs_resource_rid(ecs_resource_t id);
+/* Return resource storage or NULL when the resource is absent. */
 SIECS_API void *ecs_try_resource_rid(ecs_resource_t id);
+/* Test/remove a resource in the active world. */
 SIECS_API bool ecs_has_resource_rid(const ecs_resource_t id);
+/* Remove a resource and run its destructor/hook; no-op when absent. */
 SIECS_API void ecs_remove_resource_rid(ecs_resource_t id);
 
 /*
@@ -1827,7 +1891,9 @@ SIECS_API void ecs_with(ecs_component_t component, ecs_component_t require);
 
 /* Builtin observer events. */
 #define EcsOnAdd 0
+/* Fired after a component is removed. */
 #define EcsOnRemove 1
+/* Fired when a component is set or replaced. */
 #define EcsOnSet 2
 
 /*
@@ -1853,6 +1919,7 @@ typedef struct {
  *       .callback = on_position_set,
  *   });
  */
+/* Create an observer from a compound-literal descriptor. */
 #define ecs_observer(...) ecs_observer_init(&(ecs_observer_desc_t)__VA_ARGS__)
 
 /* Allocate and return a custom event id for ecs_observer_trigger. */
@@ -1870,7 +1937,9 @@ SIECS_API ecs_event_t ecs_event_register(ecs_event_t *id);
 /* Create an observer. desc->callback must not be NULL. */
 SIECS_API ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc);
 
+/* Enable or disable an observer; disabled observers remain registered. */
 SIECS_API void ecs_observer_enable(ecs_observer_id_t id);
+/* Disable an observer without destroying its registration. */
 SIECS_API void ecs_observer_disable(ecs_observer_id_t id);
 
 /*
@@ -1895,6 +1964,7 @@ typedef enum {
     EcsFieldShared,
 } ecs_field_kind_t;
 
+/* Iterator storage returned by ecs_query_iter; ptrs/entities are batch views. */
 typedef struct {
     uint32_t count;
     ecs_entity_t *entities;
@@ -1918,6 +1988,7 @@ typedef struct {
  */
 SIECS_API ecs_iter_t ecs_query_iter(ecs_query_id_t query_id);
 
+/* Return the number of entities currently matching a query. */
 SIECS_API uint32_t ecs_query_count(ecs_query_id_t query_id);
 
 /*
@@ -1941,10 +2012,12 @@ static inline ecs_field_kind_t ecs_field_kind(const ecs_iter_t *it, uint16_t fie
     return kind;
 }
 
+/* Return the current field pointer; call only after ecs_iter_next() succeeds. */
 static inline void *ecs_field(ecs_iter_t *it, uint16_t field_index) {
     return it->ptrs[field_index];
 }
 
+/* Return whether a current field is inherited/shared rather than owned. */
 static inline bool ecs_field_is_shared(ecs_iter_t *it, uint16_t field_index) {
     return ecs_field_kind(it, field_index) == EcsFieldShared;
 }
@@ -1965,10 +2038,14 @@ typedef enum {
     EcsPhaseCount,
 } ecs_phase_t;
 
-/* Backward-compatible phase aliases. Prefer the Ecs* names in new code. */
+/* Deprecated compatibility aliases. Prefer Ecs* names in new code; removal
+ * requires a major release. */
 #define OnPreUpdate EcsPreUpdate
+/* Deprecated alias for EcsOnUpdate. */
 #define OnUpdate EcsOnUpdate
+/* Deprecated alias for EcsPostUpdate. */
 #define OnPostUpdate EcsPostUpdate
+/* Deprecated alias for EcsOnRender. */
 #define OnRender EcsOnRender
 
 /*
@@ -2002,6 +2079,7 @@ typedef struct {
  *       .callback = Move,
  *   });
  */
+/* Create a system from a compound-literal descriptor. */
 #define ecs_system(...) ecs_system_init(&(ecs_system_desc_t)__VA_ARGS__)
 
 /* Register a system and return its id. System id 0 is reserved. */
@@ -2027,6 +2105,7 @@ SIECS_API void ecs_run_system(ecs_system_id_t system);
 /* Enable or disable a system. Disabled systems stay registered but do not run.
  */
 SIECS_API void ecs_system_enable(ecs_system_id_t system);
+/* Disable a system without unregistering it. */
 SIECS_API void ecs_system_disable(ecs_system_id_t system);
 
 #ifdef __cplusplus
@@ -2056,6 +2135,7 @@ SIECS_API void ecs_system_disable(ecs_system_id_t system);
 
 namespace ecs {
 
+/** Return the compiler-derived stable display name used for registration. */
 template <class T> consteval std::string_view type_name() {
     constexpr std::string_view func = __PRETTY_FUNCTION__;
     constexpr std::string_view key = "T = ";
@@ -2084,6 +2164,7 @@ template <class T> consteval std::string_view type_name() {
 
 namespace ecs {
 
+/** Lifecycle callbacks for a typed component; callbacks do not own references. */
 template <typename T> struct component_hooks {
     using on_set_t = void (*)(ecs_entity_t, const T &, T &);
     using on_remove_t = void (*)(ecs_entity_t, T &);
@@ -2298,6 +2379,7 @@ class defer_scope {
 
 } // namespace detail
 
+/** Small non-owning handle to an entity in the active world. */
 class entity {
     ecs_entity_t _entity = 0;
 
@@ -2307,18 +2389,23 @@ class entity {
     }
 
   public:
+    /** Construct the null entity handle. */
     entity() noexcept = default;
 
+    /** Wrap a raw id without validating it; use `is_alive()` to validate. */
     explicit entity(ecs_entity_t entity) noexcept : _entity(entity) {}
 
 #if SIECS_HAS_NAMES
+    /** Look up a named live entity; returns null when names are disabled/missing. */
     static inline entity lookup(const std::string &name) {
         return entity::from(ecs_lookup(name.c_str()));
     }
 #endif
 
+    /** Create a new live entity in the active world. */
     static entity create() noexcept { return entity(ecs_new()); }
 
+    /** Look up or create a named entity; name storage is copied by the world. */
     static entity create(const char *name) {
 #if SIECS_HAS_NAMES
         entity value = lookup(name);
@@ -2340,13 +2427,19 @@ class entity {
         return value;
     }
 
+    /** Wrap an id without changing world state. */
     static entity from(ecs_entity_t id) noexcept { return entity(id); }
+    /** Return the null entity handle. */
     static entity null() noexcept { return from(static_cast<ecs_entity_t>(0)); }
+    /** Return the raw entity id. */
     [[nodiscard]] ecs_entity_t id() const noexcept { return _entity; }
+    /** Explicit conversion used when calling low-level C APIs. */
     operator ecs_entity_t() const noexcept { return _entity; }
 
+    /** Test whether this handle is non-null (not whether it is alive). */
     operator bool() { return _entity != 0; }
 
+    /** Add one or more registered components; returns this handle for chaining. */
     template <typename... T>
         requires(sizeof...(T) > 0)
     entity add() {
@@ -2359,11 +2452,13 @@ class entity {
         return *this;
     }
 
+    /** Mark this entity abstract; application mutation of abstract bases is restricted. */
     entity abstract() {
         ecs_add(_entity, Abstract);
         return *this;
     }
 
+    /** Remove one or more components; missing components are ignored. */
     template <typename... T>
         requires(sizeof...(T) > 0)
     entity remove() {
@@ -2376,23 +2471,27 @@ class entity {
         return *this;
     }
 
+    /** Test that all requested components are present on this entity. */
     template <typename... T>
         requires(sizeof...(T) > 0)
     [[nodiscard]] bool has() const {
         return (ecs_has_cid(_entity, detail::ecs_cpp_component_id<T>()) && ...);
     }
 
+    /** Copy a component value into this entity, adding the component if absent. */
     template <typename T> entity set(const T &value) {
         ecs_set_cid(_entity, detail::ecs_cpp_component_id<T>(), &value);
         return *this;
     }
 
+    /** Move a component value into this entity, consuming the source value. */
     template <typename T> entity set(T &&value) {
         using type = std::remove_cvref_t<T>;
         ecs_move_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
         return *this;
     }
 
+    /** Set multiple component values inside one deferred mutation scope. */
     template <typename First, typename Second, typename... Rest>
     entity set(First &&first, Second &&second, Rest &&...rest) {
         detail::defer_scope scope;
@@ -2402,63 +2501,80 @@ class entity {
         return *this;
     }
 
+    /** Return mutable component storage, or null when absent. */
     template <typename T> [[nodiscard]] T *try_get() {
         return static_cast<T *>(ecs_try_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
     }
 
+    /** Return mutable component storage; the component must be present. */
     template <typename T> [[nodiscard]] T &get() {
         return *static_cast<T *>(ecs_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
     }
 
+    /** Return const component storage, or null when absent. */
     template <typename T> [[nodiscard]] const T *try_get() const {
         return static_cast<const T *>(ecs_try_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
     }
 
+    /** Return const component storage; the component must be present. */
     template <typename T> [[nodiscard]] const T &get() const {
         return *static_cast<const T *>(ecs_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
     }
 
+    /** Return whether the id is live in the active world. */
     [[nodiscard]] bool is_alive() const { return _entity != 0 && ecs_is_alive(_entity); }
+    /** Kill this entity; subsequent component access is invalid. */
     void kill() { ecs_kill(_entity); }
 
+    /** Add an inheritance link to `target`. */
     entity is_a(entity target) {
         ecs_is_a(_entity, target.id());
         return *this;
     }
 
+    /** Add an inheritance link to the singleton entity for `T`. */
     template <typename T> entity is_a() {
         ecs_is_a(_entity, ecs::entity::create<T>());
         return *this;
     }
 
+    /** C-compatible overload of `is_a`; target must be a live entity. */
     entity is_a(ecs_entity_t target) {
         ecs_is_a(_entity, target);
         return *this;
     }
 
+    /** Test whether this entity is or inherits from the singleton `T`. */
     template <typename T> bool is() { return ecs_is(_entity, ecs::entity::typed<T>()); }
 
+    /** Test whether this entity is or inherits from `target`. */
     [[nodiscard]] bool is(entity target) const { return ecs_is(_entity, target._entity); }
 
+    /** Set the builtin `ChildOf` relation to `parent`. */
     entity child_of(entity parent) {
         ChildOf relation{ parent.id() };
         ecs_set_cid(_entity, ecs_id(ChildOf), &relation);
         return *this;
     }
 
+    /** Remove `Disabled`, allowing the entity in default queries. */
     entity enable() {
         ecs_remove(_entity, Disabled);
         return *this;
     }
 
+    /** Add `Disabled`, excluding the entity from default queries. */
     entity disable() {
         ecs_add(_entity, Disabled);
         return *this;
     }
 
+    /** Return whether the entity is not marked `Disabled`. */
     [[nodiscard]] bool is_enabled() const { return !has<Disabled>(); }
+    /** Return whether the entity is marked `Disabled`. */
     [[nodiscard]] bool is_disabled() const { return has<Disabled>(); }
 
+    /** Return/create the singleton entity associated with type `T`. */
     template <typename T> static entity create(const char *name = nullptr) {
         ecs_entity_t &id = by_type<T>();
         if (id == 0 || !ecs_is_alive(id)) {
@@ -2473,6 +2589,7 @@ class entity {
         return from(id);
     }
 
+    /** Return the currently cached singleton entity for `T`, or null. */
     template <typename T> static entity typed() { return from(by_type<T>()); }
 };
 
@@ -2484,26 +2601,34 @@ class entity {
 
 namespace ecs {
 
+/** Non-owning handle to a module registered in the active world. */
 template <typename T> class module_ref {
     ecs_module_id_t _id = 0;
 
   public:
+    /** Construct an empty module handle. */
     constexpr module_ref() noexcept = default;
+    /** Adopt an id returned by the C module API; zero is empty. */
     constexpr explicit module_ref(ecs_module_id_t id) noexcept : _id(id) {}
 
+    /** Return the underlying module id. */
     [[nodiscard]] constexpr ecs_module_id_t id() const noexcept { return _id; }
+    /** Test whether this handle refers to a module. */
     [[nodiscard]] constexpr explicit operator bool() const noexcept { return _id != 0; }
 
+    /** Enable systems and observers captured during module import. */
     void enable() const noexcept {
         assert(_id != 0);
         ecs_module_enable(_id);
     }
 
+    /** Disable systems and observers captured during module import. */
     void disable() const noexcept {
         assert(_id != 0);
         ecs_module_disable(_id);
     }
 
+    /** Return whether this module is enabled; requires a non-empty handle. */
     [[nodiscard]] bool is_enabled() const noexcept {
         assert(_id != 0);
         return ecs_module_is_enabled(_id);
@@ -2589,6 +2714,7 @@ namespace ecs {
 
 namespace ecs {
 
+/** Optional callbacks invoked around replacement/removal of resource `T`. */
 template <typename T> struct resource_hooks {
     using on_set_t = void (*)(const T &);
     using on_remove_t = void (*)(const T &);
@@ -2597,43 +2723,57 @@ template <typename T> struct resource_hooks {
     on_remove_t on_remove = nullptr;
 };
 
+/** Non-owning, typed handle to one per-world resource value. */
 template <typename T> class resource_ref {
     using value_type = std::remove_cv_t<T>;
     ecs_resource_t _id;
 
   public:
+    /** Adopt a registered resource id; the world owns the storage. */
     explicit resource_ref(ecs_resource_t id) noexcept : _id(id) {}
 
     template <typename U = T>
         requires(!std::is_const_v<U>)
+    /** Copy `value` into the resource; the resource must be writable. */
     void set(const value_type &value) const {
         ecs_set_resource_rid(_id, &value);
     }
 
     template <typename U = T>
         requires(!std::is_const_v<U>)
+    /** Move `value` into the resource, consuming its source state. */
     void set(value_type &&value) const {
         ecs_move_resource_rid(_id, &value);
     }
 
+    /** Return storage or null when the resource is absent. */
     [[nodiscard]] T *try_get() const noexcept {
         return static_cast<T *>(ecs_try_resource_rid(_id));
     }
 
+    /** Return storage; calling this when absent is invalid. */
     [[nodiscard]] T &get() const { return *static_cast<T *>(ecs_resource_rid(_id)); }
+    /** Return whether the resource currently exists. */
     [[nodiscard]] bool has() const { return ecs_has_resource_rid(_id); }
+    /** Remove the resource if present. */
     void remove() const { ecs_remove_resource_rid(_id); }
+    /** Return the underlying resource id. */
     [[nodiscard]] ecs_resource_t id() const noexcept { return _id; }
 };
 
+/** Borrowed resource argument passed to typed system/observer callbacks. */
 template <typename T> class res {
     T *_ptr = nullptr;
 
   public:
+    /** Construct from callback-owned storage; `ptr` must not be null. */
     explicit res(T *ptr) noexcept : _ptr(ptr) { assert(ptr != nullptr); }
 
+    /** Access the borrowed resource member. */
     [[nodiscard]] T *operator->() const noexcept { return _ptr; }
+    /** Access the borrowed resource value. */
     [[nodiscard]] T &operator*() const noexcept { return *_ptr; }
+    /** Return the borrowed pointer without transferring ownership. */
     [[nodiscard]] T *get() const noexcept { return _ptr; }
 };
 
@@ -2675,6 +2815,7 @@ template <typename T> static void resource_on_remove(const void *ptr) {
 
 } // namespace detail
 
+/** Register `T` and return a typed resource handle, installing hooks once. */
 template <typename T>
 static ecs_resource_t ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) {
     using type = std::remove_cv_t<T>;
@@ -2701,10 +2842,12 @@ static ecs_resource_t ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<
     return rid;
 }
 
+/** Create a typed resource handle and lazily register its descriptor. */
 template <typename T> resource_ref<T> resource_handle() {
     return resource_ref<T>(ecs_cpp_resource_id<T>());
 }
 
+/** Create a typed resource handle with lifecycle hooks. */
 template <typename T> resource_ref<T> resource_handle(const resource_hooks<std::remove_cv_t<T>> &hooks) {
     return resource_ref<T>(ecs_cpp_resource_id<T>(&hooks));
 }
@@ -2751,15 +2894,21 @@ template <typename Args> inline auto make_resources() {
 
 namespace ecs {
 
+/** Nullable view for an optional query field; it never owns `T`. */
 template <typename T> class optional {
     T *_ptr = nullptr;
 
   public:
+    /** Construct from the current iterator field pointer, possibly null. */
     explicit optional(T *ptr) noexcept : _ptr(ptr) {}
 
+    /** Return true when the optional field exists in the current table. */
     [[nodiscard]] explicit operator bool() const noexcept { return _ptr != nullptr; }
+    /** Return the field pointer, or null when absent. */
     [[nodiscard]] T *get() const noexcept { return _ptr; }
+    /** Dereference the present field; caller must test the optional first. */
     [[nodiscard]] T *operator->() const noexcept { return _ptr; }
+    /** Dereference the present field; caller must test the optional first. */
     [[nodiscard]] T &operator*() const noexcept { return *_ptr; }
 };
 
@@ -3008,6 +3157,7 @@ inline void append_callback_terms(ecs_query_desc_t &desc, uint16_t &term_index) 
 
 } // namespace detail
 
+/** Move-only RAII owner of a persistent query id. */
 class query_handle {
     ecs_query_id_t _id = 0;
     ecs_query_desc_t _base_desc{};
@@ -3036,19 +3186,24 @@ class query_handle {
     }
 
   public:
+    /** Adopt an existing query id; the handle destroys it on scope exit. */
     explicit query_handle(ecs_query_id_t id) noexcept : _id(id) {}
+    /** Build and own a query from its descriptor and term count. */
     query_handle(const ecs_query_desc_t &desc, uint16_t term_index)
         : _id(ecs_query_init(&desc)),
           _base_desc(desc),
           _base_term_index(term_index),
           _has_base_desc(true) {}
+    /** Destroy the owned query, if any. */
     ~query_handle() {
         if (_id != 0) ecs_query_fini(_id);
     }
 
+    /** Query handles cannot be copied because they own a C query id. */
     query_handle(const query_handle &) = delete;
     query_handle &operator=(const query_handle &) = delete;
 
+    /** Transfer query ownership from `other`; `other` becomes empty. */
     query_handle(query_handle &&other) noexcept
         : _id(other._id),
           _base_desc(other._base_desc),
@@ -3062,6 +3217,7 @@ class query_handle {
         other._has_active_desc = false;
     }
 
+    /** Replace this query by moving ownership from `other`. */
     query_handle &operator=(query_handle &&other) noexcept {
         if (this != &other) {
             if (_id != 0) ecs_query_fini(_id);
@@ -3079,8 +3235,10 @@ class query_handle {
         return *this;
     }
 
+    /** Return the owned query id, or zero for an empty/moved-from handle. */
     [[nodiscard]] ecs_query_id_t id() const noexcept { return _id; }
 
+    /** Iterate matching entities; callback arguments must be valid references. */
     template <typename F> void each(F &&func) {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
@@ -3109,38 +3267,47 @@ class query_handle {
     }
 };
 
+/** Fluent typed query builder; `build_handle` owns the resulting query. */
 class query {
   protected:
     ecs_query_desc_t desc{};
     uint16_t term_index = 0;
 
   public:
+    /** Construct an empty query descriptor. */
     query() = default;
 
+    /** Add required, non-returned filter terms. */
     template <typename... T> query &require() {
         detail::append_terms<T...>(desc, term_index, EcsFilter);
         return *this;
     }
 
+    /** Add optional read/write component terms. */
     template <typename... T> query &optional() {
         detail::append_terms<T...>(desc, term_index, EcsInOutOptional);
         return *this;
     }
 
+    /** Add terms that must be absent from matching tables. */
     template <typename... T> query &exclude() {
         detail::append_terms<T...>(desc, term_index, EcsNot);
         return *this;
     }
 
+    /** Restrict matches to entities inheriting from `target`. */
     query &is_a(ecs_entity_t target) {
         desc.is_a = target;
         return *this;
     }
 
+    /** Build a raw query id; caller must eventually call `ecs_query_fini`. */
     ecs_query_id_t build() { return ecs_query_init(&desc); }
 
+    /** Build a move-only RAII query handle. */
     query_handle build_handle() { return query_handle(desc, term_index); }
 
+    /** Build, iterate, and destroy a temporary query around `func`. */
     template <typename F> void each(F &&func) {
         using args = typename function_traits<std::remove_reference_t<F>>::args_tuple;
 
@@ -3155,6 +3322,7 @@ class query {
         ecs_query_fini(qid);
     }
 
+    /** Return the first match, or `entity::null()` when no table matches. */
     entity first() {
         ecs_query_id_t qid = this->build();
         ecs_iter_t it = ecs_query_iter(qid);
@@ -3179,24 +3347,34 @@ class query {
 
 namespace ecs {
 
+/** Event tag for component additions. */
 struct OnAdd {};
+/** Event tag for component updates. */
 struct OnSet {};
+/** Event tag for component removals. */
 struct OnRemove {};
 
+/** Typed, callback-lifetime view of an observer event. */
 class observer_event {
     ecs_observer_event_t *_event;
 
   public:
+    /** Wrap a non-null C event payload; the wrapper does not own it. */
     explicit observer_event(ecs_observer_event_t *event) noexcept : _event(event) {}
 
+    /** Return the entity that emitted the event. */
     [[nodiscard]] entity target() const noexcept { return entity::from(_event->entity); }
+    /** Return the event id. */
     [[nodiscard]] ecs_event_t id() const noexcept { return _event->event; }
+    /** Return opaque user data supplied when the observer was created. */
     [[nodiscard]] uintptr_t user_data() const noexcept { return _event->user_data; }
 
+    /** Interpret user data as a borrowed pointer of type `T`. */
     template <typename T> [[nodiscard]] T *user_data() const noexcept {
         return reinterpret_cast<T *>(_event->user_data);
     }
 
+    /** Interpret trigger payload as a borrowed const pointer of type `T`. */
     template <typename T> [[nodiscard]] const T *trigger_data() const noexcept {
         return static_cast<const T *>(_event->trigger_data);
     }
@@ -3274,22 +3452,27 @@ void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
 
 } // namespace detail
 
+/** Typed observer builder; callbacks must be stateless and default constructible. */
 template <typename T> class observer : public query {
     uintptr_t _user_data = 0;
 
   public:
+    /** Start an empty observer query for event tag `T`. */
     observer() = default;
 
+    /** Set opaque callback user data; the pointer is borrowed, not deleted. */
     observer &user_data(uintptr_t value) {
         _user_data = value;
         return *this;
     }
 
+    /** Store a typed user-data pointer for callback lifetime. */
     template <typename U> observer &user_data(U *value) {
         _user_data = reinterpret_cast<uintptr_t>(value);
         return *this;
     }
 
+    /** Register the callback and return its observer id. */
     template <typename F> ecs_observer_id_t each(F &&) {
         using callback = std::remove_cvref_t<F>;
         static_assert(
@@ -3341,6 +3524,7 @@ template <typename Callback> static void system_callback_dtor(uintptr_t user_dat
 
 } // namespace detail
 
+/** Fluent typed system builder; the resulting C system owns its callback. */
 class system : protected query {
 #if SIECS_HAS_NAMES
     const char *name;
@@ -3351,31 +3535,37 @@ class system : protected query {
 
   public:
 #if SIECS_HAS_NAMES
+    /** Construct a system descriptor with an optional diagnostic name. */
     explicit system(const char *name = "unnamed") : name(name) {}
 #else
     explicit system(const char *name = nullptr) { (void)name; }
 #endif
 
+    /** Add required filter terms to the system query. */
     template <typename... T> system &require() {
         query::require<T...>();
         return *this;
     }
 
+    /** Add optional component terms to the system query. */
     template <typename... T> system &optional() {
         query::optional<T...>();
         return *this;
     }
 
+    /** Add exclusion terms to the system query. */
     template <typename... T> system &exclude() {
         query::exclude<T...>();
         return *this;
     }
 
+    /** Select the phase in which the system is scheduled. */
     system &phase(ecs_phase_t _phase) {
         this->_phase = _phase;
         return *this;
     }
 
+    /** Add a same-phase dependency; capacity is `ECS_SYSTEM_AFTER_CAPACITY`. */
     system &after(ecs_system_id_t dependency) {
         for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY; i++) {
             if (_after[i] == 0) {
@@ -3387,11 +3577,13 @@ class system : protected query {
         return *this;
     }
 
+    /** Set whether the system starts disabled when registered. */
     system &disabled(bool value = true) {
         _disabled = value;
         return *this;
     }
 
+    /** Register the callback and return the owned system id. */
     template <typename F> ecs_system_id_t each(F &&func) {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
@@ -3415,8 +3607,11 @@ class system : protected query {
     }
 };
 
+/** Run one enabled system immediately. */
 inline void run_system(ecs_system_id_t id) { ecs_run_system(id); }
+/** Enable a registered system. */
 inline void enable_system(ecs_system_id_t id) { ecs_system_enable(id); }
+/** Disable a registered system. */
 inline void disable_system(ecs_system_id_t id) { ecs_system_disable(id); }
 
 } // namespace ecs
@@ -3427,6 +3622,7 @@ inline void disable_system(ecs_system_id_t id) { ecs_system_disable(id); }
 
 namespace ecs {
 
+/** Synchronize builtin component ids after the C world is initialized. */
 inline void init_cpp_state() {
     detail::component_type<Disabled>::id = ecs_id(Disabled);
 #if SIECS_HAS_NAMES
@@ -3435,38 +3631,51 @@ inline void init_cpp_state() {
     detail::component_type<ChildOf>::id = ecs_id(ChildOf);
     detail::component_type<Abstract>::id = ecs_id(Abstract);
 }
+/** Initialize the process-wide active ECS world and C++ builtin ids. */
 inline void init() {
     ecs_init();
     init_cpp_state();
 }
+/** Initialize the active world with feature settings; `features` is read now. */
 inline void init(const ecs_world_feat_desc_t &features) {
     ecs_init_w_features(&features);
     init_cpp_state();
 }
+/** Destroy the active world; all entity, query, module and resource handles expire. */
 inline void fini() { ecs_fini(); }
+/** Request that future progress calls stop. */
 inline void quit() { ecs_quit(); }
+/** Run one frame; returns false after `quit()` has been requested. */
 inline bool progress() { return ecs_progress(); }
+/** Run all enabled systems in phase order without frame pacing. */
 inline void run() { ecs_run(); }
+/** Run enabled systems from the specified phase. */
 inline void run_phase(ecs_phase_t phase) { ecs_run_phase(phase); }
 
+/** Register or return the component id associated with `T`. */
 template <typename T> inline ecs_component_t component() {
     return detail::ecs_cpp_component_id<T>();
 }
 
+/** Register a component and install its lifecycle hooks before first use. */
 template <typename T> inline ecs_component_t component(const component_hooks<T> &hooks) {
     return detail::ecs_cpp_component_id<T>(0, &hooks);
 }
 
+/** Declare that adding `Component` implicitly adds `Required` first. */
 template <typename Component, typename Required> inline void component_requires() {
     ecs_with(component<Component>(), component<Required>());
 }
 
+/** Register `T` as a relation with the requested target/source behavior. */
 template <typename T> inline ecs_component_t relation(ecs_relation_flags_t flags = {}) {
     return detail::ecs_cpp_component_id<T>(flags);
 }
 
+/** Experimental: return reverse/source storage id for relation `T`. */
 template <typename T> inline ecs_component_t relation_source() { return relation<T>() + 1; }
 
+/** Copy an lvalue or move an rvalue into the per-world resource of type `T`. */
 template <typename T> inline void set_resource(T &&value) {
     using type = std::remove_cvref_t<T>;
     if constexpr (std::is_lvalue_reference_v<T>) {
@@ -3476,27 +3685,32 @@ template <typename T> inline void set_resource(T &&value) {
     }
 }
 
+/** Return a mutable resource reference; a value must have been set first. */
 template <typename T> [[nodiscard]] inline T &resource() {
     using type = std::remove_cv_t<T>;
     return *static_cast<T *>(ecs_resource_rid(ecs_cpp_resource_id<type>()));
 }
 
+/** Return the registered resource id for `T`, creating registration if needed. */
 template <typename T> [[nodiscard]] inline ecs_resource_t resource_id() {
     return ecs_cpp_resource_id<std::remove_cv_t<T>>();
 }
 
+/** Return a resource pointer, or null when `T` is not registered/present. */
 template <typename T> [[nodiscard]] inline T *try_resource() {
     using type = std::remove_cv_t<T>;
     ecs_resource_t id = ecs_cpp_try_resource_id<type>();
     return id ? static_cast<T *>(ecs_try_resource_rid(id)) : nullptr;
 }
 
+/** Test whether a resource of type `T` is present in the active world. */
 template <typename T> [[nodiscard]] inline bool has_resource() {
     using type = std::remove_cv_t<T>;
     ecs_resource_t id = ecs_cpp_try_resource_id<type>();
     return id && ecs_has_resource_rid(id);
 }
 
+/** Remove resource `T` if present; no-op when it has not been registered. */
 template <typename T> inline void remove_resource() {
     using type = std::remove_cv_t<T>;
     ecs_resource_t id = ecs_cpp_try_resource_id<type>();
@@ -3510,6 +3724,7 @@ template <typename T> static void import_module_callback(const void *ptr) {
     module.import();
 }
 
+/** Import a module instance once; subsequent calls return the cached module. */
 template <typename T> [[nodiscard]] module_ref<T> import(T module) {
     if (detail::module_type<T>::id != 0) {
         return module_ref<T>(detail::module_type<T>::id);
@@ -3527,24 +3742,30 @@ template <typename T> [[nodiscard]] module_ref<T> import(T module) {
     return module_ref<T>(ecs_module_init(&desc));
 }
 
+/** Construct and import a module from arguments satisfying its import contract. */
 template <typename T, typename... Args>
     requires detail::module_importable<T> && detail::module_list_initializable<T, Args...>
 [[nodiscard]] module_ref<T> import(Args &&...args) {
     return import(T{ std::forward<Args>(args)... });
 }
 
+/** Return the cached module handle for `T`, or an empty handle. */
 template <typename T> [[nodiscard]] module_ref<T> module() noexcept {
     return module_ref<T>(detail::module_type<T>::id);
 }
 
+/** Build an observer for event tag `T`. */
 template <typename T> [[nodiscard]] observer<T> observe() { return observer<T>(); }
 
+/** Return the stable event id associated with event tag `T`. */
 template <typename T> [[nodiscard]] ecs_event_t event() { return detail::ecs_cpp_event_id<T>(); }
 
+/** Trigger event `T` for a live entity; callback data is borrowed for the call. */
 template <typename T> inline void trigger(entity value, const void *data = nullptr) {
     ecs_observer_trigger(value.id(), event<T>(), data);
 }
 
+/** Experimental: create an empty entity with an `IsA` link; this is not a deep clone. */
 inline entity instantiate(entity base) { return entity::create().is_a(base); }
 
 } // namespace ecs
