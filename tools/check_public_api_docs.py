@@ -6,13 +6,13 @@ checked individually rather than by a hand-maintained name list. The C half
 also checks function-like macros, which are not represented by clang-doc.
 """
 from pathlib import Path
-import json
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -43,7 +43,7 @@ def clang_doc_command():
 
 def run_clang_doc(inputs, cxx):
     with tempfile.TemporaryDirectory(prefix="siecs-api-docs-") as out:
-        cmd = [clang_doc_command(), *map(str, inputs), "--format=json", "--output", out,
+        cmd = [clang_doc_command(), *map(str, inputs), "--format=yaml", "--output", out,
                "--public", "--doxygen", "--extra-arg=-Iinclude",
                "--extra-arg=-DSIECS_CUSTOM_BUILD", "--extra-arg=-DSICORE_VEC=0"]
         if cxx:
@@ -53,10 +53,10 @@ def run_clang_doc(inputs, cxx):
         result = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True)
         if result.returncode:
             raise RuntimeError(result.stderr)
-        for path in Path(out).rglob("*.json"):
+        for path in Path(out).rglob("*.yaml"):
             try:
-                yield json.loads(path.read_text())
-            except json.JSONDecodeError:
+                yield yaml.safe_load(path.read_text())
+            except yaml.YAMLError:
                 continue
 
 def documented(info):
