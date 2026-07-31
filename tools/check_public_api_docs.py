@@ -7,16 +7,43 @@ also checks function-like macros, which are not represented by clang-doc.
 """
 from pathlib import Path
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
+def clang_doc_command():
+    configured = os.environ.get("CLANG_DOC")
+    if configured:
+        return configured
+
+    direct = shutil.which("clang-doc")
+    if direct:
+        return direct
+
+    versioned = []
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        for candidate in Path(directory or ".").glob("clang-doc-*"):
+            match = re.fullmatch(r"clang-doc-(\d+(?:\.\d+)*)", candidate.name)
+            if candidate.is_file() and os.access(candidate, os.X_OK) and match:
+                version = tuple(int(part) for part in match.group(1).split("."))
+                versioned.append((version, candidate.name))
+    for _, name in sorted(set(versioned), reverse=True):
+        found = shutil.which(name)
+        if found:
+            return found
+
+    raise FileNotFoundError(
+        "clang-doc not found; install clang-tools (or set CLANG_DOC to its path)"
+    )
+
 def run_clang_doc(inputs, cxx):
     with tempfile.TemporaryDirectory(prefix="siecs-api-docs-") as out:
-        cmd = ["clang-doc", *map(str, inputs), "--format=json", "--output", out,
+        cmd = [clang_doc_command(), *map(str, inputs), "--format=json", "--output", out,
                "--public", "--doxygen", "--extra-arg=-Iinclude",
                "--extra-arg=-DSIECS_CUSTOM_BUILD", "--extra-arg=-DSICORE_VEC=0"]
         if cxx:

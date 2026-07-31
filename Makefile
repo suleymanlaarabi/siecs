@@ -1,5 +1,5 @@
-BAKE_HOME := $(shell bake env | sed -n 's/^BAKE_HOME=//p')
-DEPS_INCLUDE := -I$(BAKE_HOME)/include
+BAKE_HOME = $(shell bake env | sed -n 's/^BAKE_HOME=//p')
+DEPS_INCLUDE = -I$(BAKE_HOME)/include
 QUIET_BAKE = grep -Ev '^\[[[:space:]]*(test|build|run|runall|[0-9]+%)|^cmd:|^path:'
 
 .PHONY: clean bench bench-query bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-release test-cpp test-cpp-release test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release act-ci act-docs act
