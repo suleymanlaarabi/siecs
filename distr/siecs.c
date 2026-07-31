@@ -7049,6 +7049,8 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
         return 0;
     }
 
+    
+
     for (uint32_t i = 1; i < ecs_world.component_index.components.size; i++) {
         const ecs_component_info_t *info = ecs_component_index_get((ecs_component_t)i)->info;
         if (info && info->type == type) {
