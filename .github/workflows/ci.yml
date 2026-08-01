@@ -137,9 +137,9 @@ jobs:
             throw "Bake was not built at $env:GITHUB_WORKSPACE\bake\bake.exe"
           }
           & "$env:GITHUB_WORKSPACE\bake\bake.exe" setup --local
-          "$env:USERPROFILE\bake" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & "$env:USERPROFILE\bake\bake.exe" export CC=clang-cl
-          & "$env:USERPROFILE\bake\bake.exe" export CXX=clang-cl
+          "$env:GITHUB_WORKSPACE\bake" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & "$env:GITHUB_WORKSPACE\bake\bake.exe" export CC=clang-cl
+          & "$env:GITHUB_WORKSPACE\bake\bake.exe" export CXX=clang-cl
 
       - name: Build library and tests
         shell: pwsh
