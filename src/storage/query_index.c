@@ -164,7 +164,7 @@ static void ecs_query_cache_set_table_fields(
     uint32_t field_kind_bits = 0;
 
     while (remaining_fields) {
-        const uint16_t term_index = (uint16_t)__builtin_ctz((unsigned)remaining_fields);
+        const uint16_t term_index = (uint16_t)ECS_CTZ(remaining_fields);
         remaining_fields &= (uint16_t)(remaining_fields - 1);
         const ecs_query_term_t term = cache->query.terms[term_index];
         void *field_ptr = NULL;

@@ -99,7 +99,8 @@ sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
     return detail;
 }
 
-sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *) {
+sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *request) {
+    (void)request;
     sijson_clean();
 
     sijson_value_t array = sijson_make_array();

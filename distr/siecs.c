@@ -74,7 +74,11 @@ static inline uint64_t sicore_read64(const uint8_t *p) {
     uint64_t v;
     memcpy(&v, p, sizeof(v));
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#if defined(_MSC_VER)
+    v = _byteswap_uint64(v);
+#else
     v = __builtin_bswap64(v);
+#endif
 #endif
     return v;
 }
@@ -83,7 +87,11 @@ static inline uint64_t sicore_read32(const uint8_t *p) {
     uint32_t v;
     memcpy(&v, p, sizeof(v));
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#if defined(_MSC_VER)
+    v = _byteswap_ulong((unsigned long)v);
+#else
     v = __builtin_bswap32(v);
+#endif
 #endif
     return v;
 }
@@ -431,6 +439,7 @@ SICORE_HOT bool sicore_map_unset(sicore_map_t *map, const char *key) {
 
 #endif
 
+
 #if SICORE_HAS_VEC
 #include <stdlib.h>
 #include <string.h>
@@ -550,10 +559,12 @@ void sireflect_assert_fail(
 #ifndef SIREFLECT_ERROR_H
 #define SIREFLECT_ERROR_H
 
+
 void sireflect_error_clear(void);
 void sireflect_error_set(const char *message);
 
 #endif
+
 
 #include <stdlib.h>
 #include <string.h>
@@ -589,6 +600,8 @@ void sireflect_error_set(const char *message) {
 const char *sireflect_error(void) {
     return sireflect_current_error;
 }
+
+
 
 const sireflect_field_info_t *
 sireflect_field_info(const sireflect_registry_t *reg, sireflect_handle_t type, const char *field) {
@@ -679,6 +692,7 @@ int sireflect_field_copy(
 #ifndef SIREFLECT_PARSER_H
 #define SIREFLECT_PARSER_H
 
+
 bool sireflect_parse_struct_fields(
     sireflect_registry_t *reg,
     const char *struct_name,
@@ -697,6 +711,7 @@ bool sireflect_parse_struct_fields(
 
 #ifndef SIREFLECT_REGISTRY_H
 #define SIREFLECT_REGISTRY_H
+
 
 struct sireflect_registry_t {
     sireflect_type_info_t *types;
@@ -723,6 +738,7 @@ sireflect_handle_t sireflect_registry_get_or_add_array_type(
 sireflect_handle_t
 sireflect_registry_get_or_add_pointer_type(sireflect_registry_t *reg, sireflect_handle_t pointee_type);
 
+
 sireflect_handle_t sireflect_registry_get_or_add_function_pointer_type(
     sireflect_registry_t *reg,
     sireflect_handle_t return_type
@@ -735,6 +751,7 @@ const sireflect_type_info_t *
 sireflect_registry_const_type_at(const sireflect_registry_t *reg, sireflect_handle_t handle);
 
 #endif
+
 
 #include <ctype.h>
 #include <stdint.h>
@@ -1702,6 +1719,8 @@ bool sireflect_parse_struct_fields(
     return true;
 }
 
+
+
 static char *sireflect_dup_cstr(const char *str) {
     sireflect_assert(str != NULL, "string must not be NULL");
 
@@ -2035,6 +2054,7 @@ sireflect_registry_type_at(sireflect_registry_t *reg, sireflect_handle_t handle)
     return (sireflect_type_info_t *)sireflect_registry_const_type_at(reg, handle);
 }
 
+
 sireflect_handle_t
 sireflect_try_register_struct(sireflect_registry_t *reg, const sireflect_struct_desc_t *desc) {
     sireflect_error_clear();
@@ -2207,6 +2227,7 @@ sireflect_handle_t sireflect_try_register_dynamic_struct(
         field_count
     );
 }
+
 
 const char *sireflect_kind_name(sireflect_kind_t kind) {
     sireflect_error_clear();
@@ -2393,6 +2414,7 @@ sireflect_type_pointee(const sireflect_registry_t *reg, sireflect_handle_t ref) 
 #ifndef SIJSON_INTERNAL_H
 #define SIJSON_INTERNAL_H
 
+
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
@@ -2401,6 +2423,16 @@ sireflect_type_pointee(const sireflect_registry_t *reg, sireflect_handle_t ref) 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_MSC_VER) && !defined(__clang__)
+typedef union sijson_max_align {
+    long double long_double;
+    void *pointer;
+    long long integer;
+} sijson_max_align_t;
+#else
+typedef max_align_t sijson_max_align_t;
+#endif
 
 #if defined(__GNUC__) || defined(__clang__)
 #define SIJSON_INTERNAL_API __attribute__((visibility("hidden")))
@@ -2472,6 +2504,7 @@ SIJSON_INTERNAL_API bool sijson_write_value(sijson_writer_t *writer, sijson_valu
 
 #endif
 
+
 static char g_error[256];
 
 void sijson_clear_error(void) { g_error[0] = '\0'; }
@@ -2495,6 +2528,7 @@ bool sijson_set_error_at(const char *message, const char *at) {
 }
 
 const char *sijson_error(void) { return g_error[0] != '\0' ? g_error : NULL; }
+
 
 static void sijson_skip_ws(sijson_parser_t *parser) {
     while (isspace((unsigned char)*parser->cur)) {
@@ -2909,6 +2943,7 @@ sijson_value_t sijson_parse(const char *json) {
     return value;
 }
 
+
 #include <limits.h>
 
 static sireflect_registry_t *g_registry;
@@ -3117,6 +3152,7 @@ static bool sijson_write_reflected_field(
     case sireflect_kind_bool:
         break;
     default:
+        break;
     }
 
     return sijson_set_error("unsupported field type for serialization");
@@ -3419,6 +3455,7 @@ static bool sijson_assign_field(
     case sireflect_kind_array:
         return sijson_assign_array(field_type, field_ptr, value);
     default:
+        break;
     }
 
     return sijson_set_error("unsupported field type for deserialization");
@@ -3586,6 +3623,7 @@ void sijson_free_impl(sireflect_handle_t *ref, const sireflect_struct_desc_t *de
     sijson_free_reflected(type, ptr);
 }
 
+
 #if defined(__unix__) || defined(__APPLE__)
 #include <sys/mman.h>
 #include <unistd.h>
@@ -3690,7 +3728,7 @@ static bool sijson_arena_commit(size_t need) {
 
 void *sijson_arena_alloc(size_t size, size_t align) {
     if (align == 0) {
-        align = _Alignof(max_align_t);
+        align = _Alignof(sijson_max_align_t);
     }
 
     size_t offset = sijson_align_forward(g_arena.used, align);
@@ -3980,6 +4018,7 @@ bool sijson_object_set(sijson_value_t object, const char *key, sijson_value_t va
     return true;
 }
 
+
 bool sijson_writer_reserve(sijson_writer_t *writer, size_t extra) {
     if (writer->len + extra + 1 <= writer->cap) {
         return true;
@@ -4213,8 +4252,13 @@ int sihttp_buffer_append(sihttp_buffer_t *buffer, const char *data, size_t len);
 #ifndef SIHTTP_INTERNAL_H
 #define SIHTTP_INTERNAL_H
 
+
 #include <stddef.h>
 #include <stdint.h>
+
+#ifdef _WIN32
+typedef int ssize_t;
+#endif
 
 #define SIHTTP_MAX_HEADER_BYTES (16u * 1024u)
 #define SIHTTP_MAX_BODY_BYTES (1024u * 1024u)
@@ -4297,6 +4341,7 @@ int sihttp_server_handle_client(sihttp_server_t *server, int client_fd);
 #ifndef SIHTTP_ROUTE_H
 #define SIHTTP_ROUTE_H
 
+
 typedef struct {
     sihttp_method_t method;
     char *path;
@@ -4311,16 +4356,40 @@ struct sihttp_route_table_s {
 
 #endif
 
-#include <arpa/inet.h>
+
 #include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "Ws2_32.lib")
+#define close closesocket
+#define MSG_NOSIGNAL 0
+#define ssize_t int
+#define socklen_t int
+#undef errno
+#undef EINTR
+#undef EAGAIN
+#undef EWOULDBLOCK
+#undef EBADF
+#undef EINVAL
+#define errno WSAGetLastError()
+#define EINTR WSAEINTR
+#define EAGAIN WSAEWOULDBLOCK
+#define EWOULDBLOCK WSAEWOULDBLOCK
+#define EBADF WSAEBADF
+#define EINVAL WSAEINVAL
+#else
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 static char sihttp_error_buffer[256];
 
@@ -4351,6 +4420,10 @@ enum {
 };
 
 static int sihttp_set_nonblocking(int fd) {
+#ifdef _WIN32
+    u_long mode = 1;
+    return ioctlsocket((SOCKET)fd, FIONBIO, &mode);
+#else
     int flags = fcntl(fd, F_GETFL, 0);
 
     if (flags == -1) {
@@ -4362,6 +4435,7 @@ static int sihttp_set_nonblocking(int fd) {
     }
 
     return 0;
+#endif
 }
 
 static sihttp_response_t sihttp_error_response(int status, const char *body) {
@@ -4378,6 +4452,16 @@ SIHTTP_API sihttp_server_t *sihttp_server_init(const sihttp_server_desc_t *desc)
     int backlog = SIHTTP_DEFAULT_BACKLOG;
     int max_requests_per_poll = SIHTTP_DEFAULT_MAX_REQUESTS_PER_POLL;
 
+#ifdef _WIN32
+    {
+        WSADATA wsa_data;
+        if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+            sihttp_set_error("WSAStartup failed");
+            return NULL;
+        }
+    }
+#endif
+
     if (desc) {
         if (desc->port < 0 || desc->port > UINT16_MAX) {
             sihttp_set_error("invalid server port: %d", desc->port);
@@ -4392,6 +4476,9 @@ SIHTTP_API sihttp_server_t *sihttp_server_init(const sihttp_server_desc_t *desc)
 
     server = calloc(1, sizeof(*server));
     if (!server) {
+#ifdef _WIN32
+        WSACleanup();
+#endif
         sihttp_set_error("out of memory");
         return NULL;
     }
@@ -4399,6 +4486,9 @@ SIHTTP_API sihttp_server_t *sihttp_server_init(const sihttp_server_desc_t *desc)
     server->routes = malloc(sizeof(*server->routes));
     if (!server->routes) {
         free(server);
+#ifdef _WIN32
+        WSACleanup();
+#endif
         sihttp_set_error("out of memory");
         return NULL;
     }
@@ -4423,6 +4513,9 @@ SIHTTP_API void sihttp_server_fini(sihttp_server_t *server) {
     sihttp_route_table_fini(server->routes);
     free(server->routes);
     free(server);
+#ifdef _WIN32
+    WSACleanup();
+#endif
 }
 
 SIHTTP_API int sihttp_server_listen(sihttp_server_t *server, const char *host, uint16_t port) {
@@ -4447,7 +4540,7 @@ SIHTTP_API int sihttp_server_listen(sihttp_server_t *server, const char *host, u
         return -1;
     }
 
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&yes, sizeof(yes));
 
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
@@ -4497,7 +4590,7 @@ SIHTTP_API void sihttp_server_stop(sihttp_server_t *server) {
     if (server->listen_fd != -1) {
         int fd = server->listen_fd;
         server->listen_fd = -1;
-        shutdown(fd, SHUT_RDWR);
+        shutdown(fd, SD_BOTH);
         close(fd);
     }
 }
@@ -4718,6 +4811,8 @@ sihttp_delete(sihttp_server_t *server, const char *path, sihttp_handler_t callba
     sihttp_route(server, path, { .method = SIHTTP_METHOD_DELETE, .callback = callback });
 }
 
+
+
 SIHTTP_API char *siformat(const char *fmt, ...) {
     va_list args;
     va_list copy;
@@ -4746,6 +4841,8 @@ SIHTTP_API char *siformat(const char *fmt, ...) {
 
     return str;
 }
+
+
 
 void sihttp_buffer_init(sihttp_buffer_t *buffer) {
     buffer->data = NULL;
@@ -4797,6 +4894,7 @@ int sihttp_buffer_append(sihttp_buffer_t *buffer, const char *data, size_t len) 
     buffer->len += len;
     return 0;
 }
+
 
 #include <ctype.h>
 #include <limits.h>
@@ -5154,6 +5252,14 @@ SIHTTP_API int64_t sihttp_param(const sihttp_request_t *public_req, const char *
     return 0;
 }
 
+
+#ifdef _WIN32
+#include <winsock2.h>
+#define MSG_NOSIGNAL 0
+#else
+#include <sys/socket.h>
+#endif
+
 static const char *sihttp_status_reason(int status) {
     switch (status) {
     case 200:
@@ -5286,6 +5392,8 @@ int sihttp_send_response(int fd, sihttp_response_t response) {
     free(response.body);
     return result;
 }
+
+
 
 static char *sihttp_strdup(const char *str) {
     size_t len = strlen(str);
@@ -5446,8 +5554,31 @@ void init_rest(void);
 #ifndef SIECS_HELPER_H
 #define SIECS_HELPER_H
 
+#if defined(_MSC_VER)
+#if defined(siecs_EXPORTS)
+#define ECS_INTERNAL_API __declspec(dllexport)
+#else
+#define ECS_INTERNAL_API __declspec(dllimport)
+#endif
+#else
+#define ECS_INTERNAL_API
+#endif
+
+#if defined(_MSC_VER)
+#include <intrin.h>
+#define ECS_LIKELY(x) (x)
+#define ECS_UNLIKELY(x) (x)
+static inline unsigned ecs_ctz(unsigned value) {
+    unsigned long index;
+    _BitScanForward(&index, value);
+    return (unsigned)index;
+}
+#define ECS_CTZ(x) ecs_ctz((unsigned)(x))
+#else
 #define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
 #define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#define ECS_CTZ(x) __builtin_ctz((unsigned)(x))
+#endif
 
 #define ecs_entity(index, generation) (((uint64_t)(index) << 32) | (generation & 0xffffffff))
 
@@ -5507,13 +5638,14 @@ typedef struct {
     ecs_entity_t base;
 } ecs_type_t;
 
-ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
-ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
-ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
+ECS_INTERNAL_API ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
+ECS_INTERNAL_API ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
+ECS_INTERNAL_API ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
 
-uint64_t ecs_type_bloom(const ecs_type_t *type);
+ECS_INTERNAL_API uint64_t ecs_type_bloom(const ecs_type_t *type);
 
-void ecs_type_fini(ecs_type_t *type);
+
+ECS_INTERNAL_API void ecs_type_fini(ecs_type_t *type);
 
 static inline int ecs_type_equals(const ecs_type_t *a, const ecs_type_t *b) {
     if (a->base != b->base)
@@ -5602,7 +5734,11 @@ static inline bool ecs_table_has_owned(const ecs_table_t *table, ecs_component_t
     return ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
 }
 
-void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bool *is_shared);
+ECS_INTERNAL_API void *ecs_table_field(
+    const ecs_table_t *table,
+    ecs_component_t component_id,
+    bool *is_shared
+);
 
 #endif
 
@@ -5628,7 +5764,7 @@ void ecs_table_index_fini();
 
 #define ecs_table_index_at(index) (&ecs_world.table_index.tables[index])
 
-uint16_t ecs_table_index_get_or_create(
+ECS_INTERNAL_API uint16_t ecs_table_index_get_or_create(
     ecs_type_t type
 );
 
@@ -5720,11 +5856,21 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target);
 #include <stddef.h>
 #include <stdint.h>
 
+#if defined(_MSC_VER) && !defined(__clang__)
+typedef union ecs_max_align_s {
+    long double long_double;
+    void *pointer;
+    long long integer;
+} ecs_max_align_t;
+#else
+typedef max_align_t ecs_max_align_t;
+#endif
+
 typedef struct ecs_arena_block_s {
     struct ecs_arena_block_s *next;
     uint32_t capacity;
     uint32_t cursor;
-    max_align_t data[];
+    ecs_max_align_t data[];
 } ecs_arena_block_t;
 
 typedef struct {
@@ -5739,7 +5885,7 @@ void *ecs_arena_alloc_slow(ecs_arena_t *allocator, uint32_t size);
 
 static inline void *ecs_arena_alloc(ecs_arena_t *allocator, uint32_t size) {
     ecs_arena_block_t *block = allocator->current;
-    const uint32_t alignment = (uint32_t)_Alignof(max_align_t);
+    const uint32_t alignment = (uint32_t)_Alignof(ecs_max_align_t);
     const uint32_t cursor = (block->cursor + alignment - 1u) & ~(alignment - 1u);
     if (ECS_LIKELY(cursor <= block->capacity && size <= block->capacity - cursor)) {
         block->cursor = cursor + size;
@@ -5872,6 +6018,7 @@ void ecs_entity_index_fini();
 
 #ifndef SIECS_STORAGE_MODULE_INDEX_H
 #define SIECS_STORAGE_MODULE_INDEX_H
+
 
 typedef struct {
     ecs_module_id_t *id;
@@ -6096,6 +6243,7 @@ void ecs_system_index_build_plan();
 
 #endif
 
+
 typedef struct ecs_world_s ecs_world_t;
 
 struct ecs_world_s {
@@ -6122,7 +6270,7 @@ struct ecs_world_s {
     double last_time;
 };
 
-extern ecs_world_t ecs_world;
+ECS_INTERNAL_API extern ecs_world_t ecs_world;
 
 typedef struct {
     ecs_entity_t target;
@@ -6312,21 +6460,21 @@ ECS_TAG_DEFINE(Abstract);
 
 void ecs_bootstrap() {
     // Reserve identifiers used to represent false return values.
-    ecs_table_index_get_or_create((ecs_type_t){ 0 });
+    ecs_type_t empty_type = { 0 };
+    ecs_table_index_get_or_create(empty_type);
     sicore_vec_push_u64(&ecs_world.entity_index.entities, 0);
-    ecs_component({ SIECS_NAME_INIT("Invalid") });
+    ecs_component_desc_t invalid_component = { SIECS_NAME_INIT("Invalid") };
+    ecs_component_init(&invalid_component);
 
 #if SIECS_HAS_META
     // Register the ecs_entity_t struct reflection.
-    sireflect_register_struct(
-        sijson_default_registry(),
-        &(sireflect_struct_desc_t){
-            .name = "ecs_entity_t",
-            .fields = "{ uint32_t id; uint32_t generation; }",
-            .size = sizeof(ecs_entity_t),
-            .align = _Alignof(ecs_entity_t),
-        }
-    );
+    sireflect_struct_desc_t entity_desc = {
+        .name = "ecs_entity_t",
+        .fields = "{ uint32_t id; uint32_t generation; }",
+        .size = sizeof(ecs_entity_t),
+        .align = _Alignof(ecs_entity_t),
+    };
+    sireflect_register_struct(sijson_default_registry(), &entity_desc);
 #endif
 
     ECS_COMPONENT_REGISTER(ChildOf);
@@ -6346,6 +6494,7 @@ void ecs_bootstrap() {
 
 #ifndef SIECS_EVENT_OPS_H
 #define SIECS_EVENT_OPS_H
+
 
 static inline void ecs_emit_added_components(
     const ecs_table_t *from_table,
@@ -6996,7 +7145,8 @@ static void RelationSourceDtor(void *ptr, uint32_t count) {
     }
 }
 
-void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) {
+void RelationSourceOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
+    (void)entity;
     RelationSource *source_data = ptr;
 
     const ecs_entity_t *entities = source_data->entities.data;
@@ -7170,10 +7320,11 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
 }
 
 ecs_component_t ecs_tag_init(const char *name) {
-    return ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
+    ecs_dynamic_component_desc_t desc = {
         .name = name,
         .fields = "{}",
-    });
+    };
+    return ecs_component_dynamic_init(&desc);
 }
 #endif
 
@@ -7187,6 +7338,7 @@ const char *ecs_component_name(ecs_component_t component) {
     return ecs_component_index_get(component)->info->name;
 }
 #endif
+
 
 #define ecs_assert_can_be_updated(entity, ...)                                                     \
     ecs_assert(!ecs_has_cid_owned(entity, ecs_id(Abstract)), __VA_ARGS__)
@@ -7795,10 +7947,12 @@ const char *ecs_entity_name(ecs_entity_t entity) {
 #ifndef SIECS_MODULE_H
 #define SIECS_MODULE_H
 
+
 void ecs_module_record_system(ecs_system_id_t system);
 void ecs_module_record_observer(ecs_observer_id_t observer);
 
 #endif
+
 
 ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
     ecs_assert_not_null(desc);
@@ -7907,6 +8061,7 @@ void ecs_module_record_observer(ecs_observer_id_t observer) {
     sicore_vec_push(&record->observers, &observer, sizeof(ecs_observer_id_t));
 }
 
+
 ecs_event_t ecs_event(void) { return ecs_world.observer_index.event_count++; }
 
 ecs_event_t ecs_event_register(ecs_event_t *id) {
@@ -7952,6 +8107,7 @@ void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *tr
     ecs_table_t *table = ecs_get_table(record->table_id);
     ecs_emit(table, entity, event, trigger_data);
 }
+
 
 static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query_id_t qid) {
     ecs_query_cache_t *cache = sicore_vec_get_mut(&index->queries, qid, ecs_query_cache_t);
@@ -8040,6 +8196,7 @@ void ecs_query_fini(ecs_query_id_t qid) {
     ecs_world.query_index.first_free = qid;
 }
 
+
 static ecs_resource_t ecs_resource_alloc_id(void) {
     ecs_resource_t id = ecs_world.resource_index.count;
     ecs_assert(id < UINT16_MAX, "resource id overflow\n");
@@ -8117,6 +8274,9 @@ void ecs_remove_resource_rid(ecs_resource_t id) {
 #if SIECS_HAS_REST && !defined(SIHTTP_H)
 #endif
 #include <time.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
 
@@ -8190,20 +8350,36 @@ void ecs_run_phase(ecs_phase_t phase) {
 }
 
 static inline double now_sec(void) {
+#ifdef _WIN32
+    static LARGE_INTEGER frequency;
+    static bool initialized;
+    LARGE_INTEGER counter;
+    if (!initialized) {
+        QueryPerformanceFrequency(&frequency);
+        initialized = true;
+    }
+    QueryPerformanceCounter(&counter);
+    return (double)counter.QuadPart / (double)frequency.QuadPart;
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1000000000.0;
+#endif
 }
 
 static inline void sleep_sec(double seconds) {
     if (seconds <= 0.0)
         return;
 
+#ifdef _WIN32
+    Sleep((DWORD)(seconds * 1000.0));
+#else
     struct timespec ts;
     ts.tv_sec = (time_t)seconds;
     ts.tv_nsec = (long)((seconds - (double)ts.tv_sec) * 1000000000.0);
 
     nanosleep(&ts, NULL);
+#endif
 }
 
 bool ecs_progress(void) {
@@ -8272,6 +8448,7 @@ void ecs_system_disable(ecs_system_id_t system) {
     sys->enabled = false;
     ecs_world.system_index.plan_dirty = true;
 }
+
 
 void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     table->type = type;
@@ -8504,6 +8681,7 @@ void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bo
     return NULL;
 }
 
+
 void ecs_migrate_to_table(
     ecs_entity_record_t *record,
     const ecs_entity_t entity,
@@ -8649,6 +8827,7 @@ void ecs_migrate_remove(
     ecs_table_finish_migration(record, entity, from_table, old_row, to_table_id, new_row);
 }
 
+
 ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id) {
     ecs_type_t new_type = {
         .ids = malloc((type->count + 1) * sizeof(uint16_t)),
@@ -8668,6 +8847,7 @@ ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id) {
 
     return new_type;
 }
+
 
 ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index) {
     ecs_type_t new_type = {
@@ -8699,6 +8879,7 @@ ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base) {
     }
     return new_type;
 }
+
 
 void ecs_type_fini(ecs_type_t *type) {
     if (type->ids) {
@@ -8756,7 +8937,10 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_bootstrap();
 }
 
-void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){}); }
+void ecs_init(void) {
+    ecs_world_feat_desc_t features = {};
+    ecs_init_w_features(&features);
+}
 
 void ecs_fini(void) {
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
@@ -8790,6 +8974,7 @@ void ecs_quit(void) { ecs_world.exit = true; }
 #ifndef SIECS_ADDONS_REST_INTERNAL_H
 #define SIECS_ADDONS_REST_INTERNAL_H
 
+
 #if SIECS_HAS_REST
 
 #ifndef SIHTTP_H
@@ -8799,27 +8984,27 @@ void ecs_quit(void) { ecs_world.exit = true; }
 #ifndef SIREFLECT_H
 #endif
 
-sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body);
-sihttp_response_t ecs_rest_error_response(int status, const char *message);
+ECS_INTERNAL_API sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body);
+ECS_INTERNAL_API sihttp_response_t ecs_rest_error_response(int status, const char *message);
 
-sijson_value_t ecs_rest_entity_json(ecs_entity_t entity);
-sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity);
-sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity);
-bool ecs_rest_entity_component_is_reflected(ecs_component_t component);
-sijson_value_t
+ECS_INTERNAL_API sijson_value_t ecs_rest_entity_json(ecs_entity_t entity);
+ECS_INTERNAL_API sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity);
+ECS_INTERNAL_API sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity);
+ECS_INTERNAL_API bool ecs_rest_entity_component_is_reflected(ecs_component_t component);
+ECS_INTERNAL_API sijson_value_t
 ecs_rest_entity_component_json(ecs_component_t component, const void *ptr);
-sihttp_response_t ecs_rest_set_entity_component(
+ECS_INTERNAL_API sihttp_response_t ecs_rest_set_entity_component(
         ecs_entity_t entity,
     ecs_component_t component,
     const char *body
 );
 
-sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *req);
-sihttp_response_t ecs_rest_get_entity(const sihttp_request_t *req);
-sihttp_response_t ecs_rest_get_entity_children(const sihttp_request_t *req);
-sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req);
-sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req);
-sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req);
+ECS_INTERNAL_API sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *req);
+ECS_INTERNAL_API sihttp_response_t ecs_rest_get_entity(const sihttp_request_t *req);
+ECS_INTERNAL_API sihttp_response_t ecs_rest_get_entity_children(const sihttp_request_t *req);
+ECS_INTERNAL_API sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req);
+ECS_INTERNAL_API sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req);
+ECS_INTERNAL_API sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req);
 
 #endif
 #endif
@@ -8828,8 +9013,10 @@ sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req);
 #endif
 #include <string.h>
 
-sihttp_response_t health(const sihttp_request_t *) {
-    return sihttp_response({ .body = strdup("OK") });
+sihttp_response_t health(const sihttp_request_t *request) {
+    (void)request;
+    sihttp_response_t response = { .body = strdup("OK") };
+    return response;
 }
 
 void init_rest(void) {
@@ -8867,11 +9054,12 @@ sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body) {
         status = 500;
     }
 
-    return sihttp_response({
+    sihttp_response_t response = {
         .status = status,
         .body = json,
         .content_type = SIHTTP_CONTENT_JSON,
-    });
+    };
+    return response;
 }
 
 sihttp_response_t ecs_rest_error_response(int status, const char *message) {
@@ -8977,7 +9165,8 @@ sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
     return detail;
 }
 
-sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *) {
+sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *request) {
+    (void)request;
     sijson_clean();
 
     sijson_value_t array = sijson_make_array();
@@ -9323,6 +9512,7 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req) {
 }
 #endif
 
+
 #define ECS_ARENA_INITIAL_CAPACITY 4096u
 
 static ecs_arena_block_t *ecs_arena_block_new(uint32_t capacity) {
@@ -9379,6 +9569,7 @@ void ecs_arena_fini() {
         block = next;
     }
 }
+
 
 void ecs_id_map_init(ecs_id_map_t *map) {
     map->capacity = 1;
@@ -9629,6 +9820,7 @@ void ecs_component_value_move(
     memcpy(dst, src, (size_t)record->size * count);
 }
 
+
 bool ecs_entity_index_is_alive(ecs_entity_t entity) {
     return ecs_entity_index_get_record(ecs_first(entity))->generation == ecs_second(entity);
 }
@@ -9640,6 +9832,7 @@ void ecs_entity_index_init() {
 }
 
 void ecs_entity_index_fini() { sicore_vec_fini(&ecs_world.entity_index.entities); }
+
 
 static bool ecs_module_id_valid(const ecs_module_index_t *index, ecs_module_id_t module) {
     return module != 0 && module < index->modules.size;
@@ -9733,6 +9926,7 @@ ecs_module_id_t ecs_module_index_find(const ecs_module_id_t *id) {
     return 0;
 }
 
+
 #define ECS_BUILTIN_EVENT_COUNT 3 // EcsOnAdd, EcsOnRemove, EcsOnSet
 
 void ecs_observer_index_init() {
@@ -9784,6 +9978,7 @@ void ecs_observer_index_add_table(ecs_table_t *table) {
         }
     }
 }
+
 
 void ecs_query_index_init() {
     ecs_query_index_t *index = &ecs_world.query_index;
@@ -9940,7 +10135,7 @@ static void ecs_query_cache_set_table_fields(
     uint32_t field_kind_bits = 0;
 
     while (remaining_fields) {
-        const uint16_t term_index = (uint16_t)__builtin_ctz((unsigned)remaining_fields);
+        const uint16_t term_index = (uint16_t)ECS_CTZ(remaining_fields);
         remaining_fields &= (uint16_t)(remaining_fields - 1);
         const ecs_query_term_t term = cache->query.terms[term_index];
         void *field_ptr = NULL;
@@ -10103,6 +10298,7 @@ void ecs_query_index_refresh_table_fields(const ecs_table_t *table, uint16_t tab
         }
     }
 }
+
 
 static uint64_t ecs_resource_storage_size(const ecs_resource_record_t *record) {
     return record->size ? record->size : 1;
@@ -10413,6 +10609,7 @@ void ecs_resource_index_remove(ecs_resource_t id) {
     index->present[id] = false;
 }
 
+
 static bool ecs_system_id_valid(const ecs_system_index_t *index, ecs_system_id_t system) {
     return system != 0 && system < index->systems.size;
 }
@@ -10531,6 +10728,7 @@ void ecs_system_index_fini() {
 
     sicore_vec_fini(&index->systems);
 }
+
 
 #define INITIAL_SLOT_SHIFT 12
 #define LOAD_FACTOR 0.75

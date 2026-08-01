@@ -93,10 +93,12 @@
 
 #endif
 
+
 /* Public descriptors still accept .name, but generated descriptors omit it. */
 #define SIECS_NAME_INIT(value)
 
 #endif
+
 
 #if SICORE_VEC
 
@@ -106,9 +108,16 @@
 #ifndef SICORE_H
 #define SICORE_H
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#define SICORE_LIKELY(x) (x)
+#define SICORE_UNLIKELY(x) (x)
+#define SICORE_HOT
+#else
 #define SICORE_LIKELY(x) __builtin_expect(!!(x), 1)
 #define SICORE_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #define SICORE_HOT __attribute__((hot))
+#endif
 
 #if defined(SICORE_VEC) && defined(SICORE_NO_VEC)
 #error "SICORE_VEC and SICORE_NO_VEC cannot be defined together"
@@ -193,6 +202,8 @@
 #endif
 
 #endif
+
+
 
 #if SICORE_HAS_VEC || SICORE_HAS_MAP
 #include <stdbool.h>
@@ -307,6 +318,7 @@ bool sicore_map_unset(sicore_map_t *map, const char *key);
 #endif /* SICORE_VEC */
 #endif
 
+
 #ifndef siecs_STATIC
 #if defined(siecs_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
 #define SIECS_API __declspec(dllexport)
@@ -330,6 +342,10 @@ bool sicore_map_unset(sicore_map_t *map, const char *key);
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#if defined(_MSC_VER) && !defined(_Static_assert)
+#define _Static_assert static_assert
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -521,6 +537,7 @@ typedef struct {
     uint32_t relation_flags;
 } ecs_component_info_t;
 
+
 /*
  * Resource hook function type.
  *
@@ -666,12 +683,13 @@ SIECS_API void ecs_quit(void);
  * Use in headers:
  *   ECS_COMPONENT_DECLARE(Position, { float x; float y; });
  */
+#define SIECS_COMPONENT_VAR_API
 /* Declare a component type and its descriptor without reflection metadata. */
 #define ECS_COMPONENT_DECLARE(cname, ...)                                                          \
     typedef struct cname cname;                                                                    \
     struct cname __VA_ARGS__;                                                                      \
-    extern ecs_component_t ecs_id(cname);                                                          \
-    extern ecs_component_desc_t ecs_id(cname##_desc)
+    SIECS_COMPONENT_VAR_API extern ecs_component_t ecs_id(cname);                                 \
+    SIECS_COMPONENT_VAR_API extern ecs_component_desc_t ecs_id(cname##_desc)
 #define SIECS_COMPONENT_META_DEFINE(cname)
 #define SIECS_COMPONENT_META_INIT(cname)
 #define SIECS_TAG_META_DEFINE(cname)
@@ -698,8 +716,8 @@ SIECS_API void ecs_quit(void);
  */
 #define ECS_TAG_DECLARE(cname)                                                                     \
     typedef struct cname##_tag_t cname;                                                            \
-    extern ecs_component_t ecs_id(cname);                                                          \
-    extern ecs_component_desc_t ecs_id(cname##_desc)
+    SIECS_COMPONENT_VAR_API extern ecs_component_t ecs_id(cname);                                 \
+    SIECS_COMPONENT_VAR_API extern ecs_component_desc_t ecs_id(cname##_desc)
 
 /* Define a tag component declared with ECS_TAG_DECLARE. */
 #define ECS_TAG_DEFINE(cname)                                                                      \
@@ -798,6 +816,7 @@ SIECS_API void ecs_module_enable(ecs_module_id_t module);
 /* Resolve a module id from stable id storage; returns 0 when not imported. */
 SIECS_API ecs_module_id_t ecs_module_find(const ecs_module_id_t *id);
 
+
 /* Disable systems and observers recorded during module import. */
 SIECS_API void ecs_module_disable(ecs_module_id_t module);
 
@@ -840,13 +859,18 @@ SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
 #define ECS_RELATION_DECLARE(name) ECS_COMPONENT_DECLARE(name, { ecs_entity_t target; })
 
 /* Builtin relation for parent/child relationships. */
+#undef SIECS_COMPONENT_VAR_API
+#define SIECS_COMPONENT_VAR_API SIECS_API
 ECS_RELATION_DECLARE(ChildOf);
+
 
 /* Builtin tag excluded from queries by default. */
 ECS_TAG_DECLARE(Disabled);
 
 /* Builtin tag for abstract entities. */
 ECS_TAG_DECLARE(Abstract);
+#undef SIECS_COMPONENT_VAR_API
+#define SIECS_COMPONENT_VAR_API
 
 /*
  * Register a component from an inline descriptor.
@@ -870,8 +894,11 @@ ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc);
 /* Return immutable component metadata stable until ecs_fini(), or NULL for an invalid id. */
 SIECS_API const ecs_component_info_t *ecs_component_info(ecs_component_t component);
 
+
+
 /* Create a new alive entity in world. world must not be NULL. */
 SIECS_API ecs_entity_t ecs_new(void);
+
 
 /* Begin deferring ECS mutations into the world's command buffer. */
 SIECS_API void ecs_defer_begin(void);
@@ -966,7 +993,7 @@ SIECS_API void ecs_remove_cid(ecs_entity_t entity, ecs_component_t id);
 /* Return whether an alive entity has a component id. */
 SIECS_API bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id);
 /* Return whether the entity owns the component rather than inheriting it. */
-bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id);
+SIECS_API bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id);
 
 /*
  * Get a typed component pointer from an alive entity.
@@ -1305,6 +1332,7 @@ typedef struct {
 /* Register a system and return its id. System id 0 is reserved. */
 SIECS_API ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc);
 
+
 /* Run all enabled systems in phase order. */
 SIECS_API bool ecs_progress(void);
 
@@ -1340,6 +1368,7 @@ SIECS_API void ecs_system_disable(ecs_system_id_t system);
 #define SIECS_CPP_RESTORE_CPP_INCLUDE
 #endif
 
+
 #ifdef SIECS_CPP_RESTORE_CPP_INCLUDE
 #undef SIECS_CPP_RESTORE_CPP_INCLUDE
 #undef SIECS_NO_CPP
@@ -1352,6 +1381,22 @@ namespace ecs {
 
 /** Return the compiler-derived stable display name used for registration. */
 template <class T> consteval std::string_view type_name() {
+#if defined(_MSC_VER)
+    constexpr std::string_view func = __FUNCSIG__;
+    constexpr std::string_view key = "type_name<";
+    constexpr std::string_view end_marker = ">(void)";
+
+    constexpr auto start = func.find(key) + key.size();
+    constexpr auto end = func.rfind(end_marker);
+    auto name = func.substr(start, end - start);
+
+    if (name.starts_with("struct ")) {
+        name.remove_prefix(7);
+    } else if (name.starts_with("class ")) {
+        name.remove_prefix(6);
+    }
+    return name;
+#else
     constexpr std::string_view func = __PRETTY_FUNCTION__;
     constexpr std::string_view key = "T = ";
 
@@ -1362,6 +1407,7 @@ template <class T> consteval std::string_view type_name() {
     constexpr auto end = end_semi == std::string_view::npos ? end_bracket : end_semi;
 
     return func.substr(start, end - start);
+#endif
 }
 
 } // namespace ecs
@@ -1517,6 +1563,8 @@ static ecs_component_t ecs_cpp_component_id(
 
     if (cid != 0) return cid;
 
+
+
     if (hooks != nullptr) component_hook_state<T>::hooks = *hooks;
 
     ecs_component_desc_t desc = {
@@ -1578,6 +1626,7 @@ class entity {
 
     /** Wrap a raw id without validating it; use `is_alive()` to validate. */
     explicit entity(ecs_entity_t entity) noexcept : _entity(entity) {}
+
 
     /** Create a new live entity in the active world. */
     static entity create() noexcept { return entity(ecs_new()); }
@@ -1982,6 +2031,7 @@ static ecs_resource_t ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<
 
     if (rid != 0)
         return rid;
+
 
     if (hooks != nullptr) detail::resource_hook_state<type>::hooks = *hooks;
 
@@ -2910,6 +2960,7 @@ template <typename T> inline void trigger(entity value, const void *data = nullp
 inline entity instantiate(entity base) { return entity::create().is_a(base); }
 
 } // namespace ecs
+
 
 #endif
 

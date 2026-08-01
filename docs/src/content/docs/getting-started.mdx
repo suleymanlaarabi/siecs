@@ -47,6 +47,11 @@ Build it with `cc -std=c23 -I. main.c siecs.c -pthread -o my_app`.
 
 The standalone distribution embeds SIECS and its public C dependencies.
 
+On Windows, use `clang-cl` with the MSVC developer environment. SIECS uses C23
+features that the Microsoft C compiler (`cl.exe`) does not currently parse;
+`clang-cl` keeps the MSVC ABI and does not change the SIECS API or public
+headers.
+
 </TabItem>
 <TabItem label="C++">
 

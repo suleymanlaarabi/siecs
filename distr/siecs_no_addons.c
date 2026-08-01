@@ -74,7 +74,11 @@ static inline uint64_t sicore_read64(const uint8_t *p) {
     uint64_t v;
     memcpy(&v, p, sizeof(v));
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#if defined(_MSC_VER)
+    v = _byteswap_uint64(v);
+#else
     v = __builtin_bswap64(v);
+#endif
 #endif
     return v;
 }
@@ -83,7 +87,11 @@ static inline uint64_t sicore_read32(const uint8_t *p) {
     uint32_t v;
     memcpy(&v, p, sizeof(v));
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#if defined(_MSC_VER)
+    v = _byteswap_ulong((unsigned long)v);
+#else
     v = __builtin_bswap32(v);
+#endif
 #endif
     return v;
 }
@@ -431,6 +439,7 @@ SICORE_HOT bool sicore_map_unset(sicore_map_t *map, const char *key) {
 
 #endif
 
+
 #if SICORE_HAS_VEC
 #include <stdlib.h>
 #include <string.h>
@@ -528,13 +537,37 @@ void sicore_vec_remove_u64(sicore_vec_t *vec, uint64_t value) {
 #ifndef ECS_ADDONS_H
 #define ECS_ADDONS_H
 
+
 #endif
 
 #ifndef SIECS_HELPER_H
 #define SIECS_HELPER_H
 
+#if defined(_MSC_VER)
+#if defined(siecs_EXPORTS)
+#define ECS_INTERNAL_API __declspec(dllexport)
+#else
+#define ECS_INTERNAL_API __declspec(dllimport)
+#endif
+#else
+#define ECS_INTERNAL_API
+#endif
+
+#if defined(_MSC_VER)
+#include <intrin.h>
+#define ECS_LIKELY(x) (x)
+#define ECS_UNLIKELY(x) (x)
+static inline unsigned ecs_ctz(unsigned value) {
+    unsigned long index;
+    _BitScanForward(&index, value);
+    return (unsigned)index;
+}
+#define ECS_CTZ(x) ecs_ctz((unsigned)(x))
+#else
 #define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
 #define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#define ECS_CTZ(x) __builtin_ctz((unsigned)(x))
+#endif
 
 #define ecs_entity(index, generation) (((uint64_t)(index) << 32) | (generation & 0xffffffff))
 
@@ -592,13 +625,14 @@ typedef struct {
     ecs_entity_t base;
 } ecs_type_t;
 
-ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
-ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
-ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
+ECS_INTERNAL_API ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
+ECS_INTERNAL_API ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
+ECS_INTERNAL_API ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
 
-uint64_t ecs_type_bloom(const ecs_type_t *type);
+ECS_INTERNAL_API uint64_t ecs_type_bloom(const ecs_type_t *type);
 
-void ecs_type_fini(ecs_type_t *type);
+
+ECS_INTERNAL_API void ecs_type_fini(ecs_type_t *type);
 
 static inline int ecs_type_equals(const ecs_type_t *a, const ecs_type_t *b) {
     if (a->base != b->base)
@@ -687,7 +721,11 @@ static inline bool ecs_table_has_owned(const ecs_table_t *table, ecs_component_t
     return ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
 }
 
-void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bool *is_shared);
+ECS_INTERNAL_API void *ecs_table_field(
+    const ecs_table_t *table,
+    ecs_component_t component_id,
+    bool *is_shared
+);
 
 #endif
 
@@ -713,7 +751,7 @@ void ecs_table_index_fini();
 
 #define ecs_table_index_at(index) (&ecs_world.table_index.tables[index])
 
-uint16_t ecs_table_index_get_or_create(
+ECS_INTERNAL_API uint16_t ecs_table_index_get_or_create(
     ecs_type_t type
 );
 
@@ -805,11 +843,21 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target);
 #include <stddef.h>
 #include <stdint.h>
 
+#if defined(_MSC_VER) && !defined(__clang__)
+typedef union ecs_max_align_s {
+    long double long_double;
+    void *pointer;
+    long long integer;
+} ecs_max_align_t;
+#else
+typedef max_align_t ecs_max_align_t;
+#endif
+
 typedef struct ecs_arena_block_s {
     struct ecs_arena_block_s *next;
     uint32_t capacity;
     uint32_t cursor;
-    max_align_t data[];
+    ecs_max_align_t data[];
 } ecs_arena_block_t;
 
 typedef struct {
@@ -824,7 +872,7 @@ void *ecs_arena_alloc_slow(ecs_arena_t *allocator, uint32_t size);
 
 static inline void *ecs_arena_alloc(ecs_arena_t *allocator, uint32_t size) {
     ecs_arena_block_t *block = allocator->current;
-    const uint32_t alignment = (uint32_t)_Alignof(max_align_t);
+    const uint32_t alignment = (uint32_t)_Alignof(ecs_max_align_t);
     const uint32_t cursor = (block->cursor + alignment - 1u) & ~(alignment - 1u);
     if (ECS_LIKELY(cursor <= block->capacity && size <= block->capacity - cursor)) {
         block->cursor = cursor + size;
@@ -940,6 +988,7 @@ void ecs_entity_index_fini();
 
 #ifndef SIECS_STORAGE_MODULE_INDEX_H
 #define SIECS_STORAGE_MODULE_INDEX_H
+
 
 typedef struct {
     ecs_module_id_t *id;
@@ -1146,6 +1195,7 @@ void ecs_system_index_build_plan();
 
 #endif
 
+
 typedef struct ecs_world_s ecs_world_t;
 
 struct ecs_world_s {
@@ -1169,7 +1219,7 @@ struct ecs_world_s {
     double last_time;
 };
 
-extern ecs_world_t ecs_world;
+ECS_INTERNAL_API extern ecs_world_t ecs_world;
 
 typedef struct {
     ecs_entity_t target;
@@ -1213,6 +1263,7 @@ static inline bool ecs_is_deferred(void) {
 
 void ecs_bootstrap(void);
 
+
 #endif
 
 ECS_RELATION_DEFINE(ChildOf, EcsRelationCascadeDelete);
@@ -1221,9 +1272,12 @@ ECS_TAG_DEFINE(Abstract);
 
 void ecs_bootstrap() {
     // Reserve identifiers used to represent false return values.
-    ecs_table_index_get_or_create((ecs_type_t){ 0 });
+    ecs_type_t empty_type = { 0 };
+    ecs_table_index_get_or_create(empty_type);
     sicore_vec_push_u64(&ecs_world.entity_index.entities, 0);
-    ecs_component({ SIECS_NAME_INIT("Invalid") });
+    ecs_component_desc_t invalid_component = { SIECS_NAME_INIT("Invalid") };
+    ecs_component_init(&invalid_component);
+
 
     ECS_COMPONENT_REGISTER(ChildOf);
     ECS_COMPONENT_REGISTER(Disabled);
@@ -1233,6 +1287,7 @@ void ecs_bootstrap() {
 
 #ifndef SIECS_EVENT_OPS_H
 #define SIECS_EVENT_OPS_H
+
 
 static inline void ecs_emit_added_components(
     const ecs_table_t *from_table,
@@ -1810,6 +1865,7 @@ void ecs_defer_end(void) {
     }
 }
 
+
 static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
     uint32_t id = ecs_world.component_index.components.size;
     ecs_assert(id + count <= UINT16_MAX, "component id overflow\n");
@@ -1878,7 +1934,8 @@ static void RelationSourceDtor(void *ptr, uint32_t count) {
     }
 }
 
-void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) {
+void RelationSourceOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
+    (void)entity;
     RelationSource *source_data = ptr;
 
     const ecs_entity_t *entities = source_data->entities.data;
@@ -1975,6 +2032,9 @@ const ecs_component_info_t *ecs_component_info(ecs_component_t component) {
     }
     return ecs_component_index_get(component)->info;
 }
+
+
+
 
 #define ecs_assert_can_be_updated(entity, ...)                                                     \
     ecs_assert(!ecs_has_cid_owned(entity, ecs_id(Abstract)), __VA_ARGS__)
@@ -2374,6 +2434,7 @@ bool ecs_component_requires(const ecs_component_t component, ecs_component_t req
 }
 #endif
 
+
 static inline ecs_entity_t ecs_entity_index_create(uint32_t row) {
     ecs_entity_index_t *index = &ecs_world.entity_index;
     uint32_t entity_id;
@@ -2430,6 +2491,7 @@ bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
     }
     return ecs_is(base, target);
 }
+
 
 void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     ecs_assert_entity_valid(entity);
@@ -2552,13 +2614,16 @@ void ecs_kill(ecs_entity_t entity) {
     ecs_kill_now(entity);
 }
 
+
 #ifndef SIECS_MODULE_H
 #define SIECS_MODULE_H
+
 
 void ecs_module_record_system(ecs_system_id_t system);
 void ecs_module_record_observer(ecs_observer_id_t observer);
 
 #endif
+
 
 ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
     ecs_assert_not_null(desc);
@@ -2610,6 +2675,7 @@ void ecs_module_enable(ecs_module_id_t module) {
 
 ecs_module_id_t ecs_module_find(const ecs_module_id_t *id) { return ecs_module_index_find(id); }
 
+
 void ecs_module_disable(ecs_module_id_t module) {
 
     ecs_module_t *record = ecs_module_index_get(module);
@@ -2653,6 +2719,7 @@ void ecs_module_record_observer(ecs_observer_id_t observer) {
     ecs_module_t *record = ecs_module_index_get(module);
     sicore_vec_push(&record->observers, &observer, sizeof(ecs_observer_id_t));
 }
+
 
 ecs_event_t ecs_event(void) { return ecs_world.observer_index.event_count++; }
 
@@ -2699,6 +2766,7 @@ void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *tr
     ecs_table_t *table = ecs_get_table(record->table_id);
     ecs_emit(table, entity, event, trigger_data);
 }
+
 
 static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query_id_t qid) {
     ecs_query_cache_t *cache = sicore_vec_get_mut(&index->queries, qid, ecs_query_cache_t);
@@ -2787,6 +2855,7 @@ void ecs_query_fini(ecs_query_id_t qid) {
     ecs_world.query_index.first_free = qid;
 }
 
+
 static ecs_resource_t ecs_resource_alloc_id(void) {
     ecs_resource_t id = ecs_world.resource_index.count;
     ecs_assert(id < UINT16_MAX, "resource id overflow\n");
@@ -2796,6 +2865,7 @@ static ecs_resource_t ecs_resource_alloc_id(void) {
 ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc) {
         return ecs_resource_index_register(ecs_resource_alloc_id(), desc);
 }
+
 
 bool ecs_resource_is_registered_rid(ecs_resource_t id) {
     return ecs_resource_index_is_registered(id);
@@ -2851,6 +2921,9 @@ void ecs_remove_resource_rid(ecs_resource_t id) {
 }
 
 #include <time.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
 
@@ -2874,6 +2947,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     ecs_module_record_system(system);
     return system;
 }
+
 
 void ecs_run_system(ecs_system_id_t system) {
 
@@ -2917,20 +2991,36 @@ void ecs_run_phase(ecs_phase_t phase) {
 }
 
 static inline double now_sec(void) {
+#ifdef _WIN32
+    static LARGE_INTEGER frequency;
+    static bool initialized;
+    LARGE_INTEGER counter;
+    if (!initialized) {
+        QueryPerformanceFrequency(&frequency);
+        initialized = true;
+    }
+    QueryPerformanceCounter(&counter);
+    return (double)counter.QuadPart / (double)frequency.QuadPart;
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1000000000.0;
+#endif
 }
 
 static inline void sleep_sec(double seconds) {
     if (seconds <= 0.0)
         return;
 
+#ifdef _WIN32
+    Sleep((DWORD)(seconds * 1000.0));
+#else
     struct timespec ts;
     ts.tv_sec = (time_t)seconds;
     ts.tv_nsec = (long)((seconds - (double)ts.tv_sec) * 1000000000.0);
 
     nanosleep(&ts, NULL);
+#endif
 }
 
 bool ecs_progress(void) {
@@ -2954,6 +3044,7 @@ bool ecs_progress(void) {
     for (ecs_phase_t phase = EcsOnLoad; phase < EcsPhaseCount; phase++) {
         ecs_run_phase(phase);
     }
+
 
     if (ecs_world.features.target_fps) {
         double target_dt = 1.0 / (double)ecs_world.features.target_fps;
@@ -2993,6 +3084,7 @@ void ecs_system_disable(ecs_system_id_t system) {
     sys->enabled = false;
     ecs_world.system_index.plan_dirty = true;
 }
+
 
 void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     table->type = type;
@@ -3225,6 +3317,7 @@ void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bo
     return NULL;
 }
 
+
 void ecs_migrate_to_table(
     ecs_entity_record_t *record,
     const ecs_entity_t entity,
@@ -3370,6 +3463,7 @@ void ecs_migrate_remove(
     ecs_table_finish_migration(record, entity, from_table, old_row, to_table_id, new_row);
 }
 
+
 ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id) {
     ecs_type_t new_type = {
         .ids = malloc((type->count + 1) * sizeof(uint16_t)),
@@ -3389,6 +3483,7 @@ ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id) {
 
     return new_type;
 }
+
 
 ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index) {
     ecs_type_t new_type = {
@@ -3421,6 +3516,7 @@ ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base) {
     return new_type;
 }
 
+
 void ecs_type_fini(ecs_type_t *type) {
     if (type->ids) {
         free(type->ids);
@@ -3437,6 +3533,7 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
 
     return filter;
 }
+
 
 ecs_world_t ecs_world;
 static bool ecs_world_started;
@@ -3471,7 +3568,10 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_bootstrap();
 }
 
-void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){}); }
+void ecs_init(void) {
+    ecs_world_feat_desc_t features = {};
+    ecs_init_w_features(&features);
+}
 
 void ecs_fini(void) {
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
@@ -3491,6 +3591,7 @@ void ecs_fini(void) {
 }
 
 void ecs_quit(void) { ecs_world.exit = true; }
+
 
 #define ECS_ARENA_INITIAL_CAPACITY 4096u
 
@@ -3549,6 +3650,7 @@ void ecs_arena_fini() {
     }
 }
 
+
 void ecs_id_map_init(ecs_id_map_t *map) {
     map->capacity = 1;
     map->ids = malloc(sizeof(uint16_t));
@@ -3567,6 +3669,8 @@ void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id) {
         map->capacity = new_cap;
     }
 }
+
+
 
 void ecs_component_index_register(
     ecs_component_t id,
@@ -3739,6 +3843,7 @@ void ecs_component_value_move(
     memcpy(dst, src, (size_t)record->size * count);
 }
 
+
 bool ecs_entity_index_is_alive(ecs_entity_t entity) {
     return ecs_entity_index_get_record(ecs_first(entity))->generation == ecs_second(entity);
 }
@@ -3750,6 +3855,7 @@ void ecs_entity_index_init() {
 }
 
 void ecs_entity_index_fini() { sicore_vec_fini(&ecs_world.entity_index.entities); }
+
 
 static bool ecs_module_id_valid(const ecs_module_index_t *index, ecs_module_id_t module) {
     return module != 0 && module < index->modules.size;
@@ -3828,6 +3934,7 @@ ecs_module_id_t ecs_module_index_find(const ecs_module_id_t *id) {
     return 0;
 }
 
+
 #define ECS_BUILTIN_EVENT_COUNT 3 // EcsOnAdd, EcsOnRemove, EcsOnSet
 
 void ecs_observer_index_init() {
@@ -3879,6 +3986,7 @@ void ecs_observer_index_add_table(ecs_table_t *table) {
         }
     }
 }
+
 
 void ecs_query_index_init() {
     ecs_query_index_t *index = &ecs_world.query_index;
@@ -4035,7 +4143,7 @@ static void ecs_query_cache_set_table_fields(
     uint32_t field_kind_bits = 0;
 
     while (remaining_fields) {
-        const uint16_t term_index = (uint16_t)__builtin_ctz((unsigned)remaining_fields);
+        const uint16_t term_index = (uint16_t)ECS_CTZ(remaining_fields);
         remaining_fields &= (uint16_t)(remaining_fields - 1);
         const ecs_query_term_t term = cache->query.terms[term_index];
         void *field_ptr = NULL;
@@ -4198,6 +4306,7 @@ void ecs_query_index_refresh_table_fields(const ecs_table_t *table, uint16_t tab
         }
     }
 }
+
 
 static uint64_t ecs_resource_storage_size(const ecs_resource_record_t *record) {
     return record->size ? record->size : 1;
@@ -4375,6 +4484,7 @@ ecs_resource_index_register(ecs_resource_t id, const ecs_resource_desc_t *desc) 
     return id;
 }
 
+
 bool ecs_resource_index_is_registered(ecs_resource_t id) {
     const ecs_resource_index_t *index = &ecs_world.resource_index;
     return id != 0 && id < index->count && id < index->capacity &&
@@ -4470,6 +4580,7 @@ void ecs_resource_index_remove(ecs_resource_t id) {
     index->data[id] = NULL;
     index->present[id] = false;
 }
+
 
 static bool ecs_system_id_valid(const ecs_system_index_t *index, ecs_system_id_t system) {
     return system != 0 && system < index->systems.size;
@@ -4589,6 +4700,7 @@ void ecs_system_index_fini() {
 
     sicore_vec_fini(&index->systems);
 }
+
 
 #define INITIAL_SLOT_SHIFT 12
 #define LOAD_FACTOR 0.75

@@ -13,14 +13,29 @@ extern "C" {
 #include <stdlib.h>
 #include <sys/types.h>
 #include <time.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 static inline double time_ms(void) {
+#ifdef _WIN32
+    static LARGE_INTEGER frequency;
+    static int initialized;
+    LARGE_INTEGER counter;
+    if (!initialized) {
+        QueryPerformanceFrequency(&frequency);
+        initialized = 1;
+    }
+    QueryPerformanceCounter(&counter);
+    return (double)counter.QuadPart * 1000.0 / (double)frequency.QuadPart;
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1000000.0;
+#endif
 }
 
-#define arg(name, value) const uint32_t name = value
+#define arg(name, value) enum { name = value }
 
 /* Stable output format consumed by tools/bench_compare.py: [bench] name: elapsed_ms ms. */
 #define BENCH(...)                                                                                 \

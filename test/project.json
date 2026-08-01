@@ -8,6 +8,9 @@
   },
   "lang.c": {
     "c-standard": "c23",
+    "${os windows}": {
+      "c-standard": "c11"
+    },
     "include": ["../src", "../include"]
   },
   "bundle": {

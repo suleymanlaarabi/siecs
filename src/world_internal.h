@@ -44,7 +44,7 @@ struct ecs_world_s {
     double last_time;
 };
 
-extern ecs_world_t ecs_world;
+ECS_INTERNAL_API extern ecs_world_t ecs_world;
 
 typedef struct {
     ecs_entity_t target;

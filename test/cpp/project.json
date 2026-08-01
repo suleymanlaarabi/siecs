@@ -9,6 +9,9 @@
   },
   "lang.cpp": {
     "cpp-standard": "c++23",
+    "${os windows}": {
+      "cpp-standard": "c++20"
+    },
     "include": ["../../include"]
   },
   "test": {

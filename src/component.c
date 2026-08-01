@@ -82,7 +82,8 @@ static void RelationSourceDtor(void *ptr, uint32_t count) {
     }
 }
 
-void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) {
+void RelationSourceOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
+    (void)entity;
     RelationSource *source_data = ptr;
 
     const ecs_entity_t *entities = source_data->entities.data;
@@ -256,10 +257,11 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
 }
 
 ecs_component_t ecs_tag_init(const char *name) {
-    return ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
+    ecs_dynamic_component_desc_t desc = {
         .name = name,
         .fields = "{}",
-    });
+    };
+    return ecs_component_dynamic_init(&desc);
 }
 #endif
 

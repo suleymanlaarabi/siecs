@@ -1,5 +1,12 @@
 {
   "configuration": {
+    "debug": {
+      "symbols": false,
+      "debug": true,
+      "optimizations": false,
+      "coverage": false,
+      "strict": false
+    },
     "asan": {
       "symbols": true,
       "debug": true,

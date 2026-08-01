@@ -1,5 +1,6 @@
 #ifndef SIECS_TYPE_H
 #define SIECS_TYPE_H
+#include "helper.h"
 #include "siecs.h"
 #include <stdint.h>
 #include <string.h>
@@ -14,14 +15,14 @@ typedef struct {
     ecs_entity_t base;
 } ecs_type_t;
 
-ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
-ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
-ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
+ECS_INTERNAL_API ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
+ECS_INTERNAL_API ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
+ECS_INTERNAL_API ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
 
-uint64_t ecs_type_bloom(const ecs_type_t *type);
+ECS_INTERNAL_API uint64_t ecs_type_bloom(const ecs_type_t *type);
 
 
-void ecs_type_fini(ecs_type_t *type);
+ECS_INTERNAL_API void ecs_type_fini(ecs_type_t *type);
 
 static inline int ecs_type_equals(const ecs_type_t *a, const ecs_type_t *b) {
     if (a->base != b->base)

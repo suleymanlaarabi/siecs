@@ -11,11 +11,12 @@ sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body) {
         status = 500;
     }
 
-    return sihttp_response({
+    sihttp_response_t response = {
         .status = status,
         .body = json,
         .content_type = SIHTTP_CONTENT_JSON,
-    });
+    };
+    return response;
 }
 
 sihttp_response_t ecs_rest_error_response(int status, const char *message) {

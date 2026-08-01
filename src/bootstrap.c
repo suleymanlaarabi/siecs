@@ -152,21 +152,21 @@ ECS_TAG_DEFINE(Abstract);
 
 void ecs_bootstrap() {
     // Reserve identifiers used to represent false return values.
-    ecs_table_index_get_or_create((ecs_type_t){ 0 });
+    ecs_type_t empty_type = { 0 };
+    ecs_table_index_get_or_create(empty_type);
     sicore_vec_push_u64(&ecs_world.entity_index.entities, 0);
-    ecs_component({ SIECS_NAME_INIT("Invalid") });
+    ecs_component_desc_t invalid_component = { SIECS_NAME_INIT("Invalid") };
+    ecs_component_init(&invalid_component);
 
 #if SIECS_HAS_META
     // Register the ecs_entity_t struct reflection.
-    sireflect_register_struct(
-        sijson_default_registry(),
-        &(sireflect_struct_desc_t){
-            .name = "ecs_entity_t",
-            .fields = "{ uint32_t id; uint32_t generation; }",
-            .size = sizeof(ecs_entity_t),
-            .align = _Alignof(ecs_entity_t),
-        }
-    );
+    sireflect_struct_desc_t entity_desc = {
+        .name = "ecs_entity_t",
+        .fields = "{ uint32_t id; uint32_t generation; }",
+        .size = sizeof(ecs_entity_t),
+        .align = _Alignof(ecs_entity_t),
+    };
+    sireflect_register_struct(sijson_default_registry(), &entity_desc);
 #endif
 
     ECS_COMPONENT_REGISTER(ChildOf);

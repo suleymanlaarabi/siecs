@@ -64,6 +64,11 @@
       "${cfg sanitize}": {
         "export-symbols": true
       }
+    },
+    "${os windows}": {
+      "c-standard": "c11",
+      "symbols": false,
+      "cflags": ["/FS"]
     }
   },
   "bundle": {

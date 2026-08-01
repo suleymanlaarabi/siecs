@@ -49,7 +49,10 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_bootstrap();
 }
 
-void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){}); }
+void ecs_init(void) {
+    ecs_world_feat_desc_t features = {};
+    ecs_init_w_features(&features);
+}
 
 void ecs_fini(void) {
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");

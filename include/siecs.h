@@ -44,6 +44,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#if defined(_MSC_VER) && !defined(_Static_assert)
+#define _Static_assert static_assert
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -400,12 +404,13 @@ SIECS_API void ecs_quit(void);
  * Use in headers:
  *   ECS_COMPONENT_DECLARE(Position, { float x; float y; });
  */
+#define SIECS_COMPONENT_VAR_API
 #if SIECS_HAS_META
 /* Declare a component type and its descriptor in a public header. */
 #define ECS_COMPONENT_DECLARE(cname, ...)                                                          \
     SIJSON_DECLARE(cname, __VA_ARGS__)                                                             \
-    extern ecs_component_t ecs_id(cname);                                                          \
-    extern ecs_component_desc_t ecs_id(cname##_desc)
+    SIECS_COMPONENT_VAR_API extern ecs_component_t ecs_id(cname);                                 \
+    SIECS_COMPONENT_VAR_API extern ecs_component_desc_t ecs_id(cname##_desc)
 #define SIECS_COMPONENT_META_DEFINE(cname) SIJSON_DEFINE(cname)
 #define SIECS_COMPONENT_META_INIT(cname) .struct_desc = &sireflect_desc(cname),
 #define SIECS_TAG_META_DEFINE(cname)                                                               \
@@ -417,8 +422,8 @@ SIECS_API void ecs_quit(void);
 #define ECS_COMPONENT_DECLARE(cname, ...)                                                          \
     typedef struct cname cname;                                                                    \
     struct cname __VA_ARGS__;                                                                      \
-    extern ecs_component_t ecs_id(cname);                                                          \
-    extern ecs_component_desc_t ecs_id(cname##_desc)
+    SIECS_COMPONENT_VAR_API extern ecs_component_t ecs_id(cname);                                 \
+    SIECS_COMPONENT_VAR_API extern ecs_component_desc_t ecs_id(cname##_desc)
 #define SIECS_COMPONENT_META_DEFINE(cname)
 #define SIECS_COMPONENT_META_INIT(cname)
 #define SIECS_TAG_META_DEFINE(cname)
@@ -446,8 +451,8 @@ SIECS_API void ecs_quit(void);
  */
 #define ECS_TAG_DECLARE(cname)                                                                     \
     typedef struct cname##_tag_t cname;                                                            \
-    extern ecs_component_t ecs_id(cname);                                                          \
-    extern ecs_component_desc_t ecs_id(cname##_desc)
+    SIECS_COMPONENT_VAR_API extern ecs_component_t ecs_id(cname);                                 \
+    SIECS_COMPONENT_VAR_API extern ecs_component_desc_t ecs_id(cname##_desc)
 
 /* Define a tag component declared with ECS_TAG_DECLARE. */
 #define ECS_TAG_DEFINE(cname)                                                                      \
@@ -593,6 +598,8 @@ SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
 #define ECS_RELATION_DECLARE(name) ECS_COMPONENT_DECLARE(name, { ecs_entity_t target; })
 
 /* Builtin relation for parent/child relationships. */
+#undef SIECS_COMPONENT_VAR_API
+#define SIECS_COMPONENT_VAR_API SIECS_API
 ECS_RELATION_DECLARE(ChildOf);
 
 #if SIECS_HAS_NAMES
@@ -605,6 +612,8 @@ ECS_TAG_DECLARE(Disabled);
 
 /* Builtin tag for abstract entities. */
 ECS_TAG_DECLARE(Abstract);
+#undef SIECS_COMPONENT_VAR_API
+#define SIECS_COMPONENT_VAR_API
 
 /*
  * Register a component from an inline descriptor.
@@ -642,7 +651,7 @@ SIECS_API ecs_component_t ecs_tag_init(const char *name);
 SIECS_API const char *ecs_component_name(ecs_component_t component);
 
 /* Look up a live entity by its registered name; returns 0 when absent. */
-ecs_entity_t ecs_lookup(const char *key);
+SIECS_API ecs_entity_t ecs_lookup(const char *key);
 #endif
 
 /* Create a new alive entity in world. world must not be NULL. */
@@ -746,7 +755,7 @@ SIECS_API void ecs_remove_cid(ecs_entity_t entity, ecs_component_t id);
 /* Return whether an alive entity has a component id. */
 SIECS_API bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id);
 /* Return whether the entity owns the component rather than inheriting it. */
-bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id);
+SIECS_API bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id);
 
 /*
  * Get a typed component pointer from an alive entity.

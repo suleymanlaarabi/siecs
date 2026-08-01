@@ -24,7 +24,7 @@ void ecs_table_index_fini();
 
 #define ecs_table_index_at(index) (&ecs_world.table_index.tables[index])
 
-uint16_t ecs_table_index_get_or_create(
+ECS_INTERNAL_API uint16_t ecs_table_index_get_or_create(
     ecs_type_t type
 );
 

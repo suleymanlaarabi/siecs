@@ -63,6 +63,20 @@ does not require Bake.
 For C++ projects, include the same `siecs.h` header from C++ and link the SIECS
 C runtime. The standalone distribution embeds the C++ API in `siecs.h`.
 
+## Windows compiler
+
+Windows builds use `clang-cl` with the MSVC toolchain. This keeps the normal
+MSVC ABI while providing the C23 support used by SIECS. The public API,
+headers, and user macros are unchanged.
+
+For a Bake build, configure the compiler once and build normally:
+
+```powershell
+bake export CC=clang-cl
+bake export CXX=clang-cl
+bake rebuild . -r
+```
+
 # C++
 ```cpp
 #include <siecs.h>

@@ -79,6 +79,10 @@ static inline bool ecs_table_has_owned(const ecs_table_t *table, ecs_component_t
     return ecs_table_column_or_invalid(table, component_id) != UINT16_MAX;
 }
 
-void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bool *is_shared);
+ECS_INTERNAL_API void *ecs_table_field(
+    const ecs_table_t *table,
+    ecs_component_t component_id,
+    bool *is_shared
+);
 
 #endif
