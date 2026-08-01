@@ -1638,7 +1638,7 @@ SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
 ECS_RELATION_DECLARE(ChildOf);
 
 #if SIECS_HAS_NAMES
-/* Builtin component for entity names. */
+/* Builtin component for entity names; the world owns a copied value. */
 ECS_COMPONENT_DECLARE(Name, { char *value; });
 #endif
 
@@ -2467,7 +2467,8 @@ class entity {
 
 #if SIECS_HAS_NAMES
         if (name != nullptr) {
-            value.set<Name>({ .value = strdup(name) });
+            char *copy = strdup(name);
+            value.set<Name>({ .value = copy });
         }
 #else
         (void)name;

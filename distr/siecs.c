@@ -5457,6 +5457,8 @@ void init_rest(void);
 #endif
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #if SIECS_HAS_META && !defined(SIREFLECT_H)
 #endif
 #ifndef SIECS_STORAGE_TABLE_INDEX_H
@@ -5629,6 +5631,35 @@ void ecs_table_index_fini();
 uint16_t ecs_table_index_get_or_create(
     ecs_type_t type
 );
+
+#endif
+
+#ifndef SIECS_UTILS_H
+#define SIECS_UTILS_H
+#ifndef NDEBUG
+#include <stdio.h>
+#include <stdlib.h>
+#define ecs_cid_valid(id) ((id) != 0)
+#define ecs_entity_valid(entity) (ecs_first(entity) != 0)
+
+#define ecs_assert(condition, ...) \
+    if (!(condition)) { \
+        fprintf(stderr, __VA_ARGS__); \
+        abort(); \
+    }
+
+#define ecs_assert_id_valid(id) ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
+#define ecs_assert_not_null(ptr) ecs_assert((ptr) != NULL, "null pointer: %s\n", #ptr)
+#define ecs_assert_entity_valid(entity) ecs_assert(ecs_entity_valid(entity), "invalid entity: %d, entity must be registered\n", ecs_first(entity))
+#define ecs_assert_is_alive(entity) ecs_assert(ecs_is_alive(entity), "entity is dead: %d\n", ecs_first(entity))
+
+#else
+#define ecs_assert(condition, ...)
+#define ecs_assert_id_valid(id)
+#define ecs_assert_not_null(ptr)
+#define ecs_assert_entity_valid(entity)
+#define ecs_assert_is_alive(entity)
+#endif
 
 #endif
 
@@ -6145,6 +6176,81 @@ ECS_RELATION_DEFINE(ChildOf, EcsRelationCascadeDelete);
 #if SIECS_HAS_NAMES
 sicore_map_t name_map;
 
+static char *name_copy_string(const char *value) {
+    if (!value) {
+        return NULL;
+    }
+
+    size_t size = strlen(value) + 1;
+    char *copy = malloc(size);
+    ecs_assert_not_null(copy);
+    memcpy(copy, value, size);
+    return copy;
+}
+
+static void name_ctor(void *ptr, uint32_t count) {
+    Name *names = ptr;
+    for (uint32_t i = 0; i < count; i++) {
+        names[i].value = NULL;
+    }
+}
+
+static void name_dtor(void *ptr, uint32_t count) {
+    Name *names = ptr;
+    for (uint32_t i = 0; i < count; i++) {
+        free(names[i].value);
+        names[i].value = NULL;
+    }
+}
+
+static void name_copy_ctor(void *dst, const void *src, uint32_t count) {
+    Name *out = dst;
+    const Name *in = src;
+    for (uint32_t i = 0; i < count; i++) {
+        out[i].value = name_copy_string(in[i].value);
+    }
+}
+
+static void name_copy(void *dst, const void *src, uint32_t count) {
+    Name *out = dst;
+    const Name *in = src;
+    for (uint32_t i = 0; i < count; i++) {
+        if (out[i].value && in[i].value && strcmp(out[i].value, in[i].value) == 0) {
+            continue;
+        }
+        char *copy = name_copy_string(in[i].value);
+        free(out[i].value);
+        out[i].value = copy;
+    }
+}
+
+static void name_move_ctor(void *dst, void *src, uint32_t count) {
+    Name *out = dst;
+    Name *in = src;
+    for (uint32_t i = 0; i < count; i++) {
+        out[i].value = in[i].value;
+        in[i].value = NULL;
+    }
+}
+
+static void name_move(void *dst, void *src, uint32_t count) {
+    Name *out = dst;
+    Name *in = src;
+    for (uint32_t i = 0; i < count; i++) {
+        if (out == in) {
+            continue;
+        }
+        if (out[i].value && in[i].value && strcmp(out[i].value, in[i].value) == 0) {
+            free(in[i].value);
+            in[i].value = NULL;
+            continue;
+        }
+        free(out[i].value);
+        out[i].value = in[i].value;
+        in[i].value = NULL;
+    }
+}
+
 void name_on_add(ecs_entity_t entity, ecs_component_t component, void *data) {
     Name *name = data;
     if (name->value) {
@@ -6161,11 +6267,21 @@ void name_on_set(
     Name *name = current_value;
     const Name *new_name = new_value;
 
+    if (name == new_name) {
+        if (name->value) {
+            sicore_map_set(&name_map, name->value, ecs_first(entity));
+        }
+        return;
+    }
+
+    char *value = name_copy_string(new_name->value);
     if (name->value) {
         sicore_map_unset(&name_map, name->value);
     }
-    if (new_name->value) {
-        sicore_map_set(&name_map, new_name->value, ecs_first(entity));
+    free(name->value);
+    name->value = value;
+    if (name->value) {
+        sicore_map_set(&name_map, name->value, ecs_first(entity));
     }
 }
 
@@ -6178,6 +6294,14 @@ void name_on_remove(ecs_entity_t entity, ecs_component_t component, void *data) 
 
 ECS_COMPONENT_DEFINE(
     Name,
+    .ops = {
+        .ctor = name_ctor,
+        .dtor = name_dtor,
+        .copy_ctor = name_copy_ctor,
+        .copy = name_copy,
+        .move_ctor = name_move_ctor,
+        .move = name_move,
+    },
     .on_add = name_on_add,
     .on_remove = name_on_remove,
     .on_set = name_on_set
@@ -6412,38 +6536,7 @@ void ecs_migrate_remove(
 
 #endif
 
-#ifndef SIECS_UTILS_H
-#define SIECS_UTILS_H
-#ifndef NDEBUG
-#include <stdio.h>
-#include <stdlib.h>
-#define ecs_cid_valid(id) ((id) != 0)
-#define ecs_entity_valid(entity) (ecs_first(entity) != 0)
-
-#define ecs_assert(condition, ...) \
-    if (!(condition)) { \
-        fprintf(stderr, __VA_ARGS__); \
-        abort(); \
-    }
-
-#define ecs_assert_id_valid(id) ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
-#define ecs_assert_not_null(ptr) ecs_assert((ptr) != NULL, "null pointer: %s\n", #ptr)
-#define ecs_assert_entity_valid(entity) ecs_assert(ecs_entity_valid(entity), "invalid entity: %d, entity must be registered\n", ecs_first(entity))
-#define ecs_assert_is_alive(entity) ecs_assert(ecs_is_alive(entity), "entity is dead: %d\n", ecs_first(entity))
-
-#else
-#define ecs_assert(condition, ...)
-#define ecs_assert_id_valid(id)
-#define ecs_assert_not_null(ptr)
-#define ecs_assert_entity_valid(entity)
-#define ecs_assert_is_alive(entity)
-#endif
-
-#endif
-
 #include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
 
 #define ECS_COMMAND_NONE UINT32_MAX
 
@@ -8679,6 +8772,9 @@ void ecs_fini(void) {
     ecs_module_index_fini();
     ecs_command_buffer_fini();
     ecs_arena_fini();
+#if SIECS_HAS_NAMES
+    sicore_map_fini(&name_map);
+#endif
 #if SIECS_HAS_REST
     if (ecs_world.features.rest) {
         sihttp_server_stop(ecs_world.server);

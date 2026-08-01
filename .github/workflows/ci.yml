@@ -56,9 +56,9 @@ jobs:
             config: lsan
           - os: ubuntu-24.04
             compiler: GCC
-            cc: gcc
-            cxx: g++
-            compiler_package: gcc g++
+            cc: gcc-14
+            cxx: g++-14
+            compiler_package: gcc-14 g++-14
             config: debug
           - os: macos-latest
             compiler: Clang
@@ -126,8 +126,11 @@ jobs:
         run: |
           git clone https://github.com/suleymanlaarabi/bake
           Push-Location bake/build-Windows
-          nmake /NOLOGO /F bake.mak
+          nmake /NOLOGO /F bake.mak clean all
           Pop-Location
+          if (-not (Test-Path "$env:GITHUB_WORKSPACE\bake\bake.exe")) {
+            throw "Bake was not built at $env:GITHUB_WORKSPACE\bake\bake.exe"
+          }
           & "$env:GITHUB_WORKSPACE\bake\bake.exe" setup --local
           "$env:USERPROFILE\bake" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 

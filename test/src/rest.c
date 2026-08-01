@@ -134,11 +134,15 @@ void rest_entity_detail_returns_editor_state(void) {
     ECS_COMPONENT_REGISTER(RestPosition);
 
     ecs_entity_t parent = ecs_new();
-    ecs_set(parent, Name, { strdup("Parent") });
+    char *parent_name = strdup("Parent");
+    ecs_set(parent, Name, { parent_name });
+    free(parent_name);
     ecs_set(parent, RestPosition, { 10.0f, 20.0f });
 
     ecs_entity_t child = ecs_new();
-    ecs_set(child, Name, { strdup("Child") });
+    char *child_name = strdup("Child");
+    ecs_set(child, Name, { child_name });
+    free(child_name);
     ecs_set(child, ChildOf, { parent });
 
     sijson_clean();
@@ -180,8 +184,6 @@ void rest_entity_detail_returns_editor_state(void) {
     test_null(sijson_object_get(parent_summary, "id"));
     test_true(sijson_bool(sijson_object_get(parent_summary, "hasChildren")));
 
-    free(ecs_get(parent, Name)->value);
-    free(ecs_get(child, Name)->value);
     ecs_fini();
 }
 
@@ -189,14 +191,20 @@ void rest_entity_children_returns_direct_children(void) {
     ecs_init();
 
     ecs_entity_t parent = ecs_new();
-    ecs_set(parent, Name, { strdup("Parent") });
+    char *parent_name = strdup("Parent");
+    ecs_set(parent, Name, { parent_name });
+    free(parent_name);
 
     ecs_entity_t child = ecs_new();
-    ecs_set(child, Name, { strdup("Child") });
+    char *child_name = strdup("Child");
+    ecs_set(child, Name, { child_name });
+    free(child_name);
     ecs_set(child, ChildOf, { parent });
 
     ecs_entity_t grandchild = ecs_new();
-    ecs_set(grandchild, Name, { strdup("Grandchild") });
+    char *grandchild_name = strdup("Grandchild");
+    ecs_set(grandchild, Name, { grandchild_name });
+    free(grandchild_name);
     ecs_set(grandchild, ChildOf, { child });
 
     sijson_clean();
@@ -216,9 +224,6 @@ void rest_entity_children_returns_direct_children(void) {
     sijson_value_t grandchild_summary = ecs_rest_entity_json(grandchild);
     test_false(sijson_bool(sijson_object_get(grandchild_summary, "hasChildren")));
 
-    free(ecs_get(parent, Name)->value);
-    free(ecs_get(child, Name)->value);
-    free(ecs_get(grandchild, Name)->value);
     ecs_fini();
 }
 

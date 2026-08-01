@@ -544,6 +544,8 @@ void sicore_vec_remove_u64(sicore_vec_t *vec, uint64_t value) {
 #endif
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #ifndef SIECS_STORAGE_TABLE_INDEX_H
 #define SIECS_STORAGE_TABLE_INDEX_H
 #ifndef SIECS_TABLE_H
@@ -714,6 +716,35 @@ void ecs_table_index_fini();
 uint16_t ecs_table_index_get_or_create(
     ecs_type_t type
 );
+
+#endif
+
+#ifndef SIECS_UTILS_H
+#define SIECS_UTILS_H
+#ifndef NDEBUG
+#include <stdio.h>
+#include <stdlib.h>
+#define ecs_cid_valid(id) ((id) != 0)
+#define ecs_entity_valid(entity) (ecs_first(entity) != 0)
+
+#define ecs_assert(condition, ...) \
+    if (!(condition)) { \
+        fprintf(stderr, __VA_ARGS__); \
+        abort(); \
+    }
+
+#define ecs_assert_id_valid(id) ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
+#define ecs_assert_not_null(ptr) ecs_assert((ptr) != NULL, "null pointer: %s\n", #ptr)
+#define ecs_assert_entity_valid(entity) ecs_assert(ecs_entity_valid(entity), "invalid entity: %d, entity must be registered\n", ecs_first(entity))
+#define ecs_assert_is_alive(entity) ecs_assert(ecs_is_alive(entity), "entity is dead: %d\n", ecs_first(entity))
+
+#else
+#define ecs_assert(condition, ...)
+#define ecs_assert_id_valid(id)
+#define ecs_assert_not_null(ptr)
+#define ecs_assert_entity_valid(entity)
+#define ecs_assert_is_alive(entity)
+#endif
 
 #endif
 
@@ -1392,38 +1423,7 @@ void ecs_migrate_remove(
 
 #endif
 
-#ifndef SIECS_UTILS_H
-#define SIECS_UTILS_H
-#ifndef NDEBUG
-#include <stdio.h>
-#include <stdlib.h>
-#define ecs_cid_valid(id) ((id) != 0)
-#define ecs_entity_valid(entity) (ecs_first(entity) != 0)
-
-#define ecs_assert(condition, ...) \
-    if (!(condition)) { \
-        fprintf(stderr, __VA_ARGS__); \
-        abort(); \
-    }
-
-#define ecs_assert_id_valid(id) ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
-#define ecs_assert_not_null(ptr) ecs_assert((ptr) != NULL, "null pointer: %s\n", #ptr)
-#define ecs_assert_entity_valid(entity) ecs_assert(ecs_entity_valid(entity), "invalid entity: %d, entity must be registered\n", ecs_first(entity))
-#define ecs_assert_is_alive(entity) ecs_assert(ecs_is_alive(entity), "entity is dead: %d\n", ecs_first(entity))
-
-#else
-#define ecs_assert(condition, ...)
-#define ecs_assert_id_valid(id)
-#define ecs_assert_not_null(ptr)
-#define ecs_assert_entity_valid(entity)
-#define ecs_assert_is_alive(entity)
-#endif
-
-#endif
-
 #include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
 
 #define ECS_COMMAND_NONE UINT32_MAX
 

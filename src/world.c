@@ -65,6 +65,9 @@ void ecs_fini(void) {
     ecs_module_index_fini();
     ecs_command_buffer_fini();
     ecs_arena_fini();
+#if SIECS_HAS_NAMES
+    sicore_map_fini(&name_map);
+#endif
 #if SIECS_HAS_REST
     if (ecs_world.features.rest) {
         sihttp_server_stop(ecs_world.server);

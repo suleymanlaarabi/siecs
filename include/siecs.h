@@ -596,7 +596,7 @@ SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
 ECS_RELATION_DECLARE(ChildOf);
 
 #if SIECS_HAS_NAMES
-/* Builtin component for entity names. */
+/* Builtin component for entity names; the world owns a copied value. */
 ECS_COMPONENT_DECLARE(Name, { char *value; });
 #endif
 

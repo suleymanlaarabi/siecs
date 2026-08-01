@@ -58,7 +58,8 @@ class entity {
 
 #if SIECS_HAS_NAMES
         if (name != nullptr) {
-            value.set<Name>({ .value = strdup(name) });
+            char *copy = strdup(name);
+            value.set<Name>({ .value = copy });
         }
 #else
         (void)name;

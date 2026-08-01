@@ -52,11 +52,12 @@ void entity_explicit_name_overrides_default(void) {
     ecs_init();
 
     ecs_entity_t entity = ecs_new();
-    ecs_set(entity, Name, { strdup("Player") });
+    char *input = strdup("Player");
+    ecs_set(entity, Name, { input });
+    free(input);
 
     test_str("Player", ecs_entity_name(entity));
 
-    free(ecs_get(entity, Name)->value);
     ecs_fini();
 }
 
