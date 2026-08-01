@@ -1,3 +1,5 @@
+# This workflow stays Linux-only because act runs GitHub-hosted jobs in Docker
+# by default. The native Windows job lives in ci.yml and needs a Windows host.
 name: CI (act)
 
 on:

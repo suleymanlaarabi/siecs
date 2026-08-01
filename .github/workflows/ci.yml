@@ -25,23 +25,51 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
-            compiler: clang-18
+            compiler: Clang
             cc: clang-18
+            cxx: clang++-18
             compiler_package: clang-18
             config: debug
           - os: ubuntu-24.04
-            compiler: clang-18
+            compiler: Clang
             cc: clang-18
+            cxx: clang++-18
             compiler_package: clang-18
             config: release
+          - os: ubuntu-24.04
+            compiler: Clang
+            cc: clang-18
+            cxx: clang++-18
+            compiler_package: clang-18
+            config: asan
+          - os: ubuntu-24.04
+            compiler: Clang
+            cc: clang-18
+            cxx: clang++-18
+            compiler_package: clang-18
+            config: ubsan
+          - os: ubuntu-24.04
+            compiler: Clang
+            cc: clang-18
+            cxx: clang++-18
+            compiler_package: clang-18
+            config: lsan
+          - os: ubuntu-24.04
+            compiler: GCC
+            cc: gcc
+            cxx: g++
+            compiler_package: gcc g++
+            config: debug
           - os: macos-latest
-            compiler: clang
+            compiler: Clang
             cc: clang
+            cxx: clang++
             compiler_package: clang
             config: debug
 
     env:
       CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
 
     steps:
       - uses: actions/checkout@v5
@@ -60,27 +88,61 @@ jobs:
 
       - name: Build library
         run: |
-          if [ "${{ matrix.config }}" = "release" ]; then
-            bake rebuild . -r --cfg release
-          else
-            bake rebuild . -r
-          fi
+          bake rebuild . -r --cfg "${{ matrix.config }}"
 
       - name: Build tests
         run: |
-          if [ "${{ matrix.config }}" = "release" ]; then
-            bake rebuild test -r --cfg release
-          else
-            bake rebuild test -r
-          fi
+          bake rebuild test -r --cfg "${{ matrix.config }}"
+          bake rebuild test/cpp -r --cfg "${{ matrix.config }}"
 
       - name: Run tests
+        if: matrix.config != 'lsan'
         run: |
-          if [ "${{ matrix.config }}" = "release" ]; then
-            bake run test --cfg release
-          else
-            bake run test
-          fi
+          bake run test --cfg "${{ matrix.config }}"
+          bake run test/cpp --cfg "${{ matrix.config }}"
+
+      - name: Run tests with LeakSanitizer
+        if: matrix.config == 'lsan'
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          LSAN_OPTIONS: exitcode=23:halt_on_error=1
+        run: |
+          bake run test --cfg lsan
+          bake run test/cpp --cfg lsan
+
+  windows:
+    name: bake Windows MSVC
+    runs-on: windows-2022
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install bake
+        shell: pwsh
+        run: |
+          git clone https://github.com/suleymanlaarabi/bake
+          Push-Location bake/build-Windows
+          nmake /NOLOGO /F bake.mak
+          Pop-Location
+          & "$env:GITHUB_WORKSPACE\bake\bake.exe" setup --local
+          "$env:USERPROFILE\bake" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build library and tests
+        shell: pwsh
+        run: |
+          bake rebuild . -r
+          bake rebuild test -r
+          bake rebuild test/cpp -r
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          bake run test
+          bake run test/cpp
 
   distr:
     name: distr up to date

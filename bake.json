@@ -1,0 +1,28 @@
+{
+  "configuration": {
+    "asan": {
+      "symbols": true,
+      "debug": true,
+      "optimizations": false,
+      "coverage": false,
+      "strict": false,
+      "sanitize-memory": true
+    },
+    "ubsan": {
+      "symbols": true,
+      "debug": true,
+      "optimizations": false,
+      "coverage": false,
+      "strict": false,
+      "sanitize-undefined": true
+    },
+    "lsan": {
+      "symbols": true,
+      "debug": true,
+      "optimizations": false,
+      "coverage": false,
+      "strict": false,
+      "sanitize-memory": true
+    }
+  }
+}
