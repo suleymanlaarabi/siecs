@@ -4590,7 +4590,11 @@ SIHTTP_API void sihttp_server_stop(sihttp_server_t *server) {
     if (server->listen_fd != -1) {
         int fd = server->listen_fd;
         server->listen_fd = -1;
+#ifdef _WIN32
         shutdown(fd, SD_BOTH);
+#else
+        shutdown(fd, SHUT_RDWR);
+#endif
         close(fd);
     }
 }
