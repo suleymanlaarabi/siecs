@@ -74,7 +74,11 @@ static inline uint64_t sicore_read64(const uint8_t *p) {
     uint64_t v;
     memcpy(&v, p, sizeof(v));
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#if defined(_MSC_VER)
+    v = _byteswap_uint64(v);
+#else
     v = __builtin_bswap64(v);
+#endif
 #endif
     return v;
 }
@@ -83,7 +87,11 @@ static inline uint64_t sicore_read32(const uint8_t *p) {
     uint32_t v;
     memcpy(&v, p, sizeof(v));
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#if defined(_MSC_VER)
+    v = _byteswap_ulong((unsigned long)v);
+#else
     v = __builtin_bswap32(v);
+#endif
 #endif
     return v;
 }
@@ -533,8 +541,24 @@ void sicore_vec_remove_u64(sicore_vec_t *vec, uint64_t value) {
 #ifndef SIECS_HELPER_H
 #define SIECS_HELPER_H
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+
+#define ECS_LIKELY(x) (!!(x))
+#define ECS_UNLIKELY(x) (!!(x))
+
+static inline unsigned ecs_ctz(unsigned value) {
+    unsigned long index;
+    _BitScanForward(&index, value);
+    return (unsigned)index;
+}
+
+#define ECS_CTZ(x) ecs_ctz((unsigned)(x))
+#else
 #define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
 #define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#define ECS_CTZ(x) __builtin_ctz((unsigned)(x))
+#endif
 
 #define ecs_entity(index, generation) (((uint64_t)(index) << 32) | (generation & 0xffffffff))
 
@@ -895,11 +919,20 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target);
 #include <stddef.h>
 #include <stdint.h>
 
+#if defined(_MSC_VER)
+/* MSVC's C headers do not expose max_align_t in the C language mode. */
+typedef __declspec(align(16)) struct {
+    unsigned char value[16];
+} ecs_arena_max_align_t;
+#else
+typedef max_align_t ecs_arena_max_align_t;
+#endif
+
 typedef struct ecs_arena_block_s {
     struct ecs_arena_block_s *next;
     uint32_t capacity;
     uint32_t cursor;
-    max_align_t data[];
+    ecs_arena_max_align_t data[];
 } ecs_arena_block_t;
 
 typedef struct {
@@ -914,7 +947,7 @@ void *ecs_arena_alloc_slow(ecs_arena_t *allocator, uint32_t size);
 
 static inline void *ecs_arena_alloc(ecs_arena_t *allocator, uint32_t size) {
     ecs_arena_block_t *block = allocator->current;
-    const uint32_t alignment = (uint32_t)_Alignof(max_align_t);
+    const uint32_t alignment = (uint32_t)_Alignof(ecs_arena_max_align_t);
     const uint32_t cursor = (block->cursor + alignment - 1u) & ~(alignment - 1u);
     if (ECS_LIKELY(cursor <= block->capacity && size <= block->capacity - cursor)) {
         block->cursor = cursor + size;
@@ -2225,7 +2258,7 @@ void RelationOnSet(
         RelationSource *source_data = ecs_get_cid(target_data->target, source_component);
         sicore_vec_push_u64(&source_data->entities, entity);
     } else {
-        RelationSource source_data = {};
+        RelationSource source_data = {0};
         sicore_vec_init(&source_data.entities, sizeof(ecs_entity_t));
         sicore_vec_push_u64(&source_data.entities, entity);
         ecs_set_cid(target_data->target, source_component, &source_data);
@@ -2256,7 +2289,8 @@ static void RelationSourceDtor(void *ptr, uint32_t count) {
     }
 }
 
-void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) {
+void RelationSourceOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
+    (void)entity;
     RelationSource *source_data = ptr;
 
     const ecs_entity_t *entities = source_data->entities.data;
@@ -3659,7 +3693,11 @@ void ecs_remove_resource_rid(ecs_resource_t id) {
     ecs_resource_index_remove(id);
 }
 
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <time.h>
+#endif
 
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
 
@@ -3731,20 +3769,32 @@ void ecs_run_phase(ecs_phase_t phase) {
 }
 
 static inline double now_sec(void) {
+#ifdef _WIN32
+    LARGE_INTEGER frequency;
+    LARGE_INTEGER counter;
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&counter);
+    return (double)counter.QuadPart / (double)frequency.QuadPart;
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1000000000.0;
+#endif
 }
 
 static inline void sleep_sec(double seconds) {
     if (seconds <= 0.0)
         return;
 
+#ifdef _WIN32
+    Sleep((DWORD)(seconds * 1000.0));
+#else
     struct timespec ts;
     ts.tv_sec = (time_t)seconds;
     ts.tv_nsec = (long)((seconds - (double)ts.tv_sec) * 1000000000.0);
 
     nanosleep(&ts, NULL);
+#endif
 }
 
 bool ecs_progress(void) {
@@ -4416,7 +4466,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_bootstrap();
 }
 
-void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){}); }
+void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){0}); }
 
 void ecs_fini(void) {
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
@@ -5224,7 +5274,7 @@ static void ecs_query_cache_set_table_fields(
     uint32_t field_kind_bits = 0;
 
     while (remaining_fields) {
-        const uint16_t term_index = (uint16_t)__builtin_ctz((unsigned)remaining_fields);
+        const uint16_t term_index = (uint16_t)ECS_CTZ(remaining_fields);
         remaining_fields &= (uint16_t)(remaining_fields - 1);
         const ecs_query_term_t term = cache->query.terms[term_index];
         const ecs_term_access_t access = ecs_query_term_access(term);
@@ -5273,7 +5323,7 @@ bool ecs_query_resolve_up_fields(
     uint32_t field_kind_bits = cache->field_kind_bits[table_index];
     uint32_t base = (uint32_t)table_index * cache->query.field_count;
     while (remaining_fields) {
-        uint16_t term_index = (uint16_t)__builtin_ctz((unsigned)remaining_fields);
+        uint16_t term_index = (uint16_t)ECS_CTZ(remaining_fields);
         remaining_fields &= (uint16_t)(remaining_fields - 1);
         ecs_query_term_t term = cache->query.terms[term_index];
         ecs_term_access_t access = ecs_query_term_access(term);

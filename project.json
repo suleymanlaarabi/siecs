@@ -50,8 +50,8 @@
     ]
   },
   "lang.c": {
-    "c-standard": "c23",
-    "cpp-standard": "c++23",
+    "c-standard": "c17",
+    "cpp-standard": "c++20",
     "export-symbols": true,
     "include": ["src"],
     "${os linux}": {
@@ -71,6 +71,14 @@
       "sijson": "https://github.com/suleymanlaarabi/sijson",
       "sihttp": "https://github.com/suleymanlaarabi/sihttp",
       "sicore":  "https://github.com/suleymanlaarabi/sicore"
+    },
+    "refs": {
+      "default": {
+        "sicore": { "branch": "main", "commit": "815a938a1ee7ec30469b898b4e34b494930f618b" },
+        "sireflect": { "branch": "main", "commit": "f79f3e28b8243918061ad5b6b44fc698842ed4b5" },
+        "sijson": { "branch": "main", "commit": "7c978e7eaf821d0ce13af4ed96ef1e7d7e3eec62" },
+        "sihttp": { "branch": "main", "commit": "3d13413522fa6d42199902f5e28dca7bea31c478" }
+      }
     }
   }
 }

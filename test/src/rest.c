@@ -80,7 +80,7 @@ void rest_schema_returns_editor_contract(void) {
     ecs_init();
     ECS_COMPONENT_REGISTER(RestPosition);
 
-    sihttp_request_t req = {};
+    sihttp_request_t req = {0};
     sihttp_response_t res = ecs_rest_get_schema(&req);
 
     test_int(200, res.status);

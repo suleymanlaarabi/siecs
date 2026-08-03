@@ -94,7 +94,7 @@ check-distr-standalone:
 	cp distr/siecs.c "$$tmp_dir/siecs.c"; \
 	cp distr/siecs.h "$$tmp_dir/siecs.h"; \
 	cd "$$tmp_dir"; \
-	$(CC) -std=c23 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic -c siecs.c -o siecs-distr.o
+	$(CC) -std=c17 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic -c siecs.c -o siecs-distr.o
 
 check-distr-cpp-standalone:
 	tmp_dir=$$(mktemp -d /tmp/siecs-distr-cpp.XXXXXX); \
@@ -103,8 +103,8 @@ check-distr-cpp-standalone:
 	cp distr/siecs.h "$$tmp_dir/siecs.h"; \
 	cp test/standalone/distr_cpp_standalone.cpp "$$tmp_dir/main.cpp"; \
 	cd "$$tmp_dir"; \
-	$(CC) -std=c23 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic -c siecs.c -o siecs.o; \
-	$(CXX) -std=c++23 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic -I. main.cpp siecs.o -pthread -o siecs-cpp-standalone; \
+	$(CC) -std=c17 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic -c siecs.c -o siecs.o; \
+	$(CXX) -std=c++20 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic -I. main.cpp siecs.o -pthread -o siecs-cpp-standalone; \
 	./siecs-cpp-standalone
 
 act-ci:

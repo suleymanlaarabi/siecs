@@ -43,7 +43,7 @@ int main(void) {
 }
 ```
 
-Build it with `cc -std=c23 -I. main.c siecs.c -pthread -o my_app`.
+Build it with `cc -std=c17 -I. main.c siecs.c -pthread -o my_app`.
 
 The standalone distribution embeds SIECS and its public C dependencies.
 
@@ -71,8 +71,8 @@ int main() {
 Compile the C runtime as C, then link it with the C++ program:
 
 ```sh
-cc -std=c23 -I. -c siecs.c -o siecs.o
-c++ -std=c++23 -I. main.cpp siecs.o -pthread -o my_app
+cc -std=c17 -I. -c siecs.c -o siecs.o
+c++ -std=c++20 -I. main.cpp siecs.o -pthread -o my_app
 ```
 
 </TabItem>
@@ -89,7 +89,7 @@ The same SIECS runtime can be consumed from C or C++:
 #include <siecs.h>
 ```
 
-Compile the C source with `cc -std=c23`.
+Compile the C source with `cc -std=c17`.
 
 </TabItem>
 <TabItem label="C++">
@@ -118,7 +118,7 @@ C
     "use": ["siecs"]
   },
   "lang.c": {
-    "c-standard": "c23"
+    "c-standard": "c17"
   },
   "bundle": {
     "repositories": {
@@ -138,7 +138,7 @@ C++
     "use": ["siecs"]
   },
   "lang.cpp": {
-    "cpp-standard": "c++23"
+    "cpp-standard": "c++20"
   },
   "bundle": {
     "repositories": {

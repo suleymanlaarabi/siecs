@@ -8,7 +8,7 @@
     "use": ["siecs"]
   },
   "lang.cpp": {
-    "cpp-standard": "c++23",
+    "cpp-standard": "c++20",
     "include": ["../../include"]
   },
   "bundle": {
