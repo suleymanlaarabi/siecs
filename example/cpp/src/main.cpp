@@ -24,7 +24,8 @@ struct NoIntegrate {};
 
 int main() {
     ecs::init({ .rest = false, .target_fps = 60 });
-
-    ecs::entity::create<Enemy>();
-    ecs::entity::create("Enemy");
+    ecs::entity::create("Parent").child_of(ecs::entity::create("Child"));
+    ecs::query().cascade<ecs::ChildOf>().each([](ecs::entity entity) {
+        std::cout << entity.get<Name>().value;
+    });
 }

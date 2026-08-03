@@ -1,13 +1,14 @@
 ---
 title: Queries
-description: Create persistent queries and iterate table batches with required, excluded, optional, and writable components.
+description: Match component and relation tables, then iterate cached batches in C or C++.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Queries match archetype tables and return batches. The C API exposes component
-arrays through `ecs_field()`; the C++ API passes typed components to callbacks.
+Queries match archetype tables. A matching query returns the entities in each
+table as a batch; component fields are exposed through `ecs_field()` in C or as
+typed callback arguments in C++.
 
-## Create a Query
+## Create a query
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -24,271 +25,185 @@ ecs_query_id_t moving = ecs_query({
 ```cpp
 auto moving = ecs::query()
     .require<Position>()
-    .require<Velocity>();
+    .require<Velocity>()
+    .build_handle();
 ```
 
 </TabItem>
 </Tabs>
 
-The C++ builder creates a query when `each()`, `first()`, or `build()` is
-called. `each()` and `first()` are one-shot operations: they build and destroy
-the underlying C query for that call. Use a C++ system for repeated frame work,
-or call `build()` and iterate the returned id with the C iterator API.
+The C descriptor contains up to `ECS_QUERY_TERM_CAPACITY` component terms and
+up to `ECS_QUERY_RELATION_CAPACITY` relation terms. Terms are zero-terminated
+inside their fixed-size descriptor arrays. A query may contain component terms,
+relation terms, an `is_a` target, or a cascade order.
 
-The `terms` array is a zero-terminated list of component terms. A query must
-contain at least one term or an `is_a` target.
+The C++ builder creates a temporary query for `each()` and `first()`. Use
+`build_handle()` when a query must be kept and iterated repeatedly.
+
+## Component terms
 
 | Term | Meaning |
 | --- | --- |
-| `ecs_in(T)` | `T` must exist locally or through inheritance and is returned by `ecs_field()` for reading. |
-| `ecs_out(T)` | `T` must exist locally and is returned by `ecs_field()` for writing. |
-| `ecs_inout(T)` | `T` must exist locally and is returned by `ecs_field()` for reading and writing. |
-| `ecs_in_optional(T)` | `T` may be absent and is returned as a nullable read field. |
-| `ecs_inout_optional(T)` | Local `T` may be absent and is returned as a nullable read/write field. |
-| `ecs_filter(T)` | `T` must exist but is not returned. |
-| `ecs_not(T)` | `T` must not exist. |
+| `ecs_in(T)` | `T` must exist and is returned by `ecs_field()` for reading. |
+| `ecs_out(T)` | `T` must exist locally and is returned for writing. |
+| `ecs_inout(T)` | `T` must exist locally and is returned for reading and writing. |
+| `ecs_in_optional(T)` | `T` is returned when present; the field is `NULL` for tables without it. |
+| `ecs_inout_optional(T)` | Local `T` is optional and writable when present. |
+| `ecs_filter(T)` | `T` must exist but does not create a field. |
+| `ecs_not(T)` | `T` must not exist and does not create a field. |
+| `ecs_up(T, Relation)` | Read the nearest inherited `T` through an acyclic `ByTarget` relation. |
+| `ecs_up_optional(T, Relation)` | Same lookup, but the inherited field may be absent. |
 
-Current descriptor limits:
+Only `in`, `out`, `inout`, and their optional variants create field indexes.
+Fields are numbered in declaration order; `ecs_filter` and `ecs_not` do not
+consume an index. `ecs_up` fields are also returned by `ecs_field()` and may be
+shared with an ancestor.
 
-| Field | Maximum entries |
-| --- | --- |
-| `terms` | 16 |
+Queries, systems, and observers exclude `Disabled` and `Abstract` by default.
+Mention either component explicitly when it must be included:
 
-Queries exclude entities with the built-in `Disabled` component by default. This
-implicit `ecs_not(Disabled)` term is added only when the query does not already
-mention `Disabled`.
+```c
+ecs_query_id_t disabled = ecs_query({
+    .terms = { ecs_in(Position), ecs_filter(Disabled) },
+});
+```
 
-Use `is_a` when a query should only match entities that inherit from a specific
-base entity:
+## Relation terms
+
+Relations are separate from components. Register a relation, then use relation
+terms to match its presence, target, or depth:
 
 <Tabs syncKey="language">
 <TabItem label="C">
+
 ```c
-ecs_query_id_t enemies = ecs_query({
-    .is_a = enemy_base,
+ecs_query_id_t members = ecs_query({
     .terms = { ecs_in(Position) },
+    .relations = { ecs_to(GroupOf, group) },
 });
 ```
+
 </TabItem>
 <TabItem label="C++">
+
+```cpp
+auto members = ecs::query()
+    .require<Position>()
+    .to<GroupOf>(group)
+    .build_handle();
+```
+
+</TabItem>
+</Tabs>
+
+| Term | Meaning |
+| --- | --- |
+| `ecs_rel(Relation)` / `with_relation<Relation>()` | The source has the relation. |
+| `ecs_rel_opt(Relation)` | The relation is optional and does not exclude sources without it. |
+| `ecs_not_rel(Relation)` | The source must not have the relation. |
+| `ecs_to(Relation, target)` / `to<Relation>(target)` | A `ByTarget` relation must point exactly to `target`. |
+| `ecs_depth(Relation, depth)` / `depth<Relation>(depth)` | A `ByDepth` relation must have this depth. |
+
+`ecs_to` and `ecs_depth` validate that the relation uses the matching storage
+mode. Relation terms are filters; they do not create component fields.
+
+For a `Dense` or `ByDepth` relation, `ecs_targets()` returns the contiguous
+target column for the current batch. `ecs_target_at()` works for one row of any
+relation storage mode:
+
+```c
+while (ecs_iter_next(&it)) {
+    for (uint32_t row = 0; row < it.count; row++) {
+        ecs_entity_t target = ecs_target_at(&it, GroupOf, row);
+        /* use it.entities[row] and target */
+    }
+}
+```
+
+## Hierarchies and ordering
+
+Use `is_a` to restrict matches to entities that inherit from a base entity. The
+match is transitive through the inheritance chain:
+
 ```cpp
 auto enemies = ecs::query()
     .is_a(enemy_base)
     .require<Position>();
 ```
-</TabItem>
-</Tabs>
+
+`ecs_cascade(Relation)` orders matching tables by relation depth. It is valid
+only for an acyclic `ByDepth` relation:
+
+```c
+ecs_query_id_t hierarchy = ecs_query({
+    .terms = { ecs_in(Position) },
+    .relations = { ecs_rel(ChildOf) },
+    .order = ecs_cascade(ChildOf),
+});
+```
+
+The C++ equivalent is `.cascade<ChildOf>()`.
 
 ## Iterate
 
 <Tabs syncKey="language">
 <TabItem label="C">
+
 ```c
 ecs_iter_t it = ecs_query_iter(moving);
-
 while (ecs_iter_next(&it)) {
     Position *positions = ecs_field(&it, 0);
     Velocity *velocities = ecs_field(&it, 1);
 
     for (uint32_t i = 0; i < it.count; i++) {
         positions[i].x += velocities[i].x;
-        positions[i].y += velocities[i].y;
     }
 }
 ```
+
 </TabItem>
 <TabItem label="C++">
+
 ```cpp
-ecs::query().require<Position>().require<Velocity>().each(
-    [](Position &position, const Velocity &velocity) {
-        position.x += velocity.x;
-        position.y += velocity.y;
-    }
-);
+moving.each([](Position &position, const Velocity &velocity) {
+    position.x += velocity.x;
+});
 ```
+
 </TabItem>
 </Tabs>
 
-`ecs_iter_next()` advances to the next non-empty batch. `it.count` is the number
-of entities in the current batch.
+`ecs_iter_next()` advances to the next non-empty table batch. `it.count` is the
+number of entities in that batch. `ecs_query_count()` returns the current
+number of matching entities without creating an iterator.
 
-`ecs_field(&it, index)` returns component arrays for `ecs_in`, `ecs_out`,
-`ecs_inout`, `ecs_in_optional`, and `ecs_inout_optional` terms in declaration
-order. `ecs_filter` and `ecs_not` do not create field indexes.
+`ecs_field_kind()` distinguishes `EcsFieldOwned`, `EcsFieldShared`, and
+`EcsFieldNone` for optional fields. A shared field is inherited or otherwise
+stored outside the current table; its pointer must be treated as read-only.
 
-In the C++ API, `ecs::res<T>` and `ecs::res<const T>` callback parameters are
-resources, not query terms. They are resolved from the world before table
-iteration and do not consume field indexes:
+Optional fields are batch-wide: the pointer is either a valid array for every
+entity in the batch or `NULL` for the entire batch.
 
-```cpp
-ecs::query().each([](ecs::res<const Time> time,
-                      Position &position,
-                      const Velocity &velocity) {
-    position.x += velocity.x * time->dt;
-});
-```
-
-## Required and Excluded Components
-
-Use `ecs_filter` when a component must exist but does not need to be returned:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_query_id_t visible_positions = ecs_query({
-    .terms = { ecs_inout(Position), ecs_filter(Visible) },
-});
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::query().require<Position>().require<Visible>().each(
-    [](Position &position) {
-        position.x += 1.0f;
-    }
-);
-```
-</TabItem>
-</Tabs>
-
-Use `ecs_not` to skip entities with a component:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_query_id_t active_positions = ecs_query({
-    .terms = { ecs_inout(Position), ecs_not(Disabled) },
-});
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::query().require<Position>().exclude<Disabled>().each(
-    [](Position &position) {
-        position.x += 1.0f;
-    }
-);
-```
-</TabItem>
-</Tabs>
-
-The `ecs_not(Disabled)` term is implicit for normal queries, so the previous
-example can usually be written as:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_query_id_t active_positions = ecs_query({
-    .terms = { ecs_inout(Position) },
-});
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::query().require<Position>().each([](Position &position) {
-    position.x += 1.0f;
-});
-```
-</TabItem>
-</Tabs>
-
-To match disabled entities, mention `Disabled` explicitly:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_query_id_t disabled_positions = ecs_query({
-    .terms = { ecs_inout(Position), ecs_filter(Disabled) },
-});
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::query().require<Position>().require<Disabled>().each(
-    [](Position &position) {
-        position.x += 1.0f;
-    }
-);
-```
-</TabItem>
-</Tabs>
-
-## Optional Components
-
-The C++ wrapper accepts `ecs::optional<T>` callback parameters. It passes an
-empty value when the optional field is absent for the current table:
-
-```cpp
-ecs::query().require<Position>().each(
-    [](Position &position, ecs::optional<const Velocity> velocity) {
-        if (velocity) position.x += velocity->x;
-    }
-);
-```
-
-Optional terms let one query handle tables where a component may or may not be
-present:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_query_id_t q = ecs_query({
-    .terms = { ecs_inout(Position), ecs_in_optional(Velocity) },
-});
-
-ecs_iter_t it = ecs_query_iter(q);
-while (ecs_iter_next(&it)) {
-    Position *positions = ecs_field(&it, 0);
-    const Velocity *velocities = ecs_field(&it, 1);
-
-    for (uint32_t i = 0; i < it.count; i++) {
-        if (velocities != NULL) {
-            positions[i].x += velocities[i].x;
-        }
-    }
-}
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::query().require<Position>().each(
-    [](Position &position, ecs::optional<const Velocity> velocity) {
-        if (velocity) {
-            position.x += velocity->x;
-        }
-    }
-);
-```
-</TabItem>
-</Tabs>
-
-The optional field pointer is either a component array for the whole batch or
-`NULL` for the whole batch. It does not vary per entity inside the same batch.
-
-## Temporary Query Loop
+## Temporary and persistent queries
 
 `ecs_query_each()` is useful for setup, tests, tools, and short one-off scans:
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
 ecs_query_each(it, i, ecs_in(Position)) {
-    const Position *positions = ecs_field(&it, 0);
+    Position *positions = ecs_field(&it, 0);
     positions[i].x += 1.0f;
 }
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::query().each([](Position &position) {
-    position.x += 1.0f;
-});
-```
-</TabItem>
-</Tabs>
 
-It creates and destroys a temporary query. For repeated frame work, create a
-persistent C++ handle once and iterate it with `build_handle()`:
+The macro creates and destroys a temporary C query. Call `ecs_query_fini()` for
+an id returned by `ecs_query()` or `ecs_query_init()`:
+
+```c
+ecs_query_fini(moving);
+```
+
+In C++, `each()` and `first()` use temporary queries. `query_handle` is a
+move-only RAII owner for repeated iteration:
 
 ```cpp
 auto moving = ecs::query().require<Position>().build_handle();
@@ -297,20 +212,6 @@ moving.each([](Position &position) {
 });
 ```
 
-## Destroy a Query
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_query_fini(moving);
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::query().require<Position>().each([](Position &) {});
-```
-</TabItem>
-</Tabs>
-
-The C++ `each()` helper owns temporary queries. `query_handle` owns a persistent
-query id and releases it automatically when it leaves scope.
+Do not retain component or field pointers across an operation that can migrate
+an entity between tables. Query ids remain valid as tables are created and
+grown; the query cache refreshes its field pointers when table storage moves.
