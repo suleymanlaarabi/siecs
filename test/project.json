@@ -109,6 +109,7 @@
           "up_finds_nearest_ancestor",
           "up_optional_returns_null",
           "deferred_relation_keeps_last_target",
+          "relation_observer_events",
           "type_layout_stays_compact",
           "query_slot_reuses_component_and_relation_terms",
           "relation_only_system_and_observer"

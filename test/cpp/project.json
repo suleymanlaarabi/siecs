@@ -67,7 +67,8 @@
           "resource_read",
           "resource_write",
           "resource_does_not_create_query_term",
-          "resource_field_index_stays_correct"
+          "resource_field_index_stays_correct",
+          "relation_events"
         ]
       },
       {

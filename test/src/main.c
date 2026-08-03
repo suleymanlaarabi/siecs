@@ -84,6 +84,7 @@ void childof_relation_query_presence_optional_and_not(void);
 void childof_up_finds_nearest_ancestor(void);
 void childof_up_optional_returns_null(void);
 void childof_deferred_relation_keeps_last_target(void);
+void childof_relation_observer_events(void);
 void childof_type_layout_stays_compact(void);
 void childof_query_slot_reuses_component_and_relation_terms(void);
 void childof_relation_only_system_and_observer(void);
@@ -425,6 +426,10 @@ bake_test_case childof_testcases[] = {
         childof_deferred_relation_keeps_last_target
     },
     {
+        "relation_observer_events",
+        childof_relation_observer_events
+    },
+    {
         "type_layout_stays_compact",
         childof_type_layout_stays_compact
     },
@@ -672,7 +677,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        18,
+        19,
         childof_testcases
     },
     {

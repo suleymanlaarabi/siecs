@@ -133,6 +133,7 @@ typedef struct {
  * - EcsOnAdd: pointer to the added component storage.
  * - EcsOnRemove: pointer to the component storage before removal.
  * - EcsOnSet: pointer to the new value passed to ecs_set/ecs_set_cid.
+ * - EcsOnRelationSet/EcsOnRelationRemove: pointer to ecs_relation_event_t.
  * - Custom events: pointer passed to ecs_observer_trigger.
  */
 typedef struct {
@@ -141,6 +142,13 @@ typedef struct {
     uintptr_t user_data;
     const void *trigger_data;
 } ecs_observer_event_t;
+
+/* Relation transition payload passed to relation observers. */
+typedef struct {
+    ecs_relation_id_t relation;
+    ecs_entity_t old_target;
+    ecs_entity_t new_target;
+} ecs_relation_event_t;
 
 /* Observer callback; event storage is valid only during the callback. */
 typedef void (*ecs_observer_callback_t)(ecs_observer_event_t *event);
@@ -938,6 +946,10 @@ SIECS_API void ecs_with(ecs_component_t component, ecs_component_t require);
 #define EcsOnRemove 1
 /* Fired when a component is set or replaced. */
 #define EcsOnSet 2
+/* Fired after a relation is added or retargeted. */
+#define EcsOnRelationSet 3
+/* Fired before a relation is removed. */
+#define EcsOnRelationRemove 4
 
 /*
  * Observer descriptor.

@@ -5,7 +5,7 @@
 #include "siecs.h"
 #include <stdint.h>
 
-#define ECS_BUILTIN_EVENT_COUNT 3 // EcsOnAdd, EcsOnRemove, EcsOnSet
+#define ECS_BUILTIN_EVENT_COUNT 5 // component and relation events
 
 void ecs_observer_index_init() {
     ecs_observer_index_t *index = &ecs_world.observer_index;

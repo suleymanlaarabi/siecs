@@ -106,6 +106,23 @@ static uint32_t ecs_relation_depth(ecs_entity_t entity, ecs_relation_id_t relati
     return (uint32_t)ecs_relation_table_target(table, relation);
 }
 
+static void ecs_emit_relation_event(
+    ecs_entity_t entity,
+    ecs_relation_id_t relation,
+    ecs_event_t event,
+    ecs_entity_t old_target,
+    ecs_entity_t new_target
+) {
+    ecs_entity_record_t *record = ecs_get_record(entity);
+    ecs_table_t *table = ecs_get_table(record->table_id);
+    ecs_relation_event_t relation_event = {
+        .relation = relation,
+        .old_target = old_target,
+        .new_target = new_target,
+    };
+    ecs_emit(table, entity, event, &relation_event);
+}
+
 #ifndef NDEBUG
 static bool
 ecs_relation_would_cycle(ecs_entity_t source, ecs_relation_id_t relation, ecs_entity_t target) {
@@ -235,6 +252,12 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
         "cyclic relation\n"
     );
 
+    bool had_relation = ecs_has_relation_id(entity, relation);
+    ecs_entity_t old_target = had_relation ? ecs_target_id(entity, relation) : 0;
+    if (had_relation && old_target == target) {
+        return;
+    }
+
     if (record->storage == EcsRelationDense) {
         ecs_relation_set_dense(entity, record, target);
     } else if (record->storage == EcsRelationByDepth) {
@@ -242,6 +265,8 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
     } else {
         ecs_relation_set_target(entity, relation, target);
     }
+
+    ecs_emit_relation_event(entity, relation, EcsOnRelationSet, old_target, target);
 }
 
 void ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
@@ -296,6 +321,17 @@ static void ecs_relation_remove_target(ecs_entity_t entity, ecs_relation_id_t re
 void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
+    bool had_relation = ecs_has_relation_id(entity, relation);
+    if (!had_relation) {
+        return;
+    }
+    ecs_entity_t old_target = ecs_target_id(entity, relation);
+    ecs_emit_relation_event(entity, relation, EcsOnRelationRemove, old_target, 0);
+    if (!ecs_is_alive(entity) || !ecs_has_relation_id(entity, relation) ||
+        ecs_target_id(entity, relation) != old_target) {
+        return;
+    }
+
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     if (record->storage == EcsRelationDense) {
         ecs_remove_cid(entity, record->component);

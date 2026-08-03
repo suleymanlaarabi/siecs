@@ -406,6 +406,7 @@ typedef struct {
  * - EcsOnAdd: pointer to the added component storage.
  * - EcsOnRemove: pointer to the component storage before removal.
  * - EcsOnSet: pointer to the new value passed to ecs_set/ecs_set_cid.
+ * - EcsOnRelationSet/EcsOnRelationRemove: pointer to ecs_relation_event_t.
  * - Custom events: pointer passed to ecs_observer_trigger.
  */
 typedef struct {
@@ -414,6 +415,13 @@ typedef struct {
     uintptr_t user_data;
     const void *trigger_data;
 } ecs_observer_event_t;
+
+/* Relation transition payload passed to relation observers. */
+typedef struct {
+    ecs_relation_id_t relation;
+    ecs_entity_t old_target;
+    ecs_entity_t new_target;
+} ecs_relation_event_t;
 
 /* Observer callback; event storage is valid only during the callback. */
 typedef void (*ecs_observer_callback_t)(ecs_observer_event_t *event);
@@ -1171,6 +1179,10 @@ SIECS_API void ecs_with(ecs_component_t component, ecs_component_t require);
 #define EcsOnRemove 1
 /* Fired when a component is set or replaced. */
 #define EcsOnSet 2
+/* Fired after a relation is added or retargeted. */
+#define EcsOnRelationSet 3
+/* Fired before a relation is removed. */
+#define EcsOnRelationRemove 4
 
 /*
  * Observer descriptor.
@@ -2711,6 +2723,10 @@ struct OnAdd {};
 struct OnSet {};
 /** Event tag for component removals. */
 struct OnRemove {};
+/** Event tag for relation additions and retargeting. */
+struct OnRelationSet {};
+/** Event tag for relation removals. */
+struct OnRelationRemove {};
 
 /** Typed, callback-lifetime view of an observer event. */
 class observer_event {
@@ -2755,6 +2771,10 @@ template <typename T> static ecs_event_t ecs_cpp_event_id() {
         eid = EcsOnSet;
     } else if constexpr (std::is_same_v<T, OnRemove>) {
         eid = EcsOnRemove;
+    } else if constexpr (std::is_same_v<T, OnRelationSet>) {
+        eid = EcsOnRelationSet;
+    } else if constexpr (std::is_same_v<T, OnRelationRemove>) {
+        eid = EcsOnRelationRemove;
     } else {
         if (eid == UINT16_MAX) {
             eid = ecs_event();
@@ -2841,8 +2861,9 @@ template <typename T> class observer : public query {
         using traits = function_traits<callback>;
         using args = typename traits::args_tuple;
         static_assert(
-            detail::component_arg_count<args>() > 0,
-            "observer callbacks must read at least one component"
+            detail::component_arg_count<args>() > 0 || std::is_same_v<T, OnRelationSet> ||
+                std::is_same_v<T, OnRelationRemove>,
+            "observer callbacks must read at least one component or observe relation data"
         );
 
         ecs::detail::append_callback_terms<args>(this->desc, term_index);

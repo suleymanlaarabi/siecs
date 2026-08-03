@@ -16,8 +16,17 @@ struct CppObserverTime {
     int elapsed;
 };
 
+struct CppObserverRelation {};
+
 static int cpp_observer_calls;
 static int cpp_observer_read_value;
+
+struct CppRelationObserverState {
+    int set_calls;
+    int remove_calls;
+    ecs_entity_t old_target;
+    ecs_entity_t new_target;
+};
 
 static CppObserverPosition *cpp_observer_position(ecs::entity entity) {
     return static_cast<CppObserverPosition *>(ecs_get_cid(
@@ -177,4 +186,52 @@ void observer_resource_field_index_stays_correct(void) {
 
     test_int(1, cpp_observer_calls);
     test_int(8, cpp_observer_position(entity)->value);
+}
+
+void observer_relation_events(void) {
+    ecs_test_scope _ecs_scope;
+    ecs::relation<CppObserverRelation>({
+        .storage = EcsRelationByTarget,
+        .on_delete_target = EcsRemoveRelation,
+    });
+
+    CppRelationObserverState state{};
+    auto target_a = ecs::entity::create();
+    auto target_b = ecs::entity::create();
+    auto source = ecs::entity::create();
+
+    auto set_observer = ecs::observe<ecs::OnRelationSet>();
+    set_observer.with_relation<CppObserverRelation>();
+    set_observer.user_data(&state).each([](ecs::observer_event event) {
+        auto *state = event.user_data<CppRelationObserverState>();
+        const auto *data = event.trigger_data<ecs_relation_event_t>();
+        state->set_calls++;
+        state->old_target = data->old_target;
+        state->new_target = data->new_target;
+    });
+
+    auto remove_observer = ecs::observe<ecs::OnRelationRemove>();
+    remove_observer.with_relation<CppObserverRelation>();
+    remove_observer.user_data(&state).each([](ecs::observer_event event) {
+        auto *state = event.user_data<CppRelationObserverState>();
+        const auto *data = event.trigger_data<ecs_relation_event_t>();
+        state->remove_calls++;
+        state->old_target = data->old_target;
+        state->new_target = data->new_target;
+    });
+
+    source.relate<CppObserverRelation>(target_a);
+    test_int(1, state.set_calls);
+    test_uint(0, state.old_target);
+    test_uint(target_a.id(), state.new_target);
+
+    source.relate<CppObserverRelation>(target_b);
+    test_int(2, state.set_calls);
+    test_uint(target_a.id(), state.old_target);
+    test_uint(target_b.id(), state.new_target);
+
+    source.unrelate<CppObserverRelation>();
+    test_int(1, state.remove_calls);
+    test_uint(target_b.id(), state.old_target);
+    test_uint(0, state.new_target);
 }

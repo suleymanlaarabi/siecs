@@ -49,6 +49,7 @@ void observer_resource_read(void);
 void observer_resource_write(void);
 void observer_resource_does_not_create_query_term(void);
 void observer_resource_field_index_stays_correct(void);
+void observer_relation_events(void);
 
 // Testsuite 'module_import'
 void module_import_import_without_props(void);
@@ -199,6 +200,10 @@ bake_test_case observer_testcases[] = {
     {
         "resource_field_index_stays_correct",
         observer_resource_field_index_stays_correct
+    },
+    {
+        "relation_events",
+        observer_relation_events
     }
 };
 
@@ -262,7 +267,7 @@ static bake_test_suite suites[] = {
         "observer",
         NULL,
         NULL,
-        8,
+        9,
         observer_testcases
     },
     {

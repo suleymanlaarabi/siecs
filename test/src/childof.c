@@ -391,6 +391,122 @@ void childof_deferred_relation_keeps_last_target(void) {
     ecs_fini();
 }
 
+typedef struct {
+    uint32_t set_calls;
+    uint32_t remove_calls;
+    ecs_entity_t entity;
+    ecs_relation_id_t relation;
+    ecs_entity_t old_target;
+    ecs_entity_t new_target;
+    ecs_entity_t target_at_callback;
+} RelationObserverState;
+
+static RelationObserverState relation_observer_state;
+static uint32_t relation_observer_group_filter_calls;
+
+static void relation_transition_observer_callback(ecs_observer_event_t *event) {
+    const ecs_relation_event_t *data = event->trigger_data;
+    relation_observer_state.entity = event->entity;
+    relation_observer_state.relation = data->relation;
+    relation_observer_state.old_target = data->old_target;
+    relation_observer_state.new_target = data->new_target;
+    relation_observer_state.target_at_callback = ecs_target_id(event->entity, data->relation);
+    if (event->event == EcsOnRelationSet) {
+        relation_observer_state.set_calls++;
+    } else {
+        relation_observer_state.remove_calls++;
+    }
+}
+
+static void relation_observer_group_filter_callback(ecs_observer_event_t *event) {
+    (void)event;
+    relation_observer_group_filter_calls++;
+}
+
+void childof_relation_observer_events(void) {
+    ecs_init();
+    ECS_RELATION_REGISTER(DenseRel);
+    ECS_RELATION_REGISTER(DepthRel);
+    ECS_RELATION_REGISTER(GroupOf);
+
+    ecs_entity_t a = ecs_new();
+    ecs_entity_t b = ecs_new();
+    ecs_entity_t c = ecs_new();
+    ecs_entity_t dense_source = ecs_new();
+    ecs_entity_t depth_source = ecs_new();
+    ecs_entity_t group_source = ecs_new();
+
+    relation_observer_state = (RelationObserverState){};
+    relation_observer_group_filter_calls = 0;
+    ecs_observer({
+        .on = EcsOnRelationSet,
+        .callback = relation_transition_observer_callback,
+    });
+    ecs_observer({
+        .on = EcsOnRelationRemove,
+        .callback = relation_transition_observer_callback,
+    });
+    ecs_observer({
+        .on = EcsOnRelationSet,
+        .query.relations = { ecs_rel(GroupOf) },
+        .callback = relation_observer_group_filter_callback,
+    });
+
+    ecs_relate(dense_source, DenseRel, a);
+    test_int(1, relation_observer_state.set_calls);
+    test_uint(0, relation_observer_state.old_target);
+    test_uint(a, relation_observer_state.new_target);
+    test_uint(a, relation_observer_state.target_at_callback);
+
+    ecs_relate(dense_source, DenseRel, b);
+    test_int(2, relation_observer_state.set_calls);
+    test_uint(a, relation_observer_state.old_target);
+    test_uint(b, relation_observer_state.new_target);
+    test_uint(b, relation_observer_state.target_at_callback);
+
+    ecs_relate(dense_source, DenseRel, b);
+    test_int(2, relation_observer_state.set_calls);
+
+    ecs_unrelate(dense_source, DenseRel);
+    test_int(1, relation_observer_state.remove_calls);
+    test_uint(b, relation_observer_state.old_target);
+    test_uint(0, relation_observer_state.new_target);
+    test_uint(b, relation_observer_state.target_at_callback);
+
+    ecs_relate(depth_source, DepthRel, a);
+    test_int(3, relation_observer_state.set_calls);
+    test_uint(ecs_rid(DepthRel), relation_observer_state.relation);
+    ecs_unrelate(depth_source, DepthRel);
+    test_int(2, relation_observer_state.remove_calls);
+
+    ecs_defer_begin();
+    ecs_relate(group_source, GroupOf, c);
+    ecs_relate(group_source, GroupOf, a);
+    ecs_defer_end();
+    test_int(4, relation_observer_state.set_calls);
+    test_uint(0, relation_observer_state.old_target);
+    test_uint(a, relation_observer_state.new_target);
+    test_uint(a, relation_observer_state.target_at_callback);
+    test_int(1, relation_observer_group_filter_calls);
+
+    ecs_defer_begin();
+    ecs_unrelate(group_source, GroupOf);
+    ecs_defer_end();
+    test_int(3, relation_observer_state.remove_calls);
+    test_uint(a, relation_observer_state.old_target);
+    test_uint(a, relation_observer_state.target_at_callback);
+
+    ecs_relate(group_source, GroupOf, b);
+    relation_observer_state.remove_calls = 0;
+    ecs_kill(b);
+    test_int(1, relation_observer_state.remove_calls);
+    test_uint(b, relation_observer_state.old_target);
+    test_uint(0, relation_observer_state.new_target);
+    test_false(ecs_has_relation(group_source, GroupOf));
+
+    ecs_fini();
+}
+
 void childof_type_layout_stays_compact(void) {
     test_int(24, sizeof(ecs_type_t));
     test_int(8, sizeof(ecs_relation_t));

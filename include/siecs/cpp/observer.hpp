@@ -17,6 +17,10 @@ struct OnAdd {};
 struct OnSet {};
 /** Event tag for component removals. */
 struct OnRemove {};
+/** Event tag for relation additions and retargeting. */
+struct OnRelationSet {};
+/** Event tag for relation removals. */
+struct OnRelationRemove {};
 
 /** Typed, callback-lifetime view of an observer event. */
 class observer_event {
@@ -61,6 +65,10 @@ template <typename T> static ecs_event_t ecs_cpp_event_id() {
         eid = EcsOnSet;
     } else if constexpr (std::is_same_v<T, OnRemove>) {
         eid = EcsOnRemove;
+    } else if constexpr (std::is_same_v<T, OnRelationSet>) {
+        eid = EcsOnRelationSet;
+    } else if constexpr (std::is_same_v<T, OnRelationRemove>) {
+        eid = EcsOnRelationRemove;
     } else {
         if (eid == UINT16_MAX) {
             eid = ecs_event();
@@ -147,8 +155,9 @@ template <typename T> class observer : public query {
         using traits = function_traits<callback>;
         using args = typename traits::args_tuple;
         static_assert(
-            detail::component_arg_count<args>() > 0,
-            "observer callbacks must read at least one component"
+            detail::component_arg_count<args>() > 0 || std::is_same_v<T, OnRelationSet> ||
+                std::is_same_v<T, OnRelationRemove>,
+            "observer callbacks must read at least one component or observe relation data"
         );
 
         ecs::detail::append_callback_terms<args>(this->desc, term_index);
