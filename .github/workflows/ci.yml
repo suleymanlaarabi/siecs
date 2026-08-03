@@ -15,6 +15,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  BAKE_COMMIT: cde5c8e5d5055363e602d58caa63c3b9c8d1a54e
+
 jobs:
   build:
     name: bake ${{ matrix.os }} ${{ matrix.compiler }} ${{ matrix.config }}
@@ -83,6 +86,7 @@ jobs:
       - name: Install bake
         run: |
           git clone https://github.com/suleymanlaarabi/bake
+          git -C bake checkout --detach "$BAKE_COMMIT"
           make -C bake/build-$(uname)
           bake/bake setup
 
@@ -125,6 +129,7 @@ jobs:
         shell: pwsh
         run: |
           git clone https://github.com/suleymanlaarabi/bake
+          git -C bake checkout --detach $env:BAKE_COMMIT
           Push-Location bake/build-Windows
           nmake /NOLOGO /F bake.mak clean all
           Pop-Location
@@ -137,15 +142,15 @@ jobs:
       - name: Build library and tests
         shell: pwsh
         run: |
-          bake rebuild . -r
-          bake rebuild test -r
-          bake rebuild test/cpp -r
+          bake rebuild . -r --static --cfg debug
+          bake rebuild test -r --static --cfg debug
+          bake rebuild test/cpp -r --static --cfg debug
 
       - name: Run tests
         shell: pwsh
         run: |
-          bake run test
-          bake run test/cpp
+          bake run test --static --cfg debug
+          bake run test/cpp --static --cfg debug
 
   distr:
     name: distr up to date
@@ -163,6 +168,7 @@ jobs:
       - name: Install bake
         run: |
           git clone https://github.com/suleymanlaarabi/bake
+          git -C bake checkout --detach "$BAKE_COMMIT"
           make -C bake/build-$(uname)
           bake/bake setup
 
@@ -175,3 +181,9 @@ jobs:
         env:
           CC: clang
         run: make check-distr-standalone
+
+      - name: Check standalone C++ distribution
+        env:
+          CC: clang
+          CXX: clang++
+        run: make check-distr-cpp-standalone

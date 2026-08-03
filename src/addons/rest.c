@@ -6,8 +6,11 @@
 #endif
 #include <string.h>
 
-sihttp_response_t health(const sihttp_request_t *) {
-    return sihttp_response({ .body = strdup("OK") });
+sihttp_response_t health(const sihttp_request_t *req) {
+    (void)req;
+    sihttp_response_t response = { 0 };
+    response.body = strdup("OK");
+    return response;
 }
 
 void init_rest(void) {

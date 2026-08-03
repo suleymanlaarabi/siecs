@@ -52,7 +52,7 @@ void RelationOnSet(
         RelationSource *source_data = ecs_get_cid(target_data->target, source_component);
         sicore_vec_push_u64(&source_data->entities, entity);
     } else {
-        RelationSource source_data = {};
+        RelationSource source_data = {0};
         sicore_vec_init(&source_data.entities, sizeof(ecs_entity_t));
         sicore_vec_push_u64(&source_data.entities, entity);
         ecs_set_cid(target_data->target, source_component, &source_data);
@@ -83,7 +83,8 @@ static void RelationSourceDtor(void *ptr, uint32_t count) {
     }
 }
 
-void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) {
+void RelationSourceOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
+    (void)entity;
     RelationSource *source_data = ptr;
 
     const ecs_entity_t *entities = source_data->entities.data;

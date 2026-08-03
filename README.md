@@ -8,7 +8,7 @@ compact C runtime, a typed C++ API, contiguous table storage, cached queries,
 scheduled systems, relations, and runtime reflection.
 
 - Fast core with zero runtime dependencies.
-- Modern type-safe C++23 API.
+- Modern type-safe C++20 API.
 - Built-in support for entity hierarchies and entity relations.
 - C modules for grouping components, systems, and observers behind one import.
 - Integrated reflection framework with JSON serialization and deserialization.
@@ -48,7 +48,7 @@ For a small C project, the fastest path is the standalone distribution. Copy
 your application:
 
 ```sh
-cc -std=c23 -I. main.c siecs.c -pthread -o my_app
+cc -std=c17 -I. main.c siecs.c -pthread -o my_app
 ```
 
 Your code only needs the public header:
@@ -151,7 +151,7 @@ C
     "use": ["siecs"]
   },
   "lang.c": {
-    "c-standard": "c23"
+    "c-standard": "c17"
   },
   "bundle": {
     "repositories": {
@@ -171,7 +171,7 @@ C++
     "use": ["siecs"]
   },
   "lang.cpp": {
-    "cpp-standard": "c++23"
+    "cpp-standard": "c++20"
   },
   "bundle": {
     "repositories": {

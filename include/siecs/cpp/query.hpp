@@ -201,7 +201,7 @@ inline void append_term(
     assert(term_index < ECS_QUERY_TERM_CAPACITY);
     desc.terms[term_index++] = {
         .id = id,
-        .access = access,
+        .access = static_cast<uint32_t>(access),
     };
 }
 

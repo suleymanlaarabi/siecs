@@ -85,9 +85,16 @@
 #ifndef SICORE_H
 #define SICORE_H
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#define SICORE_LIKELY(x) (x)
+#define SICORE_UNLIKELY(x) (x)
+#define SICORE_HOT
+#else
 #define SICORE_LIKELY(x) __builtin_expect(!!(x), 1)
 #define SICORE_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #define SICORE_HOT __attribute__((hot))
+#endif
 
 #if defined(SICORE_VEC) && defined(SICORE_NO_VEC)
 #error "SICORE_VEC and SICORE_NO_VEC cannot be defined together"
@@ -1411,16 +1418,25 @@ namespace ecs {
 
 /** Return the compiler-derived stable display name used for registration. */
 template <class T> consteval std::string_view type_name() {
+#if defined(_MSC_VER)
+    constexpr std::string_view func = __FUNCSIG__;
+    constexpr std::string_view key = "type_name<";
+    constexpr auto start = func.find(key) + key.size();
+    constexpr auto end = func.find(">(void)", start);
+#else
     constexpr std::string_view func = __PRETTY_FUNCTION__;
     constexpr std::string_view key = "T = ";
-
     constexpr auto start = func.find(key) + key.size();
     constexpr auto end_semi = func.find(';', start);
     constexpr auto end_bracket = func.find(']', start);
-
     constexpr auto end = end_semi == std::string_view::npos ? end_bracket : end_semi;
+#endif
 
+#if defined(_MSC_VER)
     return func.substr(start, end - start);
+#else
+    return func.substr(start, end - start);
+#endif
 }
 
 } // namespace ecs
@@ -2352,7 +2368,7 @@ inline void append_term(
     assert(term_index < ECS_QUERY_TERM_CAPACITY);
     desc.terms[term_index++] = {
         .id = id,
-        .access = access,
+        .access = static_cast<uint32_t>(access),
     };
 }
 

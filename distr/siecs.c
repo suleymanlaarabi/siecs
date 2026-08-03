@@ -74,7 +74,11 @@ static inline uint64_t sicore_read64(const uint8_t *p) {
     uint64_t v;
     memcpy(&v, p, sizeof(v));
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#if defined(_MSC_VER)
+    v = _byteswap_uint64(v);
+#else
     v = __builtin_bswap64(v);
+#endif
 #endif
     return v;
 }
@@ -83,7 +87,11 @@ static inline uint64_t sicore_read32(const uint8_t *p) {
     uint32_t v;
     memcpy(&v, p, sizeof(v));
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#if defined(_MSC_VER)
+    v = _byteswap_ulong((unsigned long)v);
+#else
     v = __builtin_bswap32(v);
+#endif
 #endif
     return v;
 }
@@ -2402,6 +2410,16 @@ sireflect_type_pointee(const sireflect_registry_t *reg, sireflect_handle_t ref) 
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(_MSC_VER) && !defined(__clang__)
+typedef union sijson_max_align {
+    long double long_double;
+    void *pointer;
+    long long integer;
+} sijson_max_align_t;
+#else
+typedef max_align_t sijson_max_align_t;
+#endif
+
 #if defined(__GNUC__) || defined(__clang__)
 #define SIJSON_INTERNAL_API __attribute__((visibility("hidden")))
 #else
@@ -3117,6 +3135,7 @@ static bool sijson_write_reflected_field(
     case sireflect_kind_bool:
         break;
     default:
+        break;
     }
 
     return sijson_set_error("unsupported field type for serialization");
@@ -3419,6 +3438,7 @@ static bool sijson_assign_field(
     case sireflect_kind_array:
         return sijson_assign_array(field_type, field_ptr, value);
     default:
+        break;
     }
 
     return sijson_set_error("unsupported field type for deserialization");
@@ -3690,7 +3710,7 @@ static bool sijson_arena_commit(size_t need) {
 
 void *sijson_arena_alloc(size_t size, size_t align) {
     if (align == 0) {
-        align = _Alignof(max_align_t);
+        align = _Alignof(sijson_max_align_t);
     }
 
     size_t offset = sijson_align_forward(g_arena.used, align);
@@ -4216,6 +4236,10 @@ int sihttp_buffer_append(sihttp_buffer_t *buffer, const char *data, size_t len);
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef _WIN32
+typedef int ssize_t;
+#endif
+
 #define SIHTTP_MAX_HEADER_BYTES (16u * 1024u)
 #define SIHTTP_MAX_BODY_BYTES (1024u * 1024u)
 #define SIHTTP_MAX_HEADERS 64u
@@ -4311,16 +4335,39 @@ struct sihttp_route_table_s {
 
 #endif
 
-#include <arpa/inet.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "Ws2_32.lib")
+#define close closesocket
+#define MSG_NOSIGNAL 0
+#define ssize_t int
+#define socklen_t int
+#undef errno
+#undef EINTR
+#undef EAGAIN
+#undef EWOULDBLOCK
+#undef EBADF
+#undef EINVAL
+#define errno WSAGetLastError()
+#define EINTR WSAEINTR
+#define EAGAIN WSAEWOULDBLOCK
+#define EWOULDBLOCK WSAEWOULDBLOCK
+#define EBADF WSAEBADF
+#define EINVAL WSAEINVAL
+#else
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 static char sihttp_error_buffer[256];
 
@@ -4351,6 +4398,10 @@ enum {
 };
 
 static int sihttp_set_nonblocking(int fd) {
+#ifdef _WIN32
+    u_long mode = 1;
+    return ioctlsocket((SOCKET)fd, FIONBIO, &mode);
+#else
     int flags = fcntl(fd, F_GETFL, 0);
 
     if (flags == -1) {
@@ -4362,6 +4413,7 @@ static int sihttp_set_nonblocking(int fd) {
     }
 
     return 0;
+#endif
 }
 
 static sihttp_response_t sihttp_error_response(int status, const char *body) {
@@ -4378,6 +4430,16 @@ SIHTTP_API sihttp_server_t *sihttp_server_init(const sihttp_server_desc_t *desc)
     int backlog = SIHTTP_DEFAULT_BACKLOG;
     int max_requests_per_poll = SIHTTP_DEFAULT_MAX_REQUESTS_PER_POLL;
 
+#ifdef _WIN32
+    {
+        WSADATA wsa_data;
+        if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+            sihttp_set_error("WSAStartup failed");
+            return NULL;
+        }
+    }
+#endif
+
     if (desc) {
         if (desc->port < 0 || desc->port > UINT16_MAX) {
             sihttp_set_error("invalid server port: %d", desc->port);
@@ -4392,6 +4454,9 @@ SIHTTP_API sihttp_server_t *sihttp_server_init(const sihttp_server_desc_t *desc)
 
     server = calloc(1, sizeof(*server));
     if (!server) {
+#ifdef _WIN32
+        WSACleanup();
+#endif
         sihttp_set_error("out of memory");
         return NULL;
     }
@@ -4399,6 +4464,9 @@ SIHTTP_API sihttp_server_t *sihttp_server_init(const sihttp_server_desc_t *desc)
     server->routes = malloc(sizeof(*server->routes));
     if (!server->routes) {
         free(server);
+#ifdef _WIN32
+        WSACleanup();
+#endif
         sihttp_set_error("out of memory");
         return NULL;
     }
@@ -4423,6 +4491,9 @@ SIHTTP_API void sihttp_server_fini(sihttp_server_t *server) {
     sihttp_route_table_fini(server->routes);
     free(server->routes);
     free(server);
+#ifdef _WIN32
+    WSACleanup();
+#endif
 }
 
 SIHTTP_API int sihttp_server_listen(sihttp_server_t *server, const char *host, uint16_t port) {
@@ -4447,7 +4518,7 @@ SIHTTP_API int sihttp_server_listen(sihttp_server_t *server, const char *host, u
         return -1;
     }
 
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&yes, sizeof(yes));
 
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
@@ -4497,7 +4568,11 @@ SIHTTP_API void sihttp_server_stop(sihttp_server_t *server) {
     if (server->listen_fd != -1) {
         int fd = server->listen_fd;
         server->listen_fd = -1;
+#ifdef _WIN32
+        shutdown(fd, SD_BOTH);
+#else
         shutdown(fd, SHUT_RDWR);
+#endif
         close(fd);
     }
 }
@@ -5154,6 +5229,13 @@ SIHTTP_API int64_t sihttp_param(const sihttp_request_t *public_req, const char *
     return 0;
 }
 
+#ifdef _WIN32
+#include <winsock2.h>
+#define MSG_NOSIGNAL 0
+#else
+#include <sys/socket.h>
+#endif
+
 static const char *sihttp_status_reason(int status) {
     switch (status) {
     case 200:
@@ -5446,8 +5528,24 @@ void init_rest(void);
 #ifndef SIECS_HELPER_H
 #define SIECS_HELPER_H
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+
+#define ECS_LIKELY(x) (!!(x))
+#define ECS_UNLIKELY(x) (!!(x))
+
+static inline unsigned ecs_ctz(unsigned value) {
+    unsigned long index;
+    _BitScanForward(&index, value);
+    return (unsigned)index;
+}
+
+#define ECS_CTZ(x) ecs_ctz((unsigned)(x))
+#else
 #define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
 #define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#define ECS_CTZ(x) __builtin_ctz((unsigned)(x))
+#endif
 
 #define ecs_entity(index, generation) (((uint64_t)(index) << 32) | (generation & 0xffffffff))
 
@@ -5810,11 +5908,20 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target);
 #include <stddef.h>
 #include <stdint.h>
 
+#if defined(_MSC_VER)
+/* MSVC's C headers do not expose max_align_t in the C language mode. */
+typedef __declspec(align(16)) struct {
+    unsigned char value[16];
+} ecs_arena_max_align_t;
+#else
+typedef max_align_t ecs_arena_max_align_t;
+#endif
+
 typedef struct ecs_arena_block_s {
     struct ecs_arena_block_s *next;
     uint32_t capacity;
     uint32_t cursor;
-    max_align_t data[];
+    ecs_arena_max_align_t data[];
 } ecs_arena_block_t;
 
 typedef struct {
@@ -5829,7 +5936,7 @@ void *ecs_arena_alloc_slow(ecs_arena_t *allocator, uint32_t size);
 
 static inline void *ecs_arena_alloc(ecs_arena_t *allocator, uint32_t size) {
     ecs_arena_block_t *block = allocator->current;
-    const uint32_t alignment = (uint32_t)_Alignof(max_align_t);
+    const uint32_t alignment = (uint32_t)_Alignof(ecs_arena_max_align_t);
     const uint32_t cursor = (block->cursor + alignment - 1u) & ~(alignment - 1u);
     if (ECS_LIKELY(cursor <= block->capacity && size <= block->capacity - cursor)) {
         block->cursor = cursor + size;
@@ -7180,7 +7287,7 @@ void RelationOnSet(
         RelationSource *source_data = ecs_get_cid(target_data->target, source_component);
         sicore_vec_push_u64(&source_data->entities, entity);
     } else {
-        RelationSource source_data = {};
+        RelationSource source_data = {0};
         sicore_vec_init(&source_data.entities, sizeof(ecs_entity_t));
         sicore_vec_push_u64(&source_data.entities, entity);
         ecs_set_cid(target_data->target, source_component, &source_data);
@@ -7211,7 +7318,8 @@ static void RelationSourceDtor(void *ptr, uint32_t count) {
     }
 }
 
-void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) {
+void RelationSourceOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
+    (void)entity;
     RelationSource *source_data = ptr;
 
     const ecs_entity_t *entities = source_data->entities.data;
@@ -8688,7 +8796,11 @@ void ecs_remove_resource_rid(ecs_resource_t id) {
 
 #if SIECS_HAS_REST && !defined(SIHTTP_H)
 #endif
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <time.h>
+#endif
 
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
 
@@ -8760,20 +8872,32 @@ void ecs_run_phase(ecs_phase_t phase) {
 }
 
 static inline double now_sec(void) {
+#ifdef _WIN32
+    LARGE_INTEGER frequency;
+    LARGE_INTEGER counter;
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&counter);
+    return (double)counter.QuadPart / (double)frequency.QuadPart;
+#else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1000000000.0;
+#endif
 }
 
 static inline void sleep_sec(double seconds) {
     if (seconds <= 0.0)
         return;
 
+#ifdef _WIN32
+    Sleep((DWORD)(seconds * 1000.0));
+#else
     struct timespec ts;
     ts.tv_sec = (time_t)seconds;
     ts.tv_nsec = (long)((seconds - (double)ts.tv_sec) * 1000000000.0);
 
     nanosleep(&ts, NULL);
+#endif
 }
 
 bool ecs_progress(void) {
@@ -9457,7 +9581,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_bootstrap();
 }
 
-void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){}); }
+void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){0}); }
 
 void ecs_fini(void) {
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
@@ -9528,8 +9652,11 @@ sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req);
 #endif
 #include <string.h>
 
-sihttp_response_t health(const sihttp_request_t *) {
-    return sihttp_response({ .body = strdup("OK") });
+sihttp_response_t health(const sihttp_request_t *req) {
+    (void)req;
+    sihttp_response_t response = { 0 };
+    response.body = strdup("OK");
+    return response;
 }
 
 void init_rest(void) {
@@ -9567,11 +9694,11 @@ sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body) {
         status = 500;
     }
 
-    return sihttp_response({
-        .status = status,
-        .body = json,
-        .content_type = SIHTTP_CONTENT_JSON,
-    });
+    sihttp_response_t response = { 0 };
+    response.status = status;
+    response.body = json;
+    response.content_type = SIHTTP_CONTENT_JSON;
+    return response;
 }
 
 sihttp_response_t ecs_rest_error_response(int status, const char *message) {
@@ -9677,7 +9804,8 @@ sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
     return detail;
 }
 
-sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *) {
+sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *req) {
+    (void)req;
     sijson_clean();
 
     sijson_value_t array = sijson_make_array();
@@ -9728,11 +9856,9 @@ sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req) {
 sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req) {
     (void)req;
     ecs_entity_t entity = ecs_new();
-    return sihttp_response(
-        {
-            .body = sijson_stringify(ecs_rest_entity_json(entity)),
-        }
-    );
+    sihttp_response_t response = { 0 };
+    response.body = sijson_stringify(ecs_rest_entity_json(entity));
+    return response;
 }
 #endif
 
@@ -10857,7 +10983,7 @@ static void ecs_query_cache_set_table_fields(
     uint32_t field_kind_bits = 0;
 
     while (remaining_fields) {
-        const uint16_t term_index = (uint16_t)__builtin_ctz((unsigned)remaining_fields);
+        const uint16_t term_index = (uint16_t)ECS_CTZ(remaining_fields);
         remaining_fields &= (uint16_t)(remaining_fields - 1);
         const ecs_query_term_t term = cache->query.terms[term_index];
         const ecs_term_access_t access = ecs_query_term_access(term);
@@ -10906,7 +11032,7 @@ bool ecs_query_resolve_up_fields(
     uint32_t field_kind_bits = cache->field_kind_bits[table_index];
     uint32_t base = (uint32_t)table_index * cache->query.field_count;
     while (remaining_fields) {
-        uint16_t term_index = (uint16_t)__builtin_ctz((unsigned)remaining_fields);
+        uint16_t term_index = (uint16_t)ECS_CTZ(remaining_fields);
         remaining_fields &= (uint16_t)(remaining_fields - 1);
         ecs_query_term_t term = cache->query.terms[term_index];
         ecs_term_access_t access = ecs_query_term_access(term);

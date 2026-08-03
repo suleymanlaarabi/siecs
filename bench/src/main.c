@@ -22,7 +22,7 @@ static bool should_run_bench(const char *scope, const char *bench_name) {
 
 static void register_components(ecs_component_t *cids, uint32_t cid_count) {
     for (uint32_t i = 0; i < cid_count; i++) {
-        cids[i] = ecs_component({});
+        cids[i] = ecs_component({0});
     }
 }
 
@@ -135,8 +135,8 @@ BENCH_SETUP(query_init_rarest_positive, {
     arg(rare_table_count, 8);
     arg(iter_count, 2000);
 
-    ecs_component_t common = ecs_component({});
-    ecs_component_t rare = ecs_component({});
+    ecs_component_t common = ecs_component({0});
+    ecs_component_t rare = ecs_component({0});
     make_query_tables(common, rare, table_count, rare_table_count);
     ecs_query_desc_t desc = {
         .terms = {
@@ -158,7 +158,7 @@ BENCH_SETUP(query_init_owned_fields, {
     arg(table_count, 6000);
     arg(iter_count, 1000);
 
-    ecs_component_t fields[field_count];
+    ecs_component_t *fields = malloc(field_count * sizeof(*fields));
     register_trivial_data_components(fields, field_count);
     make_owned_query_tables(fields, field_count, table_count);
     ecs_query_desc_t desc = make_query_desc(fields, field_count, EcsInOut);
@@ -169,6 +169,7 @@ BENCH_SETUP(query_init_owned_fields, {
             ecs_query_fini(query);
         }
     });
+    free(fields);
 });
 
 BENCH_SETUP(query_iter_owned_fields, {
@@ -176,7 +177,7 @@ BENCH_SETUP(query_iter_owned_fields, {
     arg(table_count, 6000);
     arg(iter_count, 2000);
 
-    ecs_component_t fields[field_count];
+    ecs_component_t *fields = malloc(field_count * sizeof(*fields));
     register_trivial_data_components(fields, field_count);
     make_owned_query_tables(fields, field_count, table_count);
     ecs_query_desc_t desc = make_query_desc(fields, field_count, EcsInOut);
@@ -199,6 +200,7 @@ BENCH_SETUP(query_iter_owned_fields, {
         abort();
     }
     ecs_query_fini(query);
+    free(fields);
 });
 
 BENCH_SETUP(query_init_three_positive_one_not, {
@@ -208,7 +210,7 @@ BENCH_SETUP(query_init_three_positive_one_not, {
     ecs_component_t positive[3];
     ecs_component_t excluded;
     register_components(positive, 3);
-    excluded = ecs_component({});
+    excluded = ecs_component({0});
     make_varied_query_tables(positive, 3, &excluded, 1, table_count);
 
     ecs_query_desc_t desc = {
@@ -235,7 +237,7 @@ BENCH_SETUP(query_init_four_positive_one_not, {
     ecs_component_t positive[4];
     ecs_component_t excluded;
     register_components(positive, 4);
-    excluded = ecs_component({});
+    excluded = ecs_component({0});
     make_varied_query_tables(positive, 4, &excluded, 1, table_count);
 
     ecs_query_desc_t desc = {
@@ -317,10 +319,10 @@ BENCH_SETUP(migrate_trivial_columns, {
     arg(cid_count, 8);
     arg(entity_count, 100000);
 
-    ecs_component_t cids[cid_count];
+    ecs_component_t *cids = malloc(cid_count * sizeof(*cids));
     register_trivial_data_components(cids, cid_count);
     ecs_entity_t *entities = make_entities_with_trivial_data(cids, cid_count, entity_count);
-    ecs_component_t tag = ecs_component({});
+    ecs_component_t tag = ecs_component({0});
 
     BENCH({
         for (uint32_t i = 0; i < entity_count; i++) {
@@ -329,13 +331,14 @@ BENCH_SETUP(migrate_trivial_columns, {
     });
 
     free(entities);
+    free(cids);
 });
 
 BENCH_SETUP(remove_trivial_rows, {
     arg(cid_count, 8);
     arg(entity_count, 100000);
 
-    ecs_component_t cids[cid_count];
+    ecs_component_t *cids = malloc(cid_count * sizeof(*cids));
     register_trivial_data_components(cids, cid_count);
     ecs_entity_t *entities = make_entities_with_trivial_data(cids, cid_count, entity_count);
 
@@ -346,12 +349,13 @@ BENCH_SETUP(remove_trivial_rows, {
     });
 
     free(entities);
+    free(cids);
 });
 
 BENCH_SETUP(add_one_component_cold_edge, {
     arg(entity_count, 100000);
 
-    ecs_component_t cid = ecs_component({});
+    ecs_component_t cid = ecs_component({0});
 
     BENCH({
         for (uint32_t i = 0; i < entity_count; i++) {
@@ -363,7 +367,7 @@ BENCH_SETUP(add_one_component_cold_edge, {
 BENCH_SETUP(add_one_component_hot_edge, {
     arg(entity_count, 100000);
 
-    ecs_component_t cid = ecs_component({});
+    ecs_component_t cid = ecs_component({0});
     ecs_add_cid(ecs_new(), cid);
 
     BENCH({
@@ -395,8 +399,8 @@ BENCH_SETUP(add_many_components_no_required, {
 BENCH_SETUP(add_required_direct_cold_edge, {
     arg(entity_count, 100000);
 
-    ecs_component_t component = ecs_component({});
-    ecs_component_t required = ecs_component({});
+    ecs_component_t component = ecs_component({0});
+    ecs_component_t required = ecs_component({0});
     ecs_with(component, required);
 
     BENCH({
@@ -409,8 +413,8 @@ BENCH_SETUP(add_required_direct_cold_edge, {
 BENCH_SETUP(add_required_direct_hot_edge, {
     arg(entity_count, 100000);
 
-    ecs_component_t component = ecs_component({});
-    ecs_component_t required = ecs_component({});
+    ecs_component_t component = ecs_component({0});
+    ecs_component_t required = ecs_component({0});
     ecs_with(component, required);
     ecs_add_cid(ecs_new(), component);
 
@@ -424,9 +428,9 @@ BENCH_SETUP(add_required_direct_hot_edge, {
 BENCH_SETUP(add_required_chain_hot_edge, {
     arg(entity_count, 100000);
 
-    ecs_component_t root = ecs_component({});
-    ecs_component_t mid = ecs_component({});
-    ecs_component_t leaf = ecs_component({});
+    ecs_component_t root = ecs_component({0});
+    ecs_component_t mid = ecs_component({0});
+    ecs_component_t leaf = ecs_component({0});
     ecs_with(root, mid);
     ecs_with(mid, leaf);
     ecs_add_cid(ecs_new(), root);
@@ -441,8 +445,8 @@ BENCH_SETUP(add_required_chain_hot_edge, {
 BENCH_SETUP(add_required_to_existing_component, {
     arg(entity_count, 100000);
 
-    ecs_component_t component = ecs_component({});
-    ecs_component_t required = ecs_component({});
+    ecs_component_t component = ecs_component({0});
+    ecs_component_t required = ecs_component({0});
     ecs_with(component, required);
 
     ecs_entity_t warmup = ecs_new();
@@ -461,7 +465,7 @@ BENCH_SETUP(add_required_to_existing_component, {
 BENCH_SETUP(add_duplicate_component, {
     arg(entity_count, 100000);
 
-    ecs_component_t cid = ecs_component({});
+    ecs_component_t cid = ecs_component({0});
     ecs_entity_t *entities = malloc(sizeof(ecs_entity_t) * entity_count);
     for (uint32_t i = 0; i < entity_count; i++) {
         entities[i] = ecs_new();

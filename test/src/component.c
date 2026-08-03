@@ -714,8 +714,8 @@ void component_try_get_handles_missing_and_inherited(void) {
 void component_table_type_tracks_data_columns(void) {
     ecs_init();
 
-    ecs_component_t tag_a = ecs_component({});
-    ecs_component_t tag_b = ecs_component({});
+    ecs_component_t tag_a = ecs_component({0});
+    ecs_component_t tag_b = ecs_component({0});
     ecs_component_t data_a = ecs_component({ .size = sizeof(uint32_t) });
     ecs_component_t data_b = ecs_component({ .size = sizeof(uint64_t) });
     ecs_entity_t entity = ecs_new();
@@ -781,7 +781,7 @@ void component_table_index_resize_preserves_type_hashes(void) {
 
     ecs_component_t components[ComponentCount];
     for (uint16_t i = 0; i < ComponentCount; i++) {
-        components[i] = ecs_component({});
+        components[i] = ecs_component({0});
     }
 
     uint16_t *table_ids = malloc(sizeof(uint16_t) * TypeCount);

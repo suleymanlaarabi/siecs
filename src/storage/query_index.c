@@ -407,7 +407,7 @@ static void ecs_query_cache_set_table_fields(
     uint32_t field_kind_bits = 0;
 
     while (remaining_fields) {
-        const uint16_t term_index = (uint16_t)__builtin_ctz((unsigned)remaining_fields);
+        const uint16_t term_index = (uint16_t)ECS_CTZ(remaining_fields);
         remaining_fields &= (uint16_t)(remaining_fields - 1);
         const ecs_query_term_t term = cache->query.terms[term_index];
         const ecs_term_access_t access = ecs_query_term_access(term);
@@ -456,7 +456,7 @@ bool ecs_query_resolve_up_fields(
     uint32_t field_kind_bits = cache->field_kind_bits[table_index];
     uint32_t base = (uint32_t)table_index * cache->query.field_count;
     while (remaining_fields) {
-        uint16_t term_index = (uint16_t)__builtin_ctz((unsigned)remaining_fields);
+        uint16_t term_index = (uint16_t)ECS_CTZ(remaining_fields);
         remaining_fields &= (uint16_t)(remaining_fields - 1);
         ecs_query_term_t term = cache->query.terms[term_index];
         ecs_term_access_t access = ecs_query_term_access(term);

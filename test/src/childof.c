@@ -237,7 +237,7 @@ void childof_bytarget_exact_query_spans_tables(void) {
     ecs_entity_t target = ecs_new();
     for (uint16_t i = 0; i < 5; i++) {
         ecs_entity_t source = ecs_new();
-        ecs_add_cid(source, ecs_component({}));
+        ecs_add_cid(source, ecs_component({0}));
         ecs_relate(source, GroupOf, target);
     }
     ecs_query_id_t q = ecs_query({ .relations = { ecs_to(GroupOf, target) } });
