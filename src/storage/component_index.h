@@ -37,9 +37,7 @@ typedef struct ecs_component_index_s {
 
 void ecs_component_index_register(
     ecs_component_t id,
-#if SIECS_HAS_NAMES
     const char *name,
-#endif
     uint64_t size,
     ecs_type_ops_t ops,
     ecs_component_on_set_t on_set,

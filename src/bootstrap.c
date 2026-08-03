@@ -12,12 +12,14 @@
 #include "utils.h"
 #include "world_internal.h"
 
-ECS_RELATION_DEFINE(ChildOf, {
-    .storage = EcsRelationByDepth,
-    .on_delete_target = EcsDeleteSources,
-    .acyclic = true,
-});
-#if SIECS_HAS_NAMES
+ECS_RELATION_DEFINE(
+    ChildOf,
+    {
+        .storage = EcsRelationByDepth,
+        .on_delete_target = EcsDeleteSources,
+        .acyclic = true,
+    }
+);
 sicore_map_t name_map;
 
 static char *name_copy_string(const char *value) {
@@ -150,7 +152,7 @@ ECS_COMPONENT_DEFINE(
     .on_remove = name_on_remove,
     .on_set = name_on_set
 );
-#endif
+
 ECS_TAG_DEFINE(Disabled);
 ECS_TAG_DEFINE(Abstract);
 
@@ -158,7 +160,7 @@ void ecs_bootstrap() {
     // Reserve identifiers used to represent false return values.
     ecs_table_index_get_or_create((ecs_type_t){ 0 });
     sicore_vec_push_u64(&ecs_world.entity_index.entities, 0);
-    ecs_component({ SIECS_NAME_INIT("Invalid") });
+    ecs_component({ .name = "Invalid" });
 
 #if SIECS_HAS_META
     // Register the ecs_entity_t struct reflection.
@@ -174,10 +176,8 @@ void ecs_bootstrap() {
 #endif
 
     ECS_RELATION_REGISTER(ChildOf);
-#if SIECS_HAS_NAMES
     ECS_COMPONENT_REGISTER(Name);
     sicore_map_init(&name_map);
-#endif
     ECS_COMPONENT_REGISTER(Disabled);
     ECS_COMPONENT_REGISTER(Abstract);
 

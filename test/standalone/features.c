@@ -3,9 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef EXPECT_NAMES
-#error "EXPECT_NAMES must be defined"
-#endif
 #ifndef EXPECT_META
 #error "EXPECT_META must be defined"
 #endif
@@ -13,7 +10,6 @@
 #error "EXPECT_REST must be defined"
 #endif
 
-_Static_assert(SIECS_HAS_NAMES == EXPECT_NAMES);
 _Static_assert(SIECS_HAS_META == EXPECT_META);
 _Static_assert(SIECS_HAS_REST == EXPECT_REST);
 
@@ -47,21 +43,6 @@ int main(void) {
         }
     );
     ecs_module_id_t module = ECS_MODULE_IMPORT(feature_module, { 1 });
-
-#if SIECS_HAS_NAMES
-    assert(strcmp(ecs_component_name(ecs_id(FeaturePosition)), "FeaturePosition") == 0);
-    assert(strcmp(ecs_resource_name(ecs_id(FeatureTime)), "FeatureTime") == 0);
-    assert(ecs_resource_find("FeatureTime") == ecs_id(FeatureTime));
-    assert(strcmp(ecs_system_name(system), "FeatureSystem") == 0);
-    assert(strcmp(ecs_module_name(module), "feature_module") == 0);
-
-    ecs_set(entity, Name, { strdup("FeatureEntity") });
-    assert(strcmp(ecs_entity_name(entity), "FeatureEntity") == 0);
-    free(ecs_get(entity, Name)->value);
-#else
-    (void)system;
-    (void)module;
-#endif
 
 #if SIECS_HAS_META
     assert(ecs_id(FeaturePosition_desc).struct_desc != NULL);

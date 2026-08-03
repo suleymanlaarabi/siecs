@@ -99,33 +99,35 @@ template <typename T> struct resource_hook_state {
 
 template <typename T> static void resource_on_set(const void *ptr) {
     auto callback = resource_hook_state<T>::hooks.on_set;
-    if (callback != nullptr) callback(*static_cast<const T *>(ptr));
+    if (callback != nullptr)
+        callback(*static_cast<const T *>(ptr));
 }
 
 template <typename T> static void resource_on_remove(const void *ptr) {
     auto callback = resource_hook_state<T>::hooks.on_remove;
-    if (callback != nullptr) callback(*static_cast<const T *>(ptr));
+    if (callback != nullptr)
+        callback(*static_cast<const T *>(ptr));
 }
 
 } // namespace detail
 
 /** Register `T` and return a typed resource handle, installing hooks once. */
 template <typename T>
-static ecs_resource_t ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) {
+static ecs_resource_t
+ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) {
     using type = std::remove_cv_t<T>;
     ecs_resource_t &rid = detail::resource_type<type>::id;
 
     if (rid != 0)
         return rid;
 
-#if SIECS_HAS_NAMES
     static const std::string name = std::string(type_name<type>());
-#endif
 
-    if (hooks != nullptr) detail::resource_hook_state<type>::hooks = *hooks;
+    if (hooks != nullptr)
+        detail::resource_hook_state<type>::hooks = *hooks;
 
     ecs_resource_desc_t desc = {
-        SIECS_NAME_INIT(name.c_str())
+        .name = name.c_str(),
         .size = sizeof(type),
         .ops = detail::value_ops<type>(),
         .on_set = hooks && hooks->on_set ? detail::resource_on_set<type> : nullptr,
@@ -142,7 +144,8 @@ template <typename T> resource_ref<T> resource_handle() {
 }
 
 /** Create a typed resource handle with lifecycle hooks. */
-template <typename T> resource_ref<T> resource_handle(const resource_hooks<std::remove_cv_t<T>> &hooks) {
+template <typename T>
+resource_ref<T> resource_handle(const resource_hooks<std::remove_cv_t<T>> &hooks) {
     return resource_ref<T>(ecs_cpp_resource_id<T>(&hooks));
 }
 

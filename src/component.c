@@ -6,8 +6,8 @@
 #if SIECS_HAS_META && !defined(SIJSON_H)
 #include "sijson.h"
 #endif
-#include "storage/component_index.h"
 #include "relation.h"
+#include "storage/component_index.h"
 #include "utils.h"
 #include "world_internal.h"
 #include <stdint.h>
@@ -128,9 +128,8 @@ static ecs_component_t ecs_component_register_type(
     ecs_component_t component = *id;
     ecs_component_index_register(
         component,
-#if SIECS_HAS_NAMES
         desc->name,
-#endif
+
         desc->size,
         desc->ops,
         desc->on_set,
@@ -152,13 +151,11 @@ ecs_component_t ecs_component_register_relation_internal(
     bool by_target
 ) {
     ecs_component_t component = ecs_component_alloc_ids(by_target ? 1 : 2);
-    uint32_t target_flags =
-        ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationTarget);
+    uint32_t target_flags = ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationTarget);
     ecs_component_index_register(
         component,
-#if SIECS_HAS_NAMES
         name,
-#endif
+
         by_target ? 0 : sizeof(RelationTarget),
         (ecs_type_ops_t){ 0 },
         by_target ? NULL : RelationOnSet,
@@ -176,9 +173,8 @@ ecs_component_t ecs_component_register_relation_internal(
     }
     ecs_component_index_register(
         component + 1,
-#if SIECS_HAS_NAMES
         NULL,
-#endif
+
         sizeof(RelationSource),
         (ecs_type_ops_t){ .dtor = RelationSourceDtor },
         NULL,
@@ -186,7 +182,7 @@ ecs_component_t ecs_component_register_relation_internal(
         NULL,
         ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationSource)
 #if SIECS_HAS_META
-        ,
+            ,
         SIREFLECT_INVALID_HANDLE,
         NULL
 #endif
@@ -230,8 +226,6 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
         return 0;
     }
 
-    
-
     for (uint32_t i = 1; i < ecs_world.component_index.components.size; i++) {
         const ecs_component_info_t *info = ecs_component_index_get((ecs_component_t)i)->info;
         if (info && info->type == type) {
@@ -250,9 +244,9 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
         .size = info->size,
         .struct_desc = &reflection,
     };
-#if SIECS_HAS_NAMES
+
     component.name = desc->name;
-#endif
+
     ecs_component_t id = 0;
     return ecs_component_register_type(&id, &component, type);
 }
@@ -265,7 +259,6 @@ ecs_component_t ecs_tag_init(const char *name) {
 }
 #endif
 
-#if SIECS_HAS_NAMES
 const char *ecs_component_name(ecs_component_t component) {
     ecs_assert(
         component != 0 && component < ecs_world.component_index.components.size,
@@ -274,4 +267,3 @@ const char *ecs_component_name(ecs_component_t component) {
     );
     return ecs_component_index_get(component)->info->name;
 }
-#endif

@@ -24,20 +24,14 @@ template <typename Callback> static void system_callback_dtor(uintptr_t user_dat
 
 /** Fluent typed system builder; the resulting C system owns its callback. */
 class system : protected query {
-#if SIECS_HAS_NAMES
     const char *name;
-#endif
     ecs_phase_t _phase = EcsOnUpdate;
     ecs_system_id_t _after[ECS_SYSTEM_AFTER_CAPACITY]{};
     bool _disabled = false;
 
   public:
-#if SIECS_HAS_NAMES
     /** Construct a system descriptor with an optional diagnostic name. */
     explicit system(const char *name = "unnamed") : name(name) {}
-#else
-    explicit system(const char *name = nullptr) { (void)name; }
-#endif
 
     /** Add required filter terms to the system query. */
     template <typename... T> system &require() {
@@ -89,7 +83,8 @@ class system : protected query {
         callback *state = new callback(std::forward<F>(func));
 
         ecs_system_desc_t system_desc = {
-            SIECS_NAME_INIT(name).query = this->desc,
+            .name = name,
+            .query = this->desc,
             .callback = detail::system_callback<callback, args>,
             .user_data = reinterpret_cast<uintptr_t>(state),
             .user_data_dtor = detail::system_callback_dtor<callback>,

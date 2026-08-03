@@ -21,9 +21,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     const bool has_query = desc->query.terms[0].id || desc->query.relations[0].id ||
                            desc->query.order.relation || desc->query.is_a;
     ecs_system_t sys = {
-#if SIECS_HAS_NAMES
         .name = desc->name,
-#endif
         .qid = has_query ? ecs_query_init(&desc->query) : ECS_SYSTEM_NO_QUERY,
         .callback = desc->callback,
         .user_data = desc->user_data,
@@ -39,9 +37,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     return system;
 }
 
-#if SIECS_HAS_NAMES
 const char *ecs_system_name(ecs_system_id_t system) { return ecs_system_index_get(system)->name; }
-#endif
 
 void ecs_run_system(ecs_system_id_t system) {
 

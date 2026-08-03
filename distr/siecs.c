@@ -5888,9 +5888,7 @@ typedef struct ecs_component_index_s {
 
 void ecs_component_index_register(
     ecs_component_t id,
-#if SIECS_HAS_NAMES
     const char *name,
-#endif
     uint64_t size,
     ecs_type_ops_t ops,
     ecs_component_on_set_t on_set,
@@ -5973,9 +5971,8 @@ void ecs_entity_index_fini();
 
 typedef struct {
     ecs_module_id_t *id;
-#if SIECS_HAS_NAMES
     const char *name;
-#endif
+
     sicore_vec_t observers; // ecs_observer_id_t
     sicore_vec_t systems;   // ecs_system_id_t
     bool enabled;
@@ -5988,13 +5985,7 @@ typedef struct {
 void ecs_module_index_init();
 void ecs_module_index_fini();
 
-ecs_module_id_t ecs_module_index_create(
-    ecs_module_id_t *id
-#if SIECS_HAS_NAMES
-    ,
-    const char *name
-#endif
-);
+ecs_module_id_t ecs_module_index_create(ecs_module_id_t *id, const char *name);
 ecs_module_t *ecs_module_index_get(ecs_module_id_t module);
 const ecs_module_t *ecs_module_index_get_const(ecs_module_id_t module);
 ecs_module_id_t ecs_module_index_find(const ecs_module_id_t *id);
@@ -6157,9 +6148,7 @@ void ecs_observer_index_add_table(ecs_table_t *table);
 #include <stdint.h>
 
 typedef struct {
-#if SIECS_HAS_NAMES
     const char *name;
-#endif
     uint64_t size;
     ecs_type_ops_t ops;
     ecs_resource_hook_t on_set;
@@ -6169,9 +6158,6 @@ typedef struct {
 typedef struct {
     ecs_resource_record_t *records;
     void **data;
-#if !SIECS_HAS_NAMES
-    bool *registered;
-#endif
     bool *present;
     uint64_t capacity;
     uint64_t count;
@@ -6184,9 +6170,7 @@ ecs_resource_t ecs_resource_index_register(
     ecs_resource_t id,
     const ecs_resource_desc_t *desc
 );
-#if SIECS_HAS_NAMES
 ecs_resource_t ecs_resource_index_find(const char *name);
-#endif
 bool ecs_resource_index_is_registered(ecs_resource_t id);
 void ecs_resource_index_set(
     ecs_resource_t id,
@@ -6207,9 +6191,7 @@ void ecs_resource_index_remove(ecs_resource_t id);
 #include <stdint.h>
 
 typedef struct {
-#if SIECS_HAS_NAMES
     const char *name;
-#endif
     ecs_query_id_t qid;
     void (*callback)(ecs_iter_t *);
     uintptr_t user_data;
@@ -6242,9 +6224,9 @@ typedef struct {
     uint8_t storage;
     uint8_t on_delete_target;
     uint8_t acyclic;
-#if SIECS_HAS_NAMES
+
     char *name;
-#endif
+
 } ecs_relation_record_t;
 
 typedef struct {
@@ -6263,14 +6245,11 @@ ecs_component_t ecs_component_register_relation_internal(
     bool by_target
 );
 
-#define ecs_relation_record(id)                                                                  \
+#define ecs_relation_record(id)                                                                    \
     sicore_vec_get(&ecs_world.relation_index.records, id, ecs_relation_record_t)
 
-ecs_entity_t ecs_relation_target_at_table(
-    const ecs_table_t *table,
-    ecs_relation_id_t relation,
-    uint32_t row
-);
+ecs_entity_t
+ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relation, uint32_t row);
 uint32_t ecs_relation_table_depth(const ecs_table_t *table, ecs_relation_id_t relation);
 
 #endif
@@ -6346,18 +6325,18 @@ static inline bool ecs_is_deferred(void) {
 
 void ecs_bootstrap(void);
 
-#if SIECS_HAS_NAMES
 extern sicore_map_t name_map;
-#endif
 
 #endif
 
-ECS_RELATION_DEFINE(ChildOf, {
-    .storage = EcsRelationByDepth,
-    .on_delete_target = EcsDeleteSources,
-    .acyclic = true,
-});
-#if SIECS_HAS_NAMES
+ECS_RELATION_DEFINE(
+    ChildOf,
+    {
+        .storage = EcsRelationByDepth,
+        .on_delete_target = EcsDeleteSources,
+        .acyclic = true,
+    }
+);
 sicore_map_t name_map;
 
 static char *name_copy_string(const char *value) {
@@ -6490,7 +6469,7 @@ ECS_COMPONENT_DEFINE(
     .on_remove = name_on_remove,
     .on_set = name_on_set
 );
-#endif
+
 ECS_TAG_DEFINE(Disabled);
 ECS_TAG_DEFINE(Abstract);
 
@@ -6498,7 +6477,7 @@ void ecs_bootstrap() {
     // Reserve identifiers used to represent false return values.
     ecs_table_index_get_or_create((ecs_type_t){ 0 });
     sicore_vec_push_u64(&ecs_world.entity_index.entities, 0);
-    ecs_component({ SIECS_NAME_INIT("Invalid") });
+    ecs_component({ .name = "Invalid" });
 
 #if SIECS_HAS_META
     // Register the ecs_entity_t struct reflection.
@@ -6514,10 +6493,8 @@ void ecs_bootstrap() {
 #endif
 
     ECS_RELATION_REGISTER(ChildOf);
-#if SIECS_HAS_NAMES
     ECS_COMPONENT_REGISTER(Name);
     sicore_map_init(&name_map);
-#endif
     ECS_COMPONENT_REGISTER(Disabled);
     ECS_COMPONENT_REGISTER(Abstract);
 
@@ -7279,9 +7256,8 @@ static ecs_component_t ecs_component_register_type(
     ecs_component_t component = *id;
     ecs_component_index_register(
         component,
-#if SIECS_HAS_NAMES
         desc->name,
-#endif
+
         desc->size,
         desc->ops,
         desc->on_set,
@@ -7303,13 +7279,11 @@ ecs_component_t ecs_component_register_relation_internal(
     bool by_target
 ) {
     ecs_component_t component = ecs_component_alloc_ids(by_target ? 1 : 2);
-    uint32_t target_flags =
-        ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationTarget);
+    uint32_t target_flags = ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationTarget);
     ecs_component_index_register(
         component,
-#if SIECS_HAS_NAMES
         name,
-#endif
+
         by_target ? 0 : sizeof(RelationTarget),
         (ecs_type_ops_t){ 0 },
         by_target ? NULL : RelationOnSet,
@@ -7327,9 +7301,8 @@ ecs_component_t ecs_component_register_relation_internal(
     }
     ecs_component_index_register(
         component + 1,
-#if SIECS_HAS_NAMES
         NULL,
-#endif
+
         sizeof(RelationSource),
         (ecs_type_ops_t){ .dtor = RelationSourceDtor },
         NULL,
@@ -7337,7 +7310,7 @@ ecs_component_t ecs_component_register_relation_internal(
         NULL,
         ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationSource)
 #if SIECS_HAS_META
-        ,
+            ,
         SIREFLECT_INVALID_HANDLE,
         NULL
 #endif
@@ -7381,8 +7354,6 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
         return 0;
     }
 
-    
-
     for (uint32_t i = 1; i < ecs_world.component_index.components.size; i++) {
         const ecs_component_info_t *info = ecs_component_index_get((ecs_component_t)i)->info;
         if (info && info->type == type) {
@@ -7401,9 +7372,9 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
         .size = info->size,
         .struct_desc = &reflection,
     };
-#if SIECS_HAS_NAMES
+
     component.name = desc->name;
-#endif
+
     ecs_component_t id = 0;
     return ecs_component_register_type(&id, &component, type);
 }
@@ -7416,7 +7387,6 @@ ecs_component_t ecs_tag_init(const char *name) {
 }
 #endif
 
-#if SIECS_HAS_NAMES
 const char *ecs_component_name(ecs_component_t component) {
     ecs_assert(
         component != 0 && component < ecs_world.component_index.components.size,
@@ -7425,7 +7395,6 @@ const char *ecs_component_name(ecs_component_t component) {
     );
     return ecs_component_index_get(component)->info->name;
 }
-#endif
 
 #define ecs_assert_can_be_updated(entity, ...)                                                     \
     ecs_assert(!ecs_has_cid_owned(entity, ecs_id(Abstract)), __VA_ARGS__)
@@ -7824,10 +7793,6 @@ bool ecs_component_requires(const ecs_component_t component, ecs_component_t req
 }
 #endif
 
-#if SIECS_HAS_NAMES
-#include <stdio.h>
-#endif
-
 static inline ecs_entity_t ecs_entity_index_create(uint32_t row) {
     ecs_entity_index_t *index = &ecs_world.entity_index;
     uint32_t entity_id;
@@ -7885,7 +7850,6 @@ bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
     return ecs_is(base, target);
 }
 
-#if SIECS_HAS_NAMES
 ecs_entity_t ecs_lookup(const char *key) {
     uint32_t index = sicore_map_get(&name_map, key);
     if (index == UINT32_MAX) {
@@ -7893,7 +7857,6 @@ ecs_entity_t ecs_lookup(const char *key) {
     }
     return ecs_entity(index, ecs_entity_index_get_record(index)->generation);
 }
-#endif
 
 void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     ecs_assert_entity_valid(entity);
@@ -8018,7 +7981,6 @@ void ecs_kill(ecs_entity_t entity) {
     ecs_kill_now(entity);
 }
 
-#if SIECS_HAS_NAMES
 const char *ecs_entity_name(ecs_entity_t entity) {
     static char *buff = NULL;
     if (ecs_has(entity, Name)) {
@@ -8030,7 +7992,6 @@ const char *ecs_entity_name(ecs_entity_t entity) {
     sprintf(buff, "(%d, %d)", ecs_first(entity), ecs_second(entity));
     return buff;
 }
-#endif
 
 #ifndef SIECS_MODULE_H
 #define SIECS_MODULE_H
@@ -8042,9 +8003,7 @@ void ecs_module_record_observer(ecs_observer_id_t observer);
 
 ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
     ecs_assert_not_null(desc);
-#if SIECS_HAS_NAMES
     ecs_assert_not_null(desc->name);
-#endif
     ecs_assert_not_null(desc->import);
 
     ecs_module_id_t existing = ecs_module_index_find(desc->id);
@@ -8052,13 +8011,7 @@ ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
         return existing;
     }
 
-    ecs_module_id_t module = ecs_module_index_create(
-        desc->id
-#if SIECS_HAS_NAMES
-        ,
-        desc->name
-#endif
-    );
+    ecs_module_id_t module = ecs_module_index_create(desc->id, desc->name);
     if (desc->id) {
         *desc->id = module;
     }
@@ -8097,11 +8050,9 @@ void ecs_module_enable(ecs_module_id_t module) {
 
 ecs_module_id_t ecs_module_find(const ecs_module_id_t *id) { return ecs_module_index_find(id); }
 
-#if SIECS_HAS_NAMES
 const char *ecs_module_name(ecs_module_id_t module) {
     return ecs_module_index_get_const(module)->name;
 }
-#endif
 
 void ecs_module_disable(ecs_module_id_t module) {
 
@@ -8313,34 +8264,21 @@ void ecs_query_fini(ecs_query_id_t qid) {
 }
 
 void ecs_relation_index_init(void) {
-    sicore_vec_init_w_size(
-        &ecs_world.relation_index.records,
-        sizeof(ecs_relation_record_t),
-        1
-    );
-    sicore_vec_ensure(
-        &ecs_world.relation_index.records,
-        1,
-        sizeof(ecs_relation_record_t)
-    );
+    sicore_vec_init_w_size(&ecs_world.relation_index.records, sizeof(ecs_relation_record_t), 1);
+    sicore_vec_ensure(&ecs_world.relation_index.records, 1, sizeof(ecs_relation_record_t));
 }
 
 void ecs_relation_index_fini(void) {
     ecs_relation_index_t *index = &ecs_world.relation_index;
     ecs_relation_record_t *records = index->records.data;
     for (uint32_t r = 1; r < ecs_world.relation_index.records.size; r++) {
-#if SIECS_HAS_NAMES
         free(records[r].name);
-#endif
     }
     sicore_vec_fini(&ecs_world.relation_index.records);
 }
 
-ecs_relation_id_t ecs_relation_register(
-    ecs_relation_id_t *id,
-    const char *name,
-    const ecs_relation_desc_t *desc
-) {
+ecs_relation_id_t
+ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relation_desc_t *desc) {
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
     ecs_assert(
@@ -8373,20 +8311,15 @@ ecs_relation_id_t ecs_relation_register(
         (uint32_t)*id + 1,
         sizeof(ecs_relation_record_t)
     );
-    ecs_component_t component = ecs_component_register_relation_internal(
-        name,
-        *id,
-        desc->storage == EcsRelationByTarget
-    );
+    ecs_component_t component =
+        ecs_component_register_relation_internal(name, *id, desc->storage == EcsRelationByTarget);
     *sicore_vec_get_mut(&ecs_world.relation_index.records, *id, ecs_relation_record_t) =
         (ecs_relation_record_t){
             .component = component,
             .storage = desc->storage,
             .on_delete_target = desc->on_delete_target,
             .acyclic = desc->storage == EcsRelationByDepth || desc->acyclic,
-#if SIECS_HAS_NAMES
             .name = name ? strdup(name) : NULL,
-#endif
         };
     return *id;
 }
@@ -8396,21 +8329,15 @@ ecs_relation_id_t ecs_relation_init(const char *name, const ecs_relation_desc_t 
     return ecs_relation_register(&id, name, desc);
 }
 
-static ecs_entity_t ecs_relation_table_target(
-    const ecs_table_t *table,
-    ecs_relation_id_t relation
-) {
+static ecs_entity_t
+ecs_relation_table_target(const ecs_table_t *table, ecs_relation_id_t relation) {
     uint16_t index = ecs_type_relation_index(&table->type, relation);
-    return index == UINT16_MAX
-               ? 0
-               : ecs_relation_key_target(&ecs_type_relations(&table->type)[index]);
+    return index == UINT16_MAX ? 0
+                               : ecs_relation_key_target(&ecs_type_relations(&table->type)[index]);
 }
 
-ecs_entity_t ecs_relation_target_at_table(
-    const ecs_table_t *table,
-    ecs_relation_id_t relation,
-    uint32_t row
-) {
+ecs_entity_t
+ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relation, uint32_t row) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     if (record->storage == EcsRelationByTarget) {
         return ecs_relation_table_target(table, relation);
@@ -8434,11 +8361,8 @@ static uint32_t ecs_relation_depth(ecs_entity_t entity, ecs_relation_id_t relati
 }
 
 #ifndef NDEBUG
-static bool ecs_relation_would_cycle(
-    ecs_entity_t source,
-    ecs_relation_id_t relation,
-    ecs_entity_t target
-) {
+static bool
+ecs_relation_would_cycle(ecs_entity_t source, ecs_relation_id_t relation, ecs_entity_t target) {
     while (target) {
         if (target == source) {
             return true;
@@ -8449,11 +8373,8 @@ static bool ecs_relation_would_cycle(
 }
 #endif
 
-static void ecs_relation_migrate_depth(
-    ecs_entity_t entity,
-    ecs_relation_id_t relation,
-    uint32_t depth
-) {
+static void
+ecs_relation_migrate_depth(ecs_entity_t entity, ecs_relation_id_t relation, uint32_t depth) {
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
     uint16_t from_id = entity_record->table_id;
     ecs_table_t *from = ecs_get_table(from_id);
@@ -8533,19 +8454,15 @@ static void ecs_relation_set_depth(
         relation_record->component,
         ecs_get_record(entity)->table_row
     );
-    const ecs_component_record_t *component =
-        ecs_component_index_get(relation_record->component);
+    const ecs_component_record_t *component = ecs_component_index_get(relation_record->component);
     RelationTarget value = { .target = target };
     component->on_set(entity, relation_record->component, &value, current);
     *current = value;
     ecs_relation_update_children_depth(entity, relation, depth);
 }
 
-static void ecs_relation_set_target(
-    ecs_entity_t entity,
-    ecs_relation_id_t relation,
-    ecs_entity_t target
-) {
+static void
+ecs_relation_set_target(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     if (!ecs_has_cid_owned(target, record->component)) {
         ecs_add_cid_now(target, record->component);
@@ -8666,11 +8583,7 @@ ecs_entity_t ecs_target_id(ecs_entity_t entity, ecs_relation_id_t relation) {
     return ecs_relation_target_at_table(table, relation, entity_record->table_row);
 }
 
-bool ecs_has_relation_to_id(
-    ecs_entity_t entity,
-    ecs_relation_id_t relation,
-    ecs_entity_t target
-) {
+bool ecs_has_relation_to_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
     return ecs_target_id(entity, relation) == target;
 }
 
@@ -8711,27 +8624,22 @@ static ecs_resource_t ecs_resource_alloc_id(void) {
 }
 
 ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc) {
-        return ecs_resource_index_register(ecs_resource_alloc_id(), desc);
+    return ecs_resource_index_register(ecs_resource_alloc_id(), desc);
 }
 
-#if SIECS_HAS_NAMES
-ecs_resource_t ecs_resource_find(const char *name) {
-    return ecs_resource_index_find(name);
-}
+ecs_resource_t ecs_resource_find(const char *name) { return ecs_resource_index_find(name); }
 
 const char *ecs_resource_name(ecs_resource_t resource) {
     ecs_assert(ecs_resource_index_is_registered(resource), "invalid resource id: %u\n", resource);
     return ecs_world.resource_index.records[resource].name;
 }
-#endif
 
 bool ecs_resource_is_registered_rid(ecs_resource_t id) {
     return ecs_resource_index_is_registered(id);
 }
 
-ecs_resource_t
-ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc) {
-        ecs_assert_not_null(id);
+ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc) {
+    ecs_assert_not_null(id);
     if (*id == 0) {
         *id = ecs_resource_alloc_id();
     }
@@ -8739,21 +8647,21 @@ ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc) {
 }
 
 void ecs_set_resource_rid(ecs_resource_t id, const void *data) {
-        ecs_assert_id_valid(id);
+    ecs_assert_id_valid(id);
     ecs_assert_not_null(data);
 
     ecs_resource_index_set(id, data);
 }
 
 void ecs_move_resource_rid(ecs_resource_t id, void *data) {
-        ecs_assert_id_valid(id);
+    ecs_assert_id_valid(id);
     ecs_assert_not_null(data);
 
     ecs_resource_index_move(id, data);
 }
 
 void *ecs_resource_rid(ecs_resource_t id) {
-        ecs_assert_id_valid(id);
+    ecs_assert_id_valid(id);
 
     void *resource = ecs_resource_index_get(id);
     ecs_assert(resource != NULL, "resource does not exist: %d\n", id);
@@ -8761,19 +8669,19 @@ void *ecs_resource_rid(ecs_resource_t id) {
 }
 
 void *ecs_try_resource_rid(ecs_resource_t id) {
-        ecs_assert_id_valid(id);
+    ecs_assert_id_valid(id);
 
     return ecs_resource_index_get(id);
 }
 
 bool ecs_has_resource_rid(const ecs_resource_t id) {
-        ecs_assert_id_valid(id);
+    ecs_assert_id_valid(id);
 
     return ecs_resource_index_has(id);
 }
 
 void ecs_remove_resource_rid(ecs_resource_t id) {
-        ecs_assert_id_valid(id);
+    ecs_assert_id_valid(id);
 
     ecs_resource_index_remove(id);
 }
@@ -8792,9 +8700,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     const bool has_query = desc->query.terms[0].id || desc->query.relations[0].id ||
                            desc->query.order.relation || desc->query.is_a;
     ecs_system_t sys = {
-#if SIECS_HAS_NAMES
         .name = desc->name,
-#endif
         .qid = has_query ? ecs_query_init(&desc->query) : ECS_SYSTEM_NO_QUERY,
         .callback = desc->callback,
         .user_data = desc->user_data,
@@ -8810,9 +8716,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     return system;
 }
 
-#if SIECS_HAS_NAMES
 const char *ecs_system_name(ecs_system_id_t system) { return ecs_system_index_get(system)->name; }
-#endif
 
 void ecs_run_system(ecs_system_id_t system) {
 
@@ -9570,9 +9474,7 @@ void ecs_fini(void) {
     ecs_module_index_fini();
     ecs_command_buffer_fini();
     ecs_arena_fini();
-#if SIECS_HAS_NAMES
     sicore_map_fini(&name_map);
-#endif
 #if SIECS_HAS_REST
     if (ecs_world.features.rest) {
         sihttp_server_stop(ecs_world.server);
@@ -9712,15 +9614,16 @@ static bool entity_is_alive(ecs_entity_t entity) {
 sijson_value_t ecs_rest_entity_json(ecs_entity_t entity) {
     sijson_value_t object = sijson_make_object();
 
-#if SIECS_HAS_NAMES
     sijson_object_set(object, "name", sijson_make_string(ecs_entity_name(entity)));
-#endif
+
     sijson_object_set(object, "index", sijson_make_number(ecs_first(entity)));
     sijson_object_set(object, "generation", sijson_make_number(ecs_second(entity)));
     const ecs_relation_record_t *childof = ecs_relation_record(ecs_rid(ChildOf));
-    sijson_object_set(object, "hasChildren", sijson_make_bool(
-        ecs_has_cid(entity, childof->component + 1)
-    ));
+    sijson_object_set(
+        object,
+        "hasChildren",
+        sijson_make_bool(ecs_has_cid(entity, childof->component + 1))
+    );
     return object;
 }
 
@@ -9744,9 +9647,8 @@ sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity) {
 sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
     sijson_value_t detail = sijson_make_object();
 
-#if SIECS_HAS_NAMES
     sijson_object_set(detail, "name", sijson_make_string(ecs_entity_name(entity)));
-#endif
+
     sijson_object_set(detail, "index", sijson_make_number(ecs_first(entity)));
     sijson_object_set(detail, "generation", sijson_make_number(ecs_second(entity)));
 
@@ -9994,23 +9896,13 @@ ecs_rest_component_json(ecs_component_t id, const ecs_component_record_t *record
     return object;
 }
 
-static sijson_value_t ecs_rest_relation_json(
-    ecs_relation_id_t id,
-    const ecs_relation_record_t *record
-) {
+static sijson_value_t
+ecs_rest_relation_json(ecs_relation_id_t id, const ecs_relation_record_t *record) {
     sijson_value_t object = sijson_make_object();
     sijson_object_set(object, "id", sijson_make_number(id));
-#if SIECS_HAS_NAMES
     sijson_object_set(object, "name", sijson_make_string(record->name ? record->name : ""));
-#else
-    sijson_object_set(object, "name", sijson_make_string(""));
-#endif
     sijson_object_set(object, "storage", sijson_make_number(record->storage));
-    sijson_object_set(
-        object,
-        "onDeleteTarget",
-        sijson_make_number(record->on_delete_target)
-    );
+    sijson_object_set(object, "onDeleteTarget", sijson_make_number(record->on_delete_target));
     sijson_object_set(object, "acyclic", sijson_make_bool(record->acyclic));
     return object;
 }
@@ -10241,9 +10133,7 @@ ecs_component_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
 
 void ecs_component_index_register(
     ecs_component_t id,
-#if SIECS_HAS_NAMES
     const char *name,
-#endif
     uint64_t size,
     ecs_type_ops_t ops,
     ecs_component_on_set_t on_set,
@@ -10273,19 +10163,15 @@ void ecs_component_index_register(
         abort();
     }
     *info = (ecs_component_info_t){
-#if SIECS_HAS_NAMES
         .name = name ? strdup(name) : NULL,
-#endif
         .size = size,
 #if SIECS_HAS_META
         .type = type,
 #endif
     };
-#if SIECS_HAS_NAMES
     if (name && !info->name) {
         abort();
     }
-#endif
 
     ecs_component_record_t record = {
         .info = info,
@@ -10320,9 +10206,8 @@ void ecs_component_index_fini() {
 
     for (uint32_t i = 0; i < ecs_world.component_index.components.size; i++) {
         if (records[i].info) {
-#if SIECS_HAS_NAMES
             free((char *)records[i].info->name);
-#endif
+
             free(records[i].info);
         }
 #if SIECS_HAS_META
@@ -10457,18 +10342,9 @@ static bool ecs_module_id_valid(const ecs_module_index_t *index, ecs_module_id_t
     return module != 0 && module < index->modules.size;
 }
 
-static void ecs_module_record_init(
-    ecs_module_t *module,
-    ecs_module_id_t *id
-#if SIECS_HAS_NAMES
-    ,
-    const char *name
-#endif
-) {
+static void ecs_module_record_init(ecs_module_t *module, ecs_module_id_t *id, const char *name) {
     module->id = id;
-#if SIECS_HAS_NAMES
     module->name = name;
-#endif
     module->enabled = true;
     sicore_vec_init(&module->observers, sizeof(ecs_observer_id_t));
     sicore_vec_init(&module->systems, sizeof(ecs_system_id_t));
@@ -10498,23 +10374,10 @@ void ecs_module_index_fini() {
     sicore_vec_fini(&index->modules);
 }
 
-ecs_module_id_t ecs_module_index_create(
-    ecs_module_id_t *id
-#if SIECS_HAS_NAMES
-    ,
-    const char *name
-#endif
-) {
+ecs_module_id_t ecs_module_index_create(ecs_module_id_t *id, const char *name) {
     ecs_module_index_t *index = &ecs_world.module_index;
     ecs_module_t module;
-    ecs_module_record_init(
-        &module,
-        id
-#if SIECS_HAS_NAMES
-        ,
-        name
-#endif
-    );
+    ecs_module_record_init(&module, id, name);
     sicore_vec_push(&index->modules, &module, sizeof(ecs_module_t));
     return index->modules.size - 1;
 }
@@ -11302,11 +11165,8 @@ static uint64_t ecs_resource_storage_size(const ecs_resource_record_t *record) {
     return record->size ? record->size : 1;
 }
 
-static void ecs_resource_value_copy_ctor(
-    const ecs_resource_record_t *record,
-    void *dst,
-    const void *src
-) {
+static void
+ecs_resource_value_copy_ctor(const ecs_resource_record_t *record, void *dst, const void *src) {
     if (record->size == 0) {
         return;
     }
@@ -11371,13 +11231,8 @@ static void ecs_resource_value_dtor(const ecs_resource_record_t *record, void *p
     }
 }
 
-static bool
-ecs_resource_index_registered(const ecs_resource_index_t *index, ecs_resource_t id) {
-#if SIECS_HAS_NAMES
+static bool ecs_resource_index_registered(const ecs_resource_index_t *index, ecs_resource_t id) {
     return index->records[id].name != NULL;
-#else
-    return index->registered[id];
-#endif
 }
 
 static void
@@ -11405,27 +11260,17 @@ static void ecs_resource_index_ensure(ecs_resource_index_t *index, ecs_resource_
     ecs_assert_not_null(records);
     void **data = realloc(index->data, sizeof(void *) * capacity);
     ecs_assert_not_null(data);
-#if !SIECS_HAS_NAMES
-    bool *registered = realloc(index->registered, sizeof(bool) * capacity);
-    ecs_assert_not_null(registered);
-#endif
     bool *present = realloc(index->present, sizeof(bool) * capacity);
     ecs_assert_not_null(present);
 
     for (uint64_t i = index->capacity; i < capacity; i++) {
         records[i] = (ecs_resource_record_t){ 0 };
         data[i] = NULL;
-#if !SIECS_HAS_NAMES
-        registered[i] = false;
-#endif
         present[i] = false;
     }
 
     index->records = records;
     index->data = data;
-#if !SIECS_HAS_NAMES
-    index->registered = registered;
-#endif
     index->present = present;
     index->capacity = capacity;
 }
@@ -11434,9 +11279,6 @@ void ecs_resource_index_init() {
     ecs_resource_index_t *index = &ecs_world.resource_index;
     index->records = NULL;
     index->data = NULL;
-#if !SIECS_HAS_NAMES
-    index->registered = NULL;
-#endif
     index->present = NULL;
     index->capacity = 0;
     index->count = 1;
@@ -11459,19 +11301,13 @@ void ecs_resource_index_fini() {
 
     free(index->records);
     free(index->data);
-#if !SIECS_HAS_NAMES
-    free(index->registered);
-#endif
     free(index->present);
 }
 
-ecs_resource_t
-ecs_resource_index_register(ecs_resource_t id, const ecs_resource_desc_t *desc) {
+ecs_resource_t ecs_resource_index_register(ecs_resource_t id, const ecs_resource_desc_t *desc) {
     ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_assert_not_null(desc);
-#if SIECS_HAS_NAMES
     ecs_assert_not_null(desc->name);
-#endif
     ecs_assert_id_valid(id);
 
     ecs_resource_index_ensure(index, id);
@@ -11479,48 +11315,37 @@ ecs_resource_index_register(ecs_resource_t id, const ecs_resource_desc_t *desc) 
         return id;
     }
     index->records[id] = (ecs_resource_record_t){
-#if SIECS_HAS_NAMES
         .name = desc->name,
-#endif
         .size = desc->size,
         .ops = desc->ops,
         .on_set = desc->on_set,
         .on_remove = desc->on_remove,
     };
-#if !SIECS_HAS_NAMES
-    index->registered[id] = true;
-#endif
     if (id >= index->count) {
         index->count = (uint64_t)id + 1;
     }
     return id;
 }
 
-#if SIECS_HAS_NAMES
 ecs_resource_t ecs_resource_index_find(const char *name) {
     const ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_assert_not_null(name);
     for (uint32_t id = 1; id < index->count; id++) {
         if (ecs_resource_index_registered(index, id) &&
-            strcmp(index->records[id].name, name) == 0)
-        {
+            strcmp(index->records[id].name, name) == 0) {
             return id;
         }
     }
     return 0;
 }
-#endif
 
 bool ecs_resource_index_is_registered(ecs_resource_t id) {
     const ecs_resource_index_t *index = &ecs_world.resource_index;
     return id != 0 && id < index->count && id < index->capacity &&
-        ecs_resource_index_registered(index, id);
+           ecs_resource_index_registered(index, id);
 }
 
-void ecs_resource_index_set(
-    ecs_resource_t id,
-    const void *data
-) {
+void ecs_resource_index_set(ecs_resource_t id, const void *data) {
     ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_resource_index_assert_registered(index, id);
 
@@ -11545,10 +11370,7 @@ void ecs_resource_index_set(
     }
 }
 
-void ecs_resource_index_move(
-    ecs_resource_t id,
-    void *data
-) {
+void ecs_resource_index_move(ecs_resource_t id, void *data) {
     ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_resource_index_assert_registered(index, id);
 

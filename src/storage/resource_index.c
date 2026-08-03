@@ -10,11 +10,8 @@ static uint64_t ecs_resource_storage_size(const ecs_resource_record_t *record) {
     return record->size ? record->size : 1;
 }
 
-static void ecs_resource_value_copy_ctor(
-    const ecs_resource_record_t *record,
-    void *dst,
-    const void *src
-) {
+static void
+ecs_resource_value_copy_ctor(const ecs_resource_record_t *record, void *dst, const void *src) {
     if (record->size == 0) {
         return;
     }
@@ -79,13 +76,8 @@ static void ecs_resource_value_dtor(const ecs_resource_record_t *record, void *p
     }
 }
 
-static bool
-ecs_resource_index_registered(const ecs_resource_index_t *index, ecs_resource_t id) {
-#if SIECS_HAS_NAMES
+static bool ecs_resource_index_registered(const ecs_resource_index_t *index, ecs_resource_t id) {
     return index->records[id].name != NULL;
-#else
-    return index->registered[id];
-#endif
 }
 
 static void
@@ -113,27 +105,17 @@ static void ecs_resource_index_ensure(ecs_resource_index_t *index, ecs_resource_
     ecs_assert_not_null(records);
     void **data = realloc(index->data, sizeof(void *) * capacity);
     ecs_assert_not_null(data);
-#if !SIECS_HAS_NAMES
-    bool *registered = realloc(index->registered, sizeof(bool) * capacity);
-    ecs_assert_not_null(registered);
-#endif
     bool *present = realloc(index->present, sizeof(bool) * capacity);
     ecs_assert_not_null(present);
 
     for (uint64_t i = index->capacity; i < capacity; i++) {
         records[i] = (ecs_resource_record_t){ 0 };
         data[i] = NULL;
-#if !SIECS_HAS_NAMES
-        registered[i] = false;
-#endif
         present[i] = false;
     }
 
     index->records = records;
     index->data = data;
-#if !SIECS_HAS_NAMES
-    index->registered = registered;
-#endif
     index->present = present;
     index->capacity = capacity;
 }
@@ -142,9 +124,6 @@ void ecs_resource_index_init() {
     ecs_resource_index_t *index = &ecs_world.resource_index;
     index->records = NULL;
     index->data = NULL;
-#if !SIECS_HAS_NAMES
-    index->registered = NULL;
-#endif
     index->present = NULL;
     index->capacity = 0;
     index->count = 1;
@@ -167,19 +146,13 @@ void ecs_resource_index_fini() {
 
     free(index->records);
     free(index->data);
-#if !SIECS_HAS_NAMES
-    free(index->registered);
-#endif
     free(index->present);
 }
 
-ecs_resource_t
-ecs_resource_index_register(ecs_resource_t id, const ecs_resource_desc_t *desc) {
+ecs_resource_t ecs_resource_index_register(ecs_resource_t id, const ecs_resource_desc_t *desc) {
     ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_assert_not_null(desc);
-#if SIECS_HAS_NAMES
     ecs_assert_not_null(desc->name);
-#endif
     ecs_assert_id_valid(id);
 
     ecs_resource_index_ensure(index, id);
@@ -187,48 +160,37 @@ ecs_resource_index_register(ecs_resource_t id, const ecs_resource_desc_t *desc) 
         return id;
     }
     index->records[id] = (ecs_resource_record_t){
-#if SIECS_HAS_NAMES
         .name = desc->name,
-#endif
         .size = desc->size,
         .ops = desc->ops,
         .on_set = desc->on_set,
         .on_remove = desc->on_remove,
     };
-#if !SIECS_HAS_NAMES
-    index->registered[id] = true;
-#endif
     if (id >= index->count) {
         index->count = (uint64_t)id + 1;
     }
     return id;
 }
 
-#if SIECS_HAS_NAMES
 ecs_resource_t ecs_resource_index_find(const char *name) {
     const ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_assert_not_null(name);
     for (uint32_t id = 1; id < index->count; id++) {
         if (ecs_resource_index_registered(index, id) &&
-            strcmp(index->records[id].name, name) == 0)
-        {
+            strcmp(index->records[id].name, name) == 0) {
             return id;
         }
     }
     return 0;
 }
-#endif
 
 bool ecs_resource_index_is_registered(ecs_resource_t id) {
     const ecs_resource_index_t *index = &ecs_world.resource_index;
     return id != 0 && id < index->count && id < index->capacity &&
-        ecs_resource_index_registered(index, id);
+           ecs_resource_index_registered(index, id);
 }
 
-void ecs_resource_index_set(
-    ecs_resource_t id,
-    const void *data
-) {
+void ecs_resource_index_set(ecs_resource_t id, const void *data) {
     ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_resource_index_assert_registered(index, id);
 
@@ -253,10 +215,7 @@ void ecs_resource_index_set(
     }
 }
 
-void ecs_resource_index_move(
-    ecs_resource_t id,
-    void *data
-) {
+void ecs_resource_index_move(ecs_resource_t id, void *data) {
     ecs_resource_index_t *index = &ecs_world.resource_index;
     ecs_resource_index_assert_registered(index, id);
 

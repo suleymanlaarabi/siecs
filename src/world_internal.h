@@ -90,8 +90,6 @@ static inline bool ecs_is_deferred(void) {
 
 void ecs_bootstrap(void);
 
-#if SIECS_HAS_NAMES
 extern sicore_map_t name_map;
-#endif
 
 #endif

@@ -24,20 +24,14 @@
  * Define SIECS_CUSTOM_BUILD to start with every optional feature disabled,
  * then enable only the features that are needed:
  *
- *   SIECS_NAMES  - runtime name storage and name lookup APIs
  *   SIECS_META   - component reflection metadata
  *   SIECS_REST   - REST explorer (requires SIECS_META)
  *
  * In the default build, individual features can be removed with:
  *
- *   SIECS_NO_NAMES
  *   SIECS_NO_META
  *   SIECS_NO_REST
  */
-
-#if defined(SIECS_NAMES) && defined(SIECS_NO_NAMES)
-#error "SIECS_NAMES and SIECS_NO_NAMES cannot be defined together"
-#endif
 
 #if defined(SIECS_META) && defined(SIECS_NO_META)
 #error "SIECS_META and SIECS_NO_META cannot be defined together"
@@ -53,12 +47,6 @@
 
 #ifdef SIECS_CUSTOM_BUILD
 
-#ifdef SIECS_NAMES
-#define SIECS_HAS_NAMES 1
-#else
-#define SIECS_HAS_NAMES 0
-#endif
-
 #ifdef SIECS_META
 #define SIECS_HAS_META 1
 #else
@@ -72,12 +60,6 @@
 #endif
 
 #else
-
-#ifdef SIECS_NO_NAMES
-#define SIECS_HAS_NAMES 0
-#else
-#define SIECS_HAS_NAMES 1
-#endif
 
 #ifdef SIECS_NO_META
 #define SIECS_HAS_META 0
@@ -95,13 +77,6 @@
 
 #if SIECS_HAS_REST && !SIECS_HAS_META
 #error "SIECS_REST requires SIECS_META"
-#endif
-
-#if SIECS_HAS_NAMES
-#define SIECS_NAME_INIT(value) .name = (value),
-#else
-/* Public descriptors still accept .name, but generated descriptors omit it. */
-#define SIECS_NAME_INIT(value)
 #endif
 
 #endif
@@ -1261,9 +1236,7 @@ typedef struct {
 
 /* Immutable metadata for a registered component. */
 typedef struct {
-#if SIECS_HAS_NAMES
     const char *name;
-#endif
     uint64_t size;
 #if SIECS_HAS_META
     sireflect_handle_t type;
@@ -1312,8 +1285,8 @@ typedef enum {
                          otherwise. */
     EcsFilter,        /* Component must exist but is not returned by ecs_field. */
     EcsNot,           /* Component must not exist and is not returned by ecs_field. */
-    EcsInUp,         /* Read the nearest inherited field through an acyclic ByTarget relation. */
-    EcsInUpOptional, /* Same as EcsInUp, but permits a missing field. */
+    EcsInUp,          /* Read the nearest inherited field through an acyclic ByTarget relation. */
+    EcsInUpOptional,  /* Same as EcsInUp, but permits a missing field. */
 } ecs_term_access_t;
 
 /*
@@ -1327,8 +1300,7 @@ typedef struct {
     uint32_t access;
 } ecs_query_term_t;
 
-#define ECS_QUERY_UP_ACCESS(access, relation)                                                      \
-    ((uint32_t)(access) | ((uint32_t)(relation) << 8))
+#define ECS_QUERY_UP_ACCESS(access, relation) ((uint32_t)(access) | ((uint32_t)(relation) << 8))
 
 typedef enum {
     EcsRelationRequired,
@@ -1396,9 +1368,9 @@ typedef struct {
 /* Exclude entities that contain the component. */
 #define ecs_not(cname)                                                                             \
     ecs_query_term_t { ecs_id(cname), EcsNot }
-#define ecs_up(cname, relation)                                                                   \
+#define ecs_up(cname, relation)                                                                    \
     ecs_query_term_t { ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUp, ecs_rid(relation)) }
-#define ecs_up_optional(cname, relation)                                                          \
+#define ecs_up_optional(cname, relation)                                                           \
     ecs_query_term_t { ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation)) }
 #else
 /* C spellings of the typed query term helpers. */
@@ -1417,12 +1389,10 @@ typedef struct {
 #define ecs_filter(cname) ((ecs_query_term_t){ ecs_id(cname), EcsFilter })
 /* Excluded component. */
 #define ecs_not(cname) ((ecs_query_term_t){ ecs_id(cname), EcsNot })
-#define ecs_up(cname, relation)                                                                   \
+#define ecs_up(cname, relation)                                                                    \
     ((ecs_query_term_t){ ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUp, ecs_rid(relation)) })
-#define ecs_up_optional(cname, relation)                                                          \
-    ((ecs_query_term_t){                                                                          \
-        ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation))                     \
-    })
+#define ecs_up_optional(cname, relation)                                                           \
+    ((ecs_query_term_t){ ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation)) })
 #endif
 
 #ifdef __cplusplus
@@ -1436,14 +1406,12 @@ typedef struct {
     ecs_query_relation_term_t { entity, ecs_rid(name), EcsRelationTarget }
 #define ecs_depth(name, value)                                                                     \
     ecs_query_relation_term_t { (ecs_entity_t)(value), ecs_rid(name), EcsRelationDepth }
-#define ecs_cascade(name) ecs_query_order_t { ecs_rid(name) }
+#define ecs_cascade(name)                                                                          \
+    ecs_query_order_t { ecs_rid(name) }
 #else
-#define ecs_rel(name)                                                                              \
-    ((ecs_query_relation_term_t){ 0, ecs_rid(name), EcsRelationRequired })
-#define ecs_rel_opt(name)                                                                          \
-    ((ecs_query_relation_term_t){ 0, ecs_rid(name), EcsRelationOptional })
-#define ecs_not_rel(name)                                                                          \
-    ((ecs_query_relation_term_t){ 0, ecs_rid(name), EcsRelationExcluded })
+#define ecs_rel(name) ((ecs_query_relation_term_t){ 0, ecs_rid(name), EcsRelationRequired })
+#define ecs_rel_opt(name) ((ecs_query_relation_term_t){ 0, ecs_rid(name), EcsRelationOptional })
+#define ecs_not_rel(name) ((ecs_query_relation_term_t){ 0, ecs_rid(name), EcsRelationExcluded })
 #define ecs_to(name, entity)                                                                       \
     ((ecs_query_relation_term_t){ entity, ecs_rid(name), EcsRelationTarget })
 #define ecs_depth(name, value)                                                                     \
@@ -1515,7 +1483,7 @@ SIECS_API void ecs_quit(void);
  */
 #define ECS_COMPONENT_DEFINE(cname, ...)                                                           \
     SIECS_COMPONENT_META_DEFINE(cname)                                                             \
-    ecs_component_desc_t ecs_id(cname##_desc) = { SIECS_NAME_INIT(#cname).size = sizeof(cname),    \
+    ecs_component_desc_t ecs_id(cname##_desc) = { .name = #cname, .size = sizeof(cname),            \
                                                   SIECS_COMPONENT_META_INIT(cname) __VA_ARGS__ };  \
     ecs_component_t ecs_id(cname) = 0
 
@@ -1535,7 +1503,7 @@ SIECS_API void ecs_quit(void);
 /* Define a tag component declared with ECS_TAG_DECLARE. */
 #define ECS_TAG_DEFINE(cname)                                                                      \
     SIECS_TAG_META_DEFINE(cname)                                                                   \
-    ecs_component_desc_t ecs_id(cname##_desc) = { SIECS_NAME_INIT(#cname).size = 0,                \
+    ecs_component_desc_t ecs_id(cname##_desc) = { .name = #cname, .size = 0,                       \
                                                   SIECS_COMPONENT_META_INIT(cname) };              \
     ecs_component_t ecs_id(cname) = 0
 
@@ -1599,7 +1567,7 @@ SIECS_API void ecs_quit(void);
  */
 #define ECS_MODULE_IMPORT(module_name, ...)                                                        \
     (ecs_id(module_name) = ecs_module_init(&(ecs_module_desc_t){                                   \
-         SIECS_NAME_INIT(#module_name).id = &ecs_id(module_name),                                  \
+         .name = #module_name, .id = &ecs_id(module_name),                                         \
          .import = ecs_id(module_name##_import_wrapper),                                           \
          .desc = &(module_name##_props_t)__VA_ARGS__,                                              \
          .desc_size = sizeof(module_name##_props_t),                                               \
@@ -1629,10 +1597,8 @@ SIECS_API void ecs_module_enable(ecs_module_id_t module);
 /* Resolve a module id from stable id storage; returns 0 when not imported. */
 SIECS_API ecs_module_id_t ecs_module_find(const ecs_module_id_t *id);
 
-#if SIECS_HAS_NAMES
 /* Return the registered module name. */
 SIECS_API const char *ecs_module_name(ecs_module_id_t module);
-#endif
 
 /* Disable systems and observers recorded during module import. */
 SIECS_API void ecs_module_disable(ecs_module_id_t module);
@@ -1640,16 +1606,9 @@ SIECS_API void ecs_module_disable(ecs_module_id_t module);
 /* Return whether a module is currently enabled in this world. */
 SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
 
-typedef enum {
-    EcsRelationDense,
-    EcsRelationByDepth,
-    EcsRelationByTarget
-} ecs_relation_storage_t;
+typedef enum { EcsRelationDense, EcsRelationByDepth, EcsRelationByTarget } ecs_relation_storage_t;
 
-typedef enum {
-    EcsRemoveRelation,
-    EcsDeleteSources
-} ecs_delete_target_t;
+typedef enum { EcsRemoveRelation, EcsDeleteSources } ecs_delete_target_t;
 
 typedef struct {
     ecs_relation_storage_t storage;
@@ -1657,39 +1616,31 @@ typedef struct {
     bool acyclic;
 } ecs_relation_desc_t;
 
-#define ECS_RELATION_DECLARE(name)                                                                \
-    extern ecs_relation_id_t ecs_rid(name);                                                       \
+#define ECS_RELATION_DECLARE(name)                                                                 \
+    extern ecs_relation_id_t ecs_rid(name);                                                        \
     extern ecs_relation_desc_t ecs_rid(name##_desc)
 
-#define ECS_RELATION_DEFINE(name, ...)                                                            \
-    ecs_relation_desc_t ecs_rid(name##_desc) = __VA_ARGS__;                                       \
+#define ECS_RELATION_DEFINE(name, ...)                                                             \
+    ecs_relation_desc_t ecs_rid(name##_desc) = __VA_ARGS__;                                        \
     ecs_relation_id_t ecs_rid(name) = 0
 
-#define ECS_RELATION(name, ...)                                                                   \
-    ECS_RELATION_DECLARE(name);                                                                   \
+#define ECS_RELATION(name, ...)                                                                    \
+    ECS_RELATION_DECLARE(name);                                                                    \
     ECS_RELATION_DEFINE(name, __VA_ARGS__)
 
-#define ECS_RELATION_REGISTER(name)                                                               \
+#define ECS_RELATION_REGISTER(name)                                                                \
     ecs_relation_register(&ecs_rid(name), #name, &ecs_rid(name##_desc))
 
 ECS_RELATION_DECLARE(ChildOf);
 
 /* Register a runtime relation and return its world-local relation id. */
-SIECS_API ecs_relation_id_t ecs_relation_init(
-    const char *name,
-    const ecs_relation_desc_t *desc
-);
+SIECS_API ecs_relation_id_t ecs_relation_init(const char *name, const ecs_relation_desc_t *desc);
 /* Register a declared relation once and update its stable id storage. */
-SIECS_API ecs_relation_id_t ecs_relation_register(
-    ecs_relation_id_t *id,
-    const char *name,
-    const ecs_relation_desc_t *desc
-);
+SIECS_API ecs_relation_id_t
+ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relation_desc_t *desc);
 
-#if SIECS_HAS_NAMES
 /* Builtin component for entity names; the world owns a copied value. */
 ECS_COMPONENT_DECLARE(Name, { char *value; });
-#endif
 
 /* Builtin tag excluded from queries by default. */
 ECS_TAG_DECLARE(Disabled);
@@ -1721,28 +1672,23 @@ SIECS_API const ecs_component_info_t *ecs_component_info(ecs_component_t compone
 
 #if SIECS_HAS_META
 /* Register a reflected component whose C layout is derived by Sireflect. Returns 0 on error. */
-SIECS_API ecs_component_t
-ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc);
+SIECS_API ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc);
 
 /* Register a zero-sized reflected tag. Returns 0 on error. */
 SIECS_API ecs_component_t ecs_tag_init(const char *name);
 #endif
 
-#if SIECS_HAS_NAMES
 /* Return the registered component name. */
 SIECS_API const char *ecs_component_name(ecs_component_t component);
 
 /* Look up a live entity by its registered name; returns 0 when absent. */
 ecs_entity_t ecs_lookup(const char *key);
-#endif
 
 /* Create a new alive entity in world. world must not be NULL. */
 SIECS_API ecs_entity_t ecs_new(void);
 
-#if SIECS_HAS_NAMES
 /* Get the explicit entity name or a generated "(index, generation)" name. */
 SIECS_API const char *ecs_entity_name(ecs_entity_t entity);
-#endif
 
 /* Begin deferring ECS mutations into the world's command buffer. */
 SIECS_API void ecs_defer_begin(void);
@@ -1768,8 +1714,7 @@ SIECS_API bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
  */
 SIECS_API void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 
-#define ecs_relate(entity, relation, target)                                                       \
-    ecs_relate_id(entity, ecs_rid(relation), target)
+#define ecs_relate(entity, relation, target) ecs_relate_id(entity, ecs_rid(relation), target)
 #define ecs_unrelate(entity, relation) ecs_unrelate_id(entity, ecs_rid(relation))
 #define ecs_has_relation(entity, relation) ecs_has_relation_id(entity, ecs_rid(relation))
 #define ecs_has_relation_to(entity, relation, target)                                              \
@@ -1777,18 +1722,14 @@ SIECS_API void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 #define ecs_target(entity, relation) ecs_target_id(entity, ecs_rid(relation))
 
 /* Add or retarget one relation edge. In Debug, both entities must be alive. */
-SIECS_API void
-ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target);
+SIECS_API void ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target);
 /* Remove one relation edge; this is a no-op when the source has no such edge. */
 SIECS_API void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation);
 /* Return whether the source has an edge for relation. */
 SIECS_API bool ecs_has_relation_id(ecs_entity_t entity, ecs_relation_id_t relation);
 /* Return whether the source edge has exactly target, including its generation. */
-SIECS_API bool ecs_has_relation_to_id(
-    ecs_entity_t entity,
-    ecs_relation_id_t relation,
-    ecs_entity_t target
-);
+SIECS_API bool
+ecs_has_relation_to_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target);
 /* Return the source edge target, or zero when absent. */
 SIECS_API ecs_entity_t ecs_target_id(ecs_entity_t entity, ecs_relation_id_t relation);
 
@@ -1928,7 +1869,7 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
 
 /* Define a resource descriptor and its stable id storage. */
 #define ECS_RESOURCE_DEFINE(rname, ...)                                                            \
-    ecs_resource_desc_t ecs_id(rname##_desc) = { SIECS_NAME_INIT(#rname).size = sizeof(rname),     \
+    ecs_resource_desc_t ecs_id(rname##_desc) = { .name = #rname, .size = sizeof(rname),            \
                                                  __VA_ARGS__ };                                    \
     ecs_resource_t ecs_id(rname) = 0
 
@@ -1976,12 +1917,10 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
 
 /* Register a resource descriptor in the active world and return its id. */
 SIECS_API ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
-#if SIECS_HAS_NAMES
 /* Find a registered resource by name; returns 0 when absent. */
 SIECS_API ecs_resource_t ecs_resource_find(const char *name);
 /* Return the registered resource name; pointer remains owned by the world. */
 SIECS_API const char *ecs_resource_name(ecs_resource_t resource);
-#endif
 /* Return whether a resource id is registered in the active world. */
 SIECS_API bool ecs_resource_is_registered_rid(ecs_resource_t id);
 /* Register a resource using stable id storage; returns the resulting id. */
@@ -2120,15 +2059,11 @@ SIECS_API uint32_t ecs_query_count(ecs_query_id_t query_id);
  */
 SIECS_API bool ecs_iter_next(ecs_iter_t *it);
 /* Return a relation target for one row of the current iterator batch. */
-SIECS_API ecs_entity_t ecs_target_at_id(
-    const ecs_iter_t *it,
-    ecs_relation_id_t relation,
-    uint32_t row
-);
+SIECS_API ecs_entity_t
+ecs_target_at_id(const ecs_iter_t *it, ecs_relation_id_t relation, uint32_t row);
 #define ecs_target_at(it, relation, row) ecs_target_at_id(it, ecs_rid(relation), row)
 /* Return the contiguous target column for a Dense or ByDepth relation batch. */
-SIECS_API const ecs_entity_t *
-ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation);
+SIECS_API const ecs_entity_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation);
 #define ecs_targets(it, relation) ecs_targets_id(it, ecs_rid(relation))
 
 /*
@@ -2217,10 +2152,8 @@ typedef struct {
 /* Register a system and return its id. System id 0 is reserved. */
 SIECS_API ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc);
 
-#if SIECS_HAS_NAMES
 /* Return the registered system name. */
 SIECS_API const char *ecs_system_name(ecs_system_id_t system);
-#endif
 
 /* Run all enabled systems in phase order. */
 SIECS_API bool ecs_progress(void);
@@ -2318,26 +2251,26 @@ template <typename T> struct component_hook_state {
 };
 
 template <typename T>
-static void component_on_set(
-    ecs_entity_t entity,
-    ecs_component_t,
-    const void *new_value,
-    void *current_value
-) {
+static void
+component_on_set(ecs_entity_t entity, ecs_component_t, const void *new_value, void *current_value) {
     auto callback = component_hook_state<T>::hooks.on_set;
     if (callback != nullptr) {
         callback(entity, *static_cast<const T *>(new_value), *static_cast<T *>(current_value));
     }
 }
 
-template <typename T> static void component_on_remove(ecs_entity_t entity, ecs_component_t, void *value) {
+template <typename T>
+static void component_on_remove(ecs_entity_t entity, ecs_component_t, void *value) {
     auto callback = component_hook_state<T>::hooks.on_remove;
-    if (callback != nullptr) callback(entity, *static_cast<T *>(value));
+    if (callback != nullptr)
+        callback(entity, *static_cast<T *>(value));
 }
 
-template <typename T> static void component_on_add(ecs_entity_t entity, ecs_component_t, void *value) {
+template <typename T>
+static void component_on_add(ecs_entity_t entity, ecs_component_t, void *value) {
     auto callback = component_hook_state<T>::hooks.on_add;
-    if (callback != nullptr) callback(entity, *static_cast<T *>(value));
+    if (callback != nullptr)
+        callback(entity, *static_cast<T *>(value));
 }
 
 template <typename T, typename = void> struct is_complete : std::false_type {};
@@ -2428,12 +2361,11 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
 }
 
 template <typename T>
-static ecs_component_t ecs_cpp_component_id(
-    const component_hooks<T> *hooks = nullptr
-) {
+static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nullptr) {
     ecs_component_t &cid = detail::component_type<T>::id;
 
-    if (cid != 0) return cid;
+    if (cid != 0)
+        return cid;
 
 #if SIECS_HAS_META
     static sireflect_struct_desc_t reflection = {
@@ -2452,19 +2384,18 @@ static ecs_component_t ecs_cpp_component_id(
     }
 #endif
 
-#if SIECS_HAS_NAMES
 #if SIECS_HAS_META
     const char *component_name = reflection.name;
 #else
     static const std::string name = std::string(type_name<T>());
     const char *component_name = name.c_str();
 #endif
-#endif
 
-    if (hooks != nullptr) component_hook_state<T>::hooks = *hooks;
+    if (hooks != nullptr)
+        component_hook_state<T>::hooks = *hooks;
 
     ecs_component_desc_t desc = {
-        SIECS_NAME_INIT(component_name)
+        .name = component_name,
         .size = sisizeof<T>(),
         .ops = value_ops<T>(),
         .on_set = hooks && hooks->on_set ? component_on_set<T> : nullptr,
@@ -2485,11 +2416,10 @@ template <typename T> struct relation_type {
 };
 
 template <typename T>
-static ecs_relation_id_t ecs_cpp_relation_id(
-    const ecs_relation_desc_t *desc = nullptr
-) {
+static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = nullptr) {
     ecs_relation_id_t &id = relation_type<T>::id;
-    if (id) return id;
+    if (id)
+        return id;
     static const ecs_relation_desc_t dense = {
         .storage = EcsRelationDense,
         .on_delete_target = EcsRemoveRelation,
@@ -2545,36 +2475,28 @@ class entity {
     /** Wrap a raw id without validating it; use `is_alive()` to validate. */
     explicit entity(ecs_entity_t entity) noexcept : _entity(entity) {}
 
-#if SIECS_HAS_NAMES
     /** Look up a named live entity; returns null when names are disabled/missing. */
     static inline entity lookup(const std::string &name) {
         return entity::from(ecs_lookup(name.c_str()));
     }
-#endif
 
     /** Create a new live entity in the active world. */
     static entity create() noexcept { return entity(ecs_new()); }
 
     /** Look up or create a named entity; name storage is copied by the world. */
     static entity create(const char *name) {
-#if SIECS_HAS_NAMES
         entity value = lookup(name);
 
         if (value) {
             return value;
         }
-#endif
 
         value = create();
 
-#if SIECS_HAS_NAMES
         if (name != nullptr) {
             char *copy = strdup(name);
             value.set<Name>({ .value = copy });
         }
-#else
-        (void)name;
-#endif
         return value;
     }
 
@@ -2746,13 +2668,8 @@ class entity {
     template <typename T> static entity create(const char *name = nullptr) {
         ecs_entity_t &id = by_type<T>();
         if (id == 0 || !ecs_is_alive(id)) {
-#if SIECS_HAS_NAMES
             const std::string generated = std::string(type_name<T>());
             id = create(name ? name : generated.c_str()).id();
-#else
-            (void)name;
-            id = create().id();
-#endif
         }
         return from(id);
     }
@@ -2973,33 +2890,35 @@ template <typename T> struct resource_hook_state {
 
 template <typename T> static void resource_on_set(const void *ptr) {
     auto callback = resource_hook_state<T>::hooks.on_set;
-    if (callback != nullptr) callback(*static_cast<const T *>(ptr));
+    if (callback != nullptr)
+        callback(*static_cast<const T *>(ptr));
 }
 
 template <typename T> static void resource_on_remove(const void *ptr) {
     auto callback = resource_hook_state<T>::hooks.on_remove;
-    if (callback != nullptr) callback(*static_cast<const T *>(ptr));
+    if (callback != nullptr)
+        callback(*static_cast<const T *>(ptr));
 }
 
 } // namespace detail
 
 /** Register `T` and return a typed resource handle, installing hooks once. */
 template <typename T>
-static ecs_resource_t ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) {
+static ecs_resource_t
+ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) {
     using type = std::remove_cv_t<T>;
     ecs_resource_t &rid = detail::resource_type<type>::id;
 
     if (rid != 0)
         return rid;
 
-#if SIECS_HAS_NAMES
     static const std::string name = std::string(type_name<type>());
-#endif
 
-    if (hooks != nullptr) detail::resource_hook_state<type>::hooks = *hooks;
+    if (hooks != nullptr)
+        detail::resource_hook_state<type>::hooks = *hooks;
 
     ecs_resource_desc_t desc = {
-        SIECS_NAME_INIT(name.c_str())
+        .name = name.c_str(),
         .size = sizeof(type),
         .ops = detail::value_ops<type>(),
         .on_set = hooks && hooks->on_set ? detail::resource_on_set<type> : nullptr,
@@ -3016,7 +2935,8 @@ template <typename T> resource_ref<T> resource_handle() {
 }
 
 /** Create a typed resource handle with lifecycle hooks. */
-template <typename T> resource_ref<T> resource_handle(const resource_hooks<std::remove_cv_t<T>> &hooks) {
+template <typename T>
+resource_ref<T> resource_handle(const resource_hooks<std::remove_cv_t<T>> &hooks) {
     return resource_ref<T>(ecs_cpp_resource_id<T>(&hooks));
 }
 
@@ -3765,20 +3685,14 @@ template <typename Callback> static void system_callback_dtor(uintptr_t user_dat
 
 /** Fluent typed system builder; the resulting C system owns its callback. */
 class system : protected query {
-#if SIECS_HAS_NAMES
     const char *name;
-#endif
     ecs_phase_t _phase = EcsOnUpdate;
     ecs_system_id_t _after[ECS_SYSTEM_AFTER_CAPACITY]{};
     bool _disabled = false;
 
   public:
-#if SIECS_HAS_NAMES
     /** Construct a system descriptor with an optional diagnostic name. */
     explicit system(const char *name = "unnamed") : name(name) {}
-#else
-    explicit system(const char *name = nullptr) { (void)name; }
-#endif
 
     /** Add required filter terms to the system query. */
     template <typename... T> system &require() {
@@ -3830,7 +3744,8 @@ class system : protected query {
         callback *state = new callback(std::forward<F>(func));
 
         ecs_system_desc_t system_desc = {
-            SIECS_NAME_INIT(name).query = this->desc,
+            .name = name,
+            .query = this->desc,
             .callback = detail::system_callback<callback, args>,
             .user_data = reinterpret_cast<uintptr_t>(state),
             .user_data_dtor = detail::system_callback_dtor<callback>,
@@ -3866,9 +3781,8 @@ struct ChildOf {};
 /** Synchronize builtin component ids after the C world is initialized. */
 inline void init_cpp_state() {
     detail::component_type<Disabled>::id = ecs_id(Disabled);
-#if SIECS_HAS_NAMES
     detail::component_type<Name>::id = ecs_id(Name);
-#endif
+
     detail::component_type<Abstract>::id = ecs_id(Abstract);
     detail::relation_type<ChildOf>::id = ecs_rid(ChildOf);
 }
@@ -3974,11 +3888,10 @@ template <typename T> [[nodiscard]] module_ref<T> import(T module) {
     if (detail::module_type<T>::id != 0) {
         return module_ref<T>(detail::module_type<T>::id);
     }
-#if SIECS_HAS_NAMES
     static const std::string name = std::string(type_name<T>());
-#endif
     ecs_module_desc_t desc = {
-        SIECS_NAME_INIT(name.c_str()).id = &detail::module_type<T>::id,
+        .name = name.c_str(),
+        .id = &detail::module_type<T>::id,
         .import = import_module_callback<T>,
         .desc = &module,
         .desc_size = sizeof(T),

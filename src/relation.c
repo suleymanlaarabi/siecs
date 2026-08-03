@@ -10,34 +10,21 @@
 #include <string.h>
 
 void ecs_relation_index_init(void) {
-    sicore_vec_init_w_size(
-        &ecs_world.relation_index.records,
-        sizeof(ecs_relation_record_t),
-        1
-    );
-    sicore_vec_ensure(
-        &ecs_world.relation_index.records,
-        1,
-        sizeof(ecs_relation_record_t)
-    );
+    sicore_vec_init_w_size(&ecs_world.relation_index.records, sizeof(ecs_relation_record_t), 1);
+    sicore_vec_ensure(&ecs_world.relation_index.records, 1, sizeof(ecs_relation_record_t));
 }
 
 void ecs_relation_index_fini(void) {
     ecs_relation_index_t *index = &ecs_world.relation_index;
     ecs_relation_record_t *records = index->records.data;
     for (uint32_t r = 1; r < ecs_world.relation_index.records.size; r++) {
-#if SIECS_HAS_NAMES
         free(records[r].name);
-#endif
     }
     sicore_vec_fini(&ecs_world.relation_index.records);
 }
 
-ecs_relation_id_t ecs_relation_register(
-    ecs_relation_id_t *id,
-    const char *name,
-    const ecs_relation_desc_t *desc
-) {
+ecs_relation_id_t
+ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relation_desc_t *desc) {
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
     ecs_assert(
@@ -70,20 +57,15 @@ ecs_relation_id_t ecs_relation_register(
         (uint32_t)*id + 1,
         sizeof(ecs_relation_record_t)
     );
-    ecs_component_t component = ecs_component_register_relation_internal(
-        name,
-        *id,
-        desc->storage == EcsRelationByTarget
-    );
+    ecs_component_t component =
+        ecs_component_register_relation_internal(name, *id, desc->storage == EcsRelationByTarget);
     *sicore_vec_get_mut(&ecs_world.relation_index.records, *id, ecs_relation_record_t) =
         (ecs_relation_record_t){
             .component = component,
             .storage = desc->storage,
             .on_delete_target = desc->on_delete_target,
             .acyclic = desc->storage == EcsRelationByDepth || desc->acyclic,
-#if SIECS_HAS_NAMES
             .name = name ? strdup(name) : NULL,
-#endif
         };
     return *id;
 }
@@ -93,22 +75,15 @@ ecs_relation_id_t ecs_relation_init(const char *name, const ecs_relation_desc_t 
     return ecs_relation_register(&id, name, desc);
 }
 
-
-static ecs_entity_t ecs_relation_table_target(
-    const ecs_table_t *table,
-    ecs_relation_id_t relation
-) {
+static ecs_entity_t
+ecs_relation_table_target(const ecs_table_t *table, ecs_relation_id_t relation) {
     uint16_t index = ecs_type_relation_index(&table->type, relation);
-    return index == UINT16_MAX
-               ? 0
-               : ecs_relation_key_target(&ecs_type_relations(&table->type)[index]);
+    return index == UINT16_MAX ? 0
+                               : ecs_relation_key_target(&ecs_type_relations(&table->type)[index]);
 }
 
-ecs_entity_t ecs_relation_target_at_table(
-    const ecs_table_t *table,
-    ecs_relation_id_t relation,
-    uint32_t row
-) {
+ecs_entity_t
+ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relation, uint32_t row) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     if (record->storage == EcsRelationByTarget) {
         return ecs_relation_table_target(table, relation);
@@ -132,11 +107,8 @@ static uint32_t ecs_relation_depth(ecs_entity_t entity, ecs_relation_id_t relati
 }
 
 #ifndef NDEBUG
-static bool ecs_relation_would_cycle(
-    ecs_entity_t source,
-    ecs_relation_id_t relation,
-    ecs_entity_t target
-) {
+static bool
+ecs_relation_would_cycle(ecs_entity_t source, ecs_relation_id_t relation, ecs_entity_t target) {
     while (target) {
         if (target == source) {
             return true;
@@ -147,11 +119,8 @@ static bool ecs_relation_would_cycle(
 }
 #endif
 
-static void ecs_relation_migrate_depth(
-    ecs_entity_t entity,
-    ecs_relation_id_t relation,
-    uint32_t depth
-) {
+static void
+ecs_relation_migrate_depth(ecs_entity_t entity, ecs_relation_id_t relation, uint32_t depth) {
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
     uint16_t from_id = entity_record->table_id;
     ecs_table_t *from = ecs_get_table(from_id);
@@ -231,19 +200,15 @@ static void ecs_relation_set_depth(
         relation_record->component,
         ecs_get_record(entity)->table_row
     );
-    const ecs_component_record_t *component =
-        ecs_component_index_get(relation_record->component);
+    const ecs_component_record_t *component = ecs_component_index_get(relation_record->component);
     RelationTarget value = { .target = target };
     component->on_set(entity, relation_record->component, &value, current);
     *current = value;
     ecs_relation_update_children_depth(entity, relation, depth);
 }
 
-static void ecs_relation_set_target(
-    ecs_entity_t entity,
-    ecs_relation_id_t relation,
-    ecs_entity_t target
-) {
+static void
+ecs_relation_set_target(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     if (!ecs_has_cid_owned(target, record->component)) {
         ecs_add_cid_now(target, record->component);
@@ -364,11 +329,7 @@ ecs_entity_t ecs_target_id(ecs_entity_t entity, ecs_relation_id_t relation) {
     return ecs_relation_target_at_table(table, relation, entity_record->table_row);
 }
 
-bool ecs_has_relation_to_id(
-    ecs_entity_t entity,
-    ecs_relation_id_t relation,
-    ecs_entity_t target
-) {
+bool ecs_has_relation_to_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
     return ecs_target_id(entity, relation) == target;
 }
 

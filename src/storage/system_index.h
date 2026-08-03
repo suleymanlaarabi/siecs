@@ -4,9 +4,7 @@
 #include <stdint.h>
 
 typedef struct {
-#if SIECS_HAS_NAMES
     const char *name;
-#endif
     ecs_query_id_t qid;
     void (*callback)(ecs_iter_t *);
     uintptr_t user_data;

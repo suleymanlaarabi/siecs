@@ -37,26 +37,26 @@ template <typename T> struct component_hook_state {
 };
 
 template <typename T>
-static void component_on_set(
-    ecs_entity_t entity,
-    ecs_component_t,
-    const void *new_value,
-    void *current_value
-) {
+static void
+component_on_set(ecs_entity_t entity, ecs_component_t, const void *new_value, void *current_value) {
     auto callback = component_hook_state<T>::hooks.on_set;
     if (callback != nullptr) {
         callback(entity, *static_cast<const T *>(new_value), *static_cast<T *>(current_value));
     }
 }
 
-template <typename T> static void component_on_remove(ecs_entity_t entity, ecs_component_t, void *value) {
+template <typename T>
+static void component_on_remove(ecs_entity_t entity, ecs_component_t, void *value) {
     auto callback = component_hook_state<T>::hooks.on_remove;
-    if (callback != nullptr) callback(entity, *static_cast<T *>(value));
+    if (callback != nullptr)
+        callback(entity, *static_cast<T *>(value));
 }
 
-template <typename T> static void component_on_add(ecs_entity_t entity, ecs_component_t, void *value) {
+template <typename T>
+static void component_on_add(ecs_entity_t entity, ecs_component_t, void *value) {
     auto callback = component_hook_state<T>::hooks.on_add;
-    if (callback != nullptr) callback(entity, *static_cast<T *>(value));
+    if (callback != nullptr)
+        callback(entity, *static_cast<T *>(value));
 }
 
 template <typename T, typename = void> struct is_complete : std::false_type {};
@@ -147,12 +147,11 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
 }
 
 template <typename T>
-static ecs_component_t ecs_cpp_component_id(
-    const component_hooks<T> *hooks = nullptr
-) {
+static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nullptr) {
     ecs_component_t &cid = detail::component_type<T>::id;
 
-    if (cid != 0) return cid;
+    if (cid != 0)
+        return cid;
 
 #if SIECS_HAS_META
     static sireflect_struct_desc_t reflection = {
@@ -171,19 +170,18 @@ static ecs_component_t ecs_cpp_component_id(
     }
 #endif
 
-#if SIECS_HAS_NAMES
 #if SIECS_HAS_META
     const char *component_name = reflection.name;
 #else
     static const std::string name = std::string(type_name<T>());
     const char *component_name = name.c_str();
 #endif
-#endif
 
-    if (hooks != nullptr) component_hook_state<T>::hooks = *hooks;
+    if (hooks != nullptr)
+        component_hook_state<T>::hooks = *hooks;
 
     ecs_component_desc_t desc = {
-        SIECS_NAME_INIT(component_name)
+        .name = component_name,
         .size = sisizeof<T>(),
         .ops = value_ops<T>(),
         .on_set = hooks && hooks->on_set ? component_on_set<T> : nullptr,
@@ -204,11 +202,10 @@ template <typename T> struct relation_type {
 };
 
 template <typename T>
-static ecs_relation_id_t ecs_cpp_relation_id(
-    const ecs_relation_desc_t *desc = nullptr
-) {
+static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = nullptr) {
     ecs_relation_id_t &id = relation_type<T>::id;
-    if (id) return id;
+    if (id)
+        return id;
     static const ecs_relation_desc_t dense = {
         .storage = EcsRelationDense,
         .on_delete_target = EcsRemoveRelation,

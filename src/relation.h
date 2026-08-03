@@ -9,9 +9,9 @@ typedef struct {
     uint8_t storage;
     uint8_t on_delete_target;
     uint8_t acyclic;
-#if SIECS_HAS_NAMES
+
     char *name;
-#endif
+
 } ecs_relation_record_t;
 
 typedef struct {
@@ -30,14 +30,11 @@ ecs_component_t ecs_component_register_relation_internal(
     bool by_target
 );
 
-#define ecs_relation_record(id)                                                                  \
+#define ecs_relation_record(id)                                                                    \
     sicore_vec_get(&ecs_world.relation_index.records, id, ecs_relation_record_t)
 
-ecs_entity_t ecs_relation_target_at_table(
-    const ecs_table_t *table,
-    ecs_relation_id_t relation,
-    uint32_t row
-);
+ecs_entity_t
+ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relation, uint32_t row);
 uint32_t ecs_relation_table_depth(const ecs_table_t *table, ecs_relation_id_t relation);
 
 #endif

@@ -1,9 +1,6 @@
 #include "siecs.h"
 #include <cassert>
 
-#ifndef EXPECT_NAMES
-#error "EXPECT_NAMES must be defined"
-#endif
 #ifndef EXPECT_META
 #error "EXPECT_META must be defined"
 #endif
@@ -20,7 +17,6 @@ struct FeatureCppResource {
 };
 
 int main() {
-    static_assert(SIECS_HAS_NAMES == EXPECT_NAMES);
     static_assert(SIECS_HAS_META == EXPECT_META);
     static_assert(SIECS_HAS_REST == EXPECT_REST);
 

@@ -51,23 +51,13 @@ ecs_rest_component_json(ecs_component_t id, const ecs_component_record_t *record
     return object;
 }
 
-static sijson_value_t ecs_rest_relation_json(
-    ecs_relation_id_t id,
-    const ecs_relation_record_t *record
-) {
+static sijson_value_t
+ecs_rest_relation_json(ecs_relation_id_t id, const ecs_relation_record_t *record) {
     sijson_value_t object = sijson_make_object();
     sijson_object_set(object, "id", sijson_make_number(id));
-#if SIECS_HAS_NAMES
     sijson_object_set(object, "name", sijson_make_string(record->name ? record->name : ""));
-#else
-    sijson_object_set(object, "name", sijson_make_string(""));
-#endif
     sijson_object_set(object, "storage", sijson_make_number(record->storage));
-    sijson_object_set(
-        object,
-        "onDeleteTarget",
-        sijson_make_number(record->on_delete_target)
-    );
+    sijson_object_set(object, "onDeleteTarget", sijson_make_number(record->on_delete_target));
     sijson_object_set(object, "acyclic", sijson_make_bool(record->acyclic));
     return object;
 }

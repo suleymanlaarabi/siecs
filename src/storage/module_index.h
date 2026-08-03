@@ -5,9 +5,8 @@
 
 typedef struct {
     ecs_module_id_t *id;
-#if SIECS_HAS_NAMES
     const char *name;
-#endif
+
     sicore_vec_t observers; // ecs_observer_id_t
     sicore_vec_t systems;   // ecs_system_id_t
     bool enabled;
@@ -20,13 +19,7 @@ typedef struct {
 void ecs_module_index_init();
 void ecs_module_index_fini();
 
-ecs_module_id_t ecs_module_index_create(
-    ecs_module_id_t *id
-#if SIECS_HAS_NAMES
-    ,
-    const char *name
-#endif
-);
+ecs_module_id_t ecs_module_index_create(ecs_module_id_t *id, const char *name);
 ecs_module_t *ecs_module_index_get(ecs_module_id_t module);
 const ecs_module_t *ecs_module_index_get_const(ecs_module_id_t module);
 ecs_module_id_t ecs_module_index_find(const ecs_module_id_t *id);

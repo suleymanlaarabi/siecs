@@ -34,36 +34,28 @@ class entity {
     /** Wrap a raw id without validating it; use `is_alive()` to validate. */
     explicit entity(ecs_entity_t entity) noexcept : _entity(entity) {}
 
-#if SIECS_HAS_NAMES
     /** Look up a named live entity; returns null when names are disabled/missing. */
     static inline entity lookup(const std::string &name) {
         return entity::from(ecs_lookup(name.c_str()));
     }
-#endif
 
     /** Create a new live entity in the active world. */
     static entity create() noexcept { return entity(ecs_new()); }
 
     /** Look up or create a named entity; name storage is copied by the world. */
     static entity create(const char *name) {
-#if SIECS_HAS_NAMES
         entity value = lookup(name);
 
         if (value) {
             return value;
         }
-#endif
 
         value = create();
 
-#if SIECS_HAS_NAMES
         if (name != nullptr) {
             char *copy = strdup(name);
             value.set<Name>({ .value = copy });
         }
-#else
-        (void)name;
-#endif
         return value;
     }
 
@@ -235,13 +227,8 @@ class entity {
     template <typename T> static entity create(const char *name = nullptr) {
         ecs_entity_t &id = by_type<T>();
         if (id == 0 || !ecs_is_alive(id)) {
-#if SIECS_HAS_NAMES
             const std::string generated = std::string(type_name<T>());
             id = create(name ? name : generated.c_str()).id();
-#else
-            (void)name;
-            id = create().id();
-#endif
         }
         return from(id);
     }

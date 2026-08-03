@@ -33,9 +33,7 @@ ecs_component_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
 
 void ecs_component_index_register(
     ecs_component_t id,
-#if SIECS_HAS_NAMES
     const char *name,
-#endif
     uint64_t size,
     ecs_type_ops_t ops,
     ecs_component_on_set_t on_set,
@@ -65,19 +63,15 @@ void ecs_component_index_register(
         abort();
     }
     *info = (ecs_component_info_t){
-#if SIECS_HAS_NAMES
         .name = name ? strdup(name) : NULL,
-#endif
         .size = size,
 #if SIECS_HAS_META
         .type = type,
 #endif
     };
-#if SIECS_HAS_NAMES
     if (name && !info->name) {
         abort();
     }
-#endif
 
     ecs_component_record_t record = {
         .info = info,
@@ -112,9 +106,8 @@ void ecs_component_index_fini() {
 
     for (uint32_t i = 0; i < ecs_world.component_index.components.size; i++) {
         if (records[i].info) {
-#if SIECS_HAS_NAMES
             free((char *)records[i].info->name);
-#endif
+
             free(records[i].info);
         }
 #if SIECS_HAS_META
