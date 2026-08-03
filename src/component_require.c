@@ -67,33 +67,32 @@ ecs_type_t ecs_type_with_requirements(
     ecs_add_plan_push(&plan, cid);
     ecs_sort_component_ids(plan.ids, plan.count);
 
-    ecs_type_t type = {
-        .ids = malloc(sizeof(ecs_component_t) * (from_table->type.count + plan.count)),
-        .count = from_table->type.count + plan.count,
-        .base = from_table->type.base,
-    };
+    uint16_t count = from_table->type.component_count + plan.count;
+    ecs_component_t *ids = malloc(sizeof(ecs_component_t) * count);
 
     uint16_t from_i = 0;
     uint16_t add_i = 0;
     uint16_t out_i = 0;
-    while (from_i < from_table->type.count && add_i < plan.count) {
+    while (from_i < from_table->type.component_count && add_i < plan.count) {
         ecs_component_t from_id = from_table->type.ids[from_i];
         ecs_component_t add_id = plan.ids[add_i];
         if (from_id < add_id) {
-            type.ids[out_i++] = from_id;
+            ids[out_i++] = from_id;
             from_i++;
         } else {
-            type.ids[out_i++] = add_id;
+            ids[out_i++] = add_id;
             add_i++;
         }
     }
-    while (from_i < from_table->type.count) {
-        type.ids[out_i++] = from_table->type.ids[from_i++];
+    while (from_i < from_table->type.component_count) {
+        ids[out_i++] = from_table->type.ids[from_i++];
     }
     while (add_i < plan.count) {
-        type.ids[out_i++] = plan.ids[add_i++];
+        ids[out_i++] = plan.ids[add_i++];
     }
 
+    ecs_type_t type = ecs_type_with_ids(&from_table->type, ids, count);
+    free(ids);
     return type;
 }
 

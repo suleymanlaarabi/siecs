@@ -3,6 +3,7 @@
 #include "event_ops.h"
 #include "storage/component_index.h"
 #include "storage/table_index.h"
+#include "relation.h"
 #include "table.h"
 #include "table_migration.h"
 #include "type.h"
@@ -51,7 +52,7 @@ static inline ecs_deferred_set_t *set_vec_find(sicore_vec_t *vec, ecs_component_
 }
 
 static inline void command_init(ecs_entity_command_t *command, ecs_entity_t entity) {
-    *command = (ecs_entity_command_t){ .entity = entity };
+    *command = (ecs_entity_command_t){ .entity = entity, .relation_head = ECS_COMMAND_NONE };
     sicore_vec_init(&command->add_ids, sizeof(ecs_component_t));
     sicore_vec_init(&command->remove_ids, sizeof(ecs_component_t));
     sicore_vec_init(&command->sets, sizeof(ecs_deferred_set_t));
@@ -70,6 +71,7 @@ static inline void command_fini(ecs_entity_command_t *command) {
 void ecs_command_buffer_init() {
     ecs_command_buffer_t *buffer = &ecs_world.commands;
     sicore_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
+    sicore_vec_init(&buffer->relations, sizeof(ecs_deferred_relation_t));
     buffer->entity_to_command = NULL;
     buffer->entity_capacity = 0;
 }
@@ -81,6 +83,7 @@ void ecs_command_buffer_fini() {
         command_fini(&commands[i]);
     }
     sicore_vec_fini(&buffer->commands);
+    sicore_vec_fini(&buffer->relations);
     free(buffer->entity_to_command);
 }
 
@@ -185,12 +188,39 @@ void ecs_command_buffer_kill(ecs_entity_t entity) {
         deferred_set_fini(&sets[i]);
     }
     sicore_vec_clear(&command->sets);
+    command->relation_head = ECS_COMMAND_NONE;
 }
 
 void ecs_command_buffer_set_base(ecs_entity_t entity, ecs_entity_t target) {
     ecs_entity_command_t *command = command_for_entity(entity);
     command->has_base = true;
     command->base = target;
+}
+
+void ecs_command_buffer_relate(
+    ecs_entity_t entity,
+    ecs_relation_id_t relation,
+    ecs_entity_t target
+) {
+    ecs_command_buffer_t *buffer = &ecs_world.commands;
+    ecs_entity_command_t *command = command_for_entity(entity);
+    uint32_t index = command->relation_head;
+    while (index != ECS_COMMAND_NONE) {
+        ecs_deferred_relation_t *entry =
+            sicore_vec_get_mut(&buffer->relations, index, ecs_deferred_relation_t);
+        if (entry->id == relation) {
+            entry->target = target;
+            return;
+        }
+        index = entry->next;
+    }
+    ecs_deferred_relation_t value = {
+        .target = target,
+        .next = command->relation_head,
+        .id = relation,
+    };
+    command->relation_head = buffer->relations.size;
+    sicore_vec_push(&buffer->relations, &value, sizeof value);
 }
 
 static void final_ids_push_sorted(sicore_vec_t *final_ids, ecs_component_t id) {
@@ -228,7 +258,7 @@ command_build_type(const ecs_table_t *table, const ecs_entity_command_t *command
     sicore_vec_t final_ids;
     sicore_vec_init(&final_ids, sizeof(ecs_component_t));
 
-    for (uint16_t i = 0; i < table->type.count; i++) {
+    for (uint16_t i = 0; i < table->type.component_count; i++) {
         ecs_component_t id = table->type.ids[i];
         if (!sicore_vec_contains_u16(&command->remove_ids, id)) {
             sicore_vec_push_u16(&final_ids, id);
@@ -241,11 +271,14 @@ command_build_type(const ecs_table_t *table, const ecs_entity_command_t *command
         final_ids_push_sorted(&final_ids, adds[i]);
     }
 
-    return (ecs_type_t){
-        .ids = sicore_vec_data(&final_ids, ecs_component_t),
-        .count = (uint16_t)final_ids.size,
-        .base = command->has_base ? command->base : table->type.base,
-    };
+    ecs_type_t type = ecs_type_with_ids(
+        &table->type,
+        sicore_vec_data(&final_ids, ecs_component_t),
+        (uint16_t)final_ids.size
+    );
+    sicore_vec_fini(&final_ids);
+    type.base = command->has_base ? command->base : table->type.base;
+    return type;
 }
 
 static void command_emit_removed(
@@ -255,12 +288,12 @@ static void command_emit_removed(
     const ecs_type_t *final_type
 ) {
     uint16_t final_i = 0;
-    for (uint16_t i = 0; i < table->type.count; i++) {
+    for (uint16_t i = 0; i < table->type.component_count; i++) {
         ecs_component_t id = table->type.ids[i];
-        while (final_i < final_type->count && final_type->ids[final_i] < id) {
+        while (final_i < final_type->component_count && final_type->ids[final_i] < id) {
             final_i++;
         }
-        if (final_i < final_type->count && final_type->ids[final_i] == id) {
+        if (final_i < final_type->component_count && final_type->ids[final_i] == id) {
             continue;
         }
 
@@ -316,7 +349,24 @@ static void command_apply_sets(ecs_entity_command_t *command) {
     }
 }
 
-static void command_apply(ecs_entity_command_t *command) {
+static void command_apply_relations(
+    ecs_entity_command_t *command,
+    const sicore_vec_t *relations
+) {
+    uint32_t index = command->relation_head;
+    while (index != ECS_COMMAND_NONE && ecs_is_alive(command->entity)) {
+        const ecs_deferred_relation_t *entry =
+            sicore_vec_get(relations, index, ecs_deferred_relation_t);
+        if (entry->target) {
+            ecs_relate_id_now(command->entity, entry->id, entry->target);
+        } else {
+            ecs_unrelate_id_now(command->entity, entry->id);
+        }
+        index = entry->next;
+    }
+}
+
+static void command_apply(ecs_entity_command_t *command, const sicore_vec_t *relations) {
     if (!ecs_is_alive(command->entity)) {
         return;
     }
@@ -331,6 +381,7 @@ static void command_apply(ecs_entity_command_t *command) {
     ecs_table_t *old_table = ecs_get_table(old_table_id);
     if (command_type_unchanged(old_table, command)) {
         command_apply_sets(command);
+        command_apply_relations(command, relations);
         return;
     }
 
@@ -357,6 +408,7 @@ static void command_apply(ecs_entity_command_t *command) {
     }
 
     command_apply_sets(command);
+    command_apply_relations(command, relations);
 }
 
 void ecs_command_buffer_flush() {
@@ -369,7 +421,9 @@ void ecs_command_buffer_flush() {
     ecs_world.flushing_commands = true;
     while (buffer->commands.size != 0) {
         sicore_vec_t commands = buffer->commands;
+        sicore_vec_t relations = buffer->relations;
         sicore_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
+        sicore_vec_init(&buffer->relations, sizeof(ecs_deferred_relation_t));
 
         ecs_entity_command_t *items = sicore_vec_data(&commands, ecs_entity_command_t);
         for (uint32_t i = 0; i < commands.size; i++) {
@@ -378,10 +432,11 @@ void ecs_command_buffer_flush() {
         }
 
         for (uint32_t i = 0; i < commands.size; i++) {
-            command_apply(&items[i]);
+            command_apply(&items[i], &relations);
             command_fini(&items[i]);
         }
         sicore_vec_fini(&commands);
+        sicore_vec_fini(&relations);
     }
     ecs_world.flushing_commands = false;
     ecs_arena_reset(&ecs_world.arena_allocator);

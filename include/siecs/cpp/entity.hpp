@@ -192,9 +192,26 @@ class entity {
 
     /** Set the builtin `ChildOf` relation to `parent`. */
     entity child_of(entity parent) {
-        ChildOf relation{ parent.id() };
-        ecs_set_cid(_entity, ecs_id(ChildOf), &relation);
+        ecs_relate_id(_entity, ecs_rid(ChildOf), parent.id());
         return *this;
+    }
+
+    template <typename Relation> entity relate(entity target) {
+        ecs_relate_id(_entity, detail::ecs_cpp_relation_id<Relation>(), target.id());
+        return *this;
+    }
+
+    template <typename Relation> entity unrelate() {
+        ecs_unrelate_id(_entity, detail::ecs_cpp_relation_id<Relation>());
+        return *this;
+    }
+
+    template <typename Relation> [[nodiscard]] bool has_relation() const {
+        return ecs_has_relation_id(_entity, detail::ecs_cpp_relation_id<Relation>());
+    }
+
+    template <typename Relation> [[nodiscard]] entity target() const {
+        return entity(ecs_target_id(_entity, detail::ecs_cpp_relation_id<Relation>()));
     }
 
     /** Remove `Disabled`, allowing the entity in default queries. */

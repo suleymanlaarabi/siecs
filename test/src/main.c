@@ -70,9 +70,23 @@ void resource_hooks(void);
 
 // Testsuite 'childof'
 void childof_kill_parent(void);
-void childof_relation_without_cascade_keeps_related_alive(void);
-void childof_relation_remove_updates_source(void);
-void childof_relation_source_has_storage_dtor(void);
+void childof_dense_retarget_without_migration(void);
+void childof_dense_delete_policies(void);
+void childof_bydepth_depth_and_cascade(void);
+void childof_bydepth_reparent_updates_subtree(void);
+void childof_cascade_cache_accepts_new_depth(void);
+void childof_bytarget_exact_query_and_retarget(void);
+void childof_bytarget_exact_query_spans_tables(void);
+void childof_bytarget_delete_policies(void);
+void childof_bytarget_keeps_target_generation(void);
+void childof_multiple_bytarget_relations_share_one_type(void);
+void childof_relation_query_presence_optional_and_not(void);
+void childof_up_finds_nearest_ancestor(void);
+void childof_up_optional_returns_null(void);
+void childof_deferred_relation_keeps_last_target(void);
+void childof_type_layout_stays_compact(void);
+void childof_query_slot_reuses_component_and_relation_terms(void);
+void childof_relation_only_system_and_observer(void);
 
 // Testsuite 'query'
 void query_terms_field_order(void);
@@ -355,16 +369,72 @@ bake_test_case childof_testcases[] = {
         childof_kill_parent
     },
     {
-        "relation_without_cascade_keeps_related_alive",
-        childof_relation_without_cascade_keeps_related_alive
+        "dense_retarget_without_migration",
+        childof_dense_retarget_without_migration
     },
     {
-        "relation_remove_updates_source",
-        childof_relation_remove_updates_source
+        "dense_delete_policies",
+        childof_dense_delete_policies
     },
     {
-        "relation_source_has_storage_dtor",
-        childof_relation_source_has_storage_dtor
+        "bydepth_depth_and_cascade",
+        childof_bydepth_depth_and_cascade
+    },
+    {
+        "bydepth_reparent_updates_subtree",
+        childof_bydepth_reparent_updates_subtree
+    },
+    {
+        "cascade_cache_accepts_new_depth",
+        childof_cascade_cache_accepts_new_depth
+    },
+    {
+        "bytarget_exact_query_and_retarget",
+        childof_bytarget_exact_query_and_retarget
+    },
+    {
+        "bytarget_exact_query_spans_tables",
+        childof_bytarget_exact_query_spans_tables
+    },
+    {
+        "bytarget_delete_policies",
+        childof_bytarget_delete_policies
+    },
+    {
+        "bytarget_keeps_target_generation",
+        childof_bytarget_keeps_target_generation
+    },
+    {
+        "multiple_bytarget_relations_share_one_type",
+        childof_multiple_bytarget_relations_share_one_type
+    },
+    {
+        "relation_query_presence_optional_and_not",
+        childof_relation_query_presence_optional_and_not
+    },
+    {
+        "up_finds_nearest_ancestor",
+        childof_up_finds_nearest_ancestor
+    },
+    {
+        "up_optional_returns_null",
+        childof_up_optional_returns_null
+    },
+    {
+        "deferred_relation_keeps_last_target",
+        childof_deferred_relation_keeps_last_target
+    },
+    {
+        "type_layout_stays_compact",
+        childof_type_layout_stays_compact
+    },
+    {
+        "query_slot_reuses_component_and_relation_terms",
+        childof_query_slot_reuses_component_and_relation_terms
+    },
+    {
+        "relation_only_system_and_observer",
+        childof_relation_only_system_and_observer
     }
 };
 
@@ -602,7 +672,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        4,
+        18,
         childof_testcases
     },
     {

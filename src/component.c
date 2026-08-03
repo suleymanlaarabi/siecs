@@ -7,6 +7,7 @@
 #include "sijson.h"
 #endif
 #include "storage/component_index.h"
+#include "relation.h"
 #include "utils.h"
 #include "world_internal.h"
 #include <stdint.h>
@@ -87,16 +88,17 @@ void RelationSourceOnRemove(ecs_entity_t, ecs_component_t component, void *ptr) 
 
     const ecs_entity_t *entities = source_data->entities.data;
     const uint32_t count = source_data->entities.size;
-    const ecs_component_record_t *crec = ecs_component_index_get(component);
-    const bool cascade_delete = crec->relation_flags & EcsRelationCascadeDelete;
+    ecs_relation_id_t relation =
+        ECS_COMPONENT_RELATION_ID(ecs_component_index_get(component)->relation_flags);
+    const ecs_relation_record_t *relation_record = ecs_relation_record(relation);
 
     // Prevent recursive calls to RelationOnRemove when removing relation from child
     source_data->entities.size = UINT32_MAX;
     for (uint32_t i = 0; i < count; i++) {
-        if (cascade_delete) {
+        if (relation_record->on_delete_target == EcsDeleteSources) {
             ecs_kill(entities[i]);
         } else {
-            ecs_remove_cid(entities[i], component - 1);
+            ecs_unrelate_id(entities[i], relation);
         }
     }
 }
@@ -119,77 +121,77 @@ static ecs_component_t ecs_component_register_type(
         }
     }
 
-    if (ECS_UNLIKELY(desc->relation_flags & EcsRelationTarget)) {
-        if (*id == 0) {
-            *id = ecs_component_alloc_ids(2);
-        }
+    if (*id == 0) {
+        *id = ecs_component_alloc_ids(1);
+    }
 
-        ecs_component_t component = *id;
-        ecs_component_index_register(
-            component,
+    ecs_component_t component = *id;
+    ecs_component_index_register(
+        component,
 #if SIECS_HAS_NAMES
-            desc->name,
+        desc->name,
 #endif
-            desc->size,
-            desc->ops,
-            RelationOnSet,
-            RelationOnRemove,
-            desc->on_add,
-            desc->relation_flags
+        desc->size,
+        desc->ops,
+        desc->on_set,
+        desc->on_remove,
+        desc->on_add,
+        0
 #if SIECS_HAS_META
-            ,
-            type,
-            desc->struct_desc
+        ,
+        type,
+        desc->struct_desc
 #endif
-        );
+    );
+    return component;
+}
 
-        ecs_component_t source = component + 1;
-        ecs_component_index_register(
-            source,
+ecs_component_t ecs_component_register_relation_internal(
+    const char *name,
+    ecs_relation_id_t relation,
+    bool by_target
+) {
+    ecs_component_t component = ecs_component_alloc_ids(by_target ? 1 : 2);
+    uint32_t target_flags =
+        ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationTarget);
+    ecs_component_index_register(
+        component,
 #if SIECS_HAS_NAMES
-            NULL,
+        name,
 #endif
-            desc->relation_flags & EcsRelationOneToOne ? sizeof(RelationTarget)
-                                                       : sizeof(RelationSource),
-            (ecs_type_ops_t){
-                .dtor = desc->relation_flags & EcsRelationOneToOne ? NULL : RelationSourceDtor,
-            },
-            NULL,
-            RelationSourceOnRemove,
-            desc->on_add,
-            (desc->relation_flags & ~EcsRelationTarget) | EcsRelationSource
+        by_target ? 0 : sizeof(RelationTarget),
+        (ecs_type_ops_t){ 0 },
+        by_target ? NULL : RelationOnSet,
+        by_target ? ecs_relation_target_on_remove : RelationOnRemove,
+        NULL,
+        target_flags
 #if SIECS_HAS_META
-            ,
-            SIREFLECT_INVALID_HANDLE,
-            NULL
+        ,
+        SIREFLECT_INVALID_HANDLE,
+        NULL
 #endif
-        );
-        return component;
-    } else {
-        if (*id == 0) {
-            *id = ecs_component_alloc_ids(1);
-        }
-
-        ecs_component_t component = *id;
-        ecs_component_index_register(
-            component,
-#if SIECS_HAS_NAMES
-            desc->name,
-#endif
-            desc->size,
-            desc->ops,
-            desc->on_set,
-            desc->on_remove,
-            desc->on_add,
-            0
-#if SIECS_HAS_META
-            ,
-            type,
-            desc->struct_desc
-#endif
-        );
+    );
+    if (by_target) {
         return component;
     }
+    ecs_component_index_register(
+        component + 1,
+#if SIECS_HAS_NAMES
+        NULL,
+#endif
+        sizeof(RelationSource),
+        (ecs_type_ops_t){ .dtor = RelationSourceDtor },
+        NULL,
+        RelationSourceOnRemove,
+        NULL,
+        ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationSource)
+#if SIECS_HAS_META
+        ,
+        SIREFLECT_INVALID_HANDLE,
+        NULL
+#endif
+    );
+    return component;
 }
 
 ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {

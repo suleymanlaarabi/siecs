@@ -33,7 +33,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_table_t *table = ecs_get_table(from_id);
     uint16_t edge = ecs_table_get_add_edge(table, cid);
 
-    if (ECS_UNLIKELY(edge < table->type.count && table->type.ids[edge] == cid)) {
+    if (ECS_UNLIKELY(edge < table->type.component_count && table->type.ids[edge] == cid)) {
         return;
     }
 
@@ -67,7 +67,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     }
 
     ecs_table_t *new_table = ecs_get_table(edge);
-    bool add_many = new_table->type.count > table->type.count + 1;
+    bool add_many = new_table->type.component_count > table->type.component_count + 1;
 
     void *component_data = add_many
                                ? ecs_migrate_add_many(record, entity, table, new_table, edge, cid)

@@ -6,6 +6,7 @@
 
 void ecs_id_map_init(ecs_id_map_t *map) {
     map->capacity = 1;
+    map->aux = 0;
     map->ids = malloc(sizeof(uint16_t));
     *map->ids = UINT16_MAX;
 }

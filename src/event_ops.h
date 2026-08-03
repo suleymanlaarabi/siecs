@@ -12,12 +12,12 @@ static inline void ecs_emit_added_components(
     uint32_t row
 ) {
     uint16_t from_i = 0;
-    for (uint16_t to_i = 0; to_i < to_table->type.count; to_i++) {
+    for (uint16_t to_i = 0; to_i < to_table->type.component_count; to_i++) {
         ecs_component_t added = to_table->type.ids[to_i];
-        while (from_i < from_table->type.count && from_table->type.ids[from_i] < added) {
+        while (from_i < from_table->type.component_count && from_table->type.ids[from_i] < added) {
             from_i++;
         }
-        if (from_i < from_table->type.count && from_table->type.ids[from_i] == added) {
+        if (from_i < from_table->type.component_count && from_table->type.ids[from_i] == added) {
             continue;
         }
 

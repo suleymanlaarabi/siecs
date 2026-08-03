@@ -148,7 +148,6 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
 
 template <typename T>
 static ecs_component_t ecs_cpp_component_id(
-    uint32_t relation_flags = 0,
     const component_hooks<T> *hooks = nullptr
 ) {
     ecs_component_t &cid = detail::component_type<T>::id;
@@ -190,7 +189,6 @@ static ecs_component_t ecs_cpp_component_id(
         .on_set = hooks && hooks->on_set ? component_on_set<T> : nullptr,
         .on_remove = hooks && hooks->on_remove ? component_on_remove<T> : nullptr,
         .on_add = hooks && hooks->on_add ? component_on_add<T> : nullptr,
-        .relation_flags = relation_flags ? EcsRelationTarget | relation_flags : 0,
 #if SIECS_HAS_META
         .struct_desc = &reflection,
 #endif
@@ -199,6 +197,26 @@ static ecs_component_t ecs_cpp_component_id(
     cid = ecs_component_init(&desc);
 
     return cid;
+}
+
+template <typename T> struct relation_type {
+    static inline ecs_relation_id_t id = 0;
+};
+
+template <typename T>
+static ecs_relation_id_t ecs_cpp_relation_id(
+    const ecs_relation_desc_t *desc = nullptr
+) {
+    ecs_relation_id_t &id = relation_type<T>::id;
+    if (id) return id;
+    static const ecs_relation_desc_t dense = {
+        .storage = EcsRelationDense,
+        .on_delete_target = EcsRemoveRelation,
+        .acyclic = false,
+    };
+    static const std::string name = std::string(type_name<T>());
+    id = ecs_relation_register(&id, name.c_str(), desc ? desc : &dense);
+    return id;
 }
 
 #define fields_str(...) #__VA_ARGS__

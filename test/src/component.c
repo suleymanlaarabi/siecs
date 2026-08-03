@@ -11,7 +11,7 @@
 
 #if UINTPTR_MAX == UINT64_MAX
 _Static_assert(sizeof(ecs_type_t) == 24);
-_Static_assert(offsetof(ecs_type_t, data_count) == 10);
+_Static_assert(offsetof(ecs_type_t, relation_count) == 10);
 _Static_assert(offsetof(ecs_type_t, hash) == 12);
 _Static_assert(sizeof(ecs_table_t) == 96);
 #endif
@@ -689,7 +689,7 @@ void component_tag_components_have_no_storage(void) {
     ecs_add(entity, Abstract);
 
     ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
-    test_int(0, table->type.data_count);
+    test_int(0, table->add_edge.aux);
     test_null(table->data_columns);
 
     ecs_fini();
@@ -723,25 +723,25 @@ void component_table_type_tracks_data_columns(void) {
     ecs_add_cid(entity, tag_a);
     ecs_add_cid(entity, tag_b);
     ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
-    test_int(0, table->type.data_count);
+    test_int(0, table->add_edge.aux);
     test_null(table->data_columns);
 
     uint32_t value_a = 42;
     ecs_set_cid(entity, data_a, &value_a);
     table = ecs_get_table(ecs_get_record(entity)->table_id);
-    test_int(1, table->type.data_count);
+    test_int(1, table->add_edge.aux);
     test_assert(table->type.ids[table->data_columns[0]] == data_a);
 
     uint64_t value_b = 84;
     ecs_set_cid(entity, data_b, &value_b);
     table = ecs_get_table(ecs_get_record(entity)->table_id);
-    test_int(2, table->type.data_count);
+    test_int(2, table->add_edge.aux);
     test_assert(table->type.ids[table->data_columns[0]] == data_a);
     test_assert(table->type.ids[table->data_columns[1]] == data_b);
 
     ecs_remove_cid(entity, data_a);
     table = ecs_get_table(ecs_get_record(entity)->table_id);
-    test_int(1, table->type.data_count);
+    test_int(1, table->add_edge.aux);
     test_assert(table->type.ids[table->data_columns[0]] == data_b);
     test_int(84, *(uint64_t *)ecs_get_cid(entity, data_b));
 
@@ -760,7 +760,7 @@ static ecs_type_t component_type_from_mask(
 
     ecs_type_t type = {
         .ids = count == 0 ? NULL : malloc(sizeof(ecs_component_t) * count),
-        .count = count,
+        .component_count = count,
     };
     uint16_t out = 0;
     for (uint16_t i = 0; i < component_count; i++) {

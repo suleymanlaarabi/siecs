@@ -9,9 +9,11 @@ struct ApiVelocity {
     int value;
 };
 
-struct ApiRelation {
-    ecs::entity target;
-};
+struct ApiRelation {};
+
+struct ApiGroup {};
+
+struct ApiLocated {};
 
 struct ApiTime {
     float dt;
@@ -39,8 +41,42 @@ static void api_hook_time_on_set(const ApiHookTime &) {
 void api_cpp_wrapper_helpers(void) {
     ecs_test_scope _ecs_scope;
 
-    ecs::relation<ApiRelation>(EcsRelationCascadeDelete);
-    test_true(ecs::relation_source<ApiRelation>() != 0);
+    test_true(ecs::relation<ApiRelation>({
+                  .storage = EcsRelationDense,
+                  .on_delete_target = EcsDeleteSources,
+              }) != 0);
+
+    ecs::relation<ApiGroup>({
+        .storage = EcsRelationByTarget,
+        .on_delete_target = EcsRemoveRelation,
+    });
+    ecs::relation<ApiLocated>({
+        .storage = EcsRelationByTarget,
+        .on_delete_target = EcsRemoveRelation,
+        .acyclic = true,
+    });
+
+    auto relation_target = ecs::entity::create().set(ApiPosition{ 9 });
+    auto related = ecs::entity::create().relate<ApiRelation>(relation_target);
+    test_true(related.has_relation<ApiRelation>());
+    test_true(related.target<ApiRelation>().id() == relation_target.id());
+    related.unrelate<ApiRelation>();
+    test_false(related.has_relation<ApiRelation>());
+
+    auto group = ecs::entity::create();
+    auto member = ecs::entity::create().relate<ApiGroup>(group);
+    test_uint(member.id(), ecs::query().to<ApiGroup>(group).first().id());
+
+    auto location = ecs::entity::create().set(ApiPosition{ 12 });
+    auto located = ecs::entity::create().relate<ApiLocated>(location);
+    int inherited_position = 0;
+    ecs::query().to<ApiLocated>(location).up<ApiPosition, ApiLocated>().each(
+        [&](ecs::entity current, const ApiPosition &position) {
+            test_true(current.id() == located.id());
+            inherited_position = position.value;
+        }
+    );
+    test_int(12, inherited_position);
 
     auto entity = ecs::entity::create().set(ApiPosition{ 1 });
     ecs::query().require<ApiPosition>().each(

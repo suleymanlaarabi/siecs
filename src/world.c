@@ -9,6 +9,7 @@
 #include "storage/resource_index.h"
 #include "storage/system_index.h"
 #include "storage/table_index.h"
+#include "relation.h"
 #include "utils.h"
 #include "world_internal.h"
 #include <string.h>
@@ -27,6 +28,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
 
     ecs_entity_index_init();
     ecs_component_index_init();
+    ecs_relation_index_init();
     ecs_table_index_init();
     ecs_query_index_init();
     ecs_observer_index_init();
@@ -59,6 +61,7 @@ void ecs_fini(void) {
     ecs_table_index_fini();
     ecs_entity_index_fini();
     ecs_component_index_fini();
+    ecs_relation_index_fini();
     ecs_query_index_fini();
     ecs_observer_index_fini();
     ecs_system_index_fini();

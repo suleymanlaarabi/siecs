@@ -29,7 +29,7 @@ uint16_t ecs_observer_index_create(const ecs_observer_desc_t *desc) {
     obs->callback = desc->callback;
     obs->user_data = desc->user_data;
     obs->enabled = true;
-    ecs_query_from_desc(&desc->query, &obs->query);
+    (void)ecs_query_from_desc(&desc->query, &obs->query);
     return index->observers.size - 1;
 }
 

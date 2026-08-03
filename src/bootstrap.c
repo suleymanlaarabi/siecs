@@ -12,7 +12,11 @@
 #include "utils.h"
 #include "world_internal.h"
 
-ECS_RELATION_DEFINE(ChildOf, EcsRelationCascadeDelete);
+ECS_RELATION_DEFINE(ChildOf, {
+    .storage = EcsRelationByDepth,
+    .on_delete_target = EcsDeleteSources,
+    .acyclic = true,
+});
 #if SIECS_HAS_NAMES
 sicore_map_t name_map;
 
@@ -169,7 +173,7 @@ void ecs_bootstrap() {
     );
 #endif
 
-    ECS_COMPONENT_REGISTER(ChildOf);
+    ECS_RELATION_REGISTER(ChildOf);
 #if SIECS_HAS_NAMES
     ECS_COMPONENT_REGISTER(Name);
     sicore_map_init(&name_map);

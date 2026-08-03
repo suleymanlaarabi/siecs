@@ -13,7 +13,14 @@ typedef struct {
 } ecs_deferred_set_t;
 
 typedef struct {
+    ecs_entity_t target; /* 0 removes the relation */
+    uint32_t next;
+    ecs_relation_id_t id;
+} ecs_deferred_relation_t;
+
+typedef struct {
     ecs_entity_t entity;
+    uint32_t relation_head;
     bool kill;
     bool has_base;
     ecs_entity_t base;
@@ -24,6 +31,7 @@ typedef struct {
 
 typedef struct ecs_command_buffer_s {
     sicore_vec_t commands;
+    sicore_vec_t relations;
     uint32_t *entity_to_command;
     uint32_t entity_capacity;
 } ecs_command_buffer_t;
@@ -37,6 +45,11 @@ void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data);
 void ecs_command_buffer_kill(ecs_entity_t entity);
 void ecs_command_buffer_set_base(ecs_entity_t entity, ecs_entity_t target);
+void ecs_command_buffer_relate(
+    ecs_entity_t entity,
+    ecs_relation_id_t relation,
+    ecs_entity_t target
+);
 void ecs_command_buffer_flush();
 
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t id);

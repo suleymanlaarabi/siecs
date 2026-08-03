@@ -69,7 +69,6 @@ void ecs_component_index_register(
         .name = name ? strdup(name) : NULL,
 #endif
         .size = size,
-        .relation_flags = relation_flags,
 #if SIECS_HAS_META
         .type = type,
 #endif

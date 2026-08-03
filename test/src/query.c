@@ -355,9 +355,13 @@ void query_inout_does_not_match_shared_inherited_field(void) {
     ecs_query_id_t query = ecs_query({ .terms = { ecs_inout(QueryPosition) } });
     ecs_iter_t it = ecs_query_iter(query);
 
+    bool found_entity = false;
     while (ecs_iter_next(&it)) {
-        test_assert(it.entities[0] != entity);
+        for (uint32_t row = 0; row < it.count; row++) {
+            found_entity |= it.entities[row] == entity;
+        }
     }
+    test_false(found_entity);
 
     ecs_query_fini(query);
     ecs_fini();

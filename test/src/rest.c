@@ -87,11 +87,13 @@ void rest_schema_returns_editor_contract(void) {
 
     sijson_value_t schema = sijson_parse(res.body);
     test_assert(schema != NULL);
-    test_int(2, (int)sijson_object_len(schema));
+    test_int(3, (int)sijson_object_len(schema));
 
     sijson_value_t components = sijson_object_get(schema, "components");
+    sijson_value_t relations = sijson_object_get(schema, "relations");
     sijson_value_t types = sijson_object_get(schema, "types");
     test_assert(components != NULL);
+    test_assert(relations != NULL);
     test_assert(types != NULL);
 
     sijson_value_t position = rest_find_by_name(components, "RestPosition");
@@ -119,10 +121,11 @@ void rest_schema_returns_editor_contract(void) {
     test_assert(string_type != NULL);
     test_str("string", sijson_string(sijson_object_get(string_type, "editor")));
 
-    test_assert(rest_find_by_name(components, "IsA") == NULL);
-    sijson_value_t child_of = rest_find_by_name(components, "ChildOf");
+    test_assert(rest_find_by_name(components, "ChildOf") == NULL);
+    sijson_value_t child_of = rest_find_by_name(relations, "ChildOf");
     test_assert(child_of != NULL);
-    test_true(sijson_bool(sijson_object_get(child_of, "isRelation")));
+    test_int(EcsRelationByDepth, (int)sijson_number(sijson_object_get(child_of, "storage")));
+    test_true(sijson_bool(sijson_object_get(child_of, "acyclic")));
     rest_assert_no_extra_schema_fields(schema);
 
     free(res.body);
@@ -143,7 +146,7 @@ void rest_entity_detail_returns_editor_state(void) {
     char *child_name = strdup("Child");
     ecs_set(child, Name, { child_name });
     free(child_name);
-    ecs_set(child, ChildOf, { parent });
+    ecs_relate(child, ChildOf, parent);
 
     sijson_clean();
     sijson_value_t detail = ecs_rest_entity_detail_json(parent);
@@ -199,13 +202,13 @@ void rest_entity_children_returns_direct_children(void) {
     char *child_name = strdup("Child");
     ecs_set(child, Name, { child_name });
     free(child_name);
-    ecs_set(child, ChildOf, { parent });
+    ecs_relate(child, ChildOf, parent);
 
     ecs_entity_t grandchild = ecs_new();
     char *grandchild_name = strdup("Grandchild");
     ecs_set(grandchild, Name, { grandchild_name });
     free(grandchild_name);
-    ecs_set(grandchild, ChildOf, { child });
+    ecs_relate(grandchild, ChildOf, child);
 
     sijson_clean();
     sijson_value_t parent_summary = ecs_rest_entity_json(parent);

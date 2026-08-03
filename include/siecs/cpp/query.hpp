@@ -211,10 +211,20 @@ inline void append_callback_component_term(
     ecs_component_t id,
     ecs_term_access_t access
 ) {
+    ecs_relation_id_t up_relation = 0;
     for (uint16_t i = 0; i < term_index; i++) {
-        if (desc.terms[i].id != id || desc.terms[i].access != EcsFilter) {
+        const ecs_term_access_t existing_access = static_cast<ecs_term_access_t>(
+            static_cast<uint32_t>(desc.terms[i].access) & 0xffu
+        );
+        if (desc.terms[i].id != id ||
+            (existing_access != EcsFilter && existing_access != EcsInUp &&
+             existing_access != EcsInUpOptional)) {
             continue;
         }
+
+        up_relation = static_cast<ecs_relation_id_t>(
+            static_cast<uint32_t>(desc.terms[i].access) >> 8
+        );
 
         for (uint16_t j = i; j + 1 < term_index; j++) {
             desc.terms[j] = desc.terms[j + 1];
@@ -223,7 +233,18 @@ inline void append_callback_component_term(
         break;
     }
 
-    append_term(desc, term_index, id, access);
+    if (up_relation) {
+        assert(access == EcsIn || access == EcsInOptional);
+        desc.terms[term_index++] = {
+            .id = id,
+            .access = ECS_QUERY_UP_ACCESS(
+                access == EcsInOptional ? EcsInUpOptional : EcsInUp,
+                up_relation
+            ),
+        };
+    } else {
+        append_term(desc, term_index, id, access);
+    }
 }
 
 template <typename... T>
@@ -392,6 +413,7 @@ class query {
   protected:
     ecs_query_desc_t desc{};
     uint16_t term_index = 0;
+    uint16_t relation_index = 0;
 
   public:
     /** Construct an empty query descriptor. */
@@ -418,6 +440,55 @@ class query {
     /** Restrict matches to entities inheriting from `target`. */
     query &is_a(ecs_entity_t target) {
         desc.is_a = target;
+        return *this;
+    }
+
+    query &is_a(entity target) { return is_a(target.id()); }
+
+    template <typename Relation> query &with_relation() {
+        desc.relations[relation_index++] = {
+            .target = 0,
+            .id = detail::ecs_cpp_relation_id<Relation>(),
+            .kind = EcsRelationRequired,
+        };
+        return *this;
+    }
+
+    template <typename Relation> query &to(ecs_entity_t target) {
+        desc.relations[relation_index++] = {
+            .target = target,
+            .id = detail::ecs_cpp_relation_id<Relation>(),
+            .kind = EcsRelationTarget,
+        };
+        return *this;
+    }
+
+    template <typename Relation> query &to(entity target) {
+        return to<Relation>(target.id());
+    }
+
+    template <typename Relation> query &depth(uint32_t value) {
+        desc.relations[relation_index++] = {
+            .target = value,
+            .id = detail::ecs_cpp_relation_id<Relation>(),
+            .kind = EcsRelationDepth,
+        };
+        return *this;
+    }
+
+    template <typename Relation> query &cascade() {
+        desc.order.relation = detail::ecs_cpp_relation_id<Relation>();
+        return *this;
+    }
+
+    template <typename Component, typename Relation> query &up() {
+        desc.terms[term_index++] = {
+            .id = detail::ecs_cpp_component_id<Component>(),
+            .access = ECS_QUERY_UP_ACCESS(
+                EcsInUp,
+                detail::ecs_cpp_relation_id<Relation>()
+            ),
+        };
         return *this;
     }
 

@@ -32,7 +32,7 @@ static inline void ecs_migrate_same_layout(
     uint32_t old_row = record->table_row;
     uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
-    for (uint16_t i = 0; i < from_table->type.data_count; i++) {
+    for (uint16_t i = 0; i < from_table->add_edge.aux; i++) {
         uint16_t col = from_table->data_columns[i];
         ecs_table_move_column(from_table, col, old_row, to_table, col, new_row);
     }

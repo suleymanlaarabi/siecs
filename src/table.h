@@ -61,7 +61,8 @@ ecs_table_component_at_column(const ecs_table_t *table, uint16_t column_index, u
 static inline uint16_t
 ecs_table_column_or_invalid(const ecs_table_t *table, ecs_component_t component_id) {
     uint16_t column_index = ecs_table_get_add_edge(table, component_id);
-    if (column_index < table->type.count && table->type.ids[column_index] == component_id) {
+    if (column_index < table->type.component_count &&
+        table->type.ids[column_index] == component_id) {
         return column_index;
     }
     return UINT16_MAX;

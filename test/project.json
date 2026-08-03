@@ -95,9 +95,23 @@
         "id": "childof",
         "testcases": [
           "kill_parent",
-          "relation_without_cascade_keeps_related_alive",
-          "relation_remove_updates_source",
-          "relation_source_has_storage_dtor"
+          "dense_retarget_without_migration",
+          "dense_delete_policies",
+          "bydepth_depth_and_cascade",
+          "bydepth_reparent_updates_subtree",
+          "cascade_cache_accepts_new_depth",
+          "bytarget_exact_query_and_retarget",
+          "bytarget_exact_query_spans_tables",
+          "bytarget_delete_policies",
+          "bytarget_keeps_target_generation",
+          "multiple_bytarget_relations_share_one_type",
+          "relation_query_presence_optional_and_not",
+          "up_finds_nearest_ancestor",
+          "up_optional_returns_null",
+          "deferred_relation_keeps_last_target",
+          "type_layout_stays_compact",
+          "query_slot_reuses_component_and_relation_terms",
+          "relation_only_system_and_observer"
         ]
       },
       {

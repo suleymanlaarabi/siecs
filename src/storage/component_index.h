@@ -7,6 +7,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+typedef enum {
+    EcsComponentRelationTarget = 1 << 0,
+    EcsComponentRelationSource = 1 << 1,
+} ecs_component_internal_flags_t;
+
+#define ECS_COMPONENT_RELATION_ID(flags) ((ecs_relation_id_t)((flags) >> 16))
+#define ECS_COMPONENT_RELATION_FLAGS(id, flags) ((uint32_t)(flags) | ((uint32_t)(id) << 16))
+
 typedef struct {
     ecs_component_info_t *info;
     uint16_t *required;

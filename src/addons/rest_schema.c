@@ -1,5 +1,6 @@
 #include "siecs/config.h"
 #if SIECS_HAS_REST
+#include "../relation.h"
 #include "../storage/component_index.h"
 #include "rest_internal.h"
 #include <stdbool.h>
@@ -43,10 +44,31 @@ ecs_rest_component_json(ecs_component_t id, const ecs_component_record_t *record
     sijson_value_t object = sijson_make_object();
     sijson_object_set(object, "id", sijson_make_number(id));
     sijson_object_set(object, "name", sijson_make_string(type && type->name ? type->name : ""));
-    sijson_object_set(object, "isRelation", sijson_make_bool(record->relation_flags != 0));
+    sijson_object_set(object, "isRelation", sijson_make_bool(false));
     sijson_object_set(object, "type", sijson_make_number(record->info->type));
     sijson_object_set(object, "fields", fields_json);
 
+    return object;
+}
+
+static sijson_value_t ecs_rest_relation_json(
+    ecs_relation_id_t id,
+    const ecs_relation_record_t *record
+) {
+    sijson_value_t object = sijson_make_object();
+    sijson_object_set(object, "id", sijson_make_number(id));
+#if SIECS_HAS_NAMES
+    sijson_object_set(object, "name", sijson_make_string(record->name ? record->name : ""));
+#else
+    sijson_object_set(object, "name", sijson_make_string(""));
+#endif
+    sijson_object_set(object, "storage", sijson_make_number(record->storage));
+    sijson_object_set(
+        object,
+        "onDeleteTarget",
+        sijson_make_number(record->on_delete_target)
+    );
+    sijson_object_set(object, "acyclic", sijson_make_bool(record->acyclic));
     return object;
 }
 
@@ -137,13 +159,19 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req) {
 
     sijson_value_t components = sijson_make_array();
     for (uint32_t i = 1; i < ecs_world.component_index.components.size; i++) {
-        if (!ecs_rest_component_is_reflected((ecs_component_t)i)) {
+        const ecs_component_record_t *record = ecs_component_index_get((ecs_component_t)i);
+        if (record->relation_flags || !ecs_rest_component_is_reflected((ecs_component_t)i)) {
             continue;
         }
 
-        const ecs_component_record_t *record = ecs_component_index_get((ecs_component_t)i);
         ecs_rest_collect_component_types(&types, record);
         sijson_array_push(components, ecs_rest_component_json((ecs_component_t)i, record));
+    }
+
+    sijson_value_t relations = sijson_make_array();
+    for (uint32_t i = 1; i < ecs_world.relation_index.records.size; i++) {
+        const ecs_relation_record_t *record = ecs_relation_record((ecs_relation_id_t)i);
+        sijson_array_push(relations, ecs_rest_relation_json((ecs_relation_id_t)i, record));
     }
 
     sijson_value_t type_values = sijson_make_array();
@@ -157,6 +185,7 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req) {
 
     sijson_value_t schema = sijson_make_object();
     sijson_object_set(schema, "components", components);
+    sijson_object_set(schema, "relations", relations);
     sijson_object_set(schema, "types", type_values);
 
     return ecs_rest_json_response(200, schema);

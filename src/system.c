@@ -18,11 +18,13 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     ecs_assert(desc->callback, "system requires callback function\n");
     ecs_assert(desc->phase < EcsPhaseCount, "invalid system phase: %u\n", desc->phase);
 
+    const bool has_query = desc->query.terms[0].id || desc->query.relations[0].id ||
+                           desc->query.order.relation || desc->query.is_a;
     ecs_system_t sys = {
 #if SIECS_HAS_NAMES
         .name = desc->name,
 #endif
-        .qid = desc->query.terms[0].id ? ecs_query_init(&desc->query) : ECS_SYSTEM_NO_QUERY,
+        .qid = has_query ? ecs_query_init(&desc->query) : ECS_SYSTEM_NO_QUERY,
         .callback = desc->callback,
         .user_data = desc->user_data,
         .user_data_dtor = desc->user_data_dtor,

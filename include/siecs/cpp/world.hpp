@@ -14,14 +14,16 @@
 
 namespace ecs {
 
+struct ChildOf {};
+
 /** Synchronize builtin component ids after the C world is initialized. */
 inline void init_cpp_state() {
     detail::component_type<Disabled>::id = ecs_id(Disabled);
 #if SIECS_HAS_NAMES
     detail::component_type<Name>::id = ecs_id(Name);
 #endif
-    detail::component_type<ChildOf>::id = ecs_id(ChildOf);
     detail::component_type<Abstract>::id = ecs_id(Abstract);
+    detail::relation_type<ChildOf>::id = ecs_rid(ChildOf);
 }
 /** Initialize the process-wide active ECS world and C++ builtin ids. */
 inline void init() {
@@ -51,7 +53,7 @@ template <typename T> inline ecs_component_t component() {
 
 /** Register a component and install its lifecycle hooks before first use. */
 template <typename T> inline ecs_component_t component(const component_hooks<T> &hooks) {
-    return detail::ecs_cpp_component_id<T>(0, &hooks);
+    return detail::ecs_cpp_component_id<T>(&hooks);
 }
 
 /** Declare that adding `Component` implicitly adds `Required` first. */
@@ -59,13 +61,17 @@ template <typename Component, typename Required> inline void component_requires(
     ecs_with(component<Component>(), component<Required>());
 }
 
-/** Register `T` as a relation with the requested target/source behavior. */
-template <typename T> inline ecs_component_t relation(ecs_relation_flags_t flags = {}) {
-    return detail::ecs_cpp_component_id<T>(flags);
+/** Register `T` in the separate relation namespace. */
+template <typename T>
+inline ecs_relation_id_t relation(
+    const ecs_relation_desc_t &desc = {
+        .storage = EcsRelationDense,
+        .on_delete_target = EcsRemoveRelation,
+        .acyclic = false,
+    }
+) {
+    return detail::ecs_cpp_relation_id<T>(&desc);
 }
-
-/** Experimental: return reverse/source storage id for relation `T`. */
-template <typename T> inline ecs_component_t relation_source() { return relation<T>() + 1; }
 
 /** Copy an lvalue or move an rvalue into the per-world resource of type `T`. */
 template <typename T> inline void set_resource(T &&value) {

@@ -55,12 +55,15 @@ extern "C" {
  * helpers such as ecs_add(entity, Position).
  */
 #define ecs_id(name) _ecs_id_##name##__
+#define ecs_rid(name) _ecs_rid_##name##__
 
 /* Public handle types. A zero id is reserved internally and is not user data.
  */
 typedef uint64_t ecs_entity_t;
 /* Component id in the active world's component namespace. */
 typedef uint16_t ecs_component_t;
+/* Relation id in the active world's separate relation namespace. */
+typedef uint16_t ecs_relation_id_t;
 /* Opaque query id returned by ecs_query_init. */
 typedef uint16_t ecs_query_id_t;
 /* Opaque system id returned by ecs_system_init. */
@@ -76,6 +79,7 @@ typedef uint32_t ecs_observer_id_t;
 
 /* Maximum number of terms accepted by a query descriptor. */
 #define ECS_QUERY_TERM_CAPACITY 16
+#define ECS_QUERY_RELATION_CAPACITY 8
 /* Maximum number of explicit same-phase system dependencies. */
 #define ECS_SYSTEM_AFTER_CAPACITY 16
 
@@ -194,29 +198,12 @@ typedef struct {
 } ecs_type_ops_t;
 
 /*
- * Relation behavior flags used by ECS_RELATION_DEFINE.
- *
- * EcsRelationTarget marks the relation component stored on the source entity.
- * EcsRelationSource marks the internal reverse-link component stored on target
- * entities. EcsRelationCascadeDelete kills related source entities when the
- * target entity is killed.
- */
-typedef enum {
-    EcsRelationTarget = 1 << 0,
-    EcsRelationSource = 1 << 1,
-    EcsRelationCascadeDelete = 1 << 2,
-    EcsRelationOneToOne = 1 << 3,
-    EcsRelationOneToMany = 1 << 4
-} ecs_relation_flags_t;
-
-/*
  * Component registration descriptor.
  *
  * name is used for reflection/debug/introspection. size is sizeof(T) for data
  * components and 0 for tags. Hooks are optional lifecycle callbacks.
  * struct_desc enables reflection for ECS_COMPONENT_* generated types.
  *
- * relation_flags is normally set only by ECS_RELATION_DEFINE.
  */
 typedef struct {
     const char *name;
@@ -225,7 +212,6 @@ typedef struct {
     ecs_component_on_set_t on_set;
     ecs_component_on_remove_t on_remove;
     ecs_component_on_add_t on_add;
-    uint32_t relation_flags;
 #if SIECS_HAS_META
     const sireflect_struct_desc_t *struct_desc;
 #endif
@@ -237,7 +223,6 @@ typedef struct {
     const char *name;
 #endif
     uint64_t size;
-    uint32_t relation_flags;
 #if SIECS_HAS_META
     sireflect_handle_t type;
 #endif
@@ -285,6 +270,8 @@ typedef enum {
                          otherwise. */
     EcsFilter,        /* Component must exist but is not returned by ecs_field. */
     EcsNot,           /* Component must not exist and is not returned by ecs_field. */
+    EcsInUp,         /* Read the nearest inherited field through an acyclic ByTarget relation. */
+    EcsInUpOptional, /* Same as EcsInUp, but permits a missing field. */
 } ecs_term_access_t;
 
 /*
@@ -295,8 +282,29 @@ typedef enum {
  */
 typedef struct {
     ecs_component_t id;
-    ecs_term_access_t access;
+    uint32_t access;
 } ecs_query_term_t;
+
+#define ECS_QUERY_UP_ACCESS(access, relation)                                                      \
+    ((uint32_t)(access) | ((uint32_t)(relation) << 8))
+
+typedef enum {
+    EcsRelationRequired,
+    EcsRelationOptional,
+    EcsRelationExcluded,
+    EcsRelationTarget,
+    EcsRelationDepth
+} ecs_query_relation_kind_t;
+
+typedef struct {
+    ecs_entity_t target;
+    ecs_relation_id_t id;
+    ecs_query_relation_kind_t kind;
+} ecs_query_relation_term_t;
+
+typedef struct {
+    ecs_relation_id_t relation;
+} ecs_query_order_t;
 
 /*
  * Query descriptor.
@@ -306,10 +314,13 @@ typedef struct {
  * declaration order. Optional fields return NULL for tables without the
  * component. EcsFilter and EcsNot only affect table matching.
  *
- * A query must contain at least one term or an is_a target.
+ * A query may contain component terms, relation terms, a cascade order or an
+ * is_a target.
  */
 typedef struct {
     ecs_query_term_t terms[ECS_QUERY_TERM_CAPACITY];
+    ecs_query_relation_term_t relations[ECS_QUERY_RELATION_CAPACITY];
+    ecs_query_order_t order;
     ecs_entity_t is_a;
 } ecs_query_desc_t;
 
@@ -343,6 +354,10 @@ typedef struct {
 /* Exclude entities that contain the component. */
 #define ecs_not(cname)                                                                             \
     ecs_query_term_t { ecs_id(cname), EcsNot }
+#define ecs_up(cname, relation)                                                                   \
+    ecs_query_term_t { ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUp, ecs_rid(relation)) }
+#define ecs_up_optional(cname, relation)                                                          \
+    ecs_query_term_t { ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation)) }
 #else
 /* C spellings of the typed query term helpers. */
 #define ecs_in(cname) ((ecs_query_term_t){ ecs_id(cname), EcsIn })
@@ -360,12 +375,38 @@ typedef struct {
 #define ecs_filter(cname) ((ecs_query_term_t){ ecs_id(cname), EcsFilter })
 /* Excluded component. */
 #define ecs_not(cname) ((ecs_query_term_t){ ecs_id(cname), EcsNot })
-/* Experimental reverse-relation source field; storage layout may change. */
-#define ecs_in_source(cname) ((ecs_query_term_t){ ecs_source(cname), EcsIn })
-/* Experimental reverse-relation exclusion; storage layout may change. */
-#define ecs_not_source(cname) ((ecs_query_term_t){ ecs_source(cname), EcsNot })
-/* Experimental reverse-relation filter; storage layout may change. */
-#define ecs_filter_source(cname) ((ecs_query_term_t){ ecs_source(cname), EcsFilter })
+#define ecs_up(cname, relation)                                                                   \
+    ((ecs_query_term_t){ ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUp, ecs_rid(relation)) })
+#define ecs_up_optional(cname, relation)                                                          \
+    ((ecs_query_term_t){                                                                          \
+        ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation))                     \
+    })
+#endif
+
+#ifdef __cplusplus
+#define ecs_rel(name)                                                                              \
+    ecs_query_relation_term_t { 0, ecs_rid(name), EcsRelationRequired }
+#define ecs_rel_opt(name)                                                                          \
+    ecs_query_relation_term_t { 0, ecs_rid(name), EcsRelationOptional }
+#define ecs_not_rel(name)                                                                          \
+    ecs_query_relation_term_t { 0, ecs_rid(name), EcsRelationExcluded }
+#define ecs_to(name, entity)                                                                       \
+    ecs_query_relation_term_t { entity, ecs_rid(name), EcsRelationTarget }
+#define ecs_depth(name, value)                                                                     \
+    ecs_query_relation_term_t { (ecs_entity_t)(value), ecs_rid(name), EcsRelationDepth }
+#define ecs_cascade(name) ecs_query_order_t { ecs_rid(name) }
+#else
+#define ecs_rel(name)                                                                              \
+    ((ecs_query_relation_term_t){ 0, ecs_rid(name), EcsRelationRequired })
+#define ecs_rel_opt(name)                                                                          \
+    ((ecs_query_relation_term_t){ 0, ecs_rid(name), EcsRelationOptional })
+#define ecs_not_rel(name)                                                                          \
+    ((ecs_query_relation_term_t){ 0, ecs_rid(name), EcsRelationExcluded })
+#define ecs_to(name, entity)                                                                       \
+    ((ecs_query_relation_term_t){ entity, ecs_rid(name), EcsRelationTarget })
+#define ecs_depth(name, value)                                                                     \
+    ((ecs_query_relation_term_t){ (ecs_entity_t)(value), ecs_rid(name), EcsRelationDepth })
+#define ecs_cascade(name) ((ecs_query_order_t){ ecs_rid(name) })
 #endif
 
 /* Create an ECS world. */
@@ -557,43 +598,51 @@ SIECS_API void ecs_module_disable(ecs_module_id_t module);
 /* Return whether a module is currently enabled in this world. */
 SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
 
-/*
- * Define a relation component.
- *
- * A relation stores an entity target. The implementation also creates a source
- * component used internally to track reverse links.
- *
- * Example:
- *   ECS_RELATION_DECLARE(ParentOf);
- *   ECS_RELATION_DEFINE(ParentOf, EcsRelationCascadeDelete);
- */
-/* Define a relation descriptor and its stable id storage. */
-#define ECS_RELATION_DEFINE(cname, flags)                                                          \
-    ecs_component_desc_t ecs_id(cname##_desc) = {                                                  \
-        SIECS_NAME_INIT(#cname).size = sizeof(cname),                                              \
-        SIECS_COMPONENT_META_INIT(cname).relation_flags = EcsRelationTarget | (flags),             \
-    };                                                                                             \
-    ecs_component_t ecs_id(cname) = 0
+typedef enum {
+    EcsRelationDense,
+    EcsRelationByDepth,
+    EcsRelationByTarget
+} ecs_relation_storage_t;
 
-/* Declare and define a relation in one translation unit. */
-#define ECS_RELATION(cname, flags)                                                                 \
-    ECS_RELATION_DECLARE(cname);                                                                   \
-    ECS_RELATION_DEFINE(cname, flags)
+typedef enum {
+    EcsRemoveRelation,
+    EcsDeleteSources
+} ecs_delete_target_t;
 
-/* Return the internal source component id associated with a relation id. */
-#define ecs_source(name) (ecs_id(name) + 1)
+typedef struct {
+    ecs_relation_storage_t storage;
+    ecs_delete_target_t on_delete_target;
+    bool acyclic;
+} ecs_relation_desc_t;
 
-/*
- * Declare a relation type. The generated struct contains ecs_entity_t target.
- *
- * Example:
- *   ECS_RELATION_DECLARE(Targets);
- *   ecs_set(entity, Targets, { target });
- */
-#define ECS_RELATION_DECLARE(name) ECS_COMPONENT_DECLARE(name, { ecs_entity_t target; })
+#define ECS_RELATION_DECLARE(name)                                                                \
+    extern ecs_relation_id_t ecs_rid(name);                                                       \
+    extern ecs_relation_desc_t ecs_rid(name##_desc)
 
-/* Builtin relation for parent/child relationships. */
+#define ECS_RELATION_DEFINE(name, ...)                                                            \
+    ecs_relation_desc_t ecs_rid(name##_desc) = __VA_ARGS__;                                       \
+    ecs_relation_id_t ecs_rid(name) = 0
+
+#define ECS_RELATION(name, ...)                                                                   \
+    ECS_RELATION_DECLARE(name);                                                                   \
+    ECS_RELATION_DEFINE(name, __VA_ARGS__)
+
+#define ECS_RELATION_REGISTER(name)                                                               \
+    ecs_relation_register(&ecs_rid(name), #name, &ecs_rid(name##_desc))
+
 ECS_RELATION_DECLARE(ChildOf);
+
+/* Register a runtime relation and return its world-local relation id. */
+SIECS_API ecs_relation_id_t ecs_relation_init(
+    const char *name,
+    const ecs_relation_desc_t *desc
+);
+/* Register a declared relation once and update its stable id storage. */
+SIECS_API ecs_relation_id_t ecs_relation_register(
+    ecs_relation_id_t *id,
+    const char *name,
+    const ecs_relation_desc_t *desc
+);
 
 #if SIECS_HAS_NAMES
 /* Builtin component for entity names; the world owns a copied value. */
@@ -676,6 +725,30 @@ SIECS_API bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
  * The target is made Abstract automatically.
  */
 SIECS_API void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
+
+#define ecs_relate(entity, relation, target)                                                       \
+    ecs_relate_id(entity, ecs_rid(relation), target)
+#define ecs_unrelate(entity, relation) ecs_unrelate_id(entity, ecs_rid(relation))
+#define ecs_has_relation(entity, relation) ecs_has_relation_id(entity, ecs_rid(relation))
+#define ecs_has_relation_to(entity, relation, target)                                              \
+    ecs_has_relation_to_id(entity, ecs_rid(relation), target)
+#define ecs_target(entity, relation) ecs_target_id(entity, ecs_rid(relation))
+
+/* Add or retarget one relation edge. In Debug, both entities must be alive. */
+SIECS_API void
+ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target);
+/* Remove one relation edge; this is a no-op when the source has no such edge. */
+SIECS_API void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation);
+/* Return whether the source has an edge for relation. */
+SIECS_API bool ecs_has_relation_id(ecs_entity_t entity, ecs_relation_id_t relation);
+/* Return whether the source edge has exactly target, including its generation. */
+SIECS_API bool ecs_has_relation_to_id(
+    ecs_entity_t entity,
+    ecs_relation_id_t relation,
+    ecs_entity_t target
+);
+/* Return the source edge target, or zero when absent. */
+SIECS_API ecs_entity_t ecs_target_id(ecs_entity_t entity, ecs_relation_id_t relation);
 
 /* Destroy an alive entity and remove all of its components. */
 SIECS_API void ecs_kill(ecs_entity_t entity);
@@ -1004,6 +1077,17 @@ SIECS_API uint32_t ecs_query_count(ecs_query_id_t query_id);
  * in the current batch.
  */
 SIECS_API bool ecs_iter_next(ecs_iter_t *it);
+/* Return a relation target for one row of the current iterator batch. */
+SIECS_API ecs_entity_t ecs_target_at_id(
+    const ecs_iter_t *it,
+    ecs_relation_id_t relation,
+    uint32_t row
+);
+#define ecs_target_at(it, relation, row) ecs_target_at_id(it, ecs_rid(relation), row)
+/* Return the contiguous target column for a Dense or ByDepth relation batch. */
+SIECS_API const ecs_entity_t *
+ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation);
+#define ecs_targets(it, relation) ecs_targets_id(it, ecs_rid(relation))
 
 /*
  * Return the component array for a read term in the current iterator batch.
