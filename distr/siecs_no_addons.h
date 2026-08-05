@@ -416,7 +416,14 @@ typedef struct {
     const void *trigger_data;
 } ecs_observer_event_t;
 
-/* Relation transition payload passed to relation observers. */
+/*
+ * Relation transition payload passed to EcsOnRelationSet and
+ * EcsOnRelationRemove observers.
+ *
+ * For a relation add, old_target is 0. For a retarget, both targets are live
+ * handles. For a removal, new_target is 0 and old_target is the previous
+ * target. The payload is borrowed and valid only during the callback.
+ */
 typedef struct {
     ecs_relation_id_t relation;
     ecs_entity_t old_target;
