@@ -1,32 +1,38 @@
 ---
 title: Observers and Events
-description: React to component lifecycle changes and custom events with observers in C and C++.
+description: React to component lifecycle changes, relation transitions, and custom events in C and C++.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Observers run callbacks when an event is emitted for an entity matching a query.
+Observers run callbacks when an event is emitted for an entity matching the
+observer query. They are indexed by event and matching table, so a relation
+filter can be used without scanning unrelated entities.
 
 ## Built-in events
 
-SIECS currently exposes three built-in events:
+| Event | Trigger | `trigger_data` |
+| --- | --- | --- |
+| `EcsOnAdd` | A component is added. | Pointer to the added component storage. |
+| `EcsOnRemove` | A component is removed. | Pointer to the component storage before removal. |
+| `EcsOnSet` | A component is set or replaced. | Pointer to the new value passed to `ecs_set()` or `ecs_set_cid()`. |
+| `EcsOnRelationSet` | A relation is added or retargeted. | Pointer to `ecs_relation_event_t`, after the transition. |
+| `EcsOnRelationRemove` | A relation is removed. | Pointer to `ecs_relation_event_t`, before the transition. |
 
-| Event | Trigger |
-| --- | --- |
-| `EcsOnAdd` | A component is added to an entity. |
-| `EcsOnRemove` | A component is removed from an entity. |
-| `EcsOnSet` | A component value is set with `ecs_set()` or `ecs_set_cid()`. |
+`EcsOnRelationSet` is emitted for an addition and for a retarget. Calling
+`ecs_relate()` with the current target is a no-op and emits no relation event.
+Deferred relation changes emit when the command buffer is flushed; multiple
+deferred changes to one relation are coalesced to the final target.
 
-## Create an observer
+## Observe a component
 
 <Tabs syncKey="language">
 <TabItem label="C">
 
 ```c
-#include <stdio.h>
-
 static void on_position_set(ecs_observer_event_t *event) {
     const Position *value = event->trigger_data;
-    printf("position.x = %f\n", value->x);
+    /* value is the new value; storage has not been overwritten yet. */
+    log_position(event->entity, value);
 }
 
 ecs_observer({
@@ -40,28 +46,21 @@ ecs_observer({
 <TabItem label="C++">
 
 ```cpp
-#include <iostream>
-
 ecs::observe<ecs::OnSet>().each([](const Position &position) {
-    std::cout << position.x << '\n';
+    log_position(position);
 });
 ```
 
 </TabItem>
 </Tabs>
 
-`callback` is required.
-
-The C++ observer callback receives typed component storage. Add an
-`ecs::observer_event` callback argument when the new `OnSet` value or callback
-context is required.
-
-Observer queries follow the same matching rules as normal queries. Entities with
-the built-in `Disabled` component do not trigger matching observers unless the
-observer query mentions `Disabled` explicitly:
+Observer queries follow normal component and relation matching rules. Entities
+with `Disabled` or `Abstract` are excluded by default; mention the component
+explicitly when an observer must include them.
 
 <Tabs syncKey="language">
 <TabItem label="C">
+
 ```c
 ecs_observer({
     .on = EcsOnSet,
@@ -71,51 +70,111 @@ ecs_observer({
     .callback = on_disabled_position_set,
 });
 ```
+
 </TabItem>
 <TabItem label="C++">
+
 ```cpp
 ecs::observe<ecs::OnSet>()
     .require<Disabled>()
     .each([](const Position &, const Disabled &) {});
 ```
+
 </TabItem>
 </Tabs>
 
-Observers are enabled by default. Use `ecs_observer_disable()` and
-`ecs_observer_enable()` to toggle an observer without unregistering it.
+Observers are enabled by default. `ecs_observer_disable()` and
+`ecs_observer_enable()` toggle an observer without unregistering it.
 
-Pass small callback context through `user_data` when needed:
+## Observe relation transitions
+
+The relation payload contains both sides of the transition:
+
+```c
+typedef struct {
+    ecs_relation_id_t relation;
+    ecs_entity_t old_target;
+    ecs_entity_t new_target;
+} ecs_relation_event_t;
+```
+
+The values are:
+
+| Operation | `old_target` | `new_target` |
+| --- | --- | --- |
+| Add | `0` | New target. |
+| Retarget | Previous target. | New target. |
+| Remove | Previous target. | `0`. |
+
+Use a relation query to observe one relation type:
 
 <Tabs syncKey="language">
 <TabItem label="C">
+
 ```c
+static void on_group_changed(ecs_observer_event_t *event) {
+    const ecs_relation_event_t *change = event->trigger_data;
+
+    if (event->event == EcsOnRelationSet) {
+        log_relation(event->entity, change->old_target, change->new_target);
+    } else {
+        log_relation(event->entity, change->old_target, 0);
+    }
+}
+
 ecs_observer({
-    .on = EcsOnSet,
-    .query.terms = { ecs_in(Position) },
-    .callback = on_position_set,
-    .user_data = (uintptr_t)counter_ptr,
+    .on = EcsOnRelationSet,
+    .query.relations = { ecs_rel(GroupOf) },
+    .callback = on_group_changed,
+});
+
+ecs_observer({
+    .on = EcsOnRelationRemove,
+    .query.relations = { ecs_rel(GroupOf) },
+    .callback = on_group_changed,
 });
 ```
+
 </TabItem>
 <TabItem label="C++">
+
 ```cpp
-uint32_t counter = 0;
-ecs::observe<ecs::OnSet>()
-    .user_data(&counter)
-    .each([](ecs::observer_event event, const Position &) {
-        auto *value = event.user_data<uint32_t>();
-        ++*value;
-    });
+struct GroupOf {};
+
+auto on_set = ecs::observe<ecs::OnRelationSet>();
+on_set.with_relation<GroupOf>();
+on_set.each([](ecs::observer_event event) {
+    const auto *change = event.trigger_data<ecs_relation_event_t>();
+    log_relation(change->old_target, change->new_target);
+});
+
+auto on_remove = ecs::observe<ecs::OnRelationRemove>();
+on_remove.with_relation<GroupOf>();
+on_remove.each([](ecs::observer_event event) {
+    const auto *change = event.trigger_data<ecs_relation_event_t>();
+    log_relation(change->old_target, 0);
+});
 ```
+
 </TabItem>
 </Tabs>
 
-## Event Payload
+Set observers match the entity's new relation table. Remove observers match
+the old relation table, like `EcsOnRemove` matches the component before it is
+removed. This means an exact `ecs_to()` filter can identify the old target for a
+remove event and the new target for a set event.
 
-The callback receives `ecs_observer_event_t`:
+The C++ wrapper provides `ecs::OnRelationSet` and `ecs::OnRelationRemove`.
+Relation data is read through `ecs::observer_event::trigger_data<T>()`, as
+shown in the C++ tab above.
 
-<Tabs syncKey="language">
-<TabItem label="C">
+`ecs::observer_event` and all `trigger_data` pointers are borrowed and valid
+only during the callback.
+
+## Callback context and event payloads
+
+The C callback receives:
+
 ```c
 typedef struct {
     ecs_entity_t entity;
@@ -124,57 +183,64 @@ typedef struct {
     const void *trigger_data;
 } ecs_observer_event_t;
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-#include <iostream>
 
-ecs::observe<ecs::OnSet>().each([](
-    ecs::observer_event event,
-    const Position &
-) {
-    std::cout << event.trigger_data<Position>()->x << '\n';
-});
-```
-</TabItem>
-</Tabs>
-
-`trigger_data` depends on the event:
-
-| Event | `trigger_data` |
-| --- | --- |
-| `EcsOnAdd` | Pointer to the added component storage. |
-| `EcsOnRemove` | Pointer to the component value before removal. |
-| `EcsOnSet` | Pointer to the new value passed to `ecs_set()` or `ecs_set_cid()`. |
-| Custom event | Pointer passed to `ecs_observer_trigger()`. |
-
-For `OnSet`, the stored component value has not been overwritten yet when hooks
-and observers run.
-
-Component hooks run before matching observers for the same operation.
-
-## Custom Events
-
-Create custom event ids with `ecs_event()`:
+Pass a small callback context through `user_data`:
 
 <Tabs syncKey="language">
 <TabItem label="C">
+
+```c
+ecs_observer({
+    .on = EcsOnSet,
+    .query.terms = { ecs_in(Position) },
+    .callback = on_position_set,
+    .user_data = (uintptr_t)counter_ptr,
+});
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+uint32_t counter = 0;
+
+ecs::observe<ecs::OnSet>()
+    .user_data(&counter)
+    .each([](ecs::observer_event event, const Position &) {
+        ++*event.user_data<uint32_t>();
+    });
+```
+
+</TabItem>
+</Tabs>
+
+In C++, use `user_data()` on `ecs::observer_event`. Component callbacks may
+also receive an `ecs::observer_event` argument when they need the entity,
+event id, or callback context.
+
+## Custom events
+
+Create a custom event id with `ecs_event()` and trigger it explicitly:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_event_t Damaged = ecs_event();
 
 ecs_observer({
     .on = Damaged,
-    .query = {
-        .terms = { ecs_in(Health) },
-    },
+    .query = { .terms = { ecs_in(Health) } },
     .callback = on_damaged,
 });
 
 Damage damage = { .amount = 10 };
 ecs_observer_trigger(entity, Damaged, &damage);
 ```
+
 </TabItem>
 <TabItem label="C++">
+
 ```cpp
 struct Damaged {};
 struct Damage { int amount; };
@@ -186,5 +252,10 @@ ecs::observe<Damaged>().each([](Health &health) {
 Damage damage{ .amount = 10 };
 ecs::trigger<Damaged>(entity, &damage);
 ```
+
 </TabItem>
 </Tabs>
+
+Custom events use the entity's current table when they are triggered. Their
+`trigger_data` is the pointer supplied to `ecs_observer_trigger()` or
+`ecs::trigger()`.

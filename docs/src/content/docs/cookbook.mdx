@@ -62,7 +62,7 @@ ecs::system("Move").each([](ecs::res<const Time> time,
 ```c
 ecs_entity_t parent = ecs_new();
 ecs_entity_t child = ecs_new();
-ecs_set(child, ChildOf, { parent });
+ecs_relate(child, ChildOf, parent);
 ```
 </TabItem>
 <TabItem label="C++">

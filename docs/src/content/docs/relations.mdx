@@ -1,98 +1,203 @@
 ---
 title: Relations
-description: Model entity relationships with relation components, targets, ChildOf hierarchies, and explicit lifecycle rules.
+description: Connect entities with typed relations, query their targets, and observe relation transitions.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Relations are components that store an entity target.
+Relations connect a source entity to one target entity. They use a separate
+relation id space and are changed with `ecs_relate()` and `ecs_unrelate()`, not
+with component `ecs_set()`.
 
-SIECS includes the built-in `ChildOf` relation:
+SIECS registers the built-in `ChildOf` relation during world initialization. It
+is acyclic, uses `ByDepth` storage, and deleting a parent deletes its sources.
 
 <Tabs syncKey="language">
 <TabItem label="C">
+
 ```c
-ecs_set(child, ChildOf, { .target = parent });
+ecs_relate(child, ChildOf, parent);
+ecs_entity_t parent = ecs_target(child, ChildOf);
+ecs_unrelate(child, ChildOf);
 ```
+
 </TabItem>
 <TabItem label="C++">
+
 ```cpp
 child.child_of(parent);
+auto current_parent = child.target<ChildOf>();
+child.unrelate<ChildOf>();
 ```
+
 </TabItem>
 </Tabs>
 
-The generated relation struct contains:
+## Register a custom relation
 
 <Tabs syncKey="language">
 <TabItem label="C">
+
 ```c
-typedef struct {
-    ecs_entity_t target;
-} ChildOf;
+ECS_RELATION_DECLARE(GroupOf);
+ECS_RELATION_DEFINE(GroupOf, {
+    .storage = EcsRelationByTarget,
+    .on_delete_target = EcsRemoveRelation,
+});
+
+ecs_init();
+ECS_RELATION_REGISTER(GroupOf);
+
+ecs_relate(member, GroupOf, group);
 ```
+
 </TabItem>
 <TabItem label="C++">
+
 ```cpp
-child.child_of(parent);
+struct GroupOf {};
+
+ecs::relation<GroupOf>({
+    .storage = EcsRelationByTarget,
+    .on_delete_target = EcsRemoveRelation,
+});
+
+auto member = ecs::entity::create().relate<GroupOf>(group);
 ```
+
 </TabItem>
 </Tabs>
 
-## Declare Custom Relations
+For runtime-created relations, use `ecs_relation_init()` with an
+`ecs_relation_desc_t`. A declared relation must be registered once per world
+with `ECS_RELATION_REGISTER()`.
 
-Declare and define a relation:
+## Storage modes
+
+Choose the storage mode according to how the relation is queried:
+
+| Storage | Use | Query support |
+| --- | --- | --- |
+| `EcsRelationDense` | The target is stored in a dense per-source column. | `ecs_rel`; `ecs_targets()` returns a contiguous target column. |
+| `EcsRelationByDepth` | Acyclic hierarchies where depth and cascade order matter. | `ecs_rel`, `ecs_depth`, `ecs_targets()`, and `ecs_cascade()`. |
+| `EcsRelationByTarget` | Many sources share a target and exact target queries are common. | `ecs_rel`, `ecs_to()`, and `ecs_up()`. |
+
+`EcsRelationByDepth` requires `.acyclic = true`. `ecs_to()` requires
+`ByTarget`; `ecs_depth()` and `ecs_cascade()` require `ByDepth`.
+
+The relation target is always an entity handle. It must be live when passed to
+`ecs_relate()`. Retargeting replaces the existing target for that relation;
+calling `ecs_relate()` with the current target is a no-op.
+
+## Inspect a relation
 
 <Tabs syncKey="language">
 <TabItem label="C">
+
 ```c
-ECS_RELATION_DECLARE(Targets);
-ECS_RELATION_DEFINE(Targets, 0);
-ECS_COMPONENT_REGISTER(Targets);
-ecs_set(entity, Targets, { .target = other_entity });
+if (ecs_has_relation(source, GroupOf)) {
+    ecs_entity_t target = ecs_target(source, GroupOf);
+    /* target includes its generation. */
+}
+
+if (ecs_has_relation_to(source, GroupOf, group)) {
+    /* source points exactly to group. */
+}
 ```
+
 </TabItem>
 <TabItem label="C++">
-```cpp
-struct Targets { ecs::entity target; };
 
-ecs::relation<Targets>(EcsRelationCascadeDelete);
-entity.set(Targets{ .target = other_entity });
+```cpp
+if (source.has_relation<GroupOf>()) {
+    auto target = source.target<GroupOf>();
+}
+
+if (source.target<GroupOf>().id() == group.id()) {
+    /* source points exactly to group. */
+}
 ```
+
 </TabItem>
 </Tabs>
 
-`ChildOf` is defined with `EcsRelationCascadeDelete`, so killing a parent also
-kills its children. Custom relations only remove reverse links by default unless
-they opt into that flag.
+Use the id-based variants when the relation id is dynamic:
+`ecs_has_relation_id()`, `ecs_has_relation_to_id()`, `ecs_target_id()`,
+`ecs_relate_id()`, and `ecs_unrelate_id()`.
 
-## Source Component
+## Query relations
 
-For every relation component, SIECS also creates an internal source component
-used to track reverse links.
+Relation terms are filters and do not create component fields:
 
 <Tabs syncKey="language">
 <TabItem label="C">
+
 ```c
-ecs_component_t source_id = ecs_source(Targets);
+ecs_query_id_t members = ecs_query({
+    .relations = { ecs_to(GroupOf, group) },
+});
 ```
+
 </TabItem>
 <TabItem label="C++">
+
 ```cpp
-ecs_component_t source_id = ecs::relation_source<Targets>();
+auto members = ecs::query().to<GroupOf>(group).build_handle();
 ```
+
 </TabItem>
 </Tabs>
 
-## Lifecycle
+The available terms are `ecs_rel()` for presence, `ecs_rel_opt()` for an
+optional relation, `ecs_not_rel()` for absence, `ecs_to()` for an exact
+`ByTarget` target, and `ecs_depth()` for a `ByDepth` depth. Use
+`ecs_target_at()` for one row or `ecs_targets()` for a contiguous `Dense` or
+`ByDepth` target column.
 
-When a relation target changes, SIECS removes the source entity from the old
-target reverse list and appends it to the new target reverse list. Removing the
-relation removes the reverse link.
+For C++, use `.with_relation<Relation>()`, `.to<Relation>(target)`,
+`.depth<Relation>(depth)`, and `.cascade<Relation>()` on `ecs::query`.
 
-When a target entity is killed:
+## Target deletion
 
-- relations without `EcsRelationCascadeDelete` remove the relation from sources
-- relations with `EcsRelationCascadeDelete` kill the source entities too
+The `on_delete_target` policy controls what happens when a target is killed:
 
-`ChildOf` uses cascade delete because child entities are considered owned by
-their parent.
+| Policy | Effect |
+| --- | --- |
+| `EcsRemoveRelation` | Remove the relation from every source. Sources remain alive. |
+| `EcsDeleteSources` | Kill every source that points to the target. |
+
+Removing or retargeting a relation also updates the runtime bookkeeping used by
+the relation storage. Relation transitions caused by target deletion emit the
+same relation observer events as explicit `ecs_unrelate()` calls.
+
+## Deferred relation changes
+
+Relation changes can be deferred while a system or an explicit defer scope is
+active:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_defer_begin();
+ecs_relate(source, GroupOf, first_group);
+ecs_relate(source, GroupOf, final_group);
+ecs_defer_end();
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+{
+    ecs_defer_begin();
+    source.relate<GroupOf>(first_group);
+    source.relate<GroupOf>(final_group);
+    ecs_defer_end();
+}
+```
+
+</TabItem>
+</Tabs>
+
+Multiple deferred changes to the same relation are coalesced to the final
+target before the command buffer is flushed.

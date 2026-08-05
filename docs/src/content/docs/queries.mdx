@@ -62,11 +62,27 @@ shared with an ancestor.
 Queries, systems, and observers exclude `Disabled` and `Abstract` by default.
 Mention either component explicitly when it must be included:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_query_id_t disabled = ecs_query({
     .terms = { ecs_in(Position), ecs_filter(Disabled) },
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto disabled = ecs::query()
+    .require<Position>()
+    .require<Disabled>()
+    .build_handle();
+```
+
+</TabItem>
+</Tabs>
 
 ## Relation terms
 
@@ -111,6 +127,9 @@ For a `Dense` or `ByDepth` relation, `ecs_targets()` returns the contiguous
 target column for the current batch. `ecs_target_at()` works for one row of any
 relation storage mode:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 while (ecs_iter_next(&it)) {
     for (uint32_t row = 0; row < it.count; row++) {
@@ -120,10 +139,36 @@ while (ecs_iter_next(&it)) {
 }
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto members = ecs::query().to<GroupOf>(group).build_handle();
+members.each([](ecs::entity member) {
+    auto target = member.target<GroupOf>();
+});
+```
+
+</TabItem>
+</Tabs>
+
 ## Hierarchies and ordering
 
 Use `is_a` to restrict matches to entities that inherit from a base entity. The
 match is transitive through the inheritance chain:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_query_id_t enemies = ecs_query({
+    .terms = { ecs_in(Position) },
+    .is_a = enemy_base,
+});
+```
+
+</TabItem>
+<TabItem label="C++">
 
 ```cpp
 auto enemies = ecs::query()
@@ -131,8 +176,14 @@ auto enemies = ecs::query()
     .require<Position>();
 ```
 
+</TabItem>
+</Tabs>
+
 `ecs_cascade(Relation)` orders matching tables by relation depth. It is valid
 only for an acyclic `ByDepth` relation:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_query_id_t hierarchy = ecs_query({
@@ -142,7 +193,18 @@ ecs_query_id_t hierarchy = ecs_query({
 });
 ```
 
-The C++ equivalent is `.cascade<ChildOf>()`.
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto hierarchy = ecs::query()
+    .with_relation<ChildOf>()
+    .cascade<ChildOf>()
+    .build_handle();
+```
+
+</TabItem>
+</Tabs>
 
 ## Iterate
 
@@ -188,12 +250,28 @@ entity in the batch or `NULL` for the entire batch.
 
 `ecs_query_each()` is useful for setup, tests, tools, and short one-off scans:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_query_each(it, i, ecs_in(Position)) {
     Position *positions = ecs_field(&it, 0);
     positions[i].x += 1.0f;
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto moving = ecs::query().require<Position>().build_handle();
+moving.each([](Position &position) {
+    position.x += 1.0f;
+});
+```
+
+</TabItem>
+</Tabs>
 
 The macro creates and destroys a temporary C query. Call `ecs_query_fini()` for
 an id returned by `ecs_query()` or `ecs_query_init()`:
@@ -205,12 +283,8 @@ ecs_query_fini(moving);
 In C++, `each()` and `first()` use temporary queries. `query_handle` is a
 move-only RAII owner for repeated iteration:
 
-```cpp
-auto moving = ecs::query().require<Position>().build_handle();
-moving.each([](Position &position) {
-    position.x += 1.0f;
-});
-```
+The C++ example above uses the same persistent query pattern through its
+move-only `query_handle`.
 
 Do not retain component or field pointers across an operation that can migrate
 an entity between tables. Query ids remain valid as tables are created and

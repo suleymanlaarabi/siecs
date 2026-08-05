@@ -22,7 +22,7 @@ are `ecs::entity`, `ecs::query`, `ecs::query_handle`, `ecs::system`,
 `ecs::resource_ref<T>`, `ecs::resource_hooks<T>`, and
 `ecs::component_hooks<T>`. Free functions in `ecs` mirror world lifecycle
 (`init`, `fini`, `quit`, `progress`, `run`, `run_phase`), registration
-(`component`, `relation`, `relation_source`, `component_requires`), resources
+(`component`, `relation`, `component_requires`), resources
 (`set_resource`, `resource`, `try_resource`, `has_resource`,
 `remove_resource`), modules (`import`, `module`), observers (`observe`,
 `event`, `trigger`), and systems (`run_system`, `enable_system`,
@@ -247,22 +247,46 @@ typedef enum {
     EcsInOutOptional,
     EcsFilter,
     EcsNot,
+    EcsInUp,
+    EcsInUpOptional,
 } ecs_term_access_t;
 
 typedef struct {
     ecs_component_t id;
-    ecs_term_access_t access;
+    uint32_t access;
 } ecs_query_term_t;
 
 typedef struct {
     ecs_query_term_t terms[ECS_QUERY_TERM_CAPACITY];
+    ecs_query_relation_term_t relations[ECS_QUERY_RELATION_CAPACITY];
+    ecs_query_order_t order;
     ecs_entity_t is_a;
 } ecs_query_desc_t;
 ```
 
+```c
+typedef enum {
+    EcsRelationRequired,
+    EcsRelationOptional,
+    EcsRelationExcluded,
+    EcsRelationTarget,
+    EcsRelationDepth,
+} ecs_query_relation_kind_t;
+
+typedef struct {
+    ecs_entity_t target;
+    ecs_relation_id_t id;
+    ecs_query_relation_kind_t kind;
+} ecs_query_relation_term_t;
+
+typedef struct {
+    ecs_relation_id_t relation;
+} ecs_query_order_t;
+```
+
 `is_a` restricts the query to entities that inherit from the given target. The
-match is transitive through the inheritance chain. A query must contain at
-least one term or an `is_a` target.
+match is transitive through the inheritance chain. Relation terms filter table
+matching and do not create component fields.
 
 ```c
 ecs_in(Component);
@@ -272,8 +296,14 @@ ecs_in_optional(Component);
 ecs_inout_optional(Component);
 ecs_filter(Component);
 ecs_not(Component);
-ecs_in_source(Component);
-ecs_not_source(Component);
+ecs_up(Component, Relation);
+ecs_up_optional(Component, Relation);
+ecs_rel(Relation);
+ecs_rel_opt(Relation);
+ecs_not_rel(Relation);
+ecs_to(Relation, target);
+ecs_depth(Relation, depth);
+ecs_cascade(Relation);
 ```
 
 `ecs_field()` returns `EcsIn`, `EcsOut`, `EcsInOut`, `EcsInOptional`, and
@@ -299,12 +329,19 @@ bool ecs_field_is_shared(ecs_iter_t *it, uint16_t field_index);
 
 `ecs_field_kind()` distinguishes owned, shared, and absent optional fields.
 
+`ecs_target_at()` returns a relation target for one row of the current batch.
+`ecs_targets()` returns a contiguous target column for `Dense` and `ByDepth`
+relations. `ecs_to()` is valid for `ByTarget` relations, while `ecs_depth()`
+and `ecs_cascade()` are valid for `ByDepth` relations.
+
 ## Observers
 
 ```c
 #define EcsOnAdd 0
 #define EcsOnRemove 1
 #define EcsOnSet 2
+#define EcsOnRelationSet 3
+#define EcsOnRelationRemove 4
 ```
 
 ```c
@@ -328,6 +365,12 @@ typedef struct {
     uintptr_t user_data;
     const void *trigger_data;
 } ecs_observer_event_t;
+
+typedef struct {
+    ecs_relation_id_t relation;
+    ecs_entity_t old_target;
+    ecs_entity_t new_target;
+} ecs_relation_event_t;
 ```
 
 ```c
@@ -340,7 +383,9 @@ typedef struct {
 ```
 
 Observers are enabled by default. Disabled observers stay registered but do not
-receive events.
+receive events. Relation set events carry `ecs_relation_event_t` after the
+transition; relation remove events carry it before the transition. For an add,
+`old_target` is zero; for a remove, `new_target` is zero.
 
 ## Modules
 
@@ -382,14 +427,29 @@ Enabling and disabling a module affects only captured systems and observers.
 
 ```c
 ECS_RELATION_DECLARE(Name);
-ECS_RELATION_DEFINE(Name, flags);
-ecs_source(Name);
-ecs_in_source(Name);
-ecs_not_source(Name);
+ECS_RELATION_DEFINE(Name, {
+    .storage = EcsRelationByTarget,
+    .on_delete_target = EcsRemoveRelation,
+});
+ECS_RELATION_REGISTER(Name);
+ecs_relate(source, Name, target);
+ecs_unrelate(source, Name);
+ecs_target(source, Name);
+```
+
+```c
+typedef enum { EcsRelationDense, EcsRelationByDepth, EcsRelationByTarget } ecs_relation_storage_t;
+typedef enum { EcsRemoveRelation, EcsDeleteSources } ecs_delete_target_t;
+
+typedef struct {
+    ecs_relation_storage_t storage;
+    ecs_delete_target_t on_delete_target;
+    bool acyclic;
+} ecs_relation_desc_t;
 ```
 
 `ChildOf` is declared by the public API and registered during world bootstrap.
-It uses `EcsRelationCascadeDelete`.
+It uses `EcsRelationByDepth`, is acyclic, and uses `EcsDeleteSources`.
 
 ## Systems
 
@@ -547,8 +607,8 @@ auto another = ecs::instantiate(prototype);
 ```
 
 `child_of(parent)` assigns the built-in `ChildOf` relation. Register custom
-relation types with `ecs::relation<T>(flags)` and retrieve their internal source
-id with `ecs::relation_source<T>()`.
+relation types with `ecs::relation<T>(desc)`. Use `relate<T>()`, `unrelate<T>()`,
+`has_relation<T>()`, and `target<T>()` to mutate and inspect them.
 
 ### Queries
 
@@ -564,7 +624,9 @@ auto first = ecs::query().require<Position>().first();
 ```
 
 The builder also provides `optional<T>()`, `is_a(target)`, `build()`, and
-`build_handle()`. A
+`build_handle()`. Relation filters use `with_relation<T>()`, `to<T>(target)`,
+`depth<T>(value)`, and `cascade<T>()`. Inherited fields use `up<Component,
+Relation>()`. A
 callback can receive `ecs::entity` as its first argument. `each()` and `first()`
 are one-shot operations; they create and destroy the underlying C query. A
 `query_handle` owns a persistent query id and releases it automatically:
@@ -628,8 +690,9 @@ time.remove();
 
 ### Observers and events
 
-Built-in events use `ecs::OnAdd`, `ecs::OnRemove`, and `ecs::OnSet`. Custom events
-are represented by an empty C++ type:
+Built-in events use `ecs::OnAdd`, `ecs::OnRemove`, `ecs::OnSet`,
+`ecs::OnRelationSet`, and `ecs::OnRelationRemove`. Custom events are represented
+by an empty C++ type:
 
 ```cpp
 struct Damaged {};
@@ -644,8 +707,20 @@ ecs::trigger<Damaged>(entity);
 `ecs::event<T>()` returns the custom event id associated with `T`; `observe<T>()`
 and `trigger<T>()` use that id automatically.
 
-Observer callbacks must be stateless and must receive at least one component
-argument. They may also receive `ecs::entity` first and `ecs::res<T>` resource
+Observer callbacks must be stateless. Component observers normally receive at
+least one component argument. Relation observers may receive only
+`ecs::observer_event` and use `with_relation<T>()` to filter the relation type:
+
+```cpp
+auto changed = ecs::observe<ecs::OnRelationSet>();
+changed.with_relation<GroupOf>();
+changed.each([](ecs::observer_event event) {
+    auto *change = event.trigger_data<ecs_relation_event_t>();
+    log_relation(change->old_target, change->new_target);
+});
+```
+
+Callbacks may also receive `ecs::entity` first and `ecs::res<T>` resource
 arguments. Add `ecs::observer_event` as the first callback argument to access
 `target()`, `id()`, `user_data()`, and typed `trigger_data<T>()`.
 
