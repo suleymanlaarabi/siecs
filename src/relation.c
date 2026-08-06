@@ -125,6 +125,27 @@ static void ecs_emit_relation_event(
     ecs_emit(table, entity, event, &relation_event);
 }
 
+static void ecs_relation_set_dense(
+    ecs_entity_t entity,
+    ecs_component_t component,
+    ecs_table_t *table,
+    uint16_t column,
+    ecs_entity_t target
+) {
+    const ecs_component_record_t *crec = ecs_component_index_get(component);
+    RelationTarget value = { .target = target };
+    ecs_entity_record_t *record = ecs_get_record(entity);
+    RelationTarget *current = ecs_table_component_at_column(table, column, record->table_row);
+
+    ecs_defer_begin();
+    if (crec->on_set) {
+        crec->on_set(entity, component, &value, current);
+    }
+    ecs_emit(table, entity, EcsOnSet, &value);
+    current->target = value.target;
+    ecs_defer_end();
+}
+
 #ifndef NDEBUG
 static bool
 ecs_relation_would_cycle(ecs_entity_t source, ecs_relation_id_t relation, ecs_entity_t target) {
@@ -226,7 +247,7 @@ static void ecs_relation_set_depth(
     const ecs_component_record_t *component = ecs_component_index_get(relation_record->component);
     RelationTarget value = { .target = target };
     component->on_set(entity, relation_record->component, &value, current);
-    *current = value;
+    current->target = value.target;
     ecs_relation_update_children_depth(entity, relation, depth);
 }
 
@@ -241,14 +262,43 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
         "cyclic relation\n"
     );
 
-    ecs_entity_t old_target = ecs_target_id(entity, relation);
+    ecs_entity_t old_target;
+    ecs_entity_record_t *entity_record = NULL;
+    ecs_table_t *entity_table = NULL;
+    uint16_t relation_column = UINT16_MAX;
+    if (record->storage == EcsRelationDense) {
+        entity_record = ecs_get_record(entity);
+        entity_table = ecs_get_table(entity_record->table_id);
+        relation_column = ecs_table_column_or_invalid(entity_table, record->component);
+    }
+
+    if (relation_column != UINT16_MAX) {
+        const RelationTarget *current = ecs_table_component_at_column(
+            entity_table,
+            relation_column,
+            entity_record->table_row
+        );
+        old_target = current->target;
+    } else {
+        old_target = ecs_target_id(entity, relation);
+    }
     if (old_target == target) {
         return;
     }
 
     if (record->storage == EcsRelationDense) {
-        RelationTarget value = { .target = target };
-        ecs_set_cid(entity, record->component, &value);
+        if (relation_column != UINT16_MAX) {
+            ecs_relation_set_dense(
+                entity,
+                record->component,
+                entity_table,
+                relation_column,
+                target
+            );
+        } else {
+            RelationTarget value = { .target = target };
+            ecs_set_cid(entity, record->component, &value);
+        }
     } else if (record->storage == EcsRelationByDepth) {
         ecs_relation_set_depth(entity, relation, record, target, old_target != 0);
     } else {

@@ -10,7 +10,8 @@ static bool should_run_bench(const char *scope, const char *bench_name) {
     }
 
     size_t scope_length = strlen(scope);
-    return strncmp(scope, bench_name, scope_length) == 0 && bench_name[scope_length] == '_';
+    return strcmp(scope, bench_name) == 0 ||
+           (strncmp(scope, bench_name, scope_length) == 0 && bench_name[scope_length] == '_');
 }
 
 #define run_scoped_bench(scope, id)                                                                \
@@ -601,6 +602,24 @@ BENCH_SETUP(relation_dense_retarget, {
     free(entities);
 });
 
+BENCH_SETUP(relation_dense_retarget_one_source, {
+    arg(iter_count, 1000000);
+
+    ecs_relation_id_t relation = ecs_relation_init("BenchRetargetOne", &(ecs_relation_desc_t){
+        .storage = EcsRelationDense,
+        .on_delete_target = EcsRemoveRelation,
+    });
+    ecs_entity_t targets[] = { ecs_new(), ecs_new() };
+    ecs_entity_t entity = ecs_new();
+    ecs_relate_id(entity, relation, targets[0]);
+
+    BENCH({
+        for (uint32_t i = 0; i < iter_count; i++) {
+            ecs_relate_id(entity, relation, targets[(i + 1) & 1]);
+        }
+    });
+});
+
 BENCH_SETUP(relation_bytarget_retarget, {
     arg(entity_count, 10000);
     arg(iter_count, 20);
@@ -788,6 +807,7 @@ int main(int argc, char *argv[]) {
     run_scoped_bench(scope, relation_dense_scan_targets);
     run_scoped_bench(scope, relation_plain_create_kill);
     run_scoped_bench(scope, relation_dense_retarget);
+    run_scoped_bench(scope, relation_dense_retarget_one_source);
     run_scoped_bench(scope, relation_bytarget_retarget);
     run_scoped_bench(scope, relation_bydepth_retarget);
     run_scoped_bench(scope, relation_bydepth_cascade);

@@ -84,6 +84,49 @@ void childof_dense_retarget_without_migration(void) {
     ecs_fini();
 }
 
+void childof_dense_retarget_keeps_reverse_sources(void) {
+    ecs_init();
+    ECS_RELATION_REGISTER(DenseRel);
+
+    ecs_entity_t a = ecs_new();
+    ecs_entity_t b = ecs_new();
+    ecs_entity_t sources[64];
+    ecs_component_t source_component = ecs_relation_record(ecs_rid(DenseRel))->component + 1;
+
+    for (uint32_t i = 0; i < 64; i++) {
+        sources[i] = ecs_new();
+        ecs_relate(sources[i], DenseRel, a);
+    }
+
+    for (uint32_t i = 0; i < 64; i++) {
+        ecs_relate(sources[i], DenseRel, b);
+    }
+
+    test_null(ecs_try_get_cid(a, source_component));
+    RelationSource *b_sources = ecs_get_cid(b, source_component);
+    test_uint(64, b_sources->entities.size);
+
+    for (uint32_t i = 0; i < 64; i += 2) {
+        ecs_relate(sources[i], DenseRel, a);
+    }
+
+    RelationSource *a_sources = ecs_get_cid(a, source_component);
+    b_sources = ecs_get_cid(b, source_component);
+    test_uint(32, a_sources->entities.size);
+    test_uint(32, b_sources->entities.size);
+    for (uint32_t i = 0; i < 64; i++) {
+        test_uint(i % 2 == 0 ? a : b, ecs_target(sources[i], DenseRel));
+    }
+
+    ecs_kill(a);
+    ecs_kill(b);
+    for (uint32_t i = 0; i < 64; i++) {
+        test_false(ecs_has_relation(sources[i], DenseRel));
+    }
+
+    ecs_fini();
+}
+
 void childof_dense_delete_policies(void) {
     ecs_init();
     ECS_RELATION_REGISTER(DenseRel);

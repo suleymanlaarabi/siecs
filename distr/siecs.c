@@ -5070,6 +5070,7 @@ extern ecs_world_t ecs_world;
 
 typedef struct {
     ecs_entity_t target;
+    uint32_t source_index;
 } RelationTarget;
 
 typedef struct {
@@ -5949,22 +5950,46 @@ void RelationOnSet(
 
     if (old_target_data->target) {
         RelationSource *source = ecs_get_cid(old_target_data->target, source_component);
+        uint32_t index = old_target_data->source_index;
+        uint32_t last = source->entities.size - 1;
+        if (index >= source->entities.size ||
+            *sicore_vec_get(&source->entities, index, ecs_entity_t) != entity) {
+            index = 0;
+            sicore_vec_iter(&source->entities, ecs_entity_t, current, {
+                if (*current == entity) {
+                    break;
+                }
+                index++;
+            });
+            ecs_assert(index < source->entities.size, "relation source index is invalid\n");
+        }
 
-        sicore_vec_remove_u64(&source->entities, entity);
+        if (index != last) {
+            ecs_entity_t moved = *sicore_vec_get(&source->entities, last, ecs_entity_t);
+            *sicore_vec_get_mut(&source->entities, index, ecs_entity_t) = moved;
+            RelationTarget *moved_data = ecs_get_cid(moved, target_component);
+            moved_data->source_index = index;
+        }
+        sicore_vec_remove_last(&source->entities);
         if (source->entities.size == 0) {
             ecs_remove_cid(old_target_data->target, source_component);
         }
     }
 
+    uint32_t source_index;
     if (ecs_has_cid(target_data->target, source_component)) {
         RelationSource *source_data = ecs_get_cid(target_data->target, source_component);
+        source_index = source_data->entities.size;
         sicore_vec_push_u64(&source_data->entities, entity);
     } else {
         RelationSource source_data = {0};
         sicore_vec_init(&source_data.entities, sizeof(ecs_entity_t));
         sicore_vec_push_u64(&source_data.entities, entity);
         ecs_set_cid(target_data->target, source_component, &source_data);
+        source_index = 0;
     }
+
+    ((RelationTarget *)current_value)->source_index = source_index;
 }
 
 void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
@@ -5977,7 +6002,28 @@ void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr)
         return;
     }
 
-    sicore_vec_remove_u64(&target_source_data->entities, entity);
+    uint32_t index = target_data->source_index;
+    uint32_t last = target_source_data->entities.size - 1;
+    if (index >= target_source_data->entities.size ||
+        *sicore_vec_get(&target_source_data->entities, index, ecs_entity_t) != entity) {
+        index = 0;
+        sicore_vec_iter(&target_source_data->entities, ecs_entity_t, current, {
+            if (*current == entity) {
+                break;
+            }
+            index++;
+        });
+        ecs_assert(index < target_source_data->entities.size, "relation source index is invalid\n");
+    }
+
+    if (index != last) {
+        ecs_entity_t moved =
+            *sicore_vec_get(&target_source_data->entities, last, ecs_entity_t);
+        *sicore_vec_get_mut(&target_source_data->entities, index, ecs_entity_t) = moved;
+        RelationTarget *moved_data = ecs_get_cid(moved, component - 1);
+        moved_data->source_index = index;
+    }
+    sicore_vec_remove_last(&target_source_data->entities);
 
     if (target_source_data->entities.size == 0) {
         ecs_remove_cid(target_data->target, source_component);
@@ -6368,7 +6414,11 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
         crec->on_set(entity, cid, data, dst);
     }
     ecs_emit(table, entity, EcsOnSet, data);
-    ecs_component_value_copy(crec, dst, data, 1);
+    if (crec->relation_flags & EcsComponentRelationTarget) {
+        ((RelationTarget *)dst)->target = ((const RelationTarget *)data)->target;
+    } else {
+        ecs_component_value_copy(crec, dst, data, 1);
+    }
     ecs_defer_end();
 }
 
@@ -6400,7 +6450,9 @@ void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
         crec->on_set(entity, cid, data, dst);
     }
     ecs_emit(table, entity, EcsOnSet, data);
-    if (had_value || crec->ops.ctor) {
+    if (crec->relation_flags & EcsComponentRelationTarget) {
+        ((RelationTarget *)dst)->target = ((const RelationTarget *)data)->target;
+    } else if (had_value || crec->ops.ctor) {
         ecs_component_value_move(crec, dst, data, 1);
     } else {
         ecs_component_value_move_ctor(crec, dst, data, 1);
@@ -7181,6 +7233,27 @@ static void ecs_emit_relation_event(
     ecs_emit(table, entity, event, &relation_event);
 }
 
+static void ecs_relation_set_dense(
+    ecs_entity_t entity,
+    ecs_component_t component,
+    ecs_table_t *table,
+    uint16_t column,
+    ecs_entity_t target
+) {
+    const ecs_component_record_t *crec = ecs_component_index_get(component);
+    RelationTarget value = { .target = target };
+    ecs_entity_record_t *record = ecs_get_record(entity);
+    RelationTarget *current = ecs_table_component_at_column(table, column, record->table_row);
+
+    ecs_defer_begin();
+    if (crec->on_set) {
+        crec->on_set(entity, component, &value, current);
+    }
+    ecs_emit(table, entity, EcsOnSet, &value);
+    current->target = value.target;
+    ecs_defer_end();
+}
+
 #ifndef NDEBUG
 static bool
 ecs_relation_would_cycle(ecs_entity_t source, ecs_relation_id_t relation, ecs_entity_t target) {
@@ -7282,7 +7355,7 @@ static void ecs_relation_set_depth(
     const ecs_component_record_t *component = ecs_component_index_get(relation_record->component);
     RelationTarget value = { .target = target };
     component->on_set(entity, relation_record->component, &value, current);
-    *current = value;
+    current->target = value.target;
     ecs_relation_update_children_depth(entity, relation, depth);
 }
 
@@ -7297,14 +7370,43 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
         "cyclic relation\n"
     );
 
-    ecs_entity_t old_target = ecs_target_id(entity, relation);
+    ecs_entity_t old_target;
+    ecs_entity_record_t *entity_record = NULL;
+    ecs_table_t *entity_table = NULL;
+    uint16_t relation_column = UINT16_MAX;
+    if (record->storage == EcsRelationDense) {
+        entity_record = ecs_get_record(entity);
+        entity_table = ecs_get_table(entity_record->table_id);
+        relation_column = ecs_table_column_or_invalid(entity_table, record->component);
+    }
+
+    if (relation_column != UINT16_MAX) {
+        const RelationTarget *current = ecs_table_component_at_column(
+            entity_table,
+            relation_column,
+            entity_record->table_row
+        );
+        old_target = current->target;
+    } else {
+        old_target = ecs_target_id(entity, relation);
+    }
     if (old_target == target) {
         return;
     }
 
     if (record->storage == EcsRelationDense) {
-        RelationTarget value = { .target = target };
-        ecs_set_cid(entity, record->component, &value);
+        if (relation_column != UINT16_MAX) {
+            ecs_relation_set_dense(
+                entity,
+                record->component,
+                entity_table,
+                relation_column,
+                target
+            );
+        } else {
+            RelationTarget value = { .target = target };
+            ecs_set_cid(entity, record->component, &value);
+        }
     } else if (record->storage == EcsRelationByDepth) {
         ecs_relation_set_depth(entity, relation, record, target, old_target != 0);
     } else {

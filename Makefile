@@ -2,7 +2,7 @@ BAKE_HOME = $(shell bake env | sed -n 's/^BAKE_HOME=//p')
 DEPS_INCLUDE = -I$(BAKE_HOME)/include
 QUIET_BAKE = grep -Ev '^\[[[:space:]]*(test|build|run|runall|[0-9]+%)|^cmd:|^path:'
 
-.PHONY: clean bench bench-query bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-release test-rest test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release act-ci act-docs act
+.PHONY: clean bench bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-release test-rest test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release act-ci act-docs act
 
 ACT ?= act
 ACT_PLATFORM ?= ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
@@ -18,6 +18,9 @@ bench:
 
 bench-query:
 	$(call run-bench,-- query)
+
+bench-relation:
+	$(call run-bench,-- relation)
 
 bench-migrate:
 	$(call run-bench,-- migrate)

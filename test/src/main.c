@@ -64,6 +64,7 @@ void resource_hooks(void);
 // Testsuite 'childof'
 void childof_kill_parent(void);
 void childof_dense_retarget_without_migration(void);
+void childof_dense_retarget_keeps_reverse_sources(void);
 void childof_dense_delete_policies(void);
 void childof_bydepth_depth_and_cascade(void);
 void childof_bydepth_reparent_updates_subtree(void);
@@ -337,6 +338,10 @@ bake_test_case childof_testcases[] = {
     {
         "dense_retarget_without_migration",
         childof_dense_retarget_without_migration
+    },
+    {
+        "dense_retarget_keeps_reverse_sources",
+        childof_dense_retarget_keeps_reverse_sources
     },
     {
         "dense_delete_policies",
@@ -642,7 +647,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        19,
+        20,
         childof_testcases
     },
     {

@@ -88,6 +88,7 @@
         "testcases": [
           "kill_parent",
           "dense_retarget_without_migration",
+          "dense_retarget_keeps_reverse_sources",
           "dense_delete_policies",
           "bydepth_depth_and_cascade",
           "bydepth_reparent_updates_subtree",
