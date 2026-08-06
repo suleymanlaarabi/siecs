@@ -297,7 +297,7 @@ void childof_multiple_bytarget_relations_share_one_type(void) {
     ecs_relate(source, LocatedIn, location);
 
     const ecs_table_t *table = ecs_get_table(ecs_get_record(source)->table_id);
-    test_int(2, table->type.relation_count);
+    test_int(2, table->type.pair_count);
     test_uint(group, ecs_target(source, GroupOf));
     test_uint(location, ecs_target(source, LocatedIn));
     ecs_query_id_t query = ecs_query({
@@ -509,8 +509,9 @@ void childof_relation_observer_events(void) {
 
 void childof_type_layout_stays_compact(void) {
     test_int(24, sizeof(ecs_type_t));
-    test_int(8, sizeof(ecs_relation_t));
+    test_int(16, sizeof(ecs_type_pair_t));
     test_int(32, sizeof(ecs_query_t));
+    test_int(16, sizeof(ecs_query_type_filter_t));
     test_int(80, sizeof(ecs_query_cache_t));
     test_int(16, sizeof(ecs_relation_record_t));
 }

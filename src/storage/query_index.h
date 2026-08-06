@@ -18,13 +18,25 @@ typedef struct {
 } ecs_query_t;
 
 typedef struct {
-    uint16_t relation_count;
+    uint16_t filter_count;
     ecs_relation_id_t cascade;
     uint32_t reserved;
-} ecs_query_relation_meta_t;
+} ecs_query_type_filter_meta_t;
 
-#define ECS_QUERY_HAS_RELATIONS UINT16_C(0x8000)
+#define ECS_QUERY_HAS_TYPE_FILTERS UINT16_C(0x8000)
 #define ECS_QUERY_UP_MASK UINT16_C(0x7fff)
+
+typedef enum {
+    EcsQueryFilterRequired,
+    EcsQueryFilterExcluded,
+    EcsQueryFilterExact,
+} ecs_query_filter_op_t;
+
+typedef struct {
+    uint64_t value;
+    uint16_t id;
+    uint8_t op;
+} ecs_query_type_filter_t;
 
 static inline ecs_term_access_t ecs_query_term_access(ecs_query_term_t term) {
     return (ecs_term_access_t)((uint32_t)term.access & UINT32_C(0xff));
@@ -34,16 +46,16 @@ static inline ecs_relation_id_t ecs_query_term_source_relation(ecs_query_term_t 
     return (ecs_relation_id_t)((uint32_t)term.access >> 8);
 }
 
-static inline ecs_query_relation_meta_t *ecs_query_relation_meta(const ecs_query_t *query) {
+static inline ecs_query_type_filter_meta_t *ecs_query_type_filter_meta(const ecs_query_t *query) {
     uintptr_t end = (uintptr_t)(query->terms + query->term_count);
-    return (ecs_query_relation_meta_t *)(
-        (end + _Alignof(ecs_query_relation_meta_t) - 1) &
-        ~(uintptr_t)(_Alignof(ecs_query_relation_meta_t) - 1)
+    return (ecs_query_type_filter_meta_t *)(
+        (end + _Alignof(ecs_query_type_filter_meta_t) - 1) &
+        ~(uintptr_t)(_Alignof(ecs_query_type_filter_meta_t) - 1)
     );
 }
 
-static inline ecs_query_relation_term_t *ecs_query_relations(const ecs_query_t *query) {
-    return (ecs_query_relation_term_t *)(ecs_query_relation_meta(query) + 1);
+static inline ecs_query_type_filter_t *ecs_query_type_filters(const ecs_query_t *query) {
+    return (ecs_query_type_filter_t *)(ecs_query_type_filter_meta(query) + 1);
 }
 
 typedef struct ecs_query_cache_s {

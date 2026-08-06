@@ -5,87 +5,72 @@
 #include <string.h>
 
 typedef struct {
-    uint32_t target_index;
-    uint16_t target_generation;
-    uint16_t relation_id;
-} ecs_relation_t;
+    uint16_t key;
+    uint64_t value;
+} ecs_type_pair_t;
 
 typedef struct {
     uint16_t *ids;
     uint16_t component_count;
-    uint16_t relation_count;
+    uint16_t pair_count;
     uint32_t hash;
     ecs_entity_t base;
 } ecs_type_t;
 
-ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
-ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
-ecs_type_t ecs_type_with_ids(const ecs_type_t *type, const uint16_t *ids, uint16_t count);
-ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
-ecs_type_t ecs_type_with_relation(
+ecs_type_t ecs_type_with(
     const ecs_type_t *type,
-    uint16_t relation_id,
-    ecs_entity_t target
+    ecs_component_t component,
+    ecs_type_pair_t pair
 );
-ecs_type_t ecs_type_without_relation(const ecs_type_t *type, uint16_t relation_id);
-ecs_type_t ecs_type_with_component_relation(
-    const ecs_type_t *type,
-    uint16_t component,
-    uint16_t relation_id,
-    ecs_entity_t target
-);
-ecs_type_t ecs_type_without_component_relation(
+ecs_type_t ecs_type_without(
     const ecs_type_t *type,
     uint16_t component_index,
-    uint16_t relation_id
+    uint16_t pair_key
 );
+ecs_type_t ecs_type_with_ids(const ecs_type_t *type, const uint16_t *ids, uint16_t count);
+ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
 
-static inline ecs_entity_t ecs_relation_key_target(const ecs_relation_t *key) {
-    return ((ecs_entity_t)key->target_index << 32) | key->target_generation;
-}
-
-static inline void ecs_relation_key_set_target(ecs_relation_t *key, ecs_entity_t target) {
-    key->target_index = (uint32_t)(target >> 32);
-    key->target_generation = (uint16_t)target;
-}
-
-static inline ecs_relation_t *ecs_type_relations(const ecs_type_t *type) {
+static inline ecs_type_pair_t *ecs_type_pairs(const ecs_type_t *type) {
     uintptr_t end = (uintptr_t)type->ids +
                     (uintptr_t)type->component_count * sizeof(uint16_t);
-    return (ecs_relation_t *)((end + _Alignof(ecs_relation_t) - 1) &
-                              ~(uintptr_t)(_Alignof(ecs_relation_t) - 1));
+    return (ecs_type_pair_t *)((end + _Alignof(ecs_type_pair_t) - 1) &
+                               ~(uintptr_t)(_Alignof(ecs_type_pair_t) - 1));
 }
 
-static inline uint16_t ecs_type_relation_index(const ecs_type_t *type, uint16_t relation_id) {
-    const ecs_relation_t *relations = ecs_type_relations(type);
-    for (uint16_t i = 0; i < type->relation_count; i++) {
-        if (relations[i].relation_id >= relation_id) {
-            return relations[i].relation_id == relation_id ? i : UINT16_MAX;
+static inline uint16_t ecs_type_pair_index(const ecs_type_t *type, uint16_t key) {
+    const ecs_type_pair_t *pairs = ecs_type_pairs(type);
+    for (uint16_t i = 0; i < type->pair_count; i++) {
+        if (pairs[i].key >= key) {
+            return pairs[i].key == key ? i : UINT16_MAX;
         }
     }
     return UINT16_MAX;
 }
 
+static inline uint64_t ecs_type_pair_get(const ecs_type_t *type, uint16_t key) {
+    uint16_t index = ecs_type_pair_index(type, key);
+    return index == UINT16_MAX ? 0 : ecs_type_pairs(type)[index].value;
+}
+
 uint64_t ecs_type_bloom(const ecs_type_t *type);
-
-
 void ecs_type_fini(ecs_type_t *type);
 
 static inline int ecs_type_equals(const ecs_type_t *a, const ecs_type_t *b) {
-    if (a->base != b->base)
+    if (a->base != b->base || a->component_count != b->component_count ||
+        a->pair_count != b->pair_count) {
         return 0;
-    if (a->component_count != b->component_count || a->relation_count != b->relation_count)
-        return 0;
+    }
     if (a->component_count &&
-        memcmp(a->ids, b->ids, (size_t)a->component_count * sizeof(uint16_t)) != 0)
+        memcmp(a->ids, b->ids, (size_t)a->component_count * sizeof(uint16_t)) != 0) {
         return 0;
-    if (a->relation_count &&
-        memcmp(
-            ecs_type_relations(a),
-            ecs_type_relations(b),
-            (size_t)a->relation_count * sizeof(ecs_relation_t)
-        ) != 0)
-        return 0;
+    }
+    const ecs_type_pair_t *ap = ecs_type_pairs(a);
+    const ecs_type_pair_t *bp = ecs_type_pairs(b);
+    for (uint16_t i = 0; i < a->pair_count; i++) {
+        if (ap[i].key != bp[i].key || ap[i].value != bp[i].value) {
+            return 0;
+        }
+    }
     return 1;
 }
 

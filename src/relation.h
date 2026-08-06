@@ -35,6 +35,5 @@ ecs_component_t ecs_component_register_relation_internal(
 
 ecs_entity_t
 ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relation, uint32_t row);
-uint32_t ecs_relation_table_depth(const ecs_table_t *table, ecs_relation_id_t relation);
 
 #endif

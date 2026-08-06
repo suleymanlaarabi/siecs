@@ -608,86 +608,72 @@ static inline uint16_t ecs_id_map_at_or_invalid(const ecs_id_map_t *map, uint16_
 #include <string.h>
 
 typedef struct {
-    uint32_t target_index;
-    uint16_t target_generation;
-    uint16_t relation_id;
-} ecs_relation_t;
+    uint16_t key;
+    uint64_t value;
+} ecs_type_pair_t;
 
 typedef struct {
     uint16_t *ids;
     uint16_t component_count;
-    uint16_t relation_count;
+    uint16_t pair_count;
     uint32_t hash;
     ecs_entity_t base;
 } ecs_type_t;
 
-ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id);
-ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index);
-ecs_type_t ecs_type_with_ids(const ecs_type_t *type, const uint16_t *ids, uint16_t count);
-ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
-ecs_type_t ecs_type_with_relation(
+ecs_type_t ecs_type_with(
     const ecs_type_t *type,
-    uint16_t relation_id,
-    ecs_entity_t target
+    ecs_component_t component,
+    ecs_type_pair_t pair
 );
-ecs_type_t ecs_type_without_relation(const ecs_type_t *type, uint16_t relation_id);
-ecs_type_t ecs_type_with_component_relation(
-    const ecs_type_t *type,
-    uint16_t component,
-    uint16_t relation_id,
-    ecs_entity_t target
-);
-ecs_type_t ecs_type_without_component_relation(
+ecs_type_t ecs_type_without(
     const ecs_type_t *type,
     uint16_t component_index,
-    uint16_t relation_id
+    uint16_t pair_key
 );
+ecs_type_t ecs_type_with_ids(const ecs_type_t *type, const uint16_t *ids, uint16_t count);
+ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
 
-static inline ecs_entity_t ecs_relation_key_target(const ecs_relation_t *key) {
-    return ((ecs_entity_t)key->target_index << 32) | key->target_generation;
-}
-
-static inline void ecs_relation_key_set_target(ecs_relation_t *key, ecs_entity_t target) {
-    key->target_index = (uint32_t)(target >> 32);
-    key->target_generation = (uint16_t)target;
-}
-
-static inline ecs_relation_t *ecs_type_relations(const ecs_type_t *type) {
+static inline ecs_type_pair_t *ecs_type_pairs(const ecs_type_t *type) {
     uintptr_t end = (uintptr_t)type->ids +
                     (uintptr_t)type->component_count * sizeof(uint16_t);
-    return (ecs_relation_t *)((end + _Alignof(ecs_relation_t) - 1) &
-                              ~(uintptr_t)(_Alignof(ecs_relation_t) - 1));
+    return (ecs_type_pair_t *)((end + _Alignof(ecs_type_pair_t) - 1) &
+                               ~(uintptr_t)(_Alignof(ecs_type_pair_t) - 1));
 }
 
-static inline uint16_t ecs_type_relation_index(const ecs_type_t *type, uint16_t relation_id) {
-    const ecs_relation_t *relations = ecs_type_relations(type);
-    for (uint16_t i = 0; i < type->relation_count; i++) {
-        if (relations[i].relation_id >= relation_id) {
-            return relations[i].relation_id == relation_id ? i : UINT16_MAX;
+static inline uint16_t ecs_type_pair_index(const ecs_type_t *type, uint16_t key) {
+    const ecs_type_pair_t *pairs = ecs_type_pairs(type);
+    for (uint16_t i = 0; i < type->pair_count; i++) {
+        if (pairs[i].key >= key) {
+            return pairs[i].key == key ? i : UINT16_MAX;
         }
     }
     return UINT16_MAX;
 }
 
-uint64_t ecs_type_bloom(const ecs_type_t *type);
+static inline uint64_t ecs_type_pair_get(const ecs_type_t *type, uint16_t key) {
+    uint16_t index = ecs_type_pair_index(type, key);
+    return index == UINT16_MAX ? 0 : ecs_type_pairs(type)[index].value;
+}
 
+uint64_t ecs_type_bloom(const ecs_type_t *type);
 void ecs_type_fini(ecs_type_t *type);
 
 static inline int ecs_type_equals(const ecs_type_t *a, const ecs_type_t *b) {
-    if (a->base != b->base)
+    if (a->base != b->base || a->component_count != b->component_count ||
+        a->pair_count != b->pair_count) {
         return 0;
-    if (a->component_count != b->component_count || a->relation_count != b->relation_count)
-        return 0;
+    }
     if (a->component_count &&
-        memcmp(a->ids, b->ids, (size_t)a->component_count * sizeof(uint16_t)) != 0)
+        memcmp(a->ids, b->ids, (size_t)a->component_count * sizeof(uint16_t)) != 0) {
         return 0;
-    if (a->relation_count &&
-        memcmp(
-            ecs_type_relations(a),
-            ecs_type_relations(b),
-            (size_t)a->relation_count * sizeof(ecs_relation_t)
-        ) != 0)
-        return 0;
+    }
+    const ecs_type_pair_t *ap = ecs_type_pairs(a);
+    const ecs_type_pair_t *bp = ecs_type_pairs(b);
+    for (uint16_t i = 0; i < a->pair_count; i++) {
+        if (ap[i].key != bp[i].key || ap[i].value != bp[i].value) {
+            return 0;
+        }
+    }
     return 1;
 }
 
@@ -783,18 +769,18 @@ typedef struct {
 } ecs_type_slot_t;
 
 typedef struct {
-    ecs_entity_t target;
+    uint64_t value;
     uint16_t *tables;
-    ecs_relation_id_t relation;
+    uint16_t key;
     uint16_t table_count;
     uint16_t table_capacity;
     uint16_t first_table;
-} ecs_relation_table_slot_t;
+} ecs_pair_table_slot_t;
 
 typedef struct {
     const uint16_t *ids;
     uint16_t count;
-} ecs_relation_tables_t;
+} ecs_pair_tables_t;
 
 typedef struct {
     ecs_table_t *tables;
@@ -802,9 +788,9 @@ typedef struct {
     uint16_t table_count;
     uint16_t table_capacity;
     uint8_t slot_shift; // slot_count = 1 << slot_shift
-    ecs_relation_table_slot_t *relation_slots;
-    uint32_t relation_slot_count;
-    uint8_t relation_slot_shift;
+    ecs_pair_table_slot_t *pair_slots;
+    uint32_t pair_slot_count;
+    uint8_t pair_slot_shift;
 } ecs_table_index_t;
 
 void ecs_table_index_init();
@@ -815,8 +801,7 @@ void ecs_table_index_fini();
 uint16_t ecs_table_index_get_or_create(
     ecs_type_t type
 );
-ecs_relation_tables_t
-ecs_table_index_relation_tables(ecs_relation_id_t relation, ecs_entity_t target);
+ecs_pair_tables_t ecs_table_index_pair_tables(uint16_t key, uint64_t value);
 
 #endif
 
@@ -1115,13 +1100,25 @@ typedef struct {
 } ecs_query_t;
 
 typedef struct {
-    uint16_t relation_count;
+    uint16_t filter_count;
     ecs_relation_id_t cascade;
     uint32_t reserved;
-} ecs_query_relation_meta_t;
+} ecs_query_type_filter_meta_t;
 
-#define ECS_QUERY_HAS_RELATIONS UINT16_C(0x8000)
+#define ECS_QUERY_HAS_TYPE_FILTERS UINT16_C(0x8000)
 #define ECS_QUERY_UP_MASK UINT16_C(0x7fff)
+
+typedef enum {
+    EcsQueryFilterRequired,
+    EcsQueryFilterExcluded,
+    EcsQueryFilterExact,
+} ecs_query_filter_op_t;
+
+typedef struct {
+    uint64_t value;
+    uint16_t id;
+    uint8_t op;
+} ecs_query_type_filter_t;
 
 static inline ecs_term_access_t ecs_query_term_access(ecs_query_term_t term) {
     return (ecs_term_access_t)((uint32_t)term.access & UINT32_C(0xff));
@@ -1131,16 +1128,16 @@ static inline ecs_relation_id_t ecs_query_term_source_relation(ecs_query_term_t 
     return (ecs_relation_id_t)((uint32_t)term.access >> 8);
 }
 
-static inline ecs_query_relation_meta_t *ecs_query_relation_meta(const ecs_query_t *query) {
+static inline ecs_query_type_filter_meta_t *ecs_query_type_filter_meta(const ecs_query_t *query) {
     uintptr_t end = (uintptr_t)(query->terms + query->term_count);
-    return (ecs_query_relation_meta_t *)(
-        (end + _Alignof(ecs_query_relation_meta_t) - 1) &
-        ~(uintptr_t)(_Alignof(ecs_query_relation_meta_t) - 1)
+    return (ecs_query_type_filter_meta_t *)(
+        (end + _Alignof(ecs_query_type_filter_meta_t) - 1) &
+        ~(uintptr_t)(_Alignof(ecs_query_type_filter_meta_t) - 1)
     );
 }
 
-static inline ecs_query_relation_term_t *ecs_query_relations(const ecs_query_t *query) {
-    return (ecs_query_relation_term_t *)(ecs_query_relation_meta(query) + 1);
+static inline ecs_query_type_filter_t *ecs_query_type_filters(const ecs_query_t *query) {
+    return (ecs_query_type_filter_t *)(ecs_query_type_filter_meta(query) + 1);
 }
 
 typedef struct ecs_query_cache_s {
@@ -1354,7 +1351,6 @@ ecs_component_t ecs_component_register_relation_internal(
 
 ecs_entity_t
 ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relation, uint32_t row);
-uint32_t ecs_relation_table_depth(const ecs_table_t *table, ecs_relation_id_t relation);
 
 #endif
 
@@ -2429,7 +2425,11 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
 
     if (crec->required_count == 0) {
         if (edge == UINT16_MAX) {
-            ecs_type_t new_type = ecs_type_with_add(&table->type, cid);
+            ecs_type_t new_type = ecs_type_with(
+                &table->type,
+                cid,
+                (ecs_type_pair_t){ 0 }
+            );
             edge = ecs_table_index_get_or_create(new_type);
 
             table = ecs_get_table(from_id);
@@ -2503,7 +2503,7 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
 
     uint16_t new_table_id = table->cls[col_idx].remove_edge;
     if (new_table_id == UINT16_MAX) {
-        ecs_type_t new_type = ecs_type_with_remove_at(&table->type, col_idx);
+        ecs_type_t new_type = ecs_type_without(&table->type, col_idx, 0);
         new_table_id = ecs_table_index_get_or_create(new_type);
         table = ecs_get_table(from_id);
         table->cls[col_idx].remove_edge = new_table_id;
@@ -3336,18 +3336,11 @@ ecs_relation_id_t ecs_relation_init(const char *name, const ecs_relation_desc_t 
     return ecs_relation_register(&id, name, desc);
 }
 
-static ecs_entity_t
-ecs_relation_table_target(const ecs_table_t *table, ecs_relation_id_t relation) {
-    uint16_t index = ecs_type_relation_index(&table->type, relation);
-    return index == UINT16_MAX ? 0
-                               : ecs_relation_key_target(&ecs_type_relations(&table->type)[index]);
-}
-
 ecs_entity_t
 ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relation, uint32_t row) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     if (record->storage == EcsRelationByTarget) {
-        return ecs_relation_table_target(table, relation);
+        return ecs_type_pair_get(&table->type, relation);
     }
     uint16_t column = ecs_table_column_or_invalid(table, record->component);
     if (column == UINT16_MAX) {
@@ -3355,16 +3348,6 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
     }
     const RelationTarget *value = ecs_table_component_at_column(table, column, row);
     return value->target;
-}
-
-uint32_t ecs_relation_table_depth(const ecs_table_t *table, ecs_relation_id_t relation) {
-    return (uint32_t)ecs_relation_table_target(table, relation);
-}
-
-static uint32_t ecs_relation_depth(ecs_entity_t entity, ecs_relation_id_t relation) {
-    const ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    const ecs_table_t *table = ecs_get_table(entity_record->table_id);
-    return (uint32_t)ecs_relation_table_target(table, relation);
 }
 
 static void ecs_emit_relation_event(
@@ -3397,16 +3380,47 @@ ecs_relation_would_cycle(ecs_entity_t source, ecs_relation_id_t relation, ecs_en
 }
 #endif
 
-static void
-ecs_relation_migrate_depth(ecs_entity_t entity, ecs_relation_id_t relation, uint32_t depth) {
+static ecs_table_t *ecs_relation_set_pair(
+    ecs_entity_t entity,
+    ecs_component_t component,
+    uint16_t key,
+    uint64_t value
+) {
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
     uint16_t from_id = entity_record->table_id;
     ecs_table_t *from = ecs_get_table(from_id);
-    ecs_type_t type = ecs_type_with_relation(&from->type, relation, depth);
+    ecs_type_t type = ecs_type_with(
+        &from->type,
+        component,
+        (ecs_type_pair_t){ .key = key, .value = value }
+    );
     uint16_t to_id = ecs_table_index_get_or_create(type);
     if (to_id != from_id) {
         from = ecs_get_table(from_id);
+        if (component) {
+            ecs_migrate_to_table(entity_record, entity, from, to_id);
+        } else {
+            ecs_migrate_same_layout(entity_record, entity, from, to_id);
+        }
+    }
+    return ecs_get_table(entity_record->table_id);
+}
+
+static void ecs_relation_remove_pair(
+    ecs_entity_t entity,
+    uint16_t component_at,
+    uint16_t key
+) {
+    ecs_entity_record_t *entity_record = ecs_get_record(entity);
+    uint16_t from_id = entity_record->table_id;
+    ecs_table_t *from = ecs_get_table(from_id);
+    ecs_type_t type = ecs_type_without(&from->type, component_at, key);
+    uint16_t to_id = ecs_table_index_get_or_create(type);
+    from = ecs_get_table(from_id);
+    if (component_at == UINT16_MAX) {
         ecs_migrate_same_layout(entity_record, entity, from, to_id);
+    } else {
+        ecs_migrate_to_table(entity_record, entity, from, to_id);
     }
 }
 
@@ -3421,85 +3435,41 @@ static void ecs_relation_update_children_depth(
     for (uint32_t i = 0; i < count; i++) {
         source = ecs_get_cid(parent, record->component + 1);
         ecs_entity_t child = *sicore_vec_get(&source->entities, i, ecs_entity_t);
-        ecs_relation_migrate_depth(child, relation, parent_depth + 1);
+        ecs_relation_set_pair(child, 0, relation, parent_depth + 1);
         ecs_relation_update_children_depth(child, relation, parent_depth + 1);
     }
-}
-
-static void ecs_relation_set_dense(
-    ecs_entity_t entity,
-    const ecs_relation_record_t *record,
-    ecs_entity_t target
-) {
-    RelationTarget value = { .target = target };
-    ecs_set_cid(entity, record->component, &value);
 }
 
 static void ecs_relation_set_depth(
     ecs_entity_t entity,
     ecs_relation_id_t relation,
     const ecs_relation_record_t *relation_record,
-    ecs_entity_t target
+    ecs_entity_t target,
+    bool had_relation
 ) {
-    ecs_entity_t old_target = ecs_target_id(entity, relation);
-    if (old_target == target) {
-        return;
-    }
-    uint32_t depth = ecs_relation_depth(target, relation) + 1;
+    const ecs_entity_record_t *target_record = ecs_get_record(target);
+    uint32_t depth = (uint32_t)ecs_type_pair_get(
+                         &ecs_get_table(target_record->table_id)->type,
+                         relation
+                     ) +
+                     1;
+    ecs_table_t *table = ecs_relation_set_pair(
+        entity,
+        had_relation ? 0 : relation_record->component,
+        relation,
+        depth
+    );
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    uint16_t from_id = entity_record->table_id;
-    ecs_table_t *from = ecs_get_table(from_id);
-    bool had_relation = ecs_table_column_or_invalid(from, relation_record->component) != UINT16_MAX;
-
-    ecs_type_t type;
-    if (had_relation) {
-        type = ecs_type_with_relation(&from->type, relation, depth);
-    } else {
-        type = ecs_type_with_component_relation(
-            &from->type,
-            relation_record->component,
-            relation,
-            depth
-        );
-    }
-    uint16_t to_id = ecs_table_index_get_or_create(type);
-    if (to_id != from_id) {
-        from = ecs_get_table(from_id);
-        if (had_relation) {
-            ecs_migrate_same_layout(entity_record, entity, from, to_id);
-        } else {
-            ecs_migrate_to_table(entity_record, entity, from, to_id);
-        }
-    }
-
-    ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
     RelationTarget *current = ecs_table_get_component(
         table,
         relation_record->component,
-        ecs_get_record(entity)->table_row
+        entity_record->table_row
     );
     const ecs_component_record_t *component = ecs_component_index_get(relation_record->component);
     RelationTarget value = { .target = target };
     component->on_set(entity, relation_record->component, &value, current);
     *current = value;
     ecs_relation_update_children_depth(entity, relation, depth);
-}
-
-static void
-ecs_relation_set_target(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
-    const ecs_relation_record_t *record = ecs_relation_record(relation);
-    if (!ecs_has_cid_owned(target, record->component)) {
-        ecs_add_cid_now(target, record->component);
-    }
-    ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    uint16_t from_id = entity_record->table_id;
-    ecs_table_t *from = ecs_get_table(from_id);
-    ecs_type_t type = ecs_type_with_relation(&from->type, relation, target);
-    uint16_t to_id = ecs_table_index_get_or_create(type);
-    if (to_id != from_id) {
-        from = ecs_get_table(from_id);
-        ecs_migrate_same_layout(entity_record, entity, from, to_id);
-    }
 }
 
 void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
@@ -3513,18 +3483,21 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
         "cyclic relation\n"
     );
 
-    bool had_relation = ecs_has_relation_id(entity, relation);
-    ecs_entity_t old_target = had_relation ? ecs_target_id(entity, relation) : 0;
-    if (had_relation && old_target == target) {
+    ecs_entity_t old_target = ecs_target_id(entity, relation);
+    if (old_target == target) {
         return;
     }
 
     if (record->storage == EcsRelationDense) {
-        ecs_relation_set_dense(entity, record, target);
+        RelationTarget value = { .target = target };
+        ecs_set_cid(entity, record->component, &value);
     } else if (record->storage == EcsRelationByDepth) {
-        ecs_relation_set_depth(entity, relation, record, target);
+        ecs_relation_set_depth(entity, relation, record, target, old_target != 0);
     } else {
-        ecs_relation_set_target(entity, relation, target);
+        if (!ecs_has_cid_owned(target, record->component)) {
+            ecs_add_cid_now(target, record->component);
+        }
+        ecs_relation_set_pair(entity, 0, relation, target);
     }
 
     ecs_emit_relation_event(entity, relation, EcsOnRelationSet, old_target, target);
@@ -3547,10 +3520,6 @@ static void ecs_relation_remove_depth(
     uint16_t from_id = entity_record->table_id;
     ecs_table_t *from = ecs_get_table(from_id);
     uint16_t column = ecs_table_column_or_invalid(from, relation_record->component);
-    if (column == UINT16_MAX) {
-        return;
-    }
-
     RelationTarget *value = ecs_table_component_at_column(from, column, entity_record->table_row);
     ecs_component_index_get(relation_record->component)
         ->on_remove(entity, relation_record->component, value);
@@ -3559,37 +3528,19 @@ static void ecs_relation_remove_depth(
     from_id = entity_record->table_id;
     from = ecs_get_table(from_id);
     column = ecs_table_column_or_invalid(from, relation_record->component);
-    ecs_type_t type = ecs_type_without_component_relation(&from->type, column, relation);
-    uint16_t to_id = ecs_table_index_get_or_create(type);
-    from = ecs_get_table(from_id);
-    ecs_migrate_to_table(entity_record, entity, from, to_id);
+    ecs_relation_remove_pair(entity, column, relation);
     ecs_relation_update_children_depth(entity, relation, 0);
-}
-
-static void ecs_relation_remove_target(ecs_entity_t entity, ecs_relation_id_t relation) {
-    ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    uint16_t from_id = entity_record->table_id;
-    ecs_table_t *from = ecs_get_table(from_id);
-    if (ecs_type_relation_index(&from->type, relation) == UINT16_MAX) {
-        return;
-    }
-    ecs_type_t type = ecs_type_without_relation(&from->type, relation);
-    uint16_t to_id = ecs_table_index_get_or_create(type);
-    from = ecs_get_table(from_id);
-    ecs_migrate_same_layout(entity_record, entity, from, to_id);
 }
 
 void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
-    bool had_relation = ecs_has_relation_id(entity, relation);
-    if (!had_relation) {
+    ecs_entity_t old_target = ecs_target_id(entity, relation);
+    if (!old_target) {
         return;
     }
-    ecs_entity_t old_target = ecs_target_id(entity, relation);
     ecs_emit_relation_event(entity, relation, EcsOnRelationRemove, old_target, 0);
-    if (!ecs_is_alive(entity) || !ecs_has_relation_id(entity, relation) ||
-        ecs_target_id(entity, relation) != old_target) {
+    if (!ecs_is_alive(entity) || ecs_target_id(entity, relation) != old_target) {
         return;
     }
 
@@ -3599,7 +3550,7 @@ void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
     } else if (record->storage == EcsRelationByDepth) {
         ecs_relation_remove_depth(entity, relation, record);
     } else {
-        ecs_relation_remove_target(entity, relation);
+        ecs_relation_remove_pair(entity, UINT16_MAX, relation);
     }
 }
 
@@ -3617,7 +3568,7 @@ bool ecs_has_relation_id(ecs_entity_t entity, ecs_relation_id_t relation) {
     if (record->storage != EcsRelationByTarget) {
         return ecs_table_column_or_invalid(table, record->component) != UINT16_MAX;
     }
-    return ecs_type_relation_index(&table->type, relation) != UINT16_MAX;
+    return ecs_type_pair_index(&table->type, relation) != UINT16_MAX;
 }
 
 ecs_entity_t ecs_target_id(ecs_entity_t entity, ecs_relation_id_t relation) {
@@ -3635,7 +3586,7 @@ void ecs_relation_target_on_remove(ecs_entity_t target, ecs_component_t componen
     ecs_relation_id_t relation =
         ECS_COMPONENT_RELATION_ID(ecs_component_index_get(component)->relation_flags);
     const ecs_relation_record_t *record = ecs_relation_record(relation);
-    ecs_relation_tables_t tables = ecs_table_index_relation_tables(relation, target);
+    ecs_pair_tables_t tables = ecs_table_index_pair_tables(relation, target);
     if (!tables.count) {
         return;
     }
@@ -4273,20 +4224,21 @@ void ecs_migrate_remove(
     ecs_table_finish_migration(record, entity, from_table, old_row, to_table_id, new_row);
 }
 
-static size_t ecs_type_relations_offset(uint16_t count) {
+static size_t ecs_type_pairs_offset(uint16_t count) {
     size_t end = (size_t)count * sizeof(uint16_t);
-    return (end + _Alignof(ecs_relation_t) - 1) & ~(size_t)(_Alignof(ecs_relation_t) - 1);
+    return (end + _Alignof(ecs_type_pair_t) - 1) &
+           ~(size_t)(_Alignof(ecs_type_pair_t) - 1);
 }
 
-static ecs_type_t ecs_type_alloc(const ecs_type_t *type, int components, int relations) {
+static ecs_type_t ecs_type_alloc(const ecs_type_t *type, int components, int pairs) {
     uint16_t component_count = (uint16_t)(type->component_count + components);
-    uint16_t relation_count = (uint16_t)(type->relation_count + relations);
-    size_t bytes = ecs_type_relations_offset(component_count) +
-                   (size_t)relation_count * sizeof(ecs_relation_t);
+    uint16_t pair_count = (uint16_t)(type->pair_count + pairs);
+    size_t bytes = ecs_type_pairs_offset(component_count) +
+                   (size_t)pair_count * sizeof(ecs_type_pair_t);
     return (ecs_type_t){
         .ids = bytes ? malloc(bytes) : NULL,
         .component_count = component_count,
-        .relation_count = relation_count,
+        .pair_count = pair_count,
         .base = type->base,
     };
 }
@@ -4296,13 +4248,19 @@ static void ecs_type_copy_ids(
     const ecs_type_t *src,
     uint16_t at,
     int delta,
-    uint16_t id
+    ecs_component_t component
 ) {
+    if (!component && !delta) {
+        if (src->component_count) {
+            memcpy(dst->ids, src->ids, (size_t)src->component_count * sizeof(uint16_t));
+        }
+        return;
+    }
     if (at) {
         memcpy(dst->ids, src->ids, (size_t)at * sizeof(uint16_t));
     }
     if (delta > 0) {
-        dst->ids[at] = id;
+        dst->ids[at] = component;
     }
     uint16_t from = (uint16_t)(at + (delta < 0));
     uint16_t to = (uint16_t)(at + (delta > 0));
@@ -4315,62 +4273,77 @@ static void ecs_type_copy_ids(
     }
 }
 
-static void ecs_type_copy_relations(
+static void ecs_type_copy_pairs(
     ecs_type_t *dst,
     const ecs_type_t *src,
     uint16_t at,
     int delta,
-    uint16_t relation,
-    ecs_entity_t target
+    ecs_type_pair_t pair
 ) {
-    const ecs_relation_t *old = ecs_type_relations(src);
-    ecs_relation_t *keys = ecs_type_relations(dst);
+    const ecs_type_pair_t *old = ecs_type_pairs(src);
+    ecs_type_pair_t *out = ecs_type_pairs(dst);
+    if (!pair.key && !delta) {
+        if (src->pair_count) {
+            memcpy(out, old, (size_t)src->pair_count * sizeof(ecs_type_pair_t));
+        }
+        return;
+    }
     if (at) {
-        memcpy(keys, old, (size_t)at * sizeof(*keys));
+        memcpy(out, old, (size_t)at * sizeof(ecs_type_pair_t));
     }
-    if (delta > 0) {
-        keys[at] = (ecs_relation_t){ .relation_id = relation };
-        ecs_relation_key_set_target(&keys[at], target);
+    if (delta >= 0 && pair.key) {
+        out[at] = pair;
     }
-    uint16_t from = (uint16_t)(at + (delta < 0));
-    uint16_t to = (uint16_t)(at + (delta > 0));
-    if (from < src->relation_count) {
-        memcpy(
-            keys + to,
-            old + from,
-            (size_t)(src->relation_count - from) * sizeof(*keys)
-        );
+    uint16_t from = (uint16_t)(at + (delta <= 0));
+    uint16_t to = (uint16_t)(at + (delta >= 0));
+    if (from < src->pair_count) {
+        memcpy(out + to, old + from, (size_t)(src->pair_count - from) * sizeof(ecs_type_pair_t));
     }
 }
 
-static void ecs_type_copy(
-    ecs_type_t *dst,
-    const ecs_type_t *src,
-    uint16_t component_at,
-    int component_delta,
-    uint16_t relation_at,
-    int relation_delta,
-    uint16_t component,
-    uint16_t relation,
-    ecs_entity_t target
+ecs_type_t ecs_type_with(
+    const ecs_type_t *type,
+    ecs_component_t component,
+    ecs_type_pair_t pair
 ) {
-    ecs_type_copy_ids(dst, src, component_at, component_delta, component);
-    ecs_type_copy_relations(dst, src, relation_at, relation_delta, relation, target);
-}
-
-ecs_type_t ecs_type_with_add(const ecs_type_t *type, uint16_t id) {
-    uint16_t at = 0;
-    while (at < type->component_count && type->ids[at] < id) {
-        at++;
+    uint16_t component_at = 0;
+    while (component_at < type->component_count && type->ids[component_at] < component) {
+        component_at++;
     }
-    ecs_type_t out = ecs_type_alloc(type, 1, 0);
-    ecs_type_copy(&out, type, at, 1, 0, 0, id, 0, 0);
+
+    uint16_t pair_at = 0;
+    int pair_delta = 0;
+    if (pair.key) {
+        const ecs_type_pair_t *pairs = ecs_type_pairs(type);
+        while (pair_at < type->pair_count && pairs[pair_at].key < pair.key) {
+            pair_at++;
+        }
+        pair_delta = pair_at == type->pair_count || pairs[pair_at].key != pair.key;
+    }
+
+    ecs_type_t out = ecs_type_alloc(type, component != 0, pair_delta);
+    ecs_type_copy_ids(&out, type, component_at, component != 0, component);
+    ecs_type_copy_pairs(&out, type, pair_at, pair_delta, pair);
     return out;
 }
 
-ecs_type_t ecs_type_with_remove_at(const ecs_type_t *type, uint16_t index) {
-    ecs_type_t out = ecs_type_alloc(type, -1, 0);
-    ecs_type_copy(&out, type, index, -1, 0, 0, 0, 0, 0);
+ecs_type_t ecs_type_without(
+    const ecs_type_t *type,
+    uint16_t component_at,
+    uint16_t pair_key
+) {
+    int component_delta = component_at != UINT16_MAX ? -1 : 0;
+    int pair_delta = pair_key ? -1 : 0;
+    uint16_t pair_at = pair_key ? ecs_type_pair_index(type, pair_key) : 0;
+    ecs_type_t out = ecs_type_alloc(type, component_delta, pair_delta);
+    ecs_type_copy_ids(&out, type, component_at, component_delta, 0);
+    ecs_type_copy_pairs(
+        &out,
+        type,
+        pair_at,
+        pair_delta,
+        (ecs_type_pair_t){ .key = pair_key }
+    );
     return out;
 }
 
@@ -4379,79 +4352,13 @@ ecs_type_t ecs_type_with_ids(const ecs_type_t *type, const uint16_t *ids, uint16
     if (count) {
         memcpy(out.ids, ids, (size_t)count * sizeof(uint16_t));
     }
-    ecs_type_copy_relations(&out, type, 0, 0, 0, 0);
+    ecs_type_copy_pairs(&out, type, 0, 0, (ecs_type_pair_t){ 0 });
     return out;
 }
 
 ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base) {
-    ecs_type_t out = ecs_type_alloc(type, 0, 0);
+    ecs_type_t out = ecs_type_with_ids(type, type->ids, type->component_count);
     out.base = base;
-    ecs_type_copy(&out, type, 0, 0, 0, 0, 0, 0, 0);
-    return out;
-}
-
-ecs_type_t ecs_type_with_relation(
-    const ecs_type_t *type,
-    uint16_t relation,
-    ecs_entity_t target
-) {
-    uint16_t at = ecs_type_relation_index(type, relation);
-    int delta = 0;
-    if (at == UINT16_MAX) {
-        const ecs_relation_t *keys = ecs_type_relations(type);
-        at = 0;
-        while (at < type->relation_count && keys[at].relation_id < relation) {
-            at++;
-        }
-        delta = 1;
-    }
-    ecs_type_t out = ecs_type_alloc(type, 0, delta);
-    ecs_type_copy(&out, type, 0, 0, at, delta, 0, relation, target);
-    if (!delta) {
-        ecs_relation_key_set_target(&ecs_type_relations(&out)[at], target);
-    }
-    return out;
-}
-
-ecs_type_t ecs_type_without_relation(const ecs_type_t *type, uint16_t relation) {
-    uint16_t at = ecs_type_relation_index(type, relation);
-    if (at == UINT16_MAX) {
-        return ecs_type_with_base(type, type->base);
-    }
-    ecs_type_t out = ecs_type_alloc(type, 0, -1);
-    ecs_type_copy(&out, type, 0, 0, at, -1, 0, 0, 0);
-    return out;
-}
-
-ecs_type_t ecs_type_with_component_relation(
-    const ecs_type_t *type,
-    uint16_t component,
-    uint16_t relation,
-    ecs_entity_t target
-) {
-    uint16_t component_at = 0;
-    while (component_at < type->component_count && type->ids[component_at] < component) {
-        component_at++;
-    }
-    const ecs_relation_t *keys = ecs_type_relations(type);
-    uint16_t relation_at = 0;
-    while (relation_at < type->relation_count && keys[relation_at].relation_id < relation) {
-        relation_at++;
-    }
-    ecs_type_t out = ecs_type_alloc(type, 1, 1);
-    ecs_type_copy(&out, type, component_at, 1, relation_at, 1, component, relation, target);
-    return out;
-}
-
-ecs_type_t ecs_type_without_component_relation(
-    const ecs_type_t *type,
-    uint16_t component_at,
-    uint16_t relation
-) {
-    ecs_type_t out = ecs_type_alloc(type, -1, -1);
-    ecs_type_copy(
-        &out, type, component_at, -1, ecs_type_relation_index(type, relation), -1, 0, 0, 0
-    );
     return out;
 }
 
@@ -4950,14 +4857,6 @@ static uint16_t ecs_query_count_terms(const ecs_query_term_t *terms, uint32_t *a
     return i;
 }
 
-static uint16_t ecs_query_count_relation_terms(const ecs_query_relation_term_t *terms) {
-    uint16_t i = 0;
-    while (terms[i].id) {
-        i++;
-    }
-    return i;
-}
-
 static bool ecs_query_has_component(
     const ecs_query_term_t *terms,
     uint16_t count,
@@ -5070,22 +4969,33 @@ static ecs_component_t ecs_query_build(
     uint32_t access_bits;
     uint16_t explicit_count = ecs_query_count_terms(desc->terms, &access_bits);
     const bool has_up = access_bits >> 8;
-    const uint16_t relation_count = desc->relations[0].id
-                                        ? ecs_query_count_relation_terms(desc->relations)
-                                        : 0;
+    uint16_t relation_count = 0;
+    while (desc->relations[relation_count].id) {
+        relation_count++;
+    }
     uint16_t translated_count = 0;
-    uint16_t special_count = 0;
+    uint16_t filter_count = 0;
     for (uint16_t i = 0; i < relation_count; i++) {
         ecs_query_relation_term_t term = desc->relations[i];
         const ecs_relation_record_t *record = ecs_relation_record(term.id);
         if (record->storage != EcsRelationByTarget &&
             (term.kind == EcsRelationRequired || term.kind == EcsRelationExcluded)) {
             translated_count++;
-        } else if (term.kind != EcsRelationOptional) {
-            special_count++;
+        } else {
+            filter_count += term.kind != EcsRelationOptional;
         }
     }
-    const bool has_relation_meta = special_count || desc->order.relation;
+    bool has_meta = filter_count || desc->order.relation;
+
+#ifndef NDEBUG
+    ecs_query_validate_relations(desc->relations, relation_count);
+    if (desc->order.relation) {
+        ecs_assert(
+            ecs_relation_record(desc->order.relation)->storage == EcsRelationByDepth,
+            "ecs_cascade requires ByDepth\n"
+        );
+    }
+#endif
 
     const ecs_component_t excludes[] = { ecs_id(Disabled), ecs_id(Abstract) };
     uint16_t exclude_count = 0;
@@ -5095,11 +5005,11 @@ static ecs_component_t ecs_query_build(
     }
     query->term_count = explicit_count + exclude_count + translated_count;
     size_t bytes = (size_t)query->term_count * sizeof(ecs_query_term_t);
-    if (has_relation_meta) {
-        bytes = (bytes + _Alignof(ecs_query_relation_meta_t) - 1) &
-                ~(size_t)(_Alignof(ecs_query_relation_meta_t) - 1);
-        bytes += sizeof(ecs_query_relation_meta_t) +
-                 (size_t)special_count * sizeof(ecs_query_relation_term_t);
+    if (has_meta) {
+        bytes = (bytes + _Alignof(ecs_query_type_filter_meta_t) - 1) &
+                ~(size_t)(_Alignof(ecs_query_type_filter_meta_t) - 1);
+        bytes += sizeof(ecs_query_type_filter_meta_t) +
+                 (size_t)filter_count * sizeof(ecs_query_type_filter_t);
     }
     if (*terms_capacity < bytes) {
         query->terms = realloc(query->terms, bytes);
@@ -5129,90 +5039,68 @@ static ecs_component_t ecs_query_build(
     ecs_query_validate_terms(query->terms, query->term_count);
 #endif
 
-    query->is_a = desc->is_a;
-    query->field_count = 0;
-    query->field_mask = 0;
-
-    if (ECS_LIKELY(!has_relation_meta && !has_up)) {
-        query->up_mask = 0;
-        for (uint16_t i = 0; i < query->term_count; i++) {
-            if (ecs_query_term_is_field(query->terms[i])) {
-                query->field_mask |= (uint16_t)(1u << i);
-                query->field_count++;
-            }
-        }
-
-        query->bloom = 0;
-        for (uint16_t i = 0; i < query->term_count; i++) {
-            if (ecs_query_term_is_positive(query->terms[i])) {
-                const ecs_component_t component = query->terms[i].id;
-                query->bloom |= 1ull << (component % 64);
-            }
-        }
-        return ecs_query_rarest_positive_term(query);
-    }
-
-    ecs_query_relation_term_t *relations = NULL;
-    ecs_query_relation_meta_t *meta = NULL;
-    if (has_relation_meta) {
-        query->up_mask = ECS_QUERY_HAS_RELATIONS;
-        meta = ecs_query_relation_meta(query);
-        *meta = (ecs_query_relation_meta_t){
-            .relation_count = special_count,
+    query->up_mask = has_meta ? ECS_QUERY_HAS_TYPE_FILTERS : 0;
+    if (has_meta) {
+        *ecs_query_type_filter_meta(query) = (ecs_query_type_filter_meta_t){
+            .filter_count = filter_count,
             .cascade = desc->order.relation,
         };
-        relations = ecs_query_relations(query);
-    } else {
-        query->up_mask = 0;
-    }
-    if (special_count) {
-        uint16_t out = 0;
+        ecs_query_type_filter_t *filters = ecs_query_type_filters(query);
+        out = 0;
         for (uint16_t i = 0; i < relation_count; i++) {
             ecs_query_relation_term_t term = desc->relations[i];
             const ecs_relation_record_t *record = ecs_relation_record(term.id);
             if ((record->storage == EcsRelationByTarget ||
                  (term.kind != EcsRelationRequired && term.kind != EcsRelationExcluded)) &&
                 term.kind != EcsRelationOptional) {
-                relations[out++] = term;
+                filters[out++] = (ecs_query_type_filter_t){
+                    .value = term.target,
+                    .id = term.id,
+                    .op = term.kind == EcsRelationRequired   ? EcsQueryFilterRequired
+                          : term.kind == EcsRelationExcluded ? EcsQueryFilterExcluded
+                                                             : EcsQueryFilterExact,
+                };
             }
         }
     }
-#ifndef NDEBUG
-    ecs_query_validate_relations(desc->relations, relation_count);
-#endif
-    if (desc->order.relation) {
-        ecs_assert(
-            ecs_relation_record(desc->order.relation)->storage == EcsRelationByDepth,
-            "ecs_cascade requires ByDepth\n"
-        );
-    }
 
+    query->is_a = desc->is_a;
+    query->field_count = 0;
+    query->field_mask = 0;
+    query->bloom = 0;
+    if (ECS_LIKELY(!has_meta && !has_up)) {
+        for (uint16_t i = 0; i < query->term_count; i++) {
+            ecs_query_term_t term = query->terms[i];
+            if (ecs_query_term_is_field(term)) {
+                query->field_mask |= (uint16_t)(1u << i);
+                query->field_count++;
+            }
+            if (ecs_query_term_is_positive(term)) {
+                query->bloom |= UINT64_C(1) << (term.id % 64);
+            }
+        }
+        return ecs_query_rarest_positive_term(query);
+    }
     for (uint16_t i = 0; i < query->term_count; i++) {
-        ecs_term_access_t access = ecs_query_term_access(query->terms[i]);
-        if (ecs_query_term_is_field(query->terms[i])) {
+        ecs_query_term_t term = query->terms[i];
+        ecs_term_access_t access = ecs_query_term_access(term);
+        if (ecs_query_term_is_field(term)) {
             query->field_mask |= (uint16_t)(1u << i);
             query->field_count++;
+        }
+        if (ecs_query_term_is_positive(term)) {
+            query->bloom |= UINT64_C(1) << (term.id % 64);
         }
         if (access == EcsInUp || access == EcsInUpOptional) {
             query->up_mask |= (uint16_t)(1u << i);
 #ifndef NDEBUG
-            ecs_relation_id_t source_relation =
-                ecs_query_term_source_relation(query->terms[i]);
             const ecs_relation_record_t *record =
-                ecs_relation_record(source_relation);
-#endif
+                ecs_relation_record(ecs_query_term_source_relation(term));
             ecs_assert(
                 record->storage == EcsRelationByTarget && record->acyclic,
                 "ecs_up requires acyclic ByTarget\n"
             );
-        }
-    }
-
-    query->bloom = 0;
-    for (uint16_t i = 0; i < query->term_count; i++) {
-        if (ecs_query_term_is_positive(query->terms[i])) {
-            const ecs_component_t component = query->terms[i].id;
-            query->bloom |= 1ull << (component % 64);
+#endif
         }
     }
     return ecs_query_rarest_positive_term(query);
@@ -5262,36 +5150,23 @@ bool ecs_query_match_table(const ecs_query_t *query, const ecs_table_t *table) {
                   : ecs_query_match_component_table(query, table))) {
         return false;
     }
-    if (!(query->up_mask & ECS_QUERY_HAS_RELATIONS)) {
+    if (!(query->up_mask & ECS_QUERY_HAS_TYPE_FILTERS)) {
         return true;
     }
-    const ecs_query_relation_meta_t *meta = ecs_query_relation_meta(query);
-    const ecs_query_relation_term_t *relations = ecs_query_relations(query);
-    for (uint16_t i = 0; i < meta->relation_count; i++) {
-        ecs_query_relation_term_t term = relations[i];
-        uint16_t relation_index = ecs_type_relation_index(&table->type, term.id);
-        if (term.kind == EcsRelationExcluded) {
-            if (relation_index != UINT16_MAX) {
-                return false;
-            }
-            continue;
-        }
-        if (term.kind == EcsRelationRequired) {
-            if (relation_index == UINT16_MAX) {
-                return false;
-            }
-            continue;
-        }
-        if (relation_index == UINT16_MAX ||
-            ecs_relation_key_target(&ecs_type_relations(&table->type)[relation_index]) !=
-                term.target) {
+    const ecs_query_type_filter_meta_t *meta = ecs_query_type_filter_meta(query);
+    const ecs_query_type_filter_t *filters = ecs_query_type_filters(query);
+    for (uint16_t i = 0; i < meta->filter_count; i++) {
+        ecs_query_type_filter_t filter = filters[i];
+        uint16_t pair_index = ecs_type_pair_index(&table->type, filter.id);
+        bool present = pair_index != UINT16_MAX;
+        if (filter.op == EcsQueryFilterRequired && !present) {
             return false;
         }
-        if (term.kind == EcsRelationTarget) {
-            continue;
+        if (filter.op == EcsQueryFilterExcluded && present) {
+            return false;
         }
-        ecs_entity_t value = ecs_relation_table_depth(table, term.id);
-        if (value != term.target) {
+        if (filter.op == EcsQueryFilterExact &&
+            (!present || ecs_type_pairs(&table->type)[pair_index].value != filter.value)) {
             return false;
         }
     }
@@ -5432,11 +5307,11 @@ static void ecs_query_cache_insert_cascade(
     ecs_query_cache_reserve_fields(cache, table_count);
 
     uint16_t insert = old_count;
-    const ecs_relation_id_t cascade = ecs_query_relation_meta(&cache->query)->cascade;
-    uint32_t depth = ecs_relation_table_depth(table, cascade);
+    const ecs_relation_id_t cascade = ecs_query_type_filter_meta(&cache->query)->cascade;
+    uint64_t depth = ecs_type_pair_get(&table->type, cascade);
     uint16_t *ids = cache->table_ids.data;
     while (insert &&
-           ecs_relation_table_depth(ecs_get_table(ids[insert - 1]), cascade) > depth) {
+           ecs_type_pair_get(&ecs_get_table(ids[insert - 1])->type, cascade) > depth) {
         ids[insert] = ids[insert - 1];
         insert--;
     }
@@ -5459,13 +5334,13 @@ static void ecs_query_cache_insert_cascade(
     }
 }
 
-static inline void ecs_query_cache_add_relation_table(
+static inline void ecs_query_cache_add_matched_table(
     ecs_query_cache_t *cache,
     const ecs_table_t *table,
     uint16_t table_id
 ) {
-    if ((cache->query.up_mask & ECS_QUERY_HAS_RELATIONS) &&
-        ecs_query_relation_meta(&cache->query)->cascade) {
+    if ((cache->query.up_mask & ECS_QUERY_HAS_TYPE_FILTERS) &&
+        ecs_query_type_filter_meta(&cache->query)->cascade) {
         ecs_query_cache_insert_cascade(cache, table, table_id);
     } else {
         ecs_query_cache_append_table(cache, table, table_id);
@@ -5542,21 +5417,21 @@ static void ecs_query_index_update_matches(
         return;
     }
 
-    if (query_cache->query.up_mask & ECS_QUERY_HAS_RELATIONS) {
-        const ecs_query_relation_meta_t *meta = ecs_query_relation_meta(&query_cache->query);
-        const ecs_query_relation_term_t *relations = ecs_query_relations(&query_cache->query);
-        for (uint16_t i = 0; i < meta->relation_count; i++) {
-            ecs_query_relation_term_t term = relations[i];
-            if (term.kind == EcsRelationTarget) {
-                ecs_relation_tables_t tables =
-                    ecs_table_index_relation_tables(term.id, term.target);
+    if (query_cache->query.up_mask & ECS_QUERY_HAS_TYPE_FILTERS) {
+        const ecs_query_type_filter_meta_t *meta =
+            ecs_query_type_filter_meta(&query_cache->query);
+        const ecs_query_type_filter_t *filters = ecs_query_type_filters(&query_cache->query);
+        for (uint16_t i = 0; i < meta->filter_count; i++) {
+            ecs_query_type_filter_t filter = filters[i];
+            if (filter.op == EcsQueryFilterExact) {
+                ecs_pair_tables_t tables = ecs_table_index_pair_tables(filter.id, filter.value);
                 if (!tables.count) {
                     return;
                 }
                 for (uint16_t t = 0; t < tables.count; t++) {
                     const ecs_table_t *table = ecs_get_table(tables.ids[t]);
                     if (ecs_query_match_table(&query_cache->query, table)) {
-                        ecs_query_cache_add_relation_table(query_cache, table, tables.ids[t]);
+                        ecs_query_cache_add_matched_table(query_cache, table, tables.ids[t]);
                     }
                 }
                 return;
@@ -5569,7 +5444,7 @@ static void ecs_query_index_update_matches(
             const ecs_table_t *table = &ecs_world.table_index.tables[*table_index];
 
             if (ecs_query_match_table(&query_cache->query, table)) {
-                ecs_query_cache_add_relation_table(query_cache, table, *table_index);
+                ecs_query_cache_add_matched_table(query_cache, table, *table_index);
             }
         });
     } else {
@@ -5577,7 +5452,7 @@ static void ecs_query_index_update_matches(
         const ecs_table_t *tables = ecs_world.table_index.tables;
         for (uint16_t i = 0; i < table_count; i++) {
             if (ecs_query_match_table(&query_cache->query, &tables[i])) {
-                ecs_query_cache_add_relation_table(query_cache, &tables[i], i);
+                ecs_query_cache_add_matched_table(query_cache, &tables[i], i);
             }
         }
     }
@@ -5589,7 +5464,7 @@ void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id) {
         ecs_query_cache_t *cache =
             sicore_vec_get_mut(&ecs_world.query_index.queries, active_ids[i], ecs_query_cache_t);
         if (ecs_query_match_table(&cache->query, table)) {
-            ecs_query_cache_add_relation_table(cache, table, table_id);
+            ecs_query_cache_add_matched_table(cache, table, table_id);
         }
     }
 }
@@ -6002,7 +5877,7 @@ void ecs_system_index_fini() {
 }
 
 #define INITIAL_SLOT_SHIFT 12
-#define INITIAL_RELATION_SLOT_SHIFT 3
+#define INITIAL_PAIR_SLOT_SHIFT 3
 #define LOAD_FACTOR 0.75
 #define ECS_TABLE_SLOT_EMPTY UINT16_MAX
 
@@ -6012,13 +5887,13 @@ static inline uint32_t ecs_type_hash(ecs_type_t type) {
         h ^= (uint32_t)type.ids[i];
         h *= 16777619u;
     }
-    const ecs_relation_t *relations = ecs_type_relations(&type);
-    for (uint16_t i = 0; i < type.relation_count; i++) {
-        h ^= relations[i].relation_id;
+    const ecs_type_pair_t *pairs = ecs_type_pairs(&type);
+    for (uint16_t i = 0; i < type.pair_count; i++) {
+        h ^= pairs[i].key;
         h *= 16777619u;
-        h ^= relations[i].target_generation;
+        h ^= (uint32_t)pairs[i].value;
         h *= 16777619u;
-        h ^= relations[i].target_index;
+        h ^= (uint32_t)(pairs[i].value >> 32);
         h *= 16777619u;
     }
     h ^= (uint32_t)type.base;
@@ -6042,89 +5917,85 @@ static inline uint32_t ecs_table_index_slot_count(const ecs_table_index_t *map) 
     return 1u << map->slot_shift;
 }
 
-static uint32_t ecs_relation_hash(ecs_relation_id_t relation, ecs_entity_t target) {
-    uint64_t value = target ^ ((uint64_t)relation * UINT64_C(0x9e3779b97f4a7c15));
+static uint32_t ecs_pair_hash(uint16_t key, uint64_t value) {
+    value ^= (uint64_t)key * UINT64_C(0x9e3779b97f4a7c15);
     value ^= value >> 33;
     value *= UINT64_C(0xff51afd7ed558ccd);
     return (uint32_t)(value ^ (value >> 33));
 }
 
-static uint32_t ecs_relation_slot_capacity(const ecs_table_index_t *index) {
-    return index->relation_slot_shift ? 1u << index->relation_slot_shift : 0;
+static uint32_t ecs_pair_slot_capacity(const ecs_table_index_t *index) {
+    return index->pair_slot_shift ? 1u << index->pair_slot_shift : 0;
 }
 
-static void ecs_relation_slot_insert(
-    ecs_relation_table_slot_t *slots,
+static void ecs_pair_slot_insert(
+    ecs_pair_table_slot_t *slots,
     uint32_t mask,
-    ecs_relation_table_slot_t slot
+    ecs_pair_table_slot_t slot
 ) {
-    uint32_t i = ecs_relation_hash(slot.relation, slot.target) & mask;
-    while (slots[i].relation) {
+    uint32_t i = ecs_pair_hash(slot.key, slot.value) & mask;
+    while (slots[i].key) {
         i = (i + 1) & mask;
     }
     slots[i] = slot;
 }
 
-static void ecs_relation_slots_grow(ecs_table_index_t *index) {
-    uint32_t old_capacity = ecs_relation_slot_capacity(index);
-    ecs_relation_table_slot_t *old = index->relation_slots;
-    index->relation_slot_shift = index->relation_slot_shift
-                                     ? index->relation_slot_shift + 1
-                                     : INITIAL_RELATION_SLOT_SHIFT;
-    uint32_t capacity = ecs_relation_slot_capacity(index);
-    index->relation_slots = calloc(capacity, sizeof(ecs_relation_table_slot_t));
+static void ecs_pair_slots_grow(ecs_table_index_t *index) {
+    uint32_t old_capacity = ecs_pair_slot_capacity(index);
+    ecs_pair_table_slot_t *old = index->pair_slots;
+    index->pair_slot_shift = index->pair_slot_shift
+                                     ? index->pair_slot_shift + 1
+                                     : INITIAL_PAIR_SLOT_SHIFT;
+    uint32_t capacity = ecs_pair_slot_capacity(index);
+    index->pair_slots = calloc(capacity, sizeof(ecs_pair_table_slot_t));
     for (uint32_t i = 0; i < old_capacity; i++) {
-        if (old[i].relation) {
-            ecs_relation_slot_insert(index->relation_slots, capacity - 1, old[i]);
+        if (old[i].key) {
+            ecs_pair_slot_insert(index->pair_slots, capacity - 1, old[i]);
         }
     }
     free(old);
 }
 
-static ecs_relation_table_slot_t *ecs_relation_slot(
+static ecs_pair_table_slot_t *ecs_pair_slot(
     ecs_table_index_t *index,
-    ecs_relation_id_t relation,
-    ecs_entity_t target,
+    uint16_t key,
+    uint64_t value,
     bool create
 ) {
-    if (!index->relation_slot_shift ||
-        (create && (index->relation_slot_count + 1) * 4 >=
-                       ecs_relation_slot_capacity(index) * 3)) {
+    if (!index->pair_slot_shift ||
+        (create && (index->pair_slot_count + 1) * 4 >= ecs_pair_slot_capacity(index) * 3)) {
         if (!create) {
             return NULL;
         }
-        ecs_relation_slots_grow(index);
+        ecs_pair_slots_grow(index);
     }
-    uint32_t mask = ecs_relation_slot_capacity(index) - 1;
-    uint32_t i = ecs_relation_hash(relation, target) & mask;
-    while (index->relation_slots[i].relation &&
-           (index->relation_slots[i].relation != relation ||
-            index->relation_slots[i].target != target)) {
+    uint32_t mask = ecs_pair_slot_capacity(index) - 1;
+    uint32_t i = ecs_pair_hash(key, value) & mask;
+    while (index->pair_slots[i].key &&
+           (index->pair_slots[i].key != key || index->pair_slots[i].value != value)) {
         i = (i + 1) & mask;
     }
-    ecs_relation_table_slot_t *slot = &index->relation_slots[i];
-    if (!slot->relation && create) {
-        slot->relation = relation;
-        slot->target = target;
-        index->relation_slot_count++;
+    ecs_pair_table_slot_t *slot = &index->pair_slots[i];
+    if (!slot->key && create) {
+        slot->key = key;
+        slot->value = value;
+        index->pair_slot_count++;
     }
-    return slot->relation ? slot : NULL;
+    return slot->key ? slot : NULL;
 }
 
-ecs_relation_tables_t
-ecs_table_index_relation_tables(ecs_relation_id_t relation, ecs_entity_t target) {
-    ecs_relation_table_slot_t *slot =
-        ecs_relation_slot(&ecs_world.table_index, relation, target, false);
+ecs_pair_tables_t ecs_table_index_pair_tables(uint16_t key, uint64_t value) {
+    ecs_pair_table_slot_t *slot = ecs_pair_slot(&ecs_world.table_index, key, value, false);
     if (!slot) {
-        return (ecs_relation_tables_t){ 0 };
+        return (ecs_pair_tables_t){ 0 };
     }
-    return (ecs_relation_tables_t){
+    return (ecs_pair_tables_t){
         .ids = slot->tables ? slot->tables : &slot->first_table,
         .count = slot->table_count,
     };
 }
 
-static void ecs_relation_slot_add_table(ecs_relation_table_slot_t *slot, uint16_t table) {
+static void ecs_pair_slot_add_table(ecs_pair_table_slot_t *slot, uint16_t table) {
     if (!slot->table_count) {
         slot->first_table = table;
     } else {
@@ -6141,19 +6012,12 @@ static void ecs_relation_slot_add_table(ecs_relation_table_slot_t *slot, uint16_
     slot->table_count++;
 }
 
-static void ecs_table_index_relations(const ecs_table_t *table, uint16_t table_id) {
-    const ecs_relation_t *relations = ecs_type_relations(&table->type);
-    for (uint16_t i = 0; i < table->type.relation_count; i++) {
-        const ecs_relation_record_t *record = ecs_relation_record(relations[i].relation_id);
-        if (record->storage == EcsRelationByTarget) {
-            ecs_relation_table_slot_t *slot = ecs_relation_slot(
-                &ecs_world.table_index,
-                relations[i].relation_id,
-                ecs_relation_key_target(&relations[i]),
-                true
-            );
-            ecs_relation_slot_add_table(slot, table_id);
-        }
+static void ecs_table_index_pairs(const ecs_table_t *table, uint16_t table_id) {
+    const ecs_type_pair_t *pairs = ecs_type_pairs(&table->type);
+    for (uint16_t i = 0; i < table->type.pair_count; i++) {
+        ecs_pair_table_slot_t *slot =
+            ecs_pair_slot(&ecs_world.table_index, pairs[i].key, pairs[i].value, true);
+        ecs_pair_slot_add_table(slot, table_id);
     }
 }
 
@@ -6181,9 +6045,9 @@ void ecs_table_index_init() {
     map->tables = malloc(sizeof(ecs_table_t) * map->table_capacity);
     map->slot_shift = INITIAL_SLOT_SHIFT;
     ecs_table_index_init_slots(map);
-    map->relation_slots = NULL;
-    map->relation_slot_count = 0;
-    map->relation_slot_shift = 0;
+    map->pair_slots = NULL;
+    map->pair_slot_count = 0;
+    map->pair_slot_shift = 0;
 }
 
 void ecs_table_index_fini() {
@@ -6191,13 +6055,13 @@ void ecs_table_index_fini() {
     for (uint16_t i = 0; i < map->table_count; i++) {
         ecs_table_fini(&map->tables[i]);
     }
-    uint32_t relation_capacity = ecs_relation_slot_capacity(map);
-    for (uint32_t i = 0; i < relation_capacity; i++) {
-        if (map->relation_slots[i].relation) {
-            free(map->relation_slots[i].tables);
+    uint32_t pair_capacity = ecs_pair_slot_capacity(map);
+    for (uint32_t i = 0; i < pair_capacity; i++) {
+        if (map->pair_slots[i].key) {
+            free(map->pair_slots[i].tables);
         }
     }
-    free(map->relation_slots);
+    free(map->pair_slots);
     free(map->tables);
     free(map->slots);
 }
@@ -6298,7 +6162,7 @@ uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
     type.hash = hash;
     ecs_table_init(&new_table, type, table_idx);
     map->tables[table_idx] = new_table;
-    ecs_table_index_relations(&map->tables[table_idx], table_idx);
+    ecs_table_index_pairs(&map->tables[table_idx], table_idx);
     ecs_table_index_register_inherited_components(&map->tables[table_idx], table_idx);
 
     map->slots[slot_idx].hash = hash_fingerprint;

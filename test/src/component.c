@@ -11,7 +11,7 @@
 
 #if UINTPTR_MAX == UINT64_MAX
 _Static_assert(sizeof(ecs_type_t) == 24);
-_Static_assert(offsetof(ecs_type_t, relation_count) == 10);
+_Static_assert(offsetof(ecs_type_t, pair_count) == 10);
 _Static_assert(offsetof(ecs_type_t, hash) == 12);
 _Static_assert(sizeof(ecs_table_t) == 96);
 #endif
@@ -632,7 +632,11 @@ void component_many_tags_swap_remove_preserves_moved_entity_data(void) {
 
 static ecs_type_t component_type_with_position_and_base(ecs_entity_t base) {
     ecs_type_t empty = { 0 };
-    ecs_type_t with_position = ecs_type_with_add(&empty, ecs_id(Position));
+    ecs_type_t with_position = ecs_type_with(
+        &empty,
+        ecs_id(Position),
+        (ecs_type_pair_t){ 0 }
+    );
     ecs_type_t with_base = ecs_type_with_base(&with_position, base);
     ecs_type_fini(&with_position);
     return with_base;
@@ -663,14 +667,95 @@ void component_type_add_remove_preserves_base(void) {
 
     ecs_entity_t base = ecs_new();
     ecs_type_t empty = { .base = base };
-    ecs_type_t added = ecs_type_with_add(&empty, ecs_id(Position));
-    ecs_type_t removed = ecs_type_with_remove_at(&added, 0);
+    ecs_type_t added = ecs_type_with(
+        &empty,
+        ecs_id(Position),
+        (ecs_type_pair_t){ 0 }
+    );
+    ecs_type_t removed = ecs_type_without(&added, 0, 0);
 
     test_assert(base == added.base);
     test_assert(base == removed.base);
 
     ecs_type_fini(&added);
     ecs_type_fini(&removed);
+    ecs_fini();
+}
+
+void component_type_pairs_are_sorted_replaced_and_removed_atomically(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(Position);
+
+    ecs_entity_t base = ecs_new();
+    ecs_type_t empty = { .base = base };
+    ecs_type_t first = ecs_type_with(
+        &empty,
+        ecs_id(Position),
+        (ecs_type_pair_t){ .key = 9, .value = UINT64_C(0x123456789abcdef0) }
+    );
+    ecs_type_t second = ecs_type_with(
+        &first,
+        0,
+        (ecs_type_pair_t){ .key = 3, .value = 42 }
+    );
+    ecs_type_t replaced = ecs_type_with(
+        &second,
+        0,
+        (ecs_type_pair_t){ .key = 9, .value = UINT64_C(0xfedcba9876543210) }
+    );
+
+    test_int(1, replaced.component_count);
+    test_int(2, replaced.pair_count);
+    test_int(3, ecs_type_pairs(&replaced)[0].key);
+    test_uint(42, ecs_type_pairs(&replaced)[0].value);
+    test_int(9, ecs_type_pairs(&replaced)[1].key);
+    test_uint(UINT64_C(0xfedcba9876543210), ecs_type_pairs(&replaced)[1].value);
+    test_assert(base == replaced.base);
+
+    ecs_type_t removed = ecs_type_without(&replaced, 0, 9);
+    test_int(0, removed.component_count);
+    test_int(1, removed.pair_count);
+    test_int(3, ecs_type_pairs(&removed)[0].key);
+    test_uint(42, ecs_type_pairs(&removed)[0].value);
+    test_assert(base == removed.base);
+
+    ecs_type_fini(&first);
+    ecs_type_fini(&second);
+    ecs_type_fini(&replaced);
+    ecs_type_fini(&removed);
+    ecs_fini();
+}
+
+void component_table_index_indexes_generic_pairs(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(Position);
+
+    ecs_type_t empty = { 0 };
+    ecs_type_t first = ecs_type_with(
+        &empty,
+        0,
+        (ecs_type_pair_t){ .key = 7, .value = UINT64_C(0x123456789abcdef0) }
+    );
+    ecs_type_t same = ecs_type_with_base(&first, 0);
+    ecs_type_t second = ecs_type_with(
+        &first,
+        ecs_id(Position),
+        (ecs_type_pair_t){ .key = 9, .value = 42 }
+    );
+    uint16_t table = ecs_table_index_get_or_create(first);
+    uint16_t same_table = ecs_table_index_get_or_create(same);
+    uint16_t second_table = ecs_table_index_get_or_create(second);
+    ecs_pair_tables_t shared =
+        ecs_table_index_pair_tables(7, UINT64_C(0x123456789abcdef0));
+    ecs_pair_tables_t unique = ecs_table_index_pair_tables(9, 42);
+
+    test_int(table, same_table);
+    test_int(2, shared.count);
+    test_int(table, shared.ids[0]);
+    test_int(second_table, shared.ids[1]);
+    test_int(1, unique.count);
+    test_int(second_table, unique.ids[0]);
+    test_int(0, ecs_table_index_pair_tables(7, 1).count);
     ecs_fini();
 }
 

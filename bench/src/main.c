@@ -601,6 +601,63 @@ BENCH_SETUP(relation_dense_retarget, {
     free(entities);
 });
 
+BENCH_SETUP(relation_bytarget_retarget, {
+    arg(entity_count, 10000);
+    arg(iter_count, 20);
+
+    ecs_relation_id_t relation = ecs_relation_init("BenchTargetRetarget", &(ecs_relation_desc_t){
+        .storage = EcsRelationByTarget,
+        .on_delete_target = EcsRemoveRelation,
+    });
+    ecs_entity_t targets[] = { ecs_new(), ecs_new() };
+    ecs_entity_t *entities = malloc(sizeof(ecs_entity_t) * entity_count);
+    for (uint32_t i = 0; i < entity_count; i++) {
+        entities[i] = ecs_new();
+        ecs_relate_id(entities[i], relation, targets[0]);
+    }
+
+    BENCH({
+        for (uint32_t n = 0; n < iter_count; n++) {
+            for (uint32_t i = 0; i < entity_count; i++) {
+                ecs_relate_id(entities[i], relation, targets[(n + 1) & 1]);
+            }
+        }
+    });
+
+    free(entities);
+});
+
+BENCH_SETUP(relation_bydepth_retarget, {
+    arg(entity_count, 1000);
+    arg(iter_count, 20);
+
+    ecs_relation_id_t relation = ecs_relation_init("BenchDepthRetarget", &(ecs_relation_desc_t){
+        .storage = EcsRelationByDepth,
+        .on_delete_target = EcsRemoveRelation,
+        .acyclic = true,
+    });
+    ecs_entity_t root = ecs_new();
+    ecs_entity_t deep = ecs_new();
+    ecs_relate_id(deep, relation, root);
+    ecs_entity_t targets[] = { root, deep };
+    ecs_entity_t *entities = malloc(sizeof(ecs_entity_t) * entity_count);
+    for (uint32_t i = 0; i < entity_count; i++) {
+        entities[i] = ecs_new();
+        ecs_relate_id(entities[i], relation, root);
+    }
+
+    BENCH({
+        for (uint32_t n = 0; n < iter_count; n++) {
+            ecs_entity_t target = targets[(n + 1) & 1];
+            for (uint32_t i = 0; i < entity_count; i++) {
+                ecs_relate_id(entities[i], relation, target);
+            }
+        }
+    });
+
+    free(entities);
+});
+
 BENCH_SETUP(relation_bydepth_cascade, {
     arg(depth_count, 64);
     arg(width, 1000);
@@ -670,6 +727,38 @@ BENCH_SETUP(relation_bytarget_exact, {
     ecs_query_fini(query);
 });
 
+BENCH_SETUP(relation_query_init_bytarget_exact, {
+    arg(target_count, 2048);
+    arg(iter_count, 10000);
+
+    ecs_relation_id_t relation = ecs_relation_init("BenchTargetQueryInit", &(ecs_relation_desc_t){
+        .storage = EcsRelationByTarget,
+        .on_delete_target = EcsRemoveRelation,
+    });
+    ecs_entity_t target = 0;
+    for (uint32_t i = 0; i < target_count; i++) {
+        ecs_entity_t current = ecs_new();
+        ecs_relate_id(ecs_new(), relation, current);
+        if (i == target_count / 2) target = current;
+    }
+    ecs_query_desc_t desc = {
+        .relations = {
+            { .target = target, .id = relation, .kind = EcsRelationTarget },
+        },
+    };
+    uint64_t checksum = 0;
+
+    BENCH({
+        for (uint32_t i = 0; i < iter_count; i++) {
+            ecs_query_id_t query = ecs_query_init(&desc);
+            checksum += ecs_query_count(query);
+            ecs_query_fini(query);
+        }
+    });
+
+    if (!checksum) abort();
+});
+
 int main(int argc, char *argv[]) {
     const char *scope = argc > 1 ? argv[1] : NULL;
     if (argc > 2) {
@@ -699,8 +788,11 @@ int main(int argc, char *argv[]) {
     run_scoped_bench(scope, relation_dense_scan_targets);
     run_scoped_bench(scope, relation_plain_create_kill);
     run_scoped_bench(scope, relation_dense_retarget);
+    run_scoped_bench(scope, relation_bytarget_retarget);
+    run_scoped_bench(scope, relation_bydepth_retarget);
     run_scoped_bench(scope, relation_bydepth_cascade);
     run_scoped_bench(scope, relation_bytarget_exact);
+    run_scoped_bench(scope, relation_query_init_bytarget_exact);
 
     return 0;
 }

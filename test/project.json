@@ -56,6 +56,8 @@
           "many_tags_swap_remove_preserves_moved_entity_data",
           "same_local_type_with_different_base_creates_different_tables",
           "type_add_remove_preserves_base",
+          "type_pairs_are_sorted_replaced_and_removed_atomically",
+          "table_index_indexes_generic_pairs",
           "tag_components_have_no_storage",
           "try_get_handles_missing_and_inherited",
           "table_type_tracks_data_columns",

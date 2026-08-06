@@ -41,7 +41,11 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
 
     if (crec->required_count == 0) {
         if (edge == UINT16_MAX) {
-            ecs_type_t new_type = ecs_type_with_add(&table->type, cid);
+            ecs_type_t new_type = ecs_type_with(
+                &table->type,
+                cid,
+                (ecs_type_pair_t){ 0 }
+            );
             edge = ecs_table_index_get_or_create(new_type);
 
             table = ecs_get_table(from_id);
@@ -115,7 +119,7 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
 
     uint16_t new_table_id = table->cls[col_idx].remove_edge;
     if (new_table_id == UINT16_MAX) {
-        ecs_type_t new_type = ecs_type_with_remove_at(&table->type, col_idx);
+        ecs_type_t new_type = ecs_type_without(&table->type, col_idx, 0);
         new_table_id = ecs_table_index_get_or_create(new_type);
         table = ecs_get_table(from_id);
         table->cls[col_idx].remove_edge = new_table_id;

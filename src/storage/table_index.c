@@ -4,12 +4,11 @@
 #include "component_index.h"
 #include "observer_index.h"
 #include "query_index.h"
-#include "../relation.h"
 #include <stdint.h>
 #include <stdlib.h>
 
 #define INITIAL_SLOT_SHIFT 12
-#define INITIAL_RELATION_SLOT_SHIFT 3
+#define INITIAL_PAIR_SLOT_SHIFT 3
 #define LOAD_FACTOR 0.75
 #define ECS_TABLE_SLOT_EMPTY UINT16_MAX
 
@@ -19,13 +18,13 @@ static inline uint32_t ecs_type_hash(ecs_type_t type) {
         h ^= (uint32_t)type.ids[i];
         h *= 16777619u;
     }
-    const ecs_relation_t *relations = ecs_type_relations(&type);
-    for (uint16_t i = 0; i < type.relation_count; i++) {
-        h ^= relations[i].relation_id;
+    const ecs_type_pair_t *pairs = ecs_type_pairs(&type);
+    for (uint16_t i = 0; i < type.pair_count; i++) {
+        h ^= pairs[i].key;
         h *= 16777619u;
-        h ^= relations[i].target_generation;
+        h ^= (uint32_t)pairs[i].value;
         h *= 16777619u;
-        h ^= relations[i].target_index;
+        h ^= (uint32_t)(pairs[i].value >> 32);
         h *= 16777619u;
     }
     h ^= (uint32_t)type.base;
@@ -49,89 +48,85 @@ static inline uint32_t ecs_table_index_slot_count(const ecs_table_index_t *map) 
     return 1u << map->slot_shift;
 }
 
-static uint32_t ecs_relation_hash(ecs_relation_id_t relation, ecs_entity_t target) {
-    uint64_t value = target ^ ((uint64_t)relation * UINT64_C(0x9e3779b97f4a7c15));
+static uint32_t ecs_pair_hash(uint16_t key, uint64_t value) {
+    value ^= (uint64_t)key * UINT64_C(0x9e3779b97f4a7c15);
     value ^= value >> 33;
     value *= UINT64_C(0xff51afd7ed558ccd);
     return (uint32_t)(value ^ (value >> 33));
 }
 
-static uint32_t ecs_relation_slot_capacity(const ecs_table_index_t *index) {
-    return index->relation_slot_shift ? 1u << index->relation_slot_shift : 0;
+static uint32_t ecs_pair_slot_capacity(const ecs_table_index_t *index) {
+    return index->pair_slot_shift ? 1u << index->pair_slot_shift : 0;
 }
 
-static void ecs_relation_slot_insert(
-    ecs_relation_table_slot_t *slots,
+static void ecs_pair_slot_insert(
+    ecs_pair_table_slot_t *slots,
     uint32_t mask,
-    ecs_relation_table_slot_t slot
+    ecs_pair_table_slot_t slot
 ) {
-    uint32_t i = ecs_relation_hash(slot.relation, slot.target) & mask;
-    while (slots[i].relation) {
+    uint32_t i = ecs_pair_hash(slot.key, slot.value) & mask;
+    while (slots[i].key) {
         i = (i + 1) & mask;
     }
     slots[i] = slot;
 }
 
-static void ecs_relation_slots_grow(ecs_table_index_t *index) {
-    uint32_t old_capacity = ecs_relation_slot_capacity(index);
-    ecs_relation_table_slot_t *old = index->relation_slots;
-    index->relation_slot_shift = index->relation_slot_shift
-                                     ? index->relation_slot_shift + 1
-                                     : INITIAL_RELATION_SLOT_SHIFT;
-    uint32_t capacity = ecs_relation_slot_capacity(index);
-    index->relation_slots = calloc(capacity, sizeof(ecs_relation_table_slot_t));
+static void ecs_pair_slots_grow(ecs_table_index_t *index) {
+    uint32_t old_capacity = ecs_pair_slot_capacity(index);
+    ecs_pair_table_slot_t *old = index->pair_slots;
+    index->pair_slot_shift = index->pair_slot_shift
+                                     ? index->pair_slot_shift + 1
+                                     : INITIAL_PAIR_SLOT_SHIFT;
+    uint32_t capacity = ecs_pair_slot_capacity(index);
+    index->pair_slots = calloc(capacity, sizeof(ecs_pair_table_slot_t));
     for (uint32_t i = 0; i < old_capacity; i++) {
-        if (old[i].relation) {
-            ecs_relation_slot_insert(index->relation_slots, capacity - 1, old[i]);
+        if (old[i].key) {
+            ecs_pair_slot_insert(index->pair_slots, capacity - 1, old[i]);
         }
     }
     free(old);
 }
 
-static ecs_relation_table_slot_t *ecs_relation_slot(
+static ecs_pair_table_slot_t *ecs_pair_slot(
     ecs_table_index_t *index,
-    ecs_relation_id_t relation,
-    ecs_entity_t target,
+    uint16_t key,
+    uint64_t value,
     bool create
 ) {
-    if (!index->relation_slot_shift ||
-        (create && (index->relation_slot_count + 1) * 4 >=
-                       ecs_relation_slot_capacity(index) * 3)) {
+    if (!index->pair_slot_shift ||
+        (create && (index->pair_slot_count + 1) * 4 >= ecs_pair_slot_capacity(index) * 3)) {
         if (!create) {
             return NULL;
         }
-        ecs_relation_slots_grow(index);
+        ecs_pair_slots_grow(index);
     }
-    uint32_t mask = ecs_relation_slot_capacity(index) - 1;
-    uint32_t i = ecs_relation_hash(relation, target) & mask;
-    while (index->relation_slots[i].relation &&
-           (index->relation_slots[i].relation != relation ||
-            index->relation_slots[i].target != target)) {
+    uint32_t mask = ecs_pair_slot_capacity(index) - 1;
+    uint32_t i = ecs_pair_hash(key, value) & mask;
+    while (index->pair_slots[i].key &&
+           (index->pair_slots[i].key != key || index->pair_slots[i].value != value)) {
         i = (i + 1) & mask;
     }
-    ecs_relation_table_slot_t *slot = &index->relation_slots[i];
-    if (!slot->relation && create) {
-        slot->relation = relation;
-        slot->target = target;
-        index->relation_slot_count++;
+    ecs_pair_table_slot_t *slot = &index->pair_slots[i];
+    if (!slot->key && create) {
+        slot->key = key;
+        slot->value = value;
+        index->pair_slot_count++;
     }
-    return slot->relation ? slot : NULL;
+    return slot->key ? slot : NULL;
 }
 
-ecs_relation_tables_t
-ecs_table_index_relation_tables(ecs_relation_id_t relation, ecs_entity_t target) {
-    ecs_relation_table_slot_t *slot =
-        ecs_relation_slot(&ecs_world.table_index, relation, target, false);
+ecs_pair_tables_t ecs_table_index_pair_tables(uint16_t key, uint64_t value) {
+    ecs_pair_table_slot_t *slot = ecs_pair_slot(&ecs_world.table_index, key, value, false);
     if (!slot) {
-        return (ecs_relation_tables_t){ 0 };
+        return (ecs_pair_tables_t){ 0 };
     }
-    return (ecs_relation_tables_t){
+    return (ecs_pair_tables_t){
         .ids = slot->tables ? slot->tables : &slot->first_table,
         .count = slot->table_count,
     };
 }
 
-static void ecs_relation_slot_add_table(ecs_relation_table_slot_t *slot, uint16_t table) {
+static void ecs_pair_slot_add_table(ecs_pair_table_slot_t *slot, uint16_t table) {
     if (!slot->table_count) {
         slot->first_table = table;
     } else {
@@ -148,19 +143,12 @@ static void ecs_relation_slot_add_table(ecs_relation_table_slot_t *slot, uint16_
     slot->table_count++;
 }
 
-static void ecs_table_index_relations(const ecs_table_t *table, uint16_t table_id) {
-    const ecs_relation_t *relations = ecs_type_relations(&table->type);
-    for (uint16_t i = 0; i < table->type.relation_count; i++) {
-        const ecs_relation_record_t *record = ecs_relation_record(relations[i].relation_id);
-        if (record->storage == EcsRelationByTarget) {
-            ecs_relation_table_slot_t *slot = ecs_relation_slot(
-                &ecs_world.table_index,
-                relations[i].relation_id,
-                ecs_relation_key_target(&relations[i]),
-                true
-            );
-            ecs_relation_slot_add_table(slot, table_id);
-        }
+static void ecs_table_index_pairs(const ecs_table_t *table, uint16_t table_id) {
+    const ecs_type_pair_t *pairs = ecs_type_pairs(&table->type);
+    for (uint16_t i = 0; i < table->type.pair_count; i++) {
+        ecs_pair_table_slot_t *slot =
+            ecs_pair_slot(&ecs_world.table_index, pairs[i].key, pairs[i].value, true);
+        ecs_pair_slot_add_table(slot, table_id);
     }
 }
 
@@ -188,9 +176,9 @@ void ecs_table_index_init() {
     map->tables = malloc(sizeof(ecs_table_t) * map->table_capacity);
     map->slot_shift = INITIAL_SLOT_SHIFT;
     ecs_table_index_init_slots(map);
-    map->relation_slots = NULL;
-    map->relation_slot_count = 0;
-    map->relation_slot_shift = 0;
+    map->pair_slots = NULL;
+    map->pair_slot_count = 0;
+    map->pair_slot_shift = 0;
 }
 
 void ecs_table_index_fini() {
@@ -198,13 +186,13 @@ void ecs_table_index_fini() {
     for (uint16_t i = 0; i < map->table_count; i++) {
         ecs_table_fini(&map->tables[i]);
     }
-    uint32_t relation_capacity = ecs_relation_slot_capacity(map);
-    for (uint32_t i = 0; i < relation_capacity; i++) {
-        if (map->relation_slots[i].relation) {
-            free(map->relation_slots[i].tables);
+    uint32_t pair_capacity = ecs_pair_slot_capacity(map);
+    for (uint32_t i = 0; i < pair_capacity; i++) {
+        if (map->pair_slots[i].key) {
+            free(map->pair_slots[i].tables);
         }
     }
-    free(map->relation_slots);
+    free(map->pair_slots);
     free(map->tables);
     free(map->slots);
 }
@@ -305,7 +293,7 @@ uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
     type.hash = hash;
     ecs_table_init(&new_table, type, table_idx);
     map->tables[table_idx] = new_table;
-    ecs_table_index_relations(&map->tables[table_idx], table_idx);
+    ecs_table_index_pairs(&map->tables[table_idx], table_idx);
     ecs_table_index_register_inherited_components(&map->tables[table_idx], table_idx);
 
     map->slots[slot_idx].hash = hash_fingerprint;
