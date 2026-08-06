@@ -1,0 +1,34 @@
+{
+  "id": "siecs_rest.test",
+  "type": "application",
+  "value": {
+    "public": false,
+    "clangd": true,
+    "use": ["siecs_rest", "siecs", "sijson", "sireflect", "sihttp"]
+  },
+  "lang.c": {
+    "c-standard": "c17",
+    "include": ["../src", "../include", "../../../test/include"]
+  },
+  "bundle": {
+    "repositories": {
+      "siecs": "https://github.com/suleymanlaarabi/siecs",
+      "sihttp": "https://github.com/suleymanlaarabi/sihttp",
+      "sijson": "https://github.com/suleymanlaarabi/sijson",
+      "sireflect": "https://github.com/suleymanlaarabi/sireflect"
+    }
+  },
+  "test": {
+    "testsuites": [
+      {
+        "id": "rest",
+        "testcases": [
+          "module_lifecycle",
+          "schema_uses_public_metadata",
+          "entity_routes_use_public_introspection",
+          "component_mutation_uses_public_metadata"
+        ]
+      }
+    ]
+  }
+}

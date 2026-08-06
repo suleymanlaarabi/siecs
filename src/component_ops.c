@@ -41,11 +41,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
 
     if (crec->required_count == 0) {
         if (edge == UINT16_MAX) {
-            ecs_type_t new_type = ecs_type_with(
-                &table->type,
-                cid,
-                (ecs_type_pair_t){ 0 }
-            );
+            ecs_type_t new_type = ecs_type_with(&table->type, cid, (ecs_type_pair_t){ 0 });
             edge = ecs_table_index_get_or_create(new_type);
 
             table = ecs_get_table(from_id);

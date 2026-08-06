@@ -14,27 +14,28 @@
  * dependencies will automatically show up in this file. Include bake_config.h
  * in your main project file. Do not edit! */
 
-#ifndef SIECS_BAKE_CONFIG_H
-#define SIECS_BAKE_CONFIG_H
+#ifndef SIECS_REST_BAKE_CONFIG_H
+#define SIECS_REST_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
-#include <sicore.h>
-#include <sireflect.h>
+#include <siecs.h>
+#include <sihttp.h>
 #include <sijson.h>
+#include <sireflect.h>
 
 /* Convenience macro for exporting symbols */
-#ifndef siecs_STATIC
-#if defined(siecs_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
-  #define SIECS_API __declspec(dllexport)
-#elif defined(siecs_EXPORTS)
-  #define SIECS_API __attribute__((__visibility__("default")))
+#ifndef siecs_rest_STATIC
+#if defined(siecs_rest_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
+  #define SIECS_REST_API __declspec(dllexport)
+#elif defined(siecs_rest_EXPORTS)
+  #define SIECS_REST_API __attribute__((__visibility__("default")))
 #elif defined(_MSC_VER)
-  #define SIECS_API __declspec(dllimport)
+  #define SIECS_REST_API __declspec(dllimport)
 #else
-  #define SIECS_API
+  #define SIECS_REST_API
 #endif
 #else
-  #define SIECS_API
+  #define SIECS_REST_API
 #endif
 
 #endif

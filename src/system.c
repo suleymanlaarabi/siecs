@@ -1,8 +1,5 @@
 #include "module.h"
 #include "siecs.h"
-#if SIECS_HAS_REST && !defined(SIHTTP_H)
-#include "sihttp.h"
-#endif
 #include "storage/system_index.h"
 #include "utils.h"
 #include "world_internal.h"
@@ -134,12 +131,6 @@ bool ecs_progress(void) {
     for (ecs_phase_t phase = EcsOnLoad; phase < EcsPhaseCount; phase++) {
         ecs_run_phase(phase);
     }
-
-#if SIECS_HAS_REST
-    if (ecs_world.features.rest) {
-        sihttp_server_poll(ecs_world.server);
-    }
-#endif
 
     if (ecs_world.features.target_fps) {
         double target_dt = 1.0 / (double)ecs_world.features.target_fps;

@@ -1,4 +1,3 @@
-#include "addons/addons.h"
 #include "helper.h"
 #include "sicore.h"
 #include "siecs.h"
@@ -181,9 +180,4 @@ void ecs_bootstrap() {
     ECS_COMPONENT_REGISTER(Disabled);
     ECS_COMPONENT_REGISTER(Abstract);
 
-#if SIECS_HAS_REST
-    if (ecs_world.features.rest) {
-        init_rest();
-    }
-#endif
 }

@@ -1,0 +1,24 @@
+{
+  "id": "siecs_rest",
+  "type": "package",
+  "value": {
+    "author": "Suleyman Laarabi",
+    "description": "REST explorer module for SIECS",
+    "public": true,
+    "clangd": true,
+    "use": ["siecs", "sihttp", "sijson", "sireflect"]
+  },
+  "lang.c": {
+    "c-standard": "c17",
+    "export-symbols": true,
+    "include": ["src", "include"]
+  },
+  "bundle": {
+    "repositories": {
+      "siecs": "https://github.com/suleymanlaarabi/siecs",
+      "sihttp": "https://github.com/suleymanlaarabi/sihttp",
+      "sijson": "https://github.com/suleymanlaarabi/sijson",
+      "sireflect": "https://github.com/suleymanlaarabi/sireflect"
+    }
+  }
+}

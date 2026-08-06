@@ -8,6 +8,9 @@
 
 #include <test.h>
 
+// Testsuite 'public'
+void public_metadata_and_entity_introspection(void);
+
 // Testsuite 'entity'
 void entity_create(void);
 void entity_reuses_id_with_new_generation_after_kill(void);
@@ -40,23 +43,13 @@ void component_many_tags_preserve_data_on_migration(void);
 void component_many_tags_swap_remove_preserves_moved_entity_data(void);
 void component_same_local_type_with_different_base_creates_different_tables(void);
 void component_type_add_remove_preserves_base(void);
+void component_type_pairs_are_sorted_replaced_and_removed_atomically(void);
+void component_table_index_indexes_generic_pairs(void);
 void component_tag_components_have_no_storage(void);
 void component_try_get_handles_missing_and_inherited(void);
 void component_table_type_tracks_data_columns(void);
 void component_table_index_resize_preserves_type_hashes(void);
 void component_table_resolves_recursive_base_components(void);
-
-// Testsuite 'rest'
-void rest_disabled_runtime_does_not_create_server(void);
-void rest_schema_returns_editor_contract(void);
-void rest_entity_detail_returns_editor_state(void);
-void rest_entity_children_returns_direct_children(void);
-void rest_set_component_value_updates_entity(void);
-void rest_set_component_value_rejects_missing_field(void);
-void rest_set_component_value_rejects_unknown_field(void);
-void rest_set_component_value_rejects_wrong_type(void);
-void rest_set_component_value_rejects_missing_component(void);
-void rest_set_component_value_rejects_non_reflected_component(void);
 
 // Testsuite 'resource'
 void resource_set_get(void);
@@ -143,6 +136,13 @@ void module_name_returns_imported_name(void);
 void module_enable(void);
 void module_disabled_import(void);
 void module_double_import_is_noop(void);
+
+bake_test_case public_testcases[] = {
+    {
+        "metadata_and_entity_introspection",
+        public_metadata_and_entity_introspection
+    }
+};
 
 bake_test_case entity_testcases[] = {
     {
@@ -265,6 +265,14 @@ bake_test_case component_testcases[] = {
         component_type_add_remove_preserves_base
     },
     {
+        "type_pairs_are_sorted_replaced_and_removed_atomically",
+        component_type_pairs_are_sorted_replaced_and_removed_atomically
+    },
+    {
+        "table_index_indexes_generic_pairs",
+        component_table_index_indexes_generic_pairs
+    },
+    {
         "tag_components_have_no_storage",
         component_tag_components_have_no_storage
     },
@@ -283,49 +291,6 @@ bake_test_case component_testcases[] = {
     {
         "table_resolves_recursive_base_components",
         component_table_resolves_recursive_base_components
-    }
-};
-
-bake_test_case rest_testcases[] = {
-    {
-        "disabled_runtime_does_not_create_server",
-        rest_disabled_runtime_does_not_create_server
-    },
-    {
-        "schema_returns_editor_contract",
-        rest_schema_returns_editor_contract
-    },
-    {
-        "entity_detail_returns_editor_state",
-        rest_entity_detail_returns_editor_state
-    },
-    {
-        "entity_children_returns_direct_children",
-        rest_entity_children_returns_direct_children
-    },
-    {
-        "set_component_value_updates_entity",
-        rest_set_component_value_updates_entity
-    },
-    {
-        "set_component_value_rejects_missing_field",
-        rest_set_component_value_rejects_missing_field
-    },
-    {
-        "set_component_value_rejects_unknown_field",
-        rest_set_component_value_rejects_unknown_field
-    },
-    {
-        "set_component_value_rejects_wrong_type",
-        rest_set_component_value_rejects_wrong_type
-    },
-    {
-        "set_component_value_rejects_missing_component",
-        rest_set_component_value_rejects_missing_component
-    },
-    {
-        "set_component_value_rejects_non_reflected_component",
-        rest_set_component_value_rejects_non_reflected_component
     }
 };
 
@@ -646,6 +611,13 @@ bake_test_case module_testcases[] = {
 
 static bake_test_suite suites[] = {
     {
+        "public",
+        NULL,
+        NULL,
+        1,
+        public_testcases
+    },
+    {
         "entity",
         NULL,
         NULL,
@@ -656,15 +628,8 @@ static bake_test_suite suites[] = {
         "component",
         NULL,
         NULL,
-        22,
+        24,
         component_testcases
-    },
-    {
-        "rest",
-        NULL,
-        NULL,
-        10,
-        rest_testcases
     },
     {
         "resource",

@@ -13,12 +13,17 @@
   "bundle": {
     "repositories": {
       "sireflect": "https://github.com/suleymanlaarabi/sireflect",
-      "sijson": "https://github.com/suleymanlaarabi/sijson",
-      "sihttp": "https://github.com/suleymanlaarabi/sihttp"
+      "sijson": "https://github.com/suleymanlaarabi/sijson"
     }
   },
   "test": {
     "testsuites": [
+      {
+        "id": "public",
+        "testcases": [
+          "metadata_and_entity_introspection"
+        ]
+      },
       {
         "id": "entity",
         "testcases": [
@@ -63,21 +68,6 @@
           "table_type_tracks_data_columns",
           "table_index_resize_preserves_type_hashes",
           "table_resolves_recursive_base_components"
-        ]
-      },
-      {
-        "id": "rest",
-        "testcases": [
-          "disabled_runtime_does_not_create_server",
-          "schema_returns_editor_contract",
-          "entity_detail_returns_editor_state",
-          "entity_children_returns_direct_children",
-          "set_component_value_updates_entity",
-          "set_component_value_rejects_missing_field",
-          "set_component_value_rejects_unknown_field",
-          "set_component_value_rejects_wrong_type",
-          "set_component_value_rejects_missing_component",
-          "set_component_value_rejects_non_reflected_component"
         ]
       },
       {

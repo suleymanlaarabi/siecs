@@ -6,12 +6,7 @@
 #ifndef EXPECT_META
 #error "EXPECT_META must be defined"
 #endif
-#ifndef EXPECT_REST
-#error "EXPECT_REST must be defined"
-#endif
-
 _Static_assert(SIECS_HAS_META == EXPECT_META);
-_Static_assert(SIECS_HAS_REST == EXPECT_REST);
 
 ECS_COMPONENT(FeaturePosition, { int value; });
 ECS_RESOURCE(FeatureTime, { int value; });

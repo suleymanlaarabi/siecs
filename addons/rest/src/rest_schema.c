@@ -1,7 +1,3 @@
-#include "siecs/config.h"
-#if SIECS_HAS_REST
-#include "../relation.h"
-#include "../storage/component_index.h"
 #include "rest_internal.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -14,29 +10,26 @@ typedef struct {
 } ecs_rest_type_set_t;
 
 static bool ecs_rest_component_is_reflected(ecs_component_t id) {
-    if (id >= ecs_world.component_index.components.size) {
-        return false;
-    }
-
-    const ecs_component_record_t *record = ecs_component_index_get(id);
-    return record->info->type != SIREFLECT_INVALID_HANDLE;
+    const ecs_component_info_t *info = ecs_component_info(id);
+    return info && info->type != SIREFLECT_INVALID_HANDLE && info->reflection != NULL;
 }
 
 static sijson_value_t ecs_rest_field_json(const sireflect_field_info_t *field) {
     sijson_value_t object = sijson_make_object();
     sijson_object_set(object, "name", sijson_make_string(field->name));
     sijson_object_set(object, "type", sijson_make_number(field->type));
-
     return object;
 }
 
-static sijson_value_t
-ecs_rest_component_json(ecs_component_t id, const ecs_component_record_t *record) {
+static sijson_value_t ecs_rest_component_json(
+    ecs_component_t id,
+    const ecs_component_info_t *info
+) {
     sijson_value_t fields_json = sijson_make_array();
     const sireflect_type_info_t *type =
-        sireflect_type_info(sijson_default_registry(), record->info->type);
+        sireflect_type_info(sijson_default_registry(), info->type);
     const sireflect_fields_t *fields =
-        sireflect_type_fields(sijson_default_registry(), record->info->type);
+        sireflect_type_fields(sijson_default_registry(), info->type);
     for (size_t i = 0; i < fields->field_count; i++) {
         sijson_array_push(fields_json, ecs_rest_field_json(&fields->fields[i]));
     }
@@ -45,20 +38,25 @@ ecs_rest_component_json(ecs_component_t id, const ecs_component_record_t *record
     sijson_object_set(object, "id", sijson_make_number(id));
     sijson_object_set(object, "name", sijson_make_string(type && type->name ? type->name : ""));
     sijson_object_set(object, "isRelation", sijson_make_bool(false));
-    sijson_object_set(object, "type", sijson_make_number(record->info->type));
+    sijson_object_set(object, "type", sijson_make_number(info->type));
     sijson_object_set(object, "fields", fields_json);
-
     return object;
 }
 
-static sijson_value_t
-ecs_rest_relation_json(ecs_relation_id_t id, const ecs_relation_record_t *record) {
+static sijson_value_t ecs_rest_relation_json(
+    ecs_relation_id_t id,
+    const ecs_relation_info_t *info
+) {
     sijson_value_t object = sijson_make_object();
     sijson_object_set(object, "id", sijson_make_number(id));
-    sijson_object_set(object, "name", sijson_make_string(record->name ? record->name : ""));
-    sijson_object_set(object, "storage", sijson_make_number(record->storage));
-    sijson_object_set(object, "onDeleteTarget", sijson_make_number(record->on_delete_target));
-    sijson_object_set(object, "acyclic", sijson_make_bool(record->acyclic));
+    sijson_object_set(object, "name", sijson_make_string(info->name ? info->name : ""));
+    sijson_object_set(object, "storage", sijson_make_number(info->desc.storage));
+    sijson_object_set(
+        object,
+        "onDeleteTarget",
+        sijson_make_number(info->desc.on_delete_target)
+    );
+    sijson_object_set(object, "acyclic", sijson_make_bool(info->desc.acyclic));
     return object;
 }
 
@@ -86,12 +84,14 @@ static void ecs_rest_type_set_add(ecs_rest_type_set_t *set, sireflect_handle_t i
     set->items[id] = true;
 }
 
-static void
-ecs_rest_collect_component_types(ecs_rest_type_set_t *set, const ecs_component_record_t *record) {
-    ecs_rest_type_set_add(set, record->info->type);
+static void ecs_rest_collect_component_types(
+    ecs_rest_type_set_t *set,
+    const ecs_component_info_t *info
+) {
+    ecs_rest_type_set_add(set, info->type);
 
     const sireflect_fields_t *fields =
-        sireflect_type_fields(sijson_default_registry(), record->info->type);
+        sireflect_type_fields(sijson_default_registry(), info->type);
     for (size_t i = 0; i < fields->field_count; i++) {
         ecs_rest_type_set_add(set, fields->fields[i].type);
     }
@@ -101,7 +101,10 @@ static bool ecs_rest_type_name_is(const sireflect_type_info_t *type, const char 
     return type->name && strcmp(type->name, name) == 0;
 }
 
-static const char *ecs_rest_editor_type(sireflect_handle_t id, const sireflect_type_info_t *type) {
+static const char *ecs_rest_editor_type(
+    sireflect_handle_t id,
+    const sireflect_type_info_t *type
+) {
     if (ecs_rest_type_name_is(type, "ecs_entity_t")) {
         return "entity";
     }
@@ -137,7 +140,6 @@ static sijson_value_t ecs_rest_type_json(sireflect_handle_t id) {
     sijson_object_set(object, "id", sijson_make_number(id));
     sijson_object_set(object, "name", sijson_make_string(type->name ? type->name : ""));
     sijson_object_set(object, "editor", sijson_make_string(ecs_rest_editor_type(id, type)));
-
     return object;
 }
 
@@ -148,26 +150,29 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req) {
     sijson_clean();
 
     sijson_value_t components = sijson_make_array();
-    for (uint32_t i = 1; i < ecs_world.component_index.components.size; i++) {
-        const ecs_component_record_t *record = ecs_component_index_get((ecs_component_t)i);
-        if (record->relation_flags || !ecs_rest_component_is_reflected((ecs_component_t)i)) {
+    for (uint32_t id = 1; id < ecs_component_count(); id++) {
+        ecs_component_t component = (ecs_component_t)id;
+        const ecs_component_info_t *info = ecs_component_info(component);
+        if (!ecs_rest_component_is_reflected(component)) {
             continue;
         }
 
-        ecs_rest_collect_component_types(&types, record);
-        sijson_array_push(components, ecs_rest_component_json((ecs_component_t)i, record));
+        ecs_rest_collect_component_types(&types, info);
+        sijson_array_push(components, ecs_rest_component_json(component, info));
     }
 
     sijson_value_t relations = sijson_make_array();
-    for (uint32_t i = 1; i < ecs_world.relation_index.records.size; i++) {
-        const ecs_relation_record_t *record = ecs_relation_record((ecs_relation_id_t)i);
-        sijson_array_push(relations, ecs_rest_relation_json((ecs_relation_id_t)i, record));
+    for (uint32_t id = 1; id < ecs_relation_count(); id++) {
+        const ecs_relation_info_t *info = ecs_relation_info((ecs_relation_id_t)id);
+        if (info) {
+            sijson_array_push(relations, ecs_rest_relation_json((ecs_relation_id_t)id, info));
+        }
     }
 
     sijson_value_t type_values = sijson_make_array();
-    for (size_t i = 1; i < types.count; i++) {
-        if (types.items[i]) {
-            sijson_array_push(type_values, ecs_rest_type_json((sireflect_handle_t)i));
+    for (size_t id = 1; id < types.count; id++) {
+        if (types.items[id]) {
+            sijson_array_push(type_values, ecs_rest_type_json((sireflect_handle_t)id));
         }
     }
 
@@ -177,7 +182,5 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req) {
     sijson_object_set(schema, "components", components);
     sijson_object_set(schema, "relations", relations);
     sijson_object_set(schema, "types", type_values);
-
     return ecs_rest_json_response(200, schema);
 }
-#endif

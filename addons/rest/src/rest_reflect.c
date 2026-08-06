@@ -1,28 +1,19 @@
-#include "siecs/config.h"
-#if SIECS_HAS_REST
-#include "../storage/component_index.h"
-#include "../world_internal.h"
 #include "rest_internal.h"
-#include "siecs.h"
-#ifndef SIJSON_H
-#include "sijson.h"
-#endif
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 bool ecs_rest_entity_component_is_reflected(ecs_component_t component) {
-    if (component >= ecs_world.component_index.components.size) {
-        return false;
-    }
-
-    const ecs_component_record_t *record = ecs_component_index_get(component);
-    return record->info->type != SIREFLECT_INVALID_HANDLE && record->reflection_desc != NULL;
+    const ecs_component_info_t *info = ecs_component_info(component);
+    return info && info->type != SIREFLECT_INVALID_HANDLE && info->reflection != NULL;
 }
 
-static bool validate_component_shape(const ecs_component_record_t *record, sijson_value_t value) {
+static bool validate_component_shape(
+    const ecs_component_info_t *info,
+    sijson_value_t value
+) {
     const sireflect_fields_t *fields =
-        sireflect_type_fields(sijson_default_registry(), record->info->type);
+        sireflect_type_fields(sijson_default_registry(), info->type);
     if (sijson_type(value) != SIJSON_OBJECT || sijson_object_len(value) != fields->field_count) {
         return false;
     }
@@ -47,9 +38,12 @@ static bool validate_component_shape(const ecs_component_record_t *record, sijso
     return true;
 }
 
-static sijson_value_t component_value_json(const ecs_component_record_t *record, const void *ptr) {
-    sireflect_handle_t ref = record->info->type;
-    char *json = sijson_to_json_impl(&ref, record->reflection_desc, ptr);
+static sijson_value_t component_value_json(
+    const ecs_component_info_t *info,
+    const void *ptr
+) {
+    sireflect_handle_t ref = info->type;
+    char *json = sijson_to_json_impl(&ref, info->reflection, ptr);
     if (!json) {
         return sijson_make_null();
     }
@@ -60,14 +54,14 @@ static sijson_value_t component_value_json(const ecs_component_record_t *record,
 }
 
 sijson_value_t ecs_rest_entity_component_json(ecs_component_t component_id, const void *ptr) {
-    const ecs_component_record_t *record = ecs_component_index_get(component_id);
+    const ecs_component_info_t *info = ecs_component_info(component_id);
     const sireflect_type_info_t *type =
-        sireflect_type_info(sijson_default_registry(), record->info->type);
+        sireflect_type_info(sijson_default_registry(), info->type);
 
     sijson_value_t component = sijson_make_object();
     sijson_object_set(component, "id", sijson_make_number(component_id));
     sijson_object_set(component, "name", sijson_make_string(type && type->name ? type->name : ""));
-    sijson_object_set(component, "value", component_value_json(record, ptr));
+    sijson_object_set(component, "value", component_value_json(info, ptr));
     return component;
 }
 
@@ -94,14 +88,14 @@ sihttp_response_t ecs_rest_set_entity_component(
         return ecs_rest_error_response(400, "invalid json body");
     }
 
-    const ecs_component_record_t *record = ecs_component_index_get(component);
-    if (!validate_component_shape(record, value)) {
+    const ecs_component_info_t *info = ecs_component_info(component);
+    if (!validate_component_shape(info, value)) {
         return ecs_rest_error_response(400, "invalid component value");
     }
 
     char *json = sijson_stringify(value);
-    sireflect_handle_t ref = record->info->type;
-    void *decoded = json ? sijson_from_json_impl(&ref, record->reflection_desc, json) : NULL;
+    sireflect_handle_t ref = info->type;
+    void *decoded = json ? sijson_from_json_impl(&ref, info->reflection, json) : NULL;
     free(json);
     if (!decoded || sijson_error()) {
         return ecs_rest_error_response(400, "invalid component value");
@@ -113,4 +107,3 @@ sihttp_response_t ecs_rest_set_entity_component(
         ecs_rest_entity_component_json(component, ecs_get_cid(entity, component))
     );
 }
-#endif

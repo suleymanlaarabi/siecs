@@ -5,7 +5,7 @@
     "public": false,
     "clangd": true,
     "language": "cpp",
-    "use": ["siecs"]
+    "use": ["siecs", "siecs_rest"]
   },
   "lang.cpp": {
     "cpp-standard": "c++20",
@@ -14,8 +14,7 @@
   "bundle": {
     "repositories": {
       "sireflect": "https://github.com/suleymanlaarabi/sireflect",
-      "sijson": "https://github.com/suleymanlaarabi/sijson",
-      "sihttp": "https://github.com/suleymanlaarabi/sihttp"
+      "sijson": "https://github.com/suleymanlaarabi/sijson"
     }
   }
 }

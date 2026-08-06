@@ -64,15 +64,15 @@ void ecs_fini(void);
 
 ```c
 typedef struct {
-    bool rest;
     uint16_t target_fps;
 } ecs_world_feat_desc_t;
 
 #define ecs_with_features(...)
 ```
 
-`rest` starts the REST explorer server when the addon is built in. `target_fps`
-caps `ecs_progress()` by sleeping for the remaining frame time when non-zero.
+`target_fps` caps `ecs_progress()` by sleeping for the remaining frame time when
+non-zero. The optional REST explorer is provided by the separate `siecs_rest`
+Bake package and must be imported explicitly.
 
 ## Components
 
@@ -550,7 +550,7 @@ ecs::fini();
 Initialize with optional features when needed:
 
 ```cpp
-ecs::init({ .rest = true, .target_fps = 60 });
+ecs::init({ .target_fps = 60 });
 ecs::fini();
 ```
 

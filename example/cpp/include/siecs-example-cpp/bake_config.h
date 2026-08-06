@@ -19,6 +19,7 @@
 
 /* Headers of public dependencies */
 #include <siecs.h>
+#include <siecs_rest.h>
 
 #endif
 

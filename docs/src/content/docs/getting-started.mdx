@@ -155,27 +155,23 @@ directory and also compile the public C dependencies used by SIECS:
 
 - [`sireflect`](https://github.com/suleymanlaarabi/sireflect)
 - [`sijson`](https://github.com/suleymanlaarabi/sijson)
-- [`sihttp`](https://github.com/suleymanlaarabi/sihttp)
 
 Expose these include directories to your application:
 
 - `include`
 - `sireflect/include`
 - `sijson/include`
-- `sihttp/include`
 
 Link the public dependencies with SIECS:
 
 - `sireflect`
 - `sijson`
-- `sihttp`
 
 Use these compile definitions for static builds:
 
 - `siecs_STATIC`
 - `sireflect_STATIC`
 - `sijson_STATIC`
-- `sihttp_STATIC`
 
 On Linux, link `pthread`.
 

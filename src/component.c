@@ -218,6 +218,8 @@ const ecs_component_info_t *ecs_component_info(ecs_component_t component) {
     return ecs_component_index_get(component)->info;
 }
 
+uint32_t ecs_component_count(void) { return ecs_world.component_index.components.size; }
+
 #if SIECS_HAS_META
 ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc) {
     sireflect_registry_t *registry = sijson_default_registry();

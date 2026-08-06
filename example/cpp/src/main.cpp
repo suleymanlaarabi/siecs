@@ -1,8 +1,10 @@
+#include "siecs/cpp/world.hpp"
 #include <concepts>
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
 #include <siecs.h>
+#include <siecs_rest.h>
 
 #include <cassert>
 
@@ -23,9 +25,13 @@ struct Voiture {};
 struct NoIntegrate {};
 
 int main() {
-    ecs::init({ .rest = false, .target_fps = 60 });
+    ecs::init({ .target_fps = 60 });
+    SiecsRestImport({});
+
     ecs::entity::create("Parent").child_of(ecs::entity::create("Child"));
     ecs::query().cascade<ecs::ChildOf>().each([](ecs::entity entity) {
         std::cout << entity.get<Name>().value;
     });
+
+    ecs::run();
 }

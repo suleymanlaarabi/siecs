@@ -14,8 +14,7 @@
   "bundle": {
     "repositories": {
       "sireflect": "https://github.com/suleymanlaarabi/sireflect",
-      "sijson": "https://github.com/suleymanlaarabi/sijson",
-      "sihttp": "https://github.com/suleymanlaarabi/sihttp"
+      "sijson": "https://github.com/suleymanlaarabi/sijson"
     }
   }
 }

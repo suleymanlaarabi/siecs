@@ -45,6 +45,20 @@ ecs_entity_t ecs_new(void) {
 
 bool ecs_is_alive(const ecs_entity_t entity) { return ecs_entity_index_is_alive(entity); }
 
+ecs_entity_t ecs_entity_from_index(uint32_t index) {
+    if (index == 0 || index >= ecs_world.entity_index.entities.size) {
+        return 0;
+    }
+
+    const ecs_entity_record_t *record =
+        sicore_vec_get(&ecs_world.entity_index.entities, index, ecs_entity_record_t);
+    if (record->table_id == UINT16_MAX) {
+        return 0;
+    }
+
+    return ecs_entity(index, record->generation);
+}
+
 #ifndef NDEBUG
 static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_entity_t target) {
     while (target != 0) {
@@ -68,6 +82,11 @@ bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
         return false;
     }
     return ecs_is(base, target);
+}
+
+ecs_entity_t ecs_entity_base(ecs_entity_t entity) {
+    ecs_assert_is_alive(entity);
+    return ecs_get_table(ecs_get_record(entity)->table_id)->type.base;
 }
 
 ecs_entity_t ecs_lookup(const char *key) {

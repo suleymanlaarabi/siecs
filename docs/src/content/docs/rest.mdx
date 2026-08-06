@@ -4,25 +4,37 @@ description: Inspect and modify a running world through the optional REST API fo
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-The REST addon is intended for editor and explorer tooling. Enable it when
-creating the world:
+The REST addon is an independent Bake package intended for editor and explorer
+tooling. Add `siecs_rest` to the application and import it explicitly:
 
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_with_features({ .rest = true });
+#include <siecs.h>
+#include <siecs_rest.h>
+
+int main(void) {
+    ecs_init();
+    ECS_MODULE_IMPORT(SiecsRest, { .port = 4040 });
+    ecs_progress();
+    ecs_fini();
+}
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
-ecs_world_feat_desc_t features{ .rest = true };
-ecs::init(features);
+#include <siecs/cpp.hpp>
+#include <siecs_rest.h>
+
+ecs::init();
+ECS_MODULE_IMPORT(SiecsRest, { .port = 4040 });
 ```
 </TabItem>
 </Tabs>
 
-The server listens on port `4040` and is polled by `ecs_progress()` when the
-feature is enabled.
+The default port is `4040`; the server listens on the configured port and is polled by `ecs_progress()`
+while the imported module is enabled. The package owns the server lifetime and
+stops it when the world is finalized.
 
 ## Routes
 

@@ -1,7 +1,4 @@
 #include "siecs.h"
-#if SIECS_HAS_REST && !defined(SIHTTP_H)
-#include "sihttp.h"
-#endif
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
 #include "storage/module_index.h"
@@ -43,9 +40,6 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world.flushing_commands = false;
     ecs_world.did_start = false;
     ecs_world.exit = false;
-#if SIECS_HAS_REST
-    ecs_world.server = NULL;
-#endif
     ecs_world.delta_time = 0;
     ecs_world.last_time = 0;
     ecs_bootstrap();
@@ -69,12 +63,6 @@ void ecs_fini(void) {
     ecs_command_buffer_fini();
     ecs_arena_fini();
     sicore_map_fini(&name_map);
-#if SIECS_HAS_REST
-    if (ecs_world.features.rest) {
-        sihttp_server_stop(ecs_world.server);
-        sihttp_server_fini(ecs_world.server);
-    }
-#endif
     ecs_world_started = false;
 }
 

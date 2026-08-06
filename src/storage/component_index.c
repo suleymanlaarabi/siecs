@@ -62,11 +62,15 @@ void ecs_component_index_register(
     if (!info) {
         abort();
     }
+#if SIECS_HAS_META
+    sireflect_struct_desc_t *reflection = ecs_component_reflection_desc_copy(reflection_desc);
+#endif
     *info = (ecs_component_info_t){
         .name = name ? strdup(name) : NULL,
         .size = size,
 #if SIECS_HAS_META
         .type = type,
+        .reflection = reflection,
 #endif
     };
     if (name && !info->name) {
@@ -85,7 +89,7 @@ void ecs_component_index_register(
         .relation_flags = relation_flags,
         .tables = { 0 },
 #if SIECS_HAS_META
-        .reflection_desc = ecs_component_reflection_desc_copy(reflection_desc),
+        .reflection_desc = reflection,
 #endif
     };
     sicore_vec_init(&record.tables, sizeof(uint16_t));

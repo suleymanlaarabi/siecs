@@ -67,12 +67,31 @@ ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relatio
             .acyclic = desc->storage == EcsRelationByDepth || desc->acyclic,
             .name = name ? strdup(name) : NULL,
         };
+    ecs_relation_record_t *record =
+        sicore_vec_get_mut(&ecs_world.relation_index.records, *id, ecs_relation_record_t);
+    record->info = (ecs_relation_info_t){
+        .name = record->name,
+        .desc = {
+            .storage = (ecs_relation_storage_t)record->storage,
+            .on_delete_target = (ecs_delete_target_t)record->on_delete_target,
+            .acyclic = record->acyclic,
+        },
+    };
     return *id;
 }
 
 ecs_relation_id_t ecs_relation_init(const char *name, const ecs_relation_desc_t *desc) {
     ecs_relation_id_t id = 0;
     return ecs_relation_register(&id, name, desc);
+}
+
+uint32_t ecs_relation_count(void) { return ecs_world.relation_index.records.size; }
+
+const ecs_relation_info_t *ecs_relation_info(ecs_relation_id_t relation) {
+    if (relation == 0 || relation >= ecs_world.relation_index.records.size) {
+        return NULL;
+    }
+    return &ecs_relation_record(relation)->info;
 }
 
 ecs_entity_t

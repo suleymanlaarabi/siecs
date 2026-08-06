@@ -6,7 +6,7 @@
     "description": "Small ECS library",
     "public": true,
     "clangd": true,
-    "use": ["sicore", "sireflect", "sijson", "sihttp"],
+    "use": ["sicore", "sireflect", "sijson"],
     "amalgamate": [
       {
         "path": "distr",
@@ -18,32 +18,6 @@
           {
             "when": "SIECS_HAS_META",
             "use": ["sireflect", "sijson"]
-          },
-          {
-            "when": "SIECS_HAS_REST",
-            "use": ["sihttp"]
-          }
-        ]
-      },
-      {
-        "path": "distr",
-        "prefix": "siecs_no_addons",
-        "disable-flags": [
-          "SIECS_HAS_META",
-          "SIECS_HAS_REST"
-        ],
-        "dependencies": [
-          {
-            "when": "SICORE_VEC",
-            "use": ["sicore"]
-          },
-          {
-            "when": "SIECS_HAS_META",
-            "use": ["sireflect", "sijson"]
-          },
-          {
-            "when": "SIECS_HAS_REST",
-            "use": ["sihttp"]
           }
         ]
       }
@@ -69,15 +43,13 @@
     "repositories": {
       "sireflect": "https://github.com/suleymanlaarabi/sireflect",
       "sijson": "https://github.com/suleymanlaarabi/sijson",
-      "sihttp": "https://github.com/suleymanlaarabi/sihttp",
       "sicore":  "https://github.com/suleymanlaarabi/sicore"
     },
     "refs": {
       "default": {
         "sicore": { "branch": "main", "commit": "815a938a1ee7ec30469b898b4e34b494930f618b" },
         "sireflect": { "branch": "main", "commit": "f79f3e28b8243918061ad5b6b44fc698842ed4b5" },
-        "sijson": { "branch": "main", "commit": "7c978e7eaf821d0ce13af4ed96ef1e7d7e3eec62" },
-        "sihttp": { "branch": "main", "commit": "3d13413522fa6d42199902f5e28dca7bea31c478" }
+        "sijson": { "branch": "main", "commit": "7c978e7eaf821d0ce13af4ed96ef1e7d7e3eec62" }
       }
     }
   }
