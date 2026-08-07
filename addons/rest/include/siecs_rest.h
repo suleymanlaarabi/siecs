@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 /* Configuration for the SIECS REST explorer module. */
-ECS_MODULE_DECLARE(SiecsRest, {
+ECS_MODULE_DECLARE(sirest, {
   const char *host;
   int port;
   int backlog;

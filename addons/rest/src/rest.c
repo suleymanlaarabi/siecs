@@ -8,7 +8,7 @@ static void rest_state_on_remove(const void *ptr);
 static sihttp_response_t rest_health(const sihttp_request_t *req);
 
 ECS_RESOURCE_DEFINE(SiecsRestState, .on_remove = rest_state_on_remove);
-ECS_MODULE_DEFINE(SiecsRest);
+ECS_MODULE_DEFINE(sirest);
 
 static void rest_fail(const char *operation) {
     const char *error = sihttp_error();
@@ -33,12 +33,14 @@ static void rest_poll(ecs_iter_t *it) {
     }
 }
 
-static sihttp_server_t *rest_server_create(const SiecsRest_props_t *props) {
-    sihttp_server_t *server = sihttp_server({
-        .port = props->port,
-        .backlog = props->backlog,
-        .max_requests_per_poll = props->max_requests_per_poll,
-    });
+static sihttp_server_t *rest_server_create(const sirest_props_t *props) {
+    sihttp_server_t *server = sihttp_server(
+        {
+            .port = props->port,
+            .backlog = props->backlog,
+            .max_requests_per_poll = props->max_requests_per_poll,
+        }
+    );
     if (!server) {
         rest_fail("create server");
     }
@@ -55,14 +57,14 @@ static sihttp_server_t *rest_server_create(const SiecsRest_props_t *props) {
     return server;
 }
 
-void SiecsRest_import(const SiecsRest_props_t *props) {
-    const SiecsRest_props_t defaults = {
+void sirest_import(const sirest_props_t *props) {
+    const sirest_props_t defaults = {
         .host = NULL,
         .port = 4040,
         .backlog = 0,
         .max_requests_per_poll = 0,
     };
-    SiecsRest_props_t config = props ? *props : defaults;
+    sirest_props_t config = props ? *props : defaults;
     if (config.port == 0) {
         config.port = defaults.port;
     }
@@ -80,11 +82,13 @@ void SiecsRest_import(const SiecsRest_props_t *props) {
     sihttp_put(server, "/entities/:index/components/:component", ecs_rest_put_entity_component);
     sihttp_get(server, "/entities/:index", ecs_rest_get_entity);
 
-    ecs_system({
-        .name = "SiecsRestPoll",
-        .callback = rest_poll,
-        .phase = EcsPostRender,
-    });
+    ecs_system(
+        {
+            .name = "SiecsRestPoll",
+            .callback = rest_poll,
+            .phase = EcsPostRender,
+        }
+    );
 }
 
 static sihttp_response_t rest_health(const sihttp_request_t *req) {
