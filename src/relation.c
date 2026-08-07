@@ -109,11 +109,7 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
 }
 
 ecs_entity_t ecs_table_target_id(const ecs_table_t *table, ecs_relation_id_t relation) {
-    const ecs_relation_record_t *record = ecs_relation_record(relation);
-    ecs_assert(
-        record->storage == EcsRelationByTarget,
-        "ecs_table_target requires ByTarget\n"
-    );
+    ecs_assert(record->storage == EcsRelationByTarget, "ecs_table_target requires ByTarget\n");
     return ecs_type_pair_get(&table->type, relation);
 }
 
@@ -177,11 +173,8 @@ static ecs_table_t *ecs_relation_set_pair(
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
     uint16_t from_id = entity_record->table_id;
     ecs_table_t *from = ecs_get_table(from_id);
-    ecs_type_t type = ecs_type_with(
-        &from->type,
-        component,
-        (ecs_type_pair_t){ .key = key, .value = value }
-    );
+    ecs_type_t type =
+        ecs_type_with(&from->type, component, (ecs_type_pair_t){ .key = key, .value = value });
     uint16_t to_id = ecs_table_index_get_or_create(type);
     if (to_id != from_id) {
         from = ecs_get_table(from_id);
@@ -194,11 +187,7 @@ static ecs_table_t *ecs_relation_set_pair(
     return ecs_get_table(entity_record->table_id);
 }
 
-static void ecs_relation_remove_pair(
-    ecs_entity_t entity,
-    uint16_t component_at,
-    uint16_t key
-) {
+static void ecs_relation_remove_pair(ecs_entity_t entity, uint16_t component_at, uint16_t key) {
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
     uint16_t from_id = entity_record->table_id;
     ecs_table_t *from = ecs_get_table(from_id);
@@ -236,11 +225,8 @@ static void ecs_relation_set_depth(
     bool had_relation
 ) {
     const ecs_entity_record_t *target_record = ecs_get_record(target);
-    uint32_t depth = (uint32_t)ecs_type_pair_get(
-                         &ecs_get_table(target_record->table_id)->type,
-                         relation
-                     ) +
-                     1;
+    uint32_t depth =
+        (uint32_t)ecs_type_pair_get(&ecs_get_table(target_record->table_id)->type, relation) + 1;
     ecs_table_t *table = ecs_relation_set_pair(
         entity,
         had_relation ? 0 : relation_record->component,
@@ -248,11 +234,8 @@ static void ecs_relation_set_depth(
         depth
     );
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    RelationTarget *current = ecs_table_get_component(
-        table,
-        relation_record->component,
-        entity_record->table_row
-    );
+    RelationTarget *current =
+        ecs_table_get_component(table, relation_record->component, entity_record->table_row);
     const ecs_component_record_t *component = ecs_component_index_get(relation_record->component);
     RelationTarget value = { .entity = target };
     component->on_set(entity, relation_record->component, &value, current);
@@ -282,11 +265,8 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
     }
 
     if (relation_column != UINT16_MAX) {
-        const RelationTarget *current = ecs_table_component_at_column(
-            entity_table,
-            relation_column,
-            entity_record->table_row
-        );
+        const RelationTarget *current =
+            ecs_table_component_at_column(entity_table, relation_column, entity_record->table_row);
         old_target = current->entity;
     } else {
         old_target = ecs_target_id(entity, relation);
