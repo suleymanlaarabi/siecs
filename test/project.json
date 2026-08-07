@@ -96,6 +96,7 @@
           "cascade_cache_accepts_new_depth",
           "bytarget_exact_query_and_retarget",
           "bytarget_exact_query_spans_tables",
+          "bytarget_order_by_target",
           "bytarget_delete_policies",
           "bytarget_keeps_target_generation",
           "multiple_bytarget_relations_share_one_type",

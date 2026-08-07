@@ -21,7 +21,7 @@ typedef struct {
     uint16_t flags;
 } ecs_column_t;
 
-typedef struct ecs_table_s {
+struct ecs_table_s {
     ecs_id_map_t add_edge; // maps component id to the table that has the component added or column
                            // index if the component is in the table
     uint32_t entity_capacity;
@@ -32,7 +32,7 @@ typedef struct ecs_table_s {
     ecs_type_t type;
     uint64_t bloom;
     sicore_vec_t observers_by_event; // sicore_vec_t per event id; each holds uint16_t observer ids.
-} ecs_table_t;
+};
 
 void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id);
 void ecs_table_fini(ecs_table_t *table);

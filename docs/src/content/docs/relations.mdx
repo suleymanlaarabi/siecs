@@ -78,11 +78,11 @@ Choose the storage mode according to how the relation is queried:
 | Storage | Use | Query support |
 | --- | --- | --- |
 | `EcsRelationDense` | The target is stored in a dense per-source column. | `ecs_rel`; `ecs_targets()` returns a contiguous target column. |
-| `EcsRelationByDepth` | Acyclic hierarchies where depth and cascade order matter. | `ecs_rel`, `ecs_depth`, `ecs_targets()`, and `ecs_cascade()`. |
-| `EcsRelationByTarget` | Many sources share a target and exact target queries are common. | `ecs_rel`, `ecs_to()`, and `ecs_up()`. |
+| `EcsRelationByDepth` | Acyclic hierarchies where depth and depth order matter. | `ecs_rel`, `ecs_depth`, `ecs_targets()`, and `ecs_order_by_depth()`. |
+| `EcsRelationByTarget` | Many sources share a target and exact target queries or target ordering are common. | `ecs_rel`, `ecs_to()`, `ecs_up()`, and `ecs_order_by_target()`. |
 
 `EcsRelationByDepth` requires `.acyclic = true`. `ecs_to()` requires
-`ByTarget`; `ecs_depth()` and `ecs_cascade()` require `ByDepth`.
+`ByTarget`; `ecs_depth()` and `ecs_order_by_depth()` require `ByDepth`.
 
 The relation target is always an entity handle. It must be live when passed to
 `ecs_relate()`. Retargeting replaces the existing target for that relation;
@@ -154,7 +154,8 @@ optional relation, `ecs_not_rel()` for absence, `ecs_to()` for an exact
 `ByDepth` target column.
 
 For C++, use `.with_relation<Relation>()`, `.to<Relation>(target)`,
-`.depth<Relation>(depth)`, and `.cascade<Relation>()` on `ecs::query`.
+`.depth<Relation>(depth)`, `.order_by_depth<Relation>()`, and
+`.order_by_target<Relation>()` on `ecs::query`.
 
 ## Target deletion
 

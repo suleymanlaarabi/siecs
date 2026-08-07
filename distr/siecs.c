@@ -4361,7 +4361,7 @@ typedef struct {
     uint16_t flags;
 } ecs_column_t;
 
-typedef struct ecs_table_s {
+struct ecs_table_s {
     ecs_id_map_t add_edge; // maps component id to the table that has the component added or column
                            // index if the component is in the table
     uint32_t entity_capacity;
@@ -4372,7 +4372,7 @@ typedef struct ecs_table_s {
     ecs_type_t type;
     uint64_t bloom;
     sicore_vec_t observers_by_event; // sicore_vec_t per event id; each holds uint16_t observer ids.
-} ecs_table_t;
+};
 
 void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id);
 void ecs_table_fini(ecs_table_t *table);
@@ -4775,7 +4775,7 @@ typedef struct {
 
 typedef struct {
     uint16_t filter_count;
-    ecs_relation_id_t cascade;
+    ecs_query_order_t order_by;
     uint32_t reserved;
 } ecs_query_type_filter_meta_t;
 
@@ -7153,6 +7153,15 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
     return value->target;
 }
 
+ecs_entity_t ecs_table_target_id(const ecs_table_t *table, ecs_relation_id_t relation) {
+    const ecs_relation_record_t *record = ecs_relation_record(relation);
+    ecs_assert(
+        record->storage == EcsRelationByTarget,
+        "ecs_table_target requires ByTarget\n"
+    );
+    return ecs_type_pair_get(&table->type, relation);
+}
+
 static void ecs_emit_relation_event(
     ecs_entity_t entity,
     ecs_relation_id_t relation,
@@ -7547,7 +7556,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     ecs_assert(desc->phase < EcsPhaseCount, "invalid system phase: %u\n", desc->phase);
 
     const bool has_query = desc->query.terms[0].id || desc->query.relations[0].id ||
-                           desc->query.order.relation || desc->query.is_a;
+                           desc->query.order_by.func || desc->query.is_a;
     ecs_system_t sys = {
         .name = desc->name,
         .qid = has_query ? ecs_query_init(&desc->query) : ECS_SYSTEM_NO_QUERY,
@@ -7888,6 +7897,10 @@ bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
     }
 
     return false;
+}
+
+bool ecs_table_has_id(const ecs_table_t *table, ecs_component_t component_id) {
+    return ecs_table_has(table, component_id);
 }
 
 bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
@@ -8640,6 +8653,48 @@ void ecs_observer_index_add_table(ecs_table_t *table) {
     }
 }
 
+static int ecs_compare_order_value(uint64_t a, uint64_t b) {
+    return a < b ? -1 : a > b ? 1 : 0;
+}
+
+static int ecs_query_order_target(
+    const ecs_table_t *a,
+    const ecs_table_t *b,
+    uint64_t data
+) {
+    const ecs_relation_id_t relation = (ecs_relation_id_t)data;
+    return ecs_compare_order_value(
+        ecs_type_pair_get(&a->type, relation),
+        ecs_type_pair_get(&b->type, relation)
+    );
+}
+
+static int ecs_query_order_depth(
+    const ecs_table_t *a,
+    const ecs_table_t *b,
+    uint64_t data
+) {
+    const ecs_relation_id_t relation = (ecs_relation_id_t)data;
+    return ecs_compare_order_value(
+        ecs_type_pair_get(&a->type, relation),
+        ecs_type_pair_get(&b->type, relation)
+    );
+}
+
+ecs_query_order_t ecs_order_by_target_id(ecs_relation_id_t relation) {
+    return (ecs_query_order_t){
+        .func = ecs_query_order_target,
+        .data = relation,
+    };
+}
+
+ecs_query_order_t ecs_order_by_depth_id(ecs_relation_id_t relation) {
+    return (ecs_query_order_t){
+        .func = ecs_query_order_depth,
+        .data = relation,
+    };
+}
+
 void ecs_query_index_init() {
     ecs_query_index_t *index = &ecs_world.query_index;
     sicore_vec_init(&index->queries, sizeof(ecs_query_cache_t));
@@ -8805,14 +8860,21 @@ static ecs_component_t ecs_query_build(
             filter_count += term.kind != EcsRelationOptional;
         }
     }
-    bool has_meta = filter_count || desc->order.relation;
+    bool has_meta = filter_count || desc->order_by.func;
 
 #ifndef NDEBUG
     ecs_query_validate_relations(desc->relations, relation_count);
-    if (desc->order.relation) {
+    if (desc->order_by.func == ecs_query_order_target) {
+        ecs_relation_id_t relation = (ecs_relation_id_t)desc->order_by.data;
         ecs_assert(
-            ecs_relation_record(desc->order.relation)->storage == EcsRelationByDepth,
-            "ecs_cascade requires ByDepth\n"
+            ecs_relation_record(relation)->storage == EcsRelationByTarget,
+            "ecs_order_by_target requires ByTarget\n"
+        );
+    } else if (desc->order_by.func == ecs_query_order_depth) {
+        ecs_relation_id_t relation = (ecs_relation_id_t)desc->order_by.data;
+        ecs_assert(
+            ecs_relation_record(relation)->storage == EcsRelationByDepth,
+            "ecs_order_by_depth requires ByDepth\n"
         );
     }
 #endif
@@ -8863,7 +8925,7 @@ static ecs_component_t ecs_query_build(
     if (has_meta) {
         *ecs_query_type_filter_meta(query) = (ecs_query_type_filter_meta_t){
             .filter_count = filter_count,
-            .cascade = desc->order.relation,
+            .order_by = desc->order_by,
         };
         ecs_query_type_filter_t *filters = ecs_query_type_filters(query);
         out = 0;
@@ -9115,7 +9177,7 @@ ecs_query_cache_append_table(ecs_query_cache_t *cache, const ecs_table_t *table,
     }
 }
 
-static void ecs_query_cache_insert_cascade(
+static void ecs_query_cache_insert_ordered(
     ecs_query_cache_t *cache,
     const ecs_table_t *table,
     uint16_t table_id
@@ -9127,11 +9189,14 @@ static void ecs_query_cache_insert_cascade(
     ecs_query_cache_reserve_fields(cache, table_count);
 
     uint16_t insert = old_count;
-    const ecs_relation_id_t cascade = ecs_query_type_filter_meta(&cache->query)->cascade;
-    uint64_t depth = ecs_type_pair_get(&table->type, cascade);
+    const ecs_query_order_t order_by =
+        ecs_query_type_filter_meta(&cache->query)->order_by;
     uint16_t *ids = cache->table_ids.data;
-    while (insert &&
-           ecs_type_pair_get(&ecs_get_table(ids[insert - 1])->type, cascade) > depth) {
+    while (insert && order_by.func(
+                         ecs_get_table(ids[insert - 1]),
+                         table,
+                         order_by.data
+                     ) > 0) {
         ids[insert] = ids[insert - 1];
         insert--;
     }
@@ -9160,8 +9225,8 @@ static inline void ecs_query_cache_add_matched_table(
     uint16_t table_id
 ) {
     if ((cache->query.up_mask & ECS_QUERY_HAS_TYPE_FILTERS) &&
-        ecs_query_type_filter_meta(&cache->query)->cascade) {
-        ecs_query_cache_insert_cascade(cache, table, table_id);
+        ecs_query_type_filter_meta(&cache->query)->order_by.func) {
+        ecs_query_cache_insert_ordered(cache, table, table_id);
     } else {
         ecs_query_cache_append_table(cache, table, table_id);
     }

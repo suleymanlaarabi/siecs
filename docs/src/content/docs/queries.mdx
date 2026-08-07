@@ -35,7 +35,7 @@ auto moving = ecs::query()
 The C descriptor contains up to `ECS_QUERY_TERM_CAPACITY` component terms and
 up to `ECS_QUERY_RELATION_CAPACITY` relation terms. Terms are zero-terminated
 inside their fixed-size descriptor arrays. A query may contain component terms,
-relation terms, an `is_a` target, or a cascade order.
+relation terms, an `is_a` target, or an order comparator.
 
 The C++ builder creates a temporary query for `each()` and `first()`. Use
 `build_handle()` when a query must be kept and iterated repeatedly.
@@ -179,8 +179,11 @@ auto enemies = ecs::query()
 </TabItem>
 </Tabs>
 
-`ecs_cascade(Relation)` orders matching tables by relation depth. It is valid
-only for an acyclic `ByDepth` relation:
+`ecs_order_by_depth(Relation)` orders matching tables by relation depth. It is
+valid only for an acyclic `ByDepth` relation. `ecs_order_by_target(Relation)`
+orders `ByTarget` tables by their target handle. Both orderings are stable for
+tables with equal keys; neither ordering defines an order between entities in
+the same table:
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -189,7 +192,7 @@ only for an acyclic `ByDepth` relation:
 ecs_query_id_t hierarchy = ecs_query({
     .terms = { ecs_in(Position) },
     .relations = { ecs_rel(ChildOf) },
-    .order = ecs_cascade(ChildOf),
+    .order_by = ecs_order_by_depth(ChildOf),
 });
 ```
 
@@ -199,7 +202,7 @@ ecs_query_id_t hierarchy = ecs_query({
 ```cpp
 auto hierarchy = ecs::query()
     .with_relation<ChildOf>()
-    .cascade<ChildOf>()
+    .order_by_depth<ChildOf>()
     .build_handle();
 ```
 

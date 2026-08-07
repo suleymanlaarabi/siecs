@@ -49,6 +49,7 @@ names are implementation details and are not part of the API.
 | `ecs_module_id_t` | Module id. Id `0` is reserved. |
 | `ecs_resource_t` | Resource id in the separate resource id space. |
 | `ecs_observer_id_t` | Observer id. |
+| `ecs_table_t` | Opaque archetype table passed to query order callbacks. |
 | `ecs_iter_t` | Query iterator. Users may read `count`. |
 
 ## World
@@ -259,7 +260,7 @@ typedef struct {
 typedef struct {
     ecs_query_term_t terms[ECS_QUERY_TERM_CAPACITY];
     ecs_query_relation_term_t relations[ECS_QUERY_RELATION_CAPACITY];
-    ecs_query_order_t order;
+    ecs_query_order_t order_by;
     ecs_entity_t is_a;
 } ecs_query_desc_t;
 ```
@@ -279,10 +280,27 @@ typedef struct {
     ecs_query_relation_kind_t kind;
 } ecs_query_relation_term_t;
 
+typedef int (*ecs_query_order_func_t)(const ecs_table_t *a,
+                                      const ecs_table_t *b,
+                                      uint64_t data);
+
 typedef struct {
-    ecs_relation_id_t relation;
+    ecs_query_order_func_t func;
+    uint64_t data;
 } ecs_query_order_t;
 ```
+
+An order callback returns a negative value when table `a` precedes table `b`,
+zero when they have equal order, and a positive value otherwise. It must be
+pure because it runs while the query cache is built or updated:
+
+```c
+ecs_order_by_target(Relation);
+ecs_order_by_depth(Relation);
+```
+
+Custom callbacks may inspect the matching relation target with
+`ecs_table_target_id()` and table composition with `ecs_table_has_id()`.
 
 `is_a` restricts the query to entities that inherit from the given target. The
 match is transitive through the inheritance chain. Relation terms filter table
@@ -303,7 +321,8 @@ ecs_rel_opt(Relation);
 ecs_not_rel(Relation);
 ecs_to(Relation, target);
 ecs_depth(Relation, depth);
-ecs_cascade(Relation);
+ecs_order_by_target(Relation);
+ecs_order_by_depth(Relation);
 ```
 
 `ecs_field()` returns `EcsIn`, `EcsOut`, `EcsInOut`, `EcsInOptional`, and
@@ -332,7 +351,8 @@ bool ecs_field_is_shared(ecs_iter_t *it, uint16_t field_index);
 `ecs_target_at()` returns a relation target for one row of the current batch.
 `ecs_targets()` returns a contiguous target column for `Dense` and `ByDepth`
 relations. `ecs_to()` is valid for `ByTarget` relations, while `ecs_depth()`
-and `ecs_cascade()` are valid for `ByDepth` relations.
+`ecs_order_by_target()` is valid for `ByTarget` relations, while
+`ecs_depth()` and `ecs_order_by_depth()` are valid for `ByDepth` relations.
 
 ## Observers
 
@@ -625,7 +645,8 @@ auto first = ecs::query().require<Position>().first();
 
 The builder also provides `optional<T>()`, `is_a(target)`, `build()`, and
 `build_handle()`. Relation filters use `with_relation<T>()`, `to<T>(target)`,
-`depth<T>(value)`, and `cascade<T>()`. Inherited fields use `up<Component,
+and `depth<T>(value)`. Table ordering uses `order_by_target<T>()`,
+`order_by_depth<T>()`, or `order_by(...)`. Inherited fields use `up<Component,
 Relation>()`. A
 callback can receive `ecs::entity` as its first argument. `each()` and `first()`
 are one-shot operations; they create and destroy the underlying C query. A

@@ -74,6 +74,8 @@ typedef uint16_t ecs_module_id_t;
 typedef uint16_t ecs_resource_t;
 /* Observer id returned by ecs_observer_init. */
 typedef uint32_t ecs_observer_id_t;
+/* Opaque archetype table passed to query order callbacks. */
+typedef struct ecs_table_s ecs_table_t;
 
 /* Extract the index and generation fields from an entity handle. */
 #define ecs_entity_id(entity) ((uint32_t)((entity) >> 32))
@@ -313,8 +315,15 @@ typedef struct {
   ecs_query_relation_kind_t kind;
 } ecs_query_relation_term_t;
 
+/* Return a negative value when a precedes b, zero for equal order, or a
+ * positive value when b precedes a. The callback must not mutate the world. */
+typedef int (*ecs_query_order_func_t)(const ecs_table_t *a,
+                                      const ecs_table_t *b,
+                                      uint64_t data);
+
 typedef struct {
-  ecs_relation_id_t relation;
+  ecs_query_order_func_t func;
+  uint64_t data;
 } ecs_query_order_t;
 
 /*
@@ -325,13 +334,13 @@ typedef struct {
  * declaration order. Optional fields return NULL for tables without the
  * component. EcsFilter and EcsNot only affect table matching.
  *
- * A query may contain component terms, relation terms, a cascade order or an
+ * A query may contain component terms, relation terms, a table order or an
  * is_a target.
  */
 typedef struct {
   ecs_query_term_t terms[ECS_QUERY_TERM_CAPACITY];
   ecs_query_relation_term_t relations[ECS_QUERY_RELATION_CAPACITY];
-  ecs_query_order_t order;
+  ecs_query_order_t order_by;
   ecs_entity_t is_a;
 } ecs_query_desc_t;
 
@@ -413,8 +422,8 @@ typedef struct {
   ecs_query_relation_term_t {                                                  \
     (ecs_entity_t)(value), ecs_rid(name), EcsRelationDepth                     \
   }
-#define ecs_cascade(name)                                                      \
-  ecs_query_order_t { ecs_rid(name) }
+#define ecs_order_by_target(name) ecs_order_by_target_id(ecs_rid(name))
+#define ecs_order_by_depth(name) ecs_order_by_depth_id(ecs_rid(name))
 #else
 #define ecs_rel(name)                                                          \
   ((ecs_query_relation_term_t){0, ecs_rid(name), EcsRelationRequired})
@@ -427,7 +436,8 @@ typedef struct {
 #define ecs_depth(name, value)                                                 \
   ((ecs_query_relation_term_t){(ecs_entity_t)(value), ecs_rid(name),           \
                                EcsRelationDepth})
-#define ecs_cascade(name) ((ecs_query_order_t){ecs_rid(name)})
+#define ecs_order_by_target(name) ecs_order_by_target_id(ecs_rid(name))
+#define ecs_order_by_depth(name) ecs_order_by_depth_id(ecs_rid(name))
 #endif
 
 /* Create an ECS world. */
@@ -785,6 +795,19 @@ SIECS_API bool ecs_has_relation_to_id(ecs_entity_t entity,
 /* Return the source edge target, or zero when absent. */
 SIECS_API ecs_entity_t ecs_target_id(ecs_entity_t entity,
                                      ecs_relation_id_t relation);
+
+/* Return a relation target stored in a ByTarget table. */
+SIECS_API ecs_entity_t ecs_table_target_id(const ecs_table_t *table,
+                                           ecs_relation_id_t relation);
+#define ecs_table_target(table, relation) \
+  ecs_table_target_id(table, ecs_rid(relation))
+
+/* Return whether a component is available on a table, including its base. */
+SIECS_API bool ecs_table_has_id(const ecs_table_t *table, ecs_component_t component);
+
+/* Build standard table order descriptors. */
+SIECS_API ecs_query_order_t ecs_order_by_target_id(ecs_relation_id_t relation);
+SIECS_API ecs_query_order_t ecs_order_by_depth_id(ecs_relation_id_t relation);
 
 /* Destroy an alive entity and remove all of its components. */
 SIECS_API void ecs_kill(ecs_entity_t entity);

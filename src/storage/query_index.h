@@ -19,7 +19,7 @@ typedef struct {
 
 typedef struct {
     uint16_t filter_count;
-    ecs_relation_id_t cascade;
+    ecs_query_order_t order_by;
     uint32_t reserved;
 } ecs_query_type_filter_meta_t;
 

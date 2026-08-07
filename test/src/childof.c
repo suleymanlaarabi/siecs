@@ -160,7 +160,7 @@ void childof_bydepth_depth_and_cascade(void) {
 
     ecs_query_id_t q = ecs_query({
         .terms = { ecs_in(RelValue) },
-        .order = ecs_cascade(ChildOf),
+        .order_by = ecs_order_by_depth(ChildOf),
     });
     int expected = 0;
     ecs_iter_t it = ecs_query_iter(q);
@@ -217,7 +217,7 @@ void childof_cascade_cache_accepts_new_depth(void) {
     ecs_set(root, RelValue, { 0 });
     ecs_query_id_t q = ecs_query({
         .terms = { ecs_in(RelValue) },
-        .order = ecs_cascade(ChildOf),
+        .order_by = ecs_order_by_depth(ChildOf),
     });
 
     ecs_entity_t child = ecs_new();
@@ -285,6 +285,65 @@ void childof_bytarget_exact_query_spans_tables(void) {
     }
     ecs_query_id_t q = ecs_query({ .relations = { ecs_to(GroupOf, target) } });
     test_int(5, ecs_query_count(q));
+    ecs_query_fini(q);
+    ecs_fini();
+}
+
+static int childof_order_by_target_desc(
+    const ecs_table_t *a,
+    const ecs_table_t *b,
+    uint64_t data
+) {
+    ecs_entity_t target_a = ecs_table_target_id(a, (ecs_relation_id_t)data);
+    ecs_entity_t target_b = ecs_table_target_id(b, (ecs_relation_id_t)data);
+    return target_a < target_b ? 1 : target_a > target_b ? -1 : 0;
+}
+
+void childof_bytarget_order_by_target(void) {
+    ecs_init();
+    ECS_RELATION_REGISTER(GroupOf);
+    register_value();
+
+    ecs_entity_t first = ecs_new();
+    ecs_entity_t second = ecs_new();
+    ecs_query_id_t q = ecs_query({
+        .terms = { ecs_in(RelValue) },
+        .order_by = ecs_order_by_target(GroupOf),
+    });
+
+    ecs_entity_t second_source = ecs_new();
+    ecs_entity_t first_source = ecs_new();
+    ecs_set(second_source, RelValue, { 20 });
+    ecs_set(first_source, RelValue, { 10 });
+    ecs_relate(second_source, GroupOf, second);
+    ecs_relate(first_source, GroupOf, first);
+
+    ecs_iter_t it = ecs_query_iter(q);
+    test_true(ecs_iter_next(&it));
+    test_uint(first, ecs_target_at(&it, GroupOf, 0));
+    RelValue *value = ecs_field(&it, 0);
+    test_int(10, value[0].value);
+    test_true(ecs_iter_next(&it));
+    test_uint(second, ecs_target_at(&it, GroupOf, 0));
+    value = ecs_field(&it, 0);
+    test_int(20, value[0].value);
+    test_false(ecs_iter_next(&it));
+    ecs_query_fini(q);
+
+    q = ecs_query({
+        .terms = { ecs_in(RelValue) },
+        .order_by = {
+            .func = childof_order_by_target_desc,
+            .data = ecs_rid(GroupOf),
+        },
+    });
+    it = ecs_query_iter(q);
+    test_true(ecs_iter_next(&it));
+    test_uint(second, ecs_target_at(&it, GroupOf, 0));
+    test_true(ecs_iter_next(&it));
+    test_uint(first, ecs_target_at(&it, GroupOf, 0));
+    test_false(ecs_iter_next(&it));
+
     ecs_query_fini(q);
     ecs_fini();
 }

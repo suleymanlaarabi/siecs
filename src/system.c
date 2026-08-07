@@ -20,7 +20,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     ecs_assert(desc->phase < EcsPhaseCount, "invalid system phase: %u\n", desc->phase);
 
     const bool has_query = desc->query.terms[0].id || desc->query.relations[0].id ||
-                           desc->query.order.relation || desc->query.is_a;
+                           desc->query.order_by.func || desc->query.is_a;
     ecs_system_t sys = {
         .name = desc->name,
         .qid = has_query ? ecs_query_init(&desc->query) : ECS_SYSTEM_NO_QUERY,

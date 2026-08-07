@@ -38,6 +38,16 @@ static void api_hook_time_on_set(const ApiHookTime &) {
     api_resource_set_calls++;
 }
 
+static int api_order_by_target_desc(
+    const ecs_table_t *a,
+    const ecs_table_t *b,
+    uint64_t data
+) {
+    ecs_entity_t target_a = ecs_table_target_id(a, (ecs_relation_id_t)data);
+    ecs_entity_t target_b = ecs_table_target_id(b, (ecs_relation_id_t)data);
+    return target_a < target_b ? 1 : target_a > target_b ? -1 : 0;
+}
+
 void api_cpp_wrapper_helpers(void) {
     ecs_test_scope _ecs_scope;
 
@@ -66,6 +76,33 @@ void api_cpp_wrapper_helpers(void) {
     auto group = ecs::entity::create();
     auto member = ecs::entity::create().relate<ApiGroup>(group);
     test_uint(member.id(), ecs::query().to<ApiGroup>(group).first().id());
+
+    auto second_group = ecs::entity::create();
+    auto second_member = ecs::entity::create().set(ApiPosition{ 20 });
+    auto first_member = ecs::entity::create().set(ApiPosition{ 10 });
+    second_member.relate<ApiGroup>(second_group);
+    first_member.relate<ApiGroup>(group);
+
+    auto ordered = ecs::query()
+                       .require<ApiPosition>()
+                       .order_by_target<ApiGroup>()
+                       .build_handle();
+    int ordered_sum = 0;
+    ordered.each([&](ApiPosition &position) { ordered_sum = ordered_sum * 10 + position.value; });
+    test_int(1020, ordered_sum);
+
+    auto custom_ordered = ecs::query()
+                              .require<ApiPosition>()
+                              .order_by(ecs_query_order_t{
+                                  .func = api_order_by_target_desc,
+                                  .data = ecs::relation<ApiGroup>(),
+                              })
+                              .build_handle();
+    ordered_sum = 0;
+    custom_ordered.each(
+        [&](ApiPosition &position) { ordered_sum = ordered_sum * 10 + position.value; }
+    );
+    test_int(2109, ordered_sum);
 
     auto location = ecs::entity::create().set(ApiPosition{ 12 });
     auto located = ecs::entity::create().relate<ApiLocated>(location);

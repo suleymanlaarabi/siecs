@@ -200,6 +200,10 @@ bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
     return false;
 }
 
+bool ecs_table_has_id(const ecs_table_t *table, ecs_component_t component_id) {
+    return ecs_table_has(table, component_id);
+}
+
 bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
     ecs_assert_entity_valid(base);
 

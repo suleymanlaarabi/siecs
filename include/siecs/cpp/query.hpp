@@ -476,9 +476,17 @@ class query {
         return *this;
     }
 
-    template <typename Relation> query &cascade() {
-        desc.order.relation = detail::ecs_cpp_relation_id<Relation>();
+    query &order_by(ecs_query_order_t value) {
+        desc.order_by = value;
         return *this;
+    }
+
+    template <typename Relation> query &order_by_target() {
+        return order_by(ecs_order_by_target_id(detail::ecs_cpp_relation_id<Relation>()));
+    }
+
+    template <typename Relation> query &order_by_depth() {
+        return order_by(ecs_order_by_depth_id(detail::ecs_cpp_relation_id<Relation>()));
     }
 
     template <typename Component, typename Relation> query &up() {
