@@ -109,7 +109,10 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
 }
 
 ecs_entity_t ecs_table_target_id(const ecs_table_t *table, ecs_relation_id_t relation) {
+#ifndef NDEBUG
+    const ecs_relation_record_t *record = ecs_relation_record(relation);
     ecs_assert(record->storage == EcsRelationByTarget, "ecs_table_target requires ByTarget\n");
+#endif
     return ecs_type_pair_get(&table->type, relation);
 }
 
