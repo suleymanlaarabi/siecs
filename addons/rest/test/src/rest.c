@@ -25,7 +25,7 @@ static sijson_value_t find_by_name(sijson_value_t array, const char *name) {
 void rest_module_lifecycle(void) {
     ecs_init();
 
-    ecs_module_id_t module = ECS_MODULE_IMPORT(SiecsRest, { .port = 4041 });
+    ecs_module_id_t module = ECS_MODULE_IMPORT(sirest, { .port = 4041 });
     test_assert(module != 0);
     test_true(ecs_module_is_enabled(module));
     test_true(ecs_progress());
@@ -42,7 +42,7 @@ void rest_schema_uses_public_metadata(void) {
     ecs_init();
     ECS_COMPONENT_REGISTER(RestTestPosition);
 
-    sihttp_response_t response = ecs_rest_get_schema(&(sihttp_request_t){0});
+    sihttp_response_t response = ecs_rest_get_schema(&(sihttp_request_t){ 0 });
     test_int(200, response.status);
 
     sijson_value_t schema = sijson_parse(response.body);
@@ -74,10 +74,13 @@ void rest_entity_routes_use_public_introspection(void) {
     sijson_value_t detail = ecs_rest_entity_detail_json(parent);
     sijson_value_t children = sijson_object_get(detail, "children");
     test_int(1, (int)sijson_array_len(children));
-    test_uint(ecs_entity_id(child), (uint32_t)sijson_number(sijson_object_get(
-        sijson_array_get(children, 0), "index")));
-    test_not_null((void *)find_by_name(
-        sijson_object_get(detail, "components"), "RestTestPosition"));
+    test_uint(
+        ecs_entity_id(child),
+        (uint32_t)sijson_number(sijson_object_get(sijson_array_get(children, 0), "index"))
+    );
+    test_not_null(
+        (void *)find_by_name(sijson_object_get(detail, "components"), "RestTestPosition")
+    );
 
     ecs_fini();
 }

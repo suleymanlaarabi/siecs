@@ -32,7 +32,7 @@ struct MyModule {
 
 int main() {
 
-    ecs::import<SiecsRest>();
+    ecs::import<sirest>();
     ecs::init({ .target_fps = 60 });
 
     ecs::entity::create("Parent").child_of(ecs::entity::create("Child"));
