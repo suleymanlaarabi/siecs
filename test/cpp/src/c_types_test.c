@@ -31,6 +31,10 @@ ECS_RESOURCE_DEFINE(
     .on_set = cpp_c_time_on_set
 );
 
+ECS_COMPONENT_DEFINE(cpp_c_method_position);
+
+ECS_RESOURCE_DEFINE(cpp_c_method_time);
+
 ECS_RELATION_DEFINE(cpp_c_parent, {
     .storage = EcsRelationByTarget,
     .on_delete_target = EcsRemoveRelation,

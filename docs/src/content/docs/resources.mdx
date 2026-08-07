@@ -47,6 +47,24 @@ The resource macros intentionally mirror component macros, but resources are
 registered in a dedicated resource registry. When a resource is declared in C,
 the C++ helpers reuse its C id, descriptor, lifecycle operations, and hooks.
 
+Use `ECS_RESOURCE_DECLARE_CPP` when the shared resource also needs C++-only
+methods:
+
+```cpp
+ECS_RESOURCE_DECLARE_CPP(Time,
+    ECS_CPP_FIELDS(
+        float dt;
+    ),
+    ECS_CPP_METHODS(
+        bool valid() const { return dt > 0.0f; }
+    )
+);
+```
+
+The declaration remains valid in C, where the method block is ignored. C++
+methods must not add instance data, so the C and C++ resource layouts stay
+identical.
+
 ## Set and Read
 
 `ecs_set_resource()` creates or replaces the resource value:

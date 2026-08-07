@@ -56,6 +56,26 @@ struct Position {
 };
 ```
 
+When a shared C declaration also needs C++-only methods, use
+`ECS_COMPONENT_DECLARE_CPP`:
+
+```cpp
+ECS_COMPONENT_DECLARE_CPP(Position,
+    ECS_CPP_FIELDS(
+        float x;
+        float y;
+    ),
+    ECS_CPP_METHODS(
+        void reset() { x = 0.0f; y = 0.0f; }
+        float length_squared() const { return x * x + y * y; }
+    )
+);
+```
+
+The same header remains valid C: the method block is omitted and the C layout,
+id, descriptor, and reflection metadata remain unchanged. C++ methods must not
+add instance data.
+
 ## Set and Read
 
 `ecs_set()` adds the component if needed, then writes the value:

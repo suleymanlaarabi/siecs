@@ -235,3 +235,13 @@ void resource_c_declared_resource(void) {
     time.remove();
     test_false(time.has());
 }
+
+void resource_cpp_only_methods(void) {
+    ecs_test_scope _ecs_scope;
+
+    auto time = ecs::resource_handle<cpp_c_method_time>();
+    time.set(cpp_c_method_time{ .dt = 0.016f });
+    test_true(time.get().valid());
+    test_true(!cpp_c_method_time{ .dt = 0.0f }.valid());
+    test_true(ecs::resource_handle<cpp_c_method_time>().has());
+}

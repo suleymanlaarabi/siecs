@@ -205,3 +205,21 @@ void api_c_declared_relation(void) {
     test_int(parent.id(), child.target<cpp_c_parent>().id());
     test_int(child.id(), ecs::query().to<cpp_c_parent>(parent).first().id());
 }
+
+void api_cpp_only_methods(void) {
+    ecs_test_scope _ecs_scope;
+
+    test_int(ecs_id(cpp_c_method_position), ecs::component<cpp_c_method_position>());
+    test_str(
+        "{ int value; }",
+        ecs_id(cpp_c_method_position_desc).struct_desc->fields
+    );
+
+    auto position = cpp_c_method_position{ .value = 3 };
+    test_int(6, position.doubled());
+    position.reset();
+    test_int(0, position.value);
+
+    auto entity = ecs::entity::create().set(cpp_c_method_position{ .value = 4 });
+    test_int(4, entity.get<cpp_c_method_position>().value);
+}

@@ -12,6 +12,7 @@
 void api_cpp_wrapper_helpers(void);
 void api_c_declared_component(void);
 void api_c_declared_relation(void);
+void api_cpp_only_methods(void);
 
 // Testsuite 'entity_state'
 void entity_state_enable_disable(void);
@@ -33,6 +34,7 @@ void resource_field_index_stays_correct(void);
 void resource_cpp_raii_component_survives_table_migrations(void);
 void resource_capturing_system_keeps_state(void);
 void resource_c_declared_resource(void);
+void resource_cpp_only_methods(void);
 
 // Testsuite 'query'
 void query_reads_shared_inherited_field(void);
@@ -77,6 +79,10 @@ bake_test_case api_testcases[] = {
     {
         "c_declared_relation",
         api_c_declared_relation
+    },
+    {
+        "cpp_only_methods",
+        api_cpp_only_methods
     }
 };
 
@@ -151,6 +157,10 @@ bake_test_case resource_testcases[] = {
     {
         "c_declared_resource",
         resource_c_declared_resource
+    },
+    {
+        "cpp_only_methods",
+        resource_cpp_only_methods
     }
 };
 
@@ -264,7 +274,7 @@ static bake_test_suite suites[] = {
         "api",
         NULL,
         NULL,
-        3,
+        4,
         api_testcases
     },
     {
@@ -278,7 +288,7 @@ static bake_test_suite suites[] = {
         "resource",
         NULL,
         NULL,
-        12,
+        13,
         resource_testcases
     },
     {

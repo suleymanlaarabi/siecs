@@ -1285,6 +1285,18 @@ SIECS_API void ecs_quit(void);
   SIJSON_DECLARE(cname, __VA_ARGS__)                                           \
   extern ecs_component_t ecs_id(cname);                                        \
   extern ecs_component_desc_t ecs_id(cname##_desc)
+
+/* Group the C-compatible fields and C++-only methods of a shared declaration.
+ * ECS_CPP_FIELDS and ECS_CPP_METHODS are intended for the *_DECLARE_CPP macros
+ * below; the method block is omitted when the header is compiled as C. */
+#define ECS_CPP_FIELDS(...) __VA_ARGS__
+#define ECS_CPP_METHODS(...) __VA_ARGS__
+
+#ifndef __cplusplus
+/* C sees only the shared fields and keeps the existing declaration ABI. */
+#define ECS_COMPONENT_DECLARE_CPP(cname, fields, methods)                       \
+  ECS_COMPONENT_DECLARE(cname, { fields })
+#endif
 #define SIECS_COMPONENT_META_DEFINE(cname) SIJSON_DEFINE(cname)
 #define SIECS_COMPONENT_META_INIT(cname) .struct_desc = &sireflect_desc(cname),
 #define SIECS_TAG_META_DEFINE(cname)                                           \
@@ -1577,6 +1589,47 @@ ECS_TAG_DECLARE(Abstract);
   };                                                                          \
   }                                                                           \
   }                                                                           \
+  }
+
+#define SIECS_CPP_STRINGIFY_INNER(...) #__VA_ARGS__
+#define SIECS_CPP_STRINGIFY(...) SIECS_CPP_STRINGIFY_INNER(__VA_ARGS__)
+#define SIECS_CPP_FIELD_SOURCE(fields)                                         \
+  "{" SIECS_CPP_STRINGIFY(fields) "}"
+#define SIECS_CPP_LAYOUT_TYPE_INNER(cname) __siecs_cpp_layout_##cname
+#define SIECS_CPP_LAYOUT_TYPE(cname) SIECS_CPP_LAYOUT_TYPE_INNER(cname)
+
+/* Declare a C-compatible component with C++-only member methods. */
+#define ECS_COMPONENT_DECLARE_CPP(cname, field_block, method_block)            \
+  extern "C++" {                                                              \
+    typedef struct cname cname;                                                \
+    struct cname { field_block method_block };                                 \
+    struct SIECS_CPP_LAYOUT_TYPE(cname) { field_block };                       \
+    static_assert(sizeof(cname) == sizeof(SIECS_CPP_LAYOUT_TYPE(cname)),       \
+                  "C++ component methods must not add instance data");       \
+    static_assert(_Alignof(cname) == _Alignof(SIECS_CPP_LAYOUT_TYPE(cname)),   \
+                  "C++ component methods must preserve alignment");          \
+    SIREFLECT_UNUSED static const sireflect_struct_desc_t                     \
+        sireflect_desc(cname) = {                                              \
+            .name = #cname,                                                     \
+            .fields = SIECS_CPP_FIELD_SOURCE(field_block),                     \
+            .size = sizeof(cname),                                              \
+            .align = _Alignof(cname)};                                          \
+  }                                                                            \
+  extern "C" {                                                                \
+    extern sireflect_handle_t sijson_handle(cname);                            \
+    extern ecs_component_t ecs_id(cname);                                      \
+    extern ecs_component_desc_t ecs_id(cname##_desc);                          \
+  }                                                                            \
+  extern "C++" {                                                              \
+    namespace ecs {                                                           \
+    namespace detail {                                                        \
+    template <> struct c_component_traits<cname> {                            \
+      static constexpr bool value = true;                                      \
+      static auto id_storage() noexcept { return &ecs_id(cname); }             \
+      static auto desc_storage() noexcept { return &ecs_id(cname##_desc); }    \
+    };                                                                        \
+    }                                                                         \
+    }                                                                         \
   }
 #endif
 
@@ -1871,12 +1924,42 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
   }                                                                           \
   }                                                                           \
   }
+
+/* Declare a C-compatible resource with C++-only member methods. */
+#define ECS_RESOURCE_DECLARE_CPP(rname, field_block, method_block)             \
+  extern "C++" {                                                              \
+    typedef struct rname rname;                                                \
+    struct rname { field_block method_block };                                 \
+    struct SIECS_CPP_LAYOUT_TYPE(rname) { field_block };                       \
+    static_assert(sizeof(rname) == sizeof(SIECS_CPP_LAYOUT_TYPE(rname)),       \
+                  "C++ resource methods must not add instance data");        \
+    static_assert(_Alignof(rname) == _Alignof(SIECS_CPP_LAYOUT_TYPE(rname)),   \
+                  "C++ resource methods must preserve alignment");           \
+  }                                                                            \
+  extern "C" {                                                                \
+    extern ecs_resource_t ecs_id(rname);                                       \
+    extern ecs_resource_desc_t ecs_id(rname##_desc);                           \
+  }                                                                            \
+  extern "C++" {                                                              \
+    namespace ecs {                                                           \
+    namespace detail {                                                        \
+    template <> struct c_resource_traits<rname> {                             \
+      static constexpr bool value = true;                                      \
+      static auto id_storage() noexcept { return &ecs_id(rname); }             \
+      static auto desc_storage() noexcept { return &ecs_id(rname##_desc); }    \
+    };                                                                        \
+    }                                                                         \
+    }                                                                         \
+  }
 #else
 #define ECS_RESOURCE_DECLARE(rname, ...)                                       \
   typedef struct rname rname;                                                  \
   struct rname __VA_ARGS__;                                                    \
   extern ecs_resource_t ecs_id(rname);                                         \
   extern ecs_resource_desc_t ecs_id(rname##_desc)
+
+#define ECS_RESOURCE_DECLARE_CPP(rname, fields, methods)                       \
+  ECS_RESOURCE_DECLARE(rname, { fields })
 #endif
 
 /* Define a resource descriptor and its stable id storage. */
