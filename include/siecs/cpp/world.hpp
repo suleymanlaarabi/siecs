@@ -10,6 +10,7 @@
 #include "siecs/cpp/type.hpp"
 #include <cstring>
 #include <string>
+#include <tuple>
 #include <utility>
 
 namespace ecs {
@@ -116,37 +117,59 @@ template <typename T> inline void remove_resource() {
     }
 }
 
-template <typename T> static void import_module_callback(const void *ptr) {
-    T &module = *static_cast<T *>(const_cast<void *>(ptr));
-    module.import();
+template <typename T, typename... Args> static void import_module_callback(const void *ptr) {
+    using context_t = detail::module_import_context<T, Args...>;
+    auto &context = *static_cast<context_t *>(const_cast<void *>(ptr));
+    std::apply([](auto &...args) { T::import(args...); }, context.args);
 }
 
-/** Import a module instance once; subsequent calls return the cached module. */
-template <typename T> [[nodiscard]] module_ref<T> import(T module) {
-    if (detail::module_type<T>::id != 0) {
-        return module_ref<T>(detail::module_type<T>::id);
-    }
-    static const std::string name = std::string(type_name<T>());
+template <typename T>
+    requires detail::c_declared_module<T>
+[[nodiscard]] module_ref<T> import(const typename T::props_t &props) {
     ecs_module_desc_t desc = {
-        .name = name.c_str(),
-        .id = &detail::module_type<T>::id,
-        .import = import_module_callback<T>,
-        .desc = &module,
-        .desc_size = sizeof(T),
+        .name = T::name(),
+        .id = T::id_storage(),
+        .import = T::import_callback(),
+        .desc = &props,
+        .desc_size = sizeof(typename T::props_t),
         .disabled = false,
     };
     return module_ref<T>(ecs_module_init(&desc));
 }
 
-/** Construct and import a module from arguments satisfying its import contract. */
+/** Import a C-declared module with default-initialized properties. */
+template <typename T>
+    requires detail::c_declared_module<T>
+module_ref<T> import() {
+    return import<T>(typename T::props_t{});
+}
+
+/** Import a native C++ module once; arguments are passed to its static import. */
 template <typename T, typename... Args>
-    requires detail::module_importable<T> && detail::module_list_initializable<T, Args...>
+    requires(!detail::c_declared_module<T>) && detail::module_importable<T, Args...>
 [[nodiscard]] module_ref<T> import(Args &&...args) {
-    return import(T{ std::forward<Args>(args)... });
+    if (detail::module_type<T>::id != 0) {
+        return module_ref<T>(detail::module_type<T>::id);
+    }
+    using context_t = detail::module_import_context<T, Args...>;
+    context_t context{ std::tuple<std::decay_t<Args>...>(std::forward<Args>(args)...) };
+    static const std::string name = std::string(type_name<T>());
+    ecs_module_desc_t desc = {
+        .name = name.c_str(),
+        .id = &detail::module_type<T>::id,
+        .import = import_module_callback<T, Args...>,
+        .desc = &context,
+        .desc_size = sizeof(context_t),
+        .disabled = false,
+    };
+    return module_ref<T>(ecs_module_init(&desc));
 }
 
 /** Return the cached module handle for `T`, or an empty handle. */
 template <typename T> [[nodiscard]] module_ref<T> module() noexcept {
+    if constexpr (detail::c_declared_module<T>) {
+        return module_ref<T>(*T::id_storage());
+    }
     return module_ref<T>(detail::module_type<T>::id);
 }
 

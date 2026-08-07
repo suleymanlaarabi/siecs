@@ -76,7 +76,9 @@
         "testcases": [
           "import_without_props",
           "import_with_props",
-          "double_import"
+          "double_import",
+          "c_declared_module",
+          "c_declared_module_default_props"
         ]
       },
       {

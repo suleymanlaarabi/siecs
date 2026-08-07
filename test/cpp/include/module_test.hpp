@@ -22,7 +22,7 @@ inline void reset_module_state() {
 }
 
 struct cpp_physics {
-    void import() {
+    static void import() {
         (void)ecs::component<ModulePosition>();
         (void)ecs::component<ModuleVelocity>();
 
@@ -34,11 +34,13 @@ struct cpp_physics {
 };
 
 struct cpp_physics_with_props {
-    int gravity;
+    struct props_t {
+        int gravity;
+    };
 
-    void import() {
+    static void import(const props_t &props) {
         module_import_calls++;
-        module_last_gravity = gravity;
+        module_last_gravity = props.gravity;
 
         (void)ecs::component<ModulePosition>();
         (void)ecs::component<ModuleVelocity>();

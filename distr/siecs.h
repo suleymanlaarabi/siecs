@@ -1327,19 +1327,19 @@ SIECS_API void ecs_quit(void);
   ECS_COMPONENT_DEFINE(cname);
 
 #ifdef __cplusplus
-#define ECS_MODULE_CPP_IMPORT(module_name)                                     \
-  static inline void module_name##Import(module_name##_props_t props) {        \
-    ecs_module_desc_t desc = {                                                 \
-        .name = #module_name,                                                  \
-        .id = &ecs_id(module_name),                                            \
-        .import = ecs_id(module_name##_import_wrapper),                        \
-        .desc = &props,                                                        \
-        .desc_size = sizeof(module_name##_props_t),                            \
-    };                                                                         \
-    ecs_id(module_name) = ecs_module_init(&desc);                              \
-  }
+#define ECS_MODULE_CPP_DECLARE(module_name)                                    \
+  struct module_name {                                                         \
+    using props_t = module_name##_props_t;                                     \
+    static ecs_module_id_t *id_storage() noexcept {                            \
+      return &ecs_id(module_name);                                             \
+    }                                                                          \
+    static ecs_module_import_t import_callback() noexcept {                    \
+      return ecs_id(module_name##_import_wrapper);                             \
+    }                                                                          \
+    static constexpr const char *name() noexcept { return #module_name; }       \
+  };
 #else
-#define ECS_MODULE_CPP_IMPORT(...)
+#define ECS_MODULE_CPP_DECLARE(...)
 #endif
 /*
  * Declare a typed module.
@@ -1350,13 +1350,28 @@ SIECS_API void ecs_quit(void);
  * This declares physics_props_t, the public module id symbol ecs_id(physics),
  * an import wrapper, and the user-defined import function:
  *   void physics_import(const physics_props_t *props);
+ *
+ * In C++, this also declares a module adapter type named physics. It can be
+ * imported with ecs::import<physics>() or
+ * ecs::import<physics>(physics::props_t{ ... });. The adapter uses the same
+ * C module id and import wrapper, so C and C++ imports share one module.
  */
+#ifdef __cplusplus
+#define ECS_MODULE_DECLARE(module_name, ...)                                   \
+  typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;      \
+  extern "C" {                                                                \
+    extern ecs_module_id_t ecs_id(module_name);                                \
+    void ecs_id(module_name##_import_wrapper)(const void *desc);               \
+    void module_name##_import(const module_name##_props_t *props);             \
+  }                                                                            \
+  ECS_MODULE_CPP_DECLARE(module_name)
+#else
 #define ECS_MODULE_DECLARE(module_name, ...)                                   \
   typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;      \
   extern ecs_module_id_t ecs_id(module_name);                                  \
   void ecs_id(module_name##_import_wrapper)(const void *desc);                 \
-  void module_name##_import(const module_name##_props_t *props);               \
-  ECS_MODULE_CPP_IMPORT(module_name)
+  void module_name##_import(const module_name##_props_t *props);
+#endif
 
 /*
  * Define a typed module declared with ECS_MODULE_DECLARE.
@@ -2584,6 +2599,9 @@ class entity {
 #pragma once
 #include <cassert>
 #include <concepts>
+#include <tuple>
+#include <type_traits>
+#include <utility>
 
 namespace ecs {
 
@@ -2628,13 +2646,21 @@ template <typename T> struct module_type {
 };
 
 template <typename T>
-concept module_importable = requires(T module) {
-    { module.import() } -> std::same_as<void>;
+concept c_declared_module = requires {
+    typename T::props_t;
+    { T::id_storage() } -> std::same_as<ecs_module_id_t *>;
+    { T::import_callback() } -> std::same_as<ecs_module_import_t>;
+    { T::name() } -> std::same_as<const char *>;
 };
 
 template <typename T, typename... Args>
-concept module_list_initializable =
-    requires(Args &&...args) { T{ static_cast<Args &&>(args)... }; };
+concept module_importable = requires(Args &&...args) {
+    { T::import(static_cast<Args &&>(args)...) } -> std::same_as<void>;
+};
+
+template <typename T, typename... Args> struct module_import_context {
+    std::tuple<std::decay_t<Args>...> args;
+};
 
 } // namespace detail
 
@@ -3690,6 +3716,7 @@ inline void disable_system(ecs_system_id_t id) { ecs_system_disable(id); }
 
 #include <cstring>
 #include <string>
+#include <tuple>
 #include <utility>
 
 namespace ecs {
@@ -3796,37 +3823,59 @@ template <typename T> inline void remove_resource() {
     }
 }
 
-template <typename T> static void import_module_callback(const void *ptr) {
-    T &module = *static_cast<T *>(const_cast<void *>(ptr));
-    module.import();
+template <typename T, typename... Args> static void import_module_callback(const void *ptr) {
+    using context_t = detail::module_import_context<T, Args...>;
+    auto &context = *static_cast<context_t *>(const_cast<void *>(ptr));
+    std::apply([](auto &...args) { T::import(args...); }, context.args);
 }
 
-/** Import a module instance once; subsequent calls return the cached module. */
-template <typename T> [[nodiscard]] module_ref<T> import(T module) {
-    if (detail::module_type<T>::id != 0) {
-        return module_ref<T>(detail::module_type<T>::id);
-    }
-    static const std::string name = std::string(type_name<T>());
+template <typename T>
+    requires detail::c_declared_module<T>
+[[nodiscard]] module_ref<T> import(const typename T::props_t &props) {
     ecs_module_desc_t desc = {
-        .name = name.c_str(),
-        .id = &detail::module_type<T>::id,
-        .import = import_module_callback<T>,
-        .desc = &module,
-        .desc_size = sizeof(T),
+        .name = T::name(),
+        .id = T::id_storage(),
+        .import = T::import_callback(),
+        .desc = &props,
+        .desc_size = sizeof(typename T::props_t),
         .disabled = false,
     };
     return module_ref<T>(ecs_module_init(&desc));
 }
 
-/** Construct and import a module from arguments satisfying its import contract. */
+/** Import a C-declared module with default-initialized properties. */
+template <typename T>
+    requires detail::c_declared_module<T>
+module_ref<T> import() {
+    return import<T>(typename T::props_t{});
+}
+
+/** Import a native C++ module once; arguments are passed to its static import. */
 template <typename T, typename... Args>
-    requires detail::module_importable<T> && detail::module_list_initializable<T, Args...>
+    requires(!detail::c_declared_module<T>) && detail::module_importable<T, Args...>
 [[nodiscard]] module_ref<T> import(Args &&...args) {
-    return import(T{ std::forward<Args>(args)... });
+    if (detail::module_type<T>::id != 0) {
+        return module_ref<T>(detail::module_type<T>::id);
+    }
+    using context_t = detail::module_import_context<T, Args...>;
+    context_t context{ std::tuple<std::decay_t<Args>...>(std::forward<Args>(args)...) };
+    static const std::string name = std::string(type_name<T>());
+    ecs_module_desc_t desc = {
+        .name = name.c_str(),
+        .id = &detail::module_type<T>::id,
+        .import = import_module_callback<T, Args...>,
+        .desc = &context,
+        .desc_size = sizeof(context_t),
+        .disabled = false,
+    };
+    return module_ref<T>(ecs_module_init(&desc));
 }
 
 /** Return the cached module handle for `T`, or an empty handle. */
 template <typename T> [[nodiscard]] module_ref<T> module() noexcept {
+    if constexpr (detail::c_declared_module<T>) {
+        return module_ref<T>(*T::id_storage());
+    }
     return module_ref<T>(detail::module_type<T>::id);
 }
 

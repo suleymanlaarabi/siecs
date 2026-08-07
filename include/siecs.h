@@ -537,19 +537,19 @@ SIECS_API void ecs_quit(void);
   ECS_COMPONENT_DEFINE(cname);
 
 #ifdef __cplusplus
-#define ECS_MODULE_CPP_IMPORT(module_name)                                     \
-  static inline void module_name##Import(module_name##_props_t props) {        \
-    ecs_module_desc_t desc = {                                                 \
-        .name = #module_name,                                                  \
-        .id = &ecs_id(module_name),                                            \
-        .import = ecs_id(module_name##_import_wrapper),                        \
-        .desc = &props,                                                        \
-        .desc_size = sizeof(module_name##_props_t),                            \
-    };                                                                         \
-    ecs_id(module_name) = ecs_module_init(&desc);                              \
-  }
+#define ECS_MODULE_CPP_DECLARE(module_name)                                    \
+  struct module_name {                                                         \
+    using props_t = module_name##_props_t;                                     \
+    static ecs_module_id_t *id_storage() noexcept {                            \
+      return &ecs_id(module_name);                                             \
+    }                                                                          \
+    static ecs_module_import_t import_callback() noexcept {                    \
+      return ecs_id(module_name##_import_wrapper);                             \
+    }                                                                          \
+    static constexpr const char *name() noexcept { return #module_name; }       \
+  };
 #else
-#define ECS_MODULE_CPP_IMPORT(...)
+#define ECS_MODULE_CPP_DECLARE(...)
 #endif
 /*
  * Declare a typed module.
@@ -560,13 +560,28 @@ SIECS_API void ecs_quit(void);
  * This declares physics_props_t, the public module id symbol ecs_id(physics),
  * an import wrapper, and the user-defined import function:
  *   void physics_import(const physics_props_t *props);
+ *
+ * In C++, this also declares a module adapter type named physics. It can be
+ * imported with ecs::import<physics>() or
+ * ecs::import<physics>(physics::props_t{ ... });. The adapter uses the same
+ * C module id and import wrapper, so C and C++ imports share one module.
  */
+#ifdef __cplusplus
+#define ECS_MODULE_DECLARE(module_name, ...)                                   \
+  typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;      \
+  extern "C" {                                                                \
+    extern ecs_module_id_t ecs_id(module_name);                                \
+    void ecs_id(module_name##_import_wrapper)(const void *desc);               \
+    void module_name##_import(const module_name##_props_t *props);             \
+  }                                                                            \
+  ECS_MODULE_CPP_DECLARE(module_name)
+#else
 #define ECS_MODULE_DECLARE(module_name, ...)                                   \
   typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;      \
   extern ecs_module_id_t ecs_id(module_name);                                  \
   void ecs_id(module_name##_import_wrapper)(const void *desc);                 \
-  void module_name##_import(const module_name##_props_t *props);               \
-  ECS_MODULE_CPP_IMPORT(module_name)
+  void module_name##_import(const module_name##_props_t *props);
+#endif
 
 /*
  * Define a typed module declared with ECS_MODULE_DECLARE.

@@ -55,6 +55,8 @@ void observer_relation_events(void);
 void module_import_import_without_props(void);
 void module_import_import_with_props(void);
 void module_import_double_import(void);
+void module_import_c_declared_module(void);
+void module_import_c_declared_module_default_props(void);
 
 // Testsuite 'module_state'
 void module_state_lookup_empty(void);
@@ -219,6 +221,14 @@ bake_test_case module_import_testcases[] = {
     {
         "double_import",
         module_import_double_import
+    },
+    {
+        "c_declared_module",
+        module_import_c_declared_module
+    },
+    {
+        "c_declared_module_default_props",
+        module_import_c_declared_module_default_props
     }
 };
 
@@ -274,7 +284,7 @@ static bake_test_suite suites[] = {
         "module_import",
         NULL,
         NULL,
-        3,
+        5,
         module_import_testcases
     },
     {

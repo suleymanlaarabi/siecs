@@ -2,6 +2,9 @@
 #include "siecs/cpp/c_api.hpp"
 #include <cassert>
 #include <concepts>
+#include <tuple>
+#include <type_traits>
+#include <utility>
 
 namespace ecs {
 
@@ -46,13 +49,21 @@ template <typename T> struct module_type {
 };
 
 template <typename T>
-concept module_importable = requires(T module) {
-    { module.import() } -> std::same_as<void>;
+concept c_declared_module = requires {
+    typename T::props_t;
+    { T::id_storage() } -> std::same_as<ecs_module_id_t *>;
+    { T::import_callback() } -> std::same_as<ecs_module_import_t>;
+    { T::name() } -> std::same_as<const char *>;
 };
 
 template <typename T, typename... Args>
-concept module_list_initializable =
-    requires(Args &&...args) { T{ static_cast<Args &&>(args)... }; };
+concept module_importable = requires(Args &&...args) {
+    { T::import(static_cast<Args &&>(args)...) } -> std::same_as<void>;
+};
+
+template <typename T, typename... Args> struct module_import_context {
+    std::tuple<std::decay_t<Args>...> args;
+};
 
 } // namespace detail
 

@@ -24,9 +24,16 @@ struct Enemy {};
 struct Voiture {};
 struct NoIntegrate {};
 
+struct MyModule {
+    static inline void import() {
+
+    };
+};
+
 int main() {
+
+    ecs::import<SiecsRest>();
     ecs::init({ .target_fps = 60 });
-    SiecsRestImport({});
 
     ecs::entity::create("Parent").child_of(ecs::entity::create("Child"));
     ecs::query().order_by_depth<ecs::ChildOf>().each([](ecs::entity entity) {

@@ -70,6 +70,7 @@ void childof_dense_retarget_without_migration(void);
 void childof_dense_retarget_keeps_reverse_sources(void);
 void childof_dense_delete_policies(void);
 void childof_bydepth_depth_and_cascade(void);
+void childof_bydepth_targets_return_records(void);
 void childof_bydepth_reparent_updates_subtree(void);
 void childof_cascade_cache_accepts_new_depth(void);
 void childof_bytarget_exact_query_and_retarget(void);
@@ -367,6 +368,10 @@ bake_test_case childof_testcases[] = {
     {
         "bydepth_depth_and_cascade",
         childof_bydepth_depth_and_cascade
+    },
+    {
+        "bydepth_targets_return_records",
+        childof_bydepth_targets_return_records
     },
     {
         "bydepth_reparent_updates_subtree",
@@ -672,7 +677,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        21,
+        22,
         childof_testcases
     },
     {
