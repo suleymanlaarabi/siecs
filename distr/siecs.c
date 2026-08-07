@@ -5239,6 +5239,8 @@ ECS_COMPONENT_DEFINE(
     .on_set = name_on_set
 );
 
+ECS_RESOURCE_DEFINE(DeltaTime);
+
 ECS_TAG_DEFINE(Disabled);
 ECS_TAG_DEFINE(Abstract);
 
@@ -5261,6 +5263,8 @@ void ecs_bootstrap() {
 
     ECS_RELATION_REGISTER(ChildOf);
     ECS_COMPONENT_REGISTER(Name);
+    ECS_RESOURCE_REGISTER(DeltaTime);
+    ecs_set_resource(DeltaTime, { .value = 0.0f });
     sicore_map_init(&name_map);
     ECS_COMPONENT_REGISTER(Disabled);
     ECS_COMPONENT_REGISTER(Abstract);
@@ -7646,6 +7650,8 @@ bool ecs_progress(void) {
     } else {
         ecs_world.delta_time = frame_start - ecs_world.last_time;
     }
+
+    ecs_set_resource(DeltaTime, { .value = (float)ecs_world.delta_time });
 
     ecs_world.last_time = frame_start;
 
