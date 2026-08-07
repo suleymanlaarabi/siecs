@@ -277,14 +277,9 @@ moving.each([](Position &position) {
 </TabItem>
 </Tabs>
 
-The macro creates and destroys a temporary C query. Call `ecs_query_fini()` for
-an id returned by `ecs_query()` or `ecs_query_init()`:
-
-```c
-ecs_query_fini(moving);
-```
-
-In C++, `each()` and `first()` use temporary queries. `query_handle` is a
+The macro creates and destroys a temporary C query. An id returned by
+`ecs_query()` or `ecs_query_init()` must be released with `ecs_query_fini()`;
+in C++, `each()` and `first()` use temporary queries while `query_handle` is a
 move-only RAII owner for repeated iteration:
 
 The C++ example above uses the same persistent query pattern through its

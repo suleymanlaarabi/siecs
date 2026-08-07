@@ -1,0 +1,170 @@
+---
+title: Relations entre entités
+description: Connecter des entités, choisir un stockage de relation et interroger les cibles dans SIECS.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Une relation connecte une entité source à une entité cible. Elle possède son
+propre espace d’identifiants et se modifie avec `ecs_relate()` et
+`ecs_unrelate()`, pas avec `ecs_set()`.
+
+`ChildOf` est la relation intégrée des hiérarchies. Elle est acyclique et
+supprime les sources lorsqu’un parent est supprimé.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_relate(child, ChildOf, parent);
+ecs_entity_t current = ecs_target(child, ChildOf);
+ecs_unrelate(child, ChildOf);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+child.child_of(parent);
+auto current = child.target<ecs::ChildOf>();
+child.unrelate<ecs::ChildOf>();
+```
+</TabItem>
+</Tabs>
+
+## Déclarer une relation personnalisée
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_RELATION_DECLARE(GroupOf);
+ECS_RELATION_DEFINE(GroupOf, {
+    .storage = EcsRelationByTarget,
+    .on_delete_target = EcsRemoveRelation,
+});
+
+ECS_RELATION_REGISTER(GroupOf);
+ecs_relate(member, GroupOf, group);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct GroupOf {};
+
+ecs::relation<GroupOf>({
+    .storage = EcsRelationByTarget,
+    .on_delete_target = EcsRemoveRelation,
+});
+
+auto member = ecs::entity::create().relate<GroupOf>(group);
+```
+</TabItem>
+</Tabs>
+
+Une relation déclarée est enregistrée une fois par monde. Pour une relation
+créée dynamiquement, utilisez `ecs_relation_init()` et un `ecs_relation_desc_t`.
+
+## Choisir un stockage
+
+| Stockage | Cas d’usage | Requêtes associées |
+| --- | --- | --- |
+| `EcsRelationDense` | Cible stockée par source | `ecs_rel`, `ecs_targets()` |
+| `EcsRelationByDepth` | Hiérarchie acyclique | `ecs_depth`, ordre par profondeur |
+| `EcsRelationByTarget` | Beaucoup de sources pour une cible | `ecs_to`, ordre par cible |
+
+`ByDepth` exige `.acyclic = true`. `ecs_to()` exige `ByTarget`. Les fonctions
+de profondeur exigent `ByDepth`. Le choix se fait selon la requête dominante,
+pas selon la seule forme du graphe.
+
+## Inspecter une relation
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+if (ecs_has_relation(source, GroupOf)) {
+    ecs_entity_t target = ecs_target(source, GroupOf);
+}
+
+if (ecs_has_relation_to(source, GroupOf, group)) {
+    /* source pointe exactement vers group */
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+if (source.has_relation<GroupOf>()) {
+    auto target = source.target<GroupOf>();
+}
+
+if (source.target<GroupOf>().id() == group.id()) {
+    // source pointe exactement vers group
+}
+```
+</TabItem>
+</Tabs>
+
+La cible est un handle complet avec génération. La remplacer par une autre cible
+réoriente la relation ; la réappliquer avec la même cible ne fait rien.
+
+## Interroger les relations
+
+Les relations filtrent les tables ; elles ne créent pas de champ composant.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_id_t members = ecs_query({
+    .terms = { ecs_in(Position) },
+    .relations = { ecs_to(GroupOf, group) },
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto members = ecs::query()
+    .require<Position>()
+    .to<GroupOf>(group)
+    .build_handle();
+```
+</TabItem>
+</Tabs>
+
+`ecs_rel()` exige une relation, `ecs_rel_opt()` la rend optionnelle,
+`ecs_not_rel()` l’exclut, `ecs_to()` filtre une cible exacte et `ecs_depth()`
+filtre une profondeur. `ecs_target_at()` lit une cible de ligne et
+`ecs_targets()` fournit des cibles contiguës pour les stockages compatibles.
+
+## Suppression de la cible
+
+La politique `on_delete_target` définit le comportement lorsqu’une cible meurt :
+
+| Politique | Effet |
+| --- | --- |
+| `EcsRemoveRelation` | Retire la relation ; les sources restent vivantes. |
+| `EcsDeleteSources` | Supprime les sources qui pointent vers la cible. |
+
+Ces transitions déclenchent les mêmes événements de relation que les opérations
+explicites.
+
+## Changements différés
+
+Pendant un système ou une portée différée, les transitions sont appliquées au
+flush :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_defer_begin();
+ecs_relate(source, GroupOf, first_group);
+ecs_relate(source, GroupOf, final_group);
+ecs_defer_end();
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs_defer_begin();
+    source.relate<GroupOf>(first_group);
+    source.relate<GroupOf>(final_group);
+ecs_defer_end();
+```
+</TabItem>
+</Tabs>
+
+Le résultat visible est la cible finale. Consultez [Observateurs](../observers/)
+pour recevoir les événements de ces transitions.

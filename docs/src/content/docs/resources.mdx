@@ -13,6 +13,24 @@ Resources have their own `ecs_resource_t` ids. They do not consume component
 ids, they are not added to an entity, they are not query terms, and they do not
 consume an `ecs_field()` slot.
 
+SIECS provides the builtin `DeltaTime` resource. It is always registered and
+contains the current frame delta in seconds:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+const DeltaTime *delta_time = ecs_get_resource_read(DeltaTime);
+float seconds = delta_time->value;
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+const auto &delta_time = ecs::resource<const DeltaTime>();
+float seconds = delta_time.value;
+```
+</TabItem>
+</Tabs>
+
 ## Declare a Resource
 
 Resources are declared once and stored per world:
@@ -50,6 +68,15 @@ the C++ helpers reuse its C id, descriptor, lifecycle operations, and hooks.
 Use `ECS_RESOURCE_DECLARE_CPP` when the shared resource also needs C++-only
 methods:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_RESOURCE_DECLARE(Time, {
+    float dt;
+});
+```
+</TabItem>
+<TabItem label="C++">
 ```cpp
 ECS_RESOURCE_DECLARE_CPP(Time,
     ECS_CPP_FIELDS(
@@ -60,6 +87,8 @@ ECS_RESOURCE_DECLARE_CPP(Time,
     )
 );
 ```
+</TabItem>
+</Tabs>
 
 The declaration remains valid in C, where the method block is ignored. C++
 methods must not add instance data, so the C and C++ resource layouts stay

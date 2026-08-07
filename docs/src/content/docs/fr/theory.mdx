@@ -1,0 +1,141 @@
+---
+title: Théorie ECS
+description: "Comprendre le modèle SIECS : identité des entités, données de composants, tables d’archétypes, requêtes et changements structurels."
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Un ECS sépare identité, données et comportement. SIECS est un ECS à archétypes :
+il regroupe dans une même table les entités qui possèdent le même ensemble de
+composants.
+
+## L’identité n’est pas une donnée
+
+Une entité est un handle léger. Elle ne contient ni `Position`, ni `Health`, ni
+nom, ni interface virtuelle. Ces éléments sont des composants ou des relations
+attachés au handle.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_entity_t ship = ecs_new();
+ecs_set(ship, Position, { 10.0f, 20.0f });
+ecs_set(ship, Health, { 100 });
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto ship = ecs::entity::create()
+    .set(Position{ 10.0f, 20.0f })
+    .set(Health{ 100 });
+```
+</TabItem>
+</Tabs>
+
+Le handle se transmet à faible coût. Sa génération empêche un ancien handle de
+redevenir valide lorsqu’un index d’entité est réutilisé.
+
+## Les composants définissent une table
+
+L’ensemble de composants définit l’archétype de l’entité. Ces entités occupent
+des tables différentes car leur forme de données diffère :
+
+| Entité | Composants | Table |
+| --- | --- | --- |
+| ship | `Position`, `Health` | `Position + Health` |
+| asteroid | `Position` | `Position` |
+| enemy | `Position`, `Velocity`, `Health` | `Position + Velocity + Health` |
+
+Dans une table, SIECS stocke une colonne contiguë par composant. Un système qui
+correspond à `Position + Velocity` reçoit donc deux tableaux contigus. C’est le
+chemin chaud normal.
+
+## Les requêtes sélectionnent les tables, puis les lots
+
+Une requête n’est pas une boucle de recherche par entité. Elle sélectionne les
+tables correspondantes, puis parcourt chaque table par lots.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_id_t moving = ecs_query({
+    .terms = { ecs_inout(Position), ecs_in(Velocity) },
+});
+
+ecs_iter_t it = ecs_query_iter(moving);
+while (ecs_iter_next(&it)) {
+    Position *position = ecs_field(&it, 0);
+    const Velocity *velocity = ecs_field(&it, 1);
+    for (uint32_t i = 0; i < it.count; i++) {
+        position[i].x += velocity[i].x;
+    }
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query()
+    .require<Position>()
+    .require<Velocity>()
+    .each([](Position &position, const Velocity &velocity) {
+        position.x += velocity.x;
+    });
+```
+</TabItem>
+</Tabs>
+
+La requête ne correspond pas à la table de l’astéroïde, qui ne possède que
+`Position`. Elle correspond à la table de l’ennemi et traite les lignes avec un
+accès mémoire linéaire.
+
+## Les systèmes sont des requêtes ordonnancées
+
+Un système possède une requête persistante et l’exécute dans une phase. Utilisez
+les systèmes pour le travail répété — simulation, propagation de transforms,
+préparation du rendu — et une requête isolée pour un scan explicite ponctuel.
+
+```text
+monde
+  -> phase
+      -> système
+          -> lot de table correspondant
+              -> colonnes de composants
+```
+
+## Les changements structurels déplacent une entité
+
+Écrire `Position.x` modifie une donnée sur place. Ajouter ou retirer un
+composant change l’archétype : l’entité se déplace dans une autre table.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+Position *position = ecs_get(entity, Position);
+position->x += 1.0f;        /* même table */
+
+ecs_add(entity, Velocity);  /* table Position -> Position + Velocity */
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+entity.get<Position>().x += 1.0f;  // même table
+entity.add<Velocity>();            // autre table
+```
+</TabItem>
+</Tabs>
+
+La migration est normale dans un ECS, mais elle peut invalider les pointeurs du
+lot courant. Gardez-la hors de la boucle chaude lorsque possible, ou différez-la.
+
+## Tags, ressources et relations
+
+- Un **tag** est un composant de taille zéro : `Enemy`, `Selected`, `Disabled`.
+- Une **ressource** est une valeur typée unique : temps, entrée, configuration.
+- Une **relation** est une arête entre entités : `ChildOf`, `GroupOf`, `Targets`.
+
+Ces outils ont des rôles différents. Le bon choix garde les tables compactes et
+les requêtes lisibles.
+
+## Continuer
+
+Lisez [Stockage par archétypes](../archetype-ecs/), puis les manuels
+[Composants](../components/), [Requêtes](../queries/) et [Systèmes](../systems/).

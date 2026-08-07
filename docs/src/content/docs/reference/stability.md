@@ -4,8 +4,8 @@ description: Compatibility guarantees and review rules for the SIECS public API.
 ---
 
 This policy applies to every declaration reachable from `siecs.h` or
-`siecs/cpp.hpp`. Internal headers under `src/` and names in `ecs::detail` are
-not public API and may change without a compatibility promise.
+`siecs/cpp.hpp`. Names in `ecs::detail` are not public API and may change
+without a compatibility promise.
 
 ## Stability levels
 

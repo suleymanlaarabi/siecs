@@ -1,0 +1,128 @@
+---
+title: Observateurs
+description: Réagir aux événements de composants et de relations avec des callbacks ciblés en C et C++.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Un observateur exécute un callback lorsqu’un événement concerne une entité qui
+correspond à sa requête. Il est adapté aux transitions et validations ; un
+système est préférable pour le travail répété à chaque frame.
+
+## Événements intégrés
+
+| Événement | Déclenchement |
+| --- | --- |
+| `EcsOnAdd` | Un composant est ajouté. |
+| `EcsOnRemove` | Un composant est retiré. |
+| `EcsOnSet` | Une valeur de composant est écrite. |
+| `EcsOnRelationSet` | Une relation est ajoutée ou réorientée. |
+| `EcsOnRelationRemove` | Une relation est retirée. |
+
+## Observer un composant
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+static void OnPositionSet(ecs_observer_event_t *event) {
+    const Position *value = event->trigger_data;
+    log_position(event->entity, value);
+}
+
+ecs_observer({
+    .on = EcsOnSet,
+    .query.terms = { ecs_in(Position) },
+    .callback = OnPositionSet,
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::observe<ecs::OnSet>().each([](const Position &position) {
+    log_position(position);
+});
+```
+</TabItem>
+</Tabs>
+
+Les observateurs ignorent `Disabled` et `Abstract` par défaut. Demandez-les
+explicitement dans la requête lorsqu’un outil doit aussi les recevoir.
+
+## Contexte et payload
+
+Le callback C reçoit `ecs_observer_event_t` : entité concernée, id d’événement,
+`user_data` et `trigger_data`. Le wrapper C++ peut recevoir
+`ecs::observer_event` en premier argument pour accéder à ces mêmes données.
+
+Les pointeurs de payload sont empruntés et ne sont valides que pendant le
+callback. Ne les stockez pas dans un composant ou une ressource.
+
+## Observer les transitions de relations
+
+Le payload d’une relation donne la relation et les cibles avant/après via
+`ecs_relation_event_t` : `relation`, `old_target` et `new_target`.
+
+Pour un ajout, `old_target` vaut zéro. Pour un retrait, `new_target` vaut zéro.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+static void OnGroupChanged(ecs_observer_event_t *event) {
+    const ecs_relation_event_t *change = event->trigger_data;
+    log_relation(event->entity, change->old_target, change->new_target);
+}
+
+ecs_observer({
+    .on = EcsOnRelationSet,
+    .query.relations = { ecs_rel(GroupOf) },
+    .callback = OnGroupChanged,
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto changed = ecs::observe<ecs::OnRelationSet>();
+changed.with_relation<GroupOf>();
+changed.each([](ecs::observer_event event) {
+    auto *change = event.trigger_data<ecs_relation_event_t>();
+    log_relation(change->old_target, change->new_target);
+});
+```
+</TabItem>
+</Tabs>
+
+`EcsOnRelationSet` voit l’état après la transition. `EcsOnRelationRemove` voit
+la relation avant son retrait.
+
+## Événements personnalisés
+
+Créez un id d’événement lorsque la transition n’est pas liée à un composant :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_event_t Damaged = ecs_event();
+
+ecs_observer({
+    .on = Damaged,
+    .query.terms = { ecs_in(Health) },
+    .callback = on_damaged,
+});
+
+ecs_observer_trigger(entity, Damaged, &damage);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Damaged {};
+
+ecs::observe<Damaged>().each([](Health &health) {
+    health.value -= 1;
+});
+
+ecs::trigger<Damaged>(entity, &damage);
+```
+</TabItem>
+</Tabs>
+
+Les observateurs restent enregistrés lorsqu’ils sont désactivés, mais ne
+reçoivent plus d’événements jusqu’à leur réactivation.

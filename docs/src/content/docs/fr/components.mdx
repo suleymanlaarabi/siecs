@@ -1,0 +1,270 @@
+---
+title: Composants
+description: Déclarer, enregistrer, lire, modifier et retirer des composants SIECS en C17 et C++20.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Un composant est un type de données enregistré dans le monde. Il représente un
+état par entité ; une valeur unique pour le monde doit plutôt être une
+[ressource](../resources/).
+
+## Déclarer un composant
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_COMPONENT_DECLARE(Position, {
+    float x;
+    float y;
+});
+
+/* Une seule définition dans un fichier C. */
+ECS_COMPONENT_DEFINE(Position);
+ECS_COMPONENT_REGISTER(Position);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Position { float x, y; };
+
+ecs::init();
+auto entity = ecs::entity::create();
+entity.set(Position{ .x = 1.0f, .y = 2.0f });
+auto position_id = ecs::component<Position>();
+```
+</TabItem>
+</Tabs>
+
+Les types C++ déclarés avec `ECS_COMPONENT_DECLARE` réutilisent l’identifiant C
+et son descripteur. Un struct C++ natif est enregistré automatiquement lors de
+sa première utilisation.
+
+## Écrire et lire
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_set(entity, Position, { .x = 1.0f, .y = 2.0f });
+
+Position *position = ecs_get(entity, Position);
+position->x += 1.0f;
+
+Position *maybe = ecs_try_get(entity, Position);
+if (maybe != NULL) maybe->y += 1.0f;
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+entity.set(Position{ .x = 1.0f, .y = 2.0f });
+
+Position &position = entity.get<Position>();
+position.x += 1.0f;
+
+if (Position *maybe = entity.try_get<Position>()) {
+    maybe->y += 1.0f;
+}
+```
+</TabItem>
+</Tabs>
+
+`ecs_get()` et `get<T>()` supposent que le composant existe. `ecs_set()` et
+`set()` ajoutent le composant s’il est absent.
+
+## Ajouter et retirer
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_add(entity, Selected);
+if (ecs_has(entity, Selected)) {
+    ecs_remove(entity, Selected);
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+entity.add<Selected>();
+if (entity.has<Selected>()) {
+    entity.remove<Selected>();
+}
+```
+</TabItem>
+</Tabs>
+
+Retirer un composant absent est sans effet. Ajouter ou retirer un composant est
+une modification structurelle : l’entité peut changer de table et les pointeurs
+de champs courants ne doivent pas être conservés à travers cette opération.
+
+## Composants intégrés et réflexion
+
+`Disabled` exclut une entité des requêtes normales. `Abstract` marque une base
+utilisée par l’héritage. Pour exposer les champs d’un type C++ à la réflexion,
+utilisez `reflected(...)` ; un type sans métadonnées reste tout de même stockable
+et interrogeable.
+
+Les descripteurs dynamiques peuvent utiliser `struct_desc` pour fournir les
+métadonnées Sireflect nécessaires à l’explorateur REST et à la sérialisation.
+
+## Exigences et hooks
+
+`ecs_with(component, required)` et `ecs::component_requires<Component,
+Required>()` déclarent qu’un composant entraîne l’ajout d’un autre composant.
+Cette règle concerne les ajouts futurs et les cycles sont invalides.
+
+Les hooks `on_add`, `on_set` et `on_remove` s’exécutent autour du cycle de vie du
+composant. Consultez la [référence API](../reference/api/) pour les signatures
+et les durées de validité des pointeurs.
+
+## Désactivé
+
+`Disabled` est un composant intégré. Lorsqu’il est ajouté à une entité, celle-ci
+est exclue des requêtes par défaut :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_add(entity, Disabled);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+entity.disable();
+```
+</TabItem>
+</Tabs>
+
+Les requêtes, systèmes et observateurs ignorent les entités désactivées. Pour
+les inclure explicitement, demandez `Disabled` dans la requête :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query({
+    .terms = { ecs_in(Position), ecs_filter(Disabled) },
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().require<Position>().require<Disabled>().each(
+    [](Position &position) { position.x += 1.0f; });
+```
+</TabItem>
+</Tabs>
+
+## Exigences de composants
+
+Utilisez `ecs_with()` lorsqu’un composant doit entraîner l’ajout d’un autre :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_with(ecs_id(Renderable), ecs_id(Transform));
+ecs_add(entity, Renderable);
+/* Transform est ajouté avant Renderable. */
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::component_requires<Renderable, Transform>();
+entity.add<Renderable>();
+```
+</TabItem>
+</Tabs>
+
+La règle concerne uniquement les ajouts futurs et ne modifie pas les entités
+existantes. Les cycles d’exigences sont invalides.
+
+## API par identifiant
+
+Pour du code générique, enregistrez un composant avec un descripteur puis
+utilisez les fonctions `_cid` :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+typedef struct { float x, y; } Position;
+
+ecs_component_t position_id = ecs_component({
+    .name = "Position",
+    .size = sizeof(Position),
+});
+
+ecs_set_cid(entity, position_id, &(Position){ .x = 1.0f, .y = 2.0f });
+Position *position = ecs_get_cid(entity, position_id);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto position_id = ecs::component<Position>();
+Position value{ .x = 1.0f, .y = 2.0f };
+entity.set(value);
+```
+</TabItem>
+</Tabs>
+
+## Réflexion et JSON
+
+Les macros de composants typés enregistrent les métadonnées utilisées par
+`sireflect`, `sijson` et l’explorateur REST :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_COMPONENT(Position, {
+    float x;
+    float y;
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Position {
+    reflected(float x; float y;);
+};
+```
+</TabItem>
+</Tabs>
+
+Un composant enregistré avec un descripteur brut reste stockable et
+interrogeable, mais ses champs ne sont visibles par REST que si `struct_desc`
+référence une description Sireflect valide.
+
+## Hooks détaillés
+
+`on_set` reçoit la nouvelle valeur et la valeur actuellement stockée. Cette
+dernière reste inchangée jusqu’au retour du hook. `on_add` reçoit le stockage
+initialisé et `on_remove` la valeur qui va être retirée.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+static void on_set_position(
+    ecs_entity_t entity,
+    ecs_component_t component,
+    const void *new_value,
+    void *current_value
+) {
+    (void)entity;
+    (void)component;
+    const Position *incoming = new_value;
+    Position *stored = current_value;
+    printf("old=%f new=%f", stored->x, incoming->x);
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+static void on_set_position(
+    ecs_entity_t,
+    const Position &incoming,
+    Position &stored
+) {
+    std::printf("old=%f new=%f", stored.x, incoming.x);
+}
+
+ecs::component_hooks<Position> hooks{ .on_set = on_set_position };
+auto position = ecs::component(hooks);
+```
+</TabItem>
+</Tabs>

@@ -1,0 +1,62 @@
+---
+title: Entités
+description: Créer, vérifier et détruire des entités SIECS en comprenant handles, durée de vie et générations.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Une entité est un handle `ecs_entity_t` créé par le monde. Une nouvelle entité
+est vivante et ne porte aucun composant utilisateur.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_entity_t entity = ecs_new();
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto entity = ecs::entity::create();
+```
+</TabItem>
+</Tabs>
+
+## Allocation
+
+`ecs_new()` réutilise les index d’entités libérés lorsque possible.
+`ecs_new_no_reuse()` et `ecs::entity::create_no_reuse()` allouent toujours un
+nouvel index maximal. Cette propriété est monotone, pas contiguë : d’autres
+allocations peuvent toujours créer des trous.
+
+## Durée de vie
+
+Testez l’état d’un handle issu du même monde :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+if (ecs_is_alive(entity)) {
+    ecs_kill(entity);
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+if (entity.is_alive()) {
+    entity.kill();
+}
+```
+</TabItem>
+</Tabs>
+
+Tuer une entité retire ses composants, exécute leurs hooks de retrait, la retire
+de sa table et invalide le handle. Ne passez jamais un ancien handle aux
+fonctions d’accès après `ecs_kill()` ou `kill()`.
+
+## Générations
+
+L’API traite `ecs_entity_t` comme un handle opaque. SIECS y encode un index et
+une génération, ce qui permet de détecter un handle devenu obsolète après la
+destruction et la réutilisation d’un index.
+
+Les bases abstraites et les instances héritées sont décrites dans
+[Héritage](../inheritance/).

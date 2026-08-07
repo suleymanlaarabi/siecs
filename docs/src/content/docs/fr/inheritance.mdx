@@ -1,0 +1,161 @@
+---
+title: Héritage
+description: Construire des bases réutilisables avec Abstract, IsA, composants hérités et requêtes spécialisées en C et C++.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+L’héritage relie une entité instance à une base avec `IsA`. La base devient
+abstraite et ses composants peuvent être visibles par les requêtes de l’instance.
+
+## Créer une base et une instance
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_entity_t enemy_base = ecs_new();
+ecs_set(enemy_base, Health, { .value = 100 });
+
+ecs_entity_t enemy = ecs_new();
+ecs_is_a(enemy, enemy_base);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto enemy_base = ecs::entity::create();
+enemy_base.set(Health{ .value = 100 });
+
+auto enemy = ecs::entity::create().is_a(enemy_base);
+```
+</TabItem>
+</Tabs>
+
+## Lire et remplacer
+
+Une requête peut voir un composant hérité en lecture. Pour remplacer la valeur
+sur l’instance, ajoutez localement le composant puis écrivez-le. Les pointeurs
+partagés doivent être traités comme des données en lecture seule.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_add(enemy, Health);
+ecs_set(enemy, Health, { .value = 50 });
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+enemy.add<Health>();
+enemy.set(Health{ .value = 50 });
+```
+</TabItem>
+</Tabs>
+
+Utilisez `ecs_is(entity, base)` ou `entity.is_a(base)` pour vérifier la chaîne
+d’héritage. Le terme `ecs_up(Component, Relation)` permet une recherche du champ
+hérité le plus proche.
+
+## Marquer une base abstraite
+
+Une base destinée à être héritée doit porter `Abstract`. La valeur héritée reste
+stockée sur la base ; elle n’est pas copiée dans chaque instance :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_entity_t base = ecs_new();
+ecs_set(base, Health, { 100 });
+ecs_add(base, Abstract);
+
+ecs_entity_t instance = ecs_new();
+ecs_is_a(instance, base);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto base = ecs::entity::create();
+base.set(Health{ 100 });
+base.abstract();
+auto instance = ecs::entity::create().is_a(base);
+```
+</TabItem>
+</Tabs>
+
+Les instances lisent donc la même valeur partagée tant qu’elles ne possèdent
+pas de remplacement local.
+
+## Remplacer un composant hérité
+
+Ajoutez ou écrivez le composant sur l’instance pour le rendre local :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_set(instance, Health, { 75 });
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+instance.set(Health{ 75 });
+```
+</TabItem>
+</Tabs>
+
+Les écritures suivantes ne modifient alors plus la base. Les composants locaux
+et hérités sont indépendants.
+
+## Correspondance des requêtes
+
+Une requête en lecture peut voir un composant hérité :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_id_t q = ecs_query({
+    .terms = { ecs_in(Health) },
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().require<Health>().each([](const Health &health) {
+    printf("%d\n", health.value);
+});
+```
+</TabItem>
+</Tabs>
+
+Un champ hérité est partagé : `ecs_field_kind()` retourne `EcsFieldShared` et le
+pointeur ne représente pas un tableau indépendant par entité. Un champ local
+retourne `EcsFieldOwned` et peut être indexé avec l’indice du lot.
+
+Les termes d’écriture (`ecs_out`, `ecs_inout`) ne correspondent qu’aux valeurs
+possédées localement. Cette règle évite d’écrire ambiguëment dans une valeur
+partagée par plusieurs instances. Les termes optionnels en écriture ignorent
+également les valeurs héritées.
+
+## Requêtes limitées à une base
+
+Utilisez `is_a` dans le descripteur de requête pour limiter les résultats aux
+entités qui héritent d’une base donnée :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_id_t enemies = ecs_query({
+    .terms = { ecs_in(Health) },
+    .is_a = enemy_base,
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto enemies = ecs::query()
+    .is_a(enemy_base)
+    .require<Health>()
+    .build_handle();
+```
+</TabItem>
+</Tabs>
+
+La recherche d’héritage est transitive. `ecs_is(instance, base)` vérifie donc
+aussi les bases intermédiaires.

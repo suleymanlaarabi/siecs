@@ -88,15 +88,9 @@ Observers are enabled by default. `ecs_observer_disable()` and
 
 ## Observe relation transitions
 
-The relation payload contains both sides of the transition:
-
-```c
-typedef struct {
-    ecs_relation_id_t relation;
-    ecs_entity_t old_target;
-    ecs_entity_t new_target;
-} ecs_relation_event_t;
-```
+The relation payload contains the relation id and both sides of the transition:
+`relation`, `old_target`, and `new_target`. The event type is
+`ecs_relation_event_t` in both language APIs.
 
 The values are:
 
@@ -173,16 +167,10 @@ only during the callback.
 
 ## Callback context and event payloads
 
-The C callback receives:
-
-```c
-typedef struct {
-    ecs_entity_t entity;
-    ecs_event_t event;
-    uintptr_t user_data;
-    const void *trigger_data;
-} ecs_observer_event_t;
-```
+The C callback receives an `ecs_observer_event_t` with `entity`, `event`,
+`user_data`, and `trigger_data`. The C++ callback receives the corresponding
+`ecs::observer_event` object. Both payloads are borrowed for the duration of
+the callback:
 
 Pass a small callback context through `user_data`:
 

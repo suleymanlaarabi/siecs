@@ -1,0 +1,205 @@
+---
+title: Requêtes
+description: Faire correspondre des tables d’archétypes et parcourir des lots de composants en C17 et C++20.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Une requête met en correspondance des tables d’archétypes. Chaque table
+correspondante est parcourue sous forme d’un lot d’entités.
+
+## Créer et parcourir
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_id_t moving = ecs_query({
+    .terms = { ecs_inout(Position), ecs_in(Velocity) },
+});
+
+ecs_iter_t it = ecs_query_iter(moving);
+while (ecs_iter_next(&it)) {
+    Position *positions = ecs_field(&it, 0);
+    const Velocity *velocities = ecs_field(&it, 1);
+    for (uint32_t i = 0; i < it.count; i++) {
+        positions[i].x += velocities[i].x;
+    }
+}
+ecs_query_fini(moving);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto moving = ecs::query()
+    .require<Position>()
+    .require<Velocity>()
+    .build_handle();
+
+moving.each([](Position &position, const Velocity &velocity) {
+    position.x += velocity.x;
+});
+```
+</TabItem>
+</Tabs>
+
+Les requêtes C persistantes doivent être détruites avec `ecs_query_fini()`. Le
+`query_handle` C++ est propriétaire et libère automatiquement son identifiant.
+
+## Termes de composants
+
+| Terme | Effet |
+| --- | --- |
+| `ecs_in(T)` | `T` requis, champ en lecture. |
+| `ecs_out(T)` | `T` requis, champ en écriture. |
+| `ecs_inout(T)` | `T` requis, champ en lecture-écriture. |
+| `ecs_in_optional(T)` | Champ nul pour les tables sans `T`. |
+| `ecs_inout_optional(T)` | Champ optionnel et modifiable quand présent. |
+| `ecs_filter(T)` | `T` requis, sans champ. |
+| `ecs_not(T)` | `T` interdit. |
+| `ecs_up(T, Relation)` | Lecture du champ hérité le plus proche. |
+
+Les champs sont numérotés dans l’ordre de déclaration ; les filtres et exclusions
+ne consomment pas d’index de champ. `Disabled` et `Abstract` sont exclus par
+défaut ; mentionnez explicitement le tag pour les inclure.
+
+## Relations et héritage
+
+Les relations sont ajoutées dans `relations` et filtrent les tables sans créer
+de champ composant :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_id_t members = ecs_query({
+    .terms = { ecs_in(Position) },
+    .relations = { ecs_to(GroupOf, group) },
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto members = ecs::query()
+    .require<Position>()
+    .to<GroupOf>(group)
+    .build_handle();
+```
+</TabItem>
+</Tabs>
+
+Utilisez `ecs_rel`, `ecs_rel_opt`, `ecs_not_rel`, `ecs_to` et `ecs_depth` côté C,
+ou `with_relation<T>()`, `to<T>()` et `depth<T>()` côté C++.
+
+## Requêtes temporaires
+
+Pour une recherche ponctuelle, `ecs_query_each(...)` crée et détruit une requête
+automatiquement. Pour une boucle répétée, préférez un identifiant persistant ou
+un `query_handle` afin d’éviter le coût de création à chaque appel.
+
+Les pointeurs de champs sont des vues empruntées et ne doivent pas survivre à
+une opération qui migre une entité vers une autre table.
+
+## Hiérarchies et ordre
+
+Utilisez `is_a` pour limiter une requête aux entités qui héritent d’une base :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_id_t enemies = ecs_query({
+    .terms = { ecs_in(Position) },
+    .is_a = enemy_base,
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto enemies = ecs::query()
+    .is_a(enemy_base)
+    .require<Position>();
+```
+</TabItem>
+</Tabs>
+
+Pour les relations compatibles, `ecs_order_by_depth(Relation)` trie les tables
+par profondeur et `ecs_order_by_target(Relation)` par cible. L’ordre concerne
+les tables, pas les entités d’une même table :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_id_t hierarchy = ecs_query({
+    .terms = { ecs_in(Position) },
+    .relations = { ecs_rel(ChildOf) },
+    .order_by = ecs_order_by_depth(ChildOf),
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto hierarchy = ecs::query()
+    .with_relation<ChildOf>()
+    .order_by_depth<ChildOf>()
+    .build_handle();
+```
+</TabItem>
+</Tabs>
+
+## Itérer
+
+`ecs_iter_next()` avance vers le prochain lot non vide. `it.count` contient le
+nombre d’entités du lot courant et `ecs_query_count()` retourne le nombre total
+d’entités correspondantes sans créer d’itérateur.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_iter_t it = ecs_query_iter(moving);
+while (ecs_iter_next(&it)) {
+    Position *positions = ecs_field(&it, 0);
+    const Velocity *velocities = ecs_field(&it, 1);
+
+    for (uint32_t i = 0; i < it.count; i++) {
+        positions[i].x += velocities[i].x;
+    }
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+moving.each([](Position &position, const Velocity &velocity) {
+    position.x += velocity.x;
+});
+```
+</TabItem>
+</Tabs>
+
+Un champ partagé est stocké hors de la table courante et doit être traité comme
+une valeur en lecture seule. Un champ optionnel est disponible pour tout le lot
+ou vaut `NULL` pour tout le lot ; il ne change pas d’état entre deux entités.
+
+## Requêtes temporaires et persistantes
+
+`ecs_query_each(...)` est adapté aux initialisations, tests et scans ponctuels :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_each(it, i, ecs_in(Position)) {
+    Position *positions = ecs_field(&it, 0);
+    positions[i].x += 1.0f;
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().require<Position>().each([](Position &position) {
+    position.x += 1.0f;
+});
+```
+</TabItem>
+</Tabs>
+
+Pour une boucle répétée, conservez un identifiant C créé par `ecs_query()` ou
+un `query_handle` C++ construit une seule fois. Ne conservez pas les pointeurs
+de composants à travers une mutation structurelle qui peut déplacer une
+entité. Les identifiants de requête restent valides lorsque les tables sont
+créées ou agrandies ; le cache actualise ses vues de champs.

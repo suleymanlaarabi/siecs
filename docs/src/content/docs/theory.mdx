@@ -1,124 +1,141 @@
 ---
-title: ECS Theory
-description: Learn the model behind entities, components, systems, archetype tables, queries, and structural changes.
+title: ECS theory
+description: "Understand the SIECS data model: entity identity, component data, archetype tables, queries, and structural changes."
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-SIECS is an archetype ECS. Entities are ids, components are plain data, and
-systems run logic over batches of entities that share the same component set.
+An ECS separates identity, data and behavior. SIECS is an archetype ECS: it
+groups entities with the same component set into the same table.
 
-## Entities Are Handles
+## Identity is not data
 
-An `ecs_entity_t` identifies a row in world-owned storage. It is not an object
-and it does not own behavior. Keep the handle, but store state in components:
+An entity is a small handle. It does not contain `Position`, `Health`, a name,
+or a virtual interface. Those are components or relations attached to the
+handle.
 
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_entity_t player = ecs_new();
-ecs_set(player, Position, { .x = 0, .y = 0 });
-ecs_set(player, Velocity, { .x = 1, .y = 0 });
+ecs_entity_t ship = ecs_new();
+ecs_set(ship, Position, { 10.0f, 20.0f });
+ecs_set(ship, Health, { 100 });
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
-ecs::init();
-auto player = ecs::entity::create();
-player.set(Position{ .x = 0, .y = 0 });
-player.set(Velocity{ .x = 1, .y = 0 });
+auto ship = ecs::entity::create()
+    .set(Position{ 10.0f, 20.0f })
+    .set(Health{ 100 });
 ```
 </TabItem>
 </Tabs>
 
-Entity handles belong to one world. Do not use a handle with a different world.
+The handle can be passed cheaply. Its generation prevents an old handle from
+becoming valid again when an entity index is reused.
 
-## Components Are Data
+## Components define a table
 
-A component is a registered type. Data components have a non-zero size, while
-tags have size `0` and represent state through presence:
+The component set is the entity's archetype. These entities occupy different
+tables because their data shape differs:
 
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ECS_COMPONENT(Player, {});
-ecs_add(entity, Player);
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-struct Player {};
-entity.add<Player>();
-```
-</TabItem>
-</Tabs>
+| Entity | Components | Table |
+| --- | --- | --- |
+| ship | `Position`, `Health` | `Position + Health` |
+| asteroid | `Position` | `Position` |
+| enemy | `Position`, `Velocity`, `Health` | `Position + Velocity + Health` |
 
-Use components for per-entity state. Use resources for one value stored on the
-world, such as time, input, renderer state, or shared configuration.
+Within a table, SIECS stores one contiguous column per component. A system that
+matches `Position + Velocity` receives contiguous arrays for both components.
+That is the normal hot path.
 
-## Archetype Tables
+## Queries select tables, then batches
 
-SIECS stores entities in archetype tables keyed by component set. Adding or
-removing a component is a structural change: the entity moves to another table.
-Shared component columns are copied, removed columns are dropped, and newly
-added plain C storage is zero-initialized before `ecs_set()` writes the final
-value. Non-trivial C++ components use their registered lifecycle operations.
-
-This is why iteration is fast: a query visits matching tables and receives
-contiguous arrays for each requested component.
-
-## Queries Match Tables
-
-A query does not scan every entity one by one. It stores the matching table ids
-and returns batches:
+A query is not a per-entity lookup loop. It first selects matching tables, then
+iterates each table in batches.
 
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
+ecs_query_id_t moving = ecs_query({
+    .terms = { ecs_inout(Position), ecs_in(Velocity) },
+});
+
 ecs_iter_t it = ecs_query_iter(moving);
 while (ecs_iter_next(&it)) {
-    Position *p = ecs_field(&it, 0);
-    Velocity *v = ecs_field(&it, 1);
+    Position *position = ecs_field(&it, 0);
+    const Velocity *velocity = ecs_field(&it, 1);
+    for (uint32_t i = 0; i < it.count; i++) {
+        position[i].x += velocity[i].x;
+    }
 }
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
-ecs::query().each([](Position &p, Velocity &v) {
-    p.x += v.x;
-});
+ecs::query()
+    .require<Position>()
+    .require<Velocity>()
+    .each([](Position &position, const Velocity &velocity) {
+        position.x += velocity.x;
+    });
 ```
 </TabItem>
 </Tabs>
 
-`ecs_filter(T)` and `ecs_not(T)` affect matching but do not consume field
-indexes. Optional terms consume a field index and return `NULL` for tables where
-the component is absent.
+The query does not match the `Position`-only asteroid table. It does match the
+enemy table, and it processes all matching rows with linear memory access.
 
-## Structural Changes During Iteration
+## Systems are scheduled queries
 
-Writing component values in place is expected. Adding or removing components can
-move entities between tables and invalidate the current batch pointers. Prefer
-collecting structural changes and applying them after iteration unless a
-specific API documents that the operation is safe during iteration.
+A system owns a persistent query and runs it in a phase. Use systems for work
+that happens repeatedly, such as simulation, transform propagation or render
+preparation. Use a standalone query for an explicit one-off scan.
 
-## Disabled Entities
+```text
+world
+  -> phase
+      -> system
+          -> matching table batch
+              -> component columns
+```
 
-Adding the built-in `Disabled` component excludes an entity from queries,
-systems, and observers by default. Mention `Disabled` explicitly when you want
-to match disabled entities:
+## Structural changes move an entity
+
+Writing `Position.x` changes data in place. Adding or removing a component
+changes the archetype, so the entity moves to another table.
 
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
-ecs_query({
-    .terms = { ecs_in(Position), ecs_filter(Disabled) },
-});
+Position *position = ecs_get(entity, Position);
+position->x += 1.0f;        /* same table */
+
+ecs_add(entity, Velocity);  /* Position -> Position + Velocity table */
 ```
 </TabItem>
 <TabItem label="C++">
 ```cpp
-ecs::query().require<Position>().require<Disabled>().each(
-    [](Position &position) { position.x += 1.0f; });
+entity.get<Position>().x += 1.0f;  // same table
+entity.add<Velocity>();            // different table
 ```
 </TabItem>
 </Tabs>
+
+Migration is a normal ECS operation, but it can invalidate pointers into the
+current batch. Keep it out of the hot loop where possible, or defer it.
+
+## Tags, resources and relations
+
+- A **tag** is a zero-sized component used as a fact: `Enemy`, `Selected`, or
+  `Disabled`.
+- A **resource** is one typed value in the world: time, input, configuration.
+- A **relation** is an edge between entities: `ChildOf`, `GroupOf`, `Targets`.
+
+These are different tools. Choosing the correct one keeps tables compact and
+queries easy to read.
+
+## Continue
+
+Read [Archetype storage](../archetype-ecs/) for the storage consequences, then
+[Components](../components/), [Queries](../queries/) and [Systems](../systems/)
+for the concrete API.

@@ -1,0 +1,100 @@
+---
+title: Recettes pratiques
+description: Recettes SIECS courtes pour les mondes, boucles de jeu, relations, requêtes optionnelles et événements.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Monde minimal
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_init();
+ecs_entity_t entity = ecs_new();
+ecs_kill(entity);
+ecs_fini();
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::init();
+auto entity = ecs::entity::create();
+entity.kill();
+ecs::fini();
+```
+</TabItem>
+</Tabs>
+
+## Boucle avec le temps
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_set_resource(Time, { .dt = 1.0f / 60.0f });
+ecs_progress();
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::resource_handle<Time>().set(Time{ .dt = 1.0f / 60.0f });
+ecs::progress();
+```
+</TabItem>
+</Tabs>
+
+## Parent et enfant
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_relate(child, ChildOf, parent);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+child.child_of(parent);
+```
+</TabItem>
+</Tabs>
+
+## Composant optionnel
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_each(it, i, ecs_in(Position), ecs_in_optional(Health)) {
+    Position *position = ecs_field(&it, 0);
+    Health *health = ecs_field(&it, 1);
+    if (health != NULL) position[i].x += health[i].value;
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::query().each([](Position &position, ecs::optional<Health> health) {
+    if (health) position.x += health->value;
+});
+```
+</TabItem>
+</Tabs>
+
+## Réagir à une modification
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_observer({
+    .on = EcsOnSet,
+    .query.terms = { ecs_in(Position) },
+    .callback = on_position_set,
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::observe<ecs::OnSet>().each([](const Position &position) {
+    on_position_set(position);
+});
+```
+</TabItem>
+</Tabs>

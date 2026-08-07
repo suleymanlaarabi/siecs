@@ -1,0 +1,372 @@
+---
+title: Référence API
+description: Parcourir l’API publique C17 et le wrapper C++20 typé sans répéter les manuels de concepts.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Cette page est une carte de l’API, pas un second tutoriel. Lisez le [démarrage
+rapide](../../getting-started/) et les manuels pour comprendre les concepts ;
+utilisez cette page pour trouver l’opération publique et son équivalent dans
+les deux langages.
+
+Tous les exemples utilisent le header de distribution public. Le runtime utilise
+C17 et le wrapper typé C++20.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+#include <siecs.h>
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+#include <siecs.h>
+```
+</TabItem>
+</Tabs>
+
+## Cycle de vie du monde
+
+Un seul monde est actif par processus. Initialisez-le avant d’enregistrer des
+types ou de créer des handles, puis finalisez-le lorsque les systèmes et outils
+n’en ont plus besoin.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_init();
+ecs_progress();
+ecs_run_phase(EcsOnUpdate);
+ecs_quit();
+ecs_fini();
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::init();
+ecs::progress();
+ecs::run_phase(EcsOnUpdate);
+ecs::quit();
+ecs::fini();
+```
+</TabItem>
+</Tabs>
+
+| Besoin | API C | API C++ |
+| --- | --- | --- |
+| Limiter la cadence | `ecs_init_w_features()` | `ecs::init({ .target_fps = 60 })` |
+| Exécuter tous les systèmes | `ecs_progress()` | `ecs::progress()` |
+| Exécuter une phase | `ecs_run_phase()` | `ecs::run_phase()` |
+| Arrêter une boucle | `ecs_quit()` | `ecs::quit()` |
+
+Le monde possède les entités, registres de composants, ressources, requêtes,
+systèmes, observateurs et modules. Les handles ne le possèdent pas et ne
+doivent pas lui survivre.
+
+## Entités et composants
+
+Une entité est une identité ; les composants sont les données typées qui lui
+sont attachées. Les opérations courantes sont les suivantes :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_entity_t player = ecs_new();
+ecs_set(player, Position, { .x = 1.0f, .y = 2.0f });
+
+if (ecs_has(player, Position)) {
+    Position *position = ecs_get(player, Position);
+    position->x += 1.0f;
+}
+
+ecs_remove(player, Position);
+ecs_kill(player);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto player = ecs::entity::create()
+    .set(Position{ .x = 1.0f, .y = 2.0f });
+
+if (player.has<Position>()) {
+    auto &position = player.get<Position>();
+    position.x += 1.0f;
+}
+
+player.remove<Position>();
+player.kill();
+```
+</TabItem>
+</Tabs>
+
+| Opération | C | C++ |
+| --- | --- | --- |
+| Créer | `ecs_new()`, `ecs_new_no_reuse()` | `entity::create()`, `create_no_reuse()` |
+| Tester la validité | `ecs_is_alive()` | `entity::is_alive()` |
+| Ajouter/retirer | `ecs_add()`, `ecs_remove()` | `entity::add<T>()`, `remove<T>()` |
+| Tester la présence | `ecs_has()` | `entity::has<T>()` |
+| Lire, obligatoire | `ecs_get()` | `entity::get<T>()` |
+| Lire, nullable | `ecs_try_get()` | `entity::try_get<T>()` |
+| Écrire | `ecs_set()` | `entity::set()` |
+| Détruire | `ecs_kill()` | `entity::kill()` |
+| Désactiver | `ecs_add(entity, Disabled)` | `entity::disable()` |
+
+En C, enregistrez les déclarations typées une fois par monde avec
+`ECS_COMPONENT_REGISTER()`. Les types C++ natifs s’enregistrent au premier usage
+typé. Le code générique peut utiliser les fonctions `_cid`
+(`ecs_get_cid`, `ecs_set_cid`, `ecs_add_cid`, `ecs_remove_cid`) et
+`ecs::component<T>()`.
+
+## Requêtes et itération
+
+Les requêtes correspondent aux tables d’archétypes et exposent chaque table
+correspondante sous forme de lot. Conservez un identifiant ou un
+`query_handle` pour les traitements répétés.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_id_t moving = ecs_query({
+    .terms = { ecs_inout(Position), ecs_in(Velocity) },
+});
+
+ecs_iter_t it = ecs_query_iter(moving);
+while (ecs_iter_next(&it)) {
+    Position *positions = ecs_field(&it, 0);
+    const Velocity *velocities = ecs_field(&it, 1);
+    for (uint32_t i = 0; i < it.count; i++) {
+        positions[i].x += velocities[i].x;
+    }
+}
+ecs_query_fini(moving);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto moving = ecs::query()
+    .require<Position>()
+    .require<Velocity>()
+    .build_handle();
+
+moving.each([](Position &position, const Velocity &velocity) {
+    position.x += velocity.x;
+});
+```
+</TabItem>
+</Tabs>
+
+| Correspondance ou accès | C | C++ |
+| --- | --- | --- |
+| Lecture obligatoire | `ecs_in(T)` | `require<T>()` |
+| Écriture obligatoire | `ecs_out(T)`, `ecs_inout(T)` | paramètre non `const` |
+| Lecture/écriture optionnelle | `ecs_in_optional(T)`, `ecs_inout_optional(T)` | `optional<T>()` |
+| Inclure/exclure sans champ | `ecs_filter(T)`, `ecs_not(T)` | `require<T>()`, `exclude<T>()` |
+| Présence d’une relation | `ecs_rel(R)`, `ecs_rel_opt(R)` | `with_relation<R>()` |
+| Cible exacte | `ecs_to(R, target)` | `to<R>(target)` |
+| Profondeur | `ecs_depth(R, depth)` | `depth<R>(depth)` |
+| Lecture héritée | `ecs_up(T, R)` | `up<T, R>()` |
+
+Les champs sont numérotés dans l’ordre de déclaration ; les filtres et termes de
+relations ne consomment pas d’index de composant. `ecs_field_kind()` distingue
+les champs possédés, partagés et absents. Les pointeurs de champs sont empruntés
+et ne doivent pas survivre à une mutation structurelle.
+
+Utilisez `ecs_query_each()` pour un scan ponctuel en C. Un identifiant C est
+libéré avec `ecs_query_fini()` ; un `query_handle` C++ libère automatiquement
+son identifiant.
+
+## Systèmes et ordonnancement
+
+Un système est une requête persistante attachée à une phase. `ecs_progress()`
+exécute les systèmes activés dans l’ordre des phases ; `.after` ou `.after()`
+ordonne les systèmes d’une même phase.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+static void move_system(ecs_iter_t *it) {
+    Position *position = ecs_field(it, 0);
+    const Velocity *velocity = ecs_field(it, 1);
+    for (uint32_t i = 0; i < it->count; i++) {
+        position[i].x += velocity[i].x;
+    }
+}
+
+ecs_system({
+    .name = "Move",
+    .phase = EcsOnUpdate,
+    .query = { .terms = { ecs_inout(Position), ecs_in(Velocity) } },
+    .callback = move_system,
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto move = ecs::system("Move")
+    .phase(EcsOnUpdate)
+    .each([](Position &position, const Velocity &velocity) {
+        position.x += velocity.x;
+    });
+```
+</TabItem>
+</Tabs>
+
+| Opération | C | C++ |
+| --- | --- | --- |
+| Toutes les phases | `ecs_progress()` | `ecs::progress()` |
+| Une phase | `ecs_run_phase()` | `ecs::run_phase()` |
+| Un système | `ecs_run_system()` | `ecs::run_system()` |
+| Activer/désactiver | `ecs_system_enable()`, `ecs_system_disable()` | `ecs::enable_system()`, `disable_system()` |
+| Phase | `ecs_phase_t` | `EcsOnUpdate`, `EcsPostUpdate`, etc. |
+
+Une mutation structurelle pendant l’itération peut déplacer une entité et
+invalider les pointeurs du lot courant. Utilisez la mutation différée lorsque
+la modification doit attendre la fin de la portée de commande.
+
+## Ressources
+
+Une ressource est une valeur typée unique par monde. Elle n’est pas un composant
+d’entité et ne devient pas un champ de requête.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_set_resource(Time, { .dt = 1.0f / 60.0f });
+const Time *time = ecs_get_resource_read(Time);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::set_resource(Time{ .dt = 1.0f / 60.0f });
+const Time &time = ecs::resource<const Time>();
+```
+</TabItem>
+</Tabs>
+
+Utilisez `ecs_try_get_resource()` ou `ecs::try_resource<T>()` lorsque l’absence
+est valide. Les fonctions C par identifiant utilisent le registre séparé
+`ecs_resource_t` : `ecs_resource_init`, `ecs_resource_find`,
+`ecs_resource_rid`, `ecs_try_resource_rid`, `ecs_has_resource_rid` et
+`ecs_remove_resource_rid`.
+
+## Relations et héritage
+
+Les relations relient une source à une cible. `ChildOf` fournit la hiérarchie et
+`IsA` l’héritage depuis une base abstraite.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_relate(child, ChildOf, parent);
+ecs_entity_t current_parent = ecs_target(child, ChildOf);
+
+ecs_add(base, Abstract);
+ecs_is_a(instance, base);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+child.child_of(parent);
+auto current_parent = child.target<ecs::ChildOf>();
+
+base.abstract();
+instance.is_a(base);
+```
+</TabItem>
+</Tabs>
+
+Enregistrez une relation personnalisée avec
+`ECS_RELATION_DECLARE/DEFINE/REGISTER` ou `ecs::relation<T>()`. Le mode de
+stockage détermine les termes valides : `ecs_to` pour `ByTarget`, `ecs_depth`
+pour `ByDepth` et `ecs_rel` pour tester la présence.
+
+## Observateurs et événements
+
+Les observateurs réagissent à `EcsOnAdd`, `EcsOnRemove`, `EcsOnSet`, aux
+transitions de relations ou à un événement personnalisé. Leurs payloads sont
+empruntés pendant le callback.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+static void on_position_set(ecs_observer_event_t *event) {
+    const Position *position = event->trigger_data;
+    log_position(event->entity, position);
+}
+
+ecs_observer({
+    .on = EcsOnSet,
+    .query = { .terms = { ecs_in(Position) } },
+    .callback = on_position_set,
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::observe<ecs::OnSet>().each([](const Position &position) {
+    log_position(position);
+});
+```
+</TabItem>
+</Tabs>
+
+Utilisez `ecs_observer_trigger()` ou `ecs::trigger<T>()` pour un événement
+personnalisé. Les événements de relation portent `old_target` et `new_target`
+dans `ecs_relation_event_t`.
+
+## Modules
+
+Les modules regroupent des enregistrements et peuvent activer ou désactiver les
+systèmes et observateurs capturés. Les imports sont idempotents dans le monde
+actif ; les premières propriétés fournies sont conservées.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_MODULE_DECLARE(physics, { float gravity; });
+ECS_MODULE_DEFINE(physics);
+
+void physics_import(const physics_props_t *props) {
+    (void)props;
+    ecs_system({ .name = "Move", .callback = move_system });
+}
+
+ecs_module_id_t Physics = ECS_MODULE_IMPORT(physics, { .gravity = 9.81f });
+ecs_module_disable(Physics);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Physics {
+    float gravity;
+
+    static void import() {
+        ecs::system("Move").each([](Position &position) {
+            position.x += 1.0f;
+        });
+    }
+};
+
+auto physics = ecs::import<Physics>(9.81f);
+physics.disable();
+```
+</TabItem>
+</Tabs>
+
+## Familles de types publics
+
+| Famille | Types C publics | Types C++ publics |
+| --- | --- | --- |
+| Entité | `ecs_entity_t` | `ecs::entity` |
+| Composant | `ecs_component_t`, `ecs_component_desc_t` | `ecs::component<T>`, `ecs::component_hooks<T>` |
+| Ressource | `ecs_resource_t`, `ecs_resource_desc_t` | `ecs::resource_handle<T>`, `ecs::res<T>` |
+| Requête | `ecs_query_id_t`, `ecs_query_desc_t`, `ecs_iter_t` | `ecs::query`, `ecs::query_handle` |
+| Système | `ecs_system_id_t`, `ecs_system_desc_t`, `ecs_phase_t` | `ecs::system` |
+| Observateur | `ecs_observer_id_t`, `ecs_observer_desc_t`, `ecs_observer_event_t` | `ecs::observer<T>`, `ecs::observer_event` |
+| Module | `ecs_module_id_t`, `ecs_module_desc_t` | `ecs::module_ref<T>` |
+| Relation | `ecs_relation_id_t`, `ecs_relation_desc_t` | `ecs::relation<T>` |
+
+Pour les préconditions, règles de propriété, champs partagés, politiques de
+suppression et garanties de version, consultez la [stabilité de l’API](../stability/)
+et le manuel concerné. Les headers publics restent l’autorité finale pour les
+surcharges et la disposition exacte des descripteurs.

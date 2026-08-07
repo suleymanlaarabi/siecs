@@ -50,15 +50,37 @@ C++ structs can still be registered automatically on first use. Use the
 `reflected(...)` declaration when a native C++ type's fields must be visible to
 the REST explorer or JSON serialization:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_COMPONENT(Position, {
+    float x;
+    float y;
+});
+```
+</TabItem>
+<TabItem label="C++">
 ```cpp
 struct Position {
     reflected(float x; float y;);
 };
 ```
+</TabItem>
+</Tabs>
 
 When a shared C declaration also needs C++-only methods, use
-`ECS_COMPONENT_DECLARE_CPP`:
+`ECS_COMPONENT_DECLARE_CPP`. The C view keeps the same layout:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_COMPONENT_DECLARE(Position, {
+    float x;
+    float y;
+});
+```
+</TabItem>
+<TabItem label="C++">
 ```cpp
 ECS_COMPONENT_DECLARE_CPP(Position,
     ECS_CPP_FIELDS(
@@ -71,6 +93,8 @@ ECS_COMPONENT_DECLARE_CPP(Position,
     )
 );
 ```
+</TabItem>
+</Tabs>
 
 The same header remains valid C: the method block is omitted and the C layout,
 id, descriptor, and reflection metadata remain unchanged. C++ methods must not
@@ -145,8 +169,24 @@ entity.add<Position>();
 </TabItem>
 </Tabs>
 
-The C++ methods accept several component types or values at once:
+The C++ methods accept several component types or values at once. The C API
+expresses the same operation with the id-based calls:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_set(entity, Position, { 1.0f, 2.0f });
+ecs_set(entity, Velocity, { 3.0f, 4.0f });
+ecs_add(entity, Selected);
+ecs_add(entity, Visible);
+
+if (ecs_has(entity, Selected) && ecs_has(entity, Visible)) {
+    ecs_remove(entity, Selected);
+    ecs_remove(entity, Visible);
+}
+```
+</TabItem>
+<TabItem label="C++">
 ```cpp
 entity.set(Position{ 1.0f, 2.0f }, Velocity{ 3.0f, 4.0f });
 entity.add<Selected, Visible>();
@@ -155,6 +195,8 @@ if (entity.has<Selected, Visible>()) {
     entity.remove<Selected, Visible>();
 }
 ```
+</TabItem>
+</Tabs>
 
 Multi-component `set`, `add`, and `remove` calls are deferred as one batch. This
 lets SIECS compute the final archetype and migrate the entity once instead of

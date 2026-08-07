@@ -1,0 +1,100 @@
+---
+title: Stockage par archétypes
+description: Comprendre les tables, les colonnes contiguës, les requêtes et le coût des changements structurels dans SIECS.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Un ECS à archétypes regroupe les entités par ensemble exact de composants.
+Chaque ensemble définit une table ; chaque composant stocké possède une colonne
+contiguë dans cette table.
+
+## Les archétypes représentent une forme de données
+
+| Entité | Composants | Archétype |
+| --- | --- | --- |
+| Joueur | `Position`, `Velocity`, `Health` | Acteur mobile |
+| Ennemi | `Position`, `Velocity`, `Health` | Acteur mobile |
+| Arbre | `Position`, `Health` | Acteur statique |
+
+Le joueur et l’ennemi partagent une table ; l’arbre en occupe une autre car il
+ne possède pas `Velocity`. Un handle identifie une ligne, tandis que sa position
+physique peut changer lorsqu’il change d’archétype.
+
+## Les tables stockent des colonnes contiguës
+
+```text
+entities:  [joueur, ennemi, ...]
+Position:  [p0,     p1,     ...]
+Velocity:  [v0,     v1,     ...]
+Health:    [h0,     h1,     ...]
+```
+
+Une requête `Position + Velocity` parcourt ces colonnes séquentiellement. Elle
+ne visite pas les entités non correspondantes et n’effectue pas une recherche de
+composant pour chaque ligne. Les tags participent à l’archétype et à la requête
+sans ajouter de colonne.
+
+## Les requêtes correspondent d’abord aux tables
+
+Une requête persistante mémorise les tables qui satisfont ses termes. Son
+itération renvoie ensuite un lot de table à la fois :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_id_t moving = ecs_query({
+    .terms = {
+        ecs_inout(Position),
+        ecs_in(Velocity),
+        ecs_filter(Visible),
+    },
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto moving = ecs::query()
+    .require<Position, Velocity>()
+    .require<Visible>()
+    .build_handle();
+```
+</TabItem>
+</Tabs>
+
+`Position` et `Velocity` créent des champs. `Visible` limite seulement les
+tables correspondantes et ne consomme donc pas d’index de champ.
+
+## Un changement structurel déplace une ligne
+
+Modifier une valeur existante écrit dans la colonne courante. Modifier
+l’ensemble de composants est différent : SIECS trouve la table destination,
+déplace les valeurs partagées, initialise le stockage ajouté et retire les
+valeurs supprimées selon leur cycle de vie.
+
+`ecs_add()`, `ecs_remove()` et l’écriture d’un composant absent sont des
+changements structurels. Ils sont normaux, mais ne doivent pas dominer une
+boucle chaude.
+
+## Archétypes et sparse sets
+
+| Préoccupation | Archétypes | Sparse sets |
+| --- | --- | --- |
+| Regroupement | Ensemble exact de composants | Store par composant |
+| Itération | Tables et colonnes contiguës | Store moteur et tests d’appartenance |
+| Ajout/retrait | Migration possible | Stores indépendants |
+| Formes stables | Très bon cas | Supporté |
+| Churn structurel | Plus de migrations | Souvent moins couplé |
+
+Ce n’est pas un classement universel. Les archétypes conviennent lorsque les
+formes restent assez stables et que les systèmes traitent régulièrement de gros
+lots homogènes.
+
+## Conséquences dans SIECS
+
+- Conserver les requêtes persistantes pour le travail répété.
+- Résoudre les champs une fois par lot.
+- Modifier les valeurs en place.
+- Appliquer les changements structurels hors des boucles serrées quand possible.
+- Utiliser des filtres pour les composants qui déterminent la correspondance.
+
+Lire ensuite la [théorie ECS](../theory/) et le manuel des [requêtes](../queries/).

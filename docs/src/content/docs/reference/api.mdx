@@ -1,546 +1,188 @@
 ---
 title: API Reference
-description: Reference for the public C API and the typed C++ wrapper in SIECS.
+description: Navigate the public C17 API and typed C++20 wrapper without duplicating the concept manuals.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Include the public API with:
+This page is an API map, not a second tutorial. Read the [Quickstart](../../getting-started/)
+and the concept manuals for explanations; use this page to find the public
+operation, its C spelling, and its C++ counterpart.
 
+All examples use the public distribution header. The runtime is C17; the typed
+wrapper is C++20.
+
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 #include <siecs.h>
 ```
-
-See [API stability and documentation policy](/reference/stability/) for
-preconditions, edge-case conventions, experimental APIs, and the compatibility
-policy applied to every declaration.
-
-## C++ wrapper
-
-The typed wrapper is included by `siecs/cpp.hpp` (or automatically by
-`siecs.h` in C++ builds). Its public types
-are `ecs::entity`, `ecs::query`, `ecs::query_handle`, `ecs::system`,
-`ecs::observer<T>`, `ecs::observer_event`, `ecs::module_ref<T>`,
-`ecs::resource_ref<T>`, `ecs::resource_hooks<T>`, and
-`ecs::component_hooks<T>`. Free functions in `ecs` mirror world lifecycle
-(`init`, `fini`, `quit`, `progress`, `run`, `run_phase`), registration
-(`component`, `relation`, `component_requires`), resources
-(`set_resource`, `resource`, `try_resource`, `has_resource`,
-`remove_resource`), modules (`import`, `module`), observers (`observe`,
-`event`, `trigger`), and systems (`run_system`, `enable_system`,
-`disable_system`).
-
-All typed handles are non-owning values: the world must be initialized, and a
-handle must not be used after `fini` or entity destruction. `entity::get` and
-`resource` require the value to exist; use `try_get`/`try_resource` when
-absence is valid. `entity::set` and `set_resource` copy lvalues and move
-rvalues, invoking the registered C++ lifecycle operations. Callback arguments
-are valid only for the callback invocation. Template constraints and
-overloads are documented in the corresponding public header; `detail::`
-names are implementation details and are not part of the API.
-
-## Core Types
-
-| Type | Meaning |
-| --- | --- |
-| `ecs_entity_t` | Entity handle. |
-| `ecs_component_t` | Component id. |
-| `ecs_query_id_t` | Query id. |
-| `ecs_system_id_t` | System id. Id `0` is reserved. |
-| `ecs_event_t` | Observer event id. |
-| `ecs_module_id_t` | Module id. Id `0` is reserved. |
-| `ecs_resource_t` | Resource id in the separate resource id space. |
-| `ecs_observer_id_t` | Observer id. |
-| `ecs_table_t` | Opaque archetype table passed to query order callbacks. |
-| `ecs_iter_t` | Query iterator. Users may read `count`. |
-
-## World
-
-```c
-void ecs_init(void);
-void ecs_init_w_features(const ecs_world_feat_desc_t *features);
-bool ecs_progress(void);
-void ecs_run(void);
-void ecs_quit(void);
-void ecs_fini(void);
+</TabItem>
+<TabItem label="C++">
+```cpp
+#include <siecs.h>
 ```
+</TabItem>
+</Tabs>
 
+## World lifecycle
+
+There is one active world per process. Initialize it before registering types or
+creating handles, and finalize it after systems and tools stop using them.
+
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
-typedef struct {
-    uint16_t target_fps;
-} ecs_world_feat_desc_t;
-
-#define ecs_with_features(...)
+ecs_init();
+ecs_progress();
+ecs_run_phase(EcsOnUpdate);
+ecs_quit();
+ecs_fini();
 ```
-
-`target_fps` caps `ecs_progress()` by sleeping for the remaining frame time when
-non-zero. The optional REST explorer is provided by the separate `siecs_rest`
-Bake package and must be imported explicitly.
-
-## Components
-
-```c
-ECS_COMPONENT_DECLARE(Name, { /* fields */ });
-ECS_COMPONENT_DEFINE(Name);
-ECS_COMPONENT_REGISTER(Name);
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::init();
+ecs::progress();
+ecs::run_phase(EcsOnUpdate);
+ecs::quit();
+ecs::fini();
 ```
+</TabItem>
+</Tabs>
 
-Built-in components declared by the public API:
+| Concern | C API | C++ API |
+| --- | --- | --- |
+| Optional frame cap | `ecs_init_w_features()` | `ecs::init({ .target_fps = 60 })` |
+| Run all enabled systems | `ecs_progress()` | `ecs::progress()` |
+| Run one phase | `ecs_run_phase()` | `ecs::run_phase()` |
+| Stop a loop | `ecs_quit()` | `ecs::quit()` |
 
+The world owns entities, component registries, resources, queries, systems,
+observers and modules. Handles are non-owning and must not outlive the world.
+
+## Entities and components
+
+Entities are identities; components are typed data attached to them. The common
+operations are:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
-ECS_RELATION_DECLARE(ChildOf);
-ECS_COMPONENT_DECLARE(Name, { char *value; });
-ECS_TAG_DECLARE(Disabled);
-ECS_TAG_DECLARE(Abstract);
+ecs_entity_t player = ecs_new();
+ecs_set(player, Position, { .x = 1.0f, .y = 2.0f });
+
+if (ecs_has(player, Position)) {
+    Position *position = ecs_get(player, Position);
+    position->x += 1.0f;
+}
+
+ecs_remove(player, Position);
+ecs_kill(player);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto player = ecs::entity::create()
+    .set(Position{ .x = 1.0f, .y = 2.0f });
 
-`Disabled` excludes an entity from queries by default. A query can match
-disabled entities by mentioning `Disabled` explicitly, for example with
-`ecs_filter(Disabled)`.
+if (player.has<Position>()) {
+    auto &position = player.get<Position>();
+    position.x += 1.0f;
+}
 
-`Abstract` marks an entity as a prefab-like base that should not receive direct
-component add, set, or remove operations from normal application code.
-
-```c
-#define ecs_component(...)
-ecs_component_t ecs_component_init(const ecs_component_desc_t *desc);
-ecs_component_t ecs_component_register(
-    ecs_component_t *id,
-    const ecs_component_desc_t *desc
-);
+player.remove<Position>();
+player.kill();
 ```
+</TabItem>
+</Tabs>
 
+| Operation | C | C++ |
+| --- | --- | --- |
+| Create | `ecs_new()`, `ecs_new_no_reuse()` | `entity::create()`, `create_no_reuse()` |
+| Test liveness | `ecs_is_alive()` | `entity::is_alive()` |
+| Add/remove | `ecs_add()`, `ecs_remove()` | `entity::add<T>()`, `remove<T>()` |
+| Test presence | `ecs_has()` | `entity::has<T>()` |
+| Read, required | `ecs_get()` | `entity::get<T>()` |
+| Read, nullable | `ecs_try_get()` | `entity::try_get<T>()` |
+| Write | `ecs_set()` | `entity::set()` |
+| Destroy | `ecs_kill()` | `entity::kill()` |
+| Disable | `ecs_add(entity, Disabled)` | `entity::disable()` |
+
+Register typed declarations once per world with `ECS_COMPONENT_REGISTER()` in C;
+native C++ types register on first typed use. Generic code can use the `_cid`
+functions (`ecs_get_cid`, `ecs_set_cid`, `ecs_add_cid`, `ecs_remove_cid`) and
+`ecs::component<T>()`.
+
+## Queries and iteration
+
+Queries match archetype tables and expose each matching table as a batch. Keep a
+query id or `query_handle` for repeated work.
+
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
-typedef struct {
-    const char *name;
-    uint64_t size;
-    ecs_type_ops_t ops;
-    ecs_component_on_set_t on_set;
-    ecs_component_on_remove_t on_remove;
-    ecs_component_on_add_t on_add;
-    uint32_t relation_flags;
-    const sireflect_struct_desc_t *struct_desc;
-} ecs_component_desc_t;
-```
-
-## Entities
-
-```c
-ecs_entity_t ecs_new(void);
-ecs_entity_t ecs_new_no_reuse(void);
-const char *ecs_entity_name(ecs_entity_t entity);
-void ecs_defer_begin(void);
-void ecs_defer_end(void);
-bool ecs_is_alive(const ecs_entity_t entity);
-bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
-void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
-void ecs_kill(ecs_entity_t entity);
-```
-
-`ecs_new_no_reuse()` allocates a fresh, highest entity index instead of taking
-an index from the free-list. Use it when numeric entity ordering must follow
-allocation order; the tradeoff is that freed indices remain unused by this
-allocator.
-
-`ecs_is_a()` creates an inheritance link from `entity` to `target`.
-`ecs_is()` checks whether an entity is or inherits from `target`.
-
-## Component Access
-
-Typed helpers:
-
-```c
-ecs_add(entity, Component);
-ecs_remove(entity, Component);
-ecs_has(entity, Component);
-ecs_get(entity, Component);
-ecs_try_get(entity, Component);
-ecs_set(entity, Component, { /* value */ });
-```
-
-Id-based functions:
-
-```c
-void ecs_add_cid(ecs_entity_t entity, ecs_component_t id);
-void ecs_remove_cid(ecs_entity_t entity, ecs_component_t id);
-bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id);
-bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id);
-void *ecs_get_cid(ecs_entity_t entity, ecs_component_t id);
-void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
-void ecs_set_cid(ecs_entity_t entity, ecs_component_t id, const void *data);
-void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data);
-```
-
-`ecs_get()` and `ecs_get_cid()` assume the component exists. Use
-`ecs_try_get()` or `ecs_try_get_cid()` when absence is valid.
-
-```c
-void ecs_with(ecs_component_t component, ecs_component_t require);
-```
-
-`ecs_with(component, require)` declares that adding `component` also adds
-`require` first.
-
-Requirement cycles are invalid and are asserted in debug builds when declared.
-
-## Resources
-
-Resources are typed values stored once per world. They use `ecs_resource_t`
-ids, separate from component ids.
-
-```c
-ECS_RESOURCE_DECLARE(Time, { float dt; });
-ECS_RESOURCE_DEFINE(Time);
-ECS_RESOURCE_REGISTER(Time);
-ECS_RESOURCE(Time, { float dt; });
-```
-
-Typed helpers:
-
-```c
-ecs_set_resource(Time, { .dt = 0.016f });
-ecs_get_resource(Time);
-ecs_get_resource_read(Time);
-ecs_try_get_resource(Time);
-ecs_try_get_resource_read(Time);
-ecs_has_resource(Time);
-ecs_remove_resource(Time);
-```
-
-Id-based functions:
-
-```c
-typedef struct {
-    const char *name;
-    uint64_t size;
-    ecs_type_ops_t ops;
-    ecs_resource_hook_t on_set;
-    ecs_resource_hook_t on_remove;
-} ecs_resource_desc_t;
-
-ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc);
-ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
-ecs_resource_t ecs_resource_find(const char *name);
-bool ecs_resource_is_registered_rid(ecs_resource_t id);
-void ecs_set_resource_rid(ecs_resource_t id, const void *data);
-void ecs_move_resource_rid(ecs_resource_t id, void *data);
-void *ecs_resource_rid(ecs_resource_t id);
-void *ecs_try_resource_rid(ecs_resource_t id);
-bool ecs_has_resource_rid(const ecs_resource_t id);
-void ecs_remove_resource_rid(ecs_resource_t id);
-```
-
-`ecs_resource_rid()` asserts if the resource is absent. Use
-`ecs_try_resource_rid()` when absence is valid. Resource `on_set` hooks run when
-a resource is set, and `on_remove` hooks run when a resource is removed or when
-the world is destroyed.
-
-## Queries
-
-```c
-#define ecs_query(...)
-ecs_query_id_t ecs_query_init(const ecs_query_desc_t *query);
-void ecs_query_fini(ecs_query_id_t qid);
-uint32_t ecs_query_count(ecs_query_id_t qid);
-
-#define ecs_query_each(it, i, ...)
-#define ecs_query_entities(entity, ...)
-```
-
-```c
-typedef enum {
-    EcsIn,
-    EcsOut,
-    EcsInOut,
-    EcsInOptional,
-    EcsInOutOptional,
-    EcsFilter,
-    EcsNot,
-    EcsInUp,
-    EcsInUpOptional,
-} ecs_term_access_t;
-
-typedef struct {
-    ecs_component_t id;
-    uint32_t access;
-} ecs_query_term_t;
-
-typedef struct {
-    ecs_query_term_t terms[ECS_QUERY_TERM_CAPACITY];
-    ecs_query_relation_term_t relations[ECS_QUERY_RELATION_CAPACITY];
-    ecs_query_order_t order_by;
-    ecs_entity_t is_a;
-} ecs_query_desc_t;
-```
-
-```c
-typedef enum {
-    EcsRelationRequired,
-    EcsRelationOptional,
-    EcsRelationExcluded,
-    EcsRelationTarget,
-    EcsRelationDepth,
-} ecs_query_relation_kind_t;
-
-typedef struct {
-    ecs_entity_t target;
-    ecs_relation_id_t id;
-    ecs_query_relation_kind_t kind;
-} ecs_query_relation_term_t;
-
-typedef int (*ecs_query_order_func_t)(const ecs_table_t *a,
-                                      const ecs_table_t *b,
-                                      uint64_t data);
-
-typedef struct {
-    ecs_query_order_func_t func;
-    uint64_t data;
-} ecs_query_order_t;
-```
-
-An order callback returns a negative value when table `a` precedes table `b`,
-zero when they have equal order, and a positive value otherwise. It must be
-pure because it runs while the query cache is built or updated:
-
-```c
-ecs_order_by_target(Relation);
-ecs_order_by_depth(Relation);
-```
-
-Custom callbacks may inspect the matching relation target with
-`ecs_table_target_id()` and table composition with `ecs_table_has_id()`.
-
-`is_a` restricts the query to entities that inherit from the given target. The
-match is transitive through the inheritance chain. Relation terms filter table
-matching and do not create component fields.
-
-```c
-ecs_in(Component);
-ecs_out(Component);
-ecs_inout(Component);
-ecs_in_optional(Component);
-ecs_inout_optional(Component);
-ecs_filter(Component);
-ecs_not(Component);
-ecs_up(Component, Relation);
-ecs_up_optional(Component, Relation);
-ecs_rel(Relation);
-ecs_rel_opt(Relation);
-ecs_not_rel(Relation);
-ecs_to(Relation, target);
-ecs_depth(Relation, depth);
-ecs_order_by_target(Relation);
-ecs_order_by_depth(Relation);
-```
-
-`ecs_field()` returns `EcsIn`, `EcsOut`, `EcsInOut`, `EcsInOptional`, and
-`EcsInOutOptional` terms in declaration order. Optional fields return `NULL`
-for batches whose table does not contain the component.
-
-Queries implicitly add `ecs_not(Disabled)` unless their descriptor already
-contains a term for `Disabled`. The implicit term is used by plain queries,
-systems, and observers.
-
-```c
-ecs_iter_t ecs_query_iter(ecs_query_id_t query_id);
-bool ecs_iter_next(ecs_iter_t *it);
-typedef enum {
-    EcsFieldNone,
-    EcsFieldOwned,
-    EcsFieldShared,
-} ecs_field_kind_t;
-ecs_field_kind_t ecs_field_kind(const ecs_iter_t *it, uint16_t field_index);
-void *ecs_field(ecs_iter_t *it, uint16_t field_index);
-bool ecs_field_is_shared(ecs_iter_t *it, uint16_t field_index);
-```
-
-`ecs_field_kind()` distinguishes owned, shared, and absent optional fields.
-
-`ecs_target_at()` returns a relation target for one row of the current batch.
-`ecs_targets()` returns contiguous `ecs_relation_target_t` records for `Dense`
-and `ByDepth` relations. `ecs_to()` is valid for `ByTarget` relations, while `ecs_depth()`
-`ecs_order_by_target()` is valid for `ByTarget` relations, while
-`ecs_depth()` and `ecs_order_by_depth()` are valid for `ByDepth` relations.
-
-## Observers
-
-```c
-#define EcsOnAdd 0
-#define EcsOnRemove 1
-#define EcsOnSet 2
-#define EcsOnRelationSet 3
-#define EcsOnRelationRemove 4
-```
-
-```c
-#define ecs_observer(...)
-ecs_event_t ecs_event(void);
-ecs_event_t ecs_event_register(ecs_event_t *id);
-ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc);
-void ecs_observer_enable(ecs_observer_id_t id);
-void ecs_observer_disable(ecs_observer_id_t id);
-void ecs_observer_trigger(
-    ecs_entity_t entity,
-    ecs_event_t event,
-    const void *trigger_data
-);
-```
-
-```c
-typedef struct {
-    ecs_entity_t entity;
-    ecs_event_t event;
-    uintptr_t user_data;
-    const void *trigger_data;
-} ecs_observer_event_t;
-
-typedef struct {
-    ecs_relation_id_t relation;
-    ecs_entity_t old_target;
-    ecs_entity_t new_target;
-} ecs_relation_event_t;
-```
-
-```c
-typedef struct {
-    ecs_event_t on;
-    ecs_query_desc_t query;
-    ecs_observer_callback_t callback;
-    uintptr_t user_data;
-} ecs_observer_desc_t;
-```
-
-Observers are enabled by default. Disabled observers stay registered but do not
-receive events. Relation set events carry `ecs_relation_event_t` after the
-transition; relation remove events carry it before the transition. For an add,
-`old_target` is zero; for a remove, `new_target` is zero.
-
-## Modules
-
-```c
-ECS_MODULE_DECLARE(Name, { /* settings */ });
-ECS_MODULE_DEFINE(Name);
-ECS_MODULE_IMPORT(Name, { /* settings */ });
-```
-
-`ECS_MODULE_DECLARE(Name, ...)` generates `Name_props_t` for the typed module
-parameters and declares `Name_import()`.
-
-```c
-typedef void (*ecs_module_import_t)(const void *desc);
-
-typedef struct {
-    const char *name;
-    ecs_module_id_t *id;
-    ecs_module_import_t import;
-    const void *desc;
-    uint32_t desc_size;
-    bool disabled;
-} ecs_module_desc_t;
-```
-
-```c
-#define ecs_module(...)
-ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc);
-ecs_module_id_t ecs_module_find(const ecs_module_id_t *id);
-void ecs_module_enable(ecs_module_id_t module);
-void ecs_module_disable(ecs_module_id_t module);
-bool ecs_module_is_enabled(const ecs_module_id_t module);
-```
-
-Modules capture components, systems, and observers registered during import.
-Enabling and disabling a module affects only captured systems and observers.
-
-## Relations
-
-```c
-ECS_RELATION_DECLARE(Name);
-ECS_RELATION_DEFINE(Name, {
-    .storage = EcsRelationByTarget,
-    .on_delete_target = EcsRemoveRelation,
+ecs_query_id_t moving = ecs_query({
+    .terms = { ecs_inout(Position), ecs_in(Velocity) },
 });
-ECS_RELATION_REGISTER(Name);
-ecs_relate(source, Name, target);
-ecs_unrelate(source, Name);
-ecs_target(source, Name);
+
+ecs_iter_t it = ecs_query_iter(moving);
+while (ecs_iter_next(&it)) {
+    Position *positions = ecs_field(&it, 0);
+    const Velocity *velocities = ecs_field(&it, 1);
+    for (uint32_t i = 0; i < it.count; i++) {
+        positions[i].x += velocities[i].x;
+    }
+}
+ecs_query_fini(moving);
 ```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto moving = ecs::query()
+    .require<Position>()
+    .require<Velocity>()
+    .build_handle();
 
-```c
-typedef enum { EcsRelationDense, EcsRelationByDepth, EcsRelationByTarget } ecs_relation_storage_t;
-typedef enum { EcsRemoveRelation, EcsDeleteSources } ecs_delete_target_t;
-
-typedef struct {
-    ecs_relation_storage_t storage;
-    ecs_delete_target_t on_delete_target;
-    bool acyclic;
-} ecs_relation_desc_t;
+moving.each([](Position &position, const Velocity &velocity) {
+    position.x += velocity.x;
+});
 ```
+</TabItem>
+</Tabs>
 
-`ChildOf` is declared by the public API and registered during world bootstrap.
-It uses `EcsRelationByDepth`, is acyclic, and uses `EcsDeleteSources`.
+| Match or access | C | C++ |
+| --- | --- | --- |
+| Required read | `ecs_in(T)` | `require<T>()` |
+| Required write | `ecs_out(T)`, `ecs_inout(T)` | non-const callback parameter |
+| Optional read/write | `ecs_in_optional(T)`, `ecs_inout_optional(T)` | `optional<T>()` |
+| Include/exclude without a field | `ecs_filter(T)`, `ecs_not(T)` | `require<T>()`, `exclude<T>()` |
+| Relation presence | `ecs_rel(R)`, `ecs_rel_opt(R)` | `with_relation<R>()` |
+| Exact target | `ecs_to(R, target)` | `to<R>(target)` |
+| Relation depth | `ecs_depth(R, depth)` | `depth<R>(depth)` |
+| Inherited read | `ecs_up(T, R)` | `up<T, R>()` |
 
-## Systems
+Fields are numbered by declaration order; filters and relation terms do not
+consume a component field index. `ecs_field_kind()` distinguishes owned,
+shared, and absent optional fields. Field pointers are borrowed and must not be
+kept across a structural mutation.
 
+Use `ecs_query_each()` for one-off C scans. A C query id is released by
+`ecs_query_fini()`; a C++ `query_handle` releases its id automatically.
+
+## Systems and scheduling
+
+A system is a persistent query callback attached to a phase. `ecs_progress()`
+runs enabled systems in phase order; `.after` or `.after()` orders systems in
+the same phase.
+
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
-typedef enum {
-    EcsPreStart,
-    EcsStart,
-    EcsPostStart,
-    EcsOnLoad,
-    EcsPostLoad,
-    EcsPreUpdate,
-    EcsOnUpdate,
-    EcsPostUpdate,
-    EcsPreRender,
-    EcsOnRender,
-    EcsPostRender,
-    EcsPhaseCount,
-} ecs_phase_t;
-```
-
-`ecs_progress()` runs enabled systems in phase order. `EcsPreStart`,
-`EcsStart`, and `EcsPostStart` are run only by the first `ecs_progress()` call
-for a world. Manual `ecs_run_phase()` calls still run any valid phase normally.
-`OnPreUpdate`, `OnUpdate`, `OnPostUpdate`, and `OnRender` are compatibility
-aliases for the matching `Ecs*` names.
-
-```c
-typedef struct {
-    const char *name;
-    ecs_query_desc_t query;
-    void (*callback)(ecs_iter_t *);
-    uintptr_t user_data;
-    void (*user_data_dtor)(uintptr_t user_data);
-    ecs_phase_t phase;
-    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
-    bool disabled;
-} ecs_system_desc_t;
-```
-
-```c
-#define ecs_system(...)
-ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc);
-bool ecs_progress(void);
-void ecs_run(void);
-void ecs_run_phase(ecs_phase_t phase);
-void ecs_run_system(ecs_system_id_t system);
-void ecs_system_enable(ecs_system_id_t system);
-void ecs_system_disable(ecs_system_id_t system);
-```
-
-`after` declares systems that must run first in the same phase. It accepts up to
-`ECS_SYSTEM_AFTER_CAPACITY` system ids. System id `0` is reserved, so an empty
-`after` array is written as `{ 0 }` or omitted. Dependency cycles and
-cross-phase dependencies are debug assertion failures.
-
-Example:
-
-```c
-static void Move(ecs_iter_t *it) {
-    Position *p = ecs_field(it, 0);
-    Velocity *v = ecs_field(it, 1);
-
+static void move_system(ecs_iter_t *it) {
+    Position *position = ecs_field(it, 0);
+    const Velocity *velocity = ecs_field(it, 1);
     for (uint32_t i = 0; i < it->count; i++) {
-        p[i].x += v[i].x;
-        p[i].y += v[i].y;
+        position[i].x += velocity[i].x;
     }
 }
 
@@ -548,218 +190,147 @@ ecs_system({
     .name = "Move",
     .phase = EcsOnUpdate,
     .query = { .terms = { ecs_inout(Position), ecs_in(Velocity) } },
-    .callback = Move,
-});
-
-ecs_progress();
-```
-
-## C++ API
-
-The C++ API is a header-only typed wrapper over the C runtime. Include
-`<siecs.h>` for the complete facade, or include a header from
-`<siecs/cpp/>` when only one public wrapper is needed. The built-in C component
-types such as `Disabled`, `Abstract`, `Name`, and `ChildOf` remain in the global
-namespace.
-
-### World
-
-```cpp
-ecs::init();
-ecs::progress();
-ecs::run();
-ecs::run_phase(EcsOnUpdate);
-ecs::quit();
-ecs::fini();
-```
-
-Initialize with optional features when needed:
-
-```cpp
-ecs::init({ .target_fps = 60 });
-ecs::fini();
-```
-
-`ecs::init()` and `ecs::fini()` manage the process-wide world. The wrapper does
-not provide an RAII world object, so applications must call `ecs::fini()` when
-the world is no longer needed.
-
-### Components and entities
-
-```cpp
-#include <cassert>
-
-struct Position { float x, y; };
-
-auto entity = ecs::entity::create()
-    .set(Position{ .x = 1.0f, .y = 2.0f });
-
-auto &position = entity.get<Position>();
-position.x += 1.0f;
-entity.add<Disabled>();
-entity.remove<Disabled>();
-assert(entity.has<Position>());
-if (auto *nullable = entity.try_get<Position>()) {
-    nullable->y += 1.0f;
-}
-auto id = entity.id();
-assert(ecs::entity::from(id).is_alive());
-assert(!ecs::entity::null().is_alive());
-auto named = ecs::entity::create("player");
-named.kill();
-```
-
-Typed components are registered automatically on first use. The entity API also
-provides `kill()`, `is_alive()`, `is(entity)`, `enable()`, `disable()`,
-`is_enabled()`, and `is_disabled()`.
-
-Use `ecs::component<T>()` when a C API descriptor needs the typed component id.
-
-Typed entities create one stable entity for a C++ type and optionally assign a
-name:
-
-```cpp
-struct Player {};
-auto player = ecs::entity::create<Player>("player");
-auto player_type = ecs::entity::typed<Player>();
-```
-
-Inheritance uses `abstract()`, `is_a(...)`, and `is_a<T>()`:
-
-```cpp
-auto prototype = ecs::entity::create().set(Position{ 0.0f, 0.0f }).abstract();
-auto instance = ecs::entity::create().is_a(prototype);
-auto another = ecs::instantiate(prototype);
-```
-
-`child_of(parent)` assigns the built-in `ChildOf` relation. Register custom
-relation types with `ecs::relation<T>(desc)`. Use `relate<T>()`, `unrelate<T>()`,
-`has_relation<T>()`, and `target<T>()` to mutate and inspect them.
-
-### Queries
-
-```cpp
-ecs::query()
-    .require<Position>()
-    .exclude<Disabled>()
-    .each([](ecs::entity current, Position &position) {
-        position.x += static_cast<float>(current.id() != 0);
-    });
-
-auto first = ecs::query().require<Position>().first();
-```
-
-The builder also provides `optional<T>()`, `is_a(target)`, `build()`, and
-`build_handle()`. Relation filters use `with_relation<T>()`, `to<T>(target)`,
-and `depth<T>(value)`. Table ordering uses `order_by_target<T>()`,
-`order_by_depth<T>()`, or `order_by(...)`. Inherited fields use `up<Component,
-Relation>()`. A
-callback can receive `ecs::entity` as its first argument. `each()` and `first()`
-are one-shot operations; they create and destroy the underlying C query. A
-`query_handle` owns a persistent query id and releases it automatically:
-
-```cpp
-ecs::query().require<Position>().each([](Position &position) {
-    position.x += 1.0f;
+    .callback = move_system,
 });
 ```
-
-Optional callback fields use `ecs::optional<T>`. The value converts to `false`
-when the component is absent for the current table and supports `get()`,
-`operator->`, and `operator*` when present.
-
-### Systems
-
+</TabItem>
+<TabItem label="C++">
 ```cpp
 auto move = ecs::system("Move")
-    .require<Position>()
     .phase(EcsOnUpdate)
-    .each([](Position &position) {
-        position.x += 1.0f;
+    .each([](Position &position, const Velocity &velocity) {
+        position.x += velocity.x;
     });
 ```
+</TabItem>
+</Tabs>
 
-`ecs::system` supports `require<T...>()`, `optional<T...>()`, `exclude<T...>()`,
-`phase()`, `after()`, `disabled()`, and `each()`. Callback component terms are
-inferred from their parameter types. Resource parameters do not become query
-terms:
+| Operation | C | C++ |
+| --- | --- | --- |
+| Run all phases | `ecs_progress()` | `ecs::progress()` |
+| Run one phase | `ecs_run_phase()` | `ecs::run_phase()` |
+| Run one system | `ecs_run_system()` | `ecs::run_system()` |
+| Enable/disable | `ecs_system_enable()`, `ecs_system_disable()` | `ecs::enable_system()`, `disable_system()` |
+| Phase | `ecs_phase_t` | `EcsOnUpdate`, `EcsPostUpdate`, etc. |
 
-```cpp
-ecs::system("Move").each([](ecs::res<const Time> time, Position &position) {
-    position.x += time->dt;
-});
+Structural mutations during iteration may migrate an entity and invalidate the
+current batch pointers. Use deferred mutation when the operation must happen
+after the current command scope.
+
+## Resources
+
+Resources are one typed value per world. They are not entity components and do
+not become query fields.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_set_resource(Time, { .dt = 1.0f / 60.0f });
+const Time *time = ecs_get_resource_read(Time);
 ```
-
-System ids can be controlled through the C++ helpers:
-
+</TabItem>
+<TabItem label="C++">
 ```cpp
-ecs::disable_system(move);
-ecs::enable_system(move);
-ecs::run_system(move);
+ecs::set_resource(Time{ .dt = 1.0f / 60.0f });
+const Time &time = ecs::resource<const Time>();
 ```
+</TabItem>
+</Tabs>
 
-### Resources
+Use `ecs_try_get_resource()` or `ecs::try_resource<T>()` when absence is valid.
+The id-based C functions use the separate `ecs_resource_t` registry:
+`ecs_resource_init`, `ecs_resource_find`, `ecs_resource_rid`,
+`ecs_try_resource_rid`, `ecs_has_resource_rid`, and `ecs_remove_resource_rid`.
 
+## Relations and inheritance
+
+Relations connect a source entity to a target. `ChildOf` provides hierarchy;
+`IsA` provides inheritance from an abstract base.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_relate(child, ChildOf, parent);
+ecs_entity_t current_parent = ecs_target(child, ChildOf);
+
+ecs_add(base, Abstract);
+ecs_is_a(instance, base);
+```
+</TabItem>
+<TabItem label="C++">
 ```cpp
-ecs::set_resource(Time{ .dt = 0.016f });
-auto time = ecs::resource_handle<Time>();
-time.get().dt += 0.001f;
-if (auto *maybe_time = time.try_get()) {
-    maybe_time->dt += 0.001f;
+child.child_of(parent);
+auto current_parent = child.target<ecs::ChildOf>();
+
+base.abstract();
+instance.is_a(base);
+```
+</TabItem>
+</Tabs>
+
+Register custom relations with `ECS_RELATION_DECLARE/DEFINE/REGISTER` or
+`ecs::relation<T>()`. Storage mode controls which query terms are valid:
+`ecs_to` for `ByTarget`, `ecs_depth` for `ByDepth`, and `ecs_rel` for presence.
+
+## Observers and events
+
+Observers react to `EcsOnAdd`, `EcsOnRemove`, `EcsOnSet`, relation transitions,
+or a custom event. Their payload pointers are borrowed for the callback.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+static void on_position_set(ecs_observer_event_t *event) {
+    const Position *position = event->trigger_data;
+    log_position(event->entity, position);
 }
-bool exists = time.has();
-time.remove();
-```
 
-`ecs::res<T>` is the callback and observer view type. It supports `operator->`,
-`operator*`, and `get()`. `ecs::resource_handle<T>` provides typed `set()`,
-`get()`, `try_get()`, `has()`, and `remove()` operations.
-
-### Observers and events
-
-Built-in events use `ecs::OnAdd`, `ecs::OnRemove`, `ecs::OnSet`,
-`ecs::OnRelationSet`, and `ecs::OnRelationRemove`. Custom events are represented
-by an empty C++ type:
-
-```cpp
-struct Damaged {};
-
-ecs::observe<Damaged>().each([](Health &health) {
-    health.value -= 1;
-});
-
-ecs::trigger<Damaged>(entity);
-```
-
-`ecs::event<T>()` returns the custom event id associated with `T`; `observe<T>()`
-and `trigger<T>()` use that id automatically.
-
-Observer callbacks must be stateless. Component observers normally receive at
-least one component argument. Relation observers may receive only
-`ecs::observer_event` and use `with_relation<T>()` to filter the relation type:
-
-```cpp
-auto changed = ecs::observe<ecs::OnRelationSet>();
-changed.with_relation<GroupOf>();
-changed.each([](ecs::observer_event event) {
-    auto *change = event.trigger_data<ecs_relation_event_t>();
-    log_relation(change->old_target, change->new_target);
+ecs_observer({
+    .on = EcsOnSet,
+    .query = { .terms = { ecs_in(Position) } },
+    .callback = on_position_set,
 });
 ```
-
-Callbacks may also receive `ecs::entity` first and `ecs::res<T>` resource
-arguments. Add `ecs::observer_event` as the first callback argument to access
-`target()`, `id()`, `user_data()`, and typed `trigger_data<T>()`.
-
-### Modules
-
+</TabItem>
+<TabItem label="C++">
 ```cpp
-#include <cassert>
+ecs::observe<ecs::OnSet>().each([](const Position &position) {
+    log_position(position);
+});
+```
+</TabItem>
+</Tabs>
 
+Use `ecs_observer_trigger()` or `ecs::trigger<T>()` for custom events. Relation
+events carry `old_target` and `new_target` in `ecs_relation_event_t`.
+
+## Modules
+
+Modules group registrations and can enable or disable their captured systems and
+observers. Imports are idempotent in the active world; the first properties
+value wins.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_MODULE_DECLARE(physics, { float gravity; });
+ECS_MODULE_DEFINE(physics);
+
+void physics_import(const physics_props_t *props) {
+    (void)props;
+    ecs_system({ .name = "Move", .callback = move_system });
+}
+
+ecs_module_id_t Physics = ECS_MODULE_IMPORT(physics, { .gravity = 9.81f });
+ecs_module_disable(Physics);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
 struct Physics {
     float gravity;
 
-    void import() {
+    static void import() {
         ecs::system("Move").each([](Position &position) {
             position.x += 1.0f;
         });
@@ -767,23 +338,25 @@ struct Physics {
 };
 
 auto physics = ecs::import<Physics>(9.81f);
-auto same_module = ecs::module<Physics>();
 physics.disable();
-same_module.enable();
-assert(same_module.is_enabled());
 ```
+</TabItem>
+</Tabs>
 
-`module_ref<T>` also provides `id()` and an explicit boolean conversion. Module
-imports are idempotent in the active world; the first properties value wins.
+## Public type families
 
-### C++ Reflection
+| Family | Public C types | Public C++ types |
+| --- | --- | --- |
+| Entity | `ecs_entity_t` | `ecs::entity` |
+| Component | `ecs_component_t`, `ecs_component_desc_t` | `ecs::component<T>`, `ecs::component_hooks<T>` |
+| Resource | `ecs_resource_t`, `ecs_resource_desc_t` | `ecs::resource_handle<T>`, `ecs::res<T>` |
+| Query | `ecs_query_id_t`, `ecs_query_desc_t`, `ecs_iter_t` | `ecs::query`, `ecs::query_handle` |
+| System | `ecs_system_id_t`, `ecs_system_desc_t`, `ecs_phase_t` | `ecs::system` |
+| Observer | `ecs_observer_id_t`, `ecs_observer_desc_t`, `ecs_observer_event_t` | `ecs::observer<T>`, `ecs::observer_event` |
+| Module | `ecs_module_id_t`, `ecs_module_desc_t` | `ecs::module_ref<T>` |
+| Relation | `ecs_relation_id_t`, `ecs_relation_desc_t` | `ecs::relation<T>` |
 
-Plain C++ component structs are stored and queried, but their REST schema has no
-fields by default. Add the `reflected(...)` declaration when a component must
-be serialized or exposed through the REST explorer:
-
-```cpp
-struct Position {
-    reflected(float x; float y;);
-};
-```
+For lifecycle preconditions, ownership rules, field semantics, deletion policy,
+and version guarantees, see [API stability](../stability/) and the relevant
+manual. The public headers remain the final authority for overloads and exact
+descriptor layout.

@@ -1,0 +1,117 @@
+---
+title: API REST de l’explorateur
+description: Inspecter et modifier un monde SIECS avec l’extension REST optionnelle.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+L’extension REST est un paquet Bake indépendant pour les inspecteurs et les
+éditeurs. Ajoutez `siecs_rest` à l’application puis importez-le explicitement.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+#include <siecs.h>
+#include <siecs_rest.h>
+
+int main(void) {
+    ecs_init();
+    ECS_MODULE_IMPORT(SiecsRest, { .port = 4040 });
+    ecs_progress();
+    ecs_fini();
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+#include <siecs/cpp.hpp>
+#include <siecs_rest.h>
+
+ecs::init();
+ECS_MODULE_IMPORT(SiecsRest, { .port = 4040 });
+ecs::progress();
+ecs::fini();
+```
+</TabItem>
+</Tabs>
+
+Le port par défaut est `4040`. Le serveur est traité pendant `ecs_progress()`
+et s’arrête avec le monde.
+
+## Routes
+
+| Route | Rôle |
+| --- | --- |
+| `GET /health` | Vérifier que le serveur répond. |
+| `GET /schema` | Lire les schémas des composants réfléchis. |
+| `GET /entities` | Lister les entités racines. |
+| `POST /entities` | Créer une entité. |
+| `GET /entities/:index` | Lire le détail d’une entité. |
+| `GET /entities/:index/children` | Lire ses enfants directs. |
+| `PUT /entities/:index/components/:component` | Remplacer une valeur réfléchie. |
+
+## Explorer les entités
+
+La liste est volontairement légère pour construire un arbre :
+
+```ts
+type EntityListItem = {
+  name: string;
+  index: number;
+  generation: number;
+  hasChildren?: boolean;
+};
+```
+
+Le détail ajoute le parent, la base `IsA`, les enfants et les valeurs de
+composants réfléchies :
+
+```ts
+type EntityDetail = EntityListItem & {
+  parent?: EntityListItem;
+  isA?: EntityDetail;
+  children: EntityListItem[];
+  components: EntityComponent[];
+};
+```
+
+## Construire un éditeur de composants
+
+`/schema` décrit les composants et leurs champs avec des types adaptés à une
+interface, sans exposer les détails internes de la réflexion :
+
+```ts
+type Component = {
+  id: number;
+  name: string;
+  isRelation: boolean;
+  type: number;
+  fields: { name: string; type: number }[];
+};
+
+type EditorType = {
+  id: number;
+  name: string;
+  editor: "boolean" | "number" | "object" | "string" | "entity" | "unsupported";
+};
+```
+
+Un client charge d’abord le schéma, puis le détail de l’entité, rend ses
+contrôles et envoie la valeur complète du composant. Les composants sans
+métadonnées de réflexion restent utilisables par SIECS, mais ne peuvent pas
+être édités par l’explorateur.
+
+```http
+PUT /entities/12/components/4
+Content-Type: application/json
+
+{ "value": { "x": 10, "y": 20 } }
+```
+
+La mise à jour est atomique au niveau du composant : aucune sémantique de
+patch partiel n’est imposée aux structures.
+
+## Déploiement
+
+Cette extension est faite pour les outils de développement locaux et les
+éditeurs. Ne l’exposez pas sur un réseau non fiable sans authentification,
+restriction de routage ou proxy dédié.

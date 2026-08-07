@@ -1,0 +1,78 @@
+---
+title: Building and integrating
+description: Choose the simplest way to integrate the SIECS runtime into a C17 or C++20 application.
+---
+
+SIECS is distributed as a single public header and a single C translation unit.
+Choose the standalone distribution unless your application already uses Bake.
+
+## Standalone distribution
+
+Copy these files into your application:
+
+```text
+siecs.h
+siecs.c
+```
+
+The files are generated under `distr/` and include the SIECS runtime and its
+public C dependencies. Your application only includes `<siecs.h>`.
+
+### C
+
+Compile both your application and the runtime as C17:
+
+```sh
+cc -std=c17 -I. main.c siecs.c -pthread -o my_app
+```
+
+### C++
+
+Compile the runtime as C17. Do not pass `siecs.c` to the C++ compiler:
+
+```sh
+cc -std=c17 -I. -c siecs.c -o siecs.o
+c++ -std=c++20 -I. main.cpp siecs.o -pthread -o my_app
+```
+
+The C++ API is header-only, but it still links against the C runtime object.
+
+## Bake
+
+Bake projects consume SIECS with the `use` declaration:
+
+```json
+{
+  "id": "my_app",
+  "type": "application",
+  "value": {
+    "use": ["siecs"]
+  },
+  "lang.c": {
+    "c-standard": "c17"
+  },
+  "bundle": {
+    "repositories": {
+      "siecs": "https://github.com/suleymanlaarabi/siecs"
+    }
+  }
+}
+```
+
+For a C++ application, set `"language": "cpp"` and
+`"cpp-standard": "c++20"`.
+
+## Platform notes
+
+The command lines above show the Linux/POSIX form used by the examples. Keep
+the language standards unchanged on other platforms and add the thread/system
+libraries required by that platform's compiler and C runtime.
+
+## Choosing a path
+
+| Situation | Recommended path |
+| --- | --- |
+| Small application or library | Standalone `siecs.h` + `siecs.c` |
+| Existing Bake application | Bake package |
+| C++ application | C17 runtime + C++20 wrapper |
+| Tooling and editor integration | Add the optional REST package |

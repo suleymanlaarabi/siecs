@@ -1,0 +1,80 @@
+---
+title: Compiler et intégrer
+description: Choisir la méthode la plus simple pour intégrer le runtime SIECS dans une application C17 ou C++20.
+---
+
+SIECS est fourni sous la forme d’un header public et d’une unité de
+compilation C. Utilisez la distribution autonome, sauf si votre application
+utilise déjà Bake.
+
+## Distribution autonome
+
+Copiez ces fichiers dans votre application :
+
+```text
+siecs.h
+siecs.c
+```
+
+Ils sont générés dans `distr/` et contiennent le runtime SIECS ainsi que ses
+dépendances C publiques. Votre application inclut uniquement `<siecs.h>`.
+
+### C
+
+Compilez l’application et le runtime en C17 :
+
+```sh
+cc -std=c17 -I. main.c siecs.c -pthread -o mon_app
+```
+
+### C++
+
+Compilez le runtime en C17. Ne passez pas `siecs.c` au compilateur C++ :
+
+```sh
+cc -std=c17 -I. -c siecs.c -o siecs.o
+c++ -std=c++20 -I. main.cpp siecs.o -pthread -o mon_app
+```
+
+L’API C++ est header-only, mais elle lie toujours l’objet du runtime C.
+
+## Bake
+
+Les projets Bake consomment SIECS avec la déclaration `use` :
+
+```json
+{
+  "id": "mon_app",
+  "type": "application",
+  "value": {
+    "use": ["siecs"]
+  },
+  "lang.c": {
+    "c-standard": "c17"
+  },
+  "bundle": {
+    "repositories": {
+      "siecs": "https://github.com/suleymanlaarabi/siecs"
+    }
+  }
+}
+```
+
+Pour une application C++, configurez `"language": "cpp"` et
+`"cpp-standard": "c++20"`.
+
+## Notes de plateforme
+
+Les commandes ci-dessus montrent la forme Linux/POSIX utilisée par les
+exemples. Conservez les standards de langage sur les autres plateformes et
+ajoutez les bibliothèques système requises par leur compilateur et leur runtime
+C.
+
+## Choisir un parcours
+
+| Situation | Parcours recommandé |
+| --- | --- |
+| Petite application ou bibliothèque | Distribution autonome `siecs.h` + `siecs.c` |
+| Application utilisant déjà Bake | Package Bake |
+| Application C++ | Runtime C17 + wrapper C++20 |
+| Outils et éditeurs | Package REST optionnel |

@@ -94,8 +94,21 @@ auto query = ecs::query()
 </TabItem>
 </Tabs>
 
-The C++ callback can receive an `ecs::optional<const Velocity>` value:
+The callback can receive an optional field:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_query_each(it, i,
+    ecs_inout(Position),
+    ecs_in_optional(Velocity)) {
+    Position *position = ecs_field(&it, 0);
+    const Velocity *velocity = ecs_field(&it, 1);
+    if (velocity) position[i].x += velocity[i].x;
+}
+```
+</TabItem>
+<TabItem label="C++">
 ```cpp
 ecs::query().require<Position>().each(
     [](Position &position, ecs::optional<const Velocity> velocity) {
@@ -103,6 +116,8 @@ ecs::query().require<Position>().each(
     }
 );
 ```
+</TabItem>
+</Tabs>
 
 ## React to a Component Set
 

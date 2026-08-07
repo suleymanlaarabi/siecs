@@ -120,8 +120,22 @@ ecs::system("Move").each([](
 
 In C++, callbacks can request `ecs::res<T>` or `ecs::res<const T>`. Resource
 parameters do not become query terms and do not consume an `ecs_field()` index.
-SIECS resolves them before iterating the query tables.
+SIECS resolves them before iterating the query tables:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+static void move_with_time(ecs_iter_t *it) {
+    const Time *time = ecs_get_resource_read(Time);
+    Position *position = ecs_field(it, 0);
+    const Velocity *velocity = ecs_field(it, 1);
+    for (uint32_t i = 0; i < it->count; i++) {
+        position[i].x += velocity[i].x * time->dt;
+    }
+}
+```
+</TabItem>
+<TabItem label="C++">
 ```cpp
 ecs::system("Move").each([](
     ecs::res<const Time> time,
@@ -131,6 +145,8 @@ ecs::system("Move").each([](
     position.x += velocity.x * time->dt;
 });
 ```
+</TabItem>
+</Tabs>
 
 ## Run Systems
 

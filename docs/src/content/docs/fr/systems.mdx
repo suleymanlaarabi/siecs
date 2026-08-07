@@ -1,0 +1,298 @@
+---
+title: Systèmes et ordonnancement
+description: Créer des systèmes, parcourir leurs requêtes, ordonner les phases et gérer les mutations structurelles en C et C++.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Un système est un callback nommé attaché à une requête. `ecs_progress()` exécute
+les systèmes activés selon leurs phases.
+
+## Créer un système
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+static void Move(ecs_iter_t *it) {
+    Position *positions = ecs_field(it, 0);
+    const Velocity *velocities = ecs_field(it, 1);
+    for (uint32_t i = 0; i < it->count; i++) {
+        positions[i].x += velocities[i].x;
+    }
+}
+
+ecs_system({
+    .name = "Move",
+    .phase = EcsOnUpdate,
+    .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
+    .callback = Move,
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::system("Move")
+    .phase(EcsOnUpdate)
+    .each([](Position &position, const Velocity &velocity) {
+        position.x += velocity.x;
+    });
+```
+</TabItem>
+</Tabs>
+
+## Exécuter et ordonner
+
+`ecs_progress()` et `ecs::progress()` exécutent les phases de démarrage, de mise
+à jour et de rendu. `ecs_run_phase()` exécute une phase précise et
+`ecs_run_system()` un système précis.
+
+Dans une phase, utilisez `after` ou `.after()` pour déclarer une dépendance :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_system_id_t integrate = ecs_system({
+    .name = "Integrate",
+    .phase = EcsOnUpdate,
+    .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
+    .callback = Integrate,
+});
+
+ecs_system({
+    .name = "Sync",
+    .phase = EcsOnUpdate,
+    .query.terms = { ecs_in(Position), ecs_inout(Transform) },
+    .callback = Sync,
+    .after = { integrate },
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto integrate = ecs::system("Integrate")
+    .phase(EcsOnUpdate)
+    .each([](Position &, const Velocity &) {});
+
+ecs::system("Sync")
+    .phase(EcsOnUpdate)
+    .after(integrate)
+    .each([](const Position &, Transform &) {});
+```
+</TabItem>
+</Tabs>
+
+Les dépendances doivent rester dans la même phase. Les cycles sont invalides.
+
+## Mutations
+
+Modifier une valeur dans le lot courant est prévu. Ajouter ou retirer un
+composant peut déplacer l’entité et invalider les pointeurs du lot ; différez
+ces mutations ou effectuez-les en dehors de la boucle quand le contrat de
+l’opération ne garantit pas leur sécurité.
+
+Un système peut être créé désactivé avec `.disabled = true` ou `.disabled()`.
+Cela est différent du composant `Disabled`, qui exclut seulement les entités des
+requêtes normales.
+
+## Utiliser les ressources
+
+Les ressources sont des valeurs uniques stockées dans le monde. En C, lisez-les
+avant la boucle sur les entités :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+static void move_system(ecs_iter_t *it) {
+    const Time *time = ecs_get_resource_read(Time);
+    Position *positions = ecs_field(it, 0);
+    const Velocity *velocities = ecs_field(it, 1);
+
+    for (uint32_t i = 0; i < it->count; i++) {
+        positions[i].x += velocities[i].x * time->dt;
+    }
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::system("Move").each([](
+    ecs::res<const Time> time,
+    Position &position,
+    const Velocity &velocity
+) {
+    position.x += velocity.x * time->dt;
+});
+```
+</TabItem>
+</Tabs>
+
+Une ressource n’est pas un terme de requête et ne consomme pas d’index de champ.
+
+## Exécuter les systèmes
+
+`ecs_progress()` exécute tous les systèmes activés :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_progress();
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::progress();
+```
+</TabItem>
+</Tabs>
+
+Les phases sont exécutées dans l’ordre suivant :
+
+| Phase | Usage courant |
+| --- | --- |
+| `EcsPreStart` | Préparation avant le démarrage, une seule fois. |
+| `EcsStart` | Initialisation, une seule fois. |
+| `EcsPostStart` | Travail après l’initialisation. |
+| `EcsOnLoad` | Chargement ou bootstrap. |
+| `EcsPostLoad` | Travail après le chargement. |
+| `EcsPreUpdate` | Préparation de la simulation. |
+| `EcsOnUpdate` | Logique principale. |
+| `EcsPostUpdate` | Nettoyage et état dérivé. |
+| `EcsPreRender` | Préparation du rendu. |
+| `EcsOnRender` | Travail lié au rendu. |
+| `EcsPostRender` | Nettoyage après le rendu. |
+
+Une phase ou un système peut aussi être exécuté explicitement :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_run_phase(EcsOnUpdate);
+ecs_run_system(Move);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::run_phase(EcsOnUpdate);
+ecs::run_system(Move);
+```
+</TabItem>
+</Tabs>
+
+L’exécution manuelle d’une phase `EcsStart` ne suit pas la règle “une seule
+fois” de `ecs_progress()`.
+
+## Ordonner les systèmes dans une phase
+
+Les phases imposent l’ordre global. Dans une même phase, utilisez `after` pour
+indiquer qu’un système dépend d’un autre :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_system_id_t Integrate = ecs_system({
+    .name = "Integrate",
+    .phase = EcsOnUpdate,
+    .query = { .terms = { ecs_inout(Position), ecs_in(Velocity) } },
+    .callback = integrate_system,
+});
+
+ecs_system({
+    .name = "SyncTransform",
+    .phase = EcsOnUpdate,
+    .query = { .terms = { ecs_in(Position), ecs_inout(Transform) } },
+    .callback = sync_transform_system,
+    .after = { Integrate },
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto integrate = ecs::system("Integrate")
+    .phase(EcsOnUpdate)
+    .each([](Position &, const Velocity &) {});
+
+ecs::system("SyncTransform")
+    .phase(EcsOnUpdate)
+    .after(integrate)
+    .each([](const Position &, Transform &) {});
+```
+</TabItem>
+</Tabs>
+
+Les dépendances doivent viser des systèmes de la même phase. Les cycles et les
+dépendances entre phases provoquent une assertion en debug.
+
+## Activer ou désactiver un système
+
+Les systèmes sont activés par défaut :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_system_id_t Damage = ecs_system({
+    .name = "Damage",
+    .phase = EcsOnUpdate,
+    .query = { .terms = { ecs_inout(Health) } },
+    .callback = damage_system,
+    .disabled = true,
+});
+
+ecs_system_enable(Damage);
+ecs_system_disable(Damage);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto damage = ecs::system("Damage")
+    .disabled()
+    .each([](Health &health) { health.value -= 1; });
+ecs::enable_system(damage);
+ecs::disable_system(damage);
+```
+</TabItem>
+</Tabs>
+
+Un système désactivé est ignoré par `ecs_progress()`, `ecs_run_phase()` et
+`ecs_run_system()`. Cela ne désactive pas les entités portant `Disabled`.
+
+## Mutations pendant un système
+
+Modifier les valeurs du lot courant est prévu. En revanche, ajouter ou retirer
+un composant peut déplacer une entité vers une autre table et invalider les
+pointeurs du lot courant. Gardez ces mutations en dehors de l’itération, ou
+utilisez le différé lorsque le contrat de l’opération l’exige.
+
+## Référence du descripteur
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+typedef struct {
+    const char *name;
+    ecs_query_desc_t query;
+    void (*callback)(ecs_iter_t *);
+    uintptr_t user_data;
+    void (*user_data_dtor)(uintptr_t user_data);
+    ecs_phase_t phase;
+    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
+    bool disabled;
+} ecs_system_desc_t;
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto move = ecs::system("Move")
+    .phase(EcsOnUpdate)
+    .after("Input")
+    .disabled();
+```
+</TabItem>
+</Tabs>
+
+| Champ | Signification |
+| --- | --- |
+| `name` | Nom facultatif utilisé pour le debug. |
+| `query` | Composants parcourus par le système. |
+| `callback` | Fonction appelée pour chaque lot non vide. |
+| `phase` | Phase utilisée par `ecs_progress()` et `ecs_run_phase()`. |
+| `after` | Systèmes de la même phase qui doivent passer avant. |
+| `disabled` | Crée le système sans l’exécuter. |

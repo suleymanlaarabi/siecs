@@ -1,0 +1,188 @@
+---
+title: Modules SIECS
+description: Regrouper composants, systèmes et observateurs dans des unités réutilisables et idempotentes en C et C++.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Un module est une unité d’importation qui regroupe les enregistrements d’une
+fonctionnalité. Il peut capturer les composants, relations, systèmes et
+observateurs créés pendant son import.
+
+## Module déclaré en C
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_MODULE_DECLARE(physics, { float gravity; });
+ECS_MODULE_DEFINE(physics);
+
+void physics_import(const physics_props_t *props) {
+    ECS_COMPONENT_REGISTER(Position);
+    (void)props;
+    ecs_system({ /* ... */ });
+}
+
+ecs_module_id_t physics_id = ECS_MODULE_IMPORT(physics, {
+    .gravity = 9.81f,
+});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+// La déclaration C expose l’adaptateur C++ `physics`.
+auto physics = ecs::import<physics>(physics::props_t{ .gravity = 9.81f });
+```
+</TabItem>
+</Tabs>
+
+L’import est idempotent dans un monde : le premier ensemble de propriétés reste
+celui utilisé si le module est importé plusieurs fois.
+
+## Module natif C++
+
+Le module C++ natif est l’équivalent typé d’un import C sans propriétés :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_MODULE_DECLARE(rendering, {});
+ECS_MODULE_DEFINE(rendering);
+
+void rendering_import(const rendering_props_t *props) {
+    (void)props;
+    ecs_system({ .name = "Render", .callback = render_system });
+}
+
+ECS_MODULE_IMPORT(rendering, {});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Rendering {
+    static void import() {
+        ecs::system("Render").each([](Position &position) {
+            position.x += 0.0f;
+        });
+    }
+};
+
+auto rendering = ecs::import<Rendering>();
+```
+</TabItem>
+</Tabs>
+
+Les modules natifs C++ reçoivent les arguments de `ecs::import<T>(args...)` dans
+leur méthode statique `import`.
+
+## Activer et désactiver
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_module_disable(physics_id);
+ecs_module_enable(physics_id);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+physics.disable();
+physics.enable();
+```
+</TabItem>
+</Tabs>
+
+Désactiver un module désactive les systèmes et observateurs qu’il a capturés.
+Les composants, relations et données existantes restent valides.
+
+## Module sans paramètres
+
+Les modules sans paramètres utilisent une structure de propriétés vide :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_MODULE_DECLARE(rendering, {});
+ECS_MODULE_DEFINE(rendering);
+
+void rendering_import(const rendering_props_t *props) {
+    (void)props;
+    ecs_system({ /* ... */ });
+}
+
+ECS_MODULE_IMPORT(rendering, {});
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Rendering {
+    static void import() {
+        ecs::system("Render").each([](Position &position) {
+            position.x += 0.0f;
+        });
+    }
+};
+
+auto rendering = ecs::import<Rendering>();
+```
+</TabItem>
+</Tabs>
+
+## Ce qui est capturé
+
+Pendant `ECS_MODULE_IMPORT`, les enregistrements effectués avec l’API publique
+normale sont associés au module :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_COMPONENT_REGISTER(Position);
+ecs_system({ /* ... */ });
+ecs_observer({ /* ... */ });
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Physics {
+    static void import() {
+        ecs::system("Move").each([](Position &, const Velocity &) {});
+        ecs::observe<ecs::OnSet>().each([](const Position &) {});
+    }
+};
+```
+</TabItem>
+</Tabs>
+
+Les imports imbriqués sont autorisés. Les enregistrements effectués après un
+import imbriqué restent associés au module parent.
+
+## Désactivation et idempotence
+
+Désactiver un module ne désactive que ses systèmes et observateurs. Les
+composants, relations et hooks restent enregistrés :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ecs_module_disable(physics_id);
+ecs_module_enable(physics_id);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+physics.disable();
+physics.enable();
+```
+</TabItem>
+</Tabs>
+
+Un import est idempotent dans le monde actif. Le premier import fixe les
+propriétés ; les imports suivants retournent le même identifiant et ne créent
+pas de doublons. Un module typé ne doit pas être utilisé simultanément dans deux
+mondes actifs.
+
+## Coût
+
+La capture a lieu uniquement pendant l’enregistrement. Elle n’ajoute pas de
+recherche ou de branchement à l’itération des requêtes. Activer ou désactiver un
+module parcourt ses systèmes et observateurs enregistrés ; l’opération est donc
+proportionnelle à la taille du module.

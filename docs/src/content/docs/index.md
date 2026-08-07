@@ -1,47 +1,44 @@
 ---
 title: SIECS Documentation
-description: Technical documentation for SIECS, including the C and C++ APIs, storage model, queries, systems, and optional tooling.
+description: Learn SIECS through a compact quickstart, concept manuals, and the public C17 and C++20 API reference.
 ---
-SIECS is a small archetype ECS library with a compact C23 API, C++23 wrapper,
-reflection, modules, and an optional REST explorer for tools.
 
-The public header is `<siecs.h>` in all supported language integrations.
+SIECS is an archetype ECS for C17 and C++20. It combines a compact C runtime
+with a typed C++ wrapper, contiguous component storage, cached queries, systems,
+relations, reflection, and optional tooling.
 
-The current API is centered around:
+## Getting started
 
-| Concept | Role |
-| --- | --- |
-| World | Owns all ECS storage. Create with `ecs_init()` or `ecs::init()`, destroy with `ecs_fini()` or `ecs::fini()`. |
-| Entity | `ecs_entity_t` handle created by `ecs_new()` or `ecs::entity::create()`. |
-| Component | Registered data type identified by `ecs_component_t`. |
-| Query | Cached matcher over archetype tables. |
-| Iterator | Batch iterator returned by `ecs_query_iter()`. |
-| System | Scheduled query callback run by `ecs_progress()`. |
-| Observer | Callback triggered for built-in or custom events. |
-| Module | Import unit that groups components, systems, and observers. |
-| Relation | Component that stores an entity target, such as `ChildOf`. |
-| Resource | One typed value stored on the world, not on entities. |
-
-## Getting Started
-
-- [Getting started](./getting-started/) builds a complete minimal program.
-- [Cookbook](./cookbook/) collects focused examples.
+- [Quickstart](./getting-started/) — learn the model through one compact tour.
+- [Building and integrating](./building/) — choose the standalone distribution
+  or Bake.
+- [Cookbook](./cookbook/) — short, focused patterns for common ECS tasks.
 
 ## Manuals
 
-- [ECS theory](./theory/) and [archetype storage](./archetype-ecs/) explain the
-  data model.
-- [Entities](./entities/), [components](./components/), and
-  [resources](./resources/) cover stored data.
-- [Queries](./queries/) and [systems](./systems/) cover iteration and
-  scheduling.
-- [Observers](./observers/), [relations](./relations/), and
-  [inheritance](./inheritance/) cover events and entity relationships.
-- [Modules](./modules/) cover reusable registration units.
+Read the manuals in this order if you are new to ECS:
 
-## Guides and Reference
+1. [ECS theory](./theory/) explains entities, components, tables and queries.
+2. [Entities](./entities/) and [components](./components/) explain data and
+   lifetime.
+3. [Queries](./queries/) explain matching and iteration.
+4. [Systems](./systems/) explain scheduling and frame logic.
 
-- [Designing with SIECS](./ecs-design/) documents the runtime's
-  tradeoffs.
-- [REST explorer](./rest/) documents the optional tooling API.
-- [API reference](./reference/api/) lists the public C symbols and the typed C++ wrapper.
+Then continue with the advanced manuals:
+
+- [Archetype storage](./archetype-ecs/)
+- [Resources](./resources/)
+- [Observers](./observers/)
+- [Relations](./relations/)
+- [Inheritance](./inheritance/)
+- [Modules](./modules/)
+- [Designing with SIECS](./ecs-design/)
+- [REST explorer](./rest/)
+
+## API reference
+
+- [C and C++ API](./reference/api/)
+- [API stability](./reference/stability/)
+
+All examples use the public `<siecs.h>` facade. The C runtime uses C17 and the
+typed wrapper uses C++20.

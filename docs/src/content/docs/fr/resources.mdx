@@ -1,0 +1,197 @@
+---
+title: Ressources
+description: Stocker une valeur unique par monde et l’utiliser depuis le code C, C++ et les systèmes SIECS.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Une ressource est une valeur stockée une seule fois par monde. Utilisez-la pour
+le temps, la configuration, l’entrée utilisateur ou un état partagé ; utilisez
+un composant pour les données propres à chaque entité.
+
+## Déclarer et écrire
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+ECS_RESOURCE_DECLARE(Time, { float dt; });
+ECS_RESOURCE_DEFINE(Time);
+ECS_RESOURCE_REGISTER(Time);
+
+ecs_set_resource(Time, { .dt = 0.016f });
+const Time *time = ecs_get_resource_read(Time);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+struct Time { float dt; };
+
+auto time = ecs::resource_handle<Time>();
+time.set(Time{ .dt = 0.016f });
+const auto &value = time.get();
+```
+</TabItem>
+</Tabs>
+
+Les helpers `get` supposent que la ressource existe. Utilisez les variantes
+`try` si son absence est possible. Une ressource C++ est accessible comme
+`ecs::res<const Time>` dans un callback de système.
+
+## Systèmes
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+static void Tick(ecs_iter_t *it) {
+    const Time *time = ecs_get_resource_read(Time);
+    (void)it;
+    /* utiliser time->dt */
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::system("Tick").each([](ecs::res<const Time> time) {
+    /* utiliser time->dt */
+});
+```
+</TabItem>
+</Tabs>
+
+Les ressources n’ajoutent pas de terme à la requête et ne consomment pas
+d’index de champ.
+
+## Présence et hooks
+
+`ecs_has_resource`, `has()` et leurs variantes par identifiant testent la
+présence. `ecs_remove_resource`, `remove()` et les hooks de ressource permettent
+de gérer la fin de vie. Les handles sont empruntés au monde et ne doivent pas
+être utilisés après `ecs_fini()`.
+
+## Tester la présence et supprimer
+
+Une ressource absente peut être créée à la demande :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+if (!ecs_has_resource(Time)) {
+    ecs_set_resource(Time, { .dt = 0.016f });
+}
+ecs_remove_resource(Time);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+if (!ecs::has_resource<Time>()) {
+    ecs::set_resource(Time{ .dt = 0.016f });
+}
+ecs::remove_resource<Time>();
+```
+</TabItem>
+</Tabs>
+
+La suppression d’une ressource absente est sans effet. Les fonctions `get`
+assertent si la ressource n’existe pas ; utilisez `try_get` ou `try_resource`
+si cette situation est normale.
+
+## Utiliser une ressource dans un système
+
+En C, résolvez la ressource avant la boucle sur le lot :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+static void move_system(ecs_iter_t *it) {
+    const Time *time = ecs_get_resource_read(Time);
+    Position *positions = ecs_field(it, 0);
+    const Velocity *velocities = ecs_field(it, 1);
+
+    for (uint32_t i = 0; i < it->count; i++) {
+        positions[i].x += velocities[i].x * time->dt;
+    }
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+ecs::system("Move").each([](
+    ecs::res<const Time> time,
+    Position &position,
+    const Velocity &velocity
+) {
+    position.x += velocity.x * time->dt;
+});
+```
+</TabItem>
+</Tabs>
+
+La ressource ne fait pas partie de la requête : le système ci-dessus ne
+correspond qu’aux entités portant `Position` et `Velocity`.
+
+## API par identifiant
+
+Les helpers typés reposent sur un espace d’identifiants de ressources séparé :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+void ecs_set_resource_rid(ecs_resource_t id, const void *data);
+void *ecs_resource_rid(ecs_resource_t id);
+void *ecs_try_resource_rid(ecs_resource_t id);
+bool ecs_has_resource_rid(ecs_resource_t id);
+void ecs_remove_resource_rid(ecs_resource_t id);
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+auto time = ecs::resource_handle<Time>();
+time.set(Time{ .dt = 0.016f });
+if (time.has()) {
+    time.get().dt += 0.001f;
+}
+```
+</TabItem>
+</Tabs>
+
+Cette API sert principalement au code générique et aux modules qui ne
+connaissent pas le type au moment de la compilation.
+
+## Hooks de ressource
+
+Les ressources ont deux hooks dédiés :
+
+- `on_set` s’exécute lors de l’écriture d’une ressource ;
+- `on_remove` s’exécute lors de sa suppression et lors de `ecs_fini()` si elle
+  existe encore.
+
+Les callbacks reçoivent uniquement un pointeur vers la valeur :
+
+<Tabs syncKey="language">
+<TabItem label="C">
+```c
+static void on_time_set(const void *data) {
+    const Time *time = data;
+    if (time->dt < 0.0f) {
+        /* enregistrer ou refuser la valeur */
+    }
+}
+```
+</TabItem>
+<TabItem label="C++">
+```cpp
+static void on_time_set(const Time &time) {
+    if (time.dt < 0.0f) std::abort();
+}
+
+ecs::resource_hooks<Time> hooks{ .on_set = on_time_set };
+auto time = ecs::resource_handle<Time>(hooks);
+```
+</TabItem>
+</Tabs>
+
+## Coût
+
+L’accès à une ressource est un accès direct par `ecs_resource_t` et coûte O(1).
+La valeur est stockée une seule fois dans le monde, indépendamment des tables.
+Dans un système C chaud, récupérez-la une fois avant la boucle et réutilisez le
+pointeur pour tout le lot.

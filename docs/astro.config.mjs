@@ -36,6 +36,17 @@ export default defineConfig({
     starlight({
       title: 'SIECS',
       description: 'Technical documentation for the SIECS archetype library for C and C++.',
+      defaultLocale: 'root',
+      locales: {
+        root: {
+          label: 'English',
+          lang: 'en',
+        },
+        fr: {
+          label: 'Français',
+          lang: 'fr',
+        },
+      },
       favicon: '/favicon.svg',
       customCss: ['./src/styles/custom.css'],
       lastUpdated: true,
@@ -91,13 +102,15 @@ export default defineConfig({
         },
       ],
       sidebar: [
-        { label: 'Overview', link: '/' },
+        { label: 'Overview', translations: { fr: 'Vue d’ensemble' }, link: '/' },
         {
           label: 'Getting Started',
-          items: ['getting-started', 'cookbook'],
+          translations: { fr: 'Démarrage' },
+          items: ['getting-started', 'building', 'cookbook'],
         },
         {
-          label: 'Concepts',
+          label: 'Fundamentals',
+          translations: { fr: 'Fondamentaux' },
           items: [
             'theory',
             'archetype-ecs',
@@ -106,22 +119,27 @@ export default defineConfig({
             'resources',
             'queries',
             'systems',
+          ],
+        },
+        {
+          label: 'Manuals',
+          translations: { fr: 'Manuels' },
+          items: [
             'observers',
             'relations',
             'inheritance',
             'modules',
+            'ecs-design',
           ],
         },
         {
-          label: 'Guides',
-          items: ['ecs-design'],
-        },
-        {
           label: 'Addons',
+          translations: { fr: 'Extensions' },
           items: ['rest'],
         },
         {
           label: 'Reference',
+          translations: { fr: 'Référence' },
           items: ['reference/api'],
         },
       ],

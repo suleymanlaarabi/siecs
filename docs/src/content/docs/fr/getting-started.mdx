@@ -1,28 +1,28 @@
 ---
-title: Quickstart
-description: A compact tour of worlds, entities, components, queries, systems, resources, relations, and observers in SIECS.
+title: Démarrage rapide
+description: Tour compact des mondes, entités, composants, requêtes, systèmes, ressources, relations et observateurs SIECS.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-This page is a tour of the SIECS model. It assumes that `siecs.h` and `siecs.c`
-are already part of your application; see [Building and integrating](../building/)
-for the two supported integration paths.
+Cette page présente le modèle SIECS. Elle suppose que `siecs.h` et `siecs.c`
+sont déjà intégrés dans votre application ; consultez [Compiler et
+intégrer](../building/) pour les deux parcours supportés.
 
-SIECS uses C17 for the runtime and C++20 for the typed wrapper. Both APIs drive
-the same active world.
+SIECS utilise C17 pour le runtime et C++20 pour le wrapper typé. Les deux API
+pilotent le même monde actif.
 
-## World
+## Monde
 
-The world owns every entity, component, query, system, resource and observer.
-Initialize it before any typed operation and destroy it after the application
-stops.
+Le monde possède toutes les entités, composants, requêtes, systèmes, ressources
+et observateurs. Initialisez-le avant toute opération typée et détruisez-le
+lorsque l’application s’arrête.
 
 <Tabs syncKey="language">
 <TabItem label="C">
 ```c
 ecs_init();
 
-/* Create entities, register systems, run frames. */
+/* Créer des entités, enregistrer les systèmes, exécuter des frames. */
 
 ecs_fini();
 ```
@@ -31,20 +31,21 @@ ecs_fini();
 ```cpp
 ecs::init();
 
-// Create entities, register systems, run frames.
+// Créer des entités, enregistrer les systèmes, exécuter des frames.
 
 ecs::fini();
 ```
 </TabItem>
 </Tabs>
 
-Handles belong to this world. Do not retain an entity or component pointer after
-`ecs_fini()`.
+Les handles appartiennent à ce monde. Ne conservez ni entité ni pointeur de
+composant après `ecs_fini()`.
 
-## Entities and components
+## Entités et composants
 
-An entity is an identity. Components are the data attached to that identity.
-Declare data once, register it in C, then add or set it on entities.
+Une entité est une identité. Les composants sont les données attachées à cette
+identité. Déclarez les données une fois, enregistrez-les en C, puis ajoutez-les
+aux entités.
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -77,13 +78,13 @@ auto enemy = ecs::entity::create()
 </TabItem>
 </Tabs>
 
-`set` adds the component when it is absent. `get` requires it to exist; use
-`try_get` when absence is a valid state.
+`set` ajoute le composant s’il est absent. `get` suppose sa présence ; utilisez
+`try_get` lorsqu’une absence est valide.
 
-## Systems
+## Systèmes
 
-A system is a named query callback. SIECS invokes it for every non-empty batch
-of matching entities when the selected phase runs.
+Un système est un callback de requête nommé. SIECS l’invoque pour chaque lot non
+vide d’entités correspondantes lorsque la phase sélectionnée est exécutée.
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -118,13 +119,14 @@ ecs::system("Move")
 </TabItem>
 </Tabs>
 
-Run the frame with `ecs_progress()` or `ecs::progress()`. The query owned by a
-system is persistent, so it is the normal choice for repeated work.
+Exécutez une frame avec `ecs_progress()` ou `ecs::progress()`. La requête d’un
+système est persistante : c’est le choix normal pour le travail répété.
 
-## Queries
+## Requêtes
 
-Use a query when you need to iterate data outside a scheduled system. Terms
-express required, optional, filtered, excluded, inherited or relation data.
+Utilisez une requête lorsque vous devez parcourir les données hors d’un système.
+Les termes expriment des composants obligatoires, optionnels, filtrés, exclus,
+hérités ou relationnels.
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -158,13 +160,13 @@ moving.each([](Position &position, ecs::optional<const Velocity> velocity) {
 </TabItem>
 </Tabs>
 
-Optional fields are present for the whole batch or absent for the whole batch.
-Do not keep field pointers across a structural change such as `add` or `remove`.
+Un champ optionnel est présent ou absent pour tout le lot. Ne gardez pas les
+pointeurs de champs à travers un changement structurel comme `add` ou `remove`.
 
-## Resources
+## Ressources
 
-A resource is one typed value for the whole world. It is useful for time,
-configuration, input, renderer state, or other shared state.
+Une ressource est une valeur typée unique pour tout le monde. Utilisez-la pour
+le temps, la configuration, l’entrée, le rendu ou tout état partagé.
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -186,13 +188,13 @@ const Time &time = ecs::resource<Time>();
 </TabItem>
 </Tabs>
 
-Resources are not entity components and do not become query fields. A C++
-system can request one directly with `ecs::res<const Time>`.
+Les ressources ne sont pas des composants d’entité et ne deviennent pas des
+champs de requête. Un système C++ peut demander `ecs::res<const Time>`.
 
-## Relations and inheritance
+## Relations et héritage
 
-Relations connect entities. The built-in `ChildOf` relation models a hierarchy;
-custom relations model domain-specific edges such as `GroupOf` or `Targets`.
+Les relations connectent les entités. `ChildOf`, intégré, modélise une
+hiérarchie ; les relations personnalisées modélisent des liens comme `GroupOf`.
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -214,14 +216,15 @@ auto current_parent = child.target<ecs::ChildOf>();
 </TabItem>
 </Tabs>
 
-[Inheritance](../inheritance/) builds reusable abstract bases on top of `IsA`.
-Read-only queries can see an inherited value; writable queries require a local
-override.
+L’[héritage](../inheritance/) construit des bases abstraites réutilisables avec
+`IsA`. Les requêtes en lecture voient une valeur héritée ; les requêtes en
+écriture exigent un remplacement local.
 
-## Observers
+## Observateurs
 
-Observers react to a specific event instead of running every frame. Built-in
-events include component add, remove and set, plus relation transitions.
+Les observateurs réagissent à un événement précis au lieu de s’exécuter à chaque
+frame. Les événements intégrés couvrent l’ajout, le retrait et l’écriture de
+composants, ainsi que les transitions de relations.
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -247,13 +250,13 @@ ecs::observe<ecs::OnSet>().each([](const Position &position) {
 </TabItem>
 </Tabs>
 
-Observer payloads are borrowed for the callback. Use them immediately; do not
-store pointers to event data.
+Les payloads d’observateurs sont empruntés pendant le callback. Utilisez-les
+immédiatement, sans conserver de pointeur vers les données d’événement.
 
-## Continue with a manual
+## Continuer avec un manuel
 
-- [Components](../components/) for type registration, tags, reflection and hooks.
-- [Queries](../queries/) for every term and iterator rule.
-- [Systems](../systems/) for phases, ordering and safe mutation.
-- [Relations](../relations/) and [Inheritance](../inheritance/) for graphs and bases.
-- [Cookbook](../cookbook/) for compact patterns.
+- [Composants](../components/) : enregistrement, tags, réflexion et hooks.
+- [Requêtes](../queries/) : termes, itérateurs et durée de vie des champs.
+- [Systèmes](../systems/) : phases, ordre et mutations sûres.
+- [Relations](../relations/) et [héritage](../inheritance/) : graphes et bases.
+- [Cookbook](../cookbook/) : patterns compacts.

@@ -1,0 +1,58 @@
+---
+title: Concevoir avec SIECS
+description: Comprendre le modèle runtime, les coûts de stockage et les workloads pour lesquels SIECS est adapté.
+---
+
+SIECS est un runtime à archétypes compact, écrit en C et exposé aussi par un
+wrapper C++ typé. Son design privilégie l’ownership explicite, l’itération par
+lots et le même modèle de stockage dans les deux langages.
+
+## Choisir une interface
+
+L’API C dans `<siecs.h>` convient aux intégrations ABI C et aux descripteurs
+explicites. L’API C++ ajoute des entités typées, l’inférence des termes de
+requêtes par callback et les opérations de cycle de vie C++ ; le stockage reste
+toujours possédé par SIECS.
+
+## Workload adapté
+
+Le modèle favorise les applications où :
+
+- les systèmes parcourent fréquemment beaucoup d’entités de forme similaire ;
+- les valeurs changent plus souvent que l’ensemble de composants ;
+- les formes de requêtes sont connues et réutilisées ;
+- l’itération contiguë compte davantage que le dispatch objet.
+
+## Deux classes de mutations
+
+- Une mutation de valeur modifie une colonne déjà présente dans une table.
+- Une mutation structurelle ajoute ou retire un composant et peut déplacer une
+  entité dans une autre table.
+
+Le coût de migration est explicite et prévisible, mais n’est pas nul. Un
+workload à formes stables peut conserver l’essentiel du travail par frame dans
+des tableaux contigus. Un workload qui change continuellement des composants
+indépendants doit intégrer ce coût dans sa propre conception.
+
+## Requêtes et ordonnancement
+
+Les requêtes persistantes mettent en cache les tables correspondantes. Les
+systèmes possèdent ces requêtes et s’exécutent dans des phases explicites : les
+termes définissent les données, les phases donnent l’ordre global, et `after`
+ordonne les systèmes d’une même phase.
+
+## Ce que le runtime fournit
+
+- entités, composants, tags et ressources ;
+- requêtes à archétypes et itérateurs par lots ;
+- systèmes et phases ordonnées ;
+- observateurs et événements personnalisés ;
+- relations, héritage et modules ;
+- métadonnées de réflexion.
+
+REST est une extension de tooling : il n’est pas dans le chemin de stockage ou
+d’itération du noyau.
+
+Évaluez SIECS avec un workload réel lorsque le churn structurel est inhabituel,
+que la plupart des entités ont une forme unique, ou que le projet dépend d’un
+ordonnanceur ou éditeur spécifique.
