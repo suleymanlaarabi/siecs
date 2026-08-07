@@ -51,6 +51,12 @@ static int api_order_by_target_desc(
 void api_cpp_wrapper_helpers(void) {
     ecs_test_scope _ecs_scope;
 
+    auto monotonic = ecs::entity::create_no_reuse();
+    uint32_t monotonic_index = ecs_entity_id(monotonic.id());
+    monotonic.kill();
+    auto next_monotonic = ecs::entity::create_no_reuse();
+    test_true(ecs_entity_id(next_monotonic.id()) > monotonic_index);
+
     test_true(ecs::relation<ApiRelation>({
                   .storage = EcsRelationDense,
                   .on_delete_target = EcsDeleteSources,

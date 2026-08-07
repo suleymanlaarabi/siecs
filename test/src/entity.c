@@ -39,6 +39,39 @@ void entity_reuses_id_with_new_generation_after_kill(void) {
     ecs_fini();
 }
 
+void entity_new_no_reuse_uses_new_index(void) {
+    ecs_init();
+
+    ecs_entity_t first = ecs_new();
+    ecs_entity_t second = ecs_new();
+    uint32_t last_index = ecs_first(second);
+    ecs_kill(first);
+
+    ecs_entity_t next = ecs_new_no_reuse();
+    test_true(ecs_first(next) > last_index);
+    test_int(0, (int)ecs_second(next));
+    test_true(ecs_is_alive(next));
+
+    ecs_fini();
+}
+
+void entity_new_no_reuse_ignores_multiple_free_indices(void) {
+    ecs_init();
+
+    ecs_entity_t first = ecs_new();
+    ecs_entity_t second = ecs_new();
+    ecs_entity_t third = ecs_new();
+    uint32_t last_index = ecs_first(third);
+    ecs_kill(first);
+    ecs_kill(second);
+
+    ecs_entity_t next = ecs_new_no_reuse();
+    test_true(ecs_first(next) > last_index);
+    test_true(ecs_is_alive(next));
+
+    ecs_fini();
+}
+
 void entity_create_has_default_name(void) {
     ecs_init();
 

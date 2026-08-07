@@ -22,6 +22,12 @@ auto entity = ecs::entity::create();
 
 New entities start alive and have no user components.
 
+When numeric entity order must follow allocation order, use
+`ecs_new_no_reuse()` in C or `ecs::entity::create_no_reuse()` in C++. It always
+allocates a new highest index and never consumes a freed index. This is
+monotonic rather than contiguous: other entity allocations can still create
+gaps, and normal `ecs_new()` calls can continue to reuse freed indices.
+
 For abstract entities, bases, and inherited components, see
 [Inheritance](../inheritance/).
 

@@ -14,6 +14,8 @@ void public_metadata_and_entity_introspection(void);
 // Testsuite 'entity'
 void entity_create(void);
 void entity_reuses_id_with_new_generation_after_kill(void);
+void entity_new_no_reuse_uses_new_index(void);
+void entity_new_no_reuse_ignores_multiple_free_indices(void);
 void entity_create_has_default_name(void);
 void entity_explicit_name_overrides_default(void);
 void entity_with(void);
@@ -72,6 +74,7 @@ void childof_bydepth_reparent_updates_subtree(void);
 void childof_cascade_cache_accepts_new_depth(void);
 void childof_bytarget_exact_query_and_retarget(void);
 void childof_bytarget_exact_query_spans_tables(void);
+void childof_bytarget_order_by_target(void);
 void childof_bytarget_delete_policies(void);
 void childof_bytarget_keeps_target_generation(void);
 void childof_multiple_bytarget_relations_share_one_type(void);
@@ -155,6 +158,14 @@ bake_test_case entity_testcases[] = {
     {
         "reuses_id_with_new_generation_after_kill",
         entity_reuses_id_with_new_generation_after_kill
+    },
+    {
+        "new_no_reuse_uses_new_index",
+        entity_new_no_reuse_uses_new_index
+    },
+    {
+        "new_no_reuse_ignores_multiple_free_indices",
+        entity_new_no_reuse_ignores_multiple_free_indices
     },
     {
         "create_has_default_name",
@@ -372,6 +383,10 @@ bake_test_case childof_testcases[] = {
     {
         "bytarget_exact_query_spans_tables",
         childof_bytarget_exact_query_spans_tables
+    },
+    {
+        "bytarget_order_by_target",
+        childof_bytarget_order_by_target
     },
     {
         "bytarget_delete_policies",
@@ -636,7 +651,7 @@ static bake_test_suite suites[] = {
         "entity",
         NULL,
         NULL,
-        12,
+        14,
         entity_testcases
     },
     {
@@ -657,7 +672,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        20,
+        21,
         childof_testcases
     },
     {

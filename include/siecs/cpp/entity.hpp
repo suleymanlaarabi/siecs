@@ -42,6 +42,9 @@ class entity {
     /** Create a new live entity in the active world. */
     static entity create() noexcept { return entity(ecs_new()); }
 
+    /** Create a new live entity without reusing a freed entity index. */
+    static entity create_no_reuse() noexcept { return entity(ecs_new_no_reuse()); }
+
     /** Look up or create a named entity; name storage is copied by the world. */
     static entity create(const char *name) {
         entity value = lookup(name);

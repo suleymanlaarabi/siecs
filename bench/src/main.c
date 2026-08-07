@@ -699,7 +699,7 @@ BENCH_SETUP(relation_bydepth_cascade, {
     }
     ecs_query_desc_t desc = {
         .relations = { { .id = relation, .kind = EcsRelationRequired } },
-        .order = { .relation = relation },
+        .order_by = ecs_order_by_depth_id(relation),
     };
     ecs_query_id_t query = ecs_query_init(&desc);
     uint64_t checksum = 0;

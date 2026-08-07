@@ -29,6 +29,8 @@
         "testcases": [
           "create",
           "reuses_id_with_new_generation_after_kill",
+          "new_no_reuse_uses_new_index",
+          "new_no_reuse_ignores_multiple_free_indices",
           "create_has_default_name",
           "explicit_name_overrides_default",
           "with",

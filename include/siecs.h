@@ -738,6 +738,10 @@ SIECS_API ecs_entity_t ecs_entity_from_index(uint32_t index);
 /* Create a new alive entity in world. world must not be NULL. */
 SIECS_API ecs_entity_t ecs_new(void);
 
+/* Create a new alive entity without reusing a previously freed entity index.
+ * The returned index is greater than every index allocated so far. */
+SIECS_API ecs_entity_t ecs_new_no_reuse(void);
+
 /* Get the explicit entity name or a generated "(index, generation)" name. */
 SIECS_API const char *ecs_entity_name(ecs_entity_t entity);
 

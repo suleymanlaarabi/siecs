@@ -6565,11 +6565,11 @@ bool ecs_component_requires(const ecs_component_t component, ecs_component_t req
 }
 #endif
 
-static inline ecs_entity_t ecs_entity_index_create(uint32_t row) {
+static inline ecs_entity_t ecs_entity_index_create(uint32_t row, bool reuse) {
     ecs_entity_index_t *index = &ecs_world.entity_index;
     uint32_t entity_id;
     uint32_t generation;
-    if (index->first_available != UINT32_MAX) {
+    if (reuse && index->first_available != UINT32_MAX) {
         entity_id = index->first_available;
         ecs_entity_record_t *record = ecs_entity_index_get_record(entity_id);
         index->first_available = record->table_row;
@@ -6589,7 +6589,16 @@ static inline ecs_entity_t ecs_entity_index_create(uint32_t row) {
 ecs_entity_t ecs_new(void) {
     ecs_table_t *table = ecs_get_table(0);
 
-    ecs_entity_t entity = ecs_entity_index_create(table->entity_count);
+    ecs_entity_t entity = ecs_entity_index_create(table->entity_count, true);
+    ecs_table_add_entity(table, entity);
+
+    return entity;
+}
+
+ecs_entity_t ecs_new_no_reuse(void) {
+    ecs_table_t *table = ecs_get_table(0);
+
+    ecs_entity_t entity = ecs_entity_index_create(table->entity_count, false);
     ecs_table_add_entity(table, entity);
 
     return entity;

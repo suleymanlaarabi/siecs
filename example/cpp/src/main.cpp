@@ -29,7 +29,7 @@ int main() {
     SiecsRestImport({});
 
     ecs::entity::create("Parent").child_of(ecs::entity::create("Child"));
-    ecs::query().cascade<ecs::ChildOf>().each([](ecs::entity entity) {
+    ecs::query().order_by_depth<ecs::ChildOf>().each([](ecs::entity entity) {
         std::cout << entity.get<Name>().value;
     });
 

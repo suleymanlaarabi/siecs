@@ -125,6 +125,7 @@ typedef struct {
 
 ```c
 ecs_entity_t ecs_new(void);
+ecs_entity_t ecs_new_no_reuse(void);
 const char *ecs_entity_name(ecs_entity_t entity);
 void ecs_defer_begin(void);
 void ecs_defer_end(void);
@@ -133,6 +134,11 @@ bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
 void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 void ecs_kill(ecs_entity_t entity);
 ```
+
+`ecs_new_no_reuse()` allocates a fresh, highest entity index instead of taking
+an index from the free-list. Use it when numeric entity ordering must follow
+allocation order; the tradeoff is that freed indices remain unused by this
+allocator.
 
 `ecs_is_a()` creates an inheritance link from `entity` to `target`.
 `ecs_is()` checks whether an entity is or inherits from `target`.
