@@ -34,15 +34,18 @@ ECS_RESOURCE_REGISTER(Time);
 <TabItem label="C++">
 
 ```cpp
-struct Time { float dt; };
-ecs::set_resource(Time{ .dt = 0.016f });
+#include "resources.h" // contains ECS_RESOURCE_DECLARE(Time, ...)
+
+auto time = ecs::resource_handle<Time>();
+time.set(Time{ .dt = 0.016f });
 ```
 
 </TabItem>
 </Tabs>
 
 The resource macros intentionally mirror component macros, but resources are
-registered in a dedicated resource registry.
+registered in a dedicated resource registry. When a resource is declared in C,
+the C++ helpers reuse its C id, descriptor, lifecycle operations, and hooks.
 
 ## Set and Read
 

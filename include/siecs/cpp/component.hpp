@@ -30,6 +30,9 @@ template <typename T> struct component_type {
     static inline ecs_component_t id = 0;
 };
 
+template <typename T>
+concept c_declared_component = c_component_traits<std::remove_cv_t<T>>::value;
+
 template <typename T> struct component_hook_state {
     static inline component_hooks<T> hooks{};
 };
@@ -146,6 +149,15 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
 
 template <typename T>
 static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nullptr) {
+    using type = std::remove_cv_t<T>;
+    if constexpr (c_declared_component<type>) {
+        (void)hooks;
+        return ecs_component_register(
+            c_component_traits<type>::id_storage(),
+            c_component_traits<type>::desc_storage()
+        );
+    }
+
     ecs_component_t &cid = detail::component_type<T>::id;
 
     if (cid != 0)
@@ -191,6 +203,16 @@ template <typename T> struct relation_type {
 
 template <typename T>
 static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = nullptr) {
+    using type = std::remove_cv_t<T>;
+    if constexpr (c_relation_traits<type>::value) {
+        (void)desc;
+        return ecs_relation_register(
+            c_relation_traits<type>::id_storage(),
+            c_relation_traits<type>::relation_name(),
+            c_relation_traits<type>::desc_storage()
+        );
+    }
+
     ecs_relation_id_t &id = relation_type<T>::id;
     if (id)
         return id;

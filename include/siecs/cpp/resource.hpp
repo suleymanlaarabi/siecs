@@ -77,6 +77,9 @@ template <typename T> struct resource_type {
     static inline ecs_resource_t id;
 };
 
+template <typename T>
+concept c_declared_resource = c_resource_traits<std::remove_cv_t<T>>::value;
+
 template <typename T> struct is_res : std::false_type {};
 template <typename T> struct is_res<ecs::res<T>> : std::true_type {};
 
@@ -113,6 +116,18 @@ template <typename T> static void resource_on_remove(const void *ptr) {
 
 /** Register `T` and return a typed resource handle, installing hooks once. */
 template <typename T>
+    requires detail::c_declared_resource<T>
+static ecs_resource_t ecs_cpp_resource_id() {
+    using type = std::remove_cv_t<T>;
+    return ecs_resource_register(
+        detail::c_resource_traits<type>::id_storage(),
+        detail::c_resource_traits<type>::desc_storage()
+    );
+}
+
+/** Register a native C++ resource and return its id, installing hooks once. */
+template <typename T>
+    requires(!detail::c_declared_resource<T>)
 static ecs_resource_t
 ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) {
     using type = std::remove_cv_t<T>;
@@ -145,12 +160,16 @@ template <typename T> resource_ref<T> resource_handle() {
 
 /** Create a typed resource handle with lifecycle hooks. */
 template <typename T>
+    requires(!detail::c_declared_resource<T>)
 resource_ref<T> resource_handle(const resource_hooks<std::remove_cv_t<T>> &hooks) {
     return resource_ref<T>(ecs_cpp_resource_id<T>(&hooks));
 }
 
 template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {
     using type = std::remove_cv_t<T>;
+    if constexpr (detail::c_declared_resource<type>) {
+        return *detail::c_resource_traits<type>::id_storage();
+    }
     return detail::resource_type<type>::id;
 }
 

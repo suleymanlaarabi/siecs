@@ -32,19 +32,23 @@ ECS_COMPONENT_REGISTER(Position);
 <TabItem label="C++">
 
 ```cpp
-struct Position { float x, y; };
+// Position is declared with ECS_COMPONENT_DECLARE in a shared C header.
+#include "components.h"
 
 ecs::init();
 auto entity = ecs::entity::create();
 entity.set(Position{ .x = 1.0f, .y = 2.0f });
+auto position_id = ecs::component<Position>();
 ```
 
 </TabItem>
 </Tabs>
 
-In C++, the typed wrapper registers a component automatically on first use. Use
-the `reflected(...)` declaration when its fields must be visible to the REST
-explorer or JSON serialization:
+In C++, a type declared with `ECS_COMPONENT_DECLARE` uses the same C id and
+descriptor automatically; no second component registration is created. Plain
+C++ structs can still be registered automatically on first use. Use the
+`reflected(...)` declaration when a native C++ type's fields must be visible to
+the REST explorer or JSON serialization:
 
 ```cpp
 struct Position {

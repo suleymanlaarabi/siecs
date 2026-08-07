@@ -52,7 +52,9 @@ template <typename T> inline ecs_component_t component() {
 }
 
 /** Register a component and install its lifecycle hooks before first use. */
-template <typename T> inline ecs_component_t component(const component_hooks<T> &hooks) {
+template <typename T>
+    requires(!detail::c_declared_component<T>)
+inline ecs_component_t component(const component_hooks<T> &hooks) {
     return detail::ecs_cpp_component_id<T>(&hooks);
 }
 

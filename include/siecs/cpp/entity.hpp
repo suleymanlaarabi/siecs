@@ -32,7 +32,7 @@ class entity {
     entity() noexcept = default;
 
     /** Wrap a raw id without validating it; use `is_alive()` to validate. */
-    explicit entity(ecs_entity_t entity) noexcept : _entity(entity) {}
+    entity(ecs_entity_t entity) noexcept : _entity(entity) {}
 
     /** Look up a named live entity; returns null when names are disabled/missing. */
     static inline entity lookup(const std::string &name) {

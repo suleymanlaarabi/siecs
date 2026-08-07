@@ -1,4 +1,5 @@
 #include <siecs.h>
+#include "c_types_test.h"
 #include <test.h>
 
 struct ApiPosition {
@@ -175,4 +176,32 @@ void api_cpp_wrapper_helpers(void) {
     test_true(read_time.get().dt == 0.016f);
     time.remove();
     test_false(time.has());
+}
+
+void api_c_declared_component(void) {
+    cpp_c_position_on_set_calls = 0;
+
+    ecs_test_scope _ecs_scope;
+    auto id = ecs::component<cpp_c_position>();
+    test_int(ecs_id(cpp_c_position), id);
+
+    auto entity = ecs::entity::create().set(cpp_c_position{ .value = 1 });
+    test_true(entity.has<cpp_c_position>());
+    test_int(1, entity.get<cpp_c_position>().value);
+
+    entity.set(cpp_c_position{ .value = 2 });
+    test_int(2, entity.get<cpp_c_position>().value);
+    test_true(cpp_c_position_on_set_calls > 0);
+}
+
+void api_c_declared_relation(void) {
+    ecs_test_scope _ecs_scope;
+    auto relation = ecs::relation<cpp_c_parent>();
+    test_int(ecs_rid(cpp_c_parent), relation);
+
+    auto parent = ecs::entity::create();
+    auto child = ecs::entity::create().relate<cpp_c_parent>(parent);
+    test_true(child.has_relation<cpp_c_parent>());
+    test_int(parent.id(), child.target<cpp_c_parent>().id());
+    test_int(child.id(), ecs::query().to<cpp_c_parent>(parent).first().id());
 }

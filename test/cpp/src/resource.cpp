@@ -1,4 +1,5 @@
 #include <siecs.h>
+#include "c_types_test.h"
 #include <test.h>
 #include <string>
 
@@ -215,4 +216,22 @@ void resource_capturing_system_keeps_state(void) {
     ecs::progress();
 
     test_int(3, total);
+}
+
+void resource_c_declared_resource(void) {
+    cpp_c_time_on_set_calls = 0;
+
+    ecs_test_scope _ecs_scope;
+    auto time = ecs::resource_handle<cpp_c_time>();
+    test_int(ecs_id(cpp_c_time), time.id());
+
+    time.set(cpp_c_time{ .dt = 0.016f });
+    test_true(time.has());
+    test_assert(ecs::resource<cpp_c_time>().dt == 0.016f);
+    test_true(cpp_c_time_on_set_calls > 0);
+
+    ecs::resource<cpp_c_time>().dt = 0.25f;
+    test_assert(time.get().dt == 0.25f);
+    time.remove();
+    test_false(time.has());
 }

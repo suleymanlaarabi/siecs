@@ -826,6 +826,24 @@ SIJSON_API const char *sijson_error(void);
 #ifndef _Alignof
 #define _Alignof alignof
 #endif
+
+namespace ecs {
+namespace detail {
+
+template <typename T> struct c_component_traits {
+  static constexpr bool value = false;
+};
+
+template <typename T> struct c_resource_traits {
+  static constexpr bool value = false;
+};
+
+template <typename T> struct c_relation_traits {
+  static constexpr bool value = false;
+};
+
+} // namespace detail
+} // namespace ecs
 #endif
 
 #include <stdbool.h>
@@ -1257,6 +1275,10 @@ SIECS_API void ecs_quit(void);
  *
  * Use in headers:
  *   ECS_COMPONENT_DECLARE(Position, { float x; float y; });
+ *
+ * In C++, the generated type can be passed directly to ecs::component<T>()
+ * and the typed entity/query helpers. Those helpers reuse the C id and
+ * descriptor instead of creating a second registration.
  */
 /* Declare a component type and its descriptor in a public header. */
 #define ECS_COMPONENT_DECLARE(cname, ...)                                      \
@@ -1476,6 +1498,31 @@ typedef struct {
 
 ECS_RELATION_DECLARE(ChildOf);
 
+/* C++ declarations made after this header use the C relation id/descriptor. */
+#ifdef __cplusplus
+#undef ECS_RELATION_DECLARE
+#define ECS_RELATION_DECLARE(name)                                             \
+  extern "C++" {                                                              \
+    struct name {};                                                            \
+  }                                                                            \
+  extern "C" {                                                                \
+    extern ecs_relation_id_t ecs_rid(name);                                    \
+    extern ecs_relation_desc_t ecs_rid(name##_desc);                           \
+  }                                                                            \
+  extern "C++" {                                                              \
+    namespace ecs {                                                           \
+    namespace detail {                                                        \
+    template <> struct c_relation_traits<name> {                              \
+      static constexpr bool value = true;                                      \
+      static constexpr const char *relation_name() noexcept { return #name; }   \
+      static auto id_storage() noexcept { return &ecs_rid(name); }             \
+      static auto desc_storage() noexcept { return &ecs_rid(name##_desc); }    \
+    };                                                                        \
+    }                                                                         \
+    }                                                                         \
+  }
+#endif
+
 /* Register a runtime relation and return its world-local relation id. */
 SIECS_API ecs_relation_id_t ecs_relation_init(const char *name,
                                               const ecs_relation_desc_t *desc);
@@ -1491,6 +1538,47 @@ ECS_TAG_DECLARE(Disabled);
 
 /* Builtin tag for abstract entities. */
 ECS_TAG_DECLARE(Abstract);
+
+/* C++ declarations made after this header use the C id/descriptor directly. */
+#ifdef __cplusplus
+#undef ECS_COMPONENT_DECLARE
+#define ECS_COMPONENT_DECLARE(cname, ...)                                      \
+  SIJSON_DECLARE(cname, __VA_ARGS__)                                           \
+  extern "C" {                                                                \
+    extern ecs_component_t ecs_id(cname);                                      \
+    extern ecs_component_desc_t ecs_id(cname##_desc);                          \
+  }                                                                            \
+  extern "C++" {                                                             \
+  namespace ecs {                                                             \
+  namespace detail {                                                          \
+  template <> struct c_component_traits<cname> {                              \
+    static constexpr bool value = true;                                        \
+    static auto id_storage() noexcept { return &ecs_id(cname); }               \
+    static auto desc_storage() noexcept { return &ecs_id(cname##_desc); }      \
+  };                                                                          \
+  }                                                                           \
+  }                                                                           \
+  }
+
+#undef ECS_TAG_DECLARE
+#define ECS_TAG_DECLARE(cname)                                                  \
+  typedef struct cname##_tag_t cname;                                          \
+  extern "C" {                                                                \
+    extern ecs_component_t ecs_id(cname);                                      \
+    extern ecs_component_desc_t ecs_id(cname##_desc);                          \
+  }                                                                            \
+  extern "C++" {                                                             \
+  namespace ecs {                                                             \
+  namespace detail {                                                          \
+  template <> struct c_component_traits<cname> {                              \
+    static constexpr bool value = true;                                        \
+    static auto id_storage() noexcept { return &ecs_id(cname); }               \
+    static auto desc_storage() noexcept { return &ecs_id(cname##_desc); }      \
+  };                                                                          \
+  }                                                                           \
+  }                                                                           \
+  }
+#endif
 
 /*
  * Register a component from an inline descriptor.
@@ -1757,14 +1845,39 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
  * Use ECS_RESOURCE_DECLARE in headers and ECS_RESOURCE_DEFINE once in a C file,
  * or ECS_RESOURCE for local examples/tests.
  *
+ * A resource declared this way can also be passed directly to the C++ resource
+ * helpers. C ids, descriptors, lifecycle operations, and hooks remain the
+ * source of truth.
+ *
  * Example:
  *   ECS_RESOURCE(Time, { float dt; float elapsed; });
  */
+#ifdef __cplusplus
+#define ECS_RESOURCE_DECLARE(rname, ...)                                       \
+  typedef struct rname rname;                                                  \
+  struct rname __VA_ARGS__;                                                    \
+  extern "C" {                                                                \
+    extern ecs_resource_t ecs_id(rname);                                       \
+    extern ecs_resource_desc_t ecs_id(rname##_desc);                           \
+  }                                                                            \
+  extern "C++" {                                                             \
+  namespace ecs {                                                             \
+  namespace detail {                                                          \
+  template <> struct c_resource_traits<rname> {                               \
+    static constexpr bool value = true;                                        \
+    static auto id_storage() noexcept { return &ecs_id(rname); }               \
+    static auto desc_storage() noexcept { return &ecs_id(rname##_desc); }      \
+  };                                                                          \
+  }                                                                           \
+  }                                                                           \
+  }
+#else
 #define ECS_RESOURCE_DECLARE(rname, ...)                                       \
   typedef struct rname rname;                                                  \
   struct rname __VA_ARGS__;                                                    \
   extern ecs_resource_t ecs_id(rname);                                         \
   extern ecs_resource_desc_t ecs_id(rname##_desc)
+#endif
 
 /* Define a resource descriptor and its stable id storage. */
 #define ECS_RESOURCE_DEFINE(rname, ...)                                        \
@@ -2169,6 +2282,9 @@ template <typename T> struct component_type {
     static inline ecs_component_t id = 0;
 };
 
+template <typename T>
+concept c_declared_component = c_component_traits<std::remove_cv_t<T>>::value;
+
 template <typename T> struct component_hook_state {
     static inline component_hooks<T> hooks{};
 };
@@ -2285,6 +2401,15 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
 
 template <typename T>
 static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nullptr) {
+    using type = std::remove_cv_t<T>;
+    if constexpr (c_declared_component<type>) {
+        (void)hooks;
+        return ecs_component_register(
+            c_component_traits<type>::id_storage(),
+            c_component_traits<type>::desc_storage()
+        );
+    }
+
     ecs_component_t &cid = detail::component_type<T>::id;
 
     if (cid != 0)
@@ -2330,6 +2455,16 @@ template <typename T> struct relation_type {
 
 template <typename T>
 static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = nullptr) {
+    using type = std::remove_cv_t<T>;
+    if constexpr (c_relation_traits<type>::value) {
+        (void)desc;
+        return ecs_relation_register(
+            c_relation_traits<type>::id_storage(),
+            c_relation_traits<type>::relation_name(),
+            c_relation_traits<type>::desc_storage()
+        );
+    }
+
     ecs_relation_id_t &id = relation_type<T>::id;
     if (id)
         return id;
@@ -2386,7 +2521,7 @@ class entity {
     entity() noexcept = default;
 
     /** Wrap a raw id without validating it; use `is_alive()` to validate. */
-    explicit entity(ecs_entity_t entity) noexcept : _entity(entity) {}
+    entity(ecs_entity_t entity) noexcept : _entity(entity) {}
 
     /** Look up a named live entity; returns null when names are disabled/missing. */
     static inline entity lookup(const std::string &name) {
@@ -2795,6 +2930,9 @@ template <typename T> struct resource_type {
     static inline ecs_resource_t id;
 };
 
+template <typename T>
+concept c_declared_resource = c_resource_traits<std::remove_cv_t<T>>::value;
+
 template <typename T> struct is_res : std::false_type {};
 template <typename T> struct is_res<ecs::res<T>> : std::true_type {};
 
@@ -2831,6 +2969,18 @@ template <typename T> static void resource_on_remove(const void *ptr) {
 
 /** Register `T` and return a typed resource handle, installing hooks once. */
 template <typename T>
+    requires detail::c_declared_resource<T>
+static ecs_resource_t ecs_cpp_resource_id() {
+    using type = std::remove_cv_t<T>;
+    return ecs_resource_register(
+        detail::c_resource_traits<type>::id_storage(),
+        detail::c_resource_traits<type>::desc_storage()
+    );
+}
+
+/** Register a native C++ resource and return its id, installing hooks once. */
+template <typename T>
+    requires(!detail::c_declared_resource<T>)
 static ecs_resource_t
 ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) {
     using type = std::remove_cv_t<T>;
@@ -2863,12 +3013,16 @@ template <typename T> resource_ref<T> resource_handle() {
 
 /** Create a typed resource handle with lifecycle hooks. */
 template <typename T>
+    requires(!detail::c_declared_resource<T>)
 resource_ref<T> resource_handle(const resource_hooks<std::remove_cv_t<T>> &hooks) {
     return resource_ref<T>(ecs_cpp_resource_id<T>(&hooks));
 }
 
 template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {
     using type = std::remove_cv_t<T>;
+    if constexpr (detail::c_declared_resource<type>) {
+        return *detail::c_resource_traits<type>::id_storage();
+    }
     return detail::resource_type<type>::id;
 }
 
@@ -3758,7 +3912,9 @@ template <typename T> inline ecs_component_t component() {
 }
 
 /** Register a component and install its lifecycle hooks before first use. */
-template <typename T> inline ecs_component_t component(const component_hooks<T> &hooks) {
+template <typename T>
+    requires(!detail::c_declared_component<T>)
+inline ecs_component_t component(const component_hooks<T> &hooks) {
     return detail::ecs_cpp_component_id<T>(&hooks);
 }
 

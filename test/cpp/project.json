@@ -16,7 +16,9 @@
       {
         "id": "api",
         "testcases": [
-          "cpp_wrapper_helpers"
+          "cpp_wrapper_helpers",
+          "c_declared_component",
+          "c_declared_relation"
         ]
       },
       {
@@ -42,7 +44,8 @@
           "does_not_create_query_term",
           "field_index_stays_correct",
           "cpp_raii_component_survives_table_migrations",
-          "capturing_system_keeps_state"
+          "capturing_system_keeps_state",
+          "c_declared_resource"
         ]
       },
       {
