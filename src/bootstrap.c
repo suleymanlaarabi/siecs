@@ -4,9 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"
-#endif
 #include "storage/table_index.h"
 #include "utils.h"
 #include "world_internal.h"
@@ -161,7 +159,6 @@ void ecs_bootstrap() {
     sicore_vec_push_u64(&ecs_world.entity_index.entities, 0);
     ecs_component({ .name = "Invalid" });
 
-#if SIECS_HAS_META
     // Register the ecs_entity_t struct reflection.
     sireflect_register_struct(
         sijson_default_registry(),
@@ -172,7 +169,6 @@ void ecs_bootstrap() {
             .align = _Alignof(ecs_entity_t),
         }
     );
-#endif
 
     ECS_RELATION_REGISTER(ChildOf);
     ECS_COMPONENT_REGISTER(Name);

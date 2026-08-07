@@ -1,11 +1,7 @@
 #include "helper.h"
 #include "siecs.h"
-#if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"
-#endif
-#if SIECS_HAS_META && !defined(SIJSON_H)
 #include "sijson.h"
-#endif
 #include "relation.h"
 #include "storage/component_index.h"
 #include "utils.h"
@@ -151,11 +147,8 @@ void RelationSourceOnRemove(ecs_entity_t entity, ecs_component_t component, void
 
 static ecs_component_t ecs_component_register_type(
     ecs_component_t *id,
-    const ecs_component_desc_t *desc
-#if SIECS_HAS_META
-    ,
+    const ecs_component_desc_t *desc,
     sireflect_handle_t type
-#endif
 ) {
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
@@ -181,12 +174,9 @@ static ecs_component_t ecs_component_register_type(
         desc->on_set,
         desc->on_remove,
         desc->on_add,
-        0
-#if SIECS_HAS_META
-        ,
+        0,
         type,
         desc->struct_desc
-#endif
     );
     return component;
 }
@@ -207,12 +197,9 @@ ecs_component_t ecs_component_register_relation_internal(
         by_target ? NULL : RelationOnSet,
         by_target ? ecs_relation_target_on_remove : RelationOnRemove,
         NULL,
-        target_flags
-#if SIECS_HAS_META
-        ,
+        target_flags,
         SIREFLECT_INVALID_HANDLE,
         NULL
-#endif
     );
     if (by_target) {
         return component;
@@ -226,18 +213,14 @@ ecs_component_t ecs_component_register_relation_internal(
         NULL,
         RelationSourceOnRemove,
         NULL,
-        ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationSource)
-#if SIECS_HAS_META
-            ,
+        ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationSource),
         SIREFLECT_INVALID_HANDLE,
         NULL
-#endif
     );
     return component;
 }
 
 ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
-#if SIECS_HAS_META
     sireflect_handle_t type = SIREFLECT_INVALID_HANDLE;
     if (ECS_LIKELY(desc && desc->struct_desc)) {
         type = sireflect_try_register_struct(sijson_default_registry(), desc->struct_desc);
@@ -246,9 +229,6 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
         }
     }
     return ecs_component_register_type(id, desc, type);
-#else
-    return ecs_component_register_type(id, desc);
-#endif
 }
 
 ecs_component_t ecs_component_init(const ecs_component_desc_t *desc) {
@@ -265,7 +245,6 @@ const ecs_component_info_t *ecs_component_info(ecs_component_t component) {
 
 uint32_t ecs_component_count(void) { return ecs_world.component_index.components.size; }
 
-#if SIECS_HAS_META
 ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc) {
     sireflect_registry_t *registry = sijson_default_registry();
     sireflect_handle_t type =
@@ -305,7 +284,6 @@ ecs_component_t ecs_tag_init(const char *name) {
         .fields = "{}",
     });
 }
-#endif
 
 const char *ecs_component_name(ecs_component_t component) {
     ecs_assert(

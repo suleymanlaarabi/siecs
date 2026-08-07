@@ -3,10 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef EXPECT_META
-#error "EXPECT_META must be defined"
-#endif
-_Static_assert(SIECS_HAS_META == EXPECT_META);
+_Static_assert(SIECS_HAS_META == 1);
 
 ECS_COMPONENT(FeaturePosition, { int value; });
 ECS_RESOURCE(FeatureTime, { int value; });
@@ -39,9 +36,7 @@ int main(void) {
     );
     ecs_module_id_t module = ECS_MODULE_IMPORT(feature_module, { 1 });
 
-#if SIECS_HAS_META
     assert(ecs_id(FeaturePosition_desc).struct_desc != NULL);
-#endif
 
     ecs_fini();
     return 0;

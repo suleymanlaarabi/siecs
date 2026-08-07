@@ -1,9 +1,6 @@
 #include "siecs.h"
 #include <cassert>
 
-#ifndef EXPECT_META
-#error "EXPECT_META must be defined"
-#endif
 struct FeatureCppPosition {
     int value;
 };
@@ -13,7 +10,7 @@ struct FeatureCppResource {
 };
 
 int main() {
-    static_assert(SIECS_HAS_META == EXPECT_META);
+    static_assert(SIECS_HAS_META == 1);
 
     ecs::init();
 

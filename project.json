@@ -10,16 +10,7 @@
     "amalgamate": [
       {
         "path": "distr",
-        "dependencies": [
-          {
-            "when": "SICORE_VEC",
-            "use": ["sicore"]
-          },
-          {
-            "when": "SIECS_HAS_META",
-            "use": ["sireflect", "sijson"]
-          }
-        ]
+        "dependencies": true
       }
     ]
   },

@@ -1,13 +1,10 @@
 #include "component_index.h"
 #include "siecs.h"
-#if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"
-#endif
 #include "world_internal.h"
 #include <stdlib.h>
 #include <string.h>
 
-#if SIECS_HAS_META
 static sireflect_struct_desc_t *
 ecs_component_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
     if (!desc) {
@@ -29,7 +26,6 @@ ecs_component_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
     }
     return copy;
 }
-#endif
 
 void ecs_component_index_register(
     ecs_component_t id,
@@ -39,12 +35,9 @@ void ecs_component_index_register(
     ecs_component_on_set_t on_set,
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
-    uint32_t relation_flags
-#if SIECS_HAS_META
-    ,
+    uint32_t relation_flags,
     sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
-#endif
 ) {
     sicore_vec_ensure(
         &ecs_world.component_index.components,
@@ -62,16 +55,12 @@ void ecs_component_index_register(
     if (!info) {
         abort();
     }
-#if SIECS_HAS_META
     sireflect_struct_desc_t *reflection = ecs_component_reflection_desc_copy(reflection_desc);
-#endif
     *info = (ecs_component_info_t){
         .name = name ? strdup(name) : NULL,
         .size = size,
-#if SIECS_HAS_META
         .type = type,
         .reflection = reflection,
-#endif
     };
     if (name && !info->name) {
         abort();
@@ -88,9 +77,7 @@ void ecs_component_index_register(
         .on_add = on_add,
         .relation_flags = relation_flags,
         .tables = { 0 },
-#if SIECS_HAS_META
         .reflection_desc = reflection,
-#endif
     };
     sicore_vec_init(&record.tables, sizeof(uint16_t));
 
@@ -114,13 +101,11 @@ void ecs_component_index_fini() {
 
             free(records[i].info);
         }
-#if SIECS_HAS_META
         if (records[i].reflection_desc) {
             free((char *)records[i].reflection_desc->name);
             free((char *)records[i].reflection_desc->fields);
             free((void *)records[i].reflection_desc);
         }
-#endif
         free(records[i].required);
         sicore_vec_fini(&records[i].tables);
     }

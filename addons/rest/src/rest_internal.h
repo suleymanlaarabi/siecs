@@ -6,10 +6,6 @@
 #include <sihttp.h>
 #include <siecs.h>
 
-#if !SIECS_HAS_META
-#error "siecs_rest requires SIECS metadata support"
-#endif
-
 ECS_RESOURCE_DECLARE(SiecsRestState, { sihttp_server_t *server; });
 
 sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body);

@@ -18,44 +18,10 @@
 #define SICORE_VEC 1
 #endif
 
-/*
- * SIECS builds with all optional features enabled by default.
- *
- * Define SIECS_CUSTOM_BUILD to start with optional metadata disabled, then
- * enable it only when it is needed:
- *
- *   SIECS_META   - component reflection metadata
- *
- * In the default build, individual features can be removed with:
- *
- *   SIECS_NO_META
- */
-
-#if defined(SIECS_META) && defined(SIECS_NO_META)
-#error "SIECS_META and SIECS_NO_META cannot be defined together"
-#endif
-
-#ifdef SIECS_CUSTOM_BUILD
-
-#ifdef SIECS_META
+/* Reflection metadata is part of every SIECS build. */
 #define SIECS_HAS_META 1
-#else
-#define SIECS_HAS_META 0
-#endif
-
-#else
-
-#ifdef SIECS_NO_META
-#define SIECS_HAS_META 0
-#else
-#define SIECS_HAS_META 1
-#endif
 
 #endif
-
-#endif
-
-#if SICORE_VEC
 
 #if SICORE_VEC
 // Comment out this line when using as DLL
@@ -268,9 +234,6 @@ bool sicore_map_unset(sicore_map_t *map, const char *key);
 
 #endif
 
-#endif /* SICORE_VEC */
-
-#if SIECS_HAS_META
 // Comment out this line when using as DLL
 #define sireflect_STATIC
 #ifndef SIREFLECT_H
@@ -608,9 +571,6 @@ SIREFLECT_API int sireflect_field_copy(
 
 #endif
 
-#endif /* SIECS_HAS_META */
-
-#if SIECS_HAS_META
 // Comment out this line when using as DLL
 #define sijson_STATIC
 #ifndef SIJSON_H
@@ -841,14 +801,11 @@ SIJSON_API const char *sijson_error(void);
 
 #endif
 
-#endif /* SIECS_HAS_META */
 #endif
 
-#if SIECS_HAS_META
 #ifndef SIJSON_H
 #endif
 #ifndef SIREFLECT_H
-#endif
 #endif
 
 #ifndef siecs_STATIC
@@ -1060,30 +1017,24 @@ typedef struct {
   ecs_component_on_set_t on_set;
   ecs_component_on_remove_t on_remove;
   ecs_component_on_add_t on_add;
-#if SIECS_HAS_META
   const sireflect_struct_desc_t *struct_desc;
-#endif
 } ecs_component_desc_t;
 
 /* Immutable metadata for a registered component. */
 typedef struct {
   const char *name;
   uint64_t size;
-#if SIECS_HAS_META
   sireflect_handle_t type;
   /* Copied reflection descriptor, borrowed until ecs_fini(). */
   const sireflect_struct_desc_t *reflection;
-#endif
 } ecs_component_info_t;
 
-#if SIECS_HAS_META
 /* Dynamic reflected component descriptor. Sireflect derives size and alignment.
  */
 typedef struct {
   const char *name;
   const char *fields;
 } ecs_dynamic_component_desc_t;
-#endif
 
 /*
  * Resource hook function type.
@@ -1297,7 +1248,6 @@ SIECS_API void ecs_quit(void);
  * Use in headers:
  *   ECS_COMPONENT_DECLARE(Position, { float x; float y; });
  */
-#if SIECS_HAS_META
 /* Declare a component type and its descriptor in a public header. */
 #define ECS_COMPONENT_DECLARE(cname, ...)                                      \
   SIJSON_DECLARE(cname, __VA_ARGS__)                                           \
@@ -1308,18 +1258,6 @@ SIECS_API void ecs_quit(void);
 #define SIECS_TAG_META_DEFINE(cname)                                           \
   static const sireflect_struct_desc_t sireflect_desc(cname) = {               \
       .name = #cname, .fields = "{}", .size = 0, .align = 1};
-#else
-/* Declare a component type and its descriptor without reflection metadata. */
-#define ECS_COMPONENT_DECLARE(cname, ...)                                      \
-  typedef struct cname cname;                                                  \
-  struct cname __VA_ARGS__;                                                    \
-  extern ecs_component_t ecs_id(cname);                                        \
-  extern ecs_component_desc_t ecs_id(cname##_desc)
-#define SIECS_COMPONENT_META_DEFINE(cname)
-#define SIECS_COMPONENT_META_INIT(cname)
-#define SIECS_TAG_META_DEFINE(cname)
-#endif
-
 /*
  * Define a component declared with ECS_COMPONENT_DECLARE.
  *
@@ -1551,7 +1489,6 @@ ecs_component_info(ecs_component_t component);
 /* Return the number of component slots, including reserved id 0. */
 SIECS_API uint32_t ecs_component_count(void);
 
-#if SIECS_HAS_META
 /* Register a reflected component whose C layout is derived by Sireflect.
  * Returns 0 on error. */
 SIECS_API ecs_component_t
@@ -1559,7 +1496,6 @@ ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc);
 
 /* Register a zero-sized reflected tag. Returns 0 on error. */
 SIECS_API ecs_component_t ecs_tag_init(const char *name);
-#endif
 
 /* Return the registered component name. */
 SIECS_API const char *ecs_component_name(ecs_component_t component);
@@ -2157,8 +2093,6 @@ template <class T> consteval std::string_view type_name() {
 
 } // namespace ecs
 
-#if SIECS_HAS_META && !defined(SIREFLECT_H)
-#endif
 #include <cstddef>
 #include <cstdio>
 #include <memory>
@@ -2308,7 +2242,6 @@ static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nu
     if (cid != 0)
         return cid;
 
-#if SIECS_HAS_META
     static sireflect_struct_desc_t reflection = {
         .name = strdup(std::string(type_name<T>()).c_str()),
         .fields = "{}",
@@ -2323,14 +2256,7 @@ static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nu
         reflection.size = sisizeof<T>();
         reflection.align = _Alignof(T);
     }
-#endif
-
-#if SIECS_HAS_META
     const char *component_name = reflection.name;
-#else
-    static const std::string name = std::string(type_name<T>());
-    const char *component_name = name.c_str();
-#endif
 
     if (hooks != nullptr)
         component_hook_state<T>::hooks = *hooks;
@@ -2342,9 +2268,7 @@ static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nu
         .on_set = hooks && hooks->on_set ? component_on_set<T> : nullptr,
         .on_remove = hooks && hooks->on_remove ? component_on_remove<T> : nullptr,
         .on_add = hooks && hooks->on_add ? component_on_add<T> : nullptr,
-#if SIECS_HAS_META
         .struct_desc = &reflection,
-#endif
     };
 
     cid = ecs_component_init(&desc);

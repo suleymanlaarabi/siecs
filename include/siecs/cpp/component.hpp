@@ -1,9 +1,7 @@
 #pragma once
 #include "siecs/cpp/c_api.hpp"
 #include "siecs/cpp/type.hpp"
-#if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"
-#endif
 #include <cstddef>
 #include <cstdio>
 #include <memory>
@@ -153,7 +151,6 @@ static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nu
     if (cid != 0)
         return cid;
 
-#if SIECS_HAS_META
     static sireflect_struct_desc_t reflection = {
         .name = strdup(std::string(type_name<T>()).c_str()),
         .fields = "{}",
@@ -168,14 +165,7 @@ static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nu
         reflection.size = sisizeof<T>();
         reflection.align = _Alignof(T);
     }
-#endif
-
-#if SIECS_HAS_META
     const char *component_name = reflection.name;
-#else
-    static const std::string name = std::string(type_name<T>());
-    const char *component_name = name.c_str();
-#endif
 
     if (hooks != nullptr)
         component_hook_state<T>::hooks = *hooks;
@@ -187,9 +177,7 @@ static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nu
         .on_set = hooks && hooks->on_set ? component_on_set<T> : nullptr,
         .on_remove = hooks && hooks->on_remove ? component_on_remove<T> : nullptr,
         .on_add = hooks && hooks->on_add ? component_on_add<T> : nullptr,
-#if SIECS_HAS_META
         .struct_desc = &reflection,
-#endif
     };
 
     cid = ecs_component_init(&desc);

@@ -1,9 +1,7 @@
 #ifndef SIECS_STORAGE_COMPONENT_INDEX_H
 #define SIECS_STORAGE_COMPONENT_INDEX_H
 #include "siecs.h"
-#if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"
-#endif
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -26,9 +24,7 @@ typedef struct {
     ecs_component_on_add_t on_add;
     uint32_t relation_flags;
     sicore_vec_t tables; // uint16_t
-#if SIECS_HAS_META
     const sireflect_struct_desc_t *reflection_desc;
-#endif
 } ecs_component_record_t;
 
 typedef struct ecs_component_index_s {
@@ -43,12 +39,9 @@ void ecs_component_index_register(
     ecs_component_on_set_t on_set,
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
-    uint32_t relation_flags
-#if SIECS_HAS_META
-    ,
+    uint32_t relation_flags,
     sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
-#endif
 );
 
 #define ecs_component_index_get(id)                                                                \

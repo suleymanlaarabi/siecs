@@ -3,9 +3,7 @@
 #include "command_buffer.h"
 #include "datastructure/arena.h"
 #include "siecs.h"
-#if SIECS_HAS_META && !defined(SIREFLECT_H)
 #include "sireflect.h"
-#endif
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
 #include "storage/module_index.h"

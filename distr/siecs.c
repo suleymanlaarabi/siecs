@@ -1,7 +1,5 @@
 #include "siecs.h"
 
-#if SICORE_VEC
-
 #if SICORE_HAS_MAP
 #include <stdlib.h>
 #include <string.h>
@@ -531,10 +529,6 @@ void sicore_vec_remove_u64(sicore_vec_t *vec, uint64_t value) {
     });
 }
 #endif
-
-#endif /* SICORE_VEC */
-
-#if SIECS_HAS_META
 
 #ifndef NDEBUG
 #include <stdio.h>
@@ -2395,9 +2389,6 @@ sireflect_type_pointee(const sireflect_registry_t *reg, sireflect_handle_t ref) 
     return type->element_type;
 }
 
-#endif /* SIECS_HAS_META */
-
-#if SIECS_HAS_META
 #ifndef SIJSON_INTERNAL_H
 #define SIJSON_INTERNAL_H
 
@@ -4210,7 +4201,6 @@ char *sijson_stringify(sijson_value_t value) {
     return writer.data;
 }
 
-#endif /* SIECS_HAS_META */
 #ifndef SIECS_HELPER_H
 #define SIECS_HELPER_H
 
@@ -4240,11 +4230,6 @@ static inline unsigned ecs_ctz(unsigned value) {
 
 #endif
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#if SIECS_HAS_META && !defined(SIREFLECT_H)
-#endif
 #ifndef SIECS_STORAGE_TABLE_INDEX_H
 #define SIECS_STORAGE_TABLE_INDEX_H
 #ifndef SIECS_TABLE_H
@@ -4636,12 +4621,8 @@ static inline void ecs_arena_reset(ecs_arena_t *allocator) {
 
 #endif
 
-#if SIECS_HAS_META && !defined(SIREFLECT_H)
-#endif
 #ifndef SIECS_STORAGE_COMPONENT_INDEX_H
 #define SIECS_STORAGE_COMPONENT_INDEX_H
-#if SIECS_HAS_META && !defined(SIREFLECT_H)
-#endif
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -4664,9 +4645,7 @@ typedef struct {
     ecs_component_on_add_t on_add;
     uint32_t relation_flags;
     sicore_vec_t tables; // uint16_t
-#if SIECS_HAS_META
     const sireflect_struct_desc_t *reflection_desc;
-#endif
 } ecs_component_record_t;
 
 typedef struct ecs_component_index_s {
@@ -4681,12 +4660,9 @@ void ecs_component_index_register(
     ecs_component_on_set_t on_set,
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
-    uint32_t relation_flags
-#if SIECS_HAS_META
-    ,
+    uint32_t relation_flags,
     sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
-#endif
 );
 
 #define ecs_component_index_get(id)                                                                \
@@ -5275,7 +5251,6 @@ void ecs_bootstrap() {
     sicore_vec_push_u64(&ecs_world.entity_index.entities, 0);
     ecs_component({ .name = "Invalid" });
 
-#if SIECS_HAS_META
     // Register the ecs_entity_t struct reflection.
     sireflect_register_struct(
         sijson_default_registry(),
@@ -5286,7 +5261,6 @@ void ecs_bootstrap() {
             .align = _Alignof(ecs_entity_t),
         }
     );
-#endif
 
     ECS_RELATION_REGISTER(ChildOf);
     ECS_COMPONENT_REGISTER(Name);
@@ -5499,8 +5473,6 @@ void *ecs_migrate(
 );
 
 #endif
-
-#include <stdint.h>
 
 #define ECS_COMMAND_NONE UINT32_MAX
 
@@ -5930,11 +5902,6 @@ void ecs_defer_end(void) {
     }
 }
 
-#if SIECS_HAS_META && !defined(SIREFLECT_H)
-#endif
-#if SIECS_HAS_META && !defined(SIJSON_H)
-#endif
-
 static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
     uint32_t id = ecs_world.component_index.components.size;
     ecs_assert(id + count <= UINT16_MAX, "component id overflow\n");
@@ -6071,11 +6038,8 @@ void RelationSourceOnRemove(ecs_entity_t entity, ecs_component_t component, void
 
 static ecs_component_t ecs_component_register_type(
     ecs_component_t *id,
-    const ecs_component_desc_t *desc
-#if SIECS_HAS_META
-    ,
+    const ecs_component_desc_t *desc,
     sireflect_handle_t type
-#endif
 ) {
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
@@ -6101,12 +6065,9 @@ static ecs_component_t ecs_component_register_type(
         desc->on_set,
         desc->on_remove,
         desc->on_add,
-        0
-#if SIECS_HAS_META
-        ,
+        0,
         type,
         desc->struct_desc
-#endif
     );
     return component;
 }
@@ -6127,12 +6088,9 @@ ecs_component_t ecs_component_register_relation_internal(
         by_target ? NULL : RelationOnSet,
         by_target ? ecs_relation_target_on_remove : RelationOnRemove,
         NULL,
-        target_flags
-#if SIECS_HAS_META
-        ,
+        target_flags,
         SIREFLECT_INVALID_HANDLE,
         NULL
-#endif
     );
     if (by_target) {
         return component;
@@ -6146,18 +6104,14 @@ ecs_component_t ecs_component_register_relation_internal(
         NULL,
         RelationSourceOnRemove,
         NULL,
-        ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationSource)
-#if SIECS_HAS_META
-            ,
+        ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationSource),
         SIREFLECT_INVALID_HANDLE,
         NULL
-#endif
     );
     return component;
 }
 
 ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
-#if SIECS_HAS_META
     sireflect_handle_t type = SIREFLECT_INVALID_HANDLE;
     if (ECS_LIKELY(desc && desc->struct_desc)) {
         type = sireflect_try_register_struct(sijson_default_registry(), desc->struct_desc);
@@ -6166,9 +6120,6 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
         }
     }
     return ecs_component_register_type(id, desc, type);
-#else
-    return ecs_component_register_type(id, desc);
-#endif
 }
 
 ecs_component_t ecs_component_init(const ecs_component_desc_t *desc) {
@@ -6185,7 +6136,6 @@ const ecs_component_info_t *ecs_component_info(ecs_component_t component) {
 
 uint32_t ecs_component_count(void) { return ecs_world.component_index.components.size; }
 
-#if SIECS_HAS_META
 ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc) {
     sireflect_registry_t *registry = sijson_default_registry();
     sireflect_handle_t type =
@@ -6225,7 +6175,6 @@ ecs_component_t ecs_tag_init(const char *name) {
         .fields = "{}",
     });
 }
-#endif
 
 const char *ecs_component_name(ecs_component_t component) {
     ecs_assert(
@@ -8347,10 +8296,6 @@ void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id) {
     }
 }
 
-#if SIECS_HAS_META && !defined(SIREFLECT_H)
-#endif
-
-#if SIECS_HAS_META
 static sireflect_struct_desc_t *
 ecs_component_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
     if (!desc) {
@@ -8372,7 +8317,6 @@ ecs_component_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
     }
     return copy;
 }
-#endif
 
 void ecs_component_index_register(
     ecs_component_t id,
@@ -8382,12 +8326,9 @@ void ecs_component_index_register(
     ecs_component_on_set_t on_set,
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
-    uint32_t relation_flags
-#if SIECS_HAS_META
-    ,
+    uint32_t relation_flags,
     sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
-#endif
 ) {
     sicore_vec_ensure(
         &ecs_world.component_index.components,
@@ -8405,16 +8346,12 @@ void ecs_component_index_register(
     if (!info) {
         abort();
     }
-#if SIECS_HAS_META
     sireflect_struct_desc_t *reflection = ecs_component_reflection_desc_copy(reflection_desc);
-#endif
     *info = (ecs_component_info_t){
         .name = name ? strdup(name) : NULL,
         .size = size,
-#if SIECS_HAS_META
         .type = type,
         .reflection = reflection,
-#endif
     };
     if (name && !info->name) {
         abort();
@@ -8431,9 +8368,7 @@ void ecs_component_index_register(
         .on_add = on_add,
         .relation_flags = relation_flags,
         .tables = { 0 },
-#if SIECS_HAS_META
         .reflection_desc = reflection,
-#endif
     };
     sicore_vec_init(&record.tables, sizeof(uint16_t));
 
@@ -8457,13 +8392,11 @@ void ecs_component_index_fini() {
 
             free(records[i].info);
         }
-#if SIECS_HAS_META
         if (records[i].reflection_desc) {
             free((char *)records[i].reflection_desc->name);
             free((char *)records[i].reflection_desc->fields);
             free((void *)records[i].reflection_desc);
         }
-#endif
         free(records[i].required);
         sicore_vec_fini(&records[i].tables);
     }

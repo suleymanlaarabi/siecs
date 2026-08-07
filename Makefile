@@ -1,5 +1,7 @@
 BAKE_HOME = $(shell bake env | sed -n 's/^BAKE_HOME=//p')
+BAKE_TARGET = $(shell bake env | sed -n 's/^BAKE_TARGET=//p')
 DEPS_INCLUDE = -I$(BAKE_HOME)/include
+DEPS_LIB = -L$(BAKE_TARGET)/lib -lsijson -lsireflect -lsicore
 QUIET_BAKE = grep -Ev '^\[[[:space:]]*(test|build|run|runall|[0-9]+%)|^cmd:|^path:'
 
 .PHONY: clean bench bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-release test-rest test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release act-ci act-docs act
@@ -91,8 +93,6 @@ check-distr:
 	sh tools/rebuild_distr.sh "$$tmp_dir"; \
 	diff -u distr/siecs.c "$$tmp_dir/distr/siecs.c"; \
 	diff -u distr/siecs.h "$$tmp_dir/distr/siecs.h"; \
-	diff -u distr/siecs_no_addons.c "$$tmp_dir/distr/siecs_no_addons.c"; \
-	diff -u distr/siecs_no_addons.h "$$tmp_dir/distr/siecs_no_addons.h"; \
 	diff -u include/siecs/bake_config.h "$$tmp_dir/include/siecs/bake_config.h"
 
 check-distr-standalone:
@@ -101,7 +101,7 @@ check-distr-standalone:
 	cp distr/siecs.c "$$tmp_dir/siecs.c"; \
 	cp distr/siecs.h "$$tmp_dir/siecs.h"; \
 	cd "$$tmp_dir"; \
-	$(CC) -std=c17 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic -c siecs.c -o siecs-distr.o
+	$(CC) -std=c17 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic $(DEPS_INCLUDE) -c siecs.c -o siecs-distr.o
 
 check-distr-cpp-standalone:
 	tmp_dir=$$(mktemp -d /tmp/siecs-distr-cpp.XXXXXX); \
@@ -110,8 +110,8 @@ check-distr-cpp-standalone:
 	cp distr/siecs.h "$$tmp_dir/siecs.h"; \
 	cp test/standalone/distr_cpp_standalone.cpp "$$tmp_dir/main.cpp"; \
 	cd "$$tmp_dir"; \
-	$(CC) -std=c17 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic -c siecs.c -o siecs.o; \
-	$(CXX) -std=c++20 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic -I. main.cpp siecs.o -pthread -o siecs-cpp-standalone; \
+	$(CC) -std=c17 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic $(DEPS_INCLUDE) -c siecs.c -o siecs.o; \
+	$(CXX) -std=c++20 -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-function -pedantic -I. $(DEPS_INCLUDE) main.cpp siecs.o $(DEPS_LIB) -pthread -Wl,-rpath,$(BAKE_TARGET)/lib -o siecs-cpp-standalone; \
 	./siecs-cpp-standalone
 
 act-ci:
