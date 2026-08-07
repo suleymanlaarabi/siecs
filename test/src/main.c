@@ -37,6 +37,7 @@ void component_add_with_required_uses_current_table_edge(void);
 void component_add_with_required_uses_cached_multi_add_edge(void);
 void component_add_with_required_emits_each_on_add_once(void);
 void component_add_with_required_accepts_sixteen_component_plan(void);
+void component_add_with_required_deduplicates_branches(void);
 void component_add_zeroes_reused_component_slot(void);
 void component_double_add_and_remove_are_noops(void);
 void component_many_tags_preserve_data_on_migration(void);
@@ -123,6 +124,7 @@ void system_manual_defer_coalesces_to_final_state(void);
 void system_deferred_many_sets_survive_arena_growth(void);
 void system_deferred_set_overwrite_keeps_latest_value(void);
 void system_deferred_set_adds_required_components(void);
+void system_deferred_changes_coalesce_by_component(void);
 void system_quit_makes_progress_return_false(void);
 
 // Testsuite 'observer'
@@ -240,6 +242,10 @@ bake_test_case component_testcases[] = {
     {
         "add_with_required_accepts_sixteen_component_plan",
         component_add_with_required_accepts_sixteen_component_plan
+    },
+    {
+        "add_with_required_deduplicates_branches",
+        component_add_with_required_deduplicates_branches
     },
     {
         "add_zeroes_reused_component_slot",
@@ -566,6 +572,10 @@ bake_test_case system_testcases[] = {
         system_deferred_set_adds_required_components
     },
     {
+        "deferred_changes_coalesce_by_component",
+        system_deferred_changes_coalesce_by_component
+    },
+    {
         "quit_makes_progress_return_false",
         system_quit_makes_progress_return_false
     }
@@ -633,7 +643,7 @@ static bake_test_suite suites[] = {
         "component",
         NULL,
         NULL,
-        24,
+        25,
         component_testcases
     },
     {
@@ -661,7 +671,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        18,
+        19,
         system_testcases
     },
     {
