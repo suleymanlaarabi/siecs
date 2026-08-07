@@ -1,34 +1,34 @@
-#include "table_migration.h"
 #include "component_require.h"
+#include "storage/component_index.h"
 #include "world_internal.h"
 #include <stdbool.h>
 #include <stdlib.h>
 
-static inline bool ecs_required_has(
-    const ecs_component_t *ids,
-    uint16_t count,
-    ecs_component_t id
-) {
-    for (uint16_t i = 0; i < count; i++) {
-        if (ids[i] == id) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static inline void ecs_required_push(
+static inline bool ecs_required_add_sorted(
     ecs_component_t *ids,
     uint16_t *count,
     uint16_t capacity,
     ecs_component_t id
 ) {
+    uint16_t at = 0;
+    while (at < *count && ids[at] < id) {
+        at++;
+    }
+    if (at < *count && ids[at] == id) {
+        return false;
+    }
+
 #ifndef NDEBUG
     if (*count == capacity) {
         abort();
     }
 #endif
-    ids[(*count)++] = id;
+    for (uint16_t i = *count; i > at; i--) {
+        ids[i] = ids[i - 1];
+    }
+    ids[at] = id;
+    (*count)++;
+    return true;
 }
 
 static void ecs_collect_required_components_inner(
@@ -41,15 +41,12 @@ static void ecs_collect_required_components_inner(
     for (uint32_t i = 0; i < record->required_count; i++) {
         ecs_component_t required = record->required[i];
         if (ecs_table_has_owned(table, required) ||
-            ecs_required_has(ids, *count, required)) {
+            !ecs_required_add_sorted(ids, count, capacity, required)) {
             continue;
         }
 
         const ecs_component_record_t *required_rec = ecs_component_index_get(required);
         ecs_collect_required_components_inner(table, required_rec, ids, count, capacity);
-        if (!ecs_required_has(ids, *count, required)) {
-            ecs_required_push(ids, count, capacity, required);
-        }
     }
 }
 
@@ -62,18 +59,6 @@ void ecs_collect_required_components(
 ) {
     const ecs_component_record_t *record = ecs_component_index_get(component);
     ecs_collect_required_components_inner(table, record, ids, count, capacity);
-}
-
-static inline void ecs_sort_component_ids(ecs_component_t *ids, uint16_t count) {
-    for (uint16_t i = 1; i < count; i++) {
-        ecs_component_t id = ids[i];
-        uint16_t j = i;
-        while (j > 0 && ids[j - 1] > id) {
-            ids[j] = ids[j - 1];
-            j--;
-        }
-        ids[j] = id;
-    }
 }
 
 ecs_type_t ecs_type_with_requirements(
@@ -89,36 +74,8 @@ ecs_type_t ecs_type_with_requirements(
         &count,
         ECS_ADD_PLAN_MAX_COMPONENTS
     );
-    ecs_required_push(ids, &count, ECS_ADD_PLAN_MAX_COMPONENTS, cid);
-    ecs_sort_component_ids(ids, count);
-
-    uint16_t total_count = from_table->type.component_count + count;
-    ecs_component_t *merged = malloc(sizeof(ecs_component_t) * total_count);
-
-    uint16_t from_i = 0;
-    uint16_t add_i = 0;
-    uint16_t out_i = 0;
-    while (from_i < from_table->type.component_count && add_i < count) {
-        ecs_component_t from_id = from_table->type.ids[from_i];
-        ecs_component_t add_id = ids[add_i];
-        if (from_id < add_id) {
-            merged[out_i++] = from_id;
-            from_i++;
-        } else {
-            merged[out_i++] = add_id;
-            add_i++;
-        }
-    }
-    while (from_i < from_table->type.component_count) {
-        merged[out_i++] = from_table->type.ids[from_i++];
-    }
-    while (add_i < count) {
-        merged[out_i++] = ids[add_i++];
-    }
-
-    ecs_type_t type = ecs_type_with_ids(&from_table->type, merged, total_count);
-    free(merged);
-    return type;
+    ecs_required_add_sorted(ids, &count, ECS_ADD_PLAN_MAX_COMPONENTS, cid);
+    return ecs_type_with_added_ids(&from_table->type, ids, count);
 }
 
 #ifndef NDEBUG

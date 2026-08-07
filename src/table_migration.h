@@ -7,13 +7,6 @@
 #include "table_ops.h"
 #include <stdint.h>
 
-#define ECS_ADD_PLAN_MAX_COMPONENTS 64
-
-ecs_type_t ecs_type_with_requirements(
-    ecs_table_t *from_table,
-    ecs_component_t cid
-);
-
 #ifndef NDEBUG
 bool ecs_component_requires(
     const     ecs_component_t component,

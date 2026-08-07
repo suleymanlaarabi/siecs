@@ -134,6 +134,34 @@ ecs_type_t ecs_type_with_ids(const ecs_type_t *type, const uint16_t *ids, uint16
     return out;
 }
 
+ecs_type_t ecs_type_with_added_ids(
+    const ecs_type_t *type,
+    const ecs_component_t *ids,
+    uint16_t count
+) {
+    ecs_type_t out = ecs_type_alloc(type, count, 0);
+    uint16_t from_i = 0;
+    uint16_t added_i = 0;
+    uint16_t out_i = 0;
+
+    while (from_i < type->component_count && added_i < count) {
+        if (type->ids[from_i] < ids[added_i]) {
+            out.ids[out_i++] = type->ids[from_i++];
+        } else {
+            out.ids[out_i++] = ids[added_i++];
+        }
+    }
+    while (from_i < type->component_count) {
+        out.ids[out_i++] = type->ids[from_i++];
+    }
+    while (added_i < count) {
+        out.ids[out_i++] = ids[added_i++];
+    }
+
+    ecs_type_copy_pairs(&out, type, 0, 0, (ecs_type_pair_t){ 0 });
+    return out;
+}
+
 ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base) {
     ecs_type_t out = ecs_type_with_ids(type, type->ids, type->component_count);
     out.base = base;

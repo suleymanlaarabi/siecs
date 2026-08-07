@@ -3,6 +3,13 @@
 
 #include "table.h"
 
+#define ECS_ADD_PLAN_MAX_COMPONENTS 64
+
+ecs_type_t ecs_type_with_requirements(
+    ecs_table_t *from_table,
+    ecs_component_t cid
+);
+
 void ecs_collect_required_components(
     const ecs_table_t *table,
     ecs_component_t component,

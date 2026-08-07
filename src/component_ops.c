@@ -1,4 +1,5 @@
 #include "command_buffer.h"
+#include "component_require.h"
 #include "datastructure/idmap.h"
 #include "event_ops.h"
 #include "helper.h"

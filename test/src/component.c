@@ -517,6 +517,29 @@ void component_add_with_required_accepts_sixteen_component_plan(void) {
     ecs_fini();
 }
 
+void component_add_with_required_deduplicates_branches(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RequiredA);
+    ECS_COMPONENT_REGISTER(RequiredB);
+    ECS_COMPONENT_REGISTER(HookComponent);
+
+    ecs_component_t root = ecs_component({ .name = "RequiredBranchRoot" });
+    ecs_with(ecs_id(RequiredA), ecs_id(HookComponent));
+    ecs_with(ecs_id(RequiredB), ecs_id(HookComponent));
+    ecs_with(root, ecs_id(RequiredA));
+    ecs_with(root, ecs_id(RequiredB));
+
+    ecs_entity_t entity = ecs_new();
+    ecs_add_cid(entity, root);
+
+    test_true(ecs_has_cid(entity, root));
+    test_true(ecs_has(entity, RequiredA));
+    test_true(ecs_has(entity, RequiredB));
+    test_true(ecs_has(entity, HookComponent));
+
+    ecs_fini();
+}
+
 void component_add_zeroes_reused_component_slot(void) {
     ecs_init();
     ECS_COMPONENT_REGISTER(HookComponent);
