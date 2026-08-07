@@ -209,7 +209,8 @@ void api_c_declared_relation(void) {
 void api_cpp_only_methods(void) {
     ecs_test_scope _ecs_scope;
 
-    test_int(ecs_id(cpp_c_method_position), ecs::component<cpp_c_method_position>());
+    auto id = ecs::component<cpp_c_method_position>();
+    test_int(ecs_id(cpp_c_method_position), id);
     test_str(
         "{ int value; }",
         ecs_id(cpp_c_method_position_desc).struct_desc->fields
