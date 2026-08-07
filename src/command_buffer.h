@@ -7,10 +7,18 @@
 
 typedef struct ecs_world_s ecs_world_t;
 
+typedef enum {
+    EcsDeferredAdd,
+    EcsDeferredRemove,
+    EcsDeferredCopy,
+    EcsDeferredMove,
+} ecs_deferred_op_t;
+
 typedef struct {
     ecs_component_t id;
+    ecs_deferred_op_t op;
     void *data;
-} ecs_deferred_set_t;
+} ecs_deferred_change_t;
 
 typedef struct {
     ecs_entity_t target; /* 0 removes the relation */
@@ -24,9 +32,7 @@ typedef struct {
     bool kill;
     bool has_base;
     ecs_entity_t base;
-    sicore_vec_t add_ids;
-    sicore_vec_t remove_ids;
-    sicore_vec_t sets;
+    sicore_vec_t changes;
 } ecs_entity_command_t;
 
 typedef struct ecs_command_buffer_s {

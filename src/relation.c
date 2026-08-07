@@ -177,7 +177,7 @@ static ecs_table_t *ecs_relation_set_pair(
     if (to_id != from_id) {
         from = ecs_get_table(from_id);
         if (component) {
-            ecs_migrate_to_table(entity_record, entity, from, to_id);
+            ecs_migrate(entity_record, entity, from, to_id, 0);
         } else {
             ecs_migrate_same_layout(entity_record, entity, from, to_id);
         }
@@ -199,7 +199,7 @@ static void ecs_relation_remove_pair(
     if (component_at == UINT16_MAX) {
         ecs_migrate_same_layout(entity_record, entity, from, to_id);
     } else {
-        ecs_migrate_to_table(entity_record, entity, from, to_id);
+        ecs_migrate(entity_record, entity, from, to_id, 0);
     }
 }
 

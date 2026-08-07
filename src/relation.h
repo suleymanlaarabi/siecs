@@ -12,7 +12,6 @@ typedef struct {
 
     char *name;
     ecs_relation_info_t info;
-
 } ecs_relation_record_t;
 
 typedef struct {

@@ -49,7 +49,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
         }
 
         ecs_table_t *new_table = ecs_get_table(edge);
-        void *component_data = ecs_migrate_add(record, entity, table, new_table, edge, cid);
+        void *component_data = ecs_migrate(record, entity, table, edge, cid);
 
         if (crec->on_add) {
             crec->on_add(entity, cid, component_data);
@@ -59,7 +59,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     }
 
     if (edge == UINT16_MAX) {
-        ecs_type_t new_type = ecs_type_with_requirements(table, cid, crec);
+        ecs_type_t new_type = ecs_type_with_requirements(table, cid);
         edge = ecs_table_index_get_or_create(new_type);
 
         table = ecs_get_table(from_id);
@@ -67,13 +67,9 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     }
 
     ecs_table_t *new_table = ecs_get_table(edge);
-    bool add_many = new_table->type.component_count > table->type.component_count + 1;
+    void *component_data = ecs_migrate(record, entity, table, edge, cid);
 
-    void *component_data = add_many
-                               ? ecs_migrate_add_many(record, entity, table, new_table, edge, cid)
-                               : ecs_migrate_add(record, entity, table, new_table, edge, cid);
-
-    if (add_many) {
+    if (new_table->type.component_count > table->type.component_count + 1) {
         ecs_emit_added_components(table, new_table, entity, record->table_row);
         return;
     }
@@ -129,7 +125,7 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     }
     ecs_emit(table, entity, EcsOnRemove, removed_data);
 
-    ecs_migrate_remove(record, entity, table, new_table_id, (uint16_t)col_idx);
+    ecs_migrate(record, entity, table, new_table_id, 0);
 }
 
 void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {

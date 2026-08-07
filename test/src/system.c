@@ -637,6 +637,36 @@ void system_deferred_set_adds_required_components(void) {
     ecs_fini();
 }
 
+void system_deferred_changes_coalesce_by_component(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(SystemBatchA);
+    ECS_COMPONENT_REGISTER(SystemBatchB);
+    ECS_COMPONENT_REGISTER(SystemBatchC);
+
+    ecs_entity_t entity = ecs_new();
+    ecs_entity_t existing = ecs_new();
+    ecs_set(existing, SystemBatchA, { 1 });
+
+    int moved = 22;
+    ecs_defer_begin();
+    ecs_add(entity, SystemBatchA);
+    ecs_remove(entity, SystemBatchA);
+    ecs_remove(entity, SystemBatchB);
+    ecs_set(entity, SystemBatchB, { 10 });
+    ecs_move_cid(entity, ecs_id(SystemBatchB), &moved);
+    ecs_set(entity, SystemBatchC, { 3 });
+    ecs_remove(entity, SystemBatchC);
+    ecs_move_cid(existing, ecs_id(SystemBatchA), &moved);
+    ecs_defer_end();
+
+    test_false(ecs_has(entity, SystemBatchA));
+    test_int(22, ecs_get(entity, SystemBatchB)->value);
+    test_false(ecs_has(entity, SystemBatchC));
+    test_int(22, ecs_get(existing, SystemBatchA)->value);
+
+    ecs_fini();
+}
+
 void system_quit_makes_progress_return_false(void) {
     reset_system_test_state();
 

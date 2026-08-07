@@ -4519,10 +4519,18 @@ ecs_pair_tables_t ecs_table_index_pair_tables(uint16_t key, uint64_t value);
 
 typedef struct ecs_world_s ecs_world_t;
 
+typedef enum {
+    EcsDeferredAdd,
+    EcsDeferredRemove,
+    EcsDeferredCopy,
+    EcsDeferredMove,
+} ecs_deferred_op_t;
+
 typedef struct {
     ecs_component_t id;
+    ecs_deferred_op_t op;
     void *data;
-} ecs_deferred_set_t;
+} ecs_deferred_change_t;
 
 typedef struct {
     ecs_entity_t target; /* 0 removes the relation */
@@ -4536,9 +4544,7 @@ typedef struct {
     bool kill;
     bool has_base;
     ecs_entity_t base;
-    sicore_vec_t add_ids;
-    sicore_vec_t remove_ids;
-    sicore_vec_t sets;
+    sicore_vec_t changes;
 } ecs_entity_command_t;
 
 typedef struct ecs_command_buffer_s {
@@ -5286,6 +5292,19 @@ void ecs_bootstrap() {
 
 }
 
+#ifndef SIECS_COMPONENT_REQUIRE_H
+#define SIECS_COMPONENT_REQUIRE_H
+
+void ecs_collect_required_components(
+    const ecs_table_t *table,
+    ecs_component_t component,
+    ecs_component_t *ids,
+    uint16_t *count,
+    uint16_t capacity
+);
+
+#endif
+
 #ifndef SIECS_EVENT_OPS_H
 #define SIECS_EVENT_OPS_H
 
@@ -5311,6 +5330,31 @@ static inline void ecs_emit_added_components(
             record->on_add(entity, added, data);
         }
         ecs_emit(to_table, entity, EcsOnAdd, data);
+    }
+}
+
+static inline void ecs_emit_removed_components(
+    ecs_table_t *from_table,
+    const ecs_type_t *to_type,
+    ecs_entity_t entity,
+    uint32_t row
+) {
+    uint16_t to_i = 0;
+    for (uint16_t from_i = 0; from_i < from_table->type.component_count; from_i++) {
+        ecs_component_t removed = from_table->type.ids[from_i];
+        while (to_i < to_type->component_count && to_type->ids[to_i] < removed) {
+            to_i++;
+        }
+        if (to_i < to_type->component_count && to_type->ids[to_i] == removed) {
+            continue;
+        }
+
+        void *data = ecs_table_component_at_column(from_table, from_i, row);
+        const ecs_component_record_t *record = ecs_component_index_get(removed);
+        if (record->on_remove) {
+            record->on_remove(entity, removed, data);
+        }
+        ecs_emit(from_table, entity, EcsOnRemove, data);
     }
 }
 
@@ -5413,9 +5457,8 @@ static inline void ecs_table_finish_migration(
 #define ECS_ADD_PLAN_MAX_COMPONENTS 64
 
 ecs_type_t ecs_type_with_requirements(
-        ecs_table_t *from_table,
-    ecs_component_t cid,
-    const ecs_component_record_t *crec
+    ecs_table_t *from_table,
+    ecs_component_t cid
 );
 
 #ifndef NDEBUG
@@ -5443,37 +5486,12 @@ static inline void ecs_migrate_same_layout(
     ecs_table_finish_migration(record, entity, from_table, old_row, to_table_id, new_row);
 }
 
-void ecs_migrate_to_table(
-        ecs_entity_record_t *record,
+void *ecs_migrate(
+    ecs_entity_record_t *record,
     ecs_entity_t entity,
     ecs_table_t *from_table,
-    uint16_t to_table_id
-);
-
-void *ecs_migrate_add(
-        ecs_entity_record_t *record,
-    ecs_entity_t entity,
-    ecs_table_t *from_table,
-    ecs_table_t *to_table,
-    uint16_t to_table_id,
-    ecs_component_t added_id
-);
-
-void *ecs_migrate_add_many(
-        ecs_entity_record_t *record,
-    ecs_entity_t entity,
-    ecs_table_t *from_table,
-    ecs_table_t *to_table,
     uint16_t to_table_id,
     ecs_component_t requested_id
-);
-
-void ecs_migrate_remove(
-        ecs_entity_record_t *record,
-    ecs_entity_t entity,
-    ecs_table_t *from_table,
-    uint16_t to_table_id,
-    uint16_t col_idx
 );
 
 #endif
@@ -5482,57 +5500,68 @@ void ecs_migrate_remove(
 
 #define ECS_COMMAND_NONE UINT32_MAX
 
-static inline void id_vec_push_unique(sicore_vec_t *vec, ecs_component_t id) {
-    if (!sicore_vec_contains_u16(vec, id)) {
-        sicore_vec_push_u16(vec, id);
-    }
-}
-
-static inline void deferred_set_fini(ecs_deferred_set_t *set) {
-    if (!set->data) {
+static inline void deferred_change_fini(ecs_deferred_change_t *change) {
+    if (!change->data) {
         return;
     }
-    const ecs_component_record_t *record = ecs_component_index_get(set->id);
-    ecs_component_value_dtor(record, set->data, 1);
-    set->data = NULL;
+    const ecs_component_record_t *record = ecs_component_index_get(change->id);
+    ecs_component_value_dtor(record, change->data, 1);
+    change->data = NULL;
 }
 
-static inline void set_vec_remove(sicore_vec_t *vec, ecs_component_t id) {
-    ecs_deferred_set_t *sets = sicore_vec_data(vec, ecs_deferred_set_t);
-    for (uint32_t i = 0; i < vec->size; i++) {
-        if (sets[i].id == id) {
-            deferred_set_fini(&sets[i]);
-            sicore_vec_remove_fast(vec, i, sizeof(ecs_deferred_set_t));
-            return;
-        }
-    }
-}
-
-static inline ecs_deferred_set_t *set_vec_find(sicore_vec_t *vec, ecs_component_t id) {
-    ecs_deferred_set_t *sets = sicore_vec_data(vec, ecs_deferred_set_t);
-    for (uint32_t i = 0; i < vec->size; i++) {
-        if (sets[i].id == id) {
-            return &sets[i];
+static inline ecs_deferred_change_t *change_find(
+    sicore_vec_t *changes,
+    ecs_component_t id
+) {
+    ecs_deferred_change_t *items = sicore_vec_data(changes, ecs_deferred_change_t);
+    for (uint32_t i = 0; i < changes->size; i++) {
+        if (items[i].id == id) {
+            return &items[i];
         }
     }
     return NULL;
 }
 
+static inline const ecs_deferred_change_t *change_find_const(
+    const sicore_vec_t *changes,
+    ecs_component_t id
+) {
+    const ecs_deferred_change_t *items =
+        sicore_vec_data(changes, ecs_deferred_change_t);
+    for (uint32_t i = 0; i < changes->size; i++) {
+        if (items[i].id == id) {
+            return &items[i];
+        }
+    }
+    return NULL;
+}
+
+static inline ecs_deferred_change_t *change_add(
+    ecs_entity_command_t *command,
+    ecs_component_t id,
+    ecs_deferred_op_t op
+) {
+    ecs_deferred_change_t change = { .id = id, .op = op };
+    sicore_vec_push(&command->changes, &change, sizeof(change));
+    return sicore_vec_get_mut(
+        &command->changes,
+        command->changes.size - 1,
+        ecs_deferred_change_t
+    );
+}
+
 static inline void command_init(ecs_entity_command_t *command, ecs_entity_t entity) {
     *command = (ecs_entity_command_t){ .entity = entity, .relation_head = ECS_COMMAND_NONE };
-    sicore_vec_init(&command->add_ids, sizeof(ecs_component_t));
-    sicore_vec_init(&command->remove_ids, sizeof(ecs_component_t));
-    sicore_vec_init(&command->sets, sizeof(ecs_deferred_set_t));
+    sicore_vec_init(&command->changes, sizeof(ecs_deferred_change_t));
 }
 
 static inline void command_fini(ecs_entity_command_t *command) {
-    ecs_deferred_set_t *sets = sicore_vec_data(&command->sets, ecs_deferred_set_t);
-    for (uint32_t i = 0; i < command->sets.size; i++) {
-        deferred_set_fini(&sets[i]);
+    ecs_deferred_change_t *changes =
+        sicore_vec_data(&command->changes, ecs_deferred_change_t);
+    for (uint32_t i = 0; i < command->changes.size; i++) {
+        deferred_change_fini(&changes[i]);
     }
-    sicore_vec_fini(&command->add_ids);
-    sicore_vec_fini(&command->remove_ids);
-    sicore_vec_fini(&command->sets);
+    sicore_vec_fini(&command->changes);
 }
 
 void ecs_command_buffer_init() {
@@ -5591,70 +5620,67 @@ static ecs_entity_command_t *command_for_entity(ecs_entity_t entity) {
 
 void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id) {
     ecs_entity_command_t *command = command_for_entity(entity);
-    sicore_vec_remove_u16(&command->remove_ids, id);
-    id_vec_push_unique(&command->add_ids, id);
+    ecs_deferred_change_t *change = change_find(&command->changes, id);
+    if (!change) {
+        change_add(command, id, EcsDeferredAdd);
+    } else if (change->op == EcsDeferredRemove) {
+        change->op = EcsDeferredAdd;
+    }
 }
 
 void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id) {
     ecs_entity_command_t *command = command_for_entity(entity);
-    sicore_vec_remove_u16(&command->add_ids, id);
-    set_vec_remove(&command->sets, id);
-    id_vec_push_unique(&command->remove_ids, id);
+    ecs_deferred_change_t *change = change_find(&command->changes, id);
+    if (!change) {
+        change_add(command, id, EcsDeferredRemove);
+        return;
+    }
+    deferred_change_fini(change);
+    change->op = EcsDeferredRemove;
 }
 
 void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void *data) {
     ecs_entity_command_t *command = command_for_entity(entity);
     const ecs_component_record_t *record = ecs_component_index_get(id);
 
-    sicore_vec_remove_u16(&command->remove_ids, id);
-    id_vec_push_unique(&command->add_ids, id);
-
-    ecs_deferred_set_t *set = set_vec_find(&command->sets, id);
-    if (set) {
-        ecs_component_value_dtor(record, set->data, 1);
-        ecs_component_value_copy_ctor(record, set->data, data, 1);
-        return;
-    }
-
     uint32_t size = record->size ? record->size : 1;
-    void *copy = ecs_arena_alloc(&ecs_world.arena_allocator, size);
-    ecs_component_value_copy_ctor(record, copy, data, 1);
-    ecs_deferred_set_t new_set = { .id = id, .data = copy };
-    sicore_vec_push(&command->sets, &new_set, sizeof(ecs_deferred_set_t));
+    ecs_deferred_change_t *change = change_find(&command->changes, id);
+    if (!change) {
+        change = change_add(command, id, EcsDeferredCopy);
+    } else {
+        deferred_change_fini(change);
+        change->op = EcsDeferredCopy;
+    }
+    change->data = ecs_arena_alloc(&ecs_world.arena_allocator, size);
+    ecs_component_value_copy_ctor(record, change->data, data, 1);
 }
 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data) {
     ecs_entity_command_t *command = command_for_entity(entity);
     const ecs_component_record_t *record = ecs_component_index_get(id);
 
-    sicore_vec_remove_u16(&command->remove_ids, id);
-    id_vec_push_unique(&command->add_ids, id);
-
-    ecs_deferred_set_t *set = set_vec_find(&command->sets, id);
-    if (set) {
-        ecs_component_value_dtor(record, set->data, 1);
-        ecs_component_value_move_ctor(record, set->data, data, 1);
-        return;
-    }
-
     uint32_t size = record->size ? record->size : 1;
-    void *copy = ecs_arena_alloc(&ecs_world.arena_allocator, size);
-    ecs_component_value_move_ctor(record, copy, data, 1);
-    ecs_deferred_set_t new_set = { .id = id, .data = copy };
-    sicore_vec_push(&command->sets, &new_set, sizeof(ecs_deferred_set_t));
+    ecs_deferred_change_t *change = change_find(&command->changes, id);
+    if (!change) {
+        change = change_add(command, id, EcsDeferredMove);
+    } else {
+        deferred_change_fini(change);
+        change->op = EcsDeferredMove;
+    }
+    change->data = ecs_arena_alloc(&ecs_world.arena_allocator, size);
+    ecs_component_value_move_ctor(record, change->data, data, 1);
 }
 
 void ecs_command_buffer_kill(ecs_entity_t entity) {
     ecs_entity_command_t *command = command_for_entity(entity);
     command->kill = true;
     command->has_base = false;
-    sicore_vec_clear(&command->add_ids);
-    sicore_vec_clear(&command->remove_ids);
-    ecs_deferred_set_t *sets = sicore_vec_data(&command->sets, ecs_deferred_set_t);
-    for (uint32_t i = 0; i < command->sets.size; i++) {
-        deferred_set_fini(&sets[i]);
+    ecs_deferred_change_t *changes =
+        sicore_vec_data(&command->changes, ecs_deferred_change_t);
+    for (uint32_t i = 0; i < command->changes.size; i++) {
+        deferred_change_fini(&changes[i]);
     }
-    sicore_vec_clear(&command->sets);
+    sicore_vec_clear(&command->changes);
     command->relation_head = ECS_COMMAND_NONE;
 }
 
@@ -5708,34 +5734,38 @@ static void final_ids_push_sorted(sicore_vec_t *final_ids, ecs_component_t id) {
     ids[i] = id;
 }
 
-static void final_ids_collect_requirements(sicore_vec_t *final_ids, ecs_component_t id) {
-    const ecs_component_record_t *record = ecs_component_index_get(id);
-    for (uint32_t i = 0; i < record->required_count; i++) {
-        ecs_component_t required = record->required[i];
-        if (sicore_vec_contains_u16(final_ids, required)) {
-            continue;
-        }
-        final_ids_collect_requirements(final_ids, required);
-        final_ids_push_sorted(final_ids, required);
-    }
-}
-
 static ecs_type_t
 command_build_type(const ecs_table_t *table, const ecs_entity_command_t *command) {
     sicore_vec_t final_ids;
     sicore_vec_init(&final_ids, sizeof(ecs_component_t));
+    const ecs_deferred_change_t *changes =
+        sicore_vec_data(&command->changes, ecs_deferred_change_t);
 
     for (uint16_t i = 0; i < table->type.component_count; i++) {
         ecs_component_t id = table->type.ids[i];
-        if (!sicore_vec_contains_u16(&command->remove_ids, id)) {
+        const ecs_deferred_change_t *change = change_find_const(&command->changes, id);
+        if (!change || change->op != EcsDeferredRemove) {
             sicore_vec_push_u16(&final_ids, id);
         }
     }
 
-    const ecs_component_t *adds = sicore_vec_data(&command->add_ids, ecs_component_t);
-    for (uint32_t i = 0; i < command->add_ids.size; i++) {
-        final_ids_collect_requirements(&final_ids, adds[i]);
-        final_ids_push_sorted(&final_ids, adds[i]);
+    for (uint32_t i = 0; i < command->changes.size; i++) {
+        if (changes[i].op == EcsDeferredRemove) {
+            continue;
+        }
+        ecs_component_t required[ECS_ADD_PLAN_MAX_COMPONENTS];
+        uint16_t required_count = 0;
+        ecs_collect_required_components(
+            table,
+            changes[i].id,
+            required,
+            &required_count,
+            ECS_ADD_PLAN_MAX_COMPONENTS
+        );
+        for (uint16_t r = 0; r < required_count; r++) {
+            final_ids_push_sorted(&final_ids, required[r]);
+        }
+        final_ids_push_sorted(&final_ids, changes[i].id);
     }
 
     ecs_type_t type = ecs_type_with_ids(
@@ -5748,52 +5778,30 @@ command_build_type(const ecs_table_t *table, const ecs_entity_command_t *command
     return type;
 }
 
-static void command_emit_removed(
-    ecs_table_t *table,
-    ecs_entity_t entity,
-    uint32_t row,
-    const ecs_type_t *final_type
-) {
-    uint16_t final_i = 0;
-    for (uint16_t i = 0; i < table->type.component_count; i++) {
-        ecs_component_t id = table->type.ids[i];
-        while (final_i < final_type->component_count && final_type->ids[final_i] < id) {
-            final_i++;
-        }
-        if (final_i < final_type->component_count && final_type->ids[final_i] == id) {
-            continue;
-        }
-
-        void *data = ecs_table_component_at_column(table, i, row);
-        const ecs_component_record_t *record = ecs_component_index_get(id);
-        if (record->on_remove) {
-            record->on_remove(entity, id, data);
-        }
-        ecs_emit(table, entity, EcsOnRemove, data);
-    }
-}
-
 static bool command_type_unchanged(const ecs_table_t *table, const ecs_entity_command_t *command) {
-    if (command->remove_ids.size != 0) {
-        return false;
-    }
+    const ecs_deferred_change_t *changes =
+        sicore_vec_data(&command->changes, ecs_deferred_change_t);
     if (command->has_base && command->base != table->type.base) {
         return false;
     }
 
-    const ecs_component_t *adds = sicore_vec_data(&command->add_ids, ecs_component_t);
-    for (uint32_t i = 0; i < command->add_ids.size; i++) {
-        if (!ecs_table_has_owned(table, adds[i])) {
+    for (uint32_t i = 0; i < command->changes.size; i++) {
+        if (changes[i].op == EcsDeferredRemove ||
+            !ecs_table_has_owned(table, changes[i].id)) {
             return false;
         }
     }
     return true;
 }
 
-static void command_apply_sets(ecs_entity_command_t *command) {
-    ecs_deferred_set_t *sets = sicore_vec_data(&command->sets, ecs_deferred_set_t);
-    for (uint32_t i = 0; i < command->sets.size && ecs_is_alive(command->entity); i++) {
-        ecs_component_t id = sets[i].id;
+static void command_apply_changes(ecs_entity_command_t *command) {
+    ecs_deferred_change_t *changes =
+        sicore_vec_data(&command->changes, ecs_deferred_change_t);
+    for (uint32_t i = 0; i < command->changes.size && ecs_is_alive(command->entity); i++) {
+        if (changes[i].op != EcsDeferredCopy && changes[i].op != EcsDeferredMove) {
+            continue;
+        }
+        ecs_component_t id = changes[i].id;
         const ecs_component_record_t *record = ecs_component_index_get(id);
         ecs_entity_record_t *entity_record = ecs_get_record(command->entity);
         ecs_table_t *table = ecs_get_table(entity_record->table_id);
@@ -5801,7 +5809,7 @@ static void command_apply_sets(ecs_entity_command_t *command) {
         void *dst = ecs_table_component_at_column(table, column, entity_record->table_row);
 
         if (record->on_set) {
-            record->on_set(command->entity, id, sets[i].data, dst);
+            record->on_set(command->entity, id, changes[i].data, dst);
             if (!ecs_is_alive(command->entity)) {
                 return;
             }
@@ -5810,9 +5818,9 @@ static void command_apply_sets(ecs_entity_command_t *command) {
             column = ecs_table_get_column_index(table, id);
             dst = ecs_table_component_at_column(table, column, entity_record->table_row);
         }
-        ecs_emit(table, command->entity, EcsOnSet, sets[i].data);
-        ecs_component_value_move(record, dst, sets[i].data, 1);
-        sets[i].data = NULL;
+        ecs_emit(table, command->entity, EcsOnSet, changes[i].data);
+        ecs_component_value_move(record, dst, changes[i].data, 1);
+        changes[i].data = NULL;
     }
 }
 
@@ -5847,7 +5855,7 @@ static void command_apply(ecs_entity_command_t *command, const sicore_vec_t *rel
     uint16_t old_table_id = record->table_id;
     ecs_table_t *old_table = ecs_get_table(old_table_id);
     if (command_type_unchanged(old_table, command)) {
-        command_apply_sets(command);
+        command_apply_changes(command);
         command_apply_relations(command, relations);
         return;
     }
@@ -5856,7 +5864,7 @@ static void command_apply(ecs_entity_command_t *command, const sicore_vec_t *rel
 
     if (!ecs_type_equals(&old_table->type, &final_type)) {
         uint32_t old_row = record->table_row;
-        command_emit_removed(old_table, command->entity, old_row, &final_type);
+        ecs_emit_removed_components(old_table, &final_type, command->entity, old_row);
         if (!ecs_is_alive(command->entity)) {
             ecs_type_fini(&final_type);
             return;
@@ -5865,16 +5873,15 @@ static void command_apply(ecs_entity_command_t *command, const sicore_vec_t *rel
         uint16_t new_table_id = ecs_table_index_get_or_create(final_type);
         record = ecs_get_record(command->entity);
         old_table = ecs_get_table(old_table_id);
-        const ecs_table_t *emit_old_table = old_table;
-        ecs_migrate_to_table(record, command->entity, old_table, new_table_id);
+        ecs_migrate(record, command->entity, old_table, new_table_id, 0);
         record = ecs_get_record(command->entity);
         ecs_table_t *new_table = ecs_get_table(record->table_id);
-        ecs_emit_added_components(emit_old_table, new_table, command->entity, record->table_row);
+        ecs_emit_added_components(old_table, new_table, command->entity, record->table_row);
     } else {
         ecs_type_fini(&final_type);
     }
 
-    command_apply_sets(command);
+    command_apply_changes(command);
     command_apply_relations(command, relations);
 }
 
@@ -6259,7 +6266,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
         }
 
         ecs_table_t *new_table = ecs_get_table(edge);
-        void *component_data = ecs_migrate_add(record, entity, table, new_table, edge, cid);
+        void *component_data = ecs_migrate(record, entity, table, edge, cid);
 
         if (crec->on_add) {
             crec->on_add(entity, cid, component_data);
@@ -6269,7 +6276,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     }
 
     if (edge == UINT16_MAX) {
-        ecs_type_t new_type = ecs_type_with_requirements(table, cid, crec);
+        ecs_type_t new_type = ecs_type_with_requirements(table, cid);
         edge = ecs_table_index_get_or_create(new_type);
 
         table = ecs_get_table(from_id);
@@ -6277,13 +6284,9 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     }
 
     ecs_table_t *new_table = ecs_get_table(edge);
-    bool add_many = new_table->type.component_count > table->type.component_count + 1;
+    void *component_data = ecs_migrate(record, entity, table, edge, cid);
 
-    void *component_data = add_many
-                               ? ecs_migrate_add_many(record, entity, table, new_table, edge, cid)
-                               : ecs_migrate_add(record, entity, table, new_table, edge, cid);
-
-    if (add_many) {
+    if (new_table->type.component_count > table->type.component_count + 1) {
         ecs_emit_added_components(table, new_table, entity, record->table_row);
         return;
     }
@@ -6339,7 +6342,7 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     }
     ecs_emit(table, entity, EcsOnRemove, removed_data);
 
-    ecs_migrate_remove(record, entity, table, new_table_id, (uint16_t)col_idx);
+    ecs_migrate(record, entity, table, new_table_id, 0);
 }
 
 void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
@@ -6520,46 +6523,64 @@ void ecs_with(ecs_component_t component, ecs_component_t require) {
 
 #include <stdbool.h>
 
-typedef struct {
-    ecs_component_t ids[ECS_ADD_PLAN_MAX_COMPONENTS];
-    uint16_t count;
-} ecs_add_plan_t;
-
-static inline bool ecs_add_plan_has(const ecs_add_plan_t *plan, ecs_component_t id) {
-    for (uint16_t i = 0; i < plan->count; i++) {
-        if (plan->ids[i] == id) {
+static inline bool ecs_required_has(
+    const ecs_component_t *ids,
+    uint16_t count,
+    ecs_component_t id
+) {
+    for (uint16_t i = 0; i < count; i++) {
+        if (ids[i] == id) {
             return true;
         }
     }
     return false;
 }
 
-static inline void ecs_add_plan_push(ecs_add_plan_t *plan, ecs_component_t id) {
+static inline void ecs_required_push(
+    ecs_component_t *ids,
+    uint16_t *count,
+    uint16_t capacity,
+    ecs_component_t id
+) {
 #ifndef NDEBUG
-    if (plan->count == ECS_ADD_PLAN_MAX_COMPONENTS) {
+    if (*count == capacity) {
         abort();
     }
 #endif
-    plan->ids[plan->count++] = id;
+    ids[(*count)++] = id;
 }
 
-static inline void ecs_add_plan_collect_requirements(
-    ecs_table_t *from_table,
-    ecs_add_plan_t *plan,
-    const ecs_component_record_t *crec
+static void ecs_collect_required_components_inner(
+    const ecs_table_t *table,
+    const ecs_component_record_t *record,
+    ecs_component_t *ids,
+    uint16_t *count,
+    uint16_t capacity
 ) {
-    for (uint32_t i = 0; i < crec->required_count; i++) {
-        ecs_component_t required = crec->required[i];
-        if (ecs_table_has_owned(from_table, required) || ecs_add_plan_has(plan, required)) {
+    for (uint32_t i = 0; i < record->required_count; i++) {
+        ecs_component_t required = record->required[i];
+        if (ecs_table_has_owned(table, required) ||
+            ecs_required_has(ids, *count, required)) {
             continue;
         }
 
         const ecs_component_record_t *required_rec = ecs_component_index_get(required);
-        if (required_rec->required_count) {
-            ecs_add_plan_collect_requirements(from_table, plan, required_rec);
+        ecs_collect_required_components_inner(table, required_rec, ids, count, capacity);
+        if (!ecs_required_has(ids, *count, required)) {
+            ecs_required_push(ids, count, capacity, required);
         }
-        ecs_add_plan_push(plan, required);
     }
+}
+
+void ecs_collect_required_components(
+    const ecs_table_t *table,
+    const ecs_component_t component,
+    ecs_component_t *ids,
+    uint16_t *count,
+    const uint16_t capacity
+) {
+    const ecs_component_record_t *record = ecs_component_index_get(component);
+    ecs_collect_required_components_inner(table, record, ids, count, capacity);
 }
 
 static inline void ecs_sort_component_ids(ecs_component_t *ids, uint16_t count) {
@@ -6576,40 +6597,46 @@ static inline void ecs_sort_component_ids(ecs_component_t *ids, uint16_t count) 
 
 ecs_type_t ecs_type_with_requirements(
     ecs_table_t *from_table,
-    ecs_component_t cid,
-    const ecs_component_record_t *crec
+    ecs_component_t cid
 ) {
-    ecs_add_plan_t plan = { 0 };
-    ecs_add_plan_collect_requirements(from_table, &plan, crec);
-    ecs_add_plan_push(&plan, cid);
-    ecs_sort_component_ids(plan.ids, plan.count);
+    ecs_component_t ids[ECS_ADD_PLAN_MAX_COMPONENTS];
+    uint16_t count = 0;
+    ecs_collect_required_components(
+        from_table,
+        cid,
+        ids,
+        &count,
+        ECS_ADD_PLAN_MAX_COMPONENTS
+    );
+    ecs_required_push(ids, &count, ECS_ADD_PLAN_MAX_COMPONENTS, cid);
+    ecs_sort_component_ids(ids, count);
 
-    uint16_t count = from_table->type.component_count + plan.count;
-    ecs_component_t *ids = malloc(sizeof(ecs_component_t) * count);
+    uint16_t total_count = from_table->type.component_count + count;
+    ecs_component_t *merged = malloc(sizeof(ecs_component_t) * total_count);
 
     uint16_t from_i = 0;
     uint16_t add_i = 0;
     uint16_t out_i = 0;
-    while (from_i < from_table->type.component_count && add_i < plan.count) {
+    while (from_i < from_table->type.component_count && add_i < count) {
         ecs_component_t from_id = from_table->type.ids[from_i];
-        ecs_component_t add_id = plan.ids[add_i];
+        ecs_component_t add_id = ids[add_i];
         if (from_id < add_id) {
-            ids[out_i++] = from_id;
+            merged[out_i++] = from_id;
             from_i++;
         } else {
-            ids[out_i++] = add_id;
+            merged[out_i++] = add_id;
             add_i++;
         }
     }
     while (from_i < from_table->type.component_count) {
-        ids[out_i++] = from_table->type.ids[from_i++];
+        merged[out_i++] = from_table->type.ids[from_i++];
     }
-    while (add_i < plan.count) {
-        ids[out_i++] = plan.ids[add_i++];
+    while (add_i < count) {
+        merged[out_i++] = ids[add_i++];
     }
 
-    ecs_type_t type = ecs_type_with_ids(&from_table->type, ids, count);
-    free(ids);
+    ecs_type_t type = ecs_type_with_ids(&from_table->type, merged, total_count);
+    free(merged);
     return type;
 }
 
@@ -7285,7 +7312,7 @@ static ecs_table_t *ecs_relation_set_pair(
     if (to_id != from_id) {
         from = ecs_get_table(from_id);
         if (component) {
-            ecs_migrate_to_table(entity_record, entity, from, to_id);
+            ecs_migrate(entity_record, entity, from, to_id, 0);
         } else {
             ecs_migrate_same_layout(entity_record, entity, from, to_id);
         }
@@ -7307,7 +7334,7 @@ static void ecs_relation_remove_pair(
     if (component_at == UINT16_MAX) {
         ecs_migrate_same_layout(entity_record, entity, from, to_id);
     } else {
-        ecs_migrate_to_table(entity_record, entity, from, to_id);
+        ecs_migrate(entity_record, entity, from, to_id, 0);
     }
 }
 
@@ -7995,149 +8022,55 @@ void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bo
     return NULL;
 }
 
-void ecs_migrate_to_table(
+void *ecs_migrate(
     ecs_entity_record_t *record,
     const ecs_entity_t entity,
     ecs_table_t *from_table,
-    const uint16_t to_table_id
+    const uint16_t to_table_id,
+    const ecs_component_t requested_id
 ) {
     ecs_table_t *to_table = ecs_get_table(to_table_id);
 
     uint32_t old_row = record->table_row;
     uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
-    uint16_t fi = 0, ti = 0;
-    while (fi < from_table->type.component_count && ti < to_table->type.component_count) {
-        uint16_t fid = from_table->type.ids[fi];
-        uint16_t tid = to_table->type.ids[ti];
-        if (fid == tid) {
-            ecs_table_move_column(from_table, fi, old_row, to_table, ti, new_row);
-            fi++;
-            ti++;
-        } else if (fid < tid) {
-            ecs_table_dtor_column(from_table, fi, old_row);
-            fi++;
-        } else {
-            ecs_table_ctor_column(to_table, ti, new_row);
-            ti++;
-        }
-    }
-    for (; fi < from_table->type.component_count; fi++) {
-        ecs_table_dtor_column(from_table, fi, old_row);
-    }
-    for (; ti < to_table->type.component_count; ti++) {
-        ecs_table_ctor_column(to_table, ti, new_row);
-    }
-
-    ecs_table_finish_migration(record, entity, from_table, old_row, to_table_id, new_row);
-}
-
-void *ecs_migrate_add(
-    ecs_entity_record_t *record,
-    const ecs_entity_t entity,
-    ecs_table_t *from_table,
-    ecs_table_t *to_table,
-    const uint16_t to_table_id,
-    const ecs_component_t added_id
-) {
-    const uint32_t old_row = record->table_row;
-    const uint32_t new_row = ecs_table_add_entity(to_table, entity);
-
-    const uint16_t k = ecs_table_get_column_index(to_table, added_id);
-    ecs_table_ctor_column(to_table, k, new_row);
-
-    uint16_t i = 0;
-    for (; i < from_table->add_edge.aux; i++) {
-        uint16_t from_col = from_table->data_columns[i];
-        if (from_col >= k) {
-            break;
-        }
-        ecs_table_move_column(from_table, from_col, old_row, to_table, from_col, new_row);
-    }
-    for (; i < from_table->add_edge.aux; i++) {
-        uint16_t from_col = from_table->data_columns[i];
-        ecs_table_move_column(from_table, from_col, old_row, to_table, from_col + 1, new_row);
-    }
-
-    ecs_table_finish_migration(record, entity, from_table, old_row, to_table_id, new_row);
-    return ecs_table_component_at_column(to_table, k, new_row);
-}
-
-void *ecs_migrate_add_many(
-    ecs_entity_record_t *record,
-    const ecs_entity_t entity,
-    ecs_table_t *from_table,
-    ecs_table_t *to_table,
-    const uint16_t to_table_id,
-    const ecs_component_t requested_id
-) {
-    const uint32_t old_row = record->table_row;
-    const uint32_t new_row = ecs_table_add_entity(to_table, entity);
-
     uint16_t from_data = 0;
-    for (uint16_t to_data = 0; to_data < to_table->add_edge.aux; to_data++) {
-        const uint16_t to_col = to_table->data_columns[to_data];
-        const ecs_component_t to_id = to_table->type.ids[to_col];
-
-        while (from_data < from_table->add_edge.aux) {
-            const uint16_t from_col = from_table->data_columns[from_data];
-            const ecs_component_t from_id = from_table->type.ids[from_col];
-            if (from_id >= to_id) {
-                break;
-            }
+    uint16_t to_data = 0;
+    while (from_data < from_table->add_edge.aux && to_data < to_table->add_edge.aux) {
+        uint16_t from_col = from_table->data_columns[from_data];
+        uint16_t to_col = to_table->data_columns[to_data];
+        ecs_component_t from_id = from_table->type.ids[from_col];
+        ecs_component_t to_id = to_table->type.ids[to_col];
+        if (from_id == to_id) {
+            ecs_table_move_column(from_table, from_col, old_row, to_table, to_col, new_row);
             from_data++;
+            to_data++;
+        } else if (from_id < to_id) {
+            ecs_table_dtor_column(from_table, from_col, old_row);
+            from_data++;
+        } else {
+            ecs_table_ctor_column(to_table, to_col, new_row);
+            to_data++;
         }
-
-        if (from_data < from_table->add_edge.aux) {
-            const uint16_t from_col = from_table->data_columns[from_data];
-            if (from_table->type.ids[from_col] == to_id) {
-                ecs_table_move_column(from_table, from_col, old_row, to_table, to_col, new_row);
-                from_data++;
-                continue;
-            }
-        }
-
-        ecs_table_ctor_column(to_table, to_col, new_row);
+    }
+    while (from_data < from_table->add_edge.aux) {
+        ecs_table_dtor_column(from_table, from_table->data_columns[from_data], old_row);
+        from_data++;
+    }
+    while (to_data < to_table->add_edge.aux) {
+        ecs_table_ctor_column(to_table, to_table->data_columns[to_data], new_row);
+        to_data++;
     }
 
     ecs_table_finish_migration(record, entity, from_table, old_row, to_table_id, new_row);
+    if (!requested_id) {
+        return NULL;
+    }
     return ecs_table_component_at_column(
         to_table,
         ecs_table_get_column_index(to_table, requested_id),
         new_row
     );
-}
-
-void ecs_migrate_remove(
-    ecs_entity_record_t *record,
-    ecs_entity_t entity,
-    ecs_table_t *from_table,
-    uint16_t to_table_id,
-    uint16_t col_idx
-) {
-    ecs_table_t *to_table = ecs_get_table(to_table_id);
-
-    uint32_t old_row = record->table_row;
-    uint32_t new_row = ecs_table_add_entity(to_table, entity);
-
-    uint16_t i = 0;
-    for (; i < from_table->add_edge.aux; i++) {
-        uint16_t from_col = from_table->data_columns[i];
-        if (from_col >= col_idx) {
-            break;
-        }
-        ecs_table_move_column(from_table, from_col, old_row, to_table, from_col, new_row);
-    }
-    if (i < from_table->add_edge.aux && from_table->data_columns[i] == col_idx) {
-        ecs_table_dtor_column(from_table, col_idx, old_row);
-        i++;
-    }
-    for (; i < from_table->add_edge.aux; i++) {
-        uint16_t from_col = from_table->data_columns[i];
-        ecs_table_move_column(from_table, from_col, old_row, to_table, from_col - 1, new_row);
-    }
-
-    ecs_table_finish_migration(record, entity, from_table, old_row, to_table_id, new_row);
 }
 
 static size_t ecs_type_pairs_offset(uint16_t count) {

@@ -10,9 +10,8 @@
 #define ECS_ADD_PLAN_MAX_COMPONENTS 64
 
 ecs_type_t ecs_type_with_requirements(
-        ecs_table_t *from_table,
-    ecs_component_t cid,
-    const ecs_component_record_t *crec
+    ecs_table_t *from_table,
+    ecs_component_t cid
 );
 
 #ifndef NDEBUG
@@ -40,37 +39,12 @@ static inline void ecs_migrate_same_layout(
     ecs_table_finish_migration(record, entity, from_table, old_row, to_table_id, new_row);
 }
 
-void ecs_migrate_to_table(
-        ecs_entity_record_t *record,
+void *ecs_migrate(
+    ecs_entity_record_t *record,
     ecs_entity_t entity,
     ecs_table_t *from_table,
-    uint16_t to_table_id
-);
-
-void *ecs_migrate_add(
-        ecs_entity_record_t *record,
-    ecs_entity_t entity,
-    ecs_table_t *from_table,
-    ecs_table_t *to_table,
-    uint16_t to_table_id,
-    ecs_component_t added_id
-);
-
-void *ecs_migrate_add_many(
-        ecs_entity_record_t *record,
-    ecs_entity_t entity,
-    ecs_table_t *from_table,
-    ecs_table_t *to_table,
     uint16_t to_table_id,
     ecs_component_t requested_id
-);
-
-void ecs_migrate_remove(
-        ecs_entity_record_t *record,
-    ecs_entity_t entity,
-    ecs_table_t *from_table,
-    uint16_t to_table_id,
-    uint16_t col_idx
 );
 
 #endif
