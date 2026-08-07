@@ -554,9 +554,9 @@ BENCH_SETUP(relation_dense_scan_targets, {
         for (uint32_t i = 0; i < iter_count; i++) {
             ecs_iter_t it = ecs_query_iter(query);
             while (ecs_iter_next(&it)) {
-                const ecs_entity_t *targets = ecs_targets_id(&it, relation);
+                const ecs_relation_target_t *targets = ecs_targets_id(&it, relation);
                 for (uint32_t row = 0; row < it.count; row++) {
-                    checksum += targets[row];
+                    checksum += targets[row].entity;
                 }
             }
         }

@@ -40,10 +40,7 @@ struct ecs_world_s {
 
 extern ecs_world_t ecs_world;
 
-typedef struct {
-    ecs_entity_t target;
-    uint32_t source_index;
-} RelationTarget;
+typedef ecs_relation_target_t RelationTarget;
 
 typedef struct {
     sicore_vec_t entities;

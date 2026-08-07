@@ -77,7 +77,7 @@ Choose the storage mode according to how the relation is queried:
 
 | Storage | Use | Query support |
 | --- | --- | --- |
-| `EcsRelationDense` | The target is stored in a dense per-source column. | `ecs_rel`; `ecs_targets()` returns a contiguous target column. |
+| `EcsRelationDense` | The target is stored in a dense per-source column. | `ecs_rel`; `ecs_targets()` returns contiguous target records. |
 | `EcsRelationByDepth` | Acyclic hierarchies where depth and depth order matter. | `ecs_rel`, `ecs_depth`, `ecs_targets()`, and `ecs_order_by_depth()`. |
 | `EcsRelationByTarget` | Many sources share a target and exact target queries or target ordering are common. | `ecs_rel`, `ecs_to()`, `ecs_up()`, and `ecs_order_by_target()`. |
 
@@ -150,8 +150,8 @@ auto members = ecs::query().to<GroupOf>(group).build_handle();
 The available terms are `ecs_rel()` for presence, `ecs_rel_opt()` for an
 optional relation, `ecs_not_rel()` for absence, `ecs_to()` for an exact
 `ByTarget` target, and `ecs_depth()` for a `ByDepth` depth. Use
-`ecs_target_at()` for one row or `ecs_targets()` for a contiguous `Dense` or
-`ByDepth` target column.
+`ecs_target_at()` for one row or `ecs_targets()` for contiguous `Dense` or
+`ByDepth` target records.
 
 For C++, use `.with_relation<Relation>()`, `.to<Relation>(target)`,
 `.depth<Relation>(depth)`, `.order_by_depth<Relation>()`, and

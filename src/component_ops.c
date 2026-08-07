@@ -202,7 +202,7 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
     }
     ecs_emit(table, entity, EcsOnSet, data);
     if (crec->relation_flags & EcsComponentRelationTarget) {
-        ((RelationTarget *)dst)->target = ((const RelationTarget *)data)->target;
+        ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
     } else {
         ecs_component_value_copy(crec, dst, data, 1);
     }
@@ -238,7 +238,7 @@ void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
     }
     ecs_emit(table, entity, EcsOnSet, data);
     if (crec->relation_flags & EcsComponentRelationTarget) {
-        ((RelationTarget *)dst)->target = ((const RelationTarget *)data)->target;
+        ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
     } else if (had_value || crec->ops.ctor) {
         ecs_component_value_move(crec, dst, data, 1);
     } else {

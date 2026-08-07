@@ -635,6 +635,12 @@ typedef enum {
   EcsRelationByTarget
 } ecs_relation_storage_t;
 
+/* Per-source relation data stored by Dense and ByDepth relations. */
+typedef struct {
+  ecs_entity_t entity;
+  uint32_t source_index;
+} ecs_relation_target_t;
+
 typedef enum { EcsRemoveRelation, EcsDeleteSources } ecs_delete_target_t;
 
 typedef struct {
@@ -1163,9 +1169,9 @@ SIECS_API ecs_entity_t ecs_target_at_id(const ecs_iter_t *it,
                                         uint32_t row);
 #define ecs_target_at(it, relation, row)                                       \
   ecs_target_at_id(it, ecs_rid(relation), row)
-/* Return the contiguous target column for a Dense or ByDepth relation batch. */
-SIECS_API const ecs_entity_t *ecs_targets_id(const ecs_iter_t *it,
-                                             ecs_relation_id_t relation);
+/* Return contiguous relation target records for a Dense or ByDepth batch. */
+SIECS_API const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it,
+                                                      ecs_relation_id_t relation);
 #define ecs_targets(it, relation) ecs_targets_id(it, ecs_rid(relation))
 
 /*

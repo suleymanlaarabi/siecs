@@ -355,8 +355,8 @@ bool ecs_field_is_shared(ecs_iter_t *it, uint16_t field_index);
 `ecs_field_kind()` distinguishes owned, shared, and absent optional fields.
 
 `ecs_target_at()` returns a relation target for one row of the current batch.
-`ecs_targets()` returns a contiguous target column for `Dense` and `ByDepth`
-relations. `ecs_to()` is valid for `ByTarget` relations, while `ecs_depth()`
+`ecs_targets()` returns contiguous `ecs_relation_target_t` records for `Dense`
+and `ByDepth` relations. `ecs_to()` is valid for `ByTarget` relations, while `ecs_depth()`
 `ecs_order_by_target()` is valid for `ByTarget` relations, while
 `ecs_depth()` and `ecs_order_by_depth()` are valid for `ByDepth` relations.
 

@@ -178,7 +178,27 @@ void childof_bydepth_depth_and_cascade(void) {
     it = ecs_query_iter(q);
     test_true(ecs_iter_next(&it));
     test_uint(grandchild, it.entities[0]);
-    test_uint(child, ecs_targets(&it, ChildOf)[0]);
+    test_uint(child, ecs_targets(&it, ChildOf)[0].entity);
+    ecs_query_fini(q);
+    ecs_fini();
+}
+
+void childof_bydepth_targets_return_records(void) {
+    ecs_init();
+
+    ecs_entity_t root = ecs_new();
+    ecs_entity_t child_a = ecs_new();
+    ecs_entity_t child_b = ecs_new();
+    ecs_relate(child_a, ChildOf, root);
+    ecs_relate(child_b, ChildOf, root);
+
+    ecs_query_id_t q = ecs_query({ .relations = { ecs_rel(ChildOf) } });
+    ecs_iter_t it = ecs_query_iter(q);
+    test_true(ecs_iter_next(&it));
+    test_int(2, (int)it.count);
+    const ecs_relation_target_t *targets = ecs_targets(&it, ChildOf);
+    test_uint(root, targets[0].entity);
+    test_uint(root, targets[1].entity);
     ecs_query_fini(q);
     ecs_fini();
 }

@@ -105,7 +105,7 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
         return 0;
     }
     const RelationTarget *value = ecs_table_component_at_column(table, column, row);
-    return value->target;
+    return value->entity;
 }
 
 ecs_entity_t ecs_table_target_id(const ecs_table_t *table, ecs_relation_id_t relation) {
@@ -142,7 +142,7 @@ static void ecs_relation_set_dense(
     ecs_entity_t target
 ) {
     const ecs_component_record_t *crec = ecs_component_index_get(component);
-    RelationTarget value = { .target = target };
+    RelationTarget value = { .entity = target };
     ecs_entity_record_t *record = ecs_get_record(entity);
     RelationTarget *current = ecs_table_component_at_column(table, column, record->table_row);
 
@@ -151,7 +151,7 @@ static void ecs_relation_set_dense(
         crec->on_set(entity, component, &value, current);
     }
     ecs_emit(table, entity, EcsOnSet, &value);
-    current->target = value.target;
+    current->entity = value.entity;
     ecs_defer_end();
 }
 
@@ -254,9 +254,9 @@ static void ecs_relation_set_depth(
         entity_record->table_row
     );
     const ecs_component_record_t *component = ecs_component_index_get(relation_record->component);
-    RelationTarget value = { .target = target };
+    RelationTarget value = { .entity = target };
     component->on_set(entity, relation_record->component, &value, current);
-    current->target = value.target;
+    current->entity = value.entity;
     ecs_relation_update_children_depth(entity, relation, depth);
 }
 
@@ -287,7 +287,7 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
             relation_column,
             entity_record->table_row
         );
-        old_target = current->target;
+        old_target = current->entity;
     } else {
         old_target = ecs_target_id(entity, relation);
     }
@@ -305,7 +305,7 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
                 target
             );
         } else {
-            RelationTarget value = { .target = target };
+            RelationTarget value = { .entity = target };
             ecs_set_cid(entity, record->component, &value);
         }
     } else if (record->storage == EcsRelationByDepth) {

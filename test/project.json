@@ -94,6 +94,7 @@
           "dense_retarget_keeps_reverse_sources",
           "dense_delete_policies",
           "bydepth_depth_and_cascade",
+          "bydepth_targets_return_records",
           "bydepth_reparent_updates_subtree",
           "cascade_cache_accepts_new_depth",
           "bytarget_exact_query_and_retarget",

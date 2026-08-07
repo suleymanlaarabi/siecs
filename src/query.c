@@ -91,7 +91,10 @@ ecs_entity_t ecs_target_at_id(
     return ecs_relation_target_at_table(table, relation, row);
 }
 
-const ecs_entity_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
+const ecs_relation_target_t *ecs_targets_id(
+    const ecs_iter_t *it,
+    ecs_relation_id_t relation
+) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     ecs_assert(record->storage != EcsRelationByTarget, "ecs_targets requires Dense or ByDepth\n");
     const uint16_t *table_ids = it->cache->table_ids.data;

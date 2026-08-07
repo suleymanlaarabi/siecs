@@ -5054,10 +5054,7 @@ struct ecs_world_s {
 
 extern ecs_world_t ecs_world;
 
-typedef struct {
-    ecs_entity_t target;
-    uint32_t source_index;
-} RelationTarget;
+typedef ecs_relation_target_t RelationTarget;
 
 typedef struct {
     sicore_vec_t entities;
@@ -5919,15 +5916,15 @@ void RelationOnSet(
 
     const RelationTarget *old_target_data = current_value;
 
-    ecs_assert_entity_valid(target_data->target);
-    ecs_assert_is_alive(target_data->target);
+    ecs_assert_entity_valid(target_data->entity);
+    ecs_assert_is_alive(target_data->entity);
 
-    if (old_target_data->target == target_data->target) {
+    if (old_target_data->entity == target_data->entity) {
         return;
     }
 
-    if (old_target_data->target) {
-        RelationSource *source = ecs_get_cid(old_target_data->target, source_component);
+    if (old_target_data->entity) {
+        RelationSource *source = ecs_get_cid(old_target_data->entity, source_component);
         uint32_t index = old_target_data->source_index;
         uint32_t last = source->entities.size - 1;
         if (index >= source->entities.size ||
@@ -5950,20 +5947,20 @@ void RelationOnSet(
         }
         sicore_vec_remove_last(&source->entities);
         if (source->entities.size == 0) {
-            ecs_remove_cid(old_target_data->target, source_component);
+            ecs_remove_cid(old_target_data->entity, source_component);
         }
     }
 
     uint32_t source_index;
-    if (ecs_has_cid(target_data->target, source_component)) {
-        RelationSource *source_data = ecs_get_cid(target_data->target, source_component);
+    if (ecs_has_cid(target_data->entity, source_component)) {
+        RelationSource *source_data = ecs_get_cid(target_data->entity, source_component);
         source_index = source_data->entities.size;
         sicore_vec_push_u64(&source_data->entities, entity);
     } else {
         RelationSource source_data = {0};
         sicore_vec_init(&source_data.entities, sizeof(ecs_entity_t));
         sicore_vec_push_u64(&source_data.entities, entity);
-        ecs_set_cid(target_data->target, source_component, &source_data);
+        ecs_set_cid(target_data->entity, source_component, &source_data);
         source_index = 0;
     }
 
@@ -5973,7 +5970,7 @@ void RelationOnSet(
 void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
     const RelationTarget *target_data = ptr;
     ecs_component_t source_component = component + 1;
-    RelationSource *target_source_data = ecs_get_cid(target_data->target, source_component);
+    RelationSource *target_source_data = ecs_get_cid(target_data->entity, source_component);
 
     // Prevent recursive calls to RelationOnRemove when removing relation from child
     if (target_source_data->entities.size == UINT32_MAX) {
@@ -6004,7 +6001,7 @@ void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr)
     sicore_vec_remove_last(&target_source_data->entities);
 
     if (target_source_data->entities.size == 0) {
-        ecs_remove_cid(target_data->target, source_component);
+        ecs_remove_cid(target_data->entity, source_component);
     }
 }
 
@@ -6371,7 +6368,7 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
     }
     ecs_emit(table, entity, EcsOnSet, data);
     if (crec->relation_flags & EcsComponentRelationTarget) {
-        ((RelationTarget *)dst)->target = ((const RelationTarget *)data)->target;
+        ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
     } else {
         ecs_component_value_copy(crec, dst, data, 1);
     }
@@ -6407,7 +6404,7 @@ void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
     }
     ecs_emit(table, entity, EcsOnSet, data);
     if (crec->relation_flags & EcsComponentRelationTarget) {
-        ((RelationTarget *)dst)->target = ((const RelationTarget *)data)->target;
+        ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
     } else if (had_value || crec->ops.ctor) {
         ecs_component_value_move(crec, dst, data, 1);
     } else {
@@ -7029,7 +7026,10 @@ ecs_entity_t ecs_target_at_id(
     return ecs_relation_target_at_table(table, relation, row);
 }
 
-const ecs_entity_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
+const ecs_relation_target_t *ecs_targets_id(
+    const ecs_iter_t *it,
+    ecs_relation_id_t relation
+) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     ecs_assert(record->storage != EcsRelationByTarget, "ecs_targets requires Dense or ByDepth\n");
     const uint16_t *table_ids = it->cache->table_ids.data;
@@ -7159,7 +7159,7 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
         return 0;
     }
     const RelationTarget *value = ecs_table_component_at_column(table, column, row);
-    return value->target;
+    return value->entity;
 }
 
 ecs_entity_t ecs_table_target_id(const ecs_table_t *table, ecs_relation_id_t relation) {
@@ -7196,7 +7196,7 @@ static void ecs_relation_set_dense(
     ecs_entity_t target
 ) {
     const ecs_component_record_t *crec = ecs_component_index_get(component);
-    RelationTarget value = { .target = target };
+    RelationTarget value = { .entity = target };
     ecs_entity_record_t *record = ecs_get_record(entity);
     RelationTarget *current = ecs_table_component_at_column(table, column, record->table_row);
 
@@ -7205,7 +7205,7 @@ static void ecs_relation_set_dense(
         crec->on_set(entity, component, &value, current);
     }
     ecs_emit(table, entity, EcsOnSet, &value);
-    current->target = value.target;
+    current->entity = value.entity;
     ecs_defer_end();
 }
 
@@ -7308,9 +7308,9 @@ static void ecs_relation_set_depth(
         entity_record->table_row
     );
     const ecs_component_record_t *component = ecs_component_index_get(relation_record->component);
-    RelationTarget value = { .target = target };
+    RelationTarget value = { .entity = target };
     component->on_set(entity, relation_record->component, &value, current);
-    current->target = value.target;
+    current->entity = value.entity;
     ecs_relation_update_children_depth(entity, relation, depth);
 }
 
@@ -7341,7 +7341,7 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
             relation_column,
             entity_record->table_row
         );
-        old_target = current->target;
+        old_target = current->entity;
     } else {
         old_target = ecs_target_id(entity, relation);
     }
@@ -7359,7 +7359,7 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
                 target
             );
         } else {
-            RelationTarget value = { .target = target };
+            RelationTarget value = { .entity = target };
             ecs_set_cid(entity, record->component, &value);
         }
     } else if (record->storage == EcsRelationByDepth) {
