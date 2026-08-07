@@ -56,6 +56,7 @@ void component_table_resolves_recursive_base_components(void);
 
 // Testsuite 'resource'
 void resource_set_get(void);
+void resource_delta_time(void);
 void resource_name_lookup(void);
 void resource_try_get_missing(void);
 void resource_remove(void);
@@ -317,6 +318,10 @@ bake_test_case resource_testcases[] = {
     {
         "set_get",
         resource_set_get
+    },
+    {
+        "delta_time",
+        resource_delta_time
     },
     {
         "name_lookup",
@@ -670,7 +675,7 @@ static bake_test_suite suites[] = {
         "resource",
         NULL,
         NULL,
-        8,
+        9,
         resource_testcases
     },
     {

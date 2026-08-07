@@ -119,6 +119,8 @@ bool ecs_progress(void) {
         ecs_world.delta_time = frame_start - ecs_world.last_time;
     }
 
+    ecs_set_resource(DeltaTime, { .value = (float)ecs_world.delta_time });
+
     ecs_world.last_time = frame_start;
 
     if (!ecs_world.did_start) {

@@ -1187,6 +1187,9 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
   ECS_RESOURCE_DECLARE(rname, __VA_ARGS__);                                    \
   ECS_RESOURCE_DEFINE(rname)
 
+/* Builtin resource containing the current frame delta time in seconds. */
+ECS_RESOURCE_DECLARE(DeltaTime, { float value; });
+
 /*
  * Set or replace a world resource.
  *

@@ -88,6 +88,12 @@ ECS_RESOURCE_DEFINE(
 );
 
 static uint32_t resource_system_seen;
+static float resource_delta_time_seen;
+
+static void resource_delta_time_system(ecs_iter_t *it) {
+    resource_delta_time_seen = ecs_get_resource_read(DeltaTime)->value;
+    test_assert(resource_delta_time_seen == it->delta_time);
+}
 
 static void resource_move_system(ecs_iter_t *it) {
     const ResourceTime *time = ecs_get_resource_read(ResourceTime);
@@ -112,6 +118,25 @@ void resource_set_get(void) {
 
     time->elapsed = 2.0f;
     test_assert(ecs_get_resource_read(ResourceTime)->elapsed == 2.0f);
+
+    ecs_fini();
+}
+
+void resource_delta_time(void) {
+    ecs_init();
+
+    test_true(ecs_has_resource(DeltaTime));
+    test_assert(ecs_get_resource_read(DeltaTime)->value == 0.0f);
+
+    ecs_system({
+        .name = "DeltaTimeResource",
+        .phase = EcsOnUpdate,
+        .callback = resource_delta_time_system,
+    });
+    ecs_progress();
+
+    test_assert(resource_delta_time_seen >= 0.0f);
+    test_str("DeltaTime", ecs_resource_name(ecs_id(DeltaTime)));
 
     ecs_fini();
 }

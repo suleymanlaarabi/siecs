@@ -150,6 +150,8 @@ ECS_COMPONENT_DEFINE(
     .on_set = name_on_set
 );
 
+ECS_RESOURCE_DEFINE(DeltaTime);
+
 ECS_TAG_DEFINE(Disabled);
 ECS_TAG_DEFINE(Abstract);
 
@@ -172,6 +174,8 @@ void ecs_bootstrap() {
 
     ECS_RELATION_REGISTER(ChildOf);
     ECS_COMPONENT_REGISTER(Name);
+    ECS_RESOURCE_REGISTER(DeltaTime);
+    ecs_set_resource(DeltaTime, { .value = 0.0f });
     sicore_map_init(&name_map);
     ECS_COMPONENT_REGISTER(Disabled);
     ECS_COMPONENT_REGISTER(Abstract);

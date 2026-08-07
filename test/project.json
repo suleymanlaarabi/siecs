@@ -77,6 +77,7 @@
         "id": "resource",
         "testcases": [
           "set_get",
+          "delta_time",
           "name_lookup",
           "try_get_missing",
           "remove",
