@@ -9,12 +9,17 @@
 #include <test.h>
 
 // Testsuite 'rest'
+void rest_listener_failure_reports_details(void);
 void rest_module_lifecycle(void);
 void rest_schema_uses_public_metadata(void);
 void rest_entity_routes_use_public_introspection(void);
 void rest_component_mutation_uses_public_metadata(void);
 
 bake_test_case rest_testcases[] = {
+    {
+        "listener_failure_reports_details",
+        rest_listener_failure_reports_details
+    },
     {
         "module_lifecycle",
         rest_module_lifecycle
@@ -39,7 +44,7 @@ static bake_test_suite suites[] = {
         "rest",
         NULL,
         NULL,
-        4,
+        5,
         rest_testcases
     }
 };

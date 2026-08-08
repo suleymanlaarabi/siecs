@@ -36,6 +36,7 @@ void component_on_add(void);
 void component_lifecycle_ops_are_used_for_storage_moves(void);
 void component_deferred_set_overwrite_preserves_lifecycle(void);
 void component_add_with_required_uses_current_table_edge(void);
+void component_with_accepts_multiple_requirements(void);
 void component_add_with_required_uses_cached_multi_add_edge(void);
 void component_add_with_required_emits_each_on_add_once(void);
 void component_add_with_required_accepts_sixteen_component_plan(void);
@@ -243,6 +244,10 @@ bake_test_case component_testcases[] = {
     {
         "add_with_required_uses_current_table_edge",
         component_add_with_required_uses_current_table_edge
+    },
+    {
+        "with_accepts_multiple_requirements",
+        component_with_accepts_multiple_requirements
     },
     {
         "add_with_required_uses_cached_multi_add_edge",
@@ -668,7 +673,7 @@ static bake_test_suite suites[] = {
         "component",
         NULL,
         NULL,
-        25,
+        26,
         component_testcases
     },
     {
