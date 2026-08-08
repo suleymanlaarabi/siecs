@@ -402,7 +402,7 @@ BENCH_SETUP(add_required_direct_cold_edge, {
 
     ecs_component_t component = ecs_component({0});
     ecs_component_t required = ecs_component({0});
-    ecs_with(component, required);
+    ecs_with_many(component, required, 0);
 
     BENCH({
         for (uint32_t i = 0; i < entity_count; i++) {
@@ -416,7 +416,7 @@ BENCH_SETUP(add_required_direct_hot_edge, {
 
     ecs_component_t component = ecs_component({0});
     ecs_component_t required = ecs_component({0});
-    ecs_with(component, required);
+    ecs_with_many(component, required, 0);
     ecs_add_cid(ecs_new(), component);
 
     BENCH({
@@ -432,8 +432,8 @@ BENCH_SETUP(add_required_chain_hot_edge, {
     ecs_component_t root = ecs_component({0});
     ecs_component_t mid = ecs_component({0});
     ecs_component_t leaf = ecs_component({0});
-    ecs_with(root, mid);
-    ecs_with(mid, leaf);
+    ecs_with_many(root, mid, 0);
+    ecs_with_many(mid, leaf, 0);
     ecs_add_cid(ecs_new(), root);
 
     BENCH({
@@ -448,7 +448,7 @@ BENCH_SETUP(add_required_to_existing_component, {
 
     ecs_component_t component = ecs_component({0});
     ecs_component_t required = ecs_component({0});
-    ecs_with(component, required);
+    ecs_with_many(component, required, 0);
 
     ecs_entity_t warmup = ecs_new();
     ecs_add_cid(warmup, required);
