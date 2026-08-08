@@ -7018,12 +7018,8 @@ bool ecs_iter_next(ecs_iter_t *it) {
 }
 
 const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
-#ifndef NDEBUG
-
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     ecs_assert(record->storage != EcsRelationByTarget, "ecs_targets requires Dense or ByDepth\n");
-#endif
-
     const uint16_t *table_ids = it->cache->table_ids.data;
     const ecs_table_t *table = ecs_get_table(table_ids[it->table_idx]);
     uint16_t column = ecs_table_column_or_invalid(table, record->component);
