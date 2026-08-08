@@ -150,8 +150,8 @@ auto members = ecs::query().to<GroupOf>(group).build_handle();
 The available terms are `ecs_rel()` for presence, `ecs_rel_opt()` for an
 optional relation, `ecs_not_rel()` for absence, `ecs_to()` for an exact
 `ByTarget` target, and `ecs_depth()` for a `ByDepth` depth. Use
-`ecs_target_at()` for one row or `ecs_targets()` for contiguous `Dense` or
-`ByDepth` target records.
+`ecs_targets()` for contiguous `Dense` or `ByDepth` target records, and
+`ecs_target_shared()` for the target shared by a `ByTarget` batch.
 
 For C++, use `.with_relation<Relation>()`, `.to<Relation>(target)`,
 `.depth<Relation>(depth)`, `.order_by_depth<Relation>()`, and

@@ -124,8 +124,8 @@ auto members = ecs::query()
 mode. Relation terms are filters; they do not create component fields.
 
 For a `Dense` or `ByDepth` relation, `ecs_targets()` returns contiguous
-`ecs_relation_target_t` records for the current batch. `ecs_target_at()` works
-for one row of any relation storage mode:
+`ecs_relation_target_t` records for the current batch. For a `ByTarget`
+relation, `ecs_target_shared()` returns the target shared by the batch:
 
 <Tabs syncKey="language">
 <TabItem label="C">

@@ -6959,9 +6959,7 @@ static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query
     sicore_vec_remove_last(&index->active_ids);
 }
 
-ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) {
-    return ecs_query_index_create(desc);
-}
+ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) { return ecs_query_index_create(desc); }
 
 ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
     ecs_assert(query_id < ecs_world.query_index.queries.size, "invalid query id: %u\n", query_id);
@@ -7019,27 +7017,28 @@ bool ecs_iter_next(ecs_iter_t *it) {
     return true;
 }
 
-ecs_entity_t ecs_target_at_id(
-    const ecs_iter_t *it,
-    ecs_relation_id_t relation,
-    uint32_t row
-) {
-    ecs_assert(row < it->count, "relation row out of bounds\n");
-    const uint16_t *table_ids = it->cache->table_ids.data;
-    const ecs_table_t *table = ecs_get_table(table_ids[it->table_idx]);
-    return ecs_relation_target_at_table(table, relation, row);
-}
+const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
+#ifndef NDEBUG
 
-const ecs_relation_target_t *ecs_targets_id(
-    const ecs_iter_t *it,
-    ecs_relation_id_t relation
-) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     ecs_assert(record->storage != EcsRelationByTarget, "ecs_targets requires Dense or ByDepth\n");
+#endif
+
     const uint16_t *table_ids = it->cache->table_ids.data;
     const ecs_table_t *table = ecs_get_table(table_ids[it->table_idx]);
     uint16_t column = ecs_table_column_or_invalid(table, record->component);
     return column == UINT16_MAX ? NULL : table->cls[column].data;
+}
+
+ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
+#ifndef NDEBUG
+    const ecs_relation_record_t *record = ecs_relation_record(relation);
+    ecs_assert(record->storage == EcsRelationByTarget, "ecs_target_shared requires ByTarget\n");
+
+#endif
+    const uint16_t *table_ids = it->cache->table_ids.data;
+    const ecs_table_t *table = ecs_get_table(table_ids[it->table_idx]);
+    return ecs_table_target_id(table, relation);
 }
 
 void ecs_query_fini(ecs_query_id_t qid) {

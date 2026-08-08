@@ -1,4 +1,5 @@
 #pragma once
+#include "siecs.h"
 #include "siecs/cpp/c_api.hpp"
 #include "siecs/cpp/component.hpp"
 #include "siecs/cpp/entity.hpp"
@@ -525,13 +526,13 @@ class query {
     entity first() {
         ecs_query_id_t qid = this->build();
         ecs_iter_t it = ecs_query_iter(qid);
-        ecs_entity_t result = 0;
-        while (ecs_iter_next(&it)) {
-            result = it.entities[0];
-            break;
+
+        if (ecs_iter_next(&it)) {
+            ecs_query_fini(qid);
+            return it.entities[0];
         }
         ecs_query_fini(qid);
-        return result ? entity(result) : entity::null();
+        return entity::null();
     }
 };
 

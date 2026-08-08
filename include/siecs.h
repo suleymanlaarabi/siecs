@@ -1377,16 +1377,15 @@ SIECS_API uint32_t ecs_query_count(ecs_query_id_t query_id);
  * in the current batch.
  */
 SIECS_API bool ecs_iter_next(ecs_iter_t *it);
-/* Return a relation target for one row of the current iterator batch. */
-SIECS_API ecs_entity_t ecs_target_at_id(const ecs_iter_t *it,
-                                        ecs_relation_id_t relation,
-                                        uint32_t row);
-#define ecs_target_at(it, relation, row)                                       \
-  ecs_target_at_id(it, ecs_rid(relation), row)
 /* Return contiguous relation target records for a Dense or ByDepth batch. */
 SIECS_API const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it,
                                                       ecs_relation_id_t relation);
 #define ecs_targets(it, relation) ecs_targets_id(it, ecs_rid(relation))
+/* Return the shared relation target for a ByTarget batch. */
+SIECS_API ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it,
+                                            ecs_relation_id_t relation);
+#define ecs_target_shared(it, relation)                                       \
+  ecs_target_shared_id(it, ecs_rid(relation))
 
 /*
  * Return the component array for a read term in the current iterator batch.

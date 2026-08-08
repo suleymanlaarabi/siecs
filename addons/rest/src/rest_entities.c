@@ -21,8 +21,9 @@ static bool rest_entity_has_children(ecs_entity_t parent) {
     ecs_query_id_t query = rest_entity_query(ecs_rel(ChildOf));
     ecs_iter_t it = ecs_query_iter(query);
     while (ecs_iter_next(&it)) {
+        const ecs_relation_target_t *targets = ecs_targets(&it, ChildOf);
         for (uint32_t i = 0; i < it.count; i++) {
-            if (ecs_target_at(&it, ChildOf, i) == parent) {
+            if (targets[i].entity == parent) {
                 ecs_query_fini(query);
                 return true;
             }
@@ -47,9 +48,10 @@ sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity) {
     ecs_query_id_t query = rest_entity_query(ecs_rel(ChildOf));
     ecs_iter_t it = ecs_query_iter(query);
     while (ecs_iter_next(&it)) {
+        const ecs_relation_target_t *targets = ecs_targets(&it, ChildOf);
         for (uint32_t i = 0; i < it.count; i++) {
             ecs_entity_t child = it.entities[i];
-            if (ecs_target_at(&it, ChildOf, i) == entity) {
+            if (targets[i].entity == entity) {
                 rest_append_entity(children, child);
             }
         }

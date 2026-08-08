@@ -127,8 +127,9 @@ auto members = ecs::query()
 
 `ecs_rel()` exige une relation, `ecs_rel_opt()` la rend optionnelle,
 `ecs_not_rel()` l’exclut, `ecs_to()` filtre une cible exacte et `ecs_depth()`
-filtre une profondeur. `ecs_target_at()` lit une cible de ligne et
-`ecs_targets()` fournit des cibles contiguës pour les stockages compatibles.
+filtre une profondeur. `ecs_targets()` fournit des cibles contiguës pour
+`Dense` et `ByDepth`, et `ecs_target_shared()` lit la cible partagée d'un batch
+`ByTarget`.
 
 ## Suppression de la cible
 

@@ -285,7 +285,7 @@ void childof_bytarget_exact_query_and_retarget(void) {
     test_int(1, ecs_query_count(q));
     ecs_iter_t it = ecs_query_iter(q);
     test_true(ecs_iter_next(&it));
-    test_uint(a, ecs_target_at(&it, GroupOf, 0));
+    test_uint(a, ecs_target_shared(&it, GroupOf));
     ecs_query_fini(q);
 
     q = ecs_query({ .relations = { ecs_to(GroupOf, b) } });
@@ -298,13 +298,19 @@ void childof_bytarget_exact_query_spans_tables(void) {
     ecs_init();
     ECS_RELATION_REGISTER(GroupOf);
     ecs_entity_t target = ecs_new();
+    ecs_component_t component = ecs_component({0});
     for (uint16_t i = 0; i < 5; i++) {
         ecs_entity_t source = ecs_new();
-        ecs_add_cid(source, ecs_component({0}));
+        ecs_add_cid(source, component);
         ecs_relate(source, GroupOf, target);
     }
     ecs_query_id_t q = ecs_query({ .relations = { ecs_to(GroupOf, target) } });
     test_int(5, ecs_query_count(q));
+    ecs_iter_t it = ecs_query_iter(q);
+    test_true(ecs_iter_next(&it));
+    test_int(5, it.count);
+    test_uint(target, ecs_target_shared(&it, GroupOf));
+    test_false(ecs_iter_next(&it));
     ecs_query_fini(q);
     ecs_fini();
 }
@@ -340,11 +346,11 @@ void childof_bytarget_order_by_target(void) {
 
     ecs_iter_t it = ecs_query_iter(q);
     test_true(ecs_iter_next(&it));
-    test_uint(first, ecs_target_at(&it, GroupOf, 0));
+    test_uint(first, ecs_target_shared(&it, GroupOf));
     RelValue *value = ecs_field(&it, 0);
     test_int(10, value[0].value);
     test_true(ecs_iter_next(&it));
-    test_uint(second, ecs_target_at(&it, GroupOf, 0));
+    test_uint(second, ecs_target_shared(&it, GroupOf));
     value = ecs_field(&it, 0);
     test_int(20, value[0].value);
     test_false(ecs_iter_next(&it));
@@ -359,9 +365,9 @@ void childof_bytarget_order_by_target(void) {
     });
     it = ecs_query_iter(q);
     test_true(ecs_iter_next(&it));
-    test_uint(second, ecs_target_at(&it, GroupOf, 0));
+    test_uint(second, ecs_target_shared(&it, GroupOf));
     test_true(ecs_iter_next(&it));
-    test_uint(first, ecs_target_at(&it, GroupOf, 0));
+    test_uint(first, ecs_target_shared(&it, GroupOf));
     test_false(ecs_iter_next(&it));
 
     ecs_query_fini(q);
