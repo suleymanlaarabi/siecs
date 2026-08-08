@@ -100,7 +100,7 @@ void entity_with(void) {
     ECS_COMPONENT_REGISTER(Transform);
     ECS_COMPONENT_REGISTER(Renderable);
 
-    ecs_with(ecs_id(Renderable), ecs_id(Transform));
+    ecs_with(Renderable, Transform);
 
     ecs_entity_t entity = ecs_new();
     ecs_add(entity, Renderable);

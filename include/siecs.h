@@ -496,6 +496,16 @@ SIECS_API void ecs_quit(void);
   extern ecs_component_t ecs_id(cname);                                        \
   extern ecs_component_desc_t ecs_id(cname##_desc)
 
+#define ECS_CTOR(cname, ...)                                                                \
+    static void cname##_ctor(void *ptr, uint32_t count) {                                          \
+        cname *__values = ptr;                                                                     \
+        for (uint32_t i = 0; i < count; i++) {                                                     \
+            __values[i] = (cname) __VA_ARGS__;                                                      \
+        }                                                                                          \
+    }
+
+#define ecs_ctor_id(cname) cname##_ctor
+
 /* Group the C-compatible fields and C++-only methods of a shared declaration.
  * ECS_CPP_FIELDS and ECS_CPP_METHODS are intended for the *_DECLARE_CPP macros
  * below; the method block is omitted when the header is compiled as C. */
@@ -540,10 +550,10 @@ SIECS_API void ecs_quit(void);
   extern ecs_component_desc_t ecs_id(cname##_desc)
 
 /* Define a tag component declared with ECS_TAG_DECLARE. */
-#define ECS_TAG_DEFINE(cname)                                                  \
+#define ECS_TAG_DEFINE(cname, ...)                                             \
   SIECS_TAG_META_DEFINE(cname)                                                 \
   ecs_component_desc_t ecs_id(cname##_desc) = {                                \
-      .name = #cname, .size = 0, SIECS_COMPONENT_META_INIT(cname)};            \
+      .name = #cname, .size = 0, SIECS_COMPONENT_META_INIT(cname) __VA_ARGS__};            \
   ecs_component_t ecs_id(cname) = 0
 
 /* Declare and define a tag component in one translation unit. */
@@ -557,8 +567,8 @@ SIECS_API void ecs_quit(void);
  * Must be called before using the typed helpers for that component with this
  * world. Stores the generated component id in ecs_id(cname).
  */
-#define ECS_COMPONENT_REGISTER(cname)                                          \
-  ecs_component_register(&ecs_id(cname), &ecs_id(cname##_desc))
+#define ECS_COMPONENT_REGISTER_ONE(cname) ecs_component_register(&ecs_id(cname), &ecs_id(cname##_desc));
+#define ECS_COMPONENT_REGISTER(...) PP_FOR_EACH(ECS_COMPONENT_REGISTER_ONE, __VA_ARGS__)
 
 /*
  * Declare and define a component type in one translation unit.
@@ -715,8 +725,9 @@ typedef struct {
   ECS_RELATION_DECLARE(name);                                                  \
   ECS_RELATION_DEFINE(name, __VA_ARGS__)
 
-#define ECS_RELATION_REGISTER(name)                                            \
-  ecs_relation_register(&ecs_rid(name), #name, &ecs_rid(name##_desc))
+
+#define ECS_RELATION_REGISTER_ONE(cname) ecs_relation_register(&ecs_rid(cname), #cname, &ecs_rid(cname##_desc));
+#define ECS_RELATION_REGISTER(...) PP_FOR_EACH(ECS_RELATION_REGISTER_ONE, __VA_ARGS__)
 
 ECS_RELATION_DECLARE(ChildOf);
 
@@ -1252,16 +1263,106 @@ SIECS_API bool ecs_has_resource_rid(const ecs_resource_t id);
 /* Remove a resource and run its destructor/hook; no-op when absent. */
 SIECS_API void ecs_remove_resource_rid(ecs_resource_t id);
 
-/*
- * Declare that adding component also adds require first.
- *
- * Requirement cycles are debug assertion failures when declared.
- *
- * Example:
- *   ecs_with(ecs_id(Renderable), ecs_id(Transform));
- *   ecs_add(entity, Renderable); // also adds Transform
- */
-SIECS_API void ecs_with(ecs_component_t component, ecs_component_t require);
+#define PP_FE_1(F, a) \
+    F(a)
+
+#define PP_FE_2(F, a, ...) \
+    F(a) PP_FE_1(F, __VA_ARGS__)
+
+#define PP_FE_3(F, a, ...) \
+    F(a) PP_FE_2(F, __VA_ARGS__)
+
+#define PP_FE_4(F, a, ...) \
+    F(a) PP_FE_3(F, __VA_ARGS__)
+
+#define PP_FE_5(F, a, ...) \
+    F(a) PP_FE_4(F, __VA_ARGS__)
+
+#define PP_FE_6(F, a, ...) \
+    F(a) PP_FE_5(F, __VA_ARGS__)
+
+#define PP_FE_7(F, a, ...) \
+    F(a) PP_FE_6(F, __VA_ARGS__)
+
+#define PP_FE_8(F, a, ...) \
+    F(a) PP_FE_7(F, __VA_ARGS__)
+
+#define PP_FE_9(F, a, ...) \
+    F(a) PP_FE_8(F, __VA_ARGS__)
+
+#define PP_FE_10(F, a, ...) \
+    F(a) PP_FE_9(F, __VA_ARGS__)
+
+#define PP_FE_11(F, a, ...) \
+    F(a) PP_FE_10(F, __VA_ARGS__)
+
+#define PP_FE_12(F, a, ...) \
+    F(a) PP_FE_11(F, __VA_ARGS__)
+
+#define PP_FE_13(F, a, ...) \
+    F(a) PP_FE_12(F, __VA_ARGS__)
+
+#define PP_FE_14(F, a, ...) \
+    F(a) PP_FE_13(F, __VA_ARGS__)
+
+#define PP_FE_15(F, a, ...) \
+    F(a) PP_FE_14(F, __VA_ARGS__)
+
+#define PP_FE_16(F, a, ...) \
+    F(a) PP_FE_15(F, __VA_ARGS__)
+
+#define PP_FE_17(F, a, ...) \
+    F(a) PP_FE_16(F, __VA_ARGS__)
+
+#define PP_FE_18(F, a, ...) \
+    F(a) PP_FE_17(F, __VA_ARGS__)
+
+#define PP_FE_19(F, a, ...) \
+    F(a) PP_FE_18(F, __VA_ARGS__)
+
+#define PP_FE_20(F, a, ...) \
+    F(a) PP_FE_19(F, __VA_ARGS__)
+
+
+#define PP_GET_FE( \
+    _1,  _2,  _3,  _4,  _5, \
+    _6,  _7,  _8,  _9,  _10, \
+    _11, _12, _13, _14, _15, \
+    _16, _17, _18, _19, _20, \
+    NAME, ... \
+) NAME
+
+
+#define PP_FOR_EACH(F, ...) \
+    PP_GET_FE( \
+        __VA_ARGS__, \
+        PP_FE_20, \
+        PP_FE_19, \
+        PP_FE_18, \
+        PP_FE_17, \
+        PP_FE_16, \
+        PP_FE_15, \
+        PP_FE_14, \
+        PP_FE_13, \
+        PP_FE_12, \
+        PP_FE_11, \
+        PP_FE_10, \
+        PP_FE_9,  \
+        PP_FE_8,  \
+        PP_FE_7,  \
+        PP_FE_6,  \
+        PP_FE_5,  \
+        PP_FE_4,  \
+        PP_FE_3,  \
+        PP_FE_2,  \
+        PP_FE_1   \
+    )(F, __VA_ARGS__)
+
+/* Declare that adding a component also adds each following required component. */
+SIECS_API void ecs_with_many(ecs_component_t component, ...);
+
+#define ecs_id_comma(x) , ecs_id(x)
+#define ecs_with(first, ...) ecs_with_many(ecs_id(first) PP_FOR_EACH(ecs_id_comma, __VA_ARGS__), 0)
 
 /* Builtin observer events. */
 #define EcsOnAdd 0

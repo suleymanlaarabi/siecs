@@ -54,6 +54,7 @@
           "lifecycle_ops_are_used_for_storage_moves",
           "deferred_set_overwrite_preserves_lifecycle",
           "add_with_required_uses_current_table_edge",
+          "with_accepts_multiple_requirements",
           "add_with_required_uses_cached_multi_add_edge",
           "add_with_required_emits_each_on_add_once",
           "add_with_required_accepts_sixteen_component_plan",

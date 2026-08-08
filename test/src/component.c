@@ -418,7 +418,7 @@ void component_add_with_required_uses_current_table_edge(void) {
     ECS_COMPONENT_REGISTER(RequiredA);
     ECS_COMPONENT_REGISTER(RequiredB);
 
-    ecs_with(ecs_id(RequiredA), ecs_id(RequiredB));
+    ecs_with(RequiredA, RequiredB);
 
     ecs_entity_t warmup = ecs_new();
     ecs_add(warmup, RequiredA);
@@ -432,6 +432,26 @@ void component_add_with_required_uses_current_table_edge(void) {
     ecs_fini();
 }
 
+void component_with_accepts_multiple_requirements(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RequiredA);
+    ECS_COMPONENT_REGISTER(RequiredB);
+    ECS_COMPONENT_REGISTER(HookComponent);
+    ecs_component_t fourth = ecs_component({ .name = "RequiredFourth" });
+
+    ecs_with(RequiredA, RequiredB, HookComponent);
+    ecs_with_many(ecs_id(RequiredA), fourth, 0);
+
+    ecs_entity_t entity = ecs_new();
+    ecs_add(entity, RequiredA);
+
+    test_true(ecs_has(entity, RequiredA));
+    test_true(ecs_has(entity, RequiredB));
+    test_true(ecs_has(entity, HookComponent));
+    test_true(ecs_has_cid(entity, fourth));
+    ecs_fini();
+}
+
 void component_add_with_required_uses_cached_multi_add_edge(void) {
     reset_hook_state();
 
@@ -440,8 +460,8 @@ void component_add_with_required_uses_cached_multi_add_edge(void) {
     ECS_COMPONENT_REGISTER(RequiredB);
     ECS_COMPONENT_REGISTER(HookComponent);
 
-    ecs_with(ecs_id(RequiredA), ecs_id(RequiredB));
-    ecs_with(ecs_id(RequiredB), ecs_id(HookComponent));
+    ecs_with(RequiredA, RequiredB);
+    ecs_with(RequiredB, HookComponent);
 
     ecs_entity_t first = ecs_new();
     ecs_add(first, RequiredA);
@@ -471,8 +491,8 @@ void component_add_with_required_emits_each_on_add_once(void) {
     ECS_COMPONENT_REGISTER(RequiredB);
     ECS_COMPONENT_REGISTER(HookComponent);
 
-    ecs_with(ecs_id(RequiredA), ecs_id(RequiredB));
-    ecs_with(ecs_id(RequiredB), ecs_id(HookComponent));
+    ecs_with(RequiredA, RequiredB);
+    ecs_with(RequiredB, HookComponent);
 
     ecs_observer(
         {
@@ -500,7 +520,7 @@ void component_add_with_required_accepts_sixteen_component_plan(void) {
     }
 
     for (uint32_t i = 1; i < 16; i++) {
-        ecs_with(components[i], components[i - 1]);
+        ecs_with_many(components[i], components[i - 1], 0);
     }
 
     ecs_entity_t first = ecs_new();
@@ -524,10 +544,10 @@ void component_add_with_required_deduplicates_branches(void) {
     ECS_COMPONENT_REGISTER(HookComponent);
 
     ecs_component_t root = ecs_component({ .name = "RequiredBranchRoot" });
-    ecs_with(ecs_id(RequiredA), ecs_id(HookComponent));
-    ecs_with(ecs_id(RequiredB), ecs_id(HookComponent));
-    ecs_with(root, ecs_id(RequiredA));
-    ecs_with(root, ecs_id(RequiredB));
+    ecs_with(RequiredA, HookComponent);
+    ecs_with(RequiredB, HookComponent);
+    ecs_with_many(root, ecs_id(RequiredA), 0);
+    ecs_with_many(root, ecs_id(RequiredB), 0);
 
     ecs_entity_t entity = ecs_new();
     ecs_add_cid(entity, root);

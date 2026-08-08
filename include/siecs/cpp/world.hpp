@@ -60,7 +60,7 @@ inline ecs_component_t component(const component_hooks<T> &hooks) {
 
 /** Declare that adding `Component` implicitly adds `Required` first. */
 template <typename Component, typename Required> inline void component_requires() {
-    ecs_with(component<Component>(), component<Required>());
+    ecs_with_many(component<Component>(), component<Required>(), 0);
 }
 
 /** Register `T` in the separate relation namespace. */

@@ -624,7 +624,7 @@ void system_deferred_set_adds_required_components(void) {
     ecs_init();
     ECS_COMPONENT_REGISTER(SystemBatchA);
     ECS_COMPONENT_REGISTER(SystemBatchB);
-    ecs_with(ecs_id(SystemBatchA), ecs_id(SystemBatchB));
+    ecs_with(SystemBatchA, SystemBatchB);
 
     ecs_entity_t entity = ecs_new();
     ecs_defer_begin();

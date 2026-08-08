@@ -6186,6 +6186,12 @@ const char *ecs_component_name(ecs_component_t component) {
     return ecs_component_index_get(component)->info->name;
 }
 
+#include <stdarg.h>
+
+#ifdef ecs_with
+#undef ecs_with
+#endif
+
 #define ecs_assert_can_be_updated(entity, ...)                                                     \
     ecs_assert(!ecs_has_cid_owned(entity, ecs_id(Abstract)), __VA_ARGS__)
 
@@ -6445,7 +6451,7 @@ bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id) {
     return ecs_table_has_owned(ecs_get_table(tid), id);
 }
 
-void ecs_with(ecs_component_t component, ecs_component_t require) {
+static inline void ecs_with_impl(ecs_component_t component, ecs_component_t require) {
     ecs_assert_id_valid(component);
     ecs_assert_id_valid(require);
     ecs_assert(component != require, "component cannot require itself: %d\n", component);
@@ -6473,6 +6479,18 @@ void ecs_with(ecs_component_t component, ecs_component_t require) {
     record->required =
         realloc(record->required, sizeof(ecs_component_t) * (record->required_count + 1));
     record->required[record->required_count++] = require;
+}
+
+void ecs_with_many(ecs_component_t component, ...) {
+    va_list args;
+    va_start(args, component);
+
+    ecs_component_t require;
+    while ((require = (ecs_component_t)va_arg(args, int)) != 0) {
+        ecs_with_impl(component, require);
+    }
+
+    va_end(args);
 }
 
 #include <stdbool.h>
