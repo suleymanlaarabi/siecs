@@ -1,5 +1,6 @@
 #include "rest_internal.h"
 #include "siecs_rest.h"
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,9 +11,28 @@ static sihttp_response_t rest_health(const sihttp_request_t *req);
 ECS_RESOURCE_DEFINE(SiecsRestState, .on_remove = rest_state_on_remove);
 ECS_MODULE_DEFINE(sirest);
 
-static void rest_fail(const char *operation) {
+static void rest_fail(const sirest_props_t *props, int error_number) {
     const char *error = sihttp_error();
-    fprintf(stderr, "siecs_rest: %s%s%s\n", operation, error ? ": " : "", error ? error : "");
+    const char *host = props->host && props->host[0] ? props->host : "0.0.0.0";
+
+    if (error_number) {
+        fprintf(
+            stderr,
+            "sirest: failed to start REST server on %s:%d:\n%s (errno=%d)\n",
+            host,
+            props->port,
+            error ? error : "unknown error",
+            error_number
+        );
+    } else {
+        fprintf(
+            stderr,
+            "sirest: failed to start REST server on %s:%d:\n%s\n",
+            host,
+            props->port,
+            error ? error : "unknown error"
+        );
+    }
     abort();
 }
 
@@ -42,17 +62,20 @@ static sihttp_server_t *rest_server_create(const sirest_props_t *props) {
         }
     );
     if (!server) {
-        rest_fail("create server");
+        rest_fail(props, errno);
     }
 
-    if (sihttp_server_listen(server, props->host, (uint16_t)props->port) != 0) {
+    int listen_result = sihttp_server_listen(server, props->host, (uint16_t)props->port);
+    int listen_errno = errno;
+    if (listen_result != 0) {
         sihttp_server_fini(server);
-        rest_fail("listen server");
+        rest_fail(props, listen_errno);
     }
 
     if (sihttp_server_start(server) != 0) {
+        int start_errno = errno;
         sihttp_server_fini(server);
-        rest_fail("start server");
+        rest_fail(props, start_errno);
     }
     return server;
 }

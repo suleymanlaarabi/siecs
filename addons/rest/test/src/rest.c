@@ -1,8 +1,13 @@
 #include "rest_internal.h"
 #include "siecs_rest.h"
 #include <siecs_test.h>
+#include <errno.h>
+#include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 ECS_COMPONENT_DECLARE(RestTestPosition, {
     float x;
@@ -10,6 +15,47 @@ ECS_COMPONENT_DECLARE(RestTestPosition, {
 });
 
 ECS_COMPONENT_DEFINE(RestTestPosition);
+
+void rest_listener_failure_reports_details(void) {
+    int output[2];
+    test_assert(pipe(output) == 0);
+
+    sihttp_server_t *blocker = sihttp_server({ .port = 0 });
+    test_not_null(blocker);
+    test_int(0, sihttp_server_listen(blocker, "127.0.0.1", 0));
+    uint16_t port = sihttp_server_port(blocker);
+    test_true(port != 0);
+
+    pid_t child = fork();
+    test_assert(child >= 0);
+    if (child == 0) {
+        close(output[0]);
+        dup2(output[1], STDERR_FILENO);
+        close(output[1]);
+        ecs_init();
+        ECS_MODULE_IMPORT(sirest, { .host = "127.0.0.1", .port = port });
+        _exit(EXIT_SUCCESS);
+    }
+
+    close(output[1]);
+    char message[1024] = { 0 };
+    ssize_t length = read(output[0], message, sizeof(message) - 1);
+    close(output[0]);
+    int status = 0;
+    test_assert(waitpid(child, &status, 0) == child);
+    test_true(WIFSIGNALED(status));
+    test_int(SIGABRT, WTERMSIG(status));
+    test_true(length > 0);
+    test_true(strstr(message, "sirest: failed to start REST server on 127.0.0.1:") != NULL);
+    char port_text[16];
+    snprintf(port_text, sizeof(port_text), ":%u:\n", port);
+    test_true(strstr(message, port_text) != NULL);
+    test_true(strstr(message, "bind failed: ") != NULL);
+    test_true(strstr(message, strerror(EADDRINUSE)) != NULL);
+    test_true(strstr(message, " (errno=") != NULL);
+
+    sihttp_server_fini(blocker);
+}
 
 static sijson_value_t find_by_name(sijson_value_t array, const char *name) {
     for (size_t i = 0; i < sijson_array_len(array); i++) {
