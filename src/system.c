@@ -1,4 +1,5 @@
 #include "module.h"
+#include "platform_time.h"
 #include "siecs.h"
 #include "storage/system_index.h"
 #include "utils.h"
@@ -6,11 +7,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <time.h>
-#endif
 
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
 
@@ -95,37 +91,8 @@ void ecs_run_phase(ecs_phase_t phase) {
     }
 }
 
-static inline double now_sec(void) {
-#ifdef _WIN32
-    LARGE_INTEGER frequency;
-    LARGE_INTEGER counter;
-    QueryPerformanceFrequency(&frequency);
-    QueryPerformanceCounter(&counter);
-    return (double)counter.QuadPart / (double)frequency.QuadPart;
-#else
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1000000000.0;
-#endif
-}
-
-static inline void sleep_sec(double seconds) {
-    if (seconds <= 0.0)
-        return;
-
-#ifdef _WIN32
-    Sleep((DWORD)(seconds * 1000.0));
-#else
-    struct timespec ts;
-    ts.tv_sec = (time_t)seconds;
-    ts.tv_nsec = (long)((seconds - (double)ts.tv_sec) * 1000000000.0);
-
-    nanosleep(&ts, NULL);
-#endif
-}
-
 bool ecs_progress(void) {
-    double frame_start = now_sec();
+    double frame_start = ecs_platform_time_now_sec();
 
     if (ecs_world.last_time == 0.0) {
         ecs_world.delta_time = 0.0;
@@ -157,10 +124,10 @@ bool ecs_progress(void) {
 
     if (ecs_world.features.target_fps) {
         double target_dt = 1.0 / (double)ecs_world.features.target_fps;
-        double elapsed = now_sec() - frame_start;
+        double elapsed = ecs_platform_time_now_sec() - frame_start;
         double remaining = target_dt - elapsed;
 
-        sleep_sec(remaining);
+        ecs_platform_time_sleep_sec(remaining);
     }
 
     return !ecs_world.exit;

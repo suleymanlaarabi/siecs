@@ -1,6 +1,7 @@
 .bake_cache
 .cache/
 bin/
+build-wasm/
 compile_commands.json
 test/include/siecs-test/
 gcov

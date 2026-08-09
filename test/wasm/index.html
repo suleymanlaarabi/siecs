@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SIECS WASM smoke test</title>
+<p id="result">SIECS_WASM_PENDING</p>
+<script src="/build-wasm/debug/c/siecs_wasm.js"></script>
+<script src="/build-wasm/debug/cpp/siecs_wasm.js"></script>
+<script>
+  const result = document.getElementById("result");
+  Promise.all([createSiecsC(), createSiecsCpp()]).then(([c, cpp]) => {
+    const valid = c._siecs_wasm_smoke() === 0 && cpp._siecs_wasm_cpp_smoke() === 0;
+    result.textContent = valid ? "SIECS_WASM_OK" : "SIECS_WASM_FAIL";
+  }).catch((error) => {
+    result.textContent = `SIECS_WASM_FAIL: ${error}`;
+  });
+</script>

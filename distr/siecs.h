@@ -3401,7 +3401,7 @@ inline auto make_cursor(ecs_iter_t *it, Resources &resources, bool &has_shared) 
             shared = ecs_field_is_shared(it, static_cast<uint16_t>(field));
             has_shared |= shared;
         }
-        return optional_cursor<value_type>{ value, shared ? 0U : 1U };
+        return optional_cursor<value_type>{ value, static_cast<std::ptrdiff_t>(shared ? 0 : 1) };
     } else if constexpr (is_res_v<arg>) {
         return std::get<I>(resources);
     } else {
@@ -3413,7 +3413,7 @@ inline auto make_cursor(ecs_iter_t *it, Resources &resources, bool &has_shared) 
             shared = ecs_field_is_shared(it, static_cast<uint16_t>(field));
             has_shared |= shared;
         }
-        return component_cursor<value_type>{ value, shared ? 0U : 1U };
+        return component_cursor<value_type>{ value, static_cast<std::ptrdiff_t>(shared ? 0 : 1) };
     }
 }
 

@@ -187,3 +187,42 @@ jobs:
           CC: clang
           CXX: clang++
         run: make check-distr-cpp-standalone
+
+  wasm:
+    name: Emscripten WASM smoke tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.74
+
+      - name: Install native build tools and Chromium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang make chromium
+
+      - name: Install bake
+        run: |
+          git clone https://github.com/suleymanlaarabi/bake
+          git -C bake checkout --detach "$BAKE_COMMIT"
+          make -C bake/build-$(uname)
+          bake/bake setup
+
+      - name: Regenerate distribution
+        run: make distr
+
+      - name: Build and run Node.js smoke tests
+        run: make test-wasm
+
+      - name: Run Chromium smoke test
+        run: make test-wasm-browser
+
+      - name: Check generated distribution
+        env:
+          CC: clang
+        run: make check-distr
