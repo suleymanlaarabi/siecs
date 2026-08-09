@@ -24,6 +24,12 @@ template <typename T> struct component_hooks {
     on_add_t on_add = nullptr;
 };
 
+/** Registration options for a native C++ component. */
+template <typename T> struct component_options {
+    component_hooks<T> hooks{};
+    ecs_component_inheritance_t inheritance = EcsInheritOwned;
+};
+
 namespace detail {
 
 template <typename T> struct component_type {
@@ -148,7 +154,10 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
 }
 
 template <typename T>
-static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nullptr) {
+static ecs_component_t ecs_cpp_component_id(
+    const component_hooks<T> *hooks = nullptr,
+    ecs_component_inheritance_t inheritance = EcsInheritOwned
+) {
     using type = std::remove_cv_t<T>;
     if constexpr (c_declared_component<type>) {
         (void)hooks;
@@ -190,6 +199,7 @@ static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nu
         .on_remove = hooks && hooks->on_remove ? component_on_remove<T> : nullptr,
         .on_add = hooks && hooks->on_add ? component_on_add<T> : nullptr,
         .struct_desc = &reflection,
+        .inheritance = inheritance,
     };
 
     cid = ecs_component_init(&desc);

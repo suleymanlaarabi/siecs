@@ -4,9 +4,9 @@ description: Build reusable prototypes with abstract entities, IsA links, compon
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Inheritance lets an entity use another entity as a base for shared component
-data. It is useful for prototypes, presets, and categories where many entities
-share the same default values.
+Inheritance lets an entity use another entity as a base for reusable component
+defaults. Components are owned by inheriting entities by default; components
+that should remain shared can opt into shared inheritance.
 
 An entity can inherit from one base. That base must be marked with the built-in
 `Abstract` component.
@@ -76,8 +76,8 @@ rejected, so an entity cannot inherit from itself or from one of its descendants
 
 ## Inherit Components
 
-Inherited components are shared from the base. If the base owns `Health` and the
-instance does not, read-only queries can still see `Health` on the instance:
+Components use owned inheritance by default. If the base owns `Health`, linking
+an instance copies the effective value into the instance:
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -103,9 +103,25 @@ auto instance = ecs::entity::create().is_a(base);
 </TabItem>
 </Tabs>
 
-In this example, `instance` inherits `Health` from `base`. The inherited value is
-not copied into the instance. It remains stored on `base`, and all instances that
-inherit it read the same shared value.
+In this example, `instance` owns its copied `Health`. Later writes to the
+instance do not affect the base, and the base value is not synchronized back to
+the instance.
+
+Use `EcsInheritShared` when a component should remain stored on the base:
+
+```c
+ECS_COMPONENT_DEFINE(Material,
+    .inheritance = EcsInheritShared
+);
+```
+
+For a native C++ component, use the component registration options:
+
+```cpp
+ecs::component<Material>({
+    .inheritance = EcsInheritShared,
+});
+```
 
 ## Override Components
 
@@ -209,9 +225,9 @@ ecs::query().require<Health>().each([](const Health &health) {
 </TabItem>
 </Tabs>
 
-When a field is inherited, `ecs_field_kind(&it, index)` returns `EcsFieldShared`.
-The pointer returned by `ecs_field()` points to the component stored on the
-base, not to an array with one element per entity.
+When a component is configured as shared and inherited, `ecs_field_kind(&it,
+index)` returns `EcsFieldShared`. The pointer returned by `ecs_field()` points to
+the component stored on the base, not to an array with one element per entity.
 
 When a field is owned by the matched entities, `ecs_field_kind(&it, index)` is
 `EcsFieldOwned`. The pointer is a normal component array indexed with `i`.
@@ -220,15 +236,16 @@ The inheritance rules for query fields are:
 
 | Term | Inherited component behavior |
 | --- | --- |
-| `ecs_in(T)` | Matches owned or inherited `T`; inherited fields are `EcsFieldShared`. |
-| `ecs_out(T)` and `ecs_inout(T)` | Match only entities that own `T` locally. |
+| `ecs_in(T)` | Matches owned or inherited `T`; shared inherited fields are `EcsFieldShared`. |
+| `ecs_out(T)` and `ecs_inout(T)` | Match owned `T`, including components materialized through owned inheritance. |
 | `ecs_in_optional(T)` | May return an inherited shared field when `T` exists on a base. |
-| `ecs_inout_optional(T)` | Ignores inherited shared fields and returns `NULL` unless `T` is owned locally. |
+| `ecs_inout_optional(T)` | Ignores shared inherited fields and returns `NULL` unless `T` is owned. |
 
 ## Writable Queries
 
 Writable terms do not match shared inherited data. A query with
-`ecs_inout(Health)` only matches entities that own `Health` locally:
+`ecs_inout(Health)` matches entities that own `Health`, including instances
+where `Health` was materialized through the default owned inheritance:
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -247,9 +264,9 @@ ecs::query().each([](Health &health) {
 </TabItem>
 </Tabs>
 
-This keeps writes unambiguous. If an instance only inherits `Health`, it is
-skipped by this query. If the instance overrides `Health` with `ecs_set()`, it
-matches and the query writes to the instance-owned value.
+An instance configured with a shared `Health` inheritance is skipped by this
+query. An explicit `ecs_set()` also creates an instance-owned override and the
+query writes to that value.
 
 Optional writable terms also ignore inherited shared values:
 
@@ -270,8 +287,8 @@ ecs::query().each([](ecs::optional<Health> health) {
 </TabItem>
 </Tabs>
 
-For an entity that only inherits `Health`, this field is `EcsFieldNone` and
-`ecs_field()` returns `NULL`.
+For an entity that only inherits shared `Health`, this field is `EcsFieldNone`
+and `ecs_field()` returns `NULL`.
 
 ## Restrict a Query to a Base
 

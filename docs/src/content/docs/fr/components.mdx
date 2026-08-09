@@ -39,6 +39,30 @@ Les types C++ déclarés avec `ECS_COMPONENT_DECLARE` réutilisent l’identifia
 et son descripteur. Un struct C++ natif est enregistré automatiquement lors de
 sa première utilisation.
 
+## Politique d’héritage
+
+Les composants sont copiés dans une instance héritée par défaut. Déclarez un
+composant shared lorsque toutes les instances doivent lire la même valeur de la
+base :
+
+```c
+ECS_COMPONENT_DEFINE(Material,
+    .inheritance = EcsInheritShared
+);
+```
+
+Pour un composant C++ natif, utilisez l’option d’enregistrement équivalente :
+
+```cpp
+ecs::component<Material>({
+    .inheritance = EcsInheritShared,
+});
+```
+
+La politique est fixée lors de l’enregistrement du composant. Le mode owned
+copie la valeur effective pendant `ecs_is_a()` et ne la synchronise plus avec la
+base. Les champs inherited shared restent exclus des requêtes d’écriture.
+
 ## Écrire et lire
 
 <Tabs syncKey="language">

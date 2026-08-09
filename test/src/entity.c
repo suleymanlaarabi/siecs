@@ -6,9 +6,30 @@
 
 ECS_COMPONENT_DECLARE(Transform, { int value; });
 ECS_COMPONENT_DECLARE(Renderable, { int value; });
+ECS_COMPONENT_DECLARE(InheritOwnedValue, { int value; });
+ECS_COMPONENT_DECLARE(InheritSharedValue, { int value; });
+ECS_COMPONENT_DECLARE(InheritHookValue, { int value; });
 
 ECS_COMPONENT_DEFINE(Transform);
 ECS_COMPONENT_DEFINE(Renderable);
+ECS_COMPONENT_DEFINE(InheritOwnedValue);
+ECS_COMPONENT_DEFINE(InheritSharedValue, .inheritance = EcsInheritShared);
+
+static int inherit_hook_add_calls;
+static int inherit_hook_last_value;
+
+static void inherit_hook_on_add(
+    ecs_entity_t entity,
+    ecs_component_t component,
+    void *value
+) {
+    (void)entity;
+    (void)component;
+    inherit_hook_add_calls++;
+    inherit_hook_last_value = ((InheritHookValue *)value)->value;
+}
+
+ECS_COMPONENT_DEFINE(InheritHookValue, .on_add = inherit_hook_on_add);
 
 void entity_create(void) {
     ecs_init();
@@ -130,6 +151,70 @@ void entity_is_a_moves_entity_to_type_with_base(void) {
 
     test_assert(table->type.base == base);
     test_true(ecs_has(entity, Renderable));
+
+    ecs_fini();
+}
+
+void entity_is_a_materializes_owned_components(void) {
+    ecs_init();
+
+    ECS_COMPONENT_REGISTER(InheritOwnedValue, InheritSharedValue, InheritHookValue);
+
+    ecs_entity_t base = ecs_new();
+    ecs_set(base, InheritOwnedValue, { 10 });
+    ecs_set(base, InheritSharedValue, { 20 });
+    ecs_set(base, InheritHookValue, { 30 });
+    ecs_add(base, Abstract);
+    inherit_hook_add_calls = 0;
+    inherit_hook_last_value = 0;
+
+    ecs_entity_t child = ecs_new();
+    ecs_is_a(child, base);
+
+    test_true(ecs_has_cid_owned(child, ecs_id(InheritOwnedValue)));
+    test_true(ecs_has_cid_owned(child, ecs_id(InheritHookValue)));
+    test_false(ecs_has_cid_owned(child, ecs_id(InheritSharedValue)));
+    test_assert(ecs_get(child, InheritOwnedValue) != ecs_get(base, InheritOwnedValue));
+    test_assert(ecs_get(child, InheritHookValue) != ecs_get(base, InheritHookValue));
+    test_int(10, ecs_get(child, InheritOwnedValue)->value);
+    test_int(30, ecs_get(child, InheritHookValue)->value);
+    test_int(20, ecs_get(child, InheritSharedValue)->value);
+    test_int(1, inherit_hook_add_calls);
+    test_int(30, inherit_hook_last_value);
+
+    ecs_query_id_t owned_query = ecs_query({ .terms = { ecs_inout(InheritOwnedValue) } });
+    ecs_iter_t owned_it = ecs_query_iter(owned_query);
+    bool found_owned_child = false;
+    while (ecs_iter_next(&owned_it)) {
+        if (owned_it.entities[0] == child) {
+            test_int(EcsFieldOwned, ecs_field_kind(&owned_it, 0));
+            found_owned_child = true;
+        }
+    }
+    test_true(found_owned_child);
+    ecs_query_fini(owned_query);
+
+    ecs_query_id_t shared_query = ecs_query({ .terms = { ecs_in(InheritSharedValue) } });
+    ecs_iter_t shared_it = ecs_query_iter(shared_query);
+    bool found_shared_child = false;
+    while (ecs_iter_next(&shared_it)) {
+        if (shared_it.entities[0] == child) {
+            test_true(ecs_field_is_shared(&shared_it, 0));
+            found_shared_child = true;
+        }
+    }
+    test_true(found_shared_child);
+    ecs_query_fini(shared_query);
+
+    ecs_set(child, InheritOwnedValue, { 99 });
+    test_int(99, ecs_get(child, InheritOwnedValue)->value);
+    test_int(10, ecs_get(base, InheritOwnedValue)->value);
+
+    ecs_entity_t deferred = ecs_new();
+    ecs_defer_begin();
+    ecs_is_a(deferred, base);
+    ecs_defer_end();
+    test_true(ecs_has_cid_owned(deferred, ecs_id(InheritOwnedValue)));
 
     ecs_fini();
 }

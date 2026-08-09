@@ -17,6 +17,16 @@ struct CppQueryScale {
     float value;
 };
 
+struct CppQueryOwnedInherited {
+    int value;
+};
+
+static void register_shared_query_position() {
+    ecs::component<CppQueryPosition>(ecs::component_options<CppQueryPosition>{
+        .inheritance = EcsInheritShared,
+    });
+}
+
 static CppQueryVelocity *cpp_query_velocity(ecs::entity entity) {
     return static_cast<CppQueryVelocity *>(ecs_get_cid(
                 entity.id(),
@@ -34,6 +44,7 @@ static CppQueryPosition *cpp_query_position(ecs::entity entity) {
 void query_reads_shared_inherited_field(void) {
     ecs_test_scope _ecs_scope;
 
+    register_shared_query_position();
     auto base = ecs::entity::create().set(CppQueryPosition{ .x = 10.0f });
     ecs_add(base.id(), Abstract);
 
@@ -55,6 +66,7 @@ void query_reads_shared_inherited_field(void) {
 void query_mutable_does_not_match_shared_inherited_field(void) {
     ecs_test_scope _ecs_scope;
 
+    register_shared_query_position();
     auto base = ecs::entity::create().set(CppQueryPosition{ .x = 10.0f });
     ecs_add(base.id(), Abstract);
 
@@ -73,6 +85,7 @@ void query_mutable_does_not_match_shared_inherited_field(void) {
 void query_reads_shared_and_writes_owned_field(void) {
     ecs_test_scope _ecs_scope;
 
+    register_shared_query_position();
     auto base = ecs::entity::create().set(CppQueryPosition{ .x = 3.0f });
     ecs_add(base.id(), Abstract);
 
@@ -94,6 +107,7 @@ void query_reads_shared_and_writes_owned_field(void) {
 void query_owned_override_wins_over_shared_field(void) {
     ecs_test_scope _ecs_scope;
 
+    register_shared_query_position();
     auto base = ecs::entity::create().set(CppQueryPosition{ .x = 10.0f });
     ecs_add(base.id(), Abstract);
 
@@ -112,6 +126,29 @@ void query_owned_override_wins_over_shared_field(void) {
     test_int(1, calls);
     test_assert(cpp_query_position(entity)->x == 2.0f);
     test_assert(cpp_query_velocity(entity)->x == 3.0f);
+}
+
+void query_owned_inherited_field_is_owned_by_default(void) {
+    ecs_test_scope _ecs_scope;
+
+    auto base = ecs::entity::create().set(CppQueryOwnedInherited{ .value = 10 });
+    base.abstract();
+    auto child = ecs::entity::create().is_a(base);
+
+    ecs_component_t component = ecs::component<CppQueryOwnedInherited>();
+    test_true(ecs_has_cid_owned(child.id(), component));
+    test_assert(ecs_get_cid(child.id(), component) != ecs_get_cid(base.id(), component));
+    test_int(10, child.get<CppQueryOwnedInherited>().value);
+
+    int calls = 0;
+    ecs::query().each([&](CppQueryOwnedInherited &value) {
+        value.value++;
+        calls++;
+    });
+
+    test_int(1, calls);
+    test_int(11, child.get<CppQueryOwnedInherited>().value);
+    test_int(10, base.get<CppQueryOwnedInherited>().value);
 }
 
 void query_each_receives_entity(void) {
@@ -136,6 +173,10 @@ void query_each_receives_entity(void) {
 
 void query_system_reads_shared_fields_with_interleaved_resource(void) {
     ecs_test_scope _ecs_scope;
+    register_shared_query_position();
+    ecs::component<CppQueryMass>(ecs::component_options<CppQueryMass>{
+        .inheritance = EcsInheritShared,
+    });
     ecs::set_resource(CppQueryScale{ .value = 2.0f });
 
     auto base =

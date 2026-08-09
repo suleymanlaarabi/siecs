@@ -100,6 +100,29 @@ The same header remains valid C: the method block is omitted and the C layout,
 id, descriptor, and reflection metadata remain unchanged. C++ methods must not
 add instance data.
 
+## Inheritance policy
+
+Components are copied into an inheriting entity by default. Configure a
+component as shared when all instances should read the same base value:
+
+```c
+ECS_COMPONENT_DEFINE(Material,
+    .inheritance = EcsInheritShared
+);
+```
+
+Native C++ components use the equivalent registration option:
+
+```cpp
+ecs::component<Material>({
+    .inheritance = EcsInheritShared,
+});
+```
+
+The policy is fixed when the component is registered. Owned inheritance copies
+the effective base value during `ecs_is_a()`; it does not synchronize with the
+base afterward. Shared inherited fields are read-only in writable queries.
+
 ## Set and Read
 
 `ecs_set()` adds the component if needed, then writes the value:

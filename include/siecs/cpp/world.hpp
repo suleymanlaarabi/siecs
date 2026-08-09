@@ -58,6 +58,13 @@ inline ecs_component_t component(const component_hooks<T> &hooks) {
     return detail::ecs_cpp_component_id<T>(&hooks);
 }
 
+/** Register a native C++ component with lifecycle and inheritance options. */
+template <typename T>
+    requires(!detail::c_declared_component<T>)
+inline ecs_component_t component(const component_options<T> &options) {
+    return detail::ecs_cpp_component_id<T>(&options.hooks, options.inheritance);
+}
+
 /** Declare that adding `Component` implicitly adds `Required` first. */
 template <typename Component, typename Required> inline void component_requires() {
     ecs_with_many(component<Component>(), component<Required>(), 0);

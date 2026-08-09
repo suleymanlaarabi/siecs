@@ -1,5 +1,7 @@
 #include "command_buffer.h"
+#include "event_ops.h"
 #include "helper.h"
+#include "inheritance.h"
 #include "siecs.h"
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
@@ -131,14 +133,26 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
         return;
     }
 
-    ecs_type_t new_type = ecs_type_with_base(&from_table->type, target);
+    ecs_inheritance_plan_t plan;
+    ecs_inheritance_plan_build(&from_table->type, target, &plan);
+    ecs_type_t new_type = ecs_type_with_added_ids(
+        &from_table->type,
+        plan.ids,
+        plan.count
+    );
+    new_type.base = target;
     uint16_t to_table_id = ecs_table_index_get_or_create(new_type);
     if (to_table_id == from_table_id) {
+        ecs_inheritance_plan_fini(&plan);
         return;
     }
 
     from_table = ecs_get_table(from_table_id);
-    ecs_migrate_same_layout(record, entity, from_table, to_table_id);
+    ecs_migrate(record, entity, from_table, to_table_id, 0);
+    ecs_table_t *to_table = ecs_get_table(to_table_id);
+    ecs_inheritance_plan_copy(&plan, target, to_table, record->table_row);
+    ecs_emit_added_components(from_table, to_table, entity, record->table_row);
+    ecs_inheritance_plan_fini(&plan);
 }
 
 void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
@@ -148,7 +162,9 @@ void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
     ecs_assert_is_alive(target);
 
     if (ecs_is_deferred()) {
-        ecs_add_cid(target, ecs_id(Abstract));
+        if (!ecs_has_cid_owned(target, ecs_id(Abstract))) {
+            ecs_add_cid(target, ecs_id(Abstract));
+        }
         ecs_command_buffer_set_base(entity, target);
         return;
     }

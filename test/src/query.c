@@ -5,7 +5,7 @@ ECS_COMPONENT_DECLARE(QueryVelocity, { int value; });
 ECS_COMPONENT_DECLARE(QueryMass, { int value; });
 ECS_COMPONENT_DECLARE(QueryDisabled, { int value; });
 
-ECS_COMPONENT_DEFINE(QueryPosition);
+ECS_COMPONENT_DEFINE(QueryPosition, .inheritance = EcsInheritShared);
 ECS_COMPONENT_DEFINE(QueryVelocity);
 ECS_COMPONENT_DEFINE(QueryMass);
 ECS_COMPONENT_DEFINE(QueryDisabled);

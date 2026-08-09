@@ -1011,6 +1011,14 @@ typedef void (*ecs_type_copy_t)(void *dst, const void *src, uint32_t count);
 /* Move-construct or assign count values, consuming src. */
 typedef void (*ecs_type_move_t)(void *dst, void *src, uint32_t count);
 
+/* Controls how a component is materialized through an IsA inheritance link. */
+typedef enum {
+  /* Copy the effective base value into the inheriting entity. */
+  EcsInheritOwned = 0,
+  /* Keep the component on the base and resolve it as shared data. */
+  EcsInheritShared = 1
+} ecs_component_inheritance_t;
+
 /* Iterator storage returned by ecs_query_iter; ptrs/entities are batch views.
  */
 typedef struct {
@@ -1038,6 +1046,7 @@ typedef struct {
   ecs_component_on_remove_t on_remove;
   ecs_component_on_add_t on_add;
   const sireflect_struct_desc_t *struct_desc;
+  ecs_component_inheritance_t inheritance;
 } ecs_component_desc_t;
 
 /* Immutable metadata for a registered component. */
@@ -1047,6 +1056,7 @@ typedef struct {
   sireflect_handle_t type;
   /* Copied reflection descriptor, borrowed until ecs_fini(). */
   const sireflect_struct_desc_t *reflection;
+  ecs_component_inheritance_t inheritance;
 } ecs_component_info_t;
 
 /* Dynamic reflected component descriptor. Sireflect derives size and alignment.
@@ -1054,6 +1064,7 @@ typedef struct {
 typedef struct {
   const char *name;
   const char *fields;
+  ecs_component_inheritance_t inheritance;
 } ecs_dynamic_component_desc_t;
 
 /*
@@ -2459,6 +2470,12 @@ template <typename T> struct component_hooks {
     on_add_t on_add = nullptr;
 };
 
+/** Registration options for a native C++ component. */
+template <typename T> struct component_options {
+    component_hooks<T> hooks{};
+    ecs_component_inheritance_t inheritance = EcsInheritOwned;
+};
+
 namespace detail {
 
 template <typename T> struct component_type {
@@ -2583,7 +2600,10 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
 }
 
 template <typename T>
-static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nullptr) {
+static ecs_component_t ecs_cpp_component_id(
+    const component_hooks<T> *hooks = nullptr,
+    ecs_component_inheritance_t inheritance = EcsInheritOwned
+) {
     using type = std::remove_cv_t<T>;
     if constexpr (c_declared_component<type>) {
         (void)hooks;
@@ -2625,6 +2645,7 @@ static ecs_component_t ecs_cpp_component_id(const component_hooks<T> *hooks = nu
         .on_remove = hooks && hooks->on_remove ? component_on_remove<T> : nullptr,
         .on_add = hooks && hooks->on_add ? component_on_add<T> : nullptr,
         .struct_desc = &reflection,
+        .inheritance = inheritance,
     };
 
     cid = ecs_component_init(&desc);
@@ -4099,6 +4120,13 @@ template <typename T>
     requires(!detail::c_declared_component<T>)
 inline ecs_component_t component(const component_hooks<T> &hooks) {
     return detail::ecs_cpp_component_id<T>(&hooks);
+}
+
+/** Register a native C++ component with lifecycle and inheritance options. */
+template <typename T>
+    requires(!detail::c_declared_component<T>)
+inline ecs_component_t component(const component_options<T> &options) {
+    return detail::ecs_cpp_component_id<T>(&options.hooks, options.inheritance);
 }
 
 /** Declare that adding `Component` implicitly adds `Required` first. */

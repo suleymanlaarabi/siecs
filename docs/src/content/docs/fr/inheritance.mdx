@@ -4,8 +4,9 @@ description: Construire des bases réutilisables avec Abstract, IsA, composants 
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-L’héritage relie une entité instance à une base avec `IsA`. La base devient
-abstraite et ses composants peuvent être visibles par les requêtes de l’instance.
+L’héritage relie une entité instance à une base avec `IsA`. Les composants sont
+copiés dans l’instance et deviennent owned par défaut ; ceux qui doivent rester
+partagés peuvent choisir explicitement le mode shared.
 
 ## Créer une base et une instance
 
@@ -31,9 +32,10 @@ auto enemy = ecs::entity::create().is_a(enemy_base);
 
 ## Lire et remplacer
 
-Une requête peut voir un composant hérité en lecture. Pour remplacer la valeur
-sur l’instance, ajoutez localement le composant puis écrivez-le. Les pointeurs
-partagés doivent être traités comme des données en lecture seule.
+Une instance reçoit une copie owned des composants hérités par défaut. Pour
+remplacer la valeur sur l’instance, écrivez simplement le composant local. Les
+composants configurés shared restent stockés sur la base et doivent être traités
+comme des données en lecture seule.
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -56,8 +58,8 @@ hérité le plus proche.
 
 ## Marquer une base abstraite
 
-Une base destinée à être héritée doit porter `Abstract`. La valeur héritée reste
-stockée sur la base ; elle n’est pas copiée dans chaque instance :
+Une base destinée à être héritée doit porter `Abstract`. Les composants normaux
+sont copiés dans chaque instance selon leur politique :
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -80,8 +82,8 @@ auto instance = ecs::entity::create().is_a(base);
 </TabItem>
 </Tabs>
 
-Les instances lisent donc la même valeur partagée tant qu’elles ne possèdent
-pas de remplacement local.
+Les instances possèdent donc leur propre valeur par défaut. Pour conserver une
+valeur partagée, déclarez le composant avec `.inheritance = EcsInheritShared`.
 
 ## Remplacer un composant hérité
 
@@ -105,7 +107,7 @@ et hérités sont indépendants.
 
 ## Correspondance des requêtes
 
-Une requête en lecture peut voir un composant hérité :
+Une requête en lecture peut voir un composant hérité, qu’il soit owned ou shared :
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -124,14 +126,13 @@ ecs::query().require<Health>().each([](const Health &health) {
 </TabItem>
 </Tabs>
 
-Un champ hérité est partagé : `ecs_field_kind()` retourne `EcsFieldShared` et le
-pointeur ne représente pas un tableau indépendant par entité. Un champ local
-retourne `EcsFieldOwned` et peut être indexé avec l’indice du lot.
+Un composant hérité configuré shared retourne `EcsFieldShared` et son pointeur
+ne représente pas un tableau indépendant par entité. Un composant inherited
+owned retourne `EcsFieldOwned` et peut être indexé avec l’indice du lot.
 
-Les termes d’écriture (`ecs_out`, `ecs_inout`) ne correspondent qu’aux valeurs
-possédées localement. Cette règle évite d’écrire ambiguëment dans une valeur
-partagée par plusieurs instances. Les termes optionnels en écriture ignorent
-également les valeurs héritées.
+Les termes d’écriture (`ecs_out`, `ecs_inout`) correspondent aux valeurs owned,
+y compris celles copiées lors de `IsA`. Ils ignorent les valeurs inherited
+shared. Les termes optionnels en écriture suivent la même règle.
 
 ## Requêtes limitées à une base
 

@@ -35,6 +35,7 @@ void ecs_component_index_register(
     ecs_component_on_set_t on_set,
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
+    ecs_component_inheritance_t inheritance,
     uint32_t relation_flags,
     sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
@@ -61,6 +62,7 @@ void ecs_component_index_register(
         .size = size,
         .type = type,
         .reflection = reflection,
+        .inheritance = inheritance,
     };
     if (name && !info->name) {
         abort();
@@ -75,6 +77,7 @@ void ecs_component_index_register(
         .on_set = on_set,
         .on_remove = on_remove,
         .on_add = on_add,
+        .inheritance = inheritance,
         .relation_flags = relation_flags,
         .tables = { 0 },
         .reflection_desc = reflection,

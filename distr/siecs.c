@@ -4643,6 +4643,7 @@ typedef struct {
     ecs_component_on_set_t on_set;
     ecs_component_on_remove_t on_remove;
     ecs_component_on_add_t on_add;
+    ecs_component_inheritance_t inheritance;
     uint32_t relation_flags;
     sicore_vec_t tables; // uint16_t
     const sireflect_struct_desc_t *reflection_desc;
@@ -4660,6 +4661,7 @@ void ecs_component_index_register(
     ecs_component_on_set_t on_set,
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
+    ecs_component_inheritance_t inheritance,
     uint32_t relation_flags,
     sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
@@ -5346,6 +5348,35 @@ static inline void ecs_emit_removed_components(
 
 #endif
 
+#ifndef SIECS_INHERITANCE_H
+#define SIECS_INHERITANCE_H
+
+#include <stdint.h>
+
+typedef struct {
+    ecs_component_t *ids;
+    uint16_t count;
+} ecs_inheritance_plan_t;
+
+/* Collect components that must become owned when a type inherits from base. */
+void ecs_inheritance_plan_build(
+    const ecs_type_t *child_type,
+    ecs_entity_t base,
+    ecs_inheritance_plan_t *plan
+);
+
+void ecs_inheritance_plan_fini(ecs_inheritance_plan_t *plan);
+
+/* Copy the effective values from base into newly materialized child columns. */
+void ecs_inheritance_plan_copy(
+    const ecs_inheritance_plan_t *plan,
+    ecs_entity_t base,
+    ecs_table_t *child_table,
+    uint32_t child_row
+);
+
+#endif
+
 #ifndef SIECS_TABLE_MIGRATION_H
 #define SIECS_TABLE_MIGRATION_H
 #ifndef SIECS_TABLE_OPS_H
@@ -5838,12 +5869,28 @@ static void command_apply(ecs_entity_command_t *command, const sicore_vec_t *rel
     }
 
     ecs_type_t final_type = command_build_type(old_table, command);
+    ecs_inheritance_plan_t inheritance_plan = { 0 };
+    bool base_changed = command->has_base && command->base != old_table->type.base;
+    if (base_changed) {
+        ecs_inheritance_plan_build(&final_type, command->base, &inheritance_plan);
+        if (inheritance_plan.count != 0) {
+            ecs_type_t materialized = ecs_type_with_added_ids(
+                &final_type,
+                inheritance_plan.ids,
+                inheritance_plan.count
+            );
+            materialized.base = final_type.base;
+            ecs_type_fini(&final_type);
+            final_type = materialized;
+        }
+    }
 
     if (!ecs_type_equals(&old_table->type, &final_type)) {
         uint32_t old_row = record->table_row;
         ecs_emit_removed_components(old_table, &final_type, command->entity, old_row);
         if (!ecs_is_alive(command->entity)) {
             ecs_type_fini(&final_type);
+            ecs_inheritance_plan_fini(&inheritance_plan);
             return;
         }
 
@@ -5853,10 +5900,20 @@ static void command_apply(ecs_entity_command_t *command, const sicore_vec_t *rel
         ecs_migrate(record, command->entity, old_table, new_table_id, 0);
         record = ecs_get_record(command->entity);
         ecs_table_t *new_table = ecs_get_table(record->table_id);
+        if (base_changed) {
+            ecs_inheritance_plan_copy(
+                &inheritance_plan,
+                command->base,
+                new_table,
+                record->table_row
+            );
+        }
         ecs_emit_added_components(old_table, new_table, command->entity, record->table_row);
     } else {
         ecs_type_fini(&final_type);
     }
+
+    ecs_inheritance_plan_fini(&inheritance_plan);
 
     command_apply_changes(command);
     command_apply_relations(command, relations);
@@ -6066,6 +6123,7 @@ static ecs_component_t ecs_component_register_type(
         desc->on_set,
         desc->on_remove,
         desc->on_add,
+        desc->inheritance,
         0,
         type,
         desc->struct_desc
@@ -6089,6 +6147,7 @@ ecs_component_t ecs_component_register_relation_internal(
         by_target ? NULL : RelationOnSet,
         by_target ? ecs_relation_target_on_remove : RelationOnRemove,
         NULL,
+        EcsInheritShared,
         target_flags,
         SIREFLECT_INVALID_HANDLE,
         NULL
@@ -6105,6 +6164,7 @@ ecs_component_t ecs_component_register_relation_internal(
         NULL,
         RelationSourceOnRemove,
         NULL,
+        EcsInheritShared,
         ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationSource),
         SIREFLECT_INVALID_HANDLE,
         NULL
@@ -6162,6 +6222,7 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
     ecs_component_desc_t component = {
         .size = info->size,
         .struct_desc = &reflection,
+        .inheritance = desc->inheritance,
     };
 
     component.name = desc->name;
@@ -6702,14 +6763,26 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
         return;
     }
 
-    ecs_type_t new_type = ecs_type_with_base(&from_table->type, target);
+    ecs_inheritance_plan_t plan;
+    ecs_inheritance_plan_build(&from_table->type, target, &plan);
+    ecs_type_t new_type = ecs_type_with_added_ids(
+        &from_table->type,
+        plan.ids,
+        plan.count
+    );
+    new_type.base = target;
     uint16_t to_table_id = ecs_table_index_get_or_create(new_type);
     if (to_table_id == from_table_id) {
+        ecs_inheritance_plan_fini(&plan);
         return;
     }
 
     from_table = ecs_get_table(from_table_id);
-    ecs_migrate_same_layout(record, entity, from_table, to_table_id);
+    ecs_migrate(record, entity, from_table, to_table_id, 0);
+    ecs_table_t *to_table = ecs_get_table(to_table_id);
+    ecs_inheritance_plan_copy(&plan, target, to_table, record->table_row);
+    ecs_emit_added_components(from_table, to_table, entity, record->table_row);
+    ecs_inheritance_plan_fini(&plan);
 }
 
 void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
@@ -6719,7 +6792,9 @@ void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
     ecs_assert_is_alive(target);
 
     if (ecs_is_deferred()) {
-        ecs_add_cid(target, ecs_id(Abstract));
+        if (!ecs_has_cid_owned(target, ecs_id(Abstract))) {
+            ecs_add_cid(target, ecs_id(Abstract));
+        }
         ecs_command_buffer_set_base(entity, target);
         return;
     }
@@ -6810,6 +6885,125 @@ const char *ecs_entity_name(ecs_entity_t entity) {
     }
     sprintf(buff, "(%d, %d)", ecs_first(entity), ecs_second(entity));
     return buff;
+}
+
+static uint16_t ecs_inheritance_base_component_capacity(ecs_entity_t base) {
+    uint32_t capacity = 0;
+    while (base != 0) {
+        const ecs_entity_record_t *record = ecs_get_record(base);
+        const ecs_table_t *table = ecs_get_table(record->table_id);
+        capacity += table->type.component_count;
+        base = table->type.base;
+    }
+    ecs_assert(capacity <= UINT16_MAX, "too many inherited components: %u\n", capacity);
+    return (uint16_t)capacity;
+}
+
+static bool ecs_inheritance_type_has(
+    const ecs_type_t *type,
+    ecs_component_t component
+) {
+    uint16_t first = 0;
+    uint16_t last = type->component_count;
+    while (first < last) {
+        uint16_t middle = (uint16_t)(first + (last - first) / 2);
+        ecs_component_t current = type->ids[middle];
+        if (current == component) {
+            return true;
+        }
+        if (current < component) {
+            first = (uint16_t)(middle + 1);
+        } else {
+            last = middle;
+        }
+    }
+    return false;
+}
+
+static bool ecs_inheritance_component_is_owned(ecs_component_t component) {
+    if (component == ecs_id(Abstract)) {
+        return false;
+    }
+
+    const ecs_component_record_t *record = ecs_component_index_get(component);
+    if (record->relation_flags != 0) {
+        return false;
+    }
+    return record->inheritance == EcsInheritOwned;
+}
+
+static int ecs_inheritance_component_compare(const void *left, const void *right) {
+    ecs_component_t a = *(const ecs_component_t *)left;
+    ecs_component_t b = *(const ecs_component_t *)right;
+    return a < b ? -1 : a > b ? 1 : 0;
+}
+
+void ecs_inheritance_plan_build(
+    const ecs_type_t *child_type,
+    ecs_entity_t base,
+    ecs_inheritance_plan_t *plan
+) {
+    plan->ids = NULL;
+    plan->count = 0;
+
+    uint16_t capacity = ecs_inheritance_base_component_capacity(base);
+    if (capacity == 0) {
+        return;
+    }
+
+    ecs_component_t *ids = malloc(sizeof(ecs_component_t) * capacity);
+    ecs_assert_not_null(ids);
+
+    uint16_t count = 0;
+    while (base != 0) {
+        const ecs_entity_record_t *record = ecs_get_record(base);
+        const ecs_table_t *table = ecs_get_table(record->table_id);
+        for (uint16_t i = 0; i < table->type.component_count; i++) {
+            ecs_component_t component = table->type.ids[i];
+            if (ecs_inheritance_component_is_owned(component) &&
+                !ecs_inheritance_type_has(child_type, component)) {
+                ids[count++] = component;
+            }
+        }
+        base = table->type.base;
+    }
+
+    if (count == 0) {
+        free(ids);
+        return;
+    }
+
+    qsort(ids, count, sizeof(ecs_component_t), ecs_inheritance_component_compare);
+    uint16_t unique = 1;
+    for (uint16_t i = 1; i < count; i++) {
+        if (ids[i] != ids[unique - 1]) {
+            ids[unique++] = ids[i];
+        }
+    }
+
+    plan->ids = ids;
+    plan->count = unique;
+}
+
+void ecs_inheritance_plan_fini(ecs_inheritance_plan_t *plan) {
+    free(plan->ids);
+    plan->ids = NULL;
+    plan->count = 0;
+}
+
+void ecs_inheritance_plan_copy(
+    const ecs_inheritance_plan_t *plan,
+    ecs_entity_t base,
+    ecs_table_t *child_table,
+    uint32_t child_row
+) {
+    for (uint16_t i = 0; i < plan->count; i++) {
+        ecs_component_t component = plan->ids[i];
+        const ecs_component_record_t *record = ecs_component_index_get(component);
+        const void *source = ecs_try_get_cid(base, component);
+        void *destination = ecs_table_get_component(child_table, component, child_row);
+        ecs_component_value_copy(record, destination, source, 1);
+    }
 }
 
 #ifndef SIECS_MODULE_H
@@ -8350,6 +8544,7 @@ void ecs_component_index_register(
     ecs_component_on_set_t on_set,
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
+    ecs_component_inheritance_t inheritance,
     uint32_t relation_flags,
     sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
@@ -8376,6 +8571,7 @@ void ecs_component_index_register(
         .size = size,
         .type = type,
         .reflection = reflection,
+        .inheritance = inheritance,
     };
     if (name && !info->name) {
         abort();
@@ -8390,6 +8586,7 @@ void ecs_component_index_register(
         .on_set = on_set,
         .on_remove = on_remove,
         .on_add = on_add,
+        .inheritance = inheritance,
         .relation_flags = relation_flags,
         .tables = { 0 },
         .reflection_desc = reflection,

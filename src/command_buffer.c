@@ -2,6 +2,7 @@
 #include "component_require.h"
 #include "datastructure/arena.h"
 #include "event_ops.h"
+#include "inheritance.h"
 #include "storage/component_index.h"
 #include "storage/table_index.h"
 #include "relation.h"
@@ -377,12 +378,28 @@ static void command_apply(ecs_entity_command_t *command, const sicore_vec_t *rel
     }
 
     ecs_type_t final_type = command_build_type(old_table, command);
+    ecs_inheritance_plan_t inheritance_plan = { 0 };
+    bool base_changed = command->has_base && command->base != old_table->type.base;
+    if (base_changed) {
+        ecs_inheritance_plan_build(&final_type, command->base, &inheritance_plan);
+        if (inheritance_plan.count != 0) {
+            ecs_type_t materialized = ecs_type_with_added_ids(
+                &final_type,
+                inheritance_plan.ids,
+                inheritance_plan.count
+            );
+            materialized.base = final_type.base;
+            ecs_type_fini(&final_type);
+            final_type = materialized;
+        }
+    }
 
     if (!ecs_type_equals(&old_table->type, &final_type)) {
         uint32_t old_row = record->table_row;
         ecs_emit_removed_components(old_table, &final_type, command->entity, old_row);
         if (!ecs_is_alive(command->entity)) {
             ecs_type_fini(&final_type);
+            ecs_inheritance_plan_fini(&inheritance_plan);
             return;
         }
 
@@ -392,10 +409,20 @@ static void command_apply(ecs_entity_command_t *command, const sicore_vec_t *rel
         ecs_migrate(record, command->entity, old_table, new_table_id, 0);
         record = ecs_get_record(command->entity);
         ecs_table_t *new_table = ecs_get_table(record->table_id);
+        if (base_changed) {
+            ecs_inheritance_plan_copy(
+                &inheritance_plan,
+                command->base,
+                new_table,
+                record->table_row
+            );
+        }
         ecs_emit_added_components(old_table, new_table, command->entity, record->table_row);
     } else {
         ecs_type_fini(&final_type);
     }
+
+    ecs_inheritance_plan_fini(&inheritance_plan);
 
     command_apply_changes(command);
     command_apply_relations(command, relations);

@@ -221,6 +221,14 @@ typedef void (*ecs_type_copy_t)(void *dst, const void *src, uint32_t count);
 /* Move-construct or assign count values, consuming src. */
 typedef void (*ecs_type_move_t)(void *dst, void *src, uint32_t count);
 
+/* Controls how a component is materialized through an IsA inheritance link. */
+typedef enum {
+  /* Copy the effective base value into the inheriting entity. */
+  EcsInheritOwned = 0,
+  /* Keep the component on the base and resolve it as shared data. */
+  EcsInheritShared = 1
+} ecs_component_inheritance_t;
+
 /* Iterator storage returned by ecs_query_iter; ptrs/entities are batch views.
  */
 typedef struct {
@@ -248,6 +256,7 @@ typedef struct {
   ecs_component_on_remove_t on_remove;
   ecs_component_on_add_t on_add;
   const sireflect_struct_desc_t *struct_desc;
+  ecs_component_inheritance_t inheritance;
 } ecs_component_desc_t;
 
 /* Immutable metadata for a registered component. */
@@ -257,6 +266,7 @@ typedef struct {
   sireflect_handle_t type;
   /* Copied reflection descriptor, borrowed until ecs_fini(). */
   const sireflect_struct_desc_t *reflection;
+  ecs_component_inheritance_t inheritance;
 } ecs_component_info_t;
 
 /* Dynamic reflected component descriptor. Sireflect derives size and alignment.
@@ -264,6 +274,7 @@ typedef struct {
 typedef struct {
   const char *name;
   const char *fields;
+  ecs_component_inheritance_t inheritance;
 } ecs_dynamic_component_desc_t;
 
 /*
