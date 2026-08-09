@@ -118,8 +118,7 @@ void Move(ecs_iter_t *it) {
 int main(void) {
     ecs_init();
 
-    ECS_COMPONENT_REGISTER(Position);
-    ECS_COMPONENT_REGISTER(Velocity);
+    ECS_COMPONENT_REGISTER(Position, Velocity);
 
     ecs_system({
         .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
