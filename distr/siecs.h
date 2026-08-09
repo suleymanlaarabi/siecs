@@ -822,6 +822,21 @@ SIJSON_API const char *sijson_error(void);
 #define SIECS_API
 #endif
 
+/* ECS ids, descriptors, and module entry points are part of the public ABI of
+ * the package that declares them. Keep them visible even when a package is
+ * built with hidden default visibility. */
+#ifndef SIECS_PUBLIC_API
+#if defined(_MSC_VER)
+#define SIECS_PUBLIC_API __declspec(dllexport)
+#elif defined(__MINGW32__)
+#define SIECS_PUBLIC_API __attribute__((dllexport))
+#elif defined(__GNUC__) || defined(__clang__)
+#define SIECS_PUBLIC_API __attribute__((__visibility__("default")))
+#else
+#define SIECS_PUBLIC_API
+#endif
+#endif
+
 #ifdef __cplusplus
 #ifndef _Alignof
 #define _Alignof alignof
@@ -1294,8 +1309,8 @@ SIECS_API void ecs_quit(void);
 /* Declare a component type and its descriptor in a public header. */
 #define ECS_COMPONENT_DECLARE(cname, ...)                                      \
   SIJSON_DECLARE(cname, __VA_ARGS__)                                           \
-  extern ecs_component_t ecs_id(cname);                                        \
-  extern ecs_component_desc_t ecs_id(cname##_desc)
+  SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                        \
+  SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc)
 
 #define ECS_CTOR(cname, ...)                                                                \
     static void cname##_ctor(void *ptr, uint32_t count) {                                          \
@@ -1331,11 +1346,11 @@ SIECS_API void ecs_quit(void);
  */
 #define ECS_COMPONENT_DEFINE(cname, ...)                                       \
   SIECS_COMPONENT_META_DEFINE(cname)                                           \
-  ecs_component_desc_t ecs_id(cname##_desc) = {                                \
+  SIECS_PUBLIC_API ecs_component_desc_t ecs_id(cname##_desc) = {                \
       .name = #cname,                                                          \
       .size = sizeof(cname),                                                   \
       SIECS_COMPONENT_META_INIT(cname) __VA_ARGS__};                           \
-  ecs_component_t ecs_id(cname) = 0
+  SIECS_PUBLIC_API ecs_component_t ecs_id(cname) = 0
 
 /*
  * Declare a tag component without declaring a zero-member struct.
@@ -1347,15 +1362,15 @@ SIECS_API void ecs_quit(void);
  */
 #define ECS_TAG_DECLARE(cname)                                                 \
   typedef struct cname##_tag_t cname;                                          \
-  extern ecs_component_t ecs_id(cname);                                        \
-  extern ecs_component_desc_t ecs_id(cname##_desc)
+  SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                        \
+  SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc)
 
 /* Define a tag component declared with ECS_TAG_DECLARE. */
 #define ECS_TAG_DEFINE(cname, ...)                                             \
   SIECS_TAG_META_DEFINE(cname)                                                 \
-  ecs_component_desc_t ecs_id(cname##_desc) = {                                \
+  SIECS_PUBLIC_API ecs_component_desc_t ecs_id(cname##_desc) = {                \
       .name = #cname, .size = 0, SIECS_COMPONENT_META_INIT(cname) __VA_ARGS__};            \
-  ecs_component_t ecs_id(cname) = 0
+  SIECS_PUBLIC_API ecs_component_t ecs_id(cname) = 0
 
 /* Declare and define a tag component in one translation unit. */
 #define ECS_TAG(cname)                                                         \
@@ -1415,16 +1430,16 @@ SIECS_API void ecs_quit(void);
 #define ECS_MODULE_DECLARE(module_name, ...)                                   \
   typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;      \
   extern "C" {                                                                \
-    extern ecs_module_id_t ecs_id(module_name);                                \
-    void ecs_id(module_name##_import_wrapper)(const void *desc);               \
+    SIECS_PUBLIC_API extern ecs_module_id_t ecs_id(module_name);                \
+    SIECS_PUBLIC_API void ecs_id(module_name##_import_wrapper)(const void *desc); \
     void module_name##_import(const module_name##_props_t *props);             \
   }                                                                            \
   ECS_MODULE_CPP_DECLARE(module_name)
 #else
 #define ECS_MODULE_DECLARE(module_name, ...)                                   \
   typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;      \
-  extern ecs_module_id_t ecs_id(module_name);                                  \
-  void ecs_id(module_name##_import_wrapper)(const void *desc);                 \
+  SIECS_PUBLIC_API extern ecs_module_id_t ecs_id(module_name);                  \
+  SIECS_PUBLIC_API void ecs_id(module_name##_import_wrapper)(const void *desc); \
   void module_name##_import(const module_name##_props_t *props);
 #endif
 
@@ -1434,8 +1449,8 @@ SIECS_API void ecs_quit(void);
  * Use once in a C file before implementing module_name_import.
  */
 #define ECS_MODULE_DEFINE(module_name)                                         \
-  ecs_module_id_t ecs_id(module_name) = 0;                                     \
-  void ecs_id(module_name##_import_wrapper)(const void *desc) {                \
+  SIECS_PUBLIC_API ecs_module_id_t ecs_id(module_name) = 0;                     \
+  SIECS_PUBLIC_API void ecs_id(module_name##_import_wrapper)(const void *desc) { \
     module_name##_import((const module_name##_props_t *)desc);                 \
   }
 
@@ -1515,12 +1530,12 @@ typedef struct {
 } ecs_relation_info_t;
 
 #define ECS_RELATION_DECLARE(name)                                             \
-  extern ecs_relation_id_t ecs_rid(name);                                      \
-  extern ecs_relation_desc_t ecs_rid(name##_desc)
+  SIECS_PUBLIC_API extern ecs_relation_id_t ecs_rid(name);                      \
+  SIECS_PUBLIC_API extern ecs_relation_desc_t ecs_rid(name##_desc)
 
 #define ECS_RELATION_DEFINE(name, ...)                                         \
-  ecs_relation_desc_t ecs_rid(name##_desc) = __VA_ARGS__;                      \
-  ecs_relation_id_t ecs_rid(name) = 0
+  SIECS_PUBLIC_API ecs_relation_desc_t ecs_rid(name##_desc) = __VA_ARGS__;      \
+  SIECS_PUBLIC_API ecs_relation_id_t ecs_rid(name) = 0
 
 #define ECS_RELATION(name, ...)                                                \
   ECS_RELATION_DECLARE(name);                                                  \
@@ -1578,8 +1593,8 @@ ECS_TAG_DECLARE(Abstract);
 #define ECS_COMPONENT_DECLARE(cname, ...)                                      \
   SIJSON_DECLARE(cname, __VA_ARGS__)                                           \
   extern "C" {                                                                \
-    extern ecs_component_t ecs_id(cname);                                      \
-    extern ecs_component_desc_t ecs_id(cname##_desc);                          \
+    SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                      \
+    SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);          \
   }                                                                            \
   extern "C++" {                                                             \
   namespace ecs {                                                             \
@@ -1597,8 +1612,8 @@ ECS_TAG_DECLARE(Abstract);
 #define ECS_TAG_DECLARE(cname)                                                  \
   typedef struct cname##_tag_t cname;                                          \
   extern "C" {                                                                \
-    extern ecs_component_t ecs_id(cname);                                      \
-    extern ecs_component_desc_t ecs_id(cname##_desc);                          \
+    SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                      \
+    SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);          \
   }                                                                            \
   extern "C++" {                                                             \
   namespace ecs {                                                             \
@@ -1638,8 +1653,8 @@ ECS_TAG_DECLARE(Abstract);
   }                                                                            \
   extern "C" {                                                                \
     extern sireflect_handle_t sijson_handle(cname);                            \
-    extern ecs_component_t ecs_id(cname);                                      \
-    extern ecs_component_desc_t ecs_id(cname##_desc);                          \
+    SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                      \
+    SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);          \
   }                                                                            \
   extern "C++" {                                                              \
     namespace ecs {                                                           \
@@ -1931,8 +1946,8 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
   typedef struct rname rname;                                                  \
   struct rname __VA_ARGS__;                                                    \
   extern "C" {                                                                \
-    extern ecs_resource_t ecs_id(rname);                                       \
-    extern ecs_resource_desc_t ecs_id(rname##_desc);                           \
+    SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                       \
+    SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);           \
   }                                                                            \
   extern "C++" {                                                             \
   namespace ecs {                                                             \
@@ -1958,8 +1973,8 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
                   "C++ resource methods must preserve alignment");           \
   }                                                                            \
   extern "C" {                                                                \
-    extern ecs_resource_t ecs_id(rname);                                       \
-    extern ecs_resource_desc_t ecs_id(rname##_desc);                           \
+    SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                       \
+    SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);           \
   }                                                                            \
   extern "C++" {                                                              \
     namespace ecs {                                                           \
@@ -1976,8 +1991,8 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
 #define ECS_RESOURCE_DECLARE(rname, ...)                                       \
   typedef struct rname rname;                                                  \
   struct rname __VA_ARGS__;                                                    \
-  extern ecs_resource_t ecs_id(rname);                                         \
-  extern ecs_resource_desc_t ecs_id(rname##_desc)
+  SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                         \
+  SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc)
 
 #define ECS_RESOURCE_DECLARE_CPP(rname, fields, methods)                       \
   ECS_RESOURCE_DECLARE(rname, { fields })
@@ -1985,9 +2000,9 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
 
 /* Define a resource descriptor and its stable id storage. */
 #define ECS_RESOURCE_DEFINE(rname, ...)                                        \
-  ecs_resource_desc_t ecs_id(rname##_desc) = {                                 \
+  SIECS_PUBLIC_API ecs_resource_desc_t ecs_id(rname##_desc) = {                 \
       .name = #rname, .size = sizeof(rname), __VA_ARGS__};                     \
-  ecs_resource_t ecs_id(rname) = 0
+  SIECS_PUBLIC_API ecs_resource_t ecs_id(rname) = 0
 
 /* Register a declared resource in the active world. */
 #define ECS_RESOURCE_REGISTER(rname)                                           \
