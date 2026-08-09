@@ -192,6 +192,9 @@ jobs:
     name: Emscripten WASM smoke tests
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      CC: clang
+      CXX: clang++
 
     steps:
       - uses: actions/checkout@v5
