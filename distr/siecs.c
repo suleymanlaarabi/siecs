@@ -9919,7 +9919,6 @@ ecs_phase_t ecs_phase_register(const ecs_phase_desc_t *desc) {
         }
     }
 
-    // Generic chain resolution for custom phases:
     if (id >= 11) {
         if (after == ECS_PHASE_NONE && before == ECS_PHASE_NONE) {
             after = EcsOnUpdate;
@@ -10013,23 +10012,45 @@ void ecs_system_index_init(void) {
     sicore_vec_init(&index->start_execution_order, sizeof(ecs_phase_t));
     sicore_vec_init(&index->main_execution_order, sizeof(ecs_phase_t));
 
-    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsPreStart", .after = ECS_PHASE_NONE, .before = ECS_PHASE_NONE });
-    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsStart", .after = EcsPreStart, .before = ECS_PHASE_NONE });
-    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsPostStart", .after = EcsStart, .before = ECS_PHASE_NONE });
+    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsPreStart",
+                                            .after = ECS_PHASE_NONE,
+                                            .before = ECS_PHASE_NONE });
+    ecs_phase_register(
+        &(ecs_phase_desc_t){ .name = "EcsStart", .after = EcsPreStart, .before = ECS_PHASE_NONE }
+    );
+    ecs_phase_register(
+        &(ecs_phase_desc_t){ .name = "EcsPostStart", .after = EcsStart, .before = ECS_PHASE_NONE }
+    );
 
     for (uint32_t i = 0; i <= 2; i++) {
         ecs_phase_info_t *p = sicore_vec_get_mut(&index->phases, i, ecs_phase_info_t);
         p->is_start_phase = true;
     }
 
-    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsOnLoad", .after = ECS_PHASE_NONE, .before = ECS_PHASE_NONE });
-    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsPostLoad", .after = EcsOnLoad, .before = ECS_PHASE_NONE });
-    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsPreUpdate", .after = EcsPostLoad, .before = ECS_PHASE_NONE });
-    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsOnUpdate", .after = EcsPreUpdate, .before = ECS_PHASE_NONE });
-    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsPostUpdate", .after = EcsOnUpdate, .before = ECS_PHASE_NONE });
-    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsPreRender", .after = EcsPostUpdate, .before = ECS_PHASE_NONE });
-    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsOnRender", .after = EcsPreRender, .before = ECS_PHASE_NONE });
-    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsPostRender", .after = EcsOnRender, .before = ECS_PHASE_NONE });
+    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsOnLoad",
+                                            .after = ECS_PHASE_NONE,
+                                            .before = ECS_PHASE_NONE });
+    ecs_phase_register(
+        &(ecs_phase_desc_t){ .name = "EcsPostLoad", .after = EcsOnLoad, .before = ECS_PHASE_NONE }
+    );
+    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsPreUpdate",
+                                            .after = EcsPostLoad,
+                                            .before = ECS_PHASE_NONE });
+    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsOnUpdate",
+                                            .after = EcsPreUpdate,
+                                            .before = ECS_PHASE_NONE });
+    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsPostUpdate",
+                                            .after = EcsOnUpdate,
+                                            .before = ECS_PHASE_NONE });
+    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsPreRender",
+                                            .after = EcsPostUpdate,
+                                            .before = ECS_PHASE_NONE });
+    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsOnRender",
+                                            .after = EcsPreRender,
+                                            .before = ECS_PHASE_NONE });
+    ecs_phase_register(&(ecs_phase_desc_t){ .name = "EcsPostRender",
+                                            .after = EcsOnRender,
+                                            .before = ECS_PHASE_NONE });
 
     index->plan_dirty = true;
 }
@@ -10059,11 +10080,13 @@ static void sort_phase_group(ecs_system_index_t *index, bool is_start, sicore_ve
         }
     }
 
-    if (group_count == 0) return;
+    if (group_count == 0)
+        return;
 
     uint32_t in_degree_stack[32];
     bool processed_stack[32];
-    uint32_t *in_degree = (total_phases <= 32) ? in_degree_stack : calloc(total_phases, sizeof(uint32_t));
+    uint32_t *in_degree =
+        (total_phases <= 32) ? in_degree_stack : calloc(total_phases, sizeof(uint32_t));
     bool *processed = (total_phases <= 32) ? processed_stack : calloc(total_phases, sizeof(bool));
     ecs_assert_not_null(in_degree);
     ecs_assert_not_null(processed);
@@ -10075,7 +10098,8 @@ static void sort_phase_group(ecs_system_index_t *index, bool is_start, sicore_ve
 
     for (uint32_t i = 0; i < total_phases; i++) {
         ecs_phase_info_t *p = sicore_vec_get_mut(&index->phases, i, ecs_phase_info_t);
-        if (p->is_start_phase != is_start) continue;
+        if (p->is_start_phase != is_start)
+            continue;
 
         if (p->after != ECS_PHASE_NONE && p->after < total_phases && p->after != p->id) {
             ecs_phase_info_t *a = sicore_vec_get_mut(&index->phases, p->after, ecs_phase_info_t);
@@ -10123,14 +10147,16 @@ static void sort_phase_group(ecs_system_index_t *index, bool is_start, sicore_ve
             ecs_phase_info_t *other = sicore_vec_get_mut(&index->phases, i, ecs_phase_info_t);
             if (other->is_start_phase == is_start && !processed[i]) {
                 if (other->after == phase_id) {
-                    if (in_degree[i] > 0) in_degree[i]--;
+                    if (in_degree[i] > 0)
+                        in_degree[i]--;
                 }
             }
         }
         if (p->before != ECS_PHASE_NONE && p->before < total_phases && p->before != chosen) {
             ecs_phase_info_t *b = sicore_vec_get_mut(&index->phases, p->before, ecs_phase_info_t);
             if (b->is_start_phase == is_start && !processed[p->before]) {
-                if (in_degree[p->before] > 0) in_degree[p->before]--;
+                if (in_degree[p->before] > 0)
+                    in_degree[p->before]--;
             }
         }
     }
