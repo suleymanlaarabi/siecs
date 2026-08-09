@@ -19,9 +19,11 @@
           "cpp_wrapper_helpers",
           "c_declared_component",
           "c_declared_relation",
-          "cpp_only_methods"
+          "cpp_only_methods",
+          "cpp_custom_phase"
         ]
       },
+
       {
         "id": "entity_state",
         "testcases": [

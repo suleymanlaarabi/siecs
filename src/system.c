@@ -14,10 +14,20 @@
 
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
 
+ecs_phase_t ecs_phase_init(const ecs_phase_desc_t *desc) {
+    return ecs_phase_register(desc);
+}
+
+const char *ecs_phase_name(ecs_phase_t phase) {
+    ecs_phase_info_t *pinfo = ecs_system_index_get_phase(phase);
+    return pinfo ? pinfo->name : NULL;
+}
+
 ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     ecs_assert_not_null(desc);
     ecs_assert(desc->callback, "system requires callback function\n");
-    ecs_assert(desc->phase < EcsPhaseCount, "invalid system phase: %u\n", desc->phase);
+    ecs_phase_info_t *pinfo = ecs_system_index_get_phase(desc->phase);
+    ecs_assert(pinfo != NULL, "invalid system phase: %u\n", desc->phase);
 
     const bool has_query = desc->query.terms[0].id || desc->query.relations[0].id ||
                            desc->query.order_by.func || desc->query.is_a;
@@ -67,14 +77,18 @@ void ecs_run_system(ecs_system_id_t system) {
 }
 
 void ecs_run_phase(ecs_phase_t phase) {
-    ecs_assert(phase < EcsPhaseCount, "invalid system phase: %u\n", phase);
-
     ecs_system_index_t *index = &ecs_world.system_index;
+    ecs_phase_info_t *pinfo = ecs_system_index_get_phase(phase);
+    ecs_assert(pinfo != NULL, "invalid system phase: %u\n", phase);
+
     if (index->plan_dirty) {
         ecs_system_index_build_plan();
     }
 
-    sicore_vec_t *order = &index->phase_order[phase];
+    pinfo = ecs_system_index_get_phase(phase);
+    if (!pinfo) return;
+
+    sicore_vec_t *order = &pinfo->systems_order;
     for (uint32_t i = 0; i < order->size; i++) {
         ecs_system_id_t system = *sicore_vec_get(order, i, ecs_system_id_t);
         ecs_run_system(system);
@@ -123,14 +137,21 @@ bool ecs_progress(void) {
 
     ecs_world.last_time = frame_start;
 
+    ecs_system_index_t *index = &ecs_world.system_index;
+    if (index->plan_dirty) {
+        ecs_system_index_build_plan();
+    }
+
     if (!ecs_world.did_start) {
-        ecs_run_phase(EcsPreStart);
-        ecs_run_phase(EcsStart);
-        ecs_run_phase(EcsPostStart);
+        for (uint32_t i = 0; i < index->start_execution_order.size; i++) {
+            ecs_phase_t phase = *sicore_vec_get(&index->start_execution_order, i, ecs_phase_t);
+            ecs_run_phase(phase);
+        }
         ecs_world.did_start = true;
     }
 
-    for (ecs_phase_t phase = EcsOnLoad; phase < EcsPhaseCount; phase++) {
+    for (uint32_t i = 0; i < index->main_execution_order.size; i++) {
+        ecs_phase_t phase = *sicore_vec_get(&index->main_execution_order, i, ecs_phase_t);
         ecs_run_phase(phase);
     }
 
@@ -143,6 +164,7 @@ bool ecs_progress(void) {
     }
 
     return !ecs_world.exit;
+
 }
 
 void ecs_run(void) {

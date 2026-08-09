@@ -2312,21 +2312,38 @@ static inline bool ecs_field_is_shared(ecs_iter_t *it, uint16_t field_index) {
   return ecs_field_kind(it, field_index) == EcsFieldShared;
 }
 
-/* System phases run in enum order when ecs_progress is called. */
-typedef enum {
-  EcsPreStart,
-  EcsStart,
-  EcsPostStart,
-  EcsOnLoad,
-  EcsPostLoad,
-  EcsPreUpdate,
-  EcsOnUpdate,
-  EcsPostUpdate,
-  EcsPreRender,
-  EcsOnRender,
-  EcsPostRender,
-  EcsPhaseCount,
-} ecs_phase_t;
+typedef uint32_t ecs_phase_t;
+#define ECS_PHASE_NONE ((ecs_phase_t)-1)
+
+enum {
+  EcsPreStart = 0,
+  EcsStart = 1,
+  EcsPostStart = 2,
+  EcsOnLoad = 3,
+  EcsPostLoad = 4,
+  EcsPreUpdate = 5,
+  EcsOnUpdate = 6,
+  EcsPostUpdate = 7,
+  EcsPreRender = 8,
+  EcsOnRender = 9,
+  EcsPostRender = 10,
+  EcsPhaseCount = 11,
+};
+
+typedef struct {
+  const char *name;
+  ecs_phase_t after;
+  ecs_phase_t before;
+} ecs_phase_desc_t;
+
+/* Create a phase from a compound-literal descriptor. */
+#define ecs_phase(...) ecs_phase_init(&(ecs_phase_desc_t)__VA_ARGS__)
+
+/* Register a phase and return its phase id. */
+SIECS_API ecs_phase_t ecs_phase_init(const ecs_phase_desc_t *desc);
+
+/* Return the registered phase name. */
+SIECS_API const char *ecs_phase_name(ecs_phase_t phase);
 
 /* Deprecated compatibility aliases. Prefer Ecs* names in new code; removal
  * requires a major release. */
@@ -3958,6 +3975,44 @@ template <typename T> class observer : public query {
         };
 
         return ecs_observer_init(&observer_desc);
+    }
+};
+
+} // namespace ecs
+
+#pragma once
+
+namespace ecs {
+
+/** Fluent builder for custom dynamic phases in C++. */
+class phase {
+    ecs_phase_desc_t desc{};
+    mutable ecs_phase_t _id = 0;
+
+  public:
+    explicit phase(const char *name = "unnamed") {
+        desc.name = name;
+    }
+
+    phase &after(ecs_phase_t p) {
+        desc.after = p;
+        return *this;
+    }
+
+    phase &before(ecs_phase_t p) {
+        desc.before = p;
+        return *this;
+    }
+
+    ecs_phase_t id() const {
+        if (!_id) {
+            _id = ecs_phase_init(&desc);
+        }
+        return _id;
+    }
+
+    operator ecs_phase_t() const {
+        return id();
     }
 };
 

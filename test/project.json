@@ -162,9 +162,11 @@
           "deferred_set_overwrite_keeps_latest_value",
           "deferred_set_adds_required_components",
           "deferred_changes_coalesce_by_component",
-          "quit_makes_progress_return_false"
+          "quit_makes_progress_return_false",
+          "custom_phase"
         ]
       },
+
       {
         "id": "observer",
         "testcases": [

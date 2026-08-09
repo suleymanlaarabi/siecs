@@ -133,6 +133,7 @@ void system_deferred_set_overwrite_keeps_latest_value(void);
 void system_deferred_set_adds_required_components(void);
 void system_deferred_changes_coalesce_by_component(void);
 void system_quit_makes_progress_return_false(void);
+void system_custom_phase(void);
 
 // Testsuite 'observer'
 void observer_enable(void);
@@ -613,6 +614,10 @@ bake_test_case system_testcases[] = {
     {
         "quit_makes_progress_return_false",
         system_quit_makes_progress_return_false
+    },
+    {
+        "custom_phase",
+        system_custom_phase
     }
 };
 
@@ -706,7 +711,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        19,
+        20,
         system_testcases
     },
     {

@@ -4,6 +4,7 @@
 #include "siecs/cpp/entity.hpp"
 #include "siecs/cpp/module.hpp"
 #include "siecs/cpp/observer.hpp"
+#include "siecs/cpp/phase.hpp"
 #include "siecs/cpp/query.hpp"
 #include "siecs/cpp/resource.hpp"
 #include "siecs/cpp/system.hpp"
@@ -45,6 +46,11 @@ inline bool progress() { return ecs_progress(); }
 inline void run() { ecs_run(); }
 /** Run enabled systems from the specified phase. */
 inline void run_phase(ecs_phase_t phase) { ecs_run_phase(phase); }
+
+
+
+
+
 
 /** Register or return the component id associated with `T`. */
 template <typename T> inline ecs_component_t component() {

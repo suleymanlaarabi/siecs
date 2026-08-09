@@ -685,3 +685,63 @@ void system_quit_makes_progress_return_false(void) {
 
     ecs_fini();
 }
+
+static int custom_phase_order[10];
+static int custom_phase_count = 0;
+
+static void custom_phase_sys1(ecs_iter_t *it) {
+    (void)it;
+    custom_phase_order[custom_phase_count++] = 1;
+}
+
+static void custom_phase_sys2(ecs_iter_t *it) {
+    (void)it;
+    custom_phase_order[custom_phase_count++] = 2;
+}
+
+static void custom_phase_sys3(ecs_iter_t *it) {
+    (void)it;
+    custom_phase_order[custom_phase_count++] = 3;
+}
+
+void system_custom_phase(void) {
+    custom_phase_count = 0;
+    ecs_init();
+
+    ecs_phase_t physics_phase = ecs_phase({
+        .name = "Physics",
+        .after = EcsOnUpdate,
+        .before = EcsPostUpdate,
+    });
+
+    test_assert(physics_phase >= 11);
+    test_str("Physics", ecs_phase_name(physics_phase));
+
+    ecs_system({
+        .name = "Sys1_OnUpdate",
+        .phase = EcsOnUpdate,
+        .callback = custom_phase_sys1,
+    });
+
+    ecs_system({
+        .name = "Sys2_Physics",
+        .phase = physics_phase,
+        .callback = custom_phase_sys2,
+    });
+
+    ecs_system({
+        .name = "Sys3_PostUpdate",
+        .phase = EcsPostUpdate,
+        .callback = custom_phase_sys3,
+    });
+
+    ecs_progress();
+
+    test_assert(custom_phase_count == 3);
+    test_assert(custom_phase_order[0] == 1);
+    test_assert(custom_phase_order[1] == 2);
+    test_assert(custom_phase_order[2] == 3);
+
+    ecs_fini();
+}
+

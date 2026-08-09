@@ -224,3 +224,39 @@ void api_cpp_only_methods(void) {
     auto entity = ecs::entity::create().set(cpp_c_method_position{ .value = 4 });
     test_int(4, entity.get<cpp_c_method_position>().value);
 }
+
+void api_cpp_custom_phase(void) {
+    ecs_test_scope _ecs_scope;
+
+    auto physics = ecs::phase("Physics")
+                       .after(EcsOnUpdate)
+                       .before(EcsPostUpdate);
+
+
+
+    test_assert(physics.id() >= 11);
+    test_str("Physics", ecs_phase_name(physics));
+
+    int order[3]{};
+    int count = 0;
+
+    ecs::system("Sys1").phase(EcsOnUpdate).each([&]() {
+        order[count++] = 1;
+    });
+
+    ecs::system("Sys2").phase(physics).each([&]() {
+        order[count++] = 2;
+    });
+
+    ecs::system("Sys3").phase(EcsPostUpdate).each([&]() {
+        order[count++] = 3;
+    });
+
+    ecs::progress();
+
+    test_int(3, count);
+    test_int(1, order[0]);
+    test_int(2, order[1]);
+    test_int(3, order[2]);
+}
+
