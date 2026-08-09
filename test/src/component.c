@@ -21,14 +21,14 @@ ECS_COMPONENT_DECLARE(Position, {
     float y;
 });
 
-ECS_COMPONENT_DEFINE(Position);
+ECS_COMPONENT_DEFINE(Position, .inheritance = EcsInheritShared);
 
 ECS_COMPONENT_DECLARE(Velocity, {
     float x;
     float y;
 });
 
-ECS_COMPONENT_DEFINE(Velocity);
+ECS_COMPONENT_DEFINE(Velocity, .inheritance = EcsInheritShared);
 
 void component_dynamic_component_layout_and_info(void) {
     ecs_init();
