@@ -1,3 +1,4 @@
+#include "relation.h"
 #include "siecs.h"
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
@@ -6,13 +7,14 @@
 #include "storage/resource_index.h"
 #include "storage/system_index.h"
 #include "storage/table_index.h"
-#include "relation.h"
 #include "utils.h"
 #include "world_internal.h"
 #include <string.h>
 
 ecs_world_t ecs_world;
+#ifndef NDEBUG
 static bool ecs_world_started;
+#endif
 static bool ecs_world_finished;
 
 void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
@@ -21,8 +23,9 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
         memset(&ecs_world, 0, sizeof ecs_world);
         ecs_world_finished = false;
     }
+#ifndef NDEBUG
     ecs_world_started = true;
-
+#endif
     ecs_entity_index_init();
     ecs_component_index_init();
     ecs_relation_index_init();
@@ -45,7 +48,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_bootstrap();
 }
 
-void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){0}); }
+void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){ 0 }); }
 
 void ecs_fini(void) {
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
@@ -63,7 +66,9 @@ void ecs_fini(void) {
     ecs_command_buffer_fini();
     ecs_arena_fini();
     sicore_map_fini(&name_map);
+#ifndef NDEBUG
     ecs_world_started = false;
+#endif
 }
 
 void ecs_quit(void) { ecs_world.exit = true; }
