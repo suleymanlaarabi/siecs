@@ -81,13 +81,12 @@ int main() {
     ecs::entity::create().set(Position{ 0, 0 }, Velocity{ 10, 10 });
 
     ecs::system("Move")
-        .phase(EcsOnUpdate)
         .each([](Position &pos, const Velocity &vel) {
             pos.x += vel.x;
             pos.y += vel.y;
         });
 
-    ecs::progress();
+    ecs::run();
 }
 ```
 
@@ -122,17 +121,14 @@ int main(void) {
 
     ecs_system({
         .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
-        .callback = Move,
-        .phase = EcsOnUpdate,
+        .callback = Move
     });
 
     ecs_entity_t entity = ecs_new();
     ecs_set(entity, Position, {0, 0});
     ecs_set(entity, Velocity, {1, 1});
 
-    while (ecs_progress()) {}
-
-    ecs_fini();
+    ecs_run();
 }
 ```
 
