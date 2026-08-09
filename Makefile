@@ -3,6 +3,7 @@ BAKE_TARGET = $(shell bake env | sed -n 's/^BAKE_TARGET=//p')
 DEPS_INCLUDE = -I$(BAKE_HOME)/include
 DEPS_LIB = -L$(BAKE_TARGET)/lib -lsijson -lsireflect -lsicore
 QUIET_BAKE = grep -Ev '^\[[[:space:]]*(test|build|run|runall|[0-9]+%)|^cmd:|^path:'
+WASM_NODE ?= node
 
 .PHONY: clean bench bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-release test-rest test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release build-wasm-debug build-wasm-release test-wasm test-wasm-browser act-ci act-docs act
 
@@ -66,7 +67,7 @@ build-wasm-release:
 	@sh tools/build_wasm.sh release
 
 test-wasm: build-wasm-debug build-wasm-release
-	@node test/wasm/test_node.mjs build-wasm/debug build-wasm/release
+	@$(WASM_NODE) test/wasm/test_node.mjs build-wasm/debug build-wasm/release
 
 test-wasm-browser: build-wasm-debug
 	@sh tools/test_wasm_browser.sh

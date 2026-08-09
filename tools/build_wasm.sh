@@ -6,11 +6,13 @@ config=${1:-debug}
 case "$config" in
     debug)
         opt_level=-O0
-        debug_flags="-g3 -sASSERTIONS=2"
+        debug_flags=-g3
+        link_flags=-sASSERTIONS=2
         ;;
     release)
         opt_level=-O3
-        debug_flags="-sASSERTIONS=0"
+        debug_flags=
+        link_flags=-sASSERTIONS=0
         ;;
     *)
         echo "usage: $0 [debug|release]" >&2
@@ -49,6 +51,7 @@ module_flags="-sMODULARIZE=1 -sENVIRONMENT=web,node"
 emcc $common_flags \
     "$repo_root/distr/siecs.c" "$repo_root/test/wasm/smoke.c" \
     $module_flags \
+    $link_flags \
     -sEXPORT_NAME=createSiecsC \
     -sEXPORTED_FUNCTIONS=_siecs_wasm_smoke \
     -o "$out_root/c/siecs_wasm.js"
@@ -58,6 +61,7 @@ em++ -std=c++20 $opt_level $debug_flags \
     -I"$repo_root/distr" -I"$repo_root/include" $deps_flags \
     "$repo_root/test/wasm/smoke.cpp" "$out_root/cpp/siecs.o" \
     $module_flags \
+    $link_flags \
     -sEXPORT_NAME=createSiecsCpp \
     -sEXPORTED_FUNCTIONS=_siecs_wasm_cpp_smoke \
     -o "$out_root/cpp/siecs_wasm.js"

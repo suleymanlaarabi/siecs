@@ -6556,6 +6556,10 @@ static inline void ecs_with_impl(ecs_component_t component, ecs_component_t requ
     record->required[record->required_count++] = require;
 }
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wvarargs"
+#endif
 void ecs_with_many(ecs_component_t component, ...) {
     va_list args;
     va_start(args, component);
@@ -6567,6 +6571,9 @@ void ecs_with_many(ecs_component_t component, ...) {
 
     va_end(args);
 }
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #include <stdbool.h>
 
