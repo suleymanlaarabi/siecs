@@ -252,7 +252,10 @@ static void final_ids_push_sorted(sicore_vec_t *final_ids, ecs_component_t id) {
 }
 
 static ecs_type_t
-command_build_type(const ecs_table_t *table, const ecs_entity_command_t *command) {
+command_build_type(
+    const ecs_table_t *table,
+    const ecs_entity_command_t *command
+) {
     sicore_vec_t final_ids;
     sicore_vec_init(&final_ids, sizeof(ecs_component_t));
     const ecs_deferred_change_t *changes =
@@ -417,7 +420,13 @@ static void command_apply(ecs_entity_command_t *command, const sicore_vec_t *rel
                 record->table_row
             );
         }
-        ecs_emit_added_components(old_table, new_table, command->entity, record->table_row);
+        if (ecs_emit_added_components(old_table, new_table, command->entity, record->table_row)) {
+            ecs_apply_added_component_default_relations(
+                old_table,
+                new_table,
+                command->entity
+            );
+        }
     } else {
         ecs_type_fini(&final_type);
     }

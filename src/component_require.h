@@ -3,7 +3,7 @@
 
 #include "table.h"
 
-#define ECS_ADD_PLAN_MAX_COMPONENTS 64
+#define ECS_ADD_PLAN_MAX_COMPONENTS 32
 
 ecs_type_t ecs_type_with_requirements(
     ecs_table_t *from_table,

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import statistics
 import subprocess
 import sys
@@ -31,14 +32,17 @@ def run(command: list[str], cwd: Path, *, capture: bool = False) -> str:
 
 
 def build_benchmarks(cwd: Path) -> None:
-    run(["bake", "rebuild", "--cfg", "release"], cwd, capture=True)
-    run(["bake", "rebuild", "bench", "--cfg", "release"], cwd, capture=True)
+    run(["bake", "rebuild", "bench", "-r", "--cfg", "release"], cwd, capture=True)
 
 
-def run_benchmarks(cwd: Path, scope: str | None) -> dict[str, list[float]]:
+def run_benchmarks(cwd: Path, scope: str | None, cpu: int | None) -> dict[str, list[float]]:
     command = ["bake", "run", "bench", "--cfg", "release"]
     if scope:
         command += ["--", scope]
+    if cpu is not None:
+        if shutil.which("taskset") is None:
+            raise RuntimeError("--cpu requires taskset on this platform")
+        command = ["taskset", "-c", str(cpu), *command]
 
     output = run(command, cwd, capture=True)
     measurements: dict[str, list[float]] = {}
@@ -46,7 +50,7 @@ def run_benchmarks(cwd: Path, scope: str | None) -> dict[str, list[float]]:
         match = BENCH_LINE.match(line.strip())
         if match:
             name = match.group(1)
-            if not scope or name.startswith(scope + "_"):
+            if not scope or name == scope or name.startswith(scope + "_"):
                 measurements.setdefault(name, []).append(float(match.group(2)))
 
     if not measurements:
@@ -135,7 +139,13 @@ def print_report(rows, runs: int, threshold: float, scope: str | None) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scope", help="only compare one benchmark scope")
-    parser.add_argument("--runs", type=int, default=5, help="number of runs (default: 5)")
+    parser.add_argument("--runs", type=int, default=10, help="number of runs (default: 10)")
+    parser.add_argument(
+        "--cpu",
+        type=int,
+        default=0,
+        help="pin benchmark processes to this CPU (default: 0)",
+    )
     parser.add_argument(
         "--threshold", type=float, default=5.0, help="stable threshold in percent (default: 5)"
     )
@@ -157,13 +167,14 @@ def main() -> int:
             baseline = Path(temporary) / "baseline"
             run(["git", "worktree", "add", "--detach", str(baseline), online_ref], root, capture=True)
             try:
+                shutil.copy2(root / "bench/src/main.c", baseline / "bench/src/main.c")
                 print(f"Building origin/main ({online_ref[:12]})...", file=sys.stderr)
                 build_benchmarks(baseline)
+                online_runs = [run_benchmarks(baseline, args.scope, args.cpu) for _ in range(args.runs)]
+
                 print("Building local benchmark...", file=sys.stderr)
                 build_benchmarks(root)
-
-                online_runs = [run_benchmarks(baseline, args.scope) for _ in range(args.runs)]
-                local_runs = [run_benchmarks(root, args.scope) for _ in range(args.runs)]
+                local_runs = [run_benchmarks(root, args.scope, args.cpu) for _ in range(args.runs)]
             finally:
                 run(["git", "worktree", "remove", "--force", str(baseline)], root, capture=True)
 

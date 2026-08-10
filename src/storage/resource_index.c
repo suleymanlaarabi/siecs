@@ -125,25 +125,21 @@ void ecs_resource_index_init() {
     index->records = NULL;
     index->data = NULL;
     index->present = NULL;
+    sicore_vec_init(&index->registration_order, sizeof(ecs_resource_t));
     index->capacity = 0;
     index->count = 1;
 }
 
 void ecs_resource_index_fini() {
     ecs_resource_index_t *index = &ecs_world.resource_index;
-    for (uint64_t id = 1; id < index->capacity; id++) {
-        if (!index->present[id]) {
-            continue;
+    const ecs_resource_t *ids = sicore_vec_data(&index->registration_order, ecs_resource_t);
+    for (uint32_t i = index->registration_order.size; i > 0; i--) {
+        if (ids[i - 1] < index->capacity && index->present[ids[i - 1]]) {
+            ecs_resource_index_remove(ids[i - 1]);
         }
-
-        const ecs_resource_record_t *record = &index->records[id];
-        if (record->on_remove) {
-            record->on_remove(index->data[id]);
-        }
-        ecs_resource_value_dtor(record, index->data[id]);
-        free(index->data[id]);
     }
 
+    sicore_vec_fini(&index->registration_order);
     free(index->records);
     free(index->data);
     free(index->present);
@@ -169,6 +165,7 @@ ecs_resource_t ecs_resource_index_register(ecs_resource_t id, const ecs_resource
     if (id >= index->count) {
         index->count = (uint64_t)id + 1;
     }
+    sicore_vec_push(&index->registration_order, &id, sizeof(id));
     return id;
 }
 
@@ -264,12 +261,13 @@ void ecs_resource_index_remove(ecs_resource_t id) {
     }
 
     const ecs_resource_record_t *record = &index->records[id];
-    if (record->on_remove) {
-        record->on_remove(index->data[id]);
-    }
-    ecs_resource_value_dtor(record, index->data[id]);
-
-    free(index->data[id]);
+    void *value = index->data[id];
     index->data[id] = NULL;
     index->present[id] = false;
+    if (record->on_remove) {
+        record->on_remove(value);
+    }
+    ecs_resource_value_dtor(record, value);
+
+    free(value);
 }

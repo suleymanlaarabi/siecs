@@ -15,7 +15,7 @@ static bool should_run_bench(const char *scope, const char *bench_name) {
 }
 
 #define run_scoped_bench(scope, id)                                                                \
-    do {                                                                                            \
+    do {                                                                                           \
         if (should_run_bench(scope, #id)) {                                                        \
             run_bench(id);                                                                         \
         }                                                                                          \
@@ -23,7 +23,7 @@ static bool should_run_bench(const char *scope, const char *bench_name) {
 
 static void register_components(ecs_component_t *cids, uint32_t cid_count) {
     for (uint32_t i = 0; i < cid_count; i++) {
-        cids[i] = ecs_component({0});
+        cids[i] = ecs_component({ 0 });
     }
 }
 
@@ -134,10 +134,10 @@ make_query_desc(const ecs_component_t *fields, uint32_t field_count, ecs_term_ac
 BENCH_SETUP(query_init_rarest_positive, {
     arg(table_count, 6000);
     arg(rare_table_count, 8);
-    arg(iter_count, 2000);
+    arg(iter_count, 200000);
 
-    ecs_component_t common = ecs_component({0});
-    ecs_component_t rare = ecs_component({0});
+    ecs_component_t common = ecs_component({ 0 });
+    ecs_component_t rare = ecs_component({ 0 });
     make_query_tables(common, rare, table_count, rare_table_count);
     ecs_query_desc_t desc = {
         .terms = {
@@ -211,7 +211,7 @@ BENCH_SETUP(query_init_three_positive_one_not, {
     ecs_component_t positive[3];
     ecs_component_t excluded;
     register_components(positive, 3);
-    excluded = ecs_component({0});
+    excluded = ecs_component({ 0 });
     make_varied_query_tables(positive, 3, &excluded, 1, table_count);
 
     ecs_query_desc_t desc = {
@@ -238,7 +238,7 @@ BENCH_SETUP(query_init_four_positive_one_not, {
     ecs_component_t positive[4];
     ecs_component_t excluded;
     register_components(positive, 4);
-    excluded = ecs_component({0});
+    excluded = ecs_component({ 0 });
     make_varied_query_tables(positive, 4, &excluded, 1, table_count);
 
     ecs_query_desc_t desc = {
@@ -323,7 +323,7 @@ BENCH_SETUP(migrate_trivial_columns, {
     ecs_component_t *cids = malloc(cid_count * sizeof(*cids));
     register_trivial_data_components(cids, cid_count);
     ecs_entity_t *entities = make_entities_with_trivial_data(cids, cid_count, entity_count);
-    ecs_component_t tag = ecs_component({0});
+    ecs_component_t tag = ecs_component({ 0 });
 
     BENCH({
         for (uint32_t i = 0; i < entity_count; i++) {
@@ -356,7 +356,7 @@ BENCH_SETUP(remove_trivial_rows, {
 BENCH_SETUP(add_one_component_cold_edge, {
     arg(entity_count, 100000);
 
-    ecs_component_t cid = ecs_component({0});
+    ecs_component_t cid = ecs_component({ 0 });
 
     BENCH({
         for (uint32_t i = 0; i < entity_count; i++) {
@@ -368,7 +368,7 @@ BENCH_SETUP(add_one_component_cold_edge, {
 BENCH_SETUP(add_one_component_hot_edge, {
     arg(entity_count, 100000);
 
-    ecs_component_t cid = ecs_component({0});
+    ecs_component_t cid = ecs_component({ 0 });
     ecs_add_cid(ecs_new(), cid);
 
     BENCH({
@@ -400,8 +400,8 @@ BENCH_SETUP(add_many_components_no_required, {
 BENCH_SETUP(add_required_direct_cold_edge, {
     arg(entity_count, 100000);
 
-    ecs_component_t component = ecs_component({0});
-    ecs_component_t required = ecs_component({0});
+    ecs_component_t component = ecs_component({ 0 });
+    ecs_component_t required = ecs_component({ 0 });
     ecs_with_many(component, required, 0);
 
     BENCH({
@@ -414,8 +414,8 @@ BENCH_SETUP(add_required_direct_cold_edge, {
 BENCH_SETUP(add_required_direct_hot_edge, {
     arg(entity_count, 100000);
 
-    ecs_component_t component = ecs_component({0});
-    ecs_component_t required = ecs_component({0});
+    ecs_component_t component = ecs_component({ 0 });
+    ecs_component_t required = ecs_component({ 0 });
     ecs_with_many(component, required, 0);
     ecs_add_cid(ecs_new(), component);
 
@@ -429,9 +429,9 @@ BENCH_SETUP(add_required_direct_hot_edge, {
 BENCH_SETUP(add_required_chain_hot_edge, {
     arg(entity_count, 100000);
 
-    ecs_component_t root = ecs_component({0});
-    ecs_component_t mid = ecs_component({0});
-    ecs_component_t leaf = ecs_component({0});
+    ecs_component_t root = ecs_component({ 0 });
+    ecs_component_t mid = ecs_component({ 0 });
+    ecs_component_t leaf = ecs_component({ 0 });
     ecs_with_many(root, mid, 0);
     ecs_with_many(mid, leaf, 0);
     ecs_add_cid(ecs_new(), root);
@@ -446,8 +446,8 @@ BENCH_SETUP(add_required_chain_hot_edge, {
 BENCH_SETUP(add_required_to_existing_component, {
     arg(entity_count, 100000);
 
-    ecs_component_t component = ecs_component({0});
-    ecs_component_t required = ecs_component({0});
+    ecs_component_t component = ecs_component({ 0 });
+    ecs_component_t required = ecs_component({ 0 });
     ecs_with_many(component, required, 0);
 
     ecs_entity_t warmup = ecs_new();
@@ -466,7 +466,7 @@ BENCH_SETUP(add_required_to_existing_component, {
 BENCH_SETUP(add_duplicate_component, {
     arg(entity_count, 100000);
 
-    ecs_component_t cid = ecs_component({0});
+    ecs_component_t cid = ecs_component({ 0 });
     ecs_entity_t *entities = malloc(sizeof(ecs_entity_t) * entity_count);
     for (uint32_t i = 0; i < entity_count; i++) {
         entities[i] = ecs_new();
@@ -536,10 +536,13 @@ BENCH_SETUP(relation_dense_scan_targets, {
     arg(entity_count, 100000);
     arg(iter_count, 1000);
 
-    ecs_relation_id_t relation = ecs_relation_init("BenchDense", &(ecs_relation_desc_t){
-        .storage = EcsRelationDense,
-        .on_delete_target = EcsRemoveRelation,
-    });
+    ecs_relation_id_t relation = ecs_relation_init(
+        "BenchDense",
+        &(ecs_relation_desc_t){
+            .storage = EcsRelationDense,
+            .on_delete_target = EcsRemoveRelation,
+        }
+    );
     ecs_entity_t target = ecs_new();
     for (uint32_t i = 0; i < entity_count; i++) {
         ecs_relate_id(ecs_new(), relation, target);
@@ -562,7 +565,8 @@ BENCH_SETUP(relation_dense_scan_targets, {
         }
     });
 
-    if (!checksum) abort();
+    if (!checksum)
+        abort();
     ecs_query_fini(query);
 });
 
@@ -580,10 +584,13 @@ BENCH_SETUP(relation_dense_retarget, {
     arg(entity_count, 100000);
     arg(iter_count, 100);
 
-    ecs_relation_id_t relation = ecs_relation_init("BenchRetarget", &(ecs_relation_desc_t){
-        .storage = EcsRelationDense,
-        .on_delete_target = EcsRemoveRelation,
-    });
+    ecs_relation_id_t relation = ecs_relation_init(
+        "BenchRetarget",
+        &(ecs_relation_desc_t){
+            .storage = EcsRelationDense,
+            .on_delete_target = EcsRemoveRelation,
+        }
+    );
     ecs_entity_t targets[] = { ecs_new(), ecs_new() };
     ecs_entity_t *entities = malloc(sizeof(ecs_entity_t) * entity_count);
     for (uint32_t i = 0; i < entity_count; i++) {
@@ -605,10 +612,13 @@ BENCH_SETUP(relation_dense_retarget, {
 BENCH_SETUP(relation_dense_retarget_one_source, {
     arg(iter_count, 1000000);
 
-    ecs_relation_id_t relation = ecs_relation_init("BenchRetargetOne", &(ecs_relation_desc_t){
-        .storage = EcsRelationDense,
-        .on_delete_target = EcsRemoveRelation,
-    });
+    ecs_relation_id_t relation = ecs_relation_init(
+        "BenchRetargetOne",
+        &(ecs_relation_desc_t){
+            .storage = EcsRelationDense,
+            .on_delete_target = EcsRemoveRelation,
+        }
+    );
     ecs_entity_t targets[] = { ecs_new(), ecs_new() };
     ecs_entity_t entity = ecs_new();
     ecs_relate_id(entity, relation, targets[0]);
@@ -624,10 +634,13 @@ BENCH_SETUP(relation_bytarget_retarget, {
     arg(entity_count, 10000);
     arg(iter_count, 20);
 
-    ecs_relation_id_t relation = ecs_relation_init("BenchTargetRetarget", &(ecs_relation_desc_t){
-        .storage = EcsRelationByTarget,
-        .on_delete_target = EcsRemoveRelation,
-    });
+    ecs_relation_id_t relation = ecs_relation_init(
+        "BenchTargetRetarget",
+        &(ecs_relation_desc_t){
+            .storage = EcsRelationByTarget,
+            .on_delete_target = EcsRemoveRelation,
+        }
+    );
     ecs_entity_t targets[] = { ecs_new(), ecs_new() };
     ecs_entity_t *entities = malloc(sizeof(ecs_entity_t) * entity_count);
     for (uint32_t i = 0; i < entity_count; i++) {
@@ -650,11 +663,14 @@ BENCH_SETUP(relation_bydepth_retarget, {
     arg(entity_count, 1000);
     arg(iter_count, 20);
 
-    ecs_relation_id_t relation = ecs_relation_init("BenchDepthRetarget", &(ecs_relation_desc_t){
-        .storage = EcsRelationByDepth,
-        .on_delete_target = EcsRemoveRelation,
-        .acyclic = true,
-    });
+    ecs_relation_id_t relation = ecs_relation_init(
+        "BenchDepthRetarget",
+        &(ecs_relation_desc_t){
+            .storage = EcsRelationByDepth,
+            .on_delete_target = EcsRemoveRelation,
+            .acyclic = true,
+        }
+    );
     ecs_entity_t root = ecs_new();
     ecs_entity_t deep = ecs_new();
     ecs_relate_id(deep, relation, root);
@@ -680,20 +696,24 @@ BENCH_SETUP(relation_bydepth_retarget, {
 BENCH_SETUP(relation_bydepth_cascade, {
     arg(depth_count, 64);
     arg(width, 1000);
-    arg(iter_count, 1000);
+    arg(iter_count, 200000);
 
-    ecs_relation_id_t relation = ecs_relation_init("BenchDepth", &(ecs_relation_desc_t){
-        .storage = EcsRelationByDepth,
-        .on_delete_target = EcsRemoveRelation,
-        .acyclic = true,
-    });
+    ecs_relation_id_t relation = ecs_relation_init(
+        "BenchDepth",
+        &(ecs_relation_desc_t){
+            .storage = EcsRelationByDepth,
+            .on_delete_target = EcsRemoveRelation,
+            .acyclic = true,
+        }
+    );
     ecs_entity_t parent = ecs_new();
     for (uint32_t depth = 0; depth < depth_count; depth++) {
         ecs_entity_t next_parent = 0;
         for (uint32_t i = 0; i < width; i++) {
             ecs_entity_t child = ecs_new();
             ecs_relate_id(child, relation, parent);
-            if (!next_parent) next_parent = child;
+            if (!next_parent)
+                next_parent = child;
         }
         parent = next_parent;
     }
@@ -707,22 +727,27 @@ BENCH_SETUP(relation_bydepth_cascade, {
     BENCH({
         for (uint32_t i = 0; i < iter_count; i++) {
             ecs_iter_t it = ecs_query_iter(query);
-            while (ecs_iter_next(&it)) checksum += it.count;
+            while (ecs_iter_next(&it))
+                checksum += it.count;
         }
     });
 
-    if (!checksum) abort();
+    if (!checksum)
+        abort();
     ecs_query_fini(query);
 });
 
 BENCH_SETUP(relation_bytarget_exact, {
     arg(entity_count, 100000);
-    arg(iter_count, 1000);
+    arg(iter_count, 1000000);
 
-    ecs_relation_id_t relation = ecs_relation_init("BenchTarget", &(ecs_relation_desc_t){
-        .storage = EcsRelationByTarget,
-        .on_delete_target = EcsRemoveRelation,
-    });
+    ecs_relation_id_t relation = ecs_relation_init(
+        "BenchTarget",
+        &(ecs_relation_desc_t){
+            .storage = EcsRelationByTarget,
+            .on_delete_target = EcsRemoveRelation,
+        }
+    );
     ecs_entity_t target = ecs_new();
     for (uint32_t i = 0; i < entity_count; i++) {
         ecs_relate_id(ecs_new(), relation, target);
@@ -738,27 +763,33 @@ BENCH_SETUP(relation_bytarget_exact, {
     BENCH({
         for (uint32_t i = 0; i < iter_count; i++) {
             ecs_iter_t it = ecs_query_iter(query);
-            while (ecs_iter_next(&it)) checksum += it.count;
+            while (ecs_iter_next(&it))
+                checksum += it.count;
         }
     });
 
-    if (!checksum) abort();
+    if (!checksum)
+        abort();
     ecs_query_fini(query);
 });
 
 BENCH_SETUP(relation_query_init_bytarget_exact, {
     arg(target_count, 2048);
-    arg(iter_count, 10000);
+    arg(iter_count, 100000);
 
-    ecs_relation_id_t relation = ecs_relation_init("BenchTargetQueryInit", &(ecs_relation_desc_t){
-        .storage = EcsRelationByTarget,
-        .on_delete_target = EcsRemoveRelation,
-    });
+    ecs_relation_id_t relation = ecs_relation_init(
+        "BenchTargetQueryInit",
+        &(ecs_relation_desc_t){
+            .storage = EcsRelationByTarget,
+            .on_delete_target = EcsRemoveRelation,
+        }
+    );
     ecs_entity_t target = 0;
     for (uint32_t i = 0; i < target_count; i++) {
         ecs_entity_t current = ecs_new();
         ecs_relate_id(ecs_new(), relation, current);
-        if (i == target_count / 2) target = current;
+        if (i == target_count / 2)
+            target = current;
     }
     ecs_query_desc_t desc = {
         .relations = {
@@ -775,7 +806,8 @@ BENCH_SETUP(relation_query_init_bytarget_exact, {
         }
     });
 
-    if (!checksum) abort();
+    if (!checksum)
+        abort();
 });
 
 int main(int argc, char *argv[]) {

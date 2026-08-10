@@ -11,14 +11,18 @@ ECS_MODULE_DECLARE(module_physics, { int velocity; });
 
 ECS_MODULE_DECLARE(module_render, { int value; });
 
+ECS_MODULE_DECLARE(module_query, { int unused; });
+
 ECS_MODULE_DEFINE(module_physics);
 ECS_MODULE_DEFINE(module_render);
+ECS_MODULE_DEFINE(module_query);
 
 static uint32_t module_system_calls;
 static uint32_t module_observer_calls;
 static uint32_t module_physics_import_calls;
 static uint32_t module_render_import_calls;
 static int module_last_velocity;
+static ecs_query_id_t module_import_query;
 
 static void module_reset(void) {
     module_system_calls = 0;
@@ -85,6 +89,11 @@ void module_physics_import(const module_physics_props_t *props) {
             .callback = module_on_position_set,
         }
     );
+}
+
+void module_query_import(const module_query_props_t *props) {
+    (void)props;
+    module_import_query = ecs_query({ .terms = { ecs_in(ModulePosition) } });
 }
 
 static ecs_entity_t module_entity(int position, int velocity) {
@@ -195,5 +204,53 @@ void module_double_import_is_noop(void) {
     test_int(1, module_physics_import_calls);
     test_int(5, module_last_velocity);
 
+    ecs_fini();
+}
+
+void module_owns_queries_created_during_import(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(ModulePosition);
+    ecs_module_id_t module = ECS_MODULE_IMPORT(module_query, { .unused = 0 });
+    ecs_entity_t entity = ecs_new();
+    ecs_add(entity, ModulePosition);
+
+    test_true(module != 0);
+    test_int(1, ecs_query_count(module_import_query));
+    ecs_fini();
+}
+
+void module_forgets_manually_destroyed_query(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(ModulePosition);
+    ECS_MODULE_IMPORT(module_query, { .unused = 0 });
+
+    ecs_query_fini(module_import_query);
+    test_true(true);
+    ecs_fini();
+}
+
+void module_query_id_reuse_does_not_keep_old_owner(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(ModulePosition);
+    ECS_MODULE_IMPORT(module_query, { .unused = 0 });
+    ecs_query_id_t old_query = module_import_query;
+    ecs_query_fini(old_query);
+
+    ecs_query_id_t outside_query = ecs_query({ .terms = { ecs_in(ModulePosition) } });
+    test_int(old_query, outside_query);
+    ecs_fini();
+}
+
+void module_queries_survive_disable_enable(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(ModulePosition);
+    ecs_module_id_t module = ECS_MODULE_IMPORT(module_query, { .unused = 0 });
+
+    ecs_module_disable(module);
+    ecs_module_enable(module);
+
+    ecs_entity_t entity = ecs_new();
+    ecs_add(entity, ModulePosition);
+    test_int(1, ecs_query_count(module_import_query));
     ecs_fini();
 }

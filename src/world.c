@@ -54,15 +54,16 @@ void ecs_fini(void) {
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
     ecs_world_finished = true;
 
-    ecs_resource_index_fini();
+    /* Live component teardown must finish while world resources are available. */
     ecs_table_index_fini();
-    ecs_entity_index_fini();
-    ecs_component_index_fini();
-    ecs_relation_index_fini();
-    ecs_query_index_fini();
     ecs_observer_index_fini();
     ecs_system_index_fini();
     ecs_module_index_fini();
+    ecs_query_index_fini();
+    ecs_resource_index_fini();
+    ecs_entity_index_fini();
+    ecs_component_index_fini();
+    ecs_relation_index_fini();
     ecs_command_buffer_fini();
     ecs_arena_fini();
     sicore_map_fini(&name_map);

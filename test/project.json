@@ -28,6 +28,7 @@
         "id": "entity",
         "testcases": [
           "create",
+          "add_components_after_world_restart",
           "reuses_id_with_new_generation_after_kill",
           "new_no_reuse_uses_new_index",
           "new_no_reuse_ignores_multiple_free_indices",
@@ -86,13 +87,21 @@
           "replace",
           "lifecycle_ops_are_used_for_set_move_and_remove",
           "from_system_c",
-          "hooks"
+          "hooks",
+          "fini_runs_after_component_remove",
+          "fini_uses_reverse_registration_order"
         ]
       },
       {
         "id": "childof",
         "testcases": [
           "kill_parent",
+          "with_relation_adds_default_relation",
+          "with_relation_preserves_existing_relation",
+          "with_relation_applies_through_component_requirement",
+          "with_relation_deferred_add",
+          "with_relation_deferred_explicit_relation_wins",
+          "with_relation_double_add_does_not_restore_removed_relation",
           "dense_retarget_without_migration",
           "dense_retarget_keeps_reverse_sources",
           "dense_delete_policies",
@@ -183,7 +192,11 @@
           "name_returns_imported_name",
           "enable",
           "disabled_import",
-          "double_import_is_noop"
+          "double_import_is_noop",
+          "owns_queries_created_during_import",
+          "forgets_manually_destroyed_query",
+          "query_id_reuse_does_not_keep_old_owner",
+          "queries_survive_disable_enable"
         ]
       }
     ]

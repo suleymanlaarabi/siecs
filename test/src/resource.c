@@ -1,4 +1,5 @@
 #include <siecs_test.h>
+#include <string.h>
 
 ECS_RESOURCE_DECLARE(ResourceTime, {
     float dt;
@@ -11,6 +12,9 @@ ECS_COMPONENT_DEFINE(ResourcePosition);
 
 ECS_RESOURCE_DECLARE(ResourceHooked, { int value; });
 
+ECS_RESOURCE_DECLARE(ResourceTeardown, { int value; });
+ECS_COMPONENT_DECLARE(ResourceTeardownUser, { int value; });
+
 static uint32_t resource_on_set_calls;
 static uint32_t resource_on_remove_calls;
 static int resource_on_set_last;
@@ -19,6 +23,37 @@ static uint32_t resource_lifecycle_copy_ctor_calls;
 static uint32_t resource_lifecycle_copy_calls;
 static uint32_t resource_lifecycle_move_calls;
 static uint32_t resource_lifecycle_dtor_calls;
+static uint32_t resource_teardown_order;
+static bool resource_component_saw_resource;
+static int resource_reverse_order[4];
+static uint32_t resource_reverse_count;
+
+static void resource_teardown_on_remove(const void *ptr) {
+    const ResourceTeardown *value = ptr;
+    resource_teardown_order = 2;
+    test_assert(value->value == 42);
+}
+
+static void resource_component_on_remove(
+    ecs_entity_t entity,
+    ecs_component_t component,
+    void *ptr
+) {
+    (void)entity;
+    (void)component;
+    const ResourceTeardown *resource = ecs_get_resource_read(ResourceTeardown);
+    const ResourceTeardownUser *value = ptr;
+    resource_component_saw_resource = resource && resource->value == value->value;
+    resource_teardown_order = 1;
+}
+
+static void resource_reverse_on_remove(const void *ptr) {
+    const int *value = ptr;
+    resource_reverse_order[resource_reverse_count++] = *value;
+}
+
+ECS_RESOURCE_DEFINE(ResourceTeardown, .on_remove = resource_teardown_on_remove);
+ECS_COMPONENT_DEFINE(ResourceTeardownUser, .on_remove = resource_component_on_remove);
 
 static void resource_reset_hooks(void) {
     resource_on_set_calls = 0;
@@ -277,4 +312,65 @@ void resource_lifecycle_ops_are_used_for_set_move_and_remove(void) {
     test_int(1, resource_lifecycle_dtor_calls);
 
     ecs_fini();
+}
+
+void resource_fini_runs_after_component_remove(void) {
+    resource_teardown_order = 0;
+    resource_component_saw_resource = false;
+
+    ecs_init();
+    ECS_RESOURCE_REGISTER(ResourceTeardown);
+    ECS_COMPONENT_REGISTER(ResourceTeardownUser);
+    ecs_set_resource(ResourceTeardown, { .value = 42 });
+
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, ResourceTeardownUser, { .value = 42 });
+
+    ecs_fini();
+
+    test_true(resource_component_saw_resource);
+    test_int(2, resource_teardown_order);
+}
+
+void resource_fini_uses_reverse_registration_order(void) {
+    memset(resource_reverse_order, 0, sizeof(resource_reverse_order));
+    resource_reverse_count = 0;
+
+    ecs_init();
+    ecs_resource_t a = ecs_resource_init(&(ecs_resource_desc_t){
+        .name = "ReverseA",
+        .size = sizeof(int),
+        .on_remove = resource_reverse_on_remove,
+    });
+    ecs_resource_t b = ecs_resource_init(&(ecs_resource_desc_t){
+        .name = "ReverseB",
+        .size = sizeof(int),
+        .on_remove = resource_reverse_on_remove,
+    });
+    ecs_resource_t c = ecs_resource_init(&(ecs_resource_desc_t){
+        .name = "ReverseC",
+        .size = sizeof(int),
+        .on_remove = resource_reverse_on_remove,
+    });
+    ecs_resource_t absent = ecs_resource_init(&(ecs_resource_desc_t){
+        .name = "ReverseAbsent",
+        .size = sizeof(int),
+        .on_remove = resource_reverse_on_remove,
+    });
+
+    int value = 1;
+    ecs_set_resource_rid(a, &value);
+    value = 2;
+    ecs_set_resource_rid(b, &value);
+    value = 3;
+    ecs_set_resource_rid(c, &value);
+    (void)absent;
+
+    ecs_fini();
+
+    test_int(3, resource_reverse_order[0]);
+    test_int(2, resource_reverse_order[1]);
+    test_int(1, resource_reverse_order[2]);
+    test_int(0, resource_reverse_order[3]);
+    test_int(3, resource_reverse_count);
 }

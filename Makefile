@@ -4,6 +4,7 @@ DEPS_INCLUDE = -I$(BAKE_HOME)/include
 DEPS_LIB = -L$(BAKE_TARGET)/lib -lsijson -lsireflect -lsicore
 QUIET_BAKE = grep -Ev '^\[[[:space:]]*(test|build|run|runall|[0-9]+%)|^cmd:|^path:'
 WASM_NODE ?= node
+BENCH_CPU ?= 0
 
 .PHONY: clean bench bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-release test-rest test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release build-wasm-debug build-wasm-release test-wasm test-wasm-browser act-ci act-docs act
 
@@ -12,7 +13,7 @@ ACT_PLATFORM ?= ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
 
 define run-bench
 	@bake rebuild --cfg release >/dev/null
-	@bake rebuild bench --cfg release >/dev/null
+	@bake rebuild bench -r --cfg release >/dev/null
 	@bake run bench --cfg release $(1)
 endef
 
@@ -38,7 +39,7 @@ bench-create:
 	$(call run-bench,-- create)
 
 bench-compare:
-	@python3 tools/bench_compare.py $(if $(SCOPE),--scope $(SCOPE),) $(if $(RUNS),--runs $(RUNS),) $(if $(THRESHOLD),--threshold $(THRESHOLD),)
+	@python3 tools/bench_compare.py $(if $(SCOPE),--scope $(SCOPE),) $(if $(RUNS),--runs $(RUNS),) $(if $(THRESHOLD),--threshold $(THRESHOLD),) $(if $(BENCH_CPU),--cpu $(BENCH_CPU),)
 
 clean:
 	@rm -rf build-consumer-c build-consumer-cpp >/dev/null

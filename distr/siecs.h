@@ -915,9 +915,10 @@ typedef struct ecs_table_s ecs_table_t;
  *
  * Called the first time the module is imported into the active world. The
  * callback is expected to register the module's components, systems, observers,
- * and nested modules. Registrations made while the callback runs are recorded
- * under the importing module so ecs_module_enable/ecs_module_disable can toggle
- * its systems and observers later.
+ * queries, and nested modules. Registrations made while the callback runs are
+ * recorded under the importing module so ecs_module_enable/ecs_module_disable
+ * can toggle its systems and observers later; persistent queries inherit the
+ * module lifetime.
  *
  * desc is the user props pointer from ecs_module_desc_t. The library does not
  * retain or copy it; it is only valid for the duration of this call.
@@ -1094,7 +1095,8 @@ typedef void (*ecs_resource_hook_t)(const void *ptr);
  * Resource registration descriptor.
  *
  * Resources are per-world singleton values with their own id space. name and
- * size are required; hooks are optional.
+ * size are required; hooks are optional. Present resources are finalized in
+ * reverse first-registration order.
  */
 typedef struct {
   const char *name;
@@ -1290,7 +1292,11 @@ typedef struct {
 /* Initialize a world with the given features. */
 SIECS_API void ecs_init_w_features(const ecs_world_feat_desc_t *features);
 
-/* Destroy a world and all ECS storage owned by it. world must not be NULL. */
+/*
+ * Destroy the world. Live component teardown runs before resource teardown, so
+ * component on_remove hooks can still access world resources. Resources are
+ * finalized in reverse first-registration order.
+ */
 SIECS_API void ecs_fini(void);
 
 /* Request that future ecs_progress calls return false. */
@@ -1840,10 +1846,16 @@ SIECS_API void ecs_kill(ecs_entity_t entity);
     for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)              \
       for (uint64_t i = 0, entity = *it.entities; i < it.count;                \
            i++, entity = it.entities[i])
-/* Create a query. The query descriptor must read at least one component. */
+/*
+ * Create a query. The query descriptor must read at least one component.
+ * Queries created during a module import inherit that module's lifetime.
+ */
 SIECS_API ecs_query_id_t ecs_query_init(const ecs_query_desc_t *query);
 
-/* Destroy a query id created by ecs_query/ecs_query_init. */
+/*
+ * Destroy a query id created by ecs_query/ecs_query_init. Manually destroying
+ * a module-owned query also removes it from that module's lifetime tracking.
+ */
 SIECS_API void ecs_query_fini(ecs_query_id_t qid);
 
 /* Add a typed component tag/storage to an alive entity. */
@@ -2176,6 +2188,22 @@ SIECS_API void ecs_with_many(ecs_component_t component, ...);
 
 #define ecs_id_comma(x) , ecs_id(x)
 #define ecs_with(first, ...) ecs_with_many(ecs_id(first) PP_FOR_EACH(ecs_id_comma, __VA_ARGS__), 0)
+
+/*
+ * Install an add-time default relation for a component. The component and
+ * relation must be registered, and target must be a live entity. Declare this
+ * before the component is used in a table. A newly added component receives
+ * the relation only when the source has no relation for it; an existing or
+ * explicitly added relation is preserved.
+ */
+SIECS_API void ecs_with_relation_id(
+    ecs_component_t component,
+    ecs_relation_id_t relation,
+    ecs_entity_t target
+);
+
+#define ecs_with_relation(component, relation, target) \
+  ecs_with_relation_id(ecs_id(component), ecs_rid(relation), target)
 
 /* Builtin observer events. */
 #define EcsOnAdd 0

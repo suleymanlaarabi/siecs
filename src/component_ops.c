@@ -61,6 +61,9 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
             crec->on_add(entity, cid, component_data);
         }
         ecs_emit(new_table, entity, EcsOnAdd, component_data);
+        if (ECS_UNLIKELY(ecs_component_default_relations(cid))) {
+            ecs_apply_component_default_relations(entity, cid);
+        }
         return;
     }
 
@@ -76,14 +79,18 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     void *component_data = ecs_migrate(record, entity, table, edge, cid);
 
     if (new_table->type.component_count > table->type.component_count + 1) {
-        ecs_emit_added_components(table, new_table, entity, record->table_row);
+        if (ecs_emit_added_components(table, new_table, entity, record->table_row)) {
+            ecs_apply_added_component_default_relations(table, new_table, entity);
+        }
         return;
     }
     if (crec->on_add) {
         crec->on_add(entity, cid, component_data);
     }
-
     ecs_emit(new_table, entity, EcsOnAdd, component_data);
+    if (ECS_UNLIKELY(ecs_component_default_relations(cid))) {
+        ecs_apply_component_default_relations(entity, cid);
+    }
 }
 
 void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
@@ -308,6 +315,66 @@ static inline void ecs_with_impl(ecs_component_t component, ecs_component_t requ
     record->required =
         realloc(record->required, sizeof(ecs_component_t) * (record->required_count + 1));
     record->required[record->required_count++] = require;
+}
+
+void ecs_with_relation_id(ecs_component_t cid, ecs_relation_id_t relation, ecs_entity_t target) {
+    ecs_assert_id_valid(cid);
+    ecs_assert(
+        relation != 0 && relation < ecs_relation_count() && ecs_relation_info(relation),
+        "relation must be registered: %u\n",
+        relation
+    );
+    ecs_assert_entity_valid(target);
+    ecs_assert_is_alive(target);
+
+#ifndef NDEBUG
+    ecs_component_record_t *record = ecs_component_index_get_mut(cid);
+    ecs_assert(record->tables.size == 0, "component already used cannot register relation default");
+#endif
+
+    if (!ecs_component_default_relation_index.data) {
+        sicore_vec_init_w_size(
+            &ecs_component_default_relation_index,
+            sizeof(ecs_component_required_relation_t *),
+            256
+        );
+    }
+    sicore_vec_ensure(
+        &ecs_component_default_relation_index,
+        (uint32_t)cid + 1,
+        sizeof(ecs_component_required_relation_t *)
+    );
+    ecs_component_required_relation_t **defaults =
+        sicore_vec_get_mut(
+            &ecs_component_default_relation_index,
+            cid,
+            ecs_component_required_relation_t *
+        );
+
+    uint16_t count = 0;
+    for (const ecs_component_required_relation_t *current = *defaults;
+         current && current->relation;
+         current++, count++) {
+#ifndef NDEBUG
+        if (current->relation != relation) {
+            continue;
+        }
+        ecs_assert(
+            current->target == target,
+            "component already has a different default target for relation: %u\n",
+            relation
+        );
+#endif
+    }
+
+    *defaults = realloc(
+        *defaults,
+        sizeof(ecs_component_required_relation_t) * (count + 2)
+    );
+    ecs_assert_not_null(*defaults);
+    (*defaults)[count] =
+        (ecs_component_required_relation_t){ .relation = relation, .target = target };
+    (*defaults)[count + 1] = (ecs_component_required_relation_t){ 0 };
 }
 
 #if defined(__clang__)

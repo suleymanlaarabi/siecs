@@ -41,6 +41,26 @@ void entity_create(void) {
     ecs_fini();
 }
 
+void entity_add_components_after_world_restart(void) {
+    ecs_init();
+    ecs_fini();
+
+    ecs_init();
+    ecs_component_t components[] = {
+        ecs_component({ 0 }),
+        ecs_component({ 0 }),
+        ecs_component({ 0 }),
+    };
+    ecs_entity_t entity = ecs_new();
+    for (uint32_t i = 0; i < 3; i++) {
+        ecs_add_cid(entity, components[i]);
+    }
+
+    test_true(ecs_has_cid(entity, components[2]));
+    test_false(ecs_has_cid_owned(entity, ecs_id(Abstract)));
+    ecs_fini();
+}
+
 void entity_reuses_id_with_new_generation_after_kill(void) {
     ecs_init();
 

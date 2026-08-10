@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+sicore_vec_t ecs_component_default_relation_index;
+
 static sireflect_struct_desc_t *
 ecs_component_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
     if (!desc) {
@@ -112,6 +114,15 @@ void ecs_component_index_fini() {
         free(records[i].required);
         sicore_vec_fini(&records[i].tables);
     }
+    if (ecs_component_default_relation_index.data) {
+        ecs_component_required_relation_t **defaults =
+            ecs_component_default_relation_index.data;
+        for (uint32_t i = 0; i < ecs_component_default_relation_index.size; i++) {
+            free(defaults[i]);
+        }
+        sicore_vec_fini(&ecs_component_default_relation_index);
+    }
+    ecs_component_default_relation_index = (sicore_vec_t){ 0 };
     sicore_vec_fini(&ecs_world.component_index.components);
 }
 

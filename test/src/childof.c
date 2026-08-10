@@ -8,6 +8,17 @@
 ECS_COMPONENT_DECLARE(RelValue, { int value; });
 ECS_COMPONENT_DEFINE(RelValue);
 
+ECS_COMPONENT_DECLARE(DefaultRenderable, { int value; });
+ECS_COMPONENT_DECLARE(DefaultSprite, { int value; });
+ECS_COMPONENT_DEFINE(DefaultRenderable);
+ECS_COMPONENT_DEFINE(DefaultSprite);
+
+ECS_RELATION_DECLARE(TestLayer);
+ECS_RELATION_DEFINE(TestLayer, {
+    .storage = EcsRelationDense,
+    .on_delete_target = EcsRemoveRelation,
+});
+
 ECS_RELATION_DECLARE(DenseRel);
 ECS_RELATION_DEFINE(DenseRel, {
     .storage = EcsRelationDense,
@@ -59,6 +70,104 @@ void childof_kill_parent(void) {
     ecs_kill(parent);
     test_false(ecs_is_alive(child));
     test_false(ecs_is_alive(parent));
+    ecs_fini();
+}
+
+void childof_with_relation_adds_default_relation(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(DefaultRenderable);
+    ECS_RELATION_REGISTER(TestLayer);
+    ecs_entity_t default_layer = ecs_new();
+    ecs_with_relation(DefaultRenderable, TestLayer, default_layer);
+
+    ecs_entity_t entity = ecs_new();
+    ecs_add(entity, DefaultRenderable);
+
+    test_uint(default_layer, ecs_target(entity, TestLayer));
+    ecs_fini();
+}
+
+void childof_with_relation_preserves_existing_relation(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(DefaultRenderable);
+    ECS_RELATION_REGISTER(TestLayer);
+    ecs_entity_t default_layer = ecs_new();
+    ecs_entity_t custom_layer = ecs_new();
+    ecs_with_relation(DefaultRenderable, TestLayer, default_layer);
+
+    ecs_entity_t entity = ecs_new();
+    ecs_relate(entity, TestLayer, custom_layer);
+    ecs_add(entity, DefaultRenderable);
+
+    test_uint(custom_layer, ecs_target(entity, TestLayer));
+    ecs_fini();
+}
+
+void childof_with_relation_applies_through_component_requirement(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(DefaultRenderable);
+    ECS_COMPONENT_REGISTER(DefaultSprite);
+    ECS_RELATION_REGISTER(TestLayer);
+    ecs_entity_t world_layer = ecs_new();
+    ecs_with(DefaultSprite, DefaultRenderable);
+    ecs_with_relation(DefaultRenderable, TestLayer, world_layer);
+
+    ecs_entity_t entity = ecs_new();
+    ecs_add(entity, DefaultSprite);
+
+    test_true(ecs_has(entity, DefaultSprite));
+    test_true(ecs_has(entity, DefaultRenderable));
+    test_uint(world_layer, ecs_target(entity, TestLayer));
+    ecs_fini();
+}
+
+void childof_with_relation_deferred_add(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(DefaultRenderable);
+    ECS_RELATION_REGISTER(TestLayer);
+    ecs_entity_t default_layer = ecs_new();
+    ecs_with_relation(DefaultRenderable, TestLayer, default_layer);
+    ecs_entity_t entity = ecs_new();
+
+    ecs_defer_begin();
+    ecs_add(entity, DefaultRenderable);
+    ecs_defer_end();
+
+    test_uint(default_layer, ecs_target(entity, TestLayer));
+    ecs_fini();
+}
+
+void childof_with_relation_deferred_explicit_relation_wins(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(DefaultRenderable);
+    ECS_RELATION_REGISTER(TestLayer);
+    ecs_entity_t default_layer = ecs_new();
+    ecs_entity_t custom_layer = ecs_new();
+    ecs_with_relation(DefaultRenderable, TestLayer, default_layer);
+    ecs_entity_t entity = ecs_new();
+
+    ecs_defer_begin();
+    ecs_add(entity, DefaultRenderable);
+    ecs_relate(entity, TestLayer, custom_layer);
+    ecs_defer_end();
+
+    test_uint(custom_layer, ecs_target(entity, TestLayer));
+    ecs_fini();
+}
+
+void childof_with_relation_double_add_does_not_restore_removed_relation(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(DefaultRenderable);
+    ECS_RELATION_REGISTER(TestLayer);
+    ecs_entity_t default_layer = ecs_new();
+    ecs_with_relation(DefaultRenderable, TestLayer, default_layer);
+    ecs_entity_t entity = ecs_new();
+
+    ecs_add(entity, DefaultRenderable);
+    ecs_unrelate(entity, TestLayer);
+    ecs_add(entity, DefaultRenderable);
+
+    test_false(ecs_has_relation(entity, TestLayer));
     ecs_fini();
 }
 

@@ -153,7 +153,7 @@ static ecs_component_t ecs_component_register_type(
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
 
-    if (*id != 0) {
+    if (*id != 0 && *id < ecs_world.component_index.components.size) {
         const ecs_component_record_t *existing = ecs_component_index_get(*id);
         if (existing->tables.data) {
             return *id;

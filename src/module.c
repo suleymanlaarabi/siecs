@@ -1,4 +1,5 @@
 #include "module.h"
+#include "storage/query_index.h"
 #include "utils.h"
 #include "world_internal.h"
 

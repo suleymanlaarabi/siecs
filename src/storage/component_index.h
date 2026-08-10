@@ -10,6 +10,11 @@ typedef enum {
     EcsComponentRelationSource = 1 << 1,
 } ecs_component_internal_flags_t;
 
+typedef struct {
+    ecs_relation_id_t relation;
+    ecs_entity_t target;
+} ecs_component_required_relation_t;
+
 #define ECS_COMPONENT_RELATION_ID(flags) ((ecs_relation_id_t)((flags) >> 16))
 #define ECS_COMPONENT_RELATION_FLAGS(id, flags) ((uint32_t)(flags) | ((uint32_t)(id) << 16))
 
@@ -31,6 +36,19 @@ typedef struct {
 typedef struct ecs_component_index_s {
     sicore_vec_t components; // ecs_component_record_t
 } ecs_component_index_t;
+
+extern sicore_vec_t ecs_component_default_relation_index;
+
+static inline ecs_component_required_relation_t *ecs_component_default_relations(
+    ecs_component_t component
+) {
+    if (component >= ecs_component_default_relation_index.size) {
+        return NULL;
+    }
+    return ((ecs_component_required_relation_t **)ecs_component_default_relation_index.data)[
+        component
+    ];
+}
 
 void ecs_component_index_register(
     ecs_component_t id,

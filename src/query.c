@@ -1,4 +1,5 @@
 #include "command_buffer.h"
+#include "module.h"
 #include "storage/query_index.h"
 #include "table.h"
 #include "utils.h"

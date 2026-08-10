@@ -13,6 +13,7 @@ void public_metadata_and_entity_introspection(void);
 
 // Testsuite 'entity'
 void entity_create(void);
+void entity_add_components_after_world_restart(void);
 void entity_reuses_id_with_new_generation_after_kill(void);
 void entity_new_no_reuse_uses_new_index(void);
 void entity_new_no_reuse_ignores_multiple_free_indices(void);
@@ -66,9 +67,17 @@ void resource_replace(void);
 void resource_lifecycle_ops_are_used_for_set_move_and_remove(void);
 void resource_from_system_c(void);
 void resource_hooks(void);
+void resource_fini_runs_after_component_remove(void);
+void resource_fini_uses_reverse_registration_order(void);
 
 // Testsuite 'childof'
 void childof_kill_parent(void);
+void childof_with_relation_adds_default_relation(void);
+void childof_with_relation_preserves_existing_relation(void);
+void childof_with_relation_applies_through_component_requirement(void);
+void childof_with_relation_deferred_add(void);
+void childof_with_relation_deferred_explicit_relation_wins(void);
+void childof_with_relation_double_add_does_not_restore_removed_relation(void);
 void childof_dense_retarget_without_migration(void);
 void childof_dense_retarget_keeps_reverse_sources(void);
 void childof_dense_delete_policies(void);
@@ -147,6 +156,10 @@ void module_name_returns_imported_name(void);
 void module_enable(void);
 void module_disabled_import(void);
 void module_double_import_is_noop(void);
+void module_owns_queries_created_during_import(void);
+void module_forgets_manually_destroyed_query(void);
+void module_query_id_reuse_does_not_keep_old_owner(void);
+void module_queries_survive_disable_enable(void);
 
 bake_test_case public_testcases[] = {
     {
@@ -159,6 +172,10 @@ bake_test_case entity_testcases[] = {
     {
         "create",
         entity_create
+    },
+    {
+        "add_components_after_world_restart",
+        entity_add_components_after_world_restart
     },
     {
         "reuses_id_with_new_generation_after_kill",
@@ -361,6 +378,14 @@ bake_test_case resource_testcases[] = {
     {
         "hooks",
         resource_hooks
+    },
+    {
+        "fini_runs_after_component_remove",
+        resource_fini_runs_after_component_remove
+    },
+    {
+        "fini_uses_reverse_registration_order",
+        resource_fini_uses_reverse_registration_order
     }
 };
 
@@ -368,6 +393,30 @@ bake_test_case childof_testcases[] = {
     {
         "kill_parent",
         childof_kill_parent
+    },
+    {
+        "with_relation_adds_default_relation",
+        childof_with_relation_adds_default_relation
+    },
+    {
+        "with_relation_preserves_existing_relation",
+        childof_with_relation_preserves_existing_relation
+    },
+    {
+        "with_relation_applies_through_component_requirement",
+        childof_with_relation_applies_through_component_requirement
+    },
+    {
+        "with_relation_deferred_add",
+        childof_with_relation_deferred_add
+    },
+    {
+        "with_relation_deferred_explicit_relation_wins",
+        childof_with_relation_deferred_explicit_relation_wins
+    },
+    {
+        "with_relation_double_add_does_not_restore_removed_relation",
+        childof_with_relation_double_add_does_not_restore_removed_relation
     },
     {
         "dense_retarget_without_migration",
@@ -660,6 +709,22 @@ bake_test_case module_testcases[] = {
     {
         "double_import_is_noop",
         module_double_import_is_noop
+    },
+    {
+        "owns_queries_created_during_import",
+        module_owns_queries_created_during_import
+    },
+    {
+        "forgets_manually_destroyed_query",
+        module_forgets_manually_destroyed_query
+    },
+    {
+        "query_id_reuse_does_not_keep_old_owner",
+        module_query_id_reuse_does_not_keep_old_owner
+    },
+    {
+        "queries_survive_disable_enable",
+        module_queries_survive_disable_enable
     }
 };
 
@@ -676,7 +741,7 @@ static bake_test_suite suites[] = {
         "entity",
         NULL,
         NULL,
-        15,
+        16,
         entity_testcases
     },
     {
@@ -690,14 +755,14 @@ static bake_test_suite suites[] = {
         "resource",
         NULL,
         NULL,
-        9,
+        11,
         resource_testcases
     },
     {
         "childof",
         NULL,
         NULL,
-        22,
+        28,
         childof_testcases
     },
     {
@@ -725,7 +790,7 @@ static bake_test_suite suites[] = {
         "module",
         NULL,
         NULL,
-        5,
+        9,
         module_testcases
     }
 };

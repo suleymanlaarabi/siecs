@@ -17,6 +17,7 @@ typedef struct {
     ecs_resource_record_t *records;
     void **data;
     bool *present;
+    sicore_vec_t registration_order; // ecs_resource_t
     uint64_t capacity;
     uint64_t count;
 } ecs_resource_index_t;
