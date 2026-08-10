@@ -909,6 +909,8 @@ typedef struct ecs_table_s ecs_table_t;
 #define ECS_QUERY_RELATION_CAPACITY 8
 /* Maximum number of explicit same-phase system dependencies. */
 #define ECS_SYSTEM_AFTER_CAPACITY 16
+/* Maximum resource ids declared as read/write by one system. */
+#define ECS_SYSTEM_RESOURCE_CAPACITY 8
 
 /*
  * Module import callback.
@@ -1283,7 +1285,12 @@ SIECS_API void ecs_init(void);
 typedef struct {
   /* Target frames per second for the world's update loop. */
   uint16_t target_fps;
+  /* Persistent workers in addition to the thread calling ecs_progress(). */
+  uint16_t worker_threads;
 } ecs_world_feat_desc_t;
+
+/* Select the number of logical CPUs minus the calling thread. */
+#define ECS_WORKERS_AUTO UINT16_MAX
 
 /* Create a world with the given features. */
 #define ecs_with_features(...)                                                 \
@@ -2405,7 +2412,10 @@ SIECS_API const char *ecs_phase_name(ecs_phase_t phase);
  * matching query. If query has no terms, the system runs once with an empty
  * iterator. phase controls when ecs_progress/ecs_run_phase executes the system.
  * after contains up to four system ids that must run before this system in the
- * same phase.
+ * same phase. read_resources and write_resources are zero-terminated lists of
+ * resource ids used to determine scheduler conflicts; read/read access may
+ * run concurrently. main_thread_only prevents the scheduler from dispatching
+ * this system to a worker thread.
  */
 typedef struct {
   const char *name;
@@ -2415,7 +2425,10 @@ typedef struct {
   void (*user_data_dtor)(uintptr_t user_data);
   ecs_phase_t phase;
   ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
+  ecs_resource_t read_resources[ECS_SYSTEM_RESOURCE_CAPACITY];
+  ecs_resource_t write_resources[ECS_SYSTEM_RESOURCE_CAPACITY];
   bool disabled;
+  bool main_thread_only;
 } ecs_system_desc_t;
 
 /*
@@ -2438,7 +2451,12 @@ SIECS_API ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc);
 /* Return the registered system name. */
 SIECS_API const char *ecs_system_name(ecs_system_id_t system);
 
-/* Run all enabled systems in phase order. */
+/*
+ * Run all enabled systems in phase order. With workers enabled, independent
+ * systems in one batch may run simultaneously and have no happens-before
+ * relationship. Use ecs_system_desc_t.after when a later system must observe
+ * an earlier system's structural changes in the same phase.
+ */
 SIECS_API bool ecs_progress(void);
 
 /* Run all enabled systems in phase order. */

@@ -4504,6 +4504,58 @@ ecs_pair_tables_t ecs_table_index_pair_tables(uint16_t key, uint64_t value);
 #ifndef SIECS_COMMAND_BUFFER_H
 #define SIECS_COMMAND_BUFFER_H
 
+#ifndef ECS_ARENA_H
+#define ECS_ARENA_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#if defined(_MSC_VER)
+/* MSVC's C headers do not expose max_align_t in the C language mode. */
+typedef __declspec(align(16)) struct {
+    unsigned char value[16];
+} ecs_arena_max_align_t;
+#else
+typedef max_align_t ecs_arena_max_align_t;
+#endif
+
+typedef struct ecs_arena_block_s {
+    struct ecs_arena_block_s *next;
+    uint32_t capacity;
+    uint32_t cursor;
+    ecs_arena_max_align_t data[];
+} ecs_arena_block_t;
+
+typedef struct {
+    ecs_arena_block_t *first;
+    ecs_arena_block_t *current;
+    ecs_arena_block_t *last;
+} ecs_arena_t;
+
+void ecs_arena_init(ecs_arena_t *allocator);
+void ecs_arena_fini(ecs_arena_t *allocator);
+void *ecs_arena_alloc_slow(ecs_arena_t *allocator, uint32_t size);
+
+static inline void *ecs_arena_alloc(ecs_arena_t *allocator, uint32_t size) {
+    ecs_arena_block_t *block = allocator->current;
+    const uint32_t alignment = (uint32_t)_Alignof(ecs_arena_max_align_t);
+    const uint32_t cursor = (block->cursor + alignment - 1u) & ~(alignment - 1u);
+    if (ECS_LIKELY(cursor <= block->capacity && size <= block->capacity - cursor)) {
+        block->cursor = cursor + size;
+        return (uint8_t *)block->data + cursor;
+    }
+    return ecs_arena_alloc_slow(allocator, size);
+}
+
+static inline void ecs_arena_reset(ecs_arena_t *allocator) {
+    for (ecs_arena_block_t *block = allocator->first; block; block = block->next) {
+        block->cursor = 0;
+    }
+    allocator->current = allocator->first;
+}
+
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -4542,10 +4594,24 @@ typedef struct ecs_command_buffer_s {
     sicore_vec_t relations;
     uint32_t *entity_to_command;
     uint32_t entity_capacity;
+    ecs_arena_t *arena;
 } ecs_command_buffer_t;
 
-void ecs_command_buffer_init();
-void ecs_command_buffer_fini();
+typedef struct ecs_execution_context_s {
+    ecs_command_buffer_t commands;
+    ecs_arena_t arena;
+    uint32_t defer_depth;
+    bool flushing_commands;
+    bool scheduler_parallel;
+} ecs_execution_context_t;
+
+void ecs_execution_context_init(ecs_execution_context_t *context);
+void ecs_execution_context_fini(ecs_execution_context_t *context);
+ecs_execution_context_t *ecs_execution_context_current(void);
+void ecs_execution_context_set(ecs_execution_context_t *context);
+
+void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena);
+void ecs_command_buffer_fini(ecs_command_buffer_t *buffer);
 
 void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id);
 void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id);
@@ -4559,6 +4625,7 @@ void ecs_command_buffer_relate(
     ecs_entity_t target
 );
 void ecs_command_buffer_flush();
+void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer);
 
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t id);
 void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t id);
@@ -4566,58 +4633,6 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t id, const void *data);
 void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t id, void *data);
 void ecs_kill_now(ecs_entity_t entity);
 void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target);
-
-#endif
-
-#ifndef ECS_ARENA_H
-#define ECS_ARENA_H
-
-#include <stddef.h>
-#include <stdint.h>
-
-#if defined(_MSC_VER)
-/* MSVC's C headers do not expose max_align_t in the C language mode. */
-typedef __declspec(align(16)) struct {
-    unsigned char value[16];
-} ecs_arena_max_align_t;
-#else
-typedef max_align_t ecs_arena_max_align_t;
-#endif
-
-typedef struct ecs_arena_block_s {
-    struct ecs_arena_block_s *next;
-    uint32_t capacity;
-    uint32_t cursor;
-    ecs_arena_max_align_t data[];
-} ecs_arena_block_t;
-
-typedef struct {
-    ecs_arena_block_t *first;
-    ecs_arena_block_t *current;
-    ecs_arena_block_t *last;
-} ecs_arena_t;
-
-void ecs_arena_init();
-void ecs_arena_fini();
-void *ecs_arena_alloc_slow(ecs_arena_t *allocator, uint32_t size);
-
-static inline void *ecs_arena_alloc(ecs_arena_t *allocator, uint32_t size) {
-    ecs_arena_block_t *block = allocator->current;
-    const uint32_t alignment = (uint32_t)_Alignof(ecs_arena_max_align_t);
-    const uint32_t cursor = (block->cursor + alignment - 1u) & ~(alignment - 1u);
-    if (ECS_LIKELY(cursor <= block->capacity && size <= block->capacity - cursor)) {
-        block->cursor = cursor + size;
-        return (uint8_t *)block->data + cursor;
-    }
-    return ecs_arena_alloc_slow(allocator, size);
-}
-
-static inline void ecs_arena_reset(ecs_arena_t *allocator) {
-    for (ecs_arena_block_t *block = allocator->first; block; block = block->next) {
-        block->cursor = 0;
-    }
-    allocator->current = allocator->first;
-}
 
 #endif
 
@@ -4987,6 +5002,11 @@ void ecs_resource_index_remove(ecs_resource_t id);
 #include <stdint.h>
 
 typedef struct {
+    uint32_t first;
+    uint32_t count;
+} ecs_system_batch_t;
+
+typedef struct {
     const char *name;
     ecs_query_id_t qid;
     void (*callback)(ecs_iter_t *);
@@ -4994,7 +5014,10 @@ typedef struct {
     void (*user_data_dtor)(uintptr_t user_data);
     ecs_phase_t phase;
     ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
+    ecs_resource_t read_resources[ECS_SYSTEM_RESOURCE_CAPACITY];
+    ecs_resource_t write_resources[ECS_SYSTEM_RESOURCE_CAPACITY];
     bool enabled;
+    bool main_thread_only;
 } ecs_system_t;
 
 typedef struct {
@@ -5004,6 +5027,7 @@ typedef struct {
     ecs_phase_t before;
     bool is_start_phase;
     sicore_vec_t systems_order;
+    sicore_vec_t batches;
 } ecs_phase_info_t;
 
 typedef struct {
@@ -5063,6 +5087,103 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
 
 #endif
 
+#ifndef SIECS_WORKER_POOL_H
+#define SIECS_WORKER_POOL_H
+
+#ifndef SIECS_PLATFORM_THREAD_H
+#define SIECS_PLATFORM_THREAD_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#ifdef _WIN32
+#include <windows.h>
+typedef struct {
+    HANDLE handle;
+} ecs_platform_thread_t;
+typedef CRITICAL_SECTION ecs_platform_mutex_t;
+typedef CONDITION_VARIABLE ecs_platform_condition_t;
+#define ECS_PLATFORM_THREAD_CALL WINAPI
+typedef DWORD (ECS_PLATFORM_THREAD_CALL *ecs_platform_thread_func_t)(void *);
+#else
+#include <pthread.h>
+typedef struct {
+    pthread_t handle;
+} ecs_platform_thread_t;
+typedef pthread_mutex_t ecs_platform_mutex_t;
+typedef pthread_cond_t ecs_platform_condition_t;
+typedef void *(*ecs_platform_thread_func_t)(void *);
+#define ECS_PLATFORM_THREAD_CALL
+#endif
+
+bool ecs_platform_thread_create(
+    ecs_platform_thread_t *thread,
+    ecs_platform_thread_func_t function,
+    void *argument
+);
+void ecs_platform_thread_join(ecs_platform_thread_t *thread);
+
+void ecs_platform_mutex_init(ecs_platform_mutex_t *mutex);
+void ecs_platform_mutex_fini(ecs_platform_mutex_t *mutex);
+void ecs_platform_mutex_lock(ecs_platform_mutex_t *mutex);
+void ecs_platform_mutex_unlock(ecs_platform_mutex_t *mutex);
+
+void ecs_platform_condition_init(ecs_platform_condition_t *condition);
+void ecs_platform_condition_fini(ecs_platform_condition_t *condition);
+void ecs_platform_condition_wait(
+    ecs_platform_condition_t *condition,
+    ecs_platform_mutex_t *mutex
+);
+void ecs_platform_condition_signal(ecs_platform_condition_t *condition);
+void ecs_platform_condition_broadcast(ecs_platform_condition_t *condition);
+
+uint32_t ecs_platform_hardware_thread_count(void);
+
+#endif
+
+#include <stdatomic.h>
+#include <stdint.h>
+
+typedef struct {
+    ecs_system_id_t system;
+} ecs_worker_job_t;
+
+typedef struct ecs_worker_pool_s ecs_worker_pool_t;
+
+typedef struct {
+    ecs_platform_thread_t thread;
+    ecs_execution_context_t context;
+    ecs_worker_pool_t *pool;
+    uint16_t index;
+    _Alignas(64) atomic_uint completed;
+} ecs_worker_t;
+
+struct ecs_worker_pool_s {
+    uint16_t worker_count;
+    ecs_worker_t *workers;
+    ecs_worker_job_t *jobs;
+    uint32_t job_capacity;
+    uint32_t job_count;
+    _Alignas(64) atomic_uint next_job;
+    _Alignas(64) atomic_uint completed_jobs;
+    atomic_uint epoch;
+    atomic_bool stop;
+    ecs_platform_mutex_t mutex;
+    ecs_platform_condition_t condition;
+};
+
+void ecs_worker_pool_init(ecs_worker_pool_t *pool, uint16_t requested_workers);
+void ecs_worker_pool_fini(ecs_worker_pool_t *pool);
+bool ecs_worker_pool_enabled(const ecs_worker_pool_t *pool);
+void ecs_worker_pool_run_systems(
+    ecs_worker_pool_t *pool,
+    const ecs_system_id_t *systems,
+    uint32_t system_count
+);
+void ecs_worker_pool_flush(ecs_worker_pool_t *pool);
+
+#endif
+
 typedef struct ecs_world_s ecs_world_t;
 
 struct ecs_world_s {
@@ -5077,10 +5198,8 @@ struct ecs_world_s {
     ecs_resource_index_t resource_index;
     ecs_module_id_t active_module;
     ecs_world_feat_desc_t features;
-    ecs_arena_t arena_allocator;
-    ecs_command_buffer_t commands;
-    uint32_t defer_depth;
-    bool flushing_commands;
+    ecs_execution_context_t main_context;
+    ecs_worker_pool_t worker_pool;
     bool did_start;
     bool exit;
     double delta_time;
@@ -5124,7 +5243,17 @@ ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void 
 }
 
 static inline bool ecs_is_deferred(void) {
-    return ecs_world.defer_depth != 0 || ecs_world.flushing_commands;
+    ecs_execution_context_t *context = ecs_execution_context_current();
+    return context->defer_depth != 0 || context->flushing_commands ||
+           context->scheduler_parallel;
+}
+
+static inline void ecs_assert_not_scheduler_parallel(const char *operation) {
+    ecs_assert(
+        !ecs_execution_context_current()->scheduler_parallel,
+        "%s is not allowed from a parallel system wave\n",
+        operation
+    );
 }
 
 void ecs_bootstrap(void);
@@ -5579,6 +5708,21 @@ void *ecs_migrate(
 
 #define ECS_COMMAND_NONE UINT32_MAX
 
+#if defined(_MSC_VER)
+#define ECS_THREAD_LOCAL __declspec(thread)
+#else
+#define ECS_THREAD_LOCAL _Thread_local
+#endif
+static ECS_THREAD_LOCAL ecs_execution_context_t *ecs_tls_context;
+
+ecs_execution_context_t *ecs_execution_context_current(void) {
+    return ecs_tls_context ? ecs_tls_context : &ecs_world.main_context;
+}
+
+void ecs_execution_context_set(ecs_execution_context_t *context) {
+    ecs_tls_context = context;
+}
+
 static inline void deferred_change_fini(ecs_deferred_change_t *change) {
     if (!change->data) {
         return;
@@ -5643,16 +5787,15 @@ static inline void command_fini(ecs_entity_command_t *command) {
     sicore_vec_fini(&command->changes);
 }
 
-void ecs_command_buffer_init() {
-    ecs_command_buffer_t *buffer = &ecs_world.commands;
+void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena) {
     sicore_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
     sicore_vec_init(&buffer->relations, sizeof(ecs_deferred_relation_t));
     buffer->entity_to_command = NULL;
     buffer->entity_capacity = 0;
+    buffer->arena = arena;
 }
 
-void ecs_command_buffer_fini() {
-    ecs_command_buffer_t *buffer = &ecs_world.commands;
+void ecs_command_buffer_fini(ecs_command_buffer_t *buffer) {
     ecs_entity_command_t *commands = sicore_vec_data(&buffer->commands, ecs_entity_command_t);
     for (uint32_t i = 0; i < buffer->commands.size; i++) {
         command_fini(&commands[i]);
@@ -5660,6 +5803,17 @@ void ecs_command_buffer_fini() {
     sicore_vec_fini(&buffer->commands);
     sicore_vec_fini(&buffer->relations);
     free(buffer->entity_to_command);
+}
+
+void ecs_execution_context_init(ecs_execution_context_t *context) {
+    *context = (ecs_execution_context_t){ 0 };
+    ecs_arena_init(&context->arena);
+    ecs_command_buffer_init(&context->commands, &context->arena);
+}
+
+void ecs_execution_context_fini(ecs_execution_context_t *context) {
+    ecs_command_buffer_fini(&context->commands);
+    ecs_arena_fini(&context->arena);
 }
 
 static void command_buffer_ensure_entity(ecs_command_buffer_t *buffer, uint32_t entity_id) {
@@ -5679,8 +5833,10 @@ static void command_buffer_ensure_entity(ecs_command_buffer_t *buffer, uint32_t 
     buffer->entity_capacity = new_capacity;
 }
 
-static ecs_entity_command_t *command_for_entity(ecs_entity_t entity) {
-    ecs_command_buffer_t *buffer = &ecs_world.commands;
+static ecs_entity_command_t *command_for_entity(
+    ecs_command_buffer_t *buffer,
+    ecs_entity_t entity
+) {
     uint32_t entity_id = ecs_first(entity);
     command_buffer_ensure_entity(buffer, entity_id);
 
@@ -5698,7 +5854,8 @@ static ecs_entity_command_t *command_for_entity(ecs_entity_t entity) {
 }
 
 void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id) {
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     ecs_deferred_change_t *change = change_find(&command->changes, id);
     if (!change) {
         change_add(command, id, EcsDeferredAdd);
@@ -5708,7 +5865,8 @@ void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id) {
 }
 
 void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id) {
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     ecs_deferred_change_t *change = change_find(&command->changes, id);
     if (!change) {
         change_add(command, id, EcsDeferredRemove);
@@ -5719,7 +5877,8 @@ void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id) {
 }
 
 void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void *data) {
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     const ecs_component_record_t *record = ecs_component_index_get(id);
 
     uint32_t size = record->size ? record->size : 1;
@@ -5730,12 +5889,13 @@ void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void 
         deferred_change_fini(change);
         change->op = EcsDeferredCopy;
     }
-    change->data = ecs_arena_alloc(&ecs_world.arena_allocator, size);
+    change->data = ecs_arena_alloc(buffer->arena, size);
     ecs_component_value_copy_ctor(record, change->data, data, 1);
 }
 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data) {
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     const ecs_component_record_t *record = ecs_component_index_get(id);
 
     uint32_t size = record->size ? record->size : 1;
@@ -5746,12 +5906,13 @@ void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data
         deferred_change_fini(change);
         change->op = EcsDeferredMove;
     }
-    change->data = ecs_arena_alloc(&ecs_world.arena_allocator, size);
+    change->data = ecs_arena_alloc(buffer->arena, size);
     ecs_component_value_move_ctor(record, change->data, data, 1);
 }
 
 void ecs_command_buffer_kill(ecs_entity_t entity) {
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     command->kill = true;
     command->has_base = false;
     ecs_deferred_change_t *changes =
@@ -5764,7 +5925,8 @@ void ecs_command_buffer_kill(ecs_entity_t entity) {
 }
 
 void ecs_command_buffer_set_base(ecs_entity_t entity, ecs_entity_t target) {
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     command->has_base = true;
     command->base = target;
 }
@@ -5774,8 +5936,8 @@ void ecs_command_buffer_relate(
     ecs_relation_id_t relation,
     ecs_entity_t target
 ) {
-    ecs_command_buffer_t *buffer = &ecs_world.commands;
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     uint32_t index = command->relation_head;
     while (index != ECS_COMMAND_NONE) {
         ecs_deferred_relation_t *entry =
@@ -5999,14 +6161,12 @@ static void command_apply(ecs_entity_command_t *command, const sicore_vec_t *rel
     command_apply_relations(command, relations);
 }
 
-void ecs_command_buffer_flush() {
-    ecs_command_buffer_t *buffer = &ecs_world.commands;
+void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
     if (buffer->commands.size == 0) {
-        ecs_arena_reset(&ecs_world.arena_allocator);
+        ecs_arena_reset(buffer->arena);
         return;
     }
 
-    ecs_world.flushing_commands = true;
     while (buffer->commands.size != 0) {
         sicore_vec_t commands = buffer->commands;
         sicore_vec_t relations = buffer->relations;
@@ -6026,16 +6186,29 @@ void ecs_command_buffer_flush() {
         sicore_vec_fini(&commands);
         sicore_vec_fini(&relations);
     }
-    ecs_world.flushing_commands = false;
-    ecs_arena_reset(&ecs_world.arena_allocator);
+    ecs_arena_reset(buffer->arena);
 }
 
-void ecs_defer_begin(void) { ecs_world.defer_depth++; }
+void ecs_command_buffer_flush() {
+    ecs_execution_context_t *context = ecs_execution_context_current();
+    if (context->flushing_commands) {
+        ecs_command_buffer_flush_buffer(&context->commands);
+        return;
+    }
+    context->flushing_commands = true;
+    ecs_command_buffer_flush_buffer(&context->commands);
+    context->flushing_commands = false;
+}
+
+void ecs_defer_begin(void) {
+    ecs_execution_context_current()->defer_depth++;
+}
 
 void ecs_defer_end(void) {
-    ecs_assert(ecs_world.defer_depth > 0, "ecs_defer_end called without ecs_defer_begin\n");
-    ecs_world.defer_depth--;
-    if (ecs_world.defer_depth == 0) {
+    ecs_execution_context_t *context = ecs_execution_context_current();
+    ecs_assert(context->defer_depth > 0, "ecs_defer_end called without ecs_defer_begin\n");
+    context->defer_depth--;
+    if (context->defer_depth == 0 && !context->scheduler_parallel) {
         ecs_command_buffer_flush();
     }
 }
@@ -6253,6 +6426,7 @@ ecs_component_t ecs_component_register_relation_internal(
 }
 
 ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("component registration");
     sireflect_handle_t type = SIREFLECT_INVALID_HANDLE;
     if (ECS_LIKELY(desc && desc->struct_desc)) {
         type = sireflect_try_register_struct(sijson_default_registry(), desc->struct_desc);
@@ -6264,6 +6438,7 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
 }
 
 ecs_component_t ecs_component_init(const ecs_component_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("component registration");
     ecs_component_t id = 0;
     return ecs_component_register(&id, desc);
 }
@@ -7169,6 +7344,7 @@ void ecs_module_record_observer(ecs_observer_id_t observer);
 #endif
 
 ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("module registration");
     ecs_assert_not_null(desc);
     ecs_assert_not_null(desc->name);
     ecs_assert_not_null(desc->import);
@@ -7265,9 +7441,13 @@ void ecs_module_record_observer(ecs_observer_id_t observer) {
     sicore_vec_push(&record->observers, &observer, sizeof(ecs_observer_id_t));
 }
 
-ecs_event_t ecs_event(void) { return ecs_world.observer_index.event_count++; }
+ecs_event_t ecs_event(void) {
+    ecs_assert_not_scheduler_parallel("event registration");
+    return ecs_world.observer_index.event_count++;
+}
 
 ecs_event_t ecs_event_register(ecs_event_t *id) {
+    ecs_assert_not_scheduler_parallel("event registration");
     ecs_assert_not_null(id);
 
     if (*id == UINT16_MAX) {
@@ -7283,6 +7463,7 @@ ecs_event_t ecs_event_register(ecs_event_t *id) {
 }
 
 ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("observer registration");
     ecs_assert(desc->callback != NULL, "Observer callback cannot be NULL");
     ecs_observer_id_t oid = ecs_observer_index_create(desc);
     ecs_observer_index_match_tables(
@@ -7310,6 +7491,121 @@ void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *tr
     ecs_table_t *table = ecs_get_table(record->table_id);
     ecs_emit(table, entity, event, trigger_data);
 }
+
+#ifdef _WIN32
+
+static DWORD WINAPI ecs_platform_thread_start(void *argument) {
+    struct ecs_platform_thread_start_s {
+        ecs_platform_thread_func_t function;
+        void *argument;
+    } *start = argument;
+    ecs_platform_thread_func_t function = start->function;
+    void *function_argument = start->argument;
+    free(start);
+    return function(function_argument);
+}
+
+bool ecs_platform_thread_create(
+    ecs_platform_thread_t *thread,
+    ecs_platform_thread_func_t function,
+    void *argument
+) {
+    struct ecs_platform_thread_start_s {
+        ecs_platform_thread_func_t function;
+        void *argument;
+    } *start = malloc(sizeof(*start));
+    if (!start) {
+        return false;
+    }
+    start->function = function;
+    start->argument = argument;
+    thread->handle = CreateThread(NULL, 0, ecs_platform_thread_start, start, 0, NULL);
+    if (!thread->handle) {
+        free(start);
+        return false;
+    }
+    return true;
+}
+
+void ecs_platform_thread_join(ecs_platform_thread_t *thread) {
+    WaitForSingleObject(thread->handle, INFINITE);
+    CloseHandle(thread->handle);
+    thread->handle = NULL;
+}
+
+void ecs_platform_mutex_init(ecs_platform_mutex_t *mutex) { InitializeCriticalSection(mutex); }
+void ecs_platform_mutex_fini(ecs_platform_mutex_t *mutex) { DeleteCriticalSection(mutex); }
+void ecs_platform_mutex_lock(ecs_platform_mutex_t *mutex) { EnterCriticalSection(mutex); }
+void ecs_platform_mutex_unlock(ecs_platform_mutex_t *mutex) { LeaveCriticalSection(mutex); }
+void ecs_platform_condition_init(ecs_platform_condition_t *condition) {
+    InitializeConditionVariable(condition);
+}
+void ecs_platform_condition_fini(ecs_platform_condition_t *condition) { (void)condition; }
+void ecs_platform_condition_wait(
+    ecs_platform_condition_t *condition,
+    ecs_platform_mutex_t *mutex
+) {
+    SleepConditionVariableCS(condition, mutex, INFINITE);
+}
+void ecs_platform_condition_signal(ecs_platform_condition_t *condition) {
+    WakeConditionVariable(condition);
+}
+void ecs_platform_condition_broadcast(ecs_platform_condition_t *condition) {
+    WakeAllConditionVariable(condition);
+}
+
+uint32_t ecs_platform_hardware_thread_count(void) {
+    SYSTEM_INFO info;
+    GetSystemInfo(&info);
+    return info.dwNumberOfProcessors ? info.dwNumberOfProcessors : 1;
+}
+
+#else
+
+#include <stdlib.h>
+#include <unistd.h>
+
+bool ecs_platform_thread_create(
+    ecs_platform_thread_t *thread,
+    ecs_platform_thread_func_t function,
+    void *argument
+) {
+    return pthread_create(&thread->handle, NULL, function, argument) == 0;
+}
+
+void ecs_platform_thread_join(ecs_platform_thread_t *thread) {
+    pthread_join(thread->handle, NULL);
+}
+
+void ecs_platform_mutex_init(ecs_platform_mutex_t *mutex) { pthread_mutex_init(mutex, NULL); }
+void ecs_platform_mutex_fini(ecs_platform_mutex_t *mutex) { pthread_mutex_destroy(mutex); }
+void ecs_platform_mutex_lock(ecs_platform_mutex_t *mutex) { pthread_mutex_lock(mutex); }
+void ecs_platform_mutex_unlock(ecs_platform_mutex_t *mutex) { pthread_mutex_unlock(mutex); }
+void ecs_platform_condition_init(ecs_platform_condition_t *condition) {
+    pthread_cond_init(condition, NULL);
+}
+void ecs_platform_condition_fini(ecs_platform_condition_t *condition) {
+    pthread_cond_destroy(condition);
+}
+void ecs_platform_condition_wait(
+    ecs_platform_condition_t *condition,
+    ecs_platform_mutex_t *mutex
+) {
+    pthread_cond_wait(condition, mutex);
+}
+void ecs_platform_condition_signal(ecs_platform_condition_t *condition) {
+    pthread_cond_signal(condition);
+}
+void ecs_platform_condition_broadcast(ecs_platform_condition_t *condition) {
+    pthread_cond_broadcast(condition);
+}
+
+uint32_t ecs_platform_hardware_thread_count(void) {
+    long count = sysconf(_SC_NPROCESSORS_ONLN);
+    return count > 0 ? (uint32_t)count : 1;
+}
+
+#endif
 
 #ifndef SIECS_PLATFORM_TIME_H
 #define SIECS_PLATFORM_TIME_H
@@ -7375,7 +7671,10 @@ static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query
     sicore_vec_remove_last(&index->active_ids);
 }
 
-ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) { return ecs_query_index_create(desc); }
+ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("query registration");
+    return ecs_query_index_create(desc);
+}
 
 ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
     ecs_assert(query_id < ecs_world.query_index.queries.size, "invalid query id: %u\n", query_id);
@@ -7494,6 +7793,7 @@ void ecs_relation_index_fini(void) {
 
 ecs_relation_id_t
 ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relation_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("relation registration");
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
     ecs_assert(
@@ -7887,6 +8187,7 @@ static ecs_resource_t ecs_resource_alloc_id(void) {
 }
 
 ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("resource registration");
     return ecs_resource_index_register(ecs_resource_alloc_id(), desc);
 }
 
@@ -7902,6 +8203,7 @@ bool ecs_resource_is_registered_rid(ecs_resource_t id) {
 }
 
 ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("resource registration");
     ecs_assert_not_null(id);
     if (*id == 0) {
         *id = ecs_resource_alloc_id();
@@ -7952,6 +8254,7 @@ void ecs_remove_resource_rid(ecs_resource_t id) {
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
 
 ecs_phase_t ecs_phase_init(const ecs_phase_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("phase registration");
     return ecs_phase_register(desc);
 }
 
@@ -7961,6 +8264,7 @@ const char *ecs_phase_name(ecs_phase_t phase) {
 }
 
 ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("system registration");
     ecs_assert_not_null(desc);
     ecs_assert(desc->callback, "system requires callback function\n");
     ecs_phase_info_t *pinfo = ecs_system_index_get_phase(desc->phase);
@@ -7976,9 +8280,12 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
         .user_data_dtor = desc->user_data_dtor,
         .phase = desc->phase,
         .enabled = !desc->disabled,
+        .main_thread_only = desc->main_thread_only,
     };
 
     memcpy(sys.after, desc->after, sizeof(sys.after));
+    memcpy(sys.read_resources, desc->read_resources, sizeof(sys.read_resources));
+    memcpy(sys.write_resources, desc->write_resources, sizeof(sys.write_resources));
 
     ecs_system_id_t system = ecs_system_index_create(&sys);
     ecs_module_record_system(system);
@@ -8026,9 +8333,20 @@ void ecs_run_phase(ecs_phase_t phase) {
     if (!pinfo) return;
 
     sicore_vec_t *order = &pinfo->systems_order;
-    for (uint32_t i = 0; i < order->size; i++) {
-        ecs_system_id_t system = *sicore_vec_get(order, i, ecs_system_id_t);
-        ecs_run_system(system);
+    for (uint32_t i = 0; i < pinfo->batches.size; i++) {
+        ecs_system_batch_t batch =
+            *sicore_vec_get(&pinfo->batches, i, ecs_system_batch_t);
+        const ecs_system_id_t *systems = sicore_vec_data(order, ecs_system_id_t) + batch.first;
+        if (!ecs_worker_pool_enabled(&ecs_world.worker_pool) || batch.count == 1) {
+            ecs_world.main_context.scheduler_parallel = false;
+            ecs_execution_context_set(&ecs_world.main_context);
+            for (uint32_t j = 0; j < batch.count; j++) {
+                ecs_run_system(systems[j]);
+            }
+        } else {
+            ecs_worker_pool_run_systems(&ecs_world.worker_pool, systems, batch.count);
+            ecs_worker_pool_flush(&ecs_world.worker_pool);
+        }
     }
 }
 
@@ -8571,6 +8889,191 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
     return bloom;
 }
 
+static void ecs_worker_run_job(ecs_worker_pool_t *pool, uint32_t job_index) {
+    ecs_worker_job_t *job = &pool->jobs[job_index];
+    ecs_run_system(job->system);
+    uint32_t completed = atomic_fetch_add_explicit(
+        &pool->completed_jobs,
+        1,
+        memory_order_release
+    ) + 1;
+    if (completed == pool->job_count) {
+        ecs_platform_mutex_lock(&pool->mutex);
+        ecs_platform_condition_signal(&pool->condition);
+        ecs_platform_mutex_unlock(&pool->mutex);
+    }
+}
+
+#ifdef _WIN32
+static DWORD ECS_PLATFORM_THREAD_CALL ecs_worker_loop(void *argument)
+#else
+static void *ecs_worker_loop(void *argument)
+#endif
+{
+    ecs_worker_t *worker = argument;
+    ecs_worker_pool_t *pool = worker->pool;
+    uint32_t seen_epoch = 0;
+    ecs_execution_context_set(&worker->context);
+
+    for (;;) {
+        ecs_platform_mutex_lock(&pool->mutex);
+        while (!atomic_load_explicit(&pool->stop, memory_order_acquire) &&
+               atomic_load_explicit(&pool->epoch, memory_order_acquire) == seen_epoch) {
+            ecs_platform_condition_wait(&pool->condition, &pool->mutex);
+        }
+        if (atomic_load_explicit(&pool->stop, memory_order_acquire)) {
+            ecs_platform_mutex_unlock(&pool->mutex);
+            break;
+        }
+        seen_epoch = atomic_load_explicit(&pool->epoch, memory_order_relaxed);
+        ecs_platform_mutex_unlock(&pool->mutex);
+
+        for (;;) {
+            uint32_t job_index = atomic_fetch_add_explicit(
+                &pool->next_job,
+                1,
+                memory_order_relaxed
+            );
+            if (job_index >= pool->job_count) {
+                break;
+            }
+            ecs_worker_run_job(pool, job_index);
+        }
+    }
+
+    ecs_execution_context_set(NULL);
+#ifdef _WIN32
+    return 0;
+#else
+    return NULL;
+#endif
+}
+
+void ecs_worker_pool_init(ecs_worker_pool_t *pool, uint16_t requested_workers) {
+    *pool = (ecs_worker_pool_t){ 0 };
+    if (requested_workers == ECS_WORKERS_AUTO) {
+        uint32_t cpu_count = ecs_platform_hardware_thread_count();
+        requested_workers = cpu_count > 1 ? (uint16_t)(cpu_count - 1) : 0;
+    }
+    if (requested_workers == 0) {
+        return;
+    }
+
+    pool->worker_count = requested_workers;
+    pool->workers = calloc(requested_workers, sizeof(ecs_worker_t));
+    ecs_assert_not_null(pool->workers);
+    ecs_platform_mutex_init(&pool->mutex);
+    ecs_platform_condition_init(&pool->condition);
+    atomic_init(&pool->next_job, 0);
+    atomic_init(&pool->completed_jobs, 0);
+    atomic_init(&pool->epoch, 0);
+    atomic_init(&pool->stop, false);
+
+    for (uint16_t i = 0; i < requested_workers; i++) {
+        ecs_worker_t *worker = &pool->workers[i];
+        worker->pool = pool;
+        worker->index = i;
+        atomic_init(&worker->completed, 0);
+        ecs_execution_context_init(&worker->context);
+        bool created = ecs_platform_thread_create(&worker->thread, ecs_worker_loop, worker);
+        ecs_assert(created, "failed to create ECS worker thread\n");
+    }
+}
+
+void ecs_worker_pool_fini(ecs_worker_pool_t *pool) {
+    if (!pool->worker_count) {
+        return;
+    }
+
+    atomic_store_explicit(&pool->stop, true, memory_order_release);
+    ecs_platform_mutex_lock(&pool->mutex);
+    ecs_platform_condition_broadcast(&pool->condition);
+    ecs_platform_mutex_unlock(&pool->mutex);
+
+    for (uint16_t i = 0; i < pool->worker_count; i++) {
+        ecs_platform_thread_join(&pool->workers[i].thread);
+        ecs_execution_context_fini(&pool->workers[i].context);
+    }
+    ecs_platform_condition_fini(&pool->condition);
+    ecs_platform_mutex_fini(&pool->mutex);
+    free(pool->jobs);
+    free(pool->workers);
+    *pool = (ecs_worker_pool_t){ 0 };
+}
+
+bool ecs_worker_pool_enabled(const ecs_worker_pool_t *pool) {
+    return pool->worker_count != 0;
+}
+
+void ecs_worker_pool_run_systems(
+    ecs_worker_pool_t *pool,
+    const ecs_system_id_t *systems,
+    uint32_t system_count
+) {
+    if (system_count > pool->job_capacity) {
+        uint32_t capacity = pool->job_capacity ? pool->job_capacity : 4;
+        while (capacity < system_count) {
+            capacity *= 2;
+        }
+        pool->jobs = realloc(pool->jobs, capacity * sizeof(ecs_worker_job_t));
+        ecs_assert_not_null(pool->jobs);
+        pool->job_capacity = capacity;
+    }
+    for (uint32_t i = 0; i < system_count; i++) {
+        pool->jobs[i].system = systems[i];
+    }
+    pool->job_count = system_count;
+    atomic_store_explicit(&pool->next_job, 0, memory_order_relaxed);
+    atomic_store_explicit(&pool->completed_jobs, 0, memory_order_relaxed);
+    ecs_platform_mutex_lock(&pool->mutex);
+    atomic_store_explicit(
+        &pool->epoch,
+        atomic_load_explicit(&pool->epoch, memory_order_relaxed) + 1,
+        memory_order_release
+    );
+    ecs_platform_condition_broadcast(&pool->condition);
+    ecs_platform_mutex_unlock(&pool->mutex);
+
+    ecs_world.main_context.scheduler_parallel = true;
+    ecs_execution_context_set(&ecs_world.main_context);
+    for (;;) {
+        uint32_t job_index = atomic_fetch_add_explicit(
+            &pool->next_job,
+            1,
+            memory_order_relaxed
+        );
+        if (job_index >= system_count) {
+            break;
+        }
+        ecs_worker_run_job(pool, job_index);
+    }
+
+    while (atomic_load_explicit(&pool->completed_jobs, memory_order_acquire) < system_count) {
+        ecs_platform_mutex_lock(&pool->mutex);
+        if (atomic_load_explicit(&pool->completed_jobs, memory_order_acquire) < system_count) {
+            ecs_platform_condition_wait(&pool->condition, &pool->mutex);
+        }
+        ecs_platform_mutex_unlock(&pool->mutex);
+    }
+}
+
+void ecs_worker_pool_flush(ecs_worker_pool_t *pool) {
+    ecs_execution_context_t *main_context = &ecs_world.main_context;
+    main_context->flushing_commands = true;
+    ecs_command_buffer_flush_buffer(&main_context->commands);
+    for (uint16_t i = 0; i < pool->worker_count; i++) {
+        ecs_command_buffer_flush_buffer(&pool->workers[i].context.commands);
+    }
+    /* Hooks/observers during worker-buffer application can enqueue main-thread
+     * commands. Apply that deterministic tail before releasing the barrier. */
+    ecs_command_buffer_flush_buffer(&main_context->commands);
+    main_context->flushing_commands = false;
+    main_context->scheduler_parallel = false;
+    for (uint16_t i = 0; i < pool->worker_count; i++) {
+        pool->workers[i].context.scheduler_parallel = false;
+    }
+}
+
 ecs_world_t ecs_world;
 #ifndef NDEBUG
 static bool ecs_world_started;
@@ -8595,17 +9098,15 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_system_index_init();
     ecs_module_index_init();
     ecs_resource_index_init();
-    ecs_arena_init();
-    ecs_command_buffer_init();
+    ecs_execution_context_init(&ecs_world.main_context);
     ecs_world.active_module = 0;
     ecs_world.features = *features;
-    ecs_world.defer_depth = 0;
-    ecs_world.flushing_commands = false;
     ecs_world.did_start = false;
     ecs_world.exit = false;
     ecs_world.delta_time = 0;
     ecs_world.last_time = 0;
     ecs_bootstrap();
+    ecs_worker_pool_init(&ecs_world.worker_pool, ecs_world.features.worker_threads);
 }
 
 void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){ 0 }); }
@@ -8613,6 +9114,8 @@ void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){ 0 }); }
 void ecs_fini(void) {
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
     ecs_world_finished = true;
+
+    ecs_worker_pool_fini(&ecs_world.worker_pool);
 
     /* Live component teardown must finish while world resources are available. */
     ecs_table_index_fini();
@@ -8622,10 +9125,9 @@ void ecs_fini(void) {
     ecs_query_index_fini();
     ecs_resource_index_fini();
     ecs_entity_index_fini();
+    ecs_execution_context_fini(&ecs_world.main_context);
     ecs_component_index_fini();
     ecs_relation_index_fini();
-    ecs_command_buffer_fini();
-    ecs_arena_fini();
     sicore_map_fini(&name_map);
 #ifndef NDEBUG
     ecs_world_started = false;
@@ -8642,8 +9144,7 @@ static ecs_arena_block_t *ecs_arena_block_new(uint32_t capacity) {
     return block;
 }
 
-void ecs_arena_init() {
-    ecs_arena_t *allocator = &ecs_world.arena_allocator;
+void ecs_arena_init(ecs_arena_t *allocator) {
     ecs_arena_block_t *block = ecs_arena_block_new(ECS_ARENA_INITIAL_CAPACITY);
     *allocator = (ecs_arena_t){
         .first = block,
@@ -8681,8 +9182,7 @@ void *ecs_arena_alloc_slow(ecs_arena_t *allocator, uint32_t size) {
     return block->data;
 }
 
-void ecs_arena_fini() {
-    ecs_arena_t *allocator = &ecs_world.arena_allocator;
+void ecs_arena_fini(ecs_arena_t *allocator) {
     ecs_arena_block_t *block = allocator->first;
     while (block) {
         ecs_arena_block_t *next = block->next;
@@ -10018,6 +10518,29 @@ static bool ecs_system_id_valid(const ecs_system_index_t *index, ecs_system_id_t
     return system != 0 && system < index->systems.size;
 }
 
+static bool ecs_system_resource_conflict(const ecs_system_t *a, const ecs_system_t *b) {
+    for (uint16_t i = 0; i < ECS_SYSTEM_RESOURCE_CAPACITY && a->read_resources[i]; i++) {
+        for (uint16_t j = 0; j < ECS_SYSTEM_RESOURCE_CAPACITY && b->write_resources[j]; j++) {
+            if (a->read_resources[i] == b->write_resources[j]) {
+                return true;
+            }
+        }
+    }
+    for (uint16_t i = 0; i < ECS_SYSTEM_RESOURCE_CAPACITY && a->write_resources[i]; i++) {
+        for (uint16_t j = 0; j < ECS_SYSTEM_RESOURCE_CAPACITY && b->read_resources[j]; j++) {
+            if (a->write_resources[i] == b->read_resources[j]) {
+                return true;
+            }
+        }
+        for (uint16_t j = 0; j < ECS_SYSTEM_RESOURCE_CAPACITY && b->write_resources[j]; j++) {
+            if (a->write_resources[i] == b->write_resources[j]) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 ecs_phase_info_t *ecs_system_index_get_phase(ecs_phase_t phase) {
     ecs_system_index_t *index = &ecs_world.system_index;
     if (phase >= index->phases.size) {
@@ -10075,6 +10598,7 @@ ecs_phase_t ecs_phase_register(const ecs_phase_desc_t *desc) {
         .is_start_phase = is_start,
     };
     sicore_vec_init(&info.systems_order, sizeof(ecs_system_id_t));
+    sicore_vec_init(&info.batches, sizeof(ecs_system_batch_t));
 
     sicore_vec_push(&index->phases, &info, sizeof(ecs_phase_info_t));
     index->plan_dirty = true;
@@ -10304,6 +10828,7 @@ void ecs_system_index_build_plan(void) {
     for (uint32_t i = 0; i < index->phases.size; i++) {
         ecs_phase_info_t *p = sicore_vec_get_mut(&index->phases, i, ecs_phase_info_t);
         sicore_vec_clear(&p->systems_order);
+        sicore_vec_clear(&p->batches);
     }
 
     uint8_t *state = calloc(index->systems.size, sizeof(uint8_t));
@@ -10319,6 +10844,126 @@ void ecs_system_index_build_plan(void) {
         }
 
         ecs_system_index_plan_one(index, system, state, &pinfo->systems_order);
+    }
+
+    for (uint32_t phase_id = 0; phase_id < index->phases.size; phase_id++) {
+        ecs_phase_info_t *phase =
+            sicore_vec_get_mut(&index->phases, phase_id, ecs_phase_info_t);
+        const ecs_system_id_t *order = sicore_vec_data(&phase->systems_order, ecs_system_id_t);
+        for (uint32_t i = 0; i < phase->systems_order.size; i++) {
+            ecs_system_id_t system = order[i];
+            ecs_system_t *current = ecs_system_index_get(system);
+            bool placed = false;
+            if (phase->batches.size != 0) {
+                ecs_system_batch_t *batch = sicore_vec_get_mut(
+                    &phase->batches,
+                    phase->batches.size - 1,
+                    ecs_system_batch_t
+                );
+                bool blocked = false;
+                for (uint32_t j = 0; j < batch->count; j++) {
+                    ecs_system_id_t other = order[batch->first + j];
+                    ecs_system_t *previous = ecs_system_index_get(other);
+                    if (current->main_thread_only || previous->main_thread_only ||
+                        ecs_system_resource_conflict(current, previous)) {
+                        blocked = true;
+                        break;
+                    }
+                    for (uint32_t a = 0; a < ECS_SYSTEM_AFTER_CAPACITY; a++) {
+                        if (current->after[a] == other || previous->after[a] == system) {
+                            blocked = true;
+                            break;
+                        }
+                    }
+                    if (blocked) {
+                        break;
+                    }
+
+                    const ecs_query_cache_t *current_cache = NULL;
+                    const ecs_query_cache_t *previous_cache = NULL;
+                    if (current->qid != UINT16_MAX) {
+                        current_cache = sicore_vec_get(
+                            &ecs_world.query_index.queries,
+                            current->qid,
+                            ecs_query_cache_t
+                        );
+                    }
+                    if (previous->qid != UINT16_MAX) {
+                        previous_cache = sicore_vec_get(
+                            &ecs_world.query_index.queries,
+                            previous->qid,
+                            ecs_query_cache_t
+                        );
+                    }
+                    if (!current_cache || !previous_cache) {
+                        continue;
+                    }
+
+                    bool tables_overlap = false;
+                    const uint16_t *current_tables = current_cache->table_ids.data;
+                    const uint16_t *previous_tables = previous_cache->table_ids.data;
+                    for (uint32_t c = 0; c < current_cache->table_ids.size && !tables_overlap; c++) {
+                        for (uint32_t p = 0; p < previous_cache->table_ids.size; p++) {
+                            if (current_tables[c] == previous_tables[p]) {
+                                tables_overlap = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!tables_overlap) {
+                        continue;
+                    }
+
+                    bool current_writes = false;
+                    bool previous_writes = false;
+                    for (uint16_t t = 0; t < current_cache->query.term_count; t++) {
+                        ecs_term_access_t access = ecs_query_term_access(current_cache->query.terms[t]);
+                        current_writes |= access == EcsOut || access == EcsInOut ||
+                                          access == EcsInOutOptional;
+                    }
+                    for (uint16_t t = 0; t < previous_cache->query.term_count; t++) {
+                        ecs_term_access_t access = ecs_query_term_access(previous_cache->query.terms[t]);
+                        previous_writes |= access == EcsOut || access == EcsInOut ||
+                                           access == EcsInOutOptional;
+                    }
+                    if (current_writes && previous_writes) {
+                        blocked = true;
+                        break;
+                    }
+                    for (uint16_t c = 0; c < current_cache->query.term_count && !blocked; c++) {
+                        ecs_query_term_t current_term = current_cache->query.terms[c];
+                        ecs_term_access_t current_access = ecs_query_term_access(current_term);
+                        bool current_write = current_access == EcsOut || current_access == EcsInOut ||
+                                              current_access == EcsInOutOptional;
+                        for (uint16_t p = 0; p < previous_cache->query.term_count; p++) {
+                            ecs_query_term_t previous_term = previous_cache->query.terms[p];
+                            if (current_term.id != previous_term.id) {
+                                continue;
+                            }
+                            ecs_term_access_t previous_access = ecs_query_term_access(previous_term);
+                            bool previous_write = previous_access == EcsOut ||
+                                                   previous_access == EcsInOut ||
+                                                   previous_access == EcsInOutOptional;
+                            if (current_write || previous_write) {
+                                blocked = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (!blocked) {
+                    batch->count++;
+                    placed = true;
+                }
+            }
+            if (!placed) {
+                ecs_system_batch_t batch = {
+                    .first = i,
+                    .count = 1,
+                };
+                sicore_vec_push(&phase->batches, &batch, sizeof(batch));
+            }
+        }
     }
 
     free(state);
@@ -10337,6 +10982,7 @@ void ecs_system_index_fini(void) {
     for (uint32_t i = 0; i < index->phases.size; i++) {
         ecs_phase_info_t *p = sicore_vec_get_mut(&index->phases, i, ecs_phase_info_t);
         sicore_vec_fini(&p->systems_order);
+        sicore_vec_fini(&p->batches);
     }
 
     sicore_vec_fini(&index->phases);
@@ -10639,6 +11285,7 @@ uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
 
     ecs_query_index_add_table(ecs_table_index_at(table_idx), table_idx);
     ecs_observer_index_add_table(ecs_table_index_at(table_idx));
+    ecs_world.system_index.plan_dirty = true;
     return (uint16_t)table_idx;
 }
 
