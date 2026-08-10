@@ -37,6 +37,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
         .user_data_dtor = desc->user_data_dtor,
         .phase = desc->phase,
         .enabled = !desc->disabled,
+        .main_thread_only = desc->main_thread_only,
     };
 
     memcpy(sys.after, desc->after, sizeof(sys.after));

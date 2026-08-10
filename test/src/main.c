@@ -797,7 +797,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        28,
+        27,
         childof_testcases
     },
     {
@@ -811,7 +811,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        27,
+        28,
         system_testcases
     },
     {

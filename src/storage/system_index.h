@@ -19,6 +19,7 @@ typedef struct {
     ecs_resource_t read_resources[ECS_SYSTEM_RESOURCE_CAPACITY];
     ecs_resource_t write_resources[ECS_SYSTEM_RESOURCE_CAPACITY];
     bool enabled;
+    bool main_thread_only;
 } ecs_system_t;
 
 typedef struct {

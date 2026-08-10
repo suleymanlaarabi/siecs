@@ -156,6 +156,7 @@
           "run",
           "parallel_independent_callbacks",
           "parallel_query_table_conflicts",
+          "main_thread_only",
           "parallel_after_is_a_barrier",
           "resource_access_conflicts",
           "parallel_structural_changes_flush_at_barrier",

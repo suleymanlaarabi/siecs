@@ -355,7 +355,8 @@ void ecs_system_index_build_plan(void) {
                 for (uint32_t j = 0; j < batch->count; j++) {
                     ecs_system_id_t other = order[batch->first + j];
                     ecs_system_t *previous = ecs_system_index_get(other);
-                    if (ecs_system_resource_conflict(current, previous)) {
+                    if (current->main_thread_only || previous->main_thread_only ||
+                        ecs_system_resource_conflict(current, previous)) {
                         blocked = true;
                         break;
                     }

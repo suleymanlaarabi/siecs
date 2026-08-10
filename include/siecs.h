@@ -1629,7 +1629,8 @@ SIECS_API const char *ecs_phase_name(ecs_phase_t phase);
  * after contains up to four system ids that must run before this system in the
  * same phase. read_resources and write_resources are zero-terminated lists of
  * resource ids used to determine scheduler conflicts; read/read access may
- * run concurrently.
+ * run concurrently. main_thread_only prevents the scheduler from dispatching
+ * this system to a worker thread.
  */
 typedef struct {
   const char *name;
@@ -1642,6 +1643,7 @@ typedef struct {
   ecs_resource_t read_resources[ECS_SYSTEM_RESOURCE_CAPACITY];
   ecs_resource_t write_resources[ECS_SYSTEM_RESOURCE_CAPACITY];
   bool disabled;
+  bool main_thread_only;
 } ecs_system_desc_t;
 
 /*

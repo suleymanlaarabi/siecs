@@ -29,6 +29,13 @@ static atomic_uint stress_system_calls;
 static atomic_uint resource_stage;
 static atomic_uint same_table_active;
 static atomic_uint same_table_overlap;
+#if defined(_MSC_VER)
+#define SYSTEM_THREAD_LOCAL __declspec(thread)
+#else
+#define SYSTEM_THREAD_LOCAL _Thread_local
+#endif
+static SYSTEM_THREAD_LOCAL uint8_t system_thread_marker;
+static atomic_uintptr_t main_thread_only_marker;
 
 static ecs_entity_t create_system_entity(int value);
 static void add_tag_to_global_entity(ecs_iter_t *it);
@@ -110,6 +117,15 @@ static void same_table_writer_system(ecs_iter_t *it) {
         atomic_store_explicit(&same_table_overlap, 1, memory_order_release);
     }
     atomic_fetch_sub_explicit(&same_table_active, 1, memory_order_release);
+}
+
+static void main_thread_only_system(ecs_iter_t *it) {
+    (void)it;
+    atomic_store_explicit(
+        &main_thread_only_marker,
+        (uintptr_t)&system_thread_marker,
+        memory_order_release
+    );
 }
 
 static void order_pre_update(ecs_iter_t *it) {
@@ -317,6 +333,22 @@ void system_parallel_query_table_conflicts(void) {
     ecs_fini();
     (void)with_c;
     (void)without_c;
+}
+
+void system_main_thread_only(void) {
+    atomic_store(&main_thread_only_marker, 0);
+    ecs_with_features({ .worker_threads = 1 });
+    ecs_system({
+        .name = "MainThreadOnly",
+        .phase = EcsOnUpdate,
+        .main_thread_only = true,
+        .callback = main_thread_only_system,
+    });
+
+    uintptr_t main_marker = (uintptr_t)&system_thread_marker;
+    ecs_progress();
+    test_uint(main_marker, atomic_load(&main_thread_only_marker));
+    ecs_fini();
 }
 
 void system_parallel_after_is_a_barrier(void) {
