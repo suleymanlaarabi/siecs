@@ -43,9 +43,6 @@ bench-compare:
 clean:
 	@rm -rf build-consumer-c build-consumer-cpp >/dev/null
 
-check-api-docs:
-	@python3 tools/check_public_api_docs.py
-
 test: clean test-c test-c-release test-cpp test-cpp-release test-rest
 
 build-c:
