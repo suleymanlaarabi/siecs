@@ -4,6 +4,7 @@
 #include "world_internal.h"
 
 ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("module registration");
     ecs_assert_not_null(desc);
     ecs_assert_not_null(desc->name);
     ecs_assert_not_null(desc->import);

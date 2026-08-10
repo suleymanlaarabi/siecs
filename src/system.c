@@ -11,6 +11,7 @@
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
 
 ecs_phase_t ecs_phase_init(const ecs_phase_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("phase registration");
     return ecs_phase_register(desc);
 }
 
@@ -20,6 +21,7 @@ const char *ecs_phase_name(ecs_phase_t phase) {
 }
 
 ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("system registration");
     ecs_assert_not_null(desc);
     ecs_assert(desc->callback, "system requires callback function\n");
     ecs_phase_info_t *pinfo = ecs_system_index_get_phase(desc->phase);
@@ -38,6 +40,8 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     };
 
     memcpy(sys.after, desc->after, sizeof(sys.after));
+    memcpy(sys.read_resources, desc->read_resources, sizeof(sys.read_resources));
+    memcpy(sys.write_resources, desc->write_resources, sizeof(sys.write_resources));
 
     ecs_system_id_t system = ecs_system_index_create(&sys);
     ecs_module_record_system(system);
@@ -85,9 +89,20 @@ void ecs_run_phase(ecs_phase_t phase) {
     if (!pinfo) return;
 
     sicore_vec_t *order = &pinfo->systems_order;
-    for (uint32_t i = 0; i < order->size; i++) {
-        ecs_system_id_t system = *sicore_vec_get(order, i, ecs_system_id_t);
-        ecs_run_system(system);
+    for (uint32_t i = 0; i < pinfo->batches.size; i++) {
+        ecs_system_batch_t batch =
+            *sicore_vec_get(&pinfo->batches, i, ecs_system_batch_t);
+        const ecs_system_id_t *systems = sicore_vec_data(order, ecs_system_id_t) + batch.first;
+        if (!ecs_worker_pool_enabled(&ecs_world.worker_pool) || batch.count == 1) {
+            ecs_world.main_context.scheduler_parallel = false;
+            ecs_execution_context_set(&ecs_world.main_context);
+            for (uint32_t j = 0; j < batch.count; j++) {
+                ecs_run_system(systems[j]);
+            }
+        } else {
+            ecs_worker_pool_run_systems(&ecs_world.worker_pool, systems, batch.count);
+            ecs_worker_pool_flush(&ecs_world.worker_pool);
+        }
     }
 }
 

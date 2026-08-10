@@ -21,7 +21,10 @@ static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query
     sicore_vec_remove_last(&index->active_ids);
 }
 
-ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) { return ecs_query_index_create(desc); }
+ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("query registration");
+    return ecs_query_index_create(desc);
+}
 
 ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
     ecs_assert(query_id < ecs_world.query_index.queries.size, "invalid query id: %u\n", query_id);

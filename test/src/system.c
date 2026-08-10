@@ -1,5 +1,6 @@
 #include "world_internal.h"
 #include <siecs_test.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 
 ECS_COMPONENT_DECLARE(SystemPosition, { int value; });
@@ -20,6 +21,18 @@ static uint32_t system_order_count;
 static int system_order[8];
 static ecs_entity_t system_entity;
 static uint32_t system_user_data_dtor_calls;
+static atomic_uint parallel_entered;
+static atomic_uintptr_t parallel_stacks[2];
+static atomic_uint manual_system_calls;
+static atomic_uint after_stage;
+static atomic_uint stress_system_calls;
+static atomic_uint resource_stage;
+static atomic_uint same_table_active;
+static atomic_uint same_table_overlap;
+
+static ecs_entity_t create_system_entity(int value);
+static void add_tag_to_global_entity(ecs_iter_t *it);
+static void count_tag_system(ecs_iter_t *it);
 
 static void reset_system_test_state(void) {
     system_calls = 0;
@@ -36,6 +49,67 @@ static void count_system(ecs_iter_t *it) {
     }
 
     system_calls++;
+}
+
+static void parallel_system_a(ecs_iter_t *it) {
+    (void)it;
+    uintptr_t marker = (uintptr_t)&it;
+    atomic_store_explicit(&parallel_stacks[0], marker, memory_order_relaxed);
+    atomic_fetch_add_explicit(&parallel_entered, 1, memory_order_release);
+    while (atomic_load_explicit(&parallel_entered, memory_order_acquire) < 2) {
+    }
+}
+
+static void parallel_system_b(ecs_iter_t *it) {
+    (void)it;
+    uintptr_t marker = (uintptr_t)&it;
+    atomic_store_explicit(&parallel_stacks[1], marker, memory_order_relaxed);
+    atomic_fetch_add_explicit(&parallel_entered, 1, memory_order_release);
+    while (atomic_load_explicit(&parallel_entered, memory_order_acquire) < 2) {
+    }
+}
+
+static void manual_system(ecs_iter_t *it) {
+    (void)it;
+    atomic_fetch_add_explicit(&manual_system_calls, 1, memory_order_relaxed);
+}
+
+static void after_first_system(ecs_iter_t *it) {
+    (void)it;
+    atomic_store_explicit(&after_stage, 1, memory_order_release);
+}
+
+static void after_second_system(ecs_iter_t *it) {
+    (void)it;
+    test_uint(1, atomic_load_explicit(&after_stage, memory_order_acquire));
+    atomic_store_explicit(&after_stage, 2, memory_order_release);
+}
+
+static void stress_system(ecs_iter_t *it) {
+    (void)it;
+    atomic_fetch_add_explicit(&stress_system_calls, 1, memory_order_relaxed);
+}
+
+static void resource_writer_system(ecs_iter_t *it) {
+    (void)it;
+    ecs_set_resource(DeltaTime, { .value = 1.0f });
+    atomic_store_explicit(&resource_stage, 1, memory_order_release);
+}
+
+static void resource_reader_system(ecs_iter_t *it) {
+    (void)it;
+    test_assert(atomic_load_explicit(&resource_stage, memory_order_acquire) == 1);
+    test_assert(ecs_get_resource_read(DeltaTime)->value == 1.0f);
+    atomic_store_explicit(&resource_stage, 2, memory_order_release);
+}
+
+static void same_table_writer_system(ecs_iter_t *it) {
+    (void)it;
+    uint32_t active = atomic_fetch_add_explicit(&same_table_active, 1, memory_order_acq_rel);
+    if (active != 0) {
+        atomic_store_explicit(&same_table_overlap, 1, memory_order_release);
+    }
+    atomic_fetch_sub_explicit(&same_table_active, 1, memory_order_release);
 }
 
 static void order_pre_update(ecs_iter_t *it) {
@@ -162,6 +236,231 @@ void system_run(void) {
     test_assert(p->value == 42);
 
     ecs_fini();
+}
+
+void system_parallel_independent_callbacks(void) {
+    atomic_store(&parallel_entered, 0);
+    atomic_store(&parallel_stacks[0], 0);
+    atomic_store(&parallel_stacks[1], 0);
+
+    ecs_with_features({ .worker_threads = 1 });
+    ECS_COMPONENT_REGISTER(SystemBatchA);
+    ECS_COMPONENT_REGISTER(SystemBatchB);
+    ecs_entity_t first = ecs_new();
+    ecs_entity_t second = ecs_new();
+    ecs_set(first, SystemBatchA, { 1 });
+    ecs_set(second, SystemBatchB, { 2 });
+
+    ecs_system({
+        .name = "ParallelA",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_in(SystemBatchA) } },
+        .callback = parallel_system_a,
+    });
+    ecs_system({
+        .name = "ParallelB",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_in(SystemBatchB) } },
+        .callback = parallel_system_b,
+    });
+
+    ecs_progress();
+
+    test_uint(2, atomic_load(&parallel_entered));
+    test_assert(atomic_load(&parallel_stacks[0]) != atomic_load(&parallel_stacks[1]));
+    ecs_fini();
+}
+
+void system_parallel_query_table_conflicts(void) {
+    atomic_store(&parallel_entered, 0);
+    atomic_store(&parallel_stacks[0], 0);
+    atomic_store(&parallel_stacks[1], 0);
+    atomic_store(&same_table_active, 0);
+    atomic_store(&same_table_overlap, 0);
+
+    ecs_with_features({ .worker_threads = 1 });
+    ECS_COMPONENT_REGISTER(SystemBatchC);
+    ecs_entity_t with_c = ecs_new();
+    ecs_add(with_c, SystemBatchC);
+    ecs_entity_t without_c = ecs_new();
+
+    ecs_system({
+        .name = "WriteC",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_inout(SystemBatchC) } },
+        .callback = parallel_system_a,
+    });
+    ecs_system({
+        .name = "WriteNotC",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_not(SystemBatchC) } },
+        .callback = parallel_system_b,
+    });
+    ecs_progress();
+    test_uint(2, atomic_load(&parallel_entered));
+    test_assert(atomic_load(&parallel_stacks[0]) != atomic_load(&parallel_stacks[1]));
+
+    ecs_system({
+        .name = "WriteSameTableA",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_inout(SystemBatchC) } },
+        .callback = same_table_writer_system,
+    });
+    ecs_system({
+        .name = "WriteSameTableB",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_inout(SystemBatchC) } },
+        .callback = same_table_writer_system,
+    });
+    ecs_progress();
+    test_uint(0, atomic_load(&same_table_overlap));
+    ecs_fini();
+    (void)with_c;
+    (void)without_c;
+}
+
+void system_parallel_after_is_a_barrier(void) {
+    atomic_store(&after_stage, 0);
+    ecs_with_features({ .worker_threads = 1 });
+
+    ecs_system_id_t first = ecs_system({
+        .name = "First",
+        .phase = EcsOnUpdate,
+        .callback = after_first_system,
+    });
+    ecs_system({
+        .name = "Second",
+        .phase = EcsOnUpdate,
+        .callback = after_second_system,
+        .after = { first },
+    });
+
+    ecs_progress();
+    test_uint(2, atomic_load(&after_stage));
+    ecs_fini();
+}
+
+void system_resource_access_conflicts(void) {
+    atomic_store(&parallel_entered, 0);
+    atomic_store(&parallel_stacks[0], 0);
+    atomic_store(&parallel_stacks[1], 0);
+
+    ecs_with_features({ .worker_threads = 1 });
+    ecs_system({
+        .name = "ReadResourceA",
+        .phase = EcsOnUpdate,
+        .callback = parallel_system_a,
+        .read_resources = { ecs_id(DeltaTime) },
+    });
+    ecs_system({
+        .name = "ReadResourceB",
+        .phase = EcsOnUpdate,
+        .callback = parallel_system_b,
+        .read_resources = { ecs_id(DeltaTime) },
+    });
+
+    ecs_progress();
+    test_uint(2, atomic_load(&parallel_entered));
+    test_assert(atomic_load(&parallel_stacks[0]) != atomic_load(&parallel_stacks[1]));
+    ecs_fini();
+
+    atomic_store(&resource_stage, 0);
+    ecs_with_features({ .worker_threads = 1 });
+    ecs_system({
+        .name = "WriteResource",
+        .phase = EcsOnUpdate,
+        .callback = resource_writer_system,
+        .write_resources = { ecs_id(DeltaTime) },
+    });
+    ecs_system({
+        .name = "ReadResourceAfterWrite",
+        .phase = EcsOnUpdate,
+        .callback = resource_reader_system,
+        .read_resources = { ecs_id(DeltaTime) },
+    });
+
+    ecs_progress();
+    test_uint(2, atomic_load(&resource_stage));
+    ecs_fini();
+}
+
+void system_parallel_structural_changes_flush_at_barrier(void) {
+    reset_system_test_state();
+    ecs_with_features({ .worker_threads = 1 });
+    ECS_COMPONENT_REGISTER(SystemPosition);
+    ECS_COMPONENT_REGISTER(SystemTag);
+    system_entity = create_system_entity(1);
+
+    ecs_system_id_t writer = ecs_system({
+        .name = "AddTagAtBarrier",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_in(SystemPosition) } },
+        .callback = add_tag_to_global_entity,
+    });
+    ecs_system({
+        .name = "ReadTagAfterBarrier",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_in(SystemTag) } },
+        .callback = count_tag_system,
+        .after = { writer },
+    });
+
+    ecs_progress();
+    test_uint(1, system_seen);
+    test_assert(ecs_has(system_entity, SystemTag));
+    ecs_fini();
+}
+
+void system_manual_run_is_synchronous_with_workers(void) {
+    atomic_store(&manual_system_calls, 0);
+    ecs_with_features({ .worker_threads = 1 });
+    ecs_system_id_t system = ecs_system({
+        .name = "Manual",
+        .phase = EcsOnUpdate,
+        .callback = manual_system,
+    });
+
+    ecs_run_system(system);
+    test_uint(1, atomic_load(&manual_system_calls));
+    ecs_fini();
+}
+
+void system_worker_auto_and_reinit(void) {
+    ecs_with_features({ .worker_threads = ECS_WORKERS_AUTO });
+    ecs_fini();
+
+    for (int i = 0; i < 3; i++) {
+        ecs_with_features({ .worker_threads = 1 });
+        ecs_progress();
+        ecs_fini();
+    }
+
+    atomic_store(&stress_system_calls, 0);
+    ecs_with_features({ .worker_threads = 1 });
+    ECS_COMPONENT_REGISTER(SystemBatchA);
+    ECS_COMPONENT_REGISTER(SystemBatchB);
+    ecs_entity_t first = ecs_new();
+    ecs_entity_t second = ecs_new();
+    ecs_set(first, SystemBatchA, { 1 });
+    ecs_set(second, SystemBatchB, { 2 });
+    ecs_system({
+        .name = "StressA",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_in(SystemBatchA) } },
+        .callback = stress_system,
+    });
+    ecs_system({
+        .name = "StressB",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_in(SystemBatchB) } },
+        .callback = stress_system,
+    });
+    for (int frame = 0; frame < 500; frame++) {
+        ecs_progress();
+    }
+    test_uint(1000, atomic_load(&stress_system_calls));
+    ecs_fini();
+    test_assert(true);
 }
 
 void system_name_returns_registered_name(void) {
@@ -744,4 +1043,3 @@ void system_custom_phase(void) {
 
     ecs_fini();
 }
-

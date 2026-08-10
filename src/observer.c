@@ -4,9 +4,13 @@
 #include "utils.h"
 #include "world_internal.h"
 
-ecs_event_t ecs_event(void) { return ecs_world.observer_index.event_count++; }
+ecs_event_t ecs_event(void) {
+    ecs_assert_not_scheduler_parallel("event registration");
+    return ecs_world.observer_index.event_count++;
+}
 
 ecs_event_t ecs_event_register(ecs_event_t *id) {
+    ecs_assert_not_scheduler_parallel("event registration");
     ecs_assert_not_null(id);
 
     if (*id == UINT16_MAX) {
@@ -22,6 +26,7 @@ ecs_event_t ecs_event_register(ecs_event_t *id) {
 }
 
 ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("observer registration");
     ecs_assert(desc->callback != NULL, "Observer callback cannot be NULL");
     ecs_observer_id_t oid = ecs_observer_index_create(desc);
     ecs_observer_index_match_tables(

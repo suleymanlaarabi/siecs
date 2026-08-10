@@ -13,6 +13,8 @@
 #include "storage/system_index.h"
 #include "storage/table_index.h"
 #include "relation.h"
+#include "worker_pool.h"
+#include "utils.h"
 
 typedef struct ecs_world_s ecs_world_t;
 
@@ -28,10 +30,8 @@ struct ecs_world_s {
     ecs_resource_index_t resource_index;
     ecs_module_id_t active_module;
     ecs_world_feat_desc_t features;
-    ecs_arena_t arena_allocator;
-    ecs_command_buffer_t commands;
-    uint32_t defer_depth;
-    bool flushing_commands;
+    ecs_execution_context_t main_context;
+    ecs_worker_pool_t worker_pool;
     bool did_start;
     bool exit;
     double delta_time;
@@ -75,7 +75,17 @@ ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void 
 }
 
 static inline bool ecs_is_deferred(void) {
-    return ecs_world.defer_depth != 0 || ecs_world.flushing_commands;
+    ecs_execution_context_t *context = ecs_execution_context_current();
+    return context->defer_depth != 0 || context->flushing_commands ||
+           context->scheduler_parallel;
+}
+
+static inline void ecs_assert_not_scheduler_parallel(const char *operation) {
+    ecs_assert(
+        !ecs_execution_context_current()->scheduler_parallel,
+        "%s is not allowed from a parallel system wave\n",
+        operation
+    );
 }
 
 void ecs_bootstrap(void);

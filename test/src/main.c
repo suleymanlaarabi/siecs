@@ -124,6 +124,13 @@ void query_fields_refresh_after_table_growth(void);
 
 // Testsuite 'system'
 void system_run(void);
+void system_parallel_independent_callbacks(void);
+void system_parallel_query_table_conflicts(void);
+void system_parallel_after_is_a_barrier(void);
+void system_resource_access_conflicts(void);
+void system_parallel_structural_changes_flush_at_barrier(void);
+void system_manual_run_is_synchronous_with_workers(void);
+void system_worker_auto_and_reinit(void);
 void system_name_returns_registered_name(void);
 void system_phase_order(void);
 void system_start_phases_run_once(void);
@@ -593,6 +600,34 @@ bake_test_case system_testcases[] = {
         system_run
     },
     {
+        "parallel_independent_callbacks",
+        system_parallel_independent_callbacks
+    },
+    {
+        "parallel_query_table_conflicts",
+        system_parallel_query_table_conflicts
+    },
+    {
+        "parallel_after_is_a_barrier",
+        system_parallel_after_is_a_barrier
+    },
+    {
+        "resource_access_conflicts",
+        system_resource_access_conflicts
+    },
+    {
+        "parallel_structural_changes_flush_at_barrier",
+        system_parallel_structural_changes_flush_at_barrier
+    },
+    {
+        "manual_run_is_synchronous_with_workers",
+        system_manual_run_is_synchronous_with_workers
+    },
+    {
+        "worker_auto_and_reinit",
+        system_worker_auto_and_reinit
+    },
+    {
         "name_returns_registered_name",
         system_name_returns_registered_name
     },
@@ -776,7 +811,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        20,
+        27,
         system_testcases
     },
     {

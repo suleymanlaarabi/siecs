@@ -35,17 +35,15 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_system_index_init();
     ecs_module_index_init();
     ecs_resource_index_init();
-    ecs_arena_init();
-    ecs_command_buffer_init();
+    ecs_execution_context_init(&ecs_world.main_context);
     ecs_world.active_module = 0;
     ecs_world.features = *features;
-    ecs_world.defer_depth = 0;
-    ecs_world.flushing_commands = false;
     ecs_world.did_start = false;
     ecs_world.exit = false;
     ecs_world.delta_time = 0;
     ecs_world.last_time = 0;
     ecs_bootstrap();
+    ecs_worker_pool_init(&ecs_world.worker_pool, ecs_world.features.worker_threads);
 }
 
 void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){ 0 }); }
@@ -53,6 +51,8 @@ void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){ 0 }); }
 void ecs_fini(void) {
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
     ecs_world_finished = true;
+
+    ecs_worker_pool_fini(&ecs_world.worker_pool);
 
     /* Live component teardown must finish while world resources are available. */
     ecs_table_index_fini();
@@ -62,10 +62,9 @@ void ecs_fini(void) {
     ecs_query_index_fini();
     ecs_resource_index_fini();
     ecs_entity_index_fini();
+    ecs_execution_context_fini(&ecs_world.main_context);
     ecs_component_index_fini();
     ecs_relation_index_fini();
-    ecs_command_buffer_fini();
-    ecs_arena_fini();
     sicore_map_fini(&name_map);
 #ifndef NDEBUG
     ecs_world_started = false;

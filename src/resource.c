@@ -10,6 +10,7 @@ static ecs_resource_t ecs_resource_alloc_id(void) {
 }
 
 ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("resource registration");
     return ecs_resource_index_register(ecs_resource_alloc_id(), desc);
 }
 
@@ -25,6 +26,7 @@ bool ecs_resource_is_registered_rid(ecs_resource_t id) {
 }
 
 ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("resource registration");
     ecs_assert_not_null(id);
     if (*id == 0) {
         *id = ecs_resource_alloc_id();

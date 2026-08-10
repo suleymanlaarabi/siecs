@@ -2,6 +2,7 @@
 #define SIECS_COMMAND_BUFFER_H
 
 #include "siecs.h"
+#include "datastructure/arena.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -40,10 +41,24 @@ typedef struct ecs_command_buffer_s {
     sicore_vec_t relations;
     uint32_t *entity_to_command;
     uint32_t entity_capacity;
+    ecs_arena_t *arena;
 } ecs_command_buffer_t;
 
-void ecs_command_buffer_init();
-void ecs_command_buffer_fini();
+typedef struct ecs_execution_context_s {
+    ecs_command_buffer_t commands;
+    ecs_arena_t arena;
+    uint32_t defer_depth;
+    bool flushing_commands;
+    bool scheduler_parallel;
+} ecs_execution_context_t;
+
+void ecs_execution_context_init(ecs_execution_context_t *context);
+void ecs_execution_context_fini(ecs_execution_context_t *context);
+ecs_execution_context_t *ecs_execution_context_current(void);
+void ecs_execution_context_set(ecs_execution_context_t *context);
+
+void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena);
+void ecs_command_buffer_fini(ecs_command_buffer_t *buffer);
 
 void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id);
 void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id);
@@ -57,6 +72,7 @@ void ecs_command_buffer_relate(
     ecs_entity_t target
 );
 void ecs_command_buffer_flush();
+void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer);
 
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t id);
 void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t id);

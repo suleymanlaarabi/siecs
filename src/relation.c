@@ -25,6 +25,7 @@ void ecs_relation_index_fini(void) {
 
 ecs_relation_id_t
 ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relation_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("relation registration");
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
     ecs_assert(

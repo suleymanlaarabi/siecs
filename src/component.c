@@ -224,6 +224,7 @@ ecs_component_t ecs_component_register_relation_internal(
 }
 
 ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("component registration");
     sireflect_handle_t type = SIREFLECT_INVALID_HANDLE;
     if (ECS_LIKELY(desc && desc->struct_desc)) {
         type = sireflect_try_register_struct(sijson_default_registry(), desc->struct_desc);
@@ -235,6 +236,7 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
 }
 
 ecs_component_t ecs_component_init(const ecs_component_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("component registration");
     ecs_component_t id = 0;
     return ecs_component_register(&id, desc);
 }

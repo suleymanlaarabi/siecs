@@ -301,5 +301,6 @@ uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
 
     ecs_query_index_add_table(ecs_table_index_at(table_idx), table_idx);
     ecs_observer_index_add_table(ecs_table_index_at(table_idx));
+    ecs_world.system_index.plan_dirty = true;
     return (uint16_t)table_idx;
 }

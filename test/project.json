@@ -154,6 +154,13 @@
         "id": "system",
         "testcases": [
           "run",
+          "parallel_independent_callbacks",
+          "parallel_query_table_conflicts",
+          "parallel_after_is_a_barrier",
+          "resource_access_conflicts",
+          "parallel_structural_changes_flush_at_barrier",
+          "manual_run_is_synchronous_with_workers",
+          "worker_auto_and_reinit",
           "name_returns_registered_name",
           "phase_order",
           "start_phases_run_once",

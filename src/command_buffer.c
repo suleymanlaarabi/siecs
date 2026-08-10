@@ -17,6 +17,21 @@
 
 #define ECS_COMMAND_NONE UINT32_MAX
 
+#if defined(_MSC_VER)
+#define ECS_THREAD_LOCAL __declspec(thread)
+#else
+#define ECS_THREAD_LOCAL _Thread_local
+#endif
+static ECS_THREAD_LOCAL ecs_execution_context_t *ecs_tls_context;
+
+ecs_execution_context_t *ecs_execution_context_current(void) {
+    return ecs_tls_context ? ecs_tls_context : &ecs_world.main_context;
+}
+
+void ecs_execution_context_set(ecs_execution_context_t *context) {
+    ecs_tls_context = context;
+}
+
 static inline void deferred_change_fini(ecs_deferred_change_t *change) {
     if (!change->data) {
         return;
@@ -81,16 +96,15 @@ static inline void command_fini(ecs_entity_command_t *command) {
     sicore_vec_fini(&command->changes);
 }
 
-void ecs_command_buffer_init() {
-    ecs_command_buffer_t *buffer = &ecs_world.commands;
+void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena) {
     sicore_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
     sicore_vec_init(&buffer->relations, sizeof(ecs_deferred_relation_t));
     buffer->entity_to_command = NULL;
     buffer->entity_capacity = 0;
+    buffer->arena = arena;
 }
 
-void ecs_command_buffer_fini() {
-    ecs_command_buffer_t *buffer = &ecs_world.commands;
+void ecs_command_buffer_fini(ecs_command_buffer_t *buffer) {
     ecs_entity_command_t *commands = sicore_vec_data(&buffer->commands, ecs_entity_command_t);
     for (uint32_t i = 0; i < buffer->commands.size; i++) {
         command_fini(&commands[i]);
@@ -98,6 +112,17 @@ void ecs_command_buffer_fini() {
     sicore_vec_fini(&buffer->commands);
     sicore_vec_fini(&buffer->relations);
     free(buffer->entity_to_command);
+}
+
+void ecs_execution_context_init(ecs_execution_context_t *context) {
+    *context = (ecs_execution_context_t){ 0 };
+    ecs_arena_init(&context->arena);
+    ecs_command_buffer_init(&context->commands, &context->arena);
+}
+
+void ecs_execution_context_fini(ecs_execution_context_t *context) {
+    ecs_command_buffer_fini(&context->commands);
+    ecs_arena_fini(&context->arena);
 }
 
 static void command_buffer_ensure_entity(ecs_command_buffer_t *buffer, uint32_t entity_id) {
@@ -117,8 +142,10 @@ static void command_buffer_ensure_entity(ecs_command_buffer_t *buffer, uint32_t 
     buffer->entity_capacity = new_capacity;
 }
 
-static ecs_entity_command_t *command_for_entity(ecs_entity_t entity) {
-    ecs_command_buffer_t *buffer = &ecs_world.commands;
+static ecs_entity_command_t *command_for_entity(
+    ecs_command_buffer_t *buffer,
+    ecs_entity_t entity
+) {
     uint32_t entity_id = ecs_first(entity);
     command_buffer_ensure_entity(buffer, entity_id);
 
@@ -136,7 +163,8 @@ static ecs_entity_command_t *command_for_entity(ecs_entity_t entity) {
 }
 
 void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id) {
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     ecs_deferred_change_t *change = change_find(&command->changes, id);
     if (!change) {
         change_add(command, id, EcsDeferredAdd);
@@ -146,7 +174,8 @@ void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id) {
 }
 
 void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id) {
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     ecs_deferred_change_t *change = change_find(&command->changes, id);
     if (!change) {
         change_add(command, id, EcsDeferredRemove);
@@ -157,7 +186,8 @@ void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id) {
 }
 
 void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void *data) {
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     const ecs_component_record_t *record = ecs_component_index_get(id);
 
     uint32_t size = record->size ? record->size : 1;
@@ -168,12 +198,13 @@ void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void 
         deferred_change_fini(change);
         change->op = EcsDeferredCopy;
     }
-    change->data = ecs_arena_alloc(&ecs_world.arena_allocator, size);
+    change->data = ecs_arena_alloc(buffer->arena, size);
     ecs_component_value_copy_ctor(record, change->data, data, 1);
 }
 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data) {
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     const ecs_component_record_t *record = ecs_component_index_get(id);
 
     uint32_t size = record->size ? record->size : 1;
@@ -184,12 +215,13 @@ void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data
         deferred_change_fini(change);
         change->op = EcsDeferredMove;
     }
-    change->data = ecs_arena_alloc(&ecs_world.arena_allocator, size);
+    change->data = ecs_arena_alloc(buffer->arena, size);
     ecs_component_value_move_ctor(record, change->data, data, 1);
 }
 
 void ecs_command_buffer_kill(ecs_entity_t entity) {
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     command->kill = true;
     command->has_base = false;
     ecs_deferred_change_t *changes =
@@ -202,7 +234,8 @@ void ecs_command_buffer_kill(ecs_entity_t entity) {
 }
 
 void ecs_command_buffer_set_base(ecs_entity_t entity, ecs_entity_t target) {
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     command->has_base = true;
     command->base = target;
 }
@@ -212,8 +245,8 @@ void ecs_command_buffer_relate(
     ecs_relation_id_t relation,
     ecs_entity_t target
 ) {
-    ecs_command_buffer_t *buffer = &ecs_world.commands;
-    ecs_entity_command_t *command = command_for_entity(entity);
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
     uint32_t index = command->relation_head;
     while (index != ECS_COMMAND_NONE) {
         ecs_deferred_relation_t *entry =
@@ -437,14 +470,12 @@ static void command_apply(ecs_entity_command_t *command, const sicore_vec_t *rel
     command_apply_relations(command, relations);
 }
 
-void ecs_command_buffer_flush() {
-    ecs_command_buffer_t *buffer = &ecs_world.commands;
+void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
     if (buffer->commands.size == 0) {
-        ecs_arena_reset(&ecs_world.arena_allocator);
+        ecs_arena_reset(buffer->arena);
         return;
     }
 
-    ecs_world.flushing_commands = true;
     while (buffer->commands.size != 0) {
         sicore_vec_t commands = buffer->commands;
         sicore_vec_t relations = buffer->relations;
@@ -464,16 +495,29 @@ void ecs_command_buffer_flush() {
         sicore_vec_fini(&commands);
         sicore_vec_fini(&relations);
     }
-    ecs_world.flushing_commands = false;
-    ecs_arena_reset(&ecs_world.arena_allocator);
+    ecs_arena_reset(buffer->arena);
 }
 
-void ecs_defer_begin(void) { ecs_world.defer_depth++; }
+void ecs_command_buffer_flush() {
+    ecs_execution_context_t *context = ecs_execution_context_current();
+    if (context->flushing_commands) {
+        ecs_command_buffer_flush_buffer(&context->commands);
+        return;
+    }
+    context->flushing_commands = true;
+    ecs_command_buffer_flush_buffer(&context->commands);
+    context->flushing_commands = false;
+}
+
+void ecs_defer_begin(void) {
+    ecs_execution_context_current()->defer_depth++;
+}
 
 void ecs_defer_end(void) {
-    ecs_assert(ecs_world.defer_depth > 0, "ecs_defer_end called without ecs_defer_begin\n");
-    ecs_world.defer_depth--;
-    if (ecs_world.defer_depth == 0) {
+    ecs_execution_context_t *context = ecs_execution_context_current();
+    ecs_assert(context->defer_depth > 0, "ecs_defer_end called without ecs_defer_begin\n");
+    context->defer_depth--;
+    if (context->defer_depth == 0 && !context->scheduler_parallel) {
         ecs_command_buffer_flush();
     }
 }

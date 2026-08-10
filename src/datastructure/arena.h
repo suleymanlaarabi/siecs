@@ -27,8 +27,8 @@ typedef struct {
     ecs_arena_block_t *last;
 } ecs_arena_t;
 
-void ecs_arena_init();
-void ecs_arena_fini();
+void ecs_arena_init(ecs_arena_t *allocator);
+void ecs_arena_fini(ecs_arena_t *allocator);
 void *ecs_arena_alloc_slow(ecs_arena_t *allocator, uint32_t size);
 
 static inline void *ecs_arena_alloc(ecs_arena_t *allocator, uint32_t size) {
