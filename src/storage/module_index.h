@@ -16,6 +16,8 @@ typedef struct {
     sicore_vec_t modules; // ecs_module_t
 } ecs_module_index_t;
 
+extern ecs_module_index_t module_index;
+
 void ecs_module_index_init();
 void ecs_module_index_fini();
 
