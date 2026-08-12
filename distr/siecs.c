@@ -4658,15 +4658,12 @@ typedef struct {
     ecs_component_info_t *info;
     uint16_t *required;
     uint32_t required_count;
-    uint32_t size;
     ecs_type_ops_t ops;
     ecs_component_on_set_t on_set;
     ecs_component_on_remove_t on_remove;
     ecs_component_on_add_t on_add;
-    ecs_component_inheritance_t inheritance;
     uint32_t relation_flags;
     sicore_vec_t tables; // uint16_t
-    const sireflect_struct_desc_t *reflection_desc;
 } ecs_component_record_t;
 
 typedef struct ecs_component_index_s {
@@ -5878,7 +5875,7 @@ void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void 
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
     const ecs_component_record_t *record = ecs_component_index_get(id);
 
-    uint32_t size = record->size ? record->size : 1;
+    uint32_t size = record->info->size ? record->info->size : 1;
     ecs_deferred_change_t *change = change_find(&command->changes, id);
     if (!change) {
         change = change_add(command, id, EcsDeferredCopy);
@@ -5895,7 +5892,7 @@ void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
     const ecs_component_record_t *record = ecs_component_index_get(id);
 
-    uint32_t size = record->size ? record->size : 1;
+    uint32_t size = record->info->size ? record->info->size : 1;
     ecs_deferred_change_t *change = change_find(&command->changes, id);
     if (!change) {
         change = change_add(command, id, EcsDeferredMove);
@@ -7249,7 +7246,7 @@ static bool ecs_inheritance_component_is_owned(ecs_component_t component) {
     if (record->relation_flags != 0) {
         return false;
     }
-    return record->inheritance == EcsInheritOwned;
+    return record->info->inheritance == EcsInheritOwned;
 }
 
 static int ecs_inheritance_component_compare(const void *left, const void *right) {
@@ -8430,21 +8427,22 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     for (uint16_t i = 0; i < type.component_count; i++) {
         ecs_component_record_t *rec = ecs_component_index_get(type.ids[i]);
         sicore_vec_push_u16(&rec->tables, table_id);
-        table->cls[i].size = rec->size;
-        table->cls[i].data = rec->size != 0 ? calloc(table->entity_capacity, rec->size) : NULL;
-        if (rec->size != 0) {
+        table->cls[i].size = rec->info->size;
+        table->cls[i].data =
+            rec->info->size != 0 ? calloc(table->entity_capacity, rec->info->size) : NULL;
+        if (rec->info->size != 0) {
             table->data_columns[table->add_edge.aux++] = i;
         }
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
         table->cls[i].flags = 0;
-        if (rec->size == 0 || (!rec->ops.move_ctor && !rec->ops.copy_ctor)) {
+        if (rec->info->size == 0 || (!rec->ops.move_ctor && !rec->ops.copy_ctor)) {
             table->cls[i].flags |= EcsColumnTrivialMove;
         }
-        if (rec->size == 0 || !rec->ops.dtor) {
+        if (rec->info->size == 0 || !rec->ops.dtor) {
             table->cls[i].flags |= EcsColumnNoDtor;
         }
-        if (rec->size == 0 || !rec->ops.ctor) {
+        if (rec->info->size == 0 || !rec->ops.ctor) {
             table->cls[i].flags |= EcsColumnZeroCtor;
         }
     }
@@ -9269,15 +9267,12 @@ void ecs_component_index_register(
         .info = info,
         .required = NULL,
         .required_count = 0,
-        .size = size,
         .ops = ops,
         .on_set = on_set,
         .on_remove = on_remove,
         .on_add = on_add,
-        .inheritance = inheritance,
         .relation_flags = relation_flags,
         .tables = { 0 },
-        .reflection_desc = reflection,
     };
     sicore_vec_init(&record.tables, sizeof(uint16_t));
 
@@ -9295,12 +9290,13 @@ void ecs_component_index_fini() {
         if (records[i].info) {
             free((char *)records[i].info->name);
 
+            if (records[i].info->reflection) {
+                free((char *)records[i].info->reflection->name);
+                free((char *)records[i].info->reflection->fields);
+                free((void *)records[i].info->reflection);
+            }
+
             free(records[i].info);
-        }
-        if (records[i].reflection_desc) {
-            free((char *)records[i].reflection_desc->name);
-            free((char *)records[i].reflection_desc->fields);
-            free((void *)records[i].reflection_desc);
         }
         free(records[i].required);
         sicore_vec_fini(&records[i].tables);
@@ -9317,7 +9313,7 @@ void ecs_component_index_fini() {
 }
 
 void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count) {
-    if (record->size == 0 || count == 0) {
+    if (record->info->size == 0 || count == 0) {
         return;
     }
 
@@ -9326,11 +9322,11 @@ void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, u
         return;
     }
 
-    memset(dst, 0, (size_t)record->size * count);
+    memset(dst, 0, (size_t)record->info->size * count);
 }
 
 void ecs_component_value_dtor(const ecs_component_record_t *record, void *ptr, uint32_t count) {
-    if (record->size == 0 || count == 0 || !record->ops.dtor) {
+    if (record->info->size == 0 || count == 0 || !record->ops.dtor) {
         return;
     }
 
@@ -9343,7 +9339,7 @@ void ecs_component_value_copy_ctor(
     const void *src,
     uint32_t count
 ) {
-    if (record->size == 0 || count == 0) {
+    if (record->info->size == 0 || count == 0) {
         return;
     }
 
@@ -9352,7 +9348,7 @@ void ecs_component_value_copy_ctor(
         return;
     }
 
-    memcpy(dst, src, (size_t)record->size * count);
+    memcpy(dst, src, (size_t)record->info->size * count);
 }
 
 void ecs_component_value_copy(
@@ -9361,7 +9357,7 @@ void ecs_component_value_copy(
     const void *src,
     uint32_t count
 ) {
-    if (record->size == 0 || count == 0) {
+    if (record->info->size == 0 || count == 0) {
         return;
     }
 
@@ -9370,7 +9366,7 @@ void ecs_component_value_copy(
         return;
     }
 
-    memcpy(dst, src, (size_t)record->size * count);
+    memcpy(dst, src, (size_t)record->info->size * count);
 }
 
 void ecs_component_value_move_ctor(
@@ -9379,7 +9375,7 @@ void ecs_component_value_move_ctor(
     void *src,
     uint32_t count
 ) {
-    if (record->size == 0 || count == 0) {
+    if (record->info->size == 0 || count == 0) {
         return;
     }
 
@@ -9393,7 +9389,7 @@ void ecs_component_value_move_ctor(
         return;
     }
 
-    memcpy(dst, src, (size_t)record->size * count);
+    memcpy(dst, src, (size_t)record->info->size * count);
 }
 
 void ecs_component_value_move(
@@ -9402,7 +9398,7 @@ void ecs_component_value_move(
     void *src,
     uint32_t count
 ) {
-    if (record->size == 0 || count == 0) {
+    if (record->info->size == 0 || count == 0) {
         return;
     }
 
@@ -9416,7 +9412,7 @@ void ecs_component_value_move(
         return;
     }
 
-    memcpy(dst, src, (size_t)record->size * count);
+    memcpy(dst, src, (size_t)record->info->size * count);
 }
 
 ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {

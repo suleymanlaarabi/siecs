@@ -190,7 +190,7 @@ void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void 
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
     const ecs_component_record_t *record = ecs_component_index_get(id);
 
-    uint32_t size = record->size ? record->size : 1;
+    uint32_t size = record->info->size ? record->info->size : 1;
     ecs_deferred_change_t *change = change_find(&command->changes, id);
     if (!change) {
         change = change_add(command, id, EcsDeferredCopy);
@@ -207,7 +207,7 @@ void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
     const ecs_component_record_t *record = ecs_component_index_get(id);
 
-    uint32_t size = record->size ? record->size : 1;
+    uint32_t size = record->info->size ? record->info->size : 1;
     ecs_deferred_change_t *change = change_find(&command->changes, id);
     if (!change) {
         change = change_add(command, id, EcsDeferredMove);

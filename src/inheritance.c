@@ -47,7 +47,7 @@ static bool ecs_inheritance_component_is_owned(ecs_component_t component) {
     if (record->relation_flags != 0) {
         return false;
     }
-    return record->inheritance == EcsInheritOwned;
+    return record->info->inheritance == EcsInheritOwned;
 }
 
 static int ecs_inheritance_component_compare(const void *left, const void *right) {

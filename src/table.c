@@ -26,21 +26,22 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     for (uint16_t i = 0; i < type.component_count; i++) {
         ecs_component_record_t *rec = ecs_component_index_get(type.ids[i]);
         sicore_vec_push_u16(&rec->tables, table_id);
-        table->cls[i].size = rec->size;
-        table->cls[i].data = rec->size != 0 ? calloc(table->entity_capacity, rec->size) : NULL;
-        if (rec->size != 0) {
+        table->cls[i].size = rec->info->size;
+        table->cls[i].data =
+            rec->info->size != 0 ? calloc(table->entity_capacity, rec->info->size) : NULL;
+        if (rec->info->size != 0) {
             table->data_columns[table->add_edge.aux++] = i;
         }
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
         table->cls[i].flags = 0;
-        if (rec->size == 0 || (!rec->ops.move_ctor && !rec->ops.copy_ctor)) {
+        if (rec->info->size == 0 || (!rec->ops.move_ctor && !rec->ops.copy_ctor)) {
             table->cls[i].flags |= EcsColumnTrivialMove;
         }
-        if (rec->size == 0 || !rec->ops.dtor) {
+        if (rec->info->size == 0 || !rec->ops.dtor) {
             table->cls[i].flags |= EcsColumnNoDtor;
         }
-        if (rec->size == 0 || !rec->ops.ctor) {
+        if (rec->info->size == 0 || !rec->ops.ctor) {
             table->cls[i].flags |= EcsColumnZeroCtor;
         }
     }

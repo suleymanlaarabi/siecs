@@ -22,15 +22,12 @@ typedef struct {
     ecs_component_info_t *info;
     uint16_t *required;
     uint32_t required_count;
-    uint32_t size;
     ecs_type_ops_t ops;
     ecs_component_on_set_t on_set;
     ecs_component_on_remove_t on_remove;
     ecs_component_on_add_t on_add;
-    ecs_component_inheritance_t inheritance;
     uint32_t relation_flags;
     sicore_vec_t tables; // uint16_t
-    const sireflect_struct_desc_t *reflection_desc;
 } ecs_component_record_t;
 
 typedef struct ecs_component_index_s {
