@@ -28,6 +28,9 @@
       "${cfg sanitize}": {
         "export-symbols": true
       }
+    },
+    "${os windows}": {
+      "cflags": ["/experimental:c11atomics"]
     }
   },
   "bundle": {
