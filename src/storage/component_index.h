@@ -67,27 +67,7 @@ void ecs_component_index_fini();
 
 ecs_component_record_t *ecs_component_index_get(ecs_component_t cid);
 
-void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count);
-void ecs_component_value_dtor(const ecs_component_record_t *record, void *ptr, uint32_t count);
-void ecs_component_value_copy_ctor(
-    const ecs_component_record_t *record,
-    void *dst,
-    const void *src,
-    uint32_t count
-);
-void ecs_component_value_copy(
-    const ecs_component_record_t *record,
-    void *dst,
-    const void *src,
-    uint32_t count
-);
 void ecs_component_value_move_ctor(
-    const ecs_component_record_t *record,
-    void *dst,
-    void *src,
-    uint32_t count
-);
-void ecs_component_value_move(
     const ecs_component_record_t *record,
     void *dst,
     void *src,

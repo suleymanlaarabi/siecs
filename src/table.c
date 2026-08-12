@@ -139,7 +139,9 @@ static void ecs_table_fini_component_values(ecs_table_t *table) {
         if (crec->relation_flags & EcsComponentRelationSource) {
             for (uint32_t row = 0; row < table->entity_count; row++) {
                 void *ptr = ecs_table_component_at_column(table, c, row);
-                ecs_component_value_dtor(crec, ptr, 1);
+                if (crec->ops.dtor) {
+                    crec->ops.dtor(ptr, 1);
+                }
             }
             continue;
         }
@@ -153,7 +155,9 @@ static void ecs_table_fini_component_values(ecs_table_t *table) {
             if (crec->on_remove) {
                 crec->on_remove(table->entities[row], component, ptr);
             }
-            ecs_component_value_dtor(crec, ptr, 1);
+            if (crec->ops.dtor) {
+                crec->ops.dtor(ptr, 1);
+            }
         }
     }
 }

@@ -24,7 +24,15 @@ static inline void ecs_table_move_column(
 
     ecs_component_t component = from_table->type.ids[from_col];
     const ecs_component_record_t *record = ecs_component_index_get(component);
-    ecs_component_value_move_ctor(record, dst, src, 1);
+    if (record->ops.move_ctor) {
+        record->ops.move_ctor(dst, src, 1);
+        return;
+    }
+
+    record->ops.copy_ctor(dst, src, 1);
+    if (record->ops.dtor) {
+        record->ops.dtor(src, 1);
+    }
 }
 
 static inline void ecs_table_ctor_column(
@@ -45,7 +53,7 @@ static inline void ecs_table_ctor_column(
 
     ecs_component_t component = table->type.ids[col];
     const ecs_component_record_t *record = ecs_component_index_get(component);
-    ecs_component_value_ctor(record, dst, 1);
+    record->ops.ctor(dst, 1);
 }
 
 static inline void ecs_table_dtor_column(
@@ -61,7 +69,7 @@ static inline void ecs_table_dtor_column(
     ecs_component_t component = table->type.ids[col];
     const ecs_component_record_t *record = ecs_component_index_get(component);
     void *ptr = ecs_table_component_at_column(table, col, row);
-    ecs_component_value_dtor(record, ptr, 1);
+    record->ops.dtor(ptr, 1);
 }
 
 static inline void ecs_table_remove_entity_update_record(

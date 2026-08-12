@@ -37,7 +37,9 @@ static inline void deferred_change_fini(ecs_deferred_change_t *change) {
         return;
     }
     const ecs_component_record_t *record = ecs_component_index_get(change->id);
-    ecs_component_value_dtor(record, change->data, 1);
+    if (record->info->size && record->ops.dtor) {
+        record->ops.dtor(change->data, 1);
+    }
     change->data = NULL;
 }
 
@@ -199,7 +201,13 @@ void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void 
         change->op = EcsDeferredCopy;
     }
     change->data = ecs_arena_alloc(buffer->arena, size);
-    ecs_component_value_copy_ctor(record, change->data, data, 1);
+    if (record->info->size) {
+        if (record->ops.copy_ctor) {
+            record->ops.copy_ctor(change->data, data, 1);
+        } else {
+            memcpy(change->data, data, record->info->size);
+        }
+    }
 }
 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data) {
@@ -216,7 +224,18 @@ void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data
         change->op = EcsDeferredMove;
     }
     change->data = ecs_arena_alloc(buffer->arena, size);
-    ecs_component_value_move_ctor(record, change->data, data, 1);
+    if (record->info->size) {
+        if (record->ops.move_ctor) {
+            record->ops.move_ctor(change->data, data, 1);
+        } else if (record->ops.copy_ctor) {
+            record->ops.copy_ctor(change->data, data, 1);
+            if (record->ops.dtor) {
+                record->ops.dtor(data, 1);
+            }
+        } else {
+            memcpy(change->data, data, record->info->size);
+        }
+    }
 }
 
 void ecs_command_buffer_kill(ecs_entity_t entity) {
@@ -372,7 +391,18 @@ static void command_apply_changes(ecs_entity_command_t *command) {
             dst = ecs_table_component_at_column(table, column, entity_record->table_row);
         }
         ecs_emit(table, command->entity, EcsOnSet, changes[i].data);
-        ecs_component_value_move(record, dst, changes[i].data, 1);
+        if (record->info->size) {
+            if (record->ops.move) {
+                record->ops.move(dst, changes[i].data, 1);
+            } else if (record->ops.copy) {
+                record->ops.copy(dst, changes[i].data, 1);
+                if (record->ops.dtor) {
+                    record->ops.dtor(changes[i].data, 1);
+                }
+            } else {
+                memcpy(dst, changes[i].data, record->info->size);
+            }
+        }
         changes[i].data = NULL;
     }
 }

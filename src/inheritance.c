@@ -4,6 +4,7 @@
 #include "utils.h"
 #include "world_internal.h"
 #include <stdlib.h>
+#include <string.h>
 
 static uint16_t ecs_inheritance_base_component_capacity(ecs_entity_t base) {
     uint32_t capacity = 0;
@@ -120,6 +121,10 @@ void ecs_inheritance_plan_copy(
         const ecs_component_record_t *record = ecs_component_index_get(component);
         const void *source = ecs_try_get_cid(base, component);
         void *destination = ecs_table_get_component(child_table, component, child_row);
-        ecs_component_value_copy(record, destination, source, 1);
+        if (record->ops.copy) {
+            record->ops.copy(destination, source, 1);
+        } else if (record->info->size) {
+            memcpy(destination, source, record->info->size);
+        }
     }
 }

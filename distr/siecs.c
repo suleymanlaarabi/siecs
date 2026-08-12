@@ -4703,27 +4703,7 @@ void ecs_component_index_fini();
 
 ecs_component_record_t *ecs_component_index_get(ecs_component_t cid);
 
-void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count);
-void ecs_component_value_dtor(const ecs_component_record_t *record, void *ptr, uint32_t count);
-void ecs_component_value_copy_ctor(
-    const ecs_component_record_t *record,
-    void *dst,
-    const void *src,
-    uint32_t count
-);
-void ecs_component_value_copy(
-    const ecs_component_record_t *record,
-    void *dst,
-    const void *src,
-    uint32_t count
-);
 void ecs_component_value_move_ctor(
-    const ecs_component_record_t *record,
-    void *dst,
-    void *src,
-    uint32_t count
-);
-void ecs_component_value_move(
     const ecs_component_record_t *record,
     void *dst,
     void *src,
@@ -5599,7 +5579,15 @@ static inline void ecs_table_move_column(
 
     ecs_component_t component = from_table->type.ids[from_col];
     const ecs_component_record_t *record = ecs_component_index_get(component);
-    ecs_component_value_move_ctor(record, dst, src, 1);
+    if (record->ops.move_ctor) {
+        record->ops.move_ctor(dst, src, 1);
+        return;
+    }
+
+    record->ops.copy_ctor(dst, src, 1);
+    if (record->ops.dtor) {
+        record->ops.dtor(src, 1);
+    }
 }
 
 static inline void ecs_table_ctor_column(
@@ -5620,7 +5608,7 @@ static inline void ecs_table_ctor_column(
 
     ecs_component_t component = table->type.ids[col];
     const ecs_component_record_t *record = ecs_component_index_get(component);
-    ecs_component_value_ctor(record, dst, 1);
+    record->ops.ctor(dst, 1);
 }
 
 static inline void ecs_table_dtor_column(
@@ -5636,7 +5624,7 @@ static inline void ecs_table_dtor_column(
     ecs_component_t component = table->type.ids[col];
     const ecs_component_record_t *record = ecs_component_index_get(component);
     void *ptr = ecs_table_component_at_column(table, col, row);
-    ecs_component_value_dtor(record, ptr, 1);
+    record->ops.dtor(ptr, 1);
 }
 
 static inline void ecs_table_remove_entity_update_record(
@@ -5725,7 +5713,9 @@ static inline void deferred_change_fini(ecs_deferred_change_t *change) {
         return;
     }
     const ecs_component_record_t *record = ecs_component_index_get(change->id);
-    ecs_component_value_dtor(record, change->data, 1);
+    if (record->info->size && record->ops.dtor) {
+        record->ops.dtor(change->data, 1);
+    }
     change->data = NULL;
 }
 
@@ -5887,7 +5877,13 @@ void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void 
         change->op = EcsDeferredCopy;
     }
     change->data = ecs_arena_alloc(buffer->arena, size);
-    ecs_component_value_copy_ctor(record, change->data, data, 1);
+    if (record->info->size) {
+        if (record->ops.copy_ctor) {
+            record->ops.copy_ctor(change->data, data, 1);
+        } else {
+            memcpy(change->data, data, record->info->size);
+        }
+    }
 }
 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data) {
@@ -5904,7 +5900,18 @@ void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data
         change->op = EcsDeferredMove;
     }
     change->data = ecs_arena_alloc(buffer->arena, size);
-    ecs_component_value_move_ctor(record, change->data, data, 1);
+    if (record->info->size) {
+        if (record->ops.move_ctor) {
+            record->ops.move_ctor(change->data, data, 1);
+        } else if (record->ops.copy_ctor) {
+            record->ops.copy_ctor(change->data, data, 1);
+            if (record->ops.dtor) {
+                record->ops.dtor(data, 1);
+            }
+        } else {
+            memcpy(change->data, data, record->info->size);
+        }
+    }
 }
 
 void ecs_command_buffer_kill(ecs_entity_t entity) {
@@ -6060,7 +6067,18 @@ static void command_apply_changes(ecs_entity_command_t *command) {
             dst = ecs_table_component_at_column(table, column, entity_record->table_row);
         }
         ecs_emit(table, command->entity, EcsOnSet, changes[i].data);
-        ecs_component_value_move(record, dst, changes[i].data, 1);
+        if (record->info->size) {
+            if (record->ops.move) {
+                record->ops.move(dst, changes[i].data, 1);
+            } else if (record->ops.copy) {
+                record->ops.copy(dst, changes[i].data, 1);
+                if (record->ops.dtor) {
+                    record->ops.dtor(changes[i].data, 1);
+                }
+            } else {
+                memcpy(dst, changes[i].data, record->info->size);
+            }
+        }
         changes[i].data = NULL;
     }
 }
@@ -6698,8 +6716,10 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
     ecs_emit(table, entity, EcsOnSet, data);
     if (crec->relation_flags & EcsComponentRelationTarget) {
         ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
-    } else {
-        ecs_component_value_copy(crec, dst, data, 1);
+    } else if (crec->ops.copy) {
+        crec->ops.copy(dst, data, 1);
+    } else if (crec->info->size) {
+        memcpy(dst, data, crec->info->size);
     }
     ecs_defer_end();
 }
@@ -6735,9 +6755,27 @@ void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
     if (crec->relation_flags & EcsComponentRelationTarget) {
         ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
     } else if (had_value || crec->ops.ctor) {
-        ecs_component_value_move(crec, dst, data, 1);
+        if (crec->ops.move) {
+            crec->ops.move(dst, data, 1);
+        } else if (crec->ops.copy) {
+            crec->ops.copy(dst, data, 1);
+            if (crec->ops.dtor) {
+                crec->ops.dtor(data, 1);
+            }
+        } else if (crec->info->size) {
+            memcpy(dst, data, crec->info->size);
+        }
     } else {
-        ecs_component_value_move_ctor(crec, dst, data, 1);
+        if (crec->ops.move_ctor) {
+            crec->ops.move_ctor(dst, data, 1);
+        } else if (crec->ops.copy_ctor) {
+            crec->ops.copy_ctor(dst, data, 1);
+            if (crec->ops.dtor) {
+                crec->ops.dtor(data, 1);
+            }
+        } else if (crec->info->size) {
+            memcpy(dst, data, crec->info->size);
+        }
     }
 }
 
@@ -7322,7 +7360,11 @@ void ecs_inheritance_plan_copy(
         const ecs_component_record_t *record = ecs_component_index_get(component);
         const void *source = ecs_try_get_cid(base, component);
         void *destination = ecs_table_get_component(child_table, component, child_row);
-        ecs_component_value_copy(record, destination, source, 1);
+        if (record->ops.copy) {
+            record->ops.copy(destination, source, 1);
+        } else if (record->info->size) {
+            memcpy(destination, source, record->info->size);
+        }
     }
 }
 
@@ -8543,7 +8585,9 @@ static void ecs_table_fini_component_values(ecs_table_t *table) {
         if (crec->relation_flags & EcsComponentRelationSource) {
             for (uint32_t row = 0; row < table->entity_count; row++) {
                 void *ptr = ecs_table_component_at_column(table, c, row);
-                ecs_component_value_dtor(crec, ptr, 1);
+                if (crec->ops.dtor) {
+                    crec->ops.dtor(ptr, 1);
+                }
             }
             continue;
         }
@@ -8557,7 +8601,9 @@ static void ecs_table_fini_component_values(ecs_table_t *table) {
             if (crec->on_remove) {
                 crec->on_remove(table->entities[row], component, ptr);
             }
-            ecs_component_value_dtor(crec, ptr, 1);
+            if (crec->ops.dtor) {
+                crec->ops.dtor(ptr, 1);
+            }
         }
     }
 }
@@ -9231,120 +9277,6 @@ void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id) {
     }
 }
 
-#ifndef SIECS_STORAGE_VALUE_OPS_H
-#define SIECS_STORAGE_VALUE_OPS_H
-
-#include <stdint.h>
-#include <string.h>
-
-static inline void ecs_value_ctor(
-    uint64_t size,
-    const ecs_type_ops_t *ops,
-    void *dst,
-    uint32_t count
-) {
-    if (size == 0 || count == 0) {
-        return;
-    }
-    if (ops->ctor != NULL) {
-        ops->ctor(dst, count);
-        return;
-    }
-    memset(dst, 0, (size_t)size * count);
-}
-
-static inline void ecs_value_dtor(
-    uint64_t size,
-    const ecs_type_ops_t *ops,
-    void *ptr,
-    uint32_t count
-) {
-    if (size == 0 || count == 0 || ops->dtor == NULL) {
-        return;
-    }
-    ops->dtor(ptr, count);
-}
-
-static inline void ecs_value_copy_ctor(
-    uint64_t size,
-    const ecs_type_ops_t *ops,
-    void *dst,
-    const void *src,
-    uint32_t count
-) {
-    if (size == 0 || count == 0) {
-        return;
-    }
-    if (ops->copy_ctor != NULL) {
-        ops->copy_ctor(dst, src, count);
-        return;
-    }
-    memcpy(dst, src, (size_t)size * count);
-}
-
-static inline void ecs_value_copy(
-    uint64_t size,
-    const ecs_type_ops_t *ops,
-    void *dst,
-    const void *src,
-    uint32_t count
-) {
-    if (size == 0 || count == 0) {
-        return;
-    }
-    if (ops->copy != NULL) {
-        ops->copy(dst, src, count);
-        return;
-    }
-    memcpy(dst, src, (size_t)size * count);
-}
-
-static inline void ecs_value_move_ctor(
-    uint64_t size,
-    const ecs_type_ops_t *ops,
-    void *dst,
-    void *src,
-    uint32_t count
-) {
-    if (size == 0 || count == 0) {
-        return;
-    }
-    if (ops->move_ctor != NULL) {
-        ops->move_ctor(dst, src, count);
-        return;
-    }
-    if (ops->copy_ctor != NULL) {
-        ops->copy_ctor(dst, src, count);
-        ecs_value_dtor(size, ops, src, count);
-        return;
-    }
-    memcpy(dst, src, (size_t)size * count);
-}
-
-static inline void ecs_value_move(
-    uint64_t size,
-    const ecs_type_ops_t *ops,
-    void *dst,
-    void *src,
-    uint32_t count
-) {
-    if (size == 0 || count == 0) {
-        return;
-    }
-    if (ops->move != NULL) {
-        ops->move(dst, src, count);
-        return;
-    }
-    if (ops->copy != NULL) {
-        ops->copy(dst, src, count);
-        ecs_value_dtor(size, ops, src, count);
-        return;
-    }
-    memcpy(dst, src, (size_t)size * count);
-}
-
-#endif
-
 sicore_vec_t ecs_component_default_relation_index;
 ecs_component_index_t component_index;
 
@@ -9460,48 +9392,21 @@ void ecs_component_index_fini() {
     sicore_vec_fini(&component_index.components);
 }
 
-void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count) {
-    ecs_value_ctor(record->info->size, &record->ops, dst, count);
-}
-
-void ecs_component_value_dtor(const ecs_component_record_t *record, void *ptr, uint32_t count) {
-    ecs_value_dtor(record->info->size, &record->ops, ptr, count);
-}
-
-void ecs_component_value_copy_ctor(
-    const ecs_component_record_t *record,
-    void *dst,
-    const void *src,
-    uint32_t count
-) {
-    ecs_value_copy_ctor(record->info->size, &record->ops, dst, src, count);
-}
-
-void ecs_component_value_copy(
-    const ecs_component_record_t *record,
-    void *dst,
-    const void *src,
-    uint32_t count
-) {
-    ecs_value_copy(record->info->size, &record->ops, dst, src, count);
-}
-
 void ecs_component_value_move_ctor(
     const ecs_component_record_t *record,
     void *dst,
     void *src,
     uint32_t count
 ) {
-    ecs_value_move_ctor(record->info->size, &record->ops, dst, src, count);
-}
+    if (record->ops.move_ctor) {
+        record->ops.move_ctor(dst, src, count);
+        return;
+    }
 
-void ecs_component_value_move(
-    const ecs_component_record_t *record,
-    void *dst,
-    void *src,
-    uint32_t count
-) {
-    ecs_value_move(record->info->size, &record->ops, dst, src, count);
+    record->ops.copy_ctor(dst, src, count);
+    if (record->ops.dtor) {
+        record->ops.dtor(src, count);
+    }
 }
 
 ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {
@@ -10492,11 +10397,19 @@ void ecs_resource_index_set(ecs_resource_t id, const void *data) {
         record->on_set(data);
     }
 
-    if (record->size != 0) {
+    if (record->size) {
         if (was_present) {
-            ecs_value_copy(record->size, &record->ops, index->data[id], data, 1);
+            if (record->ops.copy) {
+                record->ops.copy(index->data[id], data, 1);
+            } else {
+                memcpy(index->data[id], data, record->size);
+            }
         } else {
-            ecs_value_copy_ctor(record->size, &record->ops, index->data[id], data, 1);
+            if (record->ops.copy_ctor) {
+                record->ops.copy_ctor(index->data[id], data, 1);
+            } else {
+                memcpy(index->data[id], data, record->size);
+            }
         }
     }
 }
@@ -10517,11 +10430,29 @@ void ecs_resource_index_move(ecs_resource_t id, void *data) {
         record->on_set(data);
     }
 
-    if (record->size != 0) {
+    if (record->size) {
         if (was_present) {
-            ecs_value_move(record->size, &record->ops, index->data[id], data, 1);
+            if (record->ops.move) {
+                record->ops.move(index->data[id], data, 1);
+            } else if (record->ops.copy) {
+                record->ops.copy(index->data[id], data, 1);
+                if (record->ops.dtor) {
+                    record->ops.dtor(data, 1);
+                }
+            } else {
+                memcpy(index->data[id], data, record->size);
+            }
         } else {
-            ecs_value_move_ctor(record->size, &record->ops, index->data[id], data, 1);
+            if (record->ops.move_ctor) {
+                record->ops.move_ctor(index->data[id], data, 1);
+            } else if (record->ops.copy_ctor) {
+                record->ops.copy_ctor(index->data[id], data, 1);
+                if (record->ops.dtor) {
+                    record->ops.dtor(data, 1);
+                }
+            } else {
+                memcpy(index->data[id], data, record->size);
+            }
         }
     }
 }
@@ -10556,7 +10487,9 @@ void ecs_resource_index_remove(ecs_resource_t id) {
     if (record->on_remove) {
         record->on_remove(value);
     }
-    ecs_value_dtor(record->size, &record->ops, value, 1);
+    if (record->ops.dtor) {
+        record->ops.dtor(value, 1);
+    }
 
     free(value);
 }

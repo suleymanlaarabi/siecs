@@ -1,10 +1,10 @@
 #include "component_index.h"
-#include "value_ops.h"
 #include "sicore.h"
 #include "siecs.h"
 #include "sireflect.h"
 #include "world_internal.h"
 #include <stdlib.h>
+#include <string.h>
 
 sicore_vec_t ecs_component_default_relation_index;
 ecs_component_index_t component_index;
@@ -121,48 +121,21 @@ void ecs_component_index_fini() {
     sicore_vec_fini(&component_index.components);
 }
 
-void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count) {
-    ecs_value_ctor(record->info->size, &record->ops, dst, count);
-}
-
-void ecs_component_value_dtor(const ecs_component_record_t *record, void *ptr, uint32_t count) {
-    ecs_value_dtor(record->info->size, &record->ops, ptr, count);
-}
-
-void ecs_component_value_copy_ctor(
-    const ecs_component_record_t *record,
-    void *dst,
-    const void *src,
-    uint32_t count
-) {
-    ecs_value_copy_ctor(record->info->size, &record->ops, dst, src, count);
-}
-
-void ecs_component_value_copy(
-    const ecs_component_record_t *record,
-    void *dst,
-    const void *src,
-    uint32_t count
-) {
-    ecs_value_copy(record->info->size, &record->ops, dst, src, count);
-}
-
 void ecs_component_value_move_ctor(
     const ecs_component_record_t *record,
     void *dst,
     void *src,
     uint32_t count
 ) {
-    ecs_value_move_ctor(record->info->size, &record->ops, dst, src, count);
-}
+    if (record->ops.move_ctor) {
+        record->ops.move_ctor(dst, src, count);
+        return;
+    }
 
-void ecs_component_value_move(
-    const ecs_component_record_t *record,
-    void *dst,
-    void *src,
-    uint32_t count
-) {
-    ecs_value_move(record->info->size, &record->ops, dst, src, count);
+    record->ops.copy_ctor(dst, src, count);
+    if (record->ops.dtor) {
+        record->ops.dtor(src, count);
+    }
 }
 
 ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {

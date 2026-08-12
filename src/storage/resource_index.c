@@ -2,7 +2,6 @@
 #include "../utils.h"
 #include "../world_internal.h"
 #include "siecs.h"
-#include "value_ops.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -138,11 +137,19 @@ void ecs_resource_index_set(ecs_resource_t id, const void *data) {
         record->on_set(data);
     }
 
-    if (record->size != 0) {
+    if (record->size) {
         if (was_present) {
-            ecs_value_copy(record->size, &record->ops, index->data[id], data, 1);
+            if (record->ops.copy) {
+                record->ops.copy(index->data[id], data, 1);
+            } else {
+                memcpy(index->data[id], data, record->size);
+            }
         } else {
-            ecs_value_copy_ctor(record->size, &record->ops, index->data[id], data, 1);
+            if (record->ops.copy_ctor) {
+                record->ops.copy_ctor(index->data[id], data, 1);
+            } else {
+                memcpy(index->data[id], data, record->size);
+            }
         }
     }
 }
@@ -163,11 +170,29 @@ void ecs_resource_index_move(ecs_resource_t id, void *data) {
         record->on_set(data);
     }
 
-    if (record->size != 0) {
+    if (record->size) {
         if (was_present) {
-            ecs_value_move(record->size, &record->ops, index->data[id], data, 1);
+            if (record->ops.move) {
+                record->ops.move(index->data[id], data, 1);
+            } else if (record->ops.copy) {
+                record->ops.copy(index->data[id], data, 1);
+                if (record->ops.dtor) {
+                    record->ops.dtor(data, 1);
+                }
+            } else {
+                memcpy(index->data[id], data, record->size);
+            }
         } else {
-            ecs_value_move_ctor(record->size, &record->ops, index->data[id], data, 1);
+            if (record->ops.move_ctor) {
+                record->ops.move_ctor(index->data[id], data, 1);
+            } else if (record->ops.copy_ctor) {
+                record->ops.copy_ctor(index->data[id], data, 1);
+                if (record->ops.dtor) {
+                    record->ops.dtor(data, 1);
+                }
+            } else {
+                memcpy(index->data[id], data, record->size);
+            }
         }
     }
 }
@@ -202,7 +227,9 @@ void ecs_resource_index_remove(ecs_resource_t id) {
     if (record->on_remove) {
         record->on_remove(value);
     }
-    ecs_value_dtor(record->size, &record->ops, value, 1);
+    if (record->ops.dtor) {
+        record->ops.dtor(value, 1);
+    }
 
     free(value);
 }
