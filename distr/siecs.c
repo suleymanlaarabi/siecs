@@ -4862,6 +4862,8 @@ typedef struct {
     uint16_t first_free;
 } ecs_query_index_t;
 
+extern ecs_query_index_t query_index;
+
 void ecs_query_index_init();
 void ecs_query_index_fini();
 uint16_t ecs_query_index_create(const ecs_query_desc_t *desc);
@@ -5185,7 +5187,6 @@ struct ecs_world_s {
     ecs_entity_index_t entity_index;
     ecs_relation_index_t relation_index;
     ecs_table_index_t table_index;
-    ecs_query_index_t query_index;
     ecs_observer_index_t observer_index;
     ecs_system_index_t system_index;
     ecs_module_index_t module_index;
@@ -7665,10 +7666,10 @@ ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) {
 }
 
 ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
-    ecs_assert(query_id < ecs_world.query_index.queries.size, "invalid query id: %u\n", query_id);
+    ecs_assert(query_id < query_index.queries.size, "invalid query id: %u\n", query_id);
 
     ecs_query_cache_t *cache =
-        sicore_vec_get_mut(&ecs_world.query_index.queries, query_id, ecs_query_cache_t);
+        sicore_vec_get_mut(&query_index.queries, query_id, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", query_id);
     return (ecs_iter_t){
         .cache = cache,
@@ -7680,7 +7681,7 @@ ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
 
 uint32_t ecs_query_count(ecs_query_id_t query_id) {
     ecs_query_cache_t *cache =
-        sicore_vec_get_mut(&ecs_world.query_index.queries, query_id, ecs_query_cache_t);
+        sicore_vec_get_mut(&query_index.queries, query_id, ecs_query_cache_t);
     uint16_t *tids = cache->table_ids.data;
 
     uint32_t count = 0;
@@ -7741,10 +7742,10 @@ ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relati
 }
 
 void ecs_query_fini(ecs_query_id_t qid) {
-    ecs_assert(qid < ecs_world.query_index.queries.size, "invalid query id: %u\n", qid);
+    ecs_assert(qid < query_index.queries.size, "invalid query id: %u\n", qid);
 
     ecs_query_cache_t *cache =
-        sicore_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t);
+        sicore_vec_get_mut(&query_index.queries, qid, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", qid);
 
     free(cache->fields_ptr);
@@ -7759,10 +7760,10 @@ void ecs_query_fini(ecs_query_id_t qid) {
     cache->field_kind_bits = NULL;
     cache->field_table_capacity = 0;
 
-    ecs_query_index_remove_active_id(&ecs_world.query_index, qid);
-    cache->next_free = ecs_world.query_index.first_free;
+    ecs_query_index_remove_active_id(&query_index, qid);
+    cache->next_free = query_index.first_free;
     cache->alive = false;
-    ecs_world.query_index.first_free = qid;
+    query_index.first_free = qid;
 }
 
 void ecs_relation_index_init(void) {
@@ -9584,6 +9585,8 @@ void ecs_observer_index_add_table(ecs_table_t *table) {
     }
 }
 
+ecs_query_index_t query_index;
+
 static inline int ecs_compare_order_value(uint64_t a, uint64_t b) {
     return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -9624,14 +9627,14 @@ ecs_query_order_t ecs_order_by_depth_id(ecs_relation_id_t relation) {
 }
 
 void ecs_query_index_init() {
-    ecs_query_index_t *index = &ecs_world.query_index;
+    ecs_query_index_t *index = &query_index;
     sicore_vec_init(&index->queries, sizeof(ecs_query_cache_t));
     sicore_vec_init(&index->active_ids, sizeof(ecs_query_id_t));
     index->first_free = UINT16_MAX;
 }
 
 void ecs_query_index_fini() {
-    ecs_query_index_t *index = &ecs_world.query_index;
+    ecs_query_index_t *index = &query_index;
     for (uint32_t i = 0; i < index->queries.size; i++) {
         ecs_query_cache_t *cache = sicore_vec_get_mut(&index->queries, i, ecs_query_cache_t);
         sicore_vec_fini(&cache->table_ids);
@@ -9643,6 +9646,7 @@ void ecs_query_index_fini() {
     }
     sicore_vec_fini(&index->active_ids);
     sicore_vec_fini(&index->queries);
+    *index = (ecs_query_index_t){ 0 };
 }
 
 void ecs_query_index_destroy(ecs_query_t *query) { free(query->terms); }
@@ -10130,7 +10134,7 @@ static void
 ecs_query_index_update_matches(ecs_query_cache_t *query_cache, ecs_component_t component);
 
 ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
-    ecs_query_index_t *index = &ecs_world.query_index;
+    ecs_query_index_t *index = &query_index;
     ecs_query_id_t id;
     ecs_query_cache_t *query_cache;
     bool reused;
@@ -10233,10 +10237,10 @@ ecs_query_index_update_matches(ecs_query_cache_t *query_cache, ecs_component_t c
 }
 
 void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id) {
-    const ecs_query_id_t *active_ids = ecs_world.query_index.active_ids.data;
-    for (uint32_t i = 0; i < ecs_world.query_index.active_ids.size; i++) {
+    const ecs_query_id_t *active_ids = query_index.active_ids.data;
+    for (uint32_t i = 0; i < query_index.active_ids.size; i++) {
         ecs_query_cache_t *cache =
-            sicore_vec_get_mut(&ecs_world.query_index.queries, active_ids[i], ecs_query_cache_t);
+            sicore_vec_get_mut(&query_index.queries, active_ids[i], ecs_query_cache_t);
         if (ecs_query_match_table(&cache->query, table)) {
             ecs_query_cache_add_matched_table(cache, table, table_id);
         }
@@ -10244,11 +10248,11 @@ void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id) {
 }
 
 void ecs_query_index_refresh_table_fields(const ecs_table_t *table, uint16_t table_id) {
-    const ecs_query_id_t *active_ids = ecs_world.query_index.active_ids.data;
+    const ecs_query_id_t *active_ids = query_index.active_ids.data;
 
-    for (uint32_t i = 0; i < ecs_world.query_index.active_ids.size; i++) {
+    for (uint32_t i = 0; i < query_index.active_ids.size; i++) {
         ecs_query_cache_t *cache =
-            sicore_vec_get_mut(&ecs_world.query_index.queries, active_ids[i], ecs_query_cache_t);
+            sicore_vec_get_mut(&query_index.queries, active_ids[i], ecs_query_cache_t);
         if (cache->query.field_count == 0) {
             continue;
         }
@@ -10898,14 +10902,14 @@ void ecs_system_index_build_plan(void) {
                     const ecs_query_cache_t *previous_cache = NULL;
                     if (current->qid != UINT16_MAX) {
                         current_cache = sicore_vec_get(
-                            &ecs_world.query_index.queries,
+                            &query_index.queries,
                             current->qid,
                             ecs_query_cache_t
                         );
                     }
                     if (previous->qid != UINT16_MAX) {
                         previous_cache = sicore_vec_get(
-                            &ecs_world.query_index.queries,
+                            &query_index.queries,
                             previous->qid,
                             ecs_query_cache_t
                         );
