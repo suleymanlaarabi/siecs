@@ -9231,6 +9231,120 @@ void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id) {
     }
 }
 
+#ifndef SIECS_STORAGE_VALUE_OPS_H
+#define SIECS_STORAGE_VALUE_OPS_H
+
+#include <stdint.h>
+#include <string.h>
+
+static inline void ecs_value_ctor(
+    uint64_t size,
+    const ecs_type_ops_t *ops,
+    void *dst,
+    uint32_t count
+) {
+    if (size == 0 || count == 0) {
+        return;
+    }
+    if (ops->ctor != NULL) {
+        ops->ctor(dst, count);
+        return;
+    }
+    memset(dst, 0, (size_t)size * count);
+}
+
+static inline void ecs_value_dtor(
+    uint64_t size,
+    const ecs_type_ops_t *ops,
+    void *ptr,
+    uint32_t count
+) {
+    if (size == 0 || count == 0 || ops->dtor == NULL) {
+        return;
+    }
+    ops->dtor(ptr, count);
+}
+
+static inline void ecs_value_copy_ctor(
+    uint64_t size,
+    const ecs_type_ops_t *ops,
+    void *dst,
+    const void *src,
+    uint32_t count
+) {
+    if (size == 0 || count == 0) {
+        return;
+    }
+    if (ops->copy_ctor != NULL) {
+        ops->copy_ctor(dst, src, count);
+        return;
+    }
+    memcpy(dst, src, (size_t)size * count);
+}
+
+static inline void ecs_value_copy(
+    uint64_t size,
+    const ecs_type_ops_t *ops,
+    void *dst,
+    const void *src,
+    uint32_t count
+) {
+    if (size == 0 || count == 0) {
+        return;
+    }
+    if (ops->copy != NULL) {
+        ops->copy(dst, src, count);
+        return;
+    }
+    memcpy(dst, src, (size_t)size * count);
+}
+
+static inline void ecs_value_move_ctor(
+    uint64_t size,
+    const ecs_type_ops_t *ops,
+    void *dst,
+    void *src,
+    uint32_t count
+) {
+    if (size == 0 || count == 0) {
+        return;
+    }
+    if (ops->move_ctor != NULL) {
+        ops->move_ctor(dst, src, count);
+        return;
+    }
+    if (ops->copy_ctor != NULL) {
+        ops->copy_ctor(dst, src, count);
+        ecs_value_dtor(size, ops, src, count);
+        return;
+    }
+    memcpy(dst, src, (size_t)size * count);
+}
+
+static inline void ecs_value_move(
+    uint64_t size,
+    const ecs_type_ops_t *ops,
+    void *dst,
+    void *src,
+    uint32_t count
+) {
+    if (size == 0 || count == 0) {
+        return;
+    }
+    if (ops->move != NULL) {
+        ops->move(dst, src, count);
+        return;
+    }
+    if (ops->copy != NULL) {
+        ops->copy(dst, src, count);
+        ecs_value_dtor(size, ops, src, count);
+        return;
+    }
+    memcpy(dst, src, (size_t)size * count);
+}
+
+#endif
+
 sicore_vec_t ecs_component_default_relation_index;
 ecs_component_index_t component_index;
 
@@ -9347,24 +9461,11 @@ void ecs_component_index_fini() {
 }
 
 void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count) {
-    if (record->info->size == 0 || count == 0) {
-        return;
-    }
-
-    if (record->ops.ctor) {
-        record->ops.ctor(dst, count);
-        return;
-    }
-
-    memset(dst, 0, (size_t)record->info->size * count);
+    ecs_value_ctor(record->info->size, &record->ops, dst, count);
 }
 
 void ecs_component_value_dtor(const ecs_component_record_t *record, void *ptr, uint32_t count) {
-    if (record->info->size == 0 || count == 0 || !record->ops.dtor) {
-        return;
-    }
-
-    record->ops.dtor(ptr, count);
+    ecs_value_dtor(record->info->size, &record->ops, ptr, count);
 }
 
 void ecs_component_value_copy_ctor(
@@ -9373,16 +9474,7 @@ void ecs_component_value_copy_ctor(
     const void *src,
     uint32_t count
 ) {
-    if (record->info->size == 0 || count == 0) {
-        return;
-    }
-
-    if (record->ops.copy_ctor) {
-        record->ops.copy_ctor(dst, src, count);
-        return;
-    }
-
-    memcpy(dst, src, (size_t)record->info->size * count);
+    ecs_value_copy_ctor(record->info->size, &record->ops, dst, src, count);
 }
 
 void ecs_component_value_copy(
@@ -9391,16 +9483,7 @@ void ecs_component_value_copy(
     const void *src,
     uint32_t count
 ) {
-    if (record->info->size == 0 || count == 0) {
-        return;
-    }
-
-    if (record->ops.copy) {
-        record->ops.copy(dst, src, count);
-        return;
-    }
-
-    memcpy(dst, src, (size_t)record->info->size * count);
+    ecs_value_copy(record->info->size, &record->ops, dst, src, count);
 }
 
 void ecs_component_value_move_ctor(
@@ -9409,21 +9492,7 @@ void ecs_component_value_move_ctor(
     void *src,
     uint32_t count
 ) {
-    if (record->info->size == 0 || count == 0) {
-        return;
-    }
-
-    if (record->ops.move_ctor) {
-        record->ops.move_ctor(dst, src, count);
-        return;
-    }
-    if (record->ops.copy_ctor) {
-        record->ops.copy_ctor(dst, src, count);
-        ecs_component_value_dtor(record, src, count);
-        return;
-    }
-
-    memcpy(dst, src, (size_t)record->info->size * count);
+    ecs_value_move_ctor(record->info->size, &record->ops, dst, src, count);
 }
 
 void ecs_component_value_move(
@@ -9432,21 +9501,7 @@ void ecs_component_value_move(
     void *src,
     uint32_t count
 ) {
-    if (record->info->size == 0 || count == 0) {
-        return;
-    }
-
-    if (record->ops.move) {
-        record->ops.move(dst, src, count);
-        return;
-    }
-    if (record->ops.copy) {
-        record->ops.copy(dst, src, count);
-        ecs_component_value_dtor(record, src, count);
-        return;
-    }
-
-    memcpy(dst, src, (size_t)record->info->size * count);
+    ecs_value_move(record->info->size, &record->ops, dst, src, count);
 }
 
 ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {
@@ -9465,11 +9520,47 @@ void ecs_entity_index_init() {
 
 void ecs_entity_index_fini() { sicore_vec_fini(&ecs_world.entity_index.entities); }
 
+#ifndef SIECS_STORAGE_INDEX_VEC_H
+#define SIECS_STORAGE_INDEX_VEC_H
+
+#define ECS_INDEX_VEC_ID_VALID(fn, id_type, vec_expr) \
+    static inline bool fn(id_type id) { \
+        return id != 0 && id < (vec_expr).size; \
+    }
+
+#define ECS_INDEX_VEC_GET_MUT(fn, id_type, value_type, vec_expr) \
+    static inline value_type *fn(id_type id) { \
+        return sicore_vec_get_mut(&(vec_expr), id, value_type); \
+    }
+
+#define ECS_INDEX_VEC_GET(fn, id_type, value_type, vec_expr) \
+    static inline const value_type *fn(id_type id) { \
+        return sicore_vec_get(&(vec_expr), id, value_type); \
+    }
+
+#endif
+
 ecs_module_index_t module_index;
 
-static bool ecs_module_id_valid(const ecs_module_index_t *index, ecs_module_id_t module) {
-    return module != 0 && module < index->modules.size;
-}
+ECS_INDEX_VEC_ID_VALID(
+    ecs_module_id_valid,
+    ecs_module_id_t,
+    module_index.modules
+)
+
+ECS_INDEX_VEC_GET_MUT(
+    ecs_module_get_unchecked,
+    ecs_module_id_t,
+    ecs_module_t,
+    module_index.modules
+)
+
+ECS_INDEX_VEC_GET(
+    ecs_module_get_const_unchecked,
+    ecs_module_id_t,
+    ecs_module_t,
+    module_index.modules
+)
 
 static void ecs_module_record_init(ecs_module_t *module, ecs_module_id_t *id, const char *name) {
     module->id = id;
@@ -9497,7 +9588,7 @@ void ecs_module_index_init() {
 void ecs_module_index_fini() {
     ecs_module_index_t *index = &module_index;
     for (uint32_t i = 1; i < index->modules.size; i++) {
-        ecs_module_t *module = sicore_vec_get_mut(&index->modules, i, ecs_module_t);
+        ecs_module_t *module = ecs_module_get_unchecked((ecs_module_id_t)i);
         ecs_module_record_fini(module);
     }
     sicore_vec_fini(&index->modules);
@@ -9513,25 +9604,22 @@ ecs_module_id_t ecs_module_index_create(ecs_module_id_t *id, const char *name) {
 }
 
 ecs_module_t *ecs_module_index_get(ecs_module_id_t module) {
-    ecs_module_index_t *index = &module_index;
-    ecs_assert(ecs_module_id_valid(index, module), "invalid module id: %u\n", module);
-    return sicore_vec_get_mut(&index->modules, module, ecs_module_t);
+    ecs_assert(ecs_module_id_valid(module), "invalid module id: %u\n", module);
+    return ecs_module_get_unchecked(module);
 }
 
 const ecs_module_t *ecs_module_index_get_const(ecs_module_id_t module) {
-    const ecs_module_index_t *index = &module_index;
-    ecs_assert(ecs_module_id_valid(index, module), "invalid module id: %u\n", module);
-    return sicore_vec_get(&index->modules, module, ecs_module_t);
+    ecs_assert(ecs_module_id_valid(module), "invalid module id: %u\n", module);
+    return ecs_module_get_const_unchecked(module);
 }
 
 ecs_module_id_t ecs_module_index_find(const ecs_module_id_t *id) {
-    const ecs_module_index_t *index = &module_index;
     if (!id || !*id) {
         return 0;
     }
 
     ecs_module_id_t module = *id;
-    if (ecs_module_id_valid(index, module)) {
+    if (ecs_module_id_valid(module)) {
         return module;
     }
 
@@ -10277,72 +10365,6 @@ static uint64_t ecs_resource_storage_size(const ecs_resource_record_t *record) {
     return record->size ? record->size : 1;
 }
 
-static void
-ecs_resource_value_copy_ctor(const ecs_resource_record_t *record, void *dst, const void *src) {
-    if (record->size == 0) {
-        return;
-    }
-    if (record->ops.copy_ctor) {
-        record->ops.copy_ctor(dst, src, 1);
-        return;
-    }
-    memcpy(dst, src, record->size);
-}
-
-static void
-ecs_resource_value_copy(const ecs_resource_record_t *record, void *dst, const void *src) {
-    if (record->size == 0) {
-        return;
-    }
-    if (record->ops.copy) {
-        record->ops.copy(dst, src, 1);
-        return;
-    }
-    memcpy(dst, src, record->size);
-}
-
-static void ecs_resource_value_move_ctor(ecs_resource_record_t *record, void *dst, void *src) {
-    if (record->size == 0) {
-        return;
-    }
-    if (record->ops.move_ctor) {
-        record->ops.move_ctor(dst, src, 1);
-        return;
-    }
-    if (record->ops.copy_ctor) {
-        record->ops.copy_ctor(dst, src, 1);
-        if (record->ops.dtor) {
-            record->ops.dtor(src, 1);
-        }
-        return;
-    }
-    memcpy(dst, src, record->size);
-}
-
-static void ecs_resource_value_move(ecs_resource_record_t *record, void *dst, void *src) {
-    if (record->size == 0) {
-        return;
-    }
-    if (record->ops.move) {
-        record->ops.move(dst, src, 1);
-        return;
-    }
-    if (record->ops.copy) {
-        record->ops.copy(dst, src, 1);
-        if (record->ops.dtor) {
-            record->ops.dtor(src, 1);
-        }
-        return;
-    }
-    memcpy(dst, src, record->size);
-}
-
-static void ecs_resource_value_dtor(const ecs_resource_record_t *record, void *ptr) {
-    if (record->size != 0 && record->ops.dtor) {
-        record->ops.dtor(ptr, 1);
-    }
-}
-
 static bool ecs_resource_index_registered(const ecs_resource_index_t *index, ecs_resource_t id) {
     return index->records[id].name != NULL;
 }
@@ -10472,9 +10494,9 @@ void ecs_resource_index_set(ecs_resource_t id, const void *data) {
 
     if (record->size != 0) {
         if (was_present) {
-            ecs_resource_value_copy(record, index->data[id], data);
+            ecs_value_copy(record->size, &record->ops, index->data[id], data, 1);
         } else {
-            ecs_resource_value_copy_ctor(record, index->data[id], data);
+            ecs_value_copy_ctor(record->size, &record->ops, index->data[id], data, 1);
         }
     }
 }
@@ -10497,9 +10519,9 @@ void ecs_resource_index_move(ecs_resource_t id, void *data) {
 
     if (record->size != 0) {
         if (was_present) {
-            ecs_resource_value_move(record, index->data[id], data);
+            ecs_value_move(record->size, &record->ops, index->data[id], data, 1);
         } else {
-            ecs_resource_value_move_ctor(record, index->data[id], data);
+            ecs_value_move_ctor(record->size, &record->ops, index->data[id], data, 1);
         }
     }
 }
@@ -10534,16 +10556,25 @@ void ecs_resource_index_remove(ecs_resource_t id) {
     if (record->on_remove) {
         record->on_remove(value);
     }
-    ecs_resource_value_dtor(record, value);
+    ecs_value_dtor(record->size, &record->ops, value, 1);
 
     free(value);
 }
 
 ecs_system_index_t system_index;
 
-static bool ecs_system_id_valid(const ecs_system_index_t *index, ecs_system_id_t system) {
-    return system != 0 && system < index->systems.size;
-}
+ECS_INDEX_VEC_ID_VALID(
+    ecs_system_id_valid,
+    ecs_system_id_t,
+    system_index.systems
+)
+
+ECS_INDEX_VEC_GET_MUT(
+    ecs_system_get_unchecked,
+    ecs_system_id_t,
+    ecs_system_t,
+    system_index.systems
+)
 
 static bool ecs_system_resource_conflict(const ecs_system_t *a, const ecs_system_t *b) {
     for (uint16_t i = 0; i < ECS_SYSTEM_RESOURCE_CAPACITY && a->read_resources[i]; i++) {
@@ -10638,7 +10669,7 @@ static void ecs_system_index_plan_one(
     uint8_t *state,
     sicore_vec_t *order
 ) {
-    if (!ecs_system_id_valid(index, system)) {
+    if (!ecs_system_id_valid(system)) {
         ecs_assert(false, "invalid system dependency: %u\n", system);
         return;
     }
@@ -10661,7 +10692,7 @@ static void ecs_system_index_plan_one(
             continue;
         }
 
-        if (!ecs_system_id_valid(index, after)) {
+        if (!ecs_system_id_valid(after)) {
             ecs_assert(false, "invalid system dependency: %u\n", after);
             continue;
         }
@@ -10742,9 +10773,8 @@ ecs_system_id_t ecs_system_index_create(const ecs_system_t *system) {
 }
 
 ecs_system_t *ecs_system_index_get(ecs_system_id_t system) {
-    ecs_system_index_t *index = &system_index;
-    ecs_assert(ecs_system_id_valid(index, system), "invalid system id: %u\n", system);
-    return sicore_vec_get_mut(&index->systems, system, ecs_system_t);
+    ecs_assert(ecs_system_id_valid(system), "invalid system id: %u\n", system);
+    return ecs_system_get_unchecked(system);
 }
 
 static void sort_phase_group(ecs_system_index_t *index, bool is_start, sicore_vec_t *out_order) {
