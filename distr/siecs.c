@@ -8875,6 +8875,37 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
     return bloom;
 }
 
+#ifdef _WIN32
+#include <malloc.h>
+#endif
+
+#define ECS_WORKER_ALIGNMENT 64
+
+static void *ecs_worker_alloc(size_t size) {
+#ifdef _WIN32
+    void *memory = _aligned_malloc(size, ECS_WORKER_ALIGNMENT);
+    if (memory) {
+        memset(memory, 0, size);
+    }
+    return memory;
+#else
+    void *memory = NULL;
+    if (posix_memalign(&memory, ECS_WORKER_ALIGNMENT, size) != 0) {
+        return NULL;
+    }
+    memset(memory, 0, size);
+    return memory;
+#endif
+}
+
+static void ecs_worker_free(void *memory) {
+#ifdef _WIN32
+    _aligned_free(memory);
+#else
+    free(memory);
+#endif
+}
+
 static void ecs_worker_run_job(ecs_worker_pool_t *pool, uint32_t job_index) {
     ecs_worker_job_t *job = &pool->jobs[job_index];
     ecs_run_system(job->system);
@@ -8946,7 +8977,7 @@ void ecs_worker_pool_init(ecs_worker_pool_t *pool, uint16_t requested_workers) {
     }
 
     pool->worker_count = requested_workers;
-    pool->workers = calloc(requested_workers, sizeof(ecs_worker_t));
+    pool->workers = ecs_worker_alloc(requested_workers * sizeof(ecs_worker_t));
     ecs_assert_not_null(pool->workers);
     ecs_platform_mutex_init(&pool->mutex);
     ecs_platform_condition_init(&pool->condition);
@@ -8983,7 +9014,7 @@ void ecs_worker_pool_fini(ecs_worker_pool_t *pool) {
     ecs_platform_condition_fini(&pool->condition);
     ecs_platform_mutex_fini(&pool->mutex);
     free(pool->jobs);
-    free(pool->workers);
+    ecs_worker_free(pool->workers);
     *pool = (ecs_worker_pool_t){ 0 };
 }
 
