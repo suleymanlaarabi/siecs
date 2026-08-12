@@ -1,4 +1,5 @@
 #include "system_index.h"
+#include "index_vec.h"
 #include "../utils.h"
 #include "../world_internal.h"
 #include <stdint.h>
@@ -7,9 +8,18 @@
 
 ecs_system_index_t system_index;
 
-static bool ecs_system_id_valid(const ecs_system_index_t *index, ecs_system_id_t system) {
-    return system != 0 && system < index->systems.size;
-}
+ECS_INDEX_VEC_ID_VALID(
+    ecs_system_id_valid,
+    ecs_system_id_t,
+    system_index.systems
+)
+
+ECS_INDEX_VEC_GET_MUT(
+    ecs_system_get_unchecked,
+    ecs_system_id_t,
+    ecs_system_t,
+    system_index.systems
+)
 
 static bool ecs_system_resource_conflict(const ecs_system_t *a, const ecs_system_t *b) {
     for (uint16_t i = 0; i < ECS_SYSTEM_RESOURCE_CAPACITY && a->read_resources[i]; i++) {
@@ -104,7 +114,7 @@ static void ecs_system_index_plan_one(
     uint8_t *state,
     sicore_vec_t *order
 ) {
-    if (!ecs_system_id_valid(index, system)) {
+    if (!ecs_system_id_valid(system)) {
         ecs_assert(false, "invalid system dependency: %u\n", system);
         return;
     }
@@ -127,7 +137,7 @@ static void ecs_system_index_plan_one(
             continue;
         }
 
-        if (!ecs_system_id_valid(index, after)) {
+        if (!ecs_system_id_valid(after)) {
             ecs_assert(false, "invalid system dependency: %u\n", after);
             continue;
         }
@@ -208,9 +218,8 @@ ecs_system_id_t ecs_system_index_create(const ecs_system_t *system) {
 }
 
 ecs_system_t *ecs_system_index_get(ecs_system_id_t system) {
-    ecs_system_index_t *index = &system_index;
-    ecs_assert(ecs_system_id_valid(index, system), "invalid system id: %u\n", system);
-    return sicore_vec_get_mut(&index->systems, system, ecs_system_t);
+    ecs_assert(ecs_system_id_valid(system), "invalid system id: %u\n", system);
+    return ecs_system_get_unchecked(system);
 }
 
 static void sort_phase_group(ecs_system_index_t *index, bool is_start, sicore_vec_t *out_order) {

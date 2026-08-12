@@ -1,10 +1,10 @@
 #include "component_index.h"
+#include "value_ops.h"
 #include "sicore.h"
 #include "siecs.h"
 #include "sireflect.h"
 #include "world_internal.h"
 #include <stdlib.h>
-#include <string.h>
 
 sicore_vec_t ecs_component_default_relation_index;
 ecs_component_index_t component_index;
@@ -122,24 +122,11 @@ void ecs_component_index_fini() {
 }
 
 void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count) {
-    if (record->info->size == 0 || count == 0) {
-        return;
-    }
-
-    if (record->ops.ctor) {
-        record->ops.ctor(dst, count);
-        return;
-    }
-
-    memset(dst, 0, (size_t)record->info->size * count);
+    ecs_value_ctor(record->info->size, &record->ops, dst, count);
 }
 
 void ecs_component_value_dtor(const ecs_component_record_t *record, void *ptr, uint32_t count) {
-    if (record->info->size == 0 || count == 0 || !record->ops.dtor) {
-        return;
-    }
-
-    record->ops.dtor(ptr, count);
+    ecs_value_dtor(record->info->size, &record->ops, ptr, count);
 }
 
 void ecs_component_value_copy_ctor(
@@ -148,16 +135,7 @@ void ecs_component_value_copy_ctor(
     const void *src,
     uint32_t count
 ) {
-    if (record->info->size == 0 || count == 0) {
-        return;
-    }
-
-    if (record->ops.copy_ctor) {
-        record->ops.copy_ctor(dst, src, count);
-        return;
-    }
-
-    memcpy(dst, src, (size_t)record->info->size * count);
+    ecs_value_copy_ctor(record->info->size, &record->ops, dst, src, count);
 }
 
 void ecs_component_value_copy(
@@ -166,16 +144,7 @@ void ecs_component_value_copy(
     const void *src,
     uint32_t count
 ) {
-    if (record->info->size == 0 || count == 0) {
-        return;
-    }
-
-    if (record->ops.copy) {
-        record->ops.copy(dst, src, count);
-        return;
-    }
-
-    memcpy(dst, src, (size_t)record->info->size * count);
+    ecs_value_copy(record->info->size, &record->ops, dst, src, count);
 }
 
 void ecs_component_value_move_ctor(
@@ -184,21 +153,7 @@ void ecs_component_value_move_ctor(
     void *src,
     uint32_t count
 ) {
-    if (record->info->size == 0 || count == 0) {
-        return;
-    }
-
-    if (record->ops.move_ctor) {
-        record->ops.move_ctor(dst, src, count);
-        return;
-    }
-    if (record->ops.copy_ctor) {
-        record->ops.copy_ctor(dst, src, count);
-        ecs_component_value_dtor(record, src, count);
-        return;
-    }
-
-    memcpy(dst, src, (size_t)record->info->size * count);
+    ecs_value_move_ctor(record->info->size, &record->ops, dst, src, count);
 }
 
 void ecs_component_value_move(
@@ -207,21 +162,7 @@ void ecs_component_value_move(
     void *src,
     uint32_t count
 ) {
-    if (record->info->size == 0 || count == 0) {
-        return;
-    }
-
-    if (record->ops.move) {
-        record->ops.move(dst, src, count);
-        return;
-    }
-    if (record->ops.copy) {
-        record->ops.copy(dst, src, count);
-        ecs_component_value_dtor(record, src, count);
-        return;
-    }
-
-    memcpy(dst, src, (size_t)record->info->size * count);
+    ecs_value_move(record->info->size, &record->ops, dst, src, count);
 }
 
 ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {

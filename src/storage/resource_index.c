@@ -2,78 +2,13 @@
 #include "../utils.h"
 #include "../world_internal.h"
 #include "siecs.h"
+#include "value_ops.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 static uint64_t ecs_resource_storage_size(const ecs_resource_record_t *record) {
     return record->size ? record->size : 1;
-}
-
-static void
-ecs_resource_value_copy_ctor(const ecs_resource_record_t *record, void *dst, const void *src) {
-    if (record->size == 0) {
-        return;
-    }
-    if (record->ops.copy_ctor) {
-        record->ops.copy_ctor(dst, src, 1);
-        return;
-    }
-    memcpy(dst, src, record->size);
-}
-
-static void
-ecs_resource_value_copy(const ecs_resource_record_t *record, void *dst, const void *src) {
-    if (record->size == 0) {
-        return;
-    }
-    if (record->ops.copy) {
-        record->ops.copy(dst, src, 1);
-        return;
-    }
-    memcpy(dst, src, record->size);
-}
-
-static void ecs_resource_value_move_ctor(ecs_resource_record_t *record, void *dst, void *src) {
-    if (record->size == 0) {
-        return;
-    }
-    if (record->ops.move_ctor) {
-        record->ops.move_ctor(dst, src, 1);
-        return;
-    }
-    if (record->ops.copy_ctor) {
-        record->ops.copy_ctor(dst, src, 1);
-        if (record->ops.dtor) {
-            record->ops.dtor(src, 1);
-        }
-        return;
-    }
-    memcpy(dst, src, record->size);
-}
-
-static void ecs_resource_value_move(ecs_resource_record_t *record, void *dst, void *src) {
-    if (record->size == 0) {
-        return;
-    }
-    if (record->ops.move) {
-        record->ops.move(dst, src, 1);
-        return;
-    }
-    if (record->ops.copy) {
-        record->ops.copy(dst, src, 1);
-        if (record->ops.dtor) {
-            record->ops.dtor(src, 1);
-        }
-        return;
-    }
-    memcpy(dst, src, record->size);
-}
-
-static void ecs_resource_value_dtor(const ecs_resource_record_t *record, void *ptr) {
-    if (record->size != 0 && record->ops.dtor) {
-        record->ops.dtor(ptr, 1);
-    }
 }
 
 static bool ecs_resource_index_registered(const ecs_resource_index_t *index, ecs_resource_t id) {
@@ -205,9 +140,9 @@ void ecs_resource_index_set(ecs_resource_t id, const void *data) {
 
     if (record->size != 0) {
         if (was_present) {
-            ecs_resource_value_copy(record, index->data[id], data);
+            ecs_value_copy(record->size, &record->ops, index->data[id], data, 1);
         } else {
-            ecs_resource_value_copy_ctor(record, index->data[id], data);
+            ecs_value_copy_ctor(record->size, &record->ops, index->data[id], data, 1);
         }
     }
 }
@@ -230,9 +165,9 @@ void ecs_resource_index_move(ecs_resource_t id, void *data) {
 
     if (record->size != 0) {
         if (was_present) {
-            ecs_resource_value_move(record, index->data[id], data);
+            ecs_value_move(record->size, &record->ops, index->data[id], data, 1);
         } else {
-            ecs_resource_value_move_ctor(record, index->data[id], data);
+            ecs_value_move_ctor(record->size, &record->ops, index->data[id], data, 1);
         }
     }
 }
@@ -267,7 +202,7 @@ void ecs_resource_index_remove(ecs_resource_t id) {
     if (record->on_remove) {
         record->on_remove(value);
     }
-    ecs_resource_value_dtor(record, value);
+    ecs_value_dtor(record->size, &record->ops, value, 1);
 
     free(value);
 }
