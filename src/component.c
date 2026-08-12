@@ -1,8 +1,8 @@
 #include "helper.h"
-#include "siecs.h"
-#include "sireflect.h"
-#include "sijson.h"
 #include "relation.h"
+#include "siecs.h"
+#include "sijson.h"
+#include "sireflect.h"
 #include "storage/component_index.h"
 #include "utils.h"
 #include "world_internal.h"
@@ -12,7 +12,7 @@
 #include <string.h>
 
 static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
-    uint32_t id = ecs_world.component_index.components.size;
+    uint32_t id = component_index.components.size;
     ecs_assert(id + count <= UINT16_MAX, "component id overflow\n");
     return id;
 }
@@ -69,7 +69,7 @@ void RelationOnSet(
         source_index = source_data->entities.size;
         sicore_vec_push_u64(&source_data->entities, entity);
     } else {
-        RelationSource source_data = {0};
+        RelationSource source_data = { 0 };
         sicore_vec_init(&source_data.entities, sizeof(ecs_entity_t));
         sicore_vec_push_u64(&source_data.entities, entity);
         ecs_set_cid(target_data->entity, source_component, &source_data);
@@ -104,8 +104,7 @@ void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr)
     }
 
     if (index != last) {
-        ecs_entity_t moved =
-            *sicore_vec_get(&target_source_data->entities, last, ecs_entity_t);
+        ecs_entity_t moved = *sicore_vec_get(&target_source_data->entities, last, ecs_entity_t);
         *sicore_vec_get_mut(&target_source_data->entities, index, ecs_entity_t) = moved;
         RelationTarget *moved_data = ecs_get_cid(moved, component - 1);
         moved_data->source_index = index;
@@ -153,7 +152,7 @@ static ecs_component_t ecs_component_register_type(
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
 
-    if (*id != 0 && *id < ecs_world.component_index.components.size) {
+    if (*id != 0 && *id < component_index.components.size) {
         const ecs_component_record_t *existing = ecs_component_index_get(*id);
         if (existing->tables.data) {
             return *id;
@@ -242,13 +241,13 @@ ecs_component_t ecs_component_init(const ecs_component_desc_t *desc) {
 }
 
 const ecs_component_info_t *ecs_component_info(ecs_component_t component) {
-    if (component == 0 || component >= ecs_world.component_index.components.size) {
+    if (component == 0 || component >= component_index.components.size) {
         return NULL;
     }
     return ecs_component_index_get(component)->info;
 }
 
-uint32_t ecs_component_count(void) { return ecs_world.component_index.components.size; }
+uint32_t ecs_component_count(void) { return component_index.components.size; }
 
 ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc) {
     sireflect_registry_t *registry = sijson_default_registry();
@@ -258,7 +257,7 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
         return 0;
     }
 
-    for (uint32_t i = 1; i < ecs_world.component_index.components.size; i++) {
+    for (uint32_t i = 1; i < component_index.components.size; i++) {
         const ecs_component_info_t *info = ecs_component_index_get((ecs_component_t)i)->info;
         if (info && info->type == type) {
             return (ecs_component_t)i;
@@ -293,7 +292,7 @@ ecs_component_t ecs_tag_init(const char *name) {
 
 const char *ecs_component_name(ecs_component_t component) {
     ecs_assert(
-        component != 0 && component < ecs_world.component_index.components.size,
+        component != 0 && component < component_index.components.size,
         "invalid component id: %u\n",
         component
     );

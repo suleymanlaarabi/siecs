@@ -126,6 +126,7 @@ void query_fields_refresh_after_table_growth(void);
 void system_run(void);
 void system_parallel_independent_callbacks(void);
 void system_parallel_query_table_conflicts(void);
+void system_main_thread_only(void);
 void system_parallel_after_is_a_barrier(void);
 void system_resource_access_conflicts(void);
 void system_parallel_structural_changes_flush_at_barrier(void);
@@ -608,6 +609,10 @@ bake_test_case system_testcases[] = {
         system_parallel_query_table_conflicts
     },
     {
+        "main_thread_only",
+        system_main_thread_only
+    },
+    {
         "parallel_after_is_a_barrier",
         system_parallel_after_is_a_barrier
     },
@@ -797,7 +802,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        27,
+        28,
         childof_testcases
     },
     {

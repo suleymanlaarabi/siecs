@@ -4673,6 +4673,7 @@ typedef struct ecs_component_index_s {
     sicore_vec_t components; // ecs_component_record_t
 } ecs_component_index_t;
 
+extern ecs_component_index_t component_index;
 extern sicore_vec_t ecs_component_default_relation_index;
 
 static inline ecs_component_required_relation_t *ecs_component_default_relations(
@@ -4700,13 +4701,10 @@ void ecs_component_index_register(
     const sireflect_struct_desc_t *reflection_desc
 );
 
-#define ecs_component_index_get(id)                                                                \
-    sicore_vec_get(&ecs_world.component_index.components, id, ecs_component_record_t)
-#define ecs_component_index_get_mut(id)                                                            \
-    sicore_vec_get_mut(&ecs_world.component_index.components, id, ecs_component_record_t)
-
 void ecs_component_index_init();
 void ecs_component_index_fini();
+
+ecs_component_record_t *ecs_component_index_get(ecs_component_t cid);
 
 void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count);
 void ecs_component_value_dtor(const ecs_component_record_t *record, void *ptr, uint32_t count);
@@ -5188,7 +5186,6 @@ typedef struct ecs_world_s ecs_world_t;
 
 struct ecs_world_s {
     ecs_entity_index_t entity_index;
-    ecs_component_index_t component_index;
     ecs_relation_index_t relation_index;
     ecs_table_index_t table_index;
     ecs_query_index_t query_index;
@@ -6214,7 +6211,7 @@ void ecs_defer_end(void) {
 }
 
 static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
-    uint32_t id = ecs_world.component_index.components.size;
+    uint32_t id = component_index.components.size;
     ecs_assert(id + count <= UINT16_MAX, "component id overflow\n");
     return id;
 }
@@ -6271,7 +6268,7 @@ void RelationOnSet(
         source_index = source_data->entities.size;
         sicore_vec_push_u64(&source_data->entities, entity);
     } else {
-        RelationSource source_data = {0};
+        RelationSource source_data = { 0 };
         sicore_vec_init(&source_data.entities, sizeof(ecs_entity_t));
         sicore_vec_push_u64(&source_data.entities, entity);
         ecs_set_cid(target_data->entity, source_component, &source_data);
@@ -6306,8 +6303,7 @@ void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr)
     }
 
     if (index != last) {
-        ecs_entity_t moved =
-            *sicore_vec_get(&target_source_data->entities, last, ecs_entity_t);
+        ecs_entity_t moved = *sicore_vec_get(&target_source_data->entities, last, ecs_entity_t);
         *sicore_vec_get_mut(&target_source_data->entities, index, ecs_entity_t) = moved;
         RelationTarget *moved_data = ecs_get_cid(moved, component - 1);
         moved_data->source_index = index;
@@ -6355,7 +6351,7 @@ static ecs_component_t ecs_component_register_type(
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
 
-    if (*id != 0 && *id < ecs_world.component_index.components.size) {
+    if (*id != 0 && *id < component_index.components.size) {
         const ecs_component_record_t *existing = ecs_component_index_get(*id);
         if (existing->tables.data) {
             return *id;
@@ -6444,13 +6440,13 @@ ecs_component_t ecs_component_init(const ecs_component_desc_t *desc) {
 }
 
 const ecs_component_info_t *ecs_component_info(ecs_component_t component) {
-    if (component == 0 || component >= ecs_world.component_index.components.size) {
+    if (component == 0 || component >= component_index.components.size) {
         return NULL;
     }
     return ecs_component_index_get(component)->info;
 }
 
-uint32_t ecs_component_count(void) { return ecs_world.component_index.components.size; }
+uint32_t ecs_component_count(void) { return component_index.components.size; }
 
 ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc) {
     sireflect_registry_t *registry = sijson_default_registry();
@@ -6460,7 +6456,7 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
         return 0;
     }
 
-    for (uint32_t i = 1; i < ecs_world.component_index.components.size; i++) {
+    for (uint32_t i = 1; i < component_index.components.size; i++) {
         const ecs_component_info_t *info = ecs_component_index_get((ecs_component_t)i)->info;
         if (info && info->type == type) {
             return (ecs_component_t)i;
@@ -6495,7 +6491,7 @@ ecs_component_t ecs_tag_init(const char *name) {
 
 const char *ecs_component_name(ecs_component_t component) {
     ecs_assert(
-        component != 0 && component < ecs_world.component_index.components.size,
+        component != 0 && component < component_index.components.size,
         "invalid component id: %u\n",
         component
     );
@@ -6787,7 +6783,7 @@ static inline void ecs_with_impl(ecs_component_t component, ecs_component_t requ
     );
 #endif
 
-    ecs_component_record_t *record = ecs_component_index_get_mut(component);
+    ecs_component_record_t *record = ecs_component_index_get(component);
 
     ecs_assert(record->tables.size == 0, "component already used cannot register requirement");
 
@@ -6815,7 +6811,7 @@ void ecs_with_relation_id(ecs_component_t cid, ecs_relation_id_t relation, ecs_e
     ecs_assert_is_alive(target);
 
 #ifndef NDEBUG
-    ecs_component_record_t *record = ecs_component_index_get_mut(cid);
+    ecs_component_record_t *record = ecs_component_index_get(cid);
     ecs_assert(record->tables.size == 0, "component already used cannot register relation default");
 #endif
 
@@ -6831,16 +6827,14 @@ void ecs_with_relation_id(ecs_component_t cid, ecs_relation_id_t relation, ecs_e
         (uint32_t)cid + 1,
         sizeof(ecs_component_required_relation_t *)
     );
-    ecs_component_required_relation_t **defaults =
-        sicore_vec_get_mut(
-            &ecs_component_default_relation_index,
-            cid,
-            ecs_component_required_relation_t *
-        );
+    ecs_component_required_relation_t **defaults = sicore_vec_get_mut(
+        &ecs_component_default_relation_index,
+        cid,
+        ecs_component_required_relation_t *
+    );
 
     uint16_t count = 0;
-    for (const ecs_component_required_relation_t *current = *defaults;
-         current && current->relation;
+    for (const ecs_component_required_relation_t *current = *defaults; current && current->relation;
          current++, count++) {
 #ifndef NDEBUG
         if (current->relation != relation) {
@@ -6854,10 +6848,7 @@ void ecs_with_relation_id(ecs_component_t cid, ecs_relation_id_t relation, ecs_e
 #endif
     }
 
-    *defaults = realloc(
-        *defaults,
-        sizeof(ecs_component_required_relation_t) * (count + 2)
-    );
+    *defaults = realloc(*defaults, sizeof(ecs_component_required_relation_t) * (count + 2));
     ecs_assert_not_null(*defaults);
     (*defaults)[count] =
         (ecs_component_required_relation_t){ .relation = relation, .target = target };
@@ -8427,19 +8418,17 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     table->entity_count = 0;
     table->add_edge.aux = 0;
     table->entities = malloc(sizeof(ecs_entity_t) * table->entity_capacity);
-    table->cls = type.component_count == 0
-                     ? NULL
-                     : malloc(sizeof(ecs_column_t) * type.component_count);
-    table->data_columns = type.component_count == 0
-                              ? NULL
-                              : malloc(sizeof(uint16_t) * type.component_count);
+    table->cls =
+        type.component_count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.component_count);
+    table->data_columns =
+        type.component_count == 0 ? NULL : malloc(sizeof(uint16_t) * type.component_count);
     table->bloom = ecs_type_bloom(&type);
 
     sicore_vec_init(&table->observers_by_event, sizeof(sicore_vec_t));
     ecs_id_map_init(&table->add_edge);
 
     for (uint16_t i = 0; i < type.component_count; i++) {
-        ecs_component_record_t *rec = ecs_component_index_get_mut(type.ids[i]);
+        ecs_component_record_t *rec = ecs_component_index_get(type.ids[i]);
         sicore_vec_push_u16(&rec->tables, table_id);
         table->cls[i].size = rec->size;
         table->cls[i].data = rec->size != 0 ? calloc(table->entity_capacity, rec->size) : NULL;
@@ -8464,8 +8453,7 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
         free(table->data_columns);
         table->data_columns = NULL;
     } else if (table->add_edge.aux < type.component_count) {
-        table->data_columns =
-            realloc(table->data_columns, sizeof(uint16_t) * table->add_edge.aux);
+        table->data_columns = realloc(table->data_columns, sizeof(uint16_t) * table->add_edge.aux);
     }
 }
 
@@ -9212,6 +9200,7 @@ void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id) {
 }
 
 sicore_vec_t ecs_component_default_relation_index;
+ecs_component_index_t component_index;
 
 static sireflect_struct_desc_t *
 ecs_component_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
@@ -9249,13 +9238,13 @@ void ecs_component_index_register(
     const sireflect_struct_desc_t *reflection_desc
 ) {
     sicore_vec_ensure(
-        &ecs_world.component_index.components,
+        &component_index.components,
         (uint32_t)id + 1,
         sizeof(ecs_component_record_t)
     );
 
     ecs_component_record_t *existing =
-        sicore_vec_get_mut(&ecs_world.component_index.components, id, ecs_component_record_t);
+        sicore_vec_get_mut(&component_index.components, id, ecs_component_record_t);
     if (existing->tables.data) {
         return;
     }
@@ -9296,17 +9285,13 @@ void ecs_component_index_register(
 }
 
 void ecs_component_index_init() {
-    sicore_vec_init_w_size(
-        &ecs_world.component_index.components,
-        sizeof(ecs_component_record_t),
-        256
-    );
+    sicore_vec_init_w_size(&component_index.components, sizeof(ecs_component_record_t), 256);
 }
 
 void ecs_component_index_fini() {
-    ecs_component_record_t *records = ecs_world.component_index.components.data;
+    ecs_component_record_t *records = component_index.components.data;
 
-    for (uint32_t i = 0; i < ecs_world.component_index.components.size; i++) {
+    for (uint32_t i = 0; i < component_index.components.size; i++) {
         if (records[i].info) {
             free((char *)records[i].info->name);
 
@@ -9321,15 +9306,14 @@ void ecs_component_index_fini() {
         sicore_vec_fini(&records[i].tables);
     }
     if (ecs_component_default_relation_index.data) {
-        ecs_component_required_relation_t **defaults =
-            ecs_component_default_relation_index.data;
+        ecs_component_required_relation_t **defaults = ecs_component_default_relation_index.data;
         for (uint32_t i = 0; i < ecs_component_default_relation_index.size; i++) {
             free(defaults[i]);
         }
         sicore_vec_fini(&ecs_component_default_relation_index);
     }
     ecs_component_default_relation_index = (sicore_vec_t){ 0 };
-    sicore_vec_fini(&ecs_world.component_index.components);
+    sicore_vec_fini(&component_index.components);
 }
 
 void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count) {
@@ -9433,6 +9417,10 @@ void ecs_component_value_move(
     }
 
     memcpy(dst, src, (size_t)record->size * count);
+}
+
+ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {
+    return sicore_vec_get_mut(&component_index.components, cid, ecs_component_record_t);
 }
 
 bool ecs_entity_index_is_alive(ecs_entity_t entity) {
@@ -11043,11 +11031,8 @@ static uint32_t ecs_pair_slot_capacity(const ecs_table_index_t *index) {
     return index->pair_slot_shift ? 1u << index->pair_slot_shift : 0;
 }
 
-static void ecs_pair_slot_insert(
-    ecs_pair_table_slot_t *slots,
-    uint32_t mask,
-    ecs_pair_table_slot_t slot
-) {
+static void
+ecs_pair_slot_insert(ecs_pair_table_slot_t *slots, uint32_t mask, ecs_pair_table_slot_t slot) {
     uint32_t i = ecs_pair_hash(slot.key, slot.value) & mask;
     while (slots[i].key) {
         i = (i + 1) & mask;
@@ -11058,9 +11043,8 @@ static void ecs_pair_slot_insert(
 static void ecs_pair_slots_grow(ecs_table_index_t *index) {
     uint32_t old_capacity = ecs_pair_slot_capacity(index);
     ecs_pair_table_slot_t *old = index->pair_slots;
-    index->pair_slot_shift = index->pair_slot_shift
-                                     ? index->pair_slot_shift + 1
-                                     : INITIAL_PAIR_SLOT_SHIFT;
+    index->pair_slot_shift =
+        index->pair_slot_shift ? index->pair_slot_shift + 1 : INITIAL_PAIR_SLOT_SHIFT;
     uint32_t capacity = ecs_pair_slot_capacity(index);
     index->pair_slots = calloc(capacity, sizeof(ecs_pair_table_slot_t));
     for (uint32_t i = 0; i < old_capacity; i++) {
@@ -11071,12 +11055,8 @@ static void ecs_pair_slots_grow(ecs_table_index_t *index) {
     free(old);
 }
 
-static ecs_pair_table_slot_t *ecs_pair_slot(
-    ecs_table_index_t *index,
-    uint16_t key,
-    uint64_t value,
-    bool create
-) {
+static ecs_pair_table_slot_t *
+ecs_pair_slot(ecs_table_index_t *index, uint16_t key, uint64_t value, bool create) {
     if (!index->pair_slot_shift ||
         (create && (index->pair_slot_count + 1) * 4 >= ecs_pair_slot_capacity(index) * 3)) {
         if (!create) {
@@ -11229,7 +11209,7 @@ static void ecs_table_index_register_inherited_components(ecs_table_t *table, ui
             }
 
             table->bloom |= 1ull << (component % 64);
-            ecs_component_record_t *record = ecs_component_index_get_mut(component);
+            ecs_component_record_t *record = ecs_component_index_get(component);
             sicore_vec_push_u16(&record->tables, table_id);
         }
 

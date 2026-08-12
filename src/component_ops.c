@@ -300,7 +300,7 @@ static inline void ecs_with_impl(ecs_component_t component, ecs_component_t requ
     );
 #endif
 
-    ecs_component_record_t *record = ecs_component_index_get_mut(component);
+    ecs_component_record_t *record = ecs_component_index_get(component);
 
     ecs_assert(record->tables.size == 0, "component already used cannot register requirement");
 
@@ -328,7 +328,7 @@ void ecs_with_relation_id(ecs_component_t cid, ecs_relation_id_t relation, ecs_e
     ecs_assert_is_alive(target);
 
 #ifndef NDEBUG
-    ecs_component_record_t *record = ecs_component_index_get_mut(cid);
+    ecs_component_record_t *record = ecs_component_index_get(cid);
     ecs_assert(record->tables.size == 0, "component already used cannot register relation default");
 #endif
 
@@ -344,16 +344,14 @@ void ecs_with_relation_id(ecs_component_t cid, ecs_relation_id_t relation, ecs_e
         (uint32_t)cid + 1,
         sizeof(ecs_component_required_relation_t *)
     );
-    ecs_component_required_relation_t **defaults =
-        sicore_vec_get_mut(
-            &ecs_component_default_relation_index,
-            cid,
-            ecs_component_required_relation_t *
-        );
+    ecs_component_required_relation_t **defaults = sicore_vec_get_mut(
+        &ecs_component_default_relation_index,
+        cid,
+        ecs_component_required_relation_t *
+    );
 
     uint16_t count = 0;
-    for (const ecs_component_required_relation_t *current = *defaults;
-         current && current->relation;
+    for (const ecs_component_required_relation_t *current = *defaults; current && current->relation;
          current++, count++) {
 #ifndef NDEBUG
         if (current->relation != relation) {
@@ -367,10 +365,7 @@ void ecs_with_relation_id(ecs_component_t cid, ecs_relation_id_t relation, ecs_e
 #endif
     }
 
-    *defaults = realloc(
-        *defaults,
-        sizeof(ecs_component_required_relation_t) * (count + 2)
-    );
+    *defaults = realloc(*defaults, sizeof(ecs_component_required_relation_t) * (count + 2));
     ecs_assert_not_null(*defaults);
     (*defaults)[count] =
         (ecs_component_required_relation_t){ .relation = relation, .target = target };

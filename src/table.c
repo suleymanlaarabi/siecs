@@ -14,19 +14,17 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     table->entity_count = 0;
     table->add_edge.aux = 0;
     table->entities = malloc(sizeof(ecs_entity_t) * table->entity_capacity);
-    table->cls = type.component_count == 0
-                     ? NULL
-                     : malloc(sizeof(ecs_column_t) * type.component_count);
-    table->data_columns = type.component_count == 0
-                              ? NULL
-                              : malloc(sizeof(uint16_t) * type.component_count);
+    table->cls =
+        type.component_count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.component_count);
+    table->data_columns =
+        type.component_count == 0 ? NULL : malloc(sizeof(uint16_t) * type.component_count);
     table->bloom = ecs_type_bloom(&type);
 
     sicore_vec_init(&table->observers_by_event, sizeof(sicore_vec_t));
     ecs_id_map_init(&table->add_edge);
 
     for (uint16_t i = 0; i < type.component_count; i++) {
-        ecs_component_record_t *rec = ecs_component_index_get_mut(type.ids[i]);
+        ecs_component_record_t *rec = ecs_component_index_get(type.ids[i]);
         sicore_vec_push_u16(&rec->tables, table_id);
         table->cls[i].size = rec->size;
         table->cls[i].data = rec->size != 0 ? calloc(table->entity_capacity, rec->size) : NULL;
@@ -51,8 +49,7 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
         free(table->data_columns);
         table->data_columns = NULL;
     } else if (table->add_edge.aux < type.component_count) {
-        table->data_columns =
-            realloc(table->data_columns, sizeof(uint16_t) * table->add_edge.aux);
+        table->data_columns = realloc(table->data_columns, sizeof(uint16_t) * table->add_edge.aux);
     }
 }
 

@@ -20,7 +20,6 @@ typedef struct ecs_world_s ecs_world_t;
 
 struct ecs_world_s {
     ecs_entity_index_t entity_index;
-    ecs_component_index_t component_index;
     ecs_relation_index_t relation_index;
     ecs_table_index_t table_index;
     ecs_query_index_t query_index;

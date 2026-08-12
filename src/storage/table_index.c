@@ -59,11 +59,8 @@ static uint32_t ecs_pair_slot_capacity(const ecs_table_index_t *index) {
     return index->pair_slot_shift ? 1u << index->pair_slot_shift : 0;
 }
 
-static void ecs_pair_slot_insert(
-    ecs_pair_table_slot_t *slots,
-    uint32_t mask,
-    ecs_pair_table_slot_t slot
-) {
+static void
+ecs_pair_slot_insert(ecs_pair_table_slot_t *slots, uint32_t mask, ecs_pair_table_slot_t slot) {
     uint32_t i = ecs_pair_hash(slot.key, slot.value) & mask;
     while (slots[i].key) {
         i = (i + 1) & mask;
@@ -74,9 +71,8 @@ static void ecs_pair_slot_insert(
 static void ecs_pair_slots_grow(ecs_table_index_t *index) {
     uint32_t old_capacity = ecs_pair_slot_capacity(index);
     ecs_pair_table_slot_t *old = index->pair_slots;
-    index->pair_slot_shift = index->pair_slot_shift
-                                     ? index->pair_slot_shift + 1
-                                     : INITIAL_PAIR_SLOT_SHIFT;
+    index->pair_slot_shift =
+        index->pair_slot_shift ? index->pair_slot_shift + 1 : INITIAL_PAIR_SLOT_SHIFT;
     uint32_t capacity = ecs_pair_slot_capacity(index);
     index->pair_slots = calloc(capacity, sizeof(ecs_pair_table_slot_t));
     for (uint32_t i = 0; i < old_capacity; i++) {
@@ -87,12 +83,8 @@ static void ecs_pair_slots_grow(ecs_table_index_t *index) {
     free(old);
 }
 
-static ecs_pair_table_slot_t *ecs_pair_slot(
-    ecs_table_index_t *index,
-    uint16_t key,
-    uint64_t value,
-    bool create
-) {
+static ecs_pair_table_slot_t *
+ecs_pair_slot(ecs_table_index_t *index, uint16_t key, uint64_t value, bool create) {
     if (!index->pair_slot_shift ||
         (create && (index->pair_slot_count + 1) * 4 >= ecs_pair_slot_capacity(index) * 3)) {
         if (!create) {
@@ -245,7 +237,7 @@ static void ecs_table_index_register_inherited_components(ecs_table_t *table, ui
             }
 
             table->bloom |= 1ull << (component % 64);
-            ecs_component_record_t *record = ecs_component_index_get_mut(component);
+            ecs_component_record_t *record = ecs_component_index_get(component);
             sicore_vec_push_u16(&record->tables, table_id);
         }
 

@@ -37,6 +37,7 @@ typedef struct ecs_component_index_s {
     sicore_vec_t components; // ecs_component_record_t
 } ecs_component_index_t;
 
+extern ecs_component_index_t component_index;
 extern sicore_vec_t ecs_component_default_relation_index;
 
 static inline ecs_component_required_relation_t *ecs_component_default_relations(
@@ -64,13 +65,10 @@ void ecs_component_index_register(
     const sireflect_struct_desc_t *reflection_desc
 );
 
-#define ecs_component_index_get(id)                                                                \
-    sicore_vec_get(&ecs_world.component_index.components, id, ecs_component_record_t)
-#define ecs_component_index_get_mut(id)                                                            \
-    sicore_vec_get_mut(&ecs_world.component_index.components, id, ecs_component_record_t)
-
 void ecs_component_index_init();
 void ecs_component_index_fini();
+
+ecs_component_record_t *ecs_component_index_get(ecs_component_t cid);
 
 void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count);
 void ecs_component_value_dtor(const ecs_component_record_t *record, void *ptr, uint32_t count);

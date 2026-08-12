@@ -1,4 +1,5 @@
 #include "component_index.h"
+#include "sicore.h"
 #include "siecs.h"
 #include "sireflect.h"
 #include "world_internal.h"
@@ -6,6 +7,7 @@
 #include <string.h>
 
 sicore_vec_t ecs_component_default_relation_index;
+ecs_component_index_t component_index;
 
 static sireflect_struct_desc_t *
 ecs_component_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
@@ -43,13 +45,13 @@ void ecs_component_index_register(
     const sireflect_struct_desc_t *reflection_desc
 ) {
     sicore_vec_ensure(
-        &ecs_world.component_index.components,
+        &component_index.components,
         (uint32_t)id + 1,
         sizeof(ecs_component_record_t)
     );
 
     ecs_component_record_t *existing =
-        sicore_vec_get_mut(&ecs_world.component_index.components, id, ecs_component_record_t);
+        sicore_vec_get_mut(&component_index.components, id, ecs_component_record_t);
     if (existing->tables.data) {
         return;
     }
@@ -90,17 +92,13 @@ void ecs_component_index_register(
 }
 
 void ecs_component_index_init() {
-    sicore_vec_init_w_size(
-        &ecs_world.component_index.components,
-        sizeof(ecs_component_record_t),
-        256
-    );
+    sicore_vec_init_w_size(&component_index.components, sizeof(ecs_component_record_t), 256);
 }
 
 void ecs_component_index_fini() {
-    ecs_component_record_t *records = ecs_world.component_index.components.data;
+    ecs_component_record_t *records = component_index.components.data;
 
-    for (uint32_t i = 0; i < ecs_world.component_index.components.size; i++) {
+    for (uint32_t i = 0; i < component_index.components.size; i++) {
         if (records[i].info) {
             free((char *)records[i].info->name);
 
@@ -115,15 +113,14 @@ void ecs_component_index_fini() {
         sicore_vec_fini(&records[i].tables);
     }
     if (ecs_component_default_relation_index.data) {
-        ecs_component_required_relation_t **defaults =
-            ecs_component_default_relation_index.data;
+        ecs_component_required_relation_t **defaults = ecs_component_default_relation_index.data;
         for (uint32_t i = 0; i < ecs_component_default_relation_index.size; i++) {
             free(defaults[i]);
         }
         sicore_vec_fini(&ecs_component_default_relation_index);
     }
     ecs_component_default_relation_index = (sicore_vec_t){ 0 };
-    sicore_vec_fini(&ecs_world.component_index.components);
+    sicore_vec_fini(&component_index.components);
 }
 
 void ecs_component_value_ctor(const ecs_component_record_t *record, void *dst, uint32_t count) {
@@ -227,4 +224,8 @@ void ecs_component_value_move(
     }
 
     memcpy(dst, src, (size_t)record->size * count);
+}
+
+ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {
+    return sicore_vec_get_mut(&component_index.components, cid, ecs_component_record_t);
 }
