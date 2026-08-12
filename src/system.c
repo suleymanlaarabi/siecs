@@ -78,7 +78,7 @@ void ecs_run_system(ecs_system_id_t system) {
 }
 
 void ecs_run_phase(ecs_phase_t phase) {
-    ecs_system_index_t *index = &ecs_world.system_index;
+    ecs_system_index_t *index = &system_index;
     ecs_phase_info_t *pinfo = ecs_system_index_get_phase(phase);
     ecs_assert(pinfo != NULL, "invalid system phase: %u\n", phase);
 
@@ -120,7 +120,7 @@ bool ecs_progress(void) {
 
     ecs_world.last_time = frame_start;
 
-    ecs_system_index_t *index = &ecs_world.system_index;
+    ecs_system_index_t *index = &system_index;
     if (index->plan_dirty) {
         ecs_system_index_build_plan();
     }
@@ -164,7 +164,7 @@ void ecs_system_enable(ecs_system_id_t system) {
     }
 
     sys->enabled = true;
-    ecs_world.system_index.plan_dirty = true;
+    system_index.plan_dirty = true;
 }
 
 void ecs_system_disable(ecs_system_id_t system) {
@@ -175,5 +175,5 @@ void ecs_system_disable(ecs_system_id_t system) {
     }
 
     sys->enabled = false;
-    ecs_world.system_index.plan_dirty = true;
+    system_index.plan_dirty = true;
 }

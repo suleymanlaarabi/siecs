@@ -22,7 +22,6 @@ struct ecs_world_s {
     ecs_entity_index_t entity_index;
     ecs_relation_index_t relation_index;
     ecs_table_index_t table_index;
-    ecs_system_index_t system_index;
     ecs_module_index_t module_index;
     ecs_resource_index_t resource_index;
     ecs_module_id_t active_module;

@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+ecs_system_index_t system_index;
+
 static bool ecs_system_id_valid(const ecs_system_index_t *index, ecs_system_id_t system) {
     return system != 0 && system < index->systems.size;
 }
@@ -33,7 +35,7 @@ static bool ecs_system_resource_conflict(const ecs_system_t *a, const ecs_system
 }
 
 ecs_phase_info_t *ecs_system_index_get_phase(ecs_phase_t phase) {
-    ecs_system_index_t *index = &ecs_world.system_index;
+    ecs_system_index_t *index = &system_index;
     if (phase >= index->phases.size) {
         return NULL;
     }
@@ -41,7 +43,7 @@ ecs_phase_info_t *ecs_system_index_get_phase(ecs_phase_t phase) {
 }
 
 ecs_phase_t ecs_phase_register(const ecs_phase_desc_t *desc) {
-    ecs_system_index_t *index = &ecs_world.system_index;
+    ecs_system_index_t *index = &system_index;
     ecs_phase_t id = (ecs_phase_t)index->phases.size;
 
     ecs_phase_t after = desc ? desc->after : ECS_PHASE_NONE;
@@ -147,7 +149,7 @@ static void ecs_system_index_plan_one(
 }
 
 void ecs_system_index_init(void) {
-    ecs_system_index_t *index = &ecs_world.system_index;
+    ecs_system_index_t *index = &system_index;
     sicore_vec_init(&index->systems, sizeof(ecs_system_t));
     sicore_vec_ensure(&index->systems, 1, sizeof(ecs_system_t));
 
@@ -199,14 +201,14 @@ void ecs_system_index_init(void) {
 }
 
 ecs_system_id_t ecs_system_index_create(const ecs_system_t *system) {
-    ecs_system_index_t *index = &ecs_world.system_index;
+    ecs_system_index_t *index = &system_index;
     sicore_vec_push(&index->systems, system, sizeof(ecs_system_t));
     index->plan_dirty = true;
     return index->systems.size - 1;
 }
 
 ecs_system_t *ecs_system_index_get(ecs_system_id_t system) {
-    ecs_system_index_t *index = &ecs_world.system_index;
+    ecs_system_index_t *index = &system_index;
     ecs_assert(ecs_system_id_valid(index, system), "invalid system id: %u\n", system);
     return sicore_vec_get_mut(&index->systems, system, ecs_system_t);
 }
@@ -311,7 +313,7 @@ static void sort_phase_group(ecs_system_index_t *index, bool is_start, sicore_ve
 }
 
 void ecs_system_index_build_plan(void) {
-    ecs_system_index_t *index = &ecs_world.system_index;
+    ecs_system_index_t *index = &system_index;
 
     sort_phase_group(index, true, &index->start_execution_order);
     sort_phase_group(index, false, &index->main_execution_order);
@@ -462,7 +464,7 @@ void ecs_system_index_build_plan(void) {
 }
 
 void ecs_system_index_fini(void) {
-    ecs_system_index_t *index = &ecs_world.system_index;
+    ecs_system_index_t *index = &system_index;
     ecs_system_t *systems = sicore_vec_data(&index->systems, ecs_system_t);
     for (uint32_t i = 1; i < index->systems.size; i++) {
         if (systems[i].user_data_dtor) {
@@ -480,4 +482,5 @@ void ecs_system_index_fini(void) {
     sicore_vec_fini(&index->start_execution_order);
     sicore_vec_fini(&index->main_execution_order);
     sicore_vec_fini(&index->systems);
+    *index = (ecs_system_index_t){ 0 };
 }

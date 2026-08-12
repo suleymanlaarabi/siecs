@@ -40,6 +40,8 @@ typedef struct {
     bool plan_dirty;
 } ecs_system_index_t;
 
+extern ecs_system_index_t system_index;
+
 void ecs_system_index_init(void);
 void ecs_system_index_fini(void);
 
