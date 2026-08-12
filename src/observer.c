@@ -6,7 +6,7 @@
 
 ecs_event_t ecs_event(void) {
     ecs_assert_not_scheduler_parallel("event registration");
-    return ecs_world.observer_index.event_count++;
+    return observer_index.event_count++;
 }
 
 ecs_event_t ecs_event_register(ecs_event_t *id) {
@@ -18,8 +18,8 @@ ecs_event_t ecs_event_register(ecs_event_t *id) {
         return *id;
     }
 
-    if (ecs_world.observer_index.event_count <= *id) {
-        ecs_world.observer_index.event_count = *id + 1;
+    if (observer_index.event_count <= *id) {
+        observer_index.event_count = *id + 1;
     }
 
     return *id;
@@ -39,11 +39,11 @@ ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
 }
 
 void ecs_observer_enable(ecs_observer_id_t id) {
-    sicore_vec_get_mut(&ecs_world.observer_index.observers, id, ecs_observer_t)->enabled = true;
+    sicore_vec_get_mut(&observer_index.observers, id, ecs_observer_t)->enabled = true;
 }
 
 void ecs_observer_disable(ecs_observer_id_t id) {
-    sicore_vec_get_mut(&ecs_world.observer_index.observers, id, ecs_observer_t)->enabled = false;
+    sicore_vec_get_mut(&observer_index.observers, id, ecs_observer_t)->enabled = false;
 }
 
 void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *trigger_data) {

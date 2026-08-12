@@ -18,6 +18,8 @@ typedef struct {
     uint16_t event_count;   // next free event id; starts past the builtin events
 } ecs_observer_index_t;
 
+extern ecs_observer_index_t observer_index;
+
 void ecs_observer_index_init();
 void ecs_observer_index_fini();
 

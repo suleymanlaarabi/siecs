@@ -22,7 +22,6 @@ struct ecs_world_s {
     ecs_entity_index_t entity_index;
     ecs_relation_index_t relation_index;
     ecs_table_index_t table_index;
-    ecs_observer_index_t observer_index;
     ecs_system_index_t system_index;
     ecs_module_index_t module_index;
     ecs_resource_index_t resource_index;
@@ -57,8 +56,7 @@ ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void 
     uint32_t n = list->size;
     for (uint32_t i = 0; i < n; i++) {
         uint16_t oid = *sicore_vec_get(list, i, uint16_t);
-        ecs_observer_t *obs =
-            sicore_vec_get_mut(&ecs_world.observer_index.observers, oid, ecs_observer_t);
+        ecs_observer_t *obs = sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
         if (!obs->enabled) {
             continue;
         }
