@@ -27,10 +27,10 @@ ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) {
 }
 
 ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
-    ecs_assert(query_id < ecs_world.query_index.queries.size, "invalid query id: %u\n", query_id);
+    ecs_assert(query_id < query_index.queries.size, "invalid query id: %u\n", query_id);
 
     ecs_query_cache_t *cache =
-        sicore_vec_get_mut(&ecs_world.query_index.queries, query_id, ecs_query_cache_t);
+        sicore_vec_get_mut(&query_index.queries, query_id, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", query_id);
     return (ecs_iter_t){
         .cache = cache,
@@ -42,7 +42,7 @@ ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
 
 uint32_t ecs_query_count(ecs_query_id_t query_id) {
     ecs_query_cache_t *cache =
-        sicore_vec_get_mut(&ecs_world.query_index.queries, query_id, ecs_query_cache_t);
+        sicore_vec_get_mut(&query_index.queries, query_id, ecs_query_cache_t);
     uint16_t *tids = cache->table_ids.data;
 
     uint32_t count = 0;
@@ -103,10 +103,10 @@ ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relati
 }
 
 void ecs_query_fini(ecs_query_id_t qid) {
-    ecs_assert(qid < ecs_world.query_index.queries.size, "invalid query id: %u\n", qid);
+    ecs_assert(qid < query_index.queries.size, "invalid query id: %u\n", qid);
 
     ecs_query_cache_t *cache =
-        sicore_vec_get_mut(&ecs_world.query_index.queries, qid, ecs_query_cache_t);
+        sicore_vec_get_mut(&query_index.queries, qid, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", qid);
 
     free(cache->fields_ptr);
@@ -121,8 +121,8 @@ void ecs_query_fini(ecs_query_id_t qid) {
     cache->field_kind_bits = NULL;
     cache->field_table_capacity = 0;
 
-    ecs_query_index_remove_active_id(&ecs_world.query_index, qid);
-    cache->next_free = ecs_world.query_index.first_free;
+    ecs_query_index_remove_active_id(&query_index, qid);
+    cache->next_free = query_index.first_free;
     cache->alive = false;
-    ecs_world.query_index.first_free = qid;
+    query_index.first_free = qid;
 }

@@ -76,6 +76,8 @@ typedef struct {
     uint16_t first_free;
 } ecs_query_index_t;
 
+extern ecs_query_index_t query_index;
+
 void ecs_query_index_init();
 void ecs_query_index_fini();
 uint16_t ecs_query_index_create(const ecs_query_desc_t *desc);

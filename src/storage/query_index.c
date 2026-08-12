@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+ecs_query_index_t query_index;
+
 static inline int ecs_compare_order_value(uint64_t a, uint64_t b) {
     return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -51,14 +53,14 @@ ecs_query_order_t ecs_order_by_depth_id(ecs_relation_id_t relation) {
 }
 
 void ecs_query_index_init() {
-    ecs_query_index_t *index = &ecs_world.query_index;
+    ecs_query_index_t *index = &query_index;
     sicore_vec_init(&index->queries, sizeof(ecs_query_cache_t));
     sicore_vec_init(&index->active_ids, sizeof(ecs_query_id_t));
     index->first_free = UINT16_MAX;
 }
 
 void ecs_query_index_fini() {
-    ecs_query_index_t *index = &ecs_world.query_index;
+    ecs_query_index_t *index = &query_index;
     for (uint32_t i = 0; i < index->queries.size; i++) {
         ecs_query_cache_t *cache = sicore_vec_get_mut(&index->queries, i, ecs_query_cache_t);
         sicore_vec_fini(&cache->table_ids);
@@ -70,6 +72,7 @@ void ecs_query_index_fini() {
     }
     sicore_vec_fini(&index->active_ids);
     sicore_vec_fini(&index->queries);
+    *index = (ecs_query_index_t){ 0 };
 }
 
 void ecs_query_index_destroy(ecs_query_t *query) { free(query->terms); }
@@ -557,7 +560,7 @@ static void
 ecs_query_index_update_matches(ecs_query_cache_t *query_cache, ecs_component_t component);
 
 ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
-    ecs_query_index_t *index = &ecs_world.query_index;
+    ecs_query_index_t *index = &query_index;
     ecs_query_id_t id;
     ecs_query_cache_t *query_cache;
     bool reused;
@@ -660,10 +663,10 @@ ecs_query_index_update_matches(ecs_query_cache_t *query_cache, ecs_component_t c
 }
 
 void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id) {
-    const ecs_query_id_t *active_ids = ecs_world.query_index.active_ids.data;
-    for (uint32_t i = 0; i < ecs_world.query_index.active_ids.size; i++) {
+    const ecs_query_id_t *active_ids = query_index.active_ids.data;
+    for (uint32_t i = 0; i < query_index.active_ids.size; i++) {
         ecs_query_cache_t *cache =
-            sicore_vec_get_mut(&ecs_world.query_index.queries, active_ids[i], ecs_query_cache_t);
+            sicore_vec_get_mut(&query_index.queries, active_ids[i], ecs_query_cache_t);
         if (ecs_query_match_table(&cache->query, table)) {
             ecs_query_cache_add_matched_table(cache, table, table_id);
         }
@@ -671,11 +674,11 @@ void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id) {
 }
 
 void ecs_query_index_refresh_table_fields(const ecs_table_t *table, uint16_t table_id) {
-    const ecs_query_id_t *active_ids = ecs_world.query_index.active_ids.data;
+    const ecs_query_id_t *active_ids = query_index.active_ids.data;
 
-    for (uint32_t i = 0; i < ecs_world.query_index.active_ids.size; i++) {
+    for (uint32_t i = 0; i < query_index.active_ids.size; i++) {
         ecs_query_cache_t *cache =
-            sicore_vec_get_mut(&ecs_world.query_index.queries, active_ids[i], ecs_query_cache_t);
+            sicore_vec_get_mut(&query_index.queries, active_ids[i], ecs_query_cache_t);
         if (cache->query.field_count == 0) {
             continue;
         }

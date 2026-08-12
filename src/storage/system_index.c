@@ -374,14 +374,14 @@ void ecs_system_index_build_plan(void) {
                     const ecs_query_cache_t *previous_cache = NULL;
                     if (current->qid != UINT16_MAX) {
                         current_cache = sicore_vec_get(
-                            &ecs_world.query_index.queries,
+                            &query_index.queries,
                             current->qid,
                             ecs_query_cache_t
                         );
                     }
                     if (previous->qid != UINT16_MAX) {
                         previous_cache = sicore_vec_get(
-                            &ecs_world.query_index.queries,
+                            &query_index.queries,
                             previous->qid,
                             ecs_query_cache_t
                         );
