@@ -4729,8 +4729,10 @@ typedef struct {
     uint32_t first_available; // UINT32_MAX when no dead entity can be reused
 } ecs_entity_index_t;
 
+extern ecs_entity_index_t entity_index;
+
 #define ecs_entity_index_get_record(entity_id)                                                     \
-    sicore_vec_get_mut(&ecs_world.entity_index.entities, entity_id, ecs_entity_record_t)
+    sicore_vec_get_mut(&entity_index.entities, entity_id, ecs_entity_record_t)
 
 bool ecs_entity_index_is_alive(ecs_entity_t entity);
 
@@ -5050,6 +5052,8 @@ typedef struct {
     sicore_vec_t records; /* ecs_relation_record_t */
 } ecs_relation_index_t;
 
+extern ecs_relation_index_t relation_index;
+
 void ecs_relation_index_init(void);
 void ecs_relation_index_fini(void);
 void ecs_relation_target_on_remove(ecs_entity_t target, ecs_component_t component, void *ptr);
@@ -5063,7 +5067,7 @@ ecs_component_t ecs_component_register_relation_internal(
 );
 
 #define ecs_relation_record(id)                                                                    \
-    sicore_vec_get(&ecs_world.relation_index.records, id, ecs_relation_record_t)
+    sicore_vec_get(&relation_index.records, id, ecs_relation_record_t)
 
 ecs_entity_t
 ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relation, uint32_t row);
@@ -5170,8 +5174,6 @@ void ecs_worker_pool_flush(ecs_worker_pool_t *pool);
 typedef struct ecs_world_s ecs_world_t;
 
 struct ecs_world_s {
-    ecs_entity_index_t entity_index;
-    ecs_relation_index_t relation_index;
     ecs_table_index_t table_index;
     ecs_resource_index_t resource_index;
     ecs_module_id_t active_module;
@@ -5193,7 +5195,7 @@ typedef struct {
 } RelationSource;
 
 #define ecs_get_record(entity)                                                                     \
-    sicore_vec_get_mut(&ecs_world.entity_index.entities, ecs_first(entity), ecs_entity_record_t)
+    sicore_vec_get_mut(&entity_index.entities, ecs_first(entity), ecs_entity_record_t)
 #define ecs_get_table(tid) ecs_table_index_at(tid)
 
 static inline void
@@ -5388,7 +5390,7 @@ ECS_TAG_DEFINE(Abstract);
 void ecs_bootstrap() {
     // Reserve identifiers used to represent false return values.
     ecs_table_index_get_or_create((ecs_type_t){ 0 });
-    sicore_vec_push_u64(&ecs_world.entity_index.entities, 0);
+    sicore_vec_push_u64(&entity_index.entities, 0);
     ecs_component({ .name = "Invalid" });
 
     // Register the ecs_entity_t struct reflection.
@@ -7004,7 +7006,7 @@ bool ecs_component_requires(const ecs_component_t component, ecs_component_t req
 #endif
 
 static inline ecs_entity_t ecs_entity_index_create(uint32_t row, bool reuse) {
-    ecs_entity_index_t *index = &ecs_world.entity_index;
+    ecs_entity_index_t *index = &entity_index;
     uint32_t entity_id;
     uint32_t generation;
     if (reuse && index->first_available != UINT32_MAX) {
@@ -7045,12 +7047,12 @@ ecs_entity_t ecs_new_no_reuse(void) {
 bool ecs_is_alive(const ecs_entity_t entity) { return ecs_entity_index_is_alive(entity); }
 
 ecs_entity_t ecs_entity_from_index(uint32_t index) {
-    if (index == 0 || index >= ecs_world.entity_index.entities.size) {
+    if (index == 0 || index >= entity_index.entities.size) {
         return 0;
     }
 
     const ecs_entity_record_t *record =
-        sicore_vec_get(&ecs_world.entity_index.entities, index, ecs_entity_record_t);
+        sicore_vec_get(&entity_index.entities, index, ecs_entity_record_t);
     if (record->table_id == UINT16_MAX) {
         return 0;
     }
@@ -7161,7 +7163,7 @@ void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
 }
 
 static inline void ecs_entity_index_kill(uint32_t entity_id) {
-    ecs_entity_index_t *index = &ecs_world.entity_index;
+    ecs_entity_index_t *index = &entity_index;
     ecs_entity_record_t *record = ecs_entity_index_get_record(entity_id);
     record->generation += 1;
     record->table_row = index->first_available;
@@ -7810,18 +7812,21 @@ void ecs_query_fini(ecs_query_id_t qid) {
     query_index.first_free = qid;
 }
 
+ecs_relation_index_t relation_index;
+
 void ecs_relation_index_init(void) {
-    sicore_vec_init_w_size(&ecs_world.relation_index.records, sizeof(ecs_relation_record_t), 1);
-    sicore_vec_ensure(&ecs_world.relation_index.records, 1, sizeof(ecs_relation_record_t));
+    sicore_vec_init_w_size(&relation_index.records, sizeof(ecs_relation_record_t), 1);
+    sicore_vec_ensure(&relation_index.records, 1, sizeof(ecs_relation_record_t));
 }
 
 void ecs_relation_index_fini(void) {
-    ecs_relation_index_t *index = &ecs_world.relation_index;
+    ecs_relation_index_t *index = &relation_index;
     ecs_relation_record_t *records = index->records.data;
-    for (uint32_t r = 1; r < ecs_world.relation_index.records.size; r++) {
+    for (uint32_t r = 1; r < relation_index.records.size; r++) {
         free(records[r].name);
     }
-    sicore_vec_fini(&ecs_world.relation_index.records);
+    sicore_vec_fini(&relation_index.records);
+    relation_index = (ecs_relation_index_t){ 0 };
 }
 
 ecs_relation_id_t
@@ -7841,27 +7846,27 @@ ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relatio
 
     if (*id) {
         sicore_vec_ensure(
-            &ecs_world.relation_index.records,
+            &relation_index.records,
             (uint32_t)*id + 1,
             sizeof(ecs_relation_record_t)
         );
         ecs_relation_record_t *existing =
-            sicore_vec_get_mut(&ecs_world.relation_index.records, *id, ecs_relation_record_t);
+            sicore_vec_get_mut(&relation_index.records, *id, ecs_relation_record_t);
         if (existing->storage || existing->component) {
             return *id;
         }
     } else {
-        *id = (ecs_relation_id_t)ecs_world.relation_index.records.size;
+        *id = (ecs_relation_id_t)relation_index.records.size;
     }
 
     sicore_vec_ensure(
-        &ecs_world.relation_index.records,
+        &relation_index.records,
         (uint32_t)*id + 1,
         sizeof(ecs_relation_record_t)
     );
     ecs_component_t component =
         ecs_component_register_relation_internal(name, *id, desc->storage == EcsRelationByTarget);
-    *sicore_vec_get_mut(&ecs_world.relation_index.records, *id, ecs_relation_record_t) =
+    *sicore_vec_get_mut(&relation_index.records, *id, ecs_relation_record_t) =
         (ecs_relation_record_t){
             .component = component,
             .storage = desc->storage,
@@ -7870,7 +7875,7 @@ ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relatio
             .name = name ? strdup(name) : NULL,
         };
     ecs_relation_record_t *record =
-        sicore_vec_get_mut(&ecs_world.relation_index.records, *id, ecs_relation_record_t);
+        sicore_vec_get_mut(&relation_index.records, *id, ecs_relation_record_t);
     record->info = (ecs_relation_info_t){
         .name = record->name,
         .desc = {
@@ -7887,10 +7892,10 @@ ecs_relation_id_t ecs_relation_init(const char *name, const ecs_relation_desc_t 
     return ecs_relation_register(&id, name, desc);
 }
 
-uint32_t ecs_relation_count(void) { return ecs_world.relation_index.records.size; }
+uint32_t ecs_relation_count(void) { return relation_index.records.size; }
 
 const ecs_relation_info_t *ecs_relation_info(ecs_relation_id_t relation) {
-    if (relation == 0 || relation >= ecs_world.relation_index.records.size) {
+    if (relation == 0 || relation >= relation_index.records.size) {
         return NULL;
     }
     return &ecs_relation_record(relation)->info;
@@ -9413,17 +9418,22 @@ ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {
     return sicore_vec_get_mut(&component_index.components, cid, ecs_component_record_t);
 }
 
+ecs_entity_index_t entity_index;
+
 bool ecs_entity_index_is_alive(ecs_entity_t entity) {
     return ecs_entity_index_get_record(ecs_first(entity))->generation == ecs_second(entity);
 }
 
 void ecs_entity_index_init() {
-    ecs_entity_index_t *index = &ecs_world.entity_index;
+    ecs_entity_index_t *index = &entity_index;
     sicore_vec_init_w_size(&index->entities, sizeof(ecs_entity_record_t), 256);
     index->first_available = UINT32_MAX;
 }
 
-void ecs_entity_index_fini() { sicore_vec_fini(&ecs_world.entity_index.entities); }
+void ecs_entity_index_fini() {
+    sicore_vec_fini(&entity_index.entities);
+    entity_index = (ecs_entity_index_t){ 0 };
+}
 
 #ifndef SIECS_STORAGE_INDEX_VEC_H
 #define SIECS_STORAGE_INDEX_VEC_H

@@ -19,8 +19,6 @@
 typedef struct ecs_world_s ecs_world_t;
 
 struct ecs_world_s {
-    ecs_entity_index_t entity_index;
-    ecs_relation_index_t relation_index;
     ecs_table_index_t table_index;
     ecs_resource_index_t resource_index;
     ecs_module_id_t active_module;
@@ -42,7 +40,7 @@ typedef struct {
 } RelationSource;
 
 #define ecs_get_record(entity)                                                                     \
-    sicore_vec_get_mut(&ecs_world.entity_index.entities, ecs_first(entity), ecs_entity_record_t)
+    sicore_vec_get_mut(&entity_index.entities, ecs_first(entity), ecs_entity_record_t)
 #define ecs_get_table(tid) ecs_table_index_at(tid)
 
 static inline void

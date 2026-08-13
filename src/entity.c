@@ -16,7 +16,7 @@
 #include <string.h>
 
 static inline ecs_entity_t ecs_entity_index_create(uint32_t row, bool reuse) {
-    ecs_entity_index_t *index = &ecs_world.entity_index;
+    ecs_entity_index_t *index = &entity_index;
     uint32_t entity_id;
     uint32_t generation;
     if (reuse && index->first_available != UINT32_MAX) {
@@ -57,12 +57,12 @@ ecs_entity_t ecs_new_no_reuse(void) {
 bool ecs_is_alive(const ecs_entity_t entity) { return ecs_entity_index_is_alive(entity); }
 
 ecs_entity_t ecs_entity_from_index(uint32_t index) {
-    if (index == 0 || index >= ecs_world.entity_index.entities.size) {
+    if (index == 0 || index >= entity_index.entities.size) {
         return 0;
     }
 
     const ecs_entity_record_t *record =
-        sicore_vec_get(&ecs_world.entity_index.entities, index, ecs_entity_record_t);
+        sicore_vec_get(&entity_index.entities, index, ecs_entity_record_t);
     if (record->table_id == UINT16_MAX) {
         return 0;
     }
@@ -173,7 +173,7 @@ void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
 }
 
 static inline void ecs_entity_index_kill(uint32_t entity_id) {
-    ecs_entity_index_t *index = &ecs_world.entity_index;
+    ecs_entity_index_t *index = &entity_index;
     ecs_entity_record_t *record = ecs_entity_index_get_record(entity_id);
     record->generation += 1;
     record->table_row = index->first_available;

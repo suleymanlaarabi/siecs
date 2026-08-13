@@ -18,6 +18,8 @@ typedef struct {
     sicore_vec_t records; /* ecs_relation_record_t */
 } ecs_relation_index_t;
 
+extern ecs_relation_index_t relation_index;
+
 void ecs_relation_index_init(void);
 void ecs_relation_index_fini(void);
 void ecs_relation_target_on_remove(ecs_entity_t target, ecs_component_t component, void *ptr);
@@ -31,7 +33,7 @@ ecs_component_t ecs_component_register_relation_internal(
 );
 
 #define ecs_relation_record(id)                                                                    \
-    sicore_vec_get(&ecs_world.relation_index.records, id, ecs_relation_record_t)
+    sicore_vec_get(&relation_index.records, id, ecs_relation_record_t)
 
 ecs_entity_t
 ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relation, uint32_t row);

@@ -9,18 +9,21 @@
 #include <stdlib.h>
 #include <string.h>
 
+ecs_relation_index_t relation_index;
+
 void ecs_relation_index_init(void) {
-    sicore_vec_init_w_size(&ecs_world.relation_index.records, sizeof(ecs_relation_record_t), 1);
-    sicore_vec_ensure(&ecs_world.relation_index.records, 1, sizeof(ecs_relation_record_t));
+    sicore_vec_init_w_size(&relation_index.records, sizeof(ecs_relation_record_t), 1);
+    sicore_vec_ensure(&relation_index.records, 1, sizeof(ecs_relation_record_t));
 }
 
 void ecs_relation_index_fini(void) {
-    ecs_relation_index_t *index = &ecs_world.relation_index;
+    ecs_relation_index_t *index = &relation_index;
     ecs_relation_record_t *records = index->records.data;
-    for (uint32_t r = 1; r < ecs_world.relation_index.records.size; r++) {
+    for (uint32_t r = 1; r < relation_index.records.size; r++) {
         free(records[r].name);
     }
-    sicore_vec_fini(&ecs_world.relation_index.records);
+    sicore_vec_fini(&relation_index.records);
+    relation_index = (ecs_relation_index_t){ 0 };
 }
 
 ecs_relation_id_t
@@ -40,27 +43,27 @@ ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relatio
 
     if (*id) {
         sicore_vec_ensure(
-            &ecs_world.relation_index.records,
+            &relation_index.records,
             (uint32_t)*id + 1,
             sizeof(ecs_relation_record_t)
         );
         ecs_relation_record_t *existing =
-            sicore_vec_get_mut(&ecs_world.relation_index.records, *id, ecs_relation_record_t);
+            sicore_vec_get_mut(&relation_index.records, *id, ecs_relation_record_t);
         if (existing->storage || existing->component) {
             return *id;
         }
     } else {
-        *id = (ecs_relation_id_t)ecs_world.relation_index.records.size;
+        *id = (ecs_relation_id_t)relation_index.records.size;
     }
 
     sicore_vec_ensure(
-        &ecs_world.relation_index.records,
+        &relation_index.records,
         (uint32_t)*id + 1,
         sizeof(ecs_relation_record_t)
     );
     ecs_component_t component =
         ecs_component_register_relation_internal(name, *id, desc->storage == EcsRelationByTarget);
-    *sicore_vec_get_mut(&ecs_world.relation_index.records, *id, ecs_relation_record_t) =
+    *sicore_vec_get_mut(&relation_index.records, *id, ecs_relation_record_t) =
         (ecs_relation_record_t){
             .component = component,
             .storage = desc->storage,
@@ -69,7 +72,7 @@ ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relatio
             .name = name ? strdup(name) : NULL,
         };
     ecs_relation_record_t *record =
-        sicore_vec_get_mut(&ecs_world.relation_index.records, *id, ecs_relation_record_t);
+        sicore_vec_get_mut(&relation_index.records, *id, ecs_relation_record_t);
     record->info = (ecs_relation_info_t){
         .name = record->name,
         .desc = {
@@ -86,10 +89,10 @@ ecs_relation_id_t ecs_relation_init(const char *name, const ecs_relation_desc_t 
     return ecs_relation_register(&id, name, desc);
 }
 
-uint32_t ecs_relation_count(void) { return ecs_world.relation_index.records.size; }
+uint32_t ecs_relation_count(void) { return relation_index.records.size; }
 
 const ecs_relation_info_t *ecs_relation_info(ecs_relation_id_t relation) {
-    if (relation == 0 || relation >= ecs_world.relation_index.records.size) {
+    if (relation == 0 || relation >= relation_index.records.size) {
         return NULL;
     }
     return &ecs_relation_record(relation)->info;
