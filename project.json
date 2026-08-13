@@ -38,13 +38,6 @@
       "sireflect": "https://github.com/suleymanlaarabi/sireflect",
       "sijson": "https://github.com/suleymanlaarabi/sijson",
       "sicore":  "https://github.com/suleymanlaarabi/sicore"
-    },
-    "refs": {
-      "default": {
-        "sicore": { "branch": "main", "commit": "815a938a1ee7ec30469b898b4e34b494930f618b" },
-        "sireflect": { "branch": "main", "commit": "6b38365a7aa91ca960299a189261fe5e827cdb52" },
-        "sijson": { "branch": "main", "commit": "55a9780d3cbdf7911ac4c74d7e3c28a78f553180" }
-      }
     }
   }
 }

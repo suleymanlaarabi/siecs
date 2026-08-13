@@ -2410,6 +2410,16 @@ sireflect_type_pointee(sireflect_handle_t ref) {
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(_MSC_VER) && !defined(__clang__)
+typedef union sijson_max_align {
+    long double long_double;
+    void *pointer;
+    long long integer;
+} sijson_max_align_t;
+#else
+typedef max_align_t sijson_max_align_t;
+#endif
+
 #if defined(__GNUC__) || defined(__clang__)
 #define SIJSON_INTERNAL_API __attribute__((visibility("hidden")))
 #else
@@ -3102,6 +3112,7 @@ static bool sijson_write_reflected_field(
     case sireflect_kind_bool:
         break;
     default:
+        break;
     }
 
     return sijson_set_error("unsupported field type for serialization");
@@ -3404,6 +3415,7 @@ static bool sijson_assign_field(
     case sireflect_kind_array:
         return sijson_assign_array(field_type, field_ptr, value);
     default:
+        break;
     }
 
     return sijson_set_error("unsupported field type for deserialization");
@@ -3675,7 +3687,7 @@ static bool sijson_arena_commit(size_t need) {
 
 void *sijson_arena_alloc(size_t size, size_t align) {
     if (align == 0) {
-        align = _Alignof(max_align_t);
+        align = _Alignof(sijson_max_align_t);
     }
 
     size_t offset = sijson_align_forward(g_arena.used, align);
