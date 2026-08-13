@@ -51,7 +51,7 @@ uint32_t ecs_query_count(ecs_query_id_t query_id) {
             !ecs_query_resolve_up_fields(cache, ecs_get_table(tids[i]), i)) {
             continue;
         }
-        count += ecs_world.table_index.tables[tids[i]].entity_count;
+        count += table_index.tables[tids[i]].entity_count;
     }
     return count;
 }
@@ -61,7 +61,7 @@ bool ecs_iter_next(ecs_iter_t *it) {
     do {
         if (++it->table_idx >= it->table_count)
             return false;
-        it->count = ecs_world.table_index.tables[tids[it->table_idx]].entity_count;
+    it->count = table_index.tables[tids[it->table_idx]].entity_count;
         if (it->count && ECS_UNLIKELY(it->cache->query.up_mask & ECS_QUERY_UP_MASK) &&
             !ecs_query_resolve_up_fields(
                 it->cache,
@@ -78,7 +78,7 @@ bool ecs_iter_next(ecs_iter_t *it) {
         it->ptrs = &it->cache->fields_ptr[it->table_idx * it->cache->query.field_count];
         it->field_kind_bits = it->cache->field_kind_bits[it->table_idx];
     }
-    it->entities = ecs_world.table_index.tables[tids[it->table_idx]].entities;
+    it->entities = table_index.tables[tids[it->table_idx]].entities;
     return true;
 }
 

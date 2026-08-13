@@ -12,6 +12,8 @@
 #define LOAD_FACTOR 0.75
 #define ECS_TABLE_SLOT_EMPTY UINT16_MAX
 
+ecs_table_index_t table_index;
+
 static inline uint32_t ecs_type_hash(ecs_type_t type) {
     uint32_t h = 2166136261u;
     for (uint32_t i = 0; i < type.component_count; ++i) {
@@ -108,7 +110,7 @@ ecs_pair_slot(ecs_table_index_t *index, uint16_t key, uint64_t value, bool creat
 }
 
 ecs_pair_tables_t ecs_table_index_pair_tables(uint16_t key, uint64_t value) {
-    ecs_pair_table_slot_t *slot = ecs_pair_slot(&ecs_world.table_index, key, value, false);
+    ecs_pair_table_slot_t *slot = ecs_pair_slot(&table_index, key, value, false);
     if (!slot) {
         return (ecs_pair_tables_t){ 0 };
     }
@@ -139,7 +141,7 @@ static void ecs_table_index_pairs(const ecs_table_t *table, uint16_t table_id) {
     const ecs_type_pair_t *pairs = ecs_type_pairs(&table->type);
     for (uint16_t i = 0; i < table->type.pair_count; i++) {
         ecs_pair_table_slot_t *slot =
-            ecs_pair_slot(&ecs_world.table_index, pairs[i].key, pairs[i].value, true);
+            ecs_pair_slot(&table_index, pairs[i].key, pairs[i].value, true);
         ecs_pair_slot_add_table(slot, table_id);
     }
 }
@@ -162,7 +164,7 @@ ecs_table_index_insert_slot(ecs_table_index_t *map, uint32_t hash, uint16_t tabl
 }
 
 void ecs_table_index_init() {
-    ecs_table_index_t *map = &ecs_world.table_index;
+    ecs_table_index_t *map = &table_index;
     map->table_count = 0;
     map->table_capacity = 1;
     map->tables = malloc(sizeof(ecs_table_t) * map->table_capacity);
@@ -174,7 +176,7 @@ void ecs_table_index_init() {
 }
 
 void ecs_table_index_fini() {
-    ecs_table_index_t *map = &ecs_world.table_index;
+    ecs_table_index_t *map = &table_index;
     for (uint16_t i = 0; i < map->table_count; i++) {
         ecs_table_fini(&map->tables[i]);
     }
@@ -187,6 +189,7 @@ void ecs_table_index_fini() {
     free(map->pair_slots);
     free(map->tables);
     free(map->slots);
+    *map = (ecs_table_index_t){ 0 };
 }
 
 static void ecs_table_index_resize(ecs_table_index_t *map) {
@@ -246,7 +249,7 @@ static void ecs_table_index_register_inherited_components(ecs_table_t *table, ui
 }
 
 uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
-    ecs_table_index_t *map = &ecs_world.table_index;
+    ecs_table_index_t *map = &table_index;
     uint32_t hash = ecs_type_hash(type);
     uint16_t hash_fingerprint = ecs_type_hash_fingerprint(hash);
     uint32_t slot_mask = ecs_table_index_slot_count(map) - 1;

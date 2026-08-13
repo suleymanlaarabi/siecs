@@ -19,8 +19,6 @@
 typedef struct ecs_world_s ecs_world_t;
 
 struct ecs_world_s {
-    ecs_table_index_t table_index;
-    ecs_resource_index_t resource_index;
     ecs_module_id_t active_module;
     ecs_world_feat_desc_t features;
     ecs_execution_context_t main_context;

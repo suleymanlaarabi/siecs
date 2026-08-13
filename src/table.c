@@ -77,7 +77,7 @@ static inline void ecs_table_grow(ecs_table_t *table) {
         column->data = new_data;
     }
     table->entity_capacity = new_capacity;
-    ecs_query_index_refresh_table_fields(table, (uint16_t)(table - ecs_world.table_index.tables));
+    ecs_query_index_refresh_table_fields(table, (uint16_t)(table - table_index.tables));
 }
 
 uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {

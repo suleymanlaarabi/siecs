@@ -603,16 +603,16 @@ ecs_query_index_update_matches(ecs_query_cache_t *query_cache, ecs_component_t c
     if (ECS_LIKELY(query_cache->query.up_mask == 0)) {
         if (ECS_LIKELY(component)) {
             const sicore_vec_t *tables_vec = &ecs_component_index_get(component)->tables;
-            sicore_vec_iter(tables_vec, uint16_t, table_index, {
-                const ecs_table_t *table = &ecs_world.table_index.tables[*table_index];
+            sicore_vec_iter(tables_vec, uint16_t, table_id, {
+                const ecs_table_t *table = &table_index.tables[*table_id];
 
                 if (ecs_query_match_component_table(&query_cache->query, table)) {
-                    ecs_query_cache_append_table(query_cache, table, *table_index);
+                    ecs_query_cache_append_table(query_cache, table, *table_id);
                 }
             });
         } else {
-            const uint16_t table_count = ecs_world.table_index.table_count;
-            const ecs_table_t *tables = ecs_world.table_index.tables;
+            const uint16_t table_count = table_index.table_count;
+            const ecs_table_t *tables = table_index.tables;
             for (uint16_t i = 0; i < table_count; i++) {
                 if (ecs_query_match_component_table(&query_cache->query, &tables[i])) {
                     ecs_query_cache_append_table(query_cache, &tables[i], i);
@@ -644,16 +644,16 @@ ecs_query_index_update_matches(ecs_query_cache_t *query_cache, ecs_component_t c
     }
     if (ECS_LIKELY(component)) {
         const sicore_vec_t *tables_vec = &ecs_component_index_get(component)->tables;
-        sicore_vec_iter(tables_vec, uint16_t, table_index, {
-            const ecs_table_t *table = &ecs_world.table_index.tables[*table_index];
+        sicore_vec_iter(tables_vec, uint16_t, table_id, {
+            const ecs_table_t *table = &table_index.tables[*table_id];
 
             if (ecs_query_match_table(&query_cache->query, table)) {
-                ecs_query_cache_add_matched_table(query_cache, table, *table_index);
+                ecs_query_cache_add_matched_table(query_cache, table, *table_id);
             }
         });
     } else {
-        const uint16_t table_count = ecs_world.table_index.table_count;
-        const ecs_table_t *tables = ecs_world.table_index.tables;
+        const uint16_t table_count = table_index.table_count;
+        const ecs_table_t *tables = table_index.tables;
         for (uint16_t i = 0; i < table_count; i++) {
             if (ecs_query_match_table(&query_cache->query, &tables[i])) {
                 ecs_query_cache_add_matched_table(query_cache, &tables[i], i);

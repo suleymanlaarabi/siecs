@@ -4,7 +4,7 @@
 #include "world_internal.h"
 
 static ecs_resource_t ecs_resource_alloc_id(void) {
-    ecs_resource_t id = ecs_world.resource_index.count;
+    ecs_resource_t id = resource_index.count;
     ecs_assert(id < UINT16_MAX, "resource id overflow\n");
     return id;
 }
@@ -18,7 +18,7 @@ ecs_resource_t ecs_resource_find(const char *name) { return ecs_resource_index_f
 
 const char *ecs_resource_name(ecs_resource_t resource) {
     ecs_assert(ecs_resource_index_is_registered(resource), "invalid resource id: %u\n", resource);
-    return ecs_world.resource_index.records[resource].name;
+    return resource_index.records[resource].name;
 }
 
 bool ecs_resource_is_registered_rid(ecs_resource_t id) {

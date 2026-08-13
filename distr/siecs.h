@@ -307,9 +307,6 @@ typedef float f32;
 typedef double f64;
 typedef void *ptr;
 
-/* Opaque registry that owns reflected type metadata. */
-typedef struct sireflect_registry_t sireflect_registry_t;
-
 /* Type handle. Valid handles start at 1. */
 typedef uint64_t sireflect_handle_t;
 
@@ -318,7 +315,7 @@ typedef uint64_t sireflect_handle_t;
 
 /* Reports a failed Sireflect debug assertion. */
 #ifndef NDEBUG
-SIREFLECT_API void sireflect_assert_fail(
+void sireflect_assert_fail(
     const char *condition,
     const char *message,
     const char *file,
@@ -368,10 +365,10 @@ typedef enum {
 
 /* Returns a stable string for a kind, or "unknown" for an invalid kind value.
  */
-SIREFLECT_API const char *sireflect_kind_name(sireflect_kind_t kind);
+const char *sireflect_kind_name(sireflect_kind_t kind);
 
 /* Returns true for integer and floating-point kinds. */
-SIREFLECT_API bool sireflect_is_numeric(sireflect_kind_t kind);
+bool sireflect_is_numeric(sireflect_kind_t kind);
 
 /* Qualifier flags stored on reflected fields. */
 typedef enum {
@@ -442,7 +439,7 @@ typedef struct {
 
 /*
  * Declares a struct and stores its source field list for registration.
- * Use sireflect(reg, name) to register the generated metadata.
+ * Use sireflect(name) to register the generated metadata.
  */
 #define SIREFLECT_STRUCT(type_name, ...)                                                           \
     typedef struct __VA_ARGS__ type_name;                                                          \
@@ -453,112 +450,102 @@ typedef struct {
         .align = _Alignof(type_name)                                                               \
     }
 
-/* Registers a struct declared with SIREFLECT_STRUCT. */
-#define sireflect(reg, name) sireflect_register_struct(reg, &sireflect_desc(name))
+#define sireflect(name) sireflect_register_struct(&sireflect_desc(name))
 
-/* Creates a reflection registry. */
-SIREFLECT_API sireflect_registry_t *sireflect_registry_init(void);
+/* Initializes the process-wide reflection context. Calls are reference-counted. */
+void sireflect_init(void);
 
-/* Destroys a registry and all metadata it owns. */
-SIREFLECT_API void sireflect_registry_fini(sireflect_registry_t *reg);
+/* Releases one initialization reference and destroys metadata at the final release. */
+void sireflect_fini(void);
 
 /*
  * Returns the current recoverable error message, or NULL if there is no error.
  * The returned pointer is owned by Sireflect and remains valid until the next
- * public sireflect_* call except sireflect_error(), or until sireflect_registry_fini().
+ * public sireflect_* call except sireflect_error(), or until the final sireflect_fini().
  */
-SIREFLECT_API const char *sireflect_error(void);
+const char *sireflect_error(void);
 
 /*
  * Registers a struct type from its textual field list.
  * Returns the existing handle if the same type was already registered.
  */
-SIREFLECT_API sireflect_handle_t
-sireflect_register_struct(sireflect_registry_t *reg, const sireflect_struct_desc_t *desc);
+sireflect_handle_t
+sireflect_register_struct(const sireflect_struct_desc_t *desc);
 
 /*
  * Tries to register a struct type from its textual field list.
  * Returns SIREFLECT_INVALID_HANDLE when the descriptor or reflected field syntax is invalid.
  */
-SIREFLECT_API sireflect_handle_t
-sireflect_try_register_struct(sireflect_registry_t *reg, const sireflect_struct_desc_t *desc);
+sireflect_handle_t
+sireflect_try_register_struct(const sireflect_struct_desc_t *desc);
 
 /*
  * Tries to register a dynamic struct and derives its C layout from the
  * registered field types. Returns SIREFLECT_INVALID_HANDLE on invalid input.
  */
-SIREFLECT_API sireflect_handle_t sireflect_try_register_dynamic_struct(
-    sireflect_registry_t *reg,
+sireflect_handle_t sireflect_try_register_dynamic_struct(
     const char *name,
     const char *fields
 );
 
 /* Finds a type handle by name, or SIREFLECT_INVALID_HANDLE if missing. */
-SIREFLECT_API sireflect_handle_t sireflect_type_by_name(const sireflect_registry_t *reg, const char *name);
+sireflect_handle_t sireflect_type_by_name(const char *name);
 
 /* Returns metadata for a type handle. */
-SIREFLECT_API const sireflect_type_info_t *
-sireflect_type_info(const sireflect_registry_t *reg, sireflect_handle_t ref);
+const sireflect_type_info_t *sireflect_type_info(sireflect_handle_t ref);
 
 /* Returns the fields of a type. */
-SIREFLECT_API const sireflect_fields_t *
-sireflect_type_fields(const sireflect_registry_t *reg, sireflect_handle_t ref);
+const sireflect_fields_t *sireflect_type_fields(sireflect_handle_t ref);
 
 /* Returns the size of a type in bytes. */
-SIREFLECT_API size_t sireflect_type_size(const sireflect_registry_t *reg, sireflect_handle_t ref);
+size_t sireflect_type_size(sireflect_handle_t ref);
 
 /* Returns the name of a type. */
-SIREFLECT_API const char *sireflect_type_name(const sireflect_registry_t *reg, sireflect_handle_t ref);
+const char *sireflect_type_name(sireflect_handle_t ref);
 
 /* Returns true when type metadata describes a struct type. */
-SIREFLECT_API bool sireflect_type_is_struct(const sireflect_type_info_t *info);
+bool sireflect_type_is_struct(const sireflect_type_info_t *info);
 
 /* Returns true when type metadata describes an array type. */
-SIREFLECT_API bool sireflect_type_is_array(const sireflect_type_info_t *info);
+bool sireflect_type_is_array(const sireflect_type_info_t *info);
 
 /* Returns true when type metadata describes a typed pointer type. */
-SIREFLECT_API bool sireflect_type_is_pointer(const sireflect_type_info_t *info);
+bool sireflect_type_is_pointer(const sireflect_type_info_t *info);
 
 /* Returns the element type handle of an array type. */
-SIREFLECT_API sireflect_handle_t sireflect_type_element(const sireflect_registry_t *reg, sireflect_handle_t ref);
+sireflect_handle_t sireflect_type_element(sireflect_handle_t ref);
 
 /* Returns the element count of an array type. */
-SIREFLECT_API size_t sireflect_type_element_count(const sireflect_registry_t *reg, sireflect_handle_t ref);
+size_t sireflect_type_element_count(sireflect_handle_t ref);
 
 /* Returns the pointee type handle of a typed pointer type. */
-SIREFLECT_API sireflect_handle_t sireflect_type_pointee(const sireflect_registry_t *reg, sireflect_handle_t ref);
+sireflect_handle_t sireflect_type_pointee(sireflect_handle_t ref);
 
 /* Finds metadata for a field by name. */
-SIREFLECT_API const sireflect_field_info_t *
-sireflect_field_info(const sireflect_registry_t *reg, sireflect_handle_t type, const char *field);
+const sireflect_field_info_t *sireflect_field_info(sireflect_handle_t type, const char *field);
 
 /* Returns the type handle of a field. */
-SIREFLECT_API sireflect_handle_t
-sireflect_field_type(const sireflect_registry_t *reg, sireflect_handle_t type, const char *field);
+sireflect_handle_t sireflect_field_type(sireflect_handle_t type, const char *field);
 
 /* Returns the size of a field in bytes. */
-SIREFLECT_API size_t
-sireflect_field_size(const sireflect_registry_t *reg, sireflect_handle_t ref, const char *field);
+size_t sireflect_field_size(sireflect_handle_t ref, const char *field);
 
 /* Returns a const pointer to a field inside an object. */
-SIREFLECT_API const void *sireflect_field_ptr(
-    const sireflect_registry_t *reg,
+const void *sireflect_field_ptr(
     sireflect_handle_t type,
     const void *obj,
     const char *field
 );
 
 /* Returns a mutable pointer to a field inside an object. */
-SIREFLECT_API void *sireflect_field_mut_ptr(
-    const sireflect_registry_t *reg,
+void *sireflect_field_mut_ptr(
     sireflect_handle_t type,
     void *obj,
     const char *field
 );
 
 /* Copies value bytes into a field. Returns 0 on success. */
-SIREFLECT_API int sireflect_field_copy(
-    const sireflect_registry_t *reg,
+int sireflect_field_copy(
     sireflect_handle_t type,
     void *obj,
     const char *field,
@@ -663,11 +650,10 @@ SIREFLECT_API int sireflect_field_copy(
     SIJSON_DEFINE(type);
 
 /*
- * Default reflection registry used by the convenience macros.
- *
- * The implementation initializes it lazily when a type is first used.
+ * Typed operations use Sireflect's process-wide context. Call
+ * sireflect_init() before the first typed operation and sireflect_fini() after
+ * the last one. Sijson does not own this lifecycle.
  */
-SIJSON_API sireflect_registry_t *sijson_default_registry(void);
 
 /*
  * Opaque handle for arbitrary JSON values.
@@ -694,45 +680,45 @@ typedef enum sijson_type {
  * sijson_stringify returns a newly allocated JSON string owned by the
  * caller.
  */
-SIJSON_API sijson_value_t sijson_parse(const char *json);
-SIJSON_API char *sijson_stringify(sijson_value_t value);
+sijson_value_t sijson_parse(const char *json);
+char *sijson_stringify(sijson_value_t value);
 
 /*
  * Reset or release the internal arena used by sijson_value_t values.
  * sijson_clean keeps allocated capacity for reuse.
  * sijson_release frees the arena storage.
  */
-SIJSON_API void sijson_clean(void);
-SIJSON_API void sijson_release(void);
+void sijson_clean(void);
+void sijson_release(void);
 
 /* Inspect a dynamic JSON value. */
-SIJSON_API sijson_type_t sijson_type(sijson_value_t value);
+sijson_type_t sijson_type(sijson_value_t value);
 
 /* Read scalar values. The value must have the matching sijson_type_t. */
-SIJSON_API bool sijson_bool(sijson_value_t value);
-SIJSON_API double sijson_number(sijson_value_t value);
-SIJSON_API const char *sijson_string(sijson_value_t value);
+bool sijson_bool(sijson_value_t value);
+double sijson_number(sijson_value_t value);
+const char *sijson_string(sijson_value_t value);
 
 /* Read arrays. */
-SIJSON_API size_t sijson_array_len(sijson_value_t value);
-SIJSON_API sijson_value_t sijson_array_get(sijson_value_t value, size_t index);
+size_t sijson_array_len(sijson_value_t value);
+sijson_value_t sijson_array_get(sijson_value_t value, size_t index);
 
 /* Read objects. */
-SIJSON_API size_t sijson_object_len(sijson_value_t value);
-SIJSON_API const char *sijson_object_key(sijson_value_t value, size_t index);
-SIJSON_API sijson_value_t sijson_object_get(sijson_value_t value, const char *key);
+size_t sijson_object_len(sijson_value_t value);
+const char *sijson_object_key(sijson_value_t value, size_t index);
+sijson_value_t sijson_object_get(sijson_value_t value, const char *key);
 
 /* Build dynamic JSON values in sijson's internal arena. */
-SIJSON_API sijson_value_t sijson_make_null(void);
-SIJSON_API sijson_value_t sijson_make_bool(bool value);
-SIJSON_API sijson_value_t sijson_make_number(double value);
-SIJSON_API sijson_value_t sijson_make_string(const char *value);
-SIJSON_API sijson_value_t sijson_make_array(void);
-SIJSON_API sijson_value_t sijson_make_object(void);
+sijson_value_t sijson_make_null(void);
+sijson_value_t sijson_make_bool(bool value);
+sijson_value_t sijson_make_number(double value);
+sijson_value_t sijson_make_string(const char *value);
+sijson_value_t sijson_make_array(void);
+sijson_value_t sijson_make_object(void);
 
 /* Mutate arrays and objects created as dynamic JSON values. */
-SIJSON_API bool sijson_array_push(sijson_value_t array, sijson_value_t value);
-SIJSON_API bool sijson_object_set(sijson_value_t object, const char *key, sijson_value_t value);
+bool sijson_array_push(sijson_value_t array, sijson_value_t value);
+bool sijson_object_set(sijson_value_t object, const char *key, sijson_value_t value);
 
 /*
  * Serialize a value written as a compound initializer.
@@ -756,7 +742,7 @@ SIJSON_API bool sijson_object_set(sijson_value_t object, const char *key, sijson
  * Registers desc on first use through ref, then serializes ptr.
  * Returns a newly allocated JSON string owned by the caller.
  */
-SIJSON_API char *
+char *
 sijson_to_json_impl(sireflect_handle_t *ref, const sireflect_struct_desc_t *desc, const void *ptr);
 
 /*
@@ -779,7 +765,7 @@ sijson_to_json_impl(sireflect_handle_t *ref, const sireflect_struct_desc_t *desc
  * Registers desc on first use through ref, grows the internal temporary buffer
  * if needed, writes the parsed value into it, and returns that buffer.
  */
-SIJSON_API void *sijson_from_json_impl(
+void *sijson_from_json_impl(
     sireflect_handle_t *ref,
     const sireflect_struct_desc_t *desc,
     const char *json
@@ -792,12 +778,12 @@ SIJSON_API void *sijson_from_json_impl(
  */
 #define sijson_free(type, ptr) sijson_free_impl(&sijson_handle(type), &sireflect_desc(type), (ptr))
 
-SIJSON_API void sijson_free_impl(sireflect_handle_t *ref, const sireflect_struct_desc_t *desc, void *ptr);
+void sijson_free_impl(sireflect_handle_t *ref, const sireflect_struct_desc_t *desc, void *ptr);
 
 /*
  * Returns the error message from the last failed operation.
  */
-SIJSON_API const char *sijson_error(void);
+const char *sijson_error(void);
 
 #endif
 

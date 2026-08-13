@@ -36,10 +36,12 @@ typedef struct {
     uint8_t pair_slot_shift;
 } ecs_table_index_t;
 
+extern ecs_table_index_t table_index;
+
 void ecs_table_index_init();
 void ecs_table_index_fini();
 
-#define ecs_table_index_at(index) (&ecs_world.table_index.tables[index])
+#define ecs_table_index_at(index) (&table_index.tables[index])
 
 uint16_t ecs_table_index_get_or_create(
     ecs_type_t type

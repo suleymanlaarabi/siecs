@@ -698,8 +698,8 @@ void component_same_local_type_with_different_base_creates_different_tables(void
         ecs_table_index_get_or_create(component_type_with_position_and_base(base_b));
 
     test_assert(table_a != table_b);
-    test_assert(base_a == ecs_world.table_index.tables[table_a].type.base);
-    test_assert(base_b == ecs_world.table_index.tables[table_b].type.base);
+    test_assert(base_a == table_index.tables[table_a].type.base);
+    test_assert(base_b == table_index.tables[table_b].type.base);
 
     ecs_fini();
 }
@@ -919,8 +919,8 @@ void component_table_index_resize_preserves_type_hashes(void) {
         );
     }
 
-    test_assert(ecs_world.table_index.slot_shift > 12);
-    uint16_t table_count = ecs_world.table_index.table_count;
+    test_assert(table_index.slot_shift > 12);
+    uint16_t table_count = table_index.table_count;
 
     for (uint32_t mask = 0; mask < TypeCount; mask++) {
         uint16_t table_id = ecs_table_index_get_or_create(
@@ -928,7 +928,7 @@ void component_table_index_resize_preserves_type_hashes(void) {
         );
         test_int(table_ids[mask], table_id);
     }
-    test_int(table_count, ecs_world.table_index.table_count);
+    test_int(table_count, table_index.table_count);
 
     free(table_ids);
     ecs_fini();

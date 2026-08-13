@@ -22,6 +22,8 @@ typedef struct {
     uint64_t count;
 } ecs_resource_index_t;
 
+extern ecs_resource_index_t resource_index;
+
 void ecs_resource_index_init();
 void ecs_resource_index_fini();
 
