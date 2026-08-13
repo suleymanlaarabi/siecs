@@ -26,6 +26,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
 #ifndef NDEBUG
     ecs_world_started = true;
 #endif
+    sireflect_init();
     ecs_entity_index_init();
     ecs_component_index_init();
     ecs_relation_index_init();
@@ -65,6 +66,7 @@ void ecs_fini(void) {
     ecs_execution_context_fini(&ecs_world.main_context);
     ecs_component_index_fini();
     ecs_relation_index_fini();
+    sireflect_fini();
     sicore_map_fini(&name_map);
 #ifndef NDEBUG
     ecs_world_started = false;

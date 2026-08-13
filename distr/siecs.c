@@ -5371,7 +5371,6 @@ void ecs_bootstrap() {
 
     // Register the ecs_entity_t struct reflection.
     sireflect_register_struct(
-        sijson_default_registry(),
         &(sireflect_struct_desc_t){
             .name = "ecs_entity_t",
             .fields = "{ uint32_t id; uint32_t generation; }",
@@ -6421,7 +6420,7 @@ ecs_component_t ecs_component_register(ecs_component_t *id, const ecs_component_
     ecs_assert_not_scheduler_parallel("component registration");
     sireflect_handle_t type = SIREFLECT_INVALID_HANDLE;
     if (ECS_LIKELY(desc && desc->struct_desc)) {
-        type = sireflect_try_register_struct(sijson_default_registry(), desc->struct_desc);
+        type = sireflect_try_register_struct(desc->struct_desc);
         if (ECS_UNLIKELY(type == SIREFLECT_INVALID_HANDLE)) {
             puts(sireflect_error());
         }
@@ -6445,9 +6444,8 @@ const ecs_component_info_t *ecs_component_info(ecs_component_t component) {
 uint32_t ecs_component_count(void) { return component_index.components.size; }
 
 ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc) {
-    sireflect_registry_t *registry = sijson_default_registry();
     sireflect_handle_t type =
-        sireflect_try_register_dynamic_struct(registry, desc->name, desc->fields);
+        sireflect_try_register_dynamic_struct(desc->name, desc->fields);
     if (type == SIREFLECT_INVALID_HANDLE) {
         return 0;
     }
@@ -6459,7 +6457,7 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
         }
     }
 
-    const sireflect_type_info_t *info = sireflect_type_info(registry, type);
+    const sireflect_type_info_t *info = sireflect_type_info(type);
     sireflect_struct_desc_t reflection = {
         .name = desc->name,
         .fields = desc->fields,
@@ -9136,6 +9134,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
 #ifndef NDEBUG
     ecs_world_started = true;
 #endif
+    sireflect_init();
     ecs_entity_index_init();
     ecs_component_index_init();
     ecs_relation_index_init();
@@ -9175,6 +9174,7 @@ void ecs_fini(void) {
     ecs_execution_context_fini(&ecs_world.main_context);
     ecs_component_index_fini();
     ecs_relation_index_fini();
+    sireflect_fini();
     sicore_map_fini(&name_map);
 #ifndef NDEBUG
     ecs_world_started = false;

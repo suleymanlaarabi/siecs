@@ -13,7 +13,7 @@ static bool validate_component_shape(
     sijson_value_t value
 ) {
     const sireflect_fields_t *fields =
-        sireflect_type_fields(sijson_default_registry(), info->type);
+        sireflect_type_fields(info->type);
     if (sijson_type(value) != SIJSON_OBJECT || sijson_object_len(value) != fields->field_count) {
         return false;
     }
@@ -56,7 +56,7 @@ static sijson_value_t component_value_json(
 sijson_value_t ecs_rest_entity_component_json(ecs_component_t component_id, const void *ptr) {
     const ecs_component_info_t *info = ecs_component_info(component_id);
     const sireflect_type_info_t *type =
-        sireflect_type_info(sijson_default_registry(), info->type);
+        sireflect_type_info(info->type);
 
     sijson_value_t component = sijson_make_object();
     sijson_object_set(component, "id", sijson_make_number(component_id));

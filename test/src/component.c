@@ -54,11 +54,11 @@ void component_dynamic_component_layout_and_info(void) {
     test_uint(tag_info->size, 0);
     test_uint(
         mixed_info->type,
-        sireflect_type_by_name(sijson_default_registry(), "DynamicMixedComponent")
+        sireflect_type_by_name("DynamicMixedComponent")
     );
 
     const sireflect_fields_t *fields =
-        sireflect_type_fields(sijson_default_registry(), mixed_info->type);
+        sireflect_type_fields(mixed_info->type);
     test_uint(fields->field_count, 3);
     test_uint(fields->fields[0].offset, 0);
     test_uint(fields->fields[1].offset, 8);

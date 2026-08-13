@@ -42,8 +42,8 @@
     "refs": {
       "default": {
         "sicore": { "branch": "main", "commit": "815a938a1ee7ec30469b898b4e34b494930f618b" },
-        "sireflect": { "branch": "main", "commit": "f79f3e28b8243918061ad5b6b44fc698842ed4b5" },
-        "sijson": { "branch": "main", "commit": "7c978e7eaf821d0ce13af4ed96ef1e7d7e3eec62" }
+        "sireflect": { "branch": "main", "commit": "6b38365a7aa91ca960299a189261fe5e827cdb52" },
+        "sijson": { "branch": "main", "commit": "55a9780d3cbdf7911ac4c74d7e3c28a78f553180" }
       }
     }
   }
