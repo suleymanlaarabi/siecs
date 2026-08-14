@@ -121,23 +121,6 @@ void ecs_component_index_fini() {
     sicore_vec_fini(&component_index.components);
 }
 
-void ecs_component_value_move_ctor(
-    const ecs_component_record_t *record,
-    void *dst,
-    void *src,
-    uint32_t count
-) {
-    if (record->ops.move_ctor) {
-        record->ops.move_ctor(dst, src, count);
-        return;
-    }
-
-    record->ops.copy_ctor(dst, src, count);
-    if (record->ops.dtor) {
-        record->ops.dtor(src, count);
-    }
-}
-
 ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {
     return sicore_vec_get_mut(&component_index.components, cid, ecs_component_record_t);
 }

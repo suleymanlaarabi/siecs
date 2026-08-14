@@ -15,7 +15,6 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
 #ifdef ecs_with
 #undef ecs_with
@@ -215,10 +214,8 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
     ecs_emit(table, entity, EcsOnSet, data);
     if (crec->relation_flags & EcsComponentRelationTarget) {
         ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
-    } else if (crec->ops.copy) {
-        crec->ops.copy(dst, data, 1);
-    } else if (crec->info->size) {
-        memcpy(dst, data, crec->info->size);
+    } else {
+        ecs_component_value_copy(crec, dst, data, 1);
     }
     ecs_defer_end();
 }
@@ -254,27 +251,9 @@ void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
     if (crec->relation_flags & EcsComponentRelationTarget) {
         ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
     } else if (had_value || crec->ops.ctor) {
-        if (crec->ops.move) {
-            crec->ops.move(dst, data, 1);
-        } else if (crec->ops.copy) {
-            crec->ops.copy(dst, data, 1);
-            if (crec->ops.dtor) {
-                crec->ops.dtor(data, 1);
-            }
-        } else if (crec->info->size) {
-            memcpy(dst, data, crec->info->size);
-        }
+        ecs_component_value_move(crec, dst, data, 1);
     } else {
-        if (crec->ops.move_ctor) {
-            crec->ops.move_ctor(dst, data, 1);
-        } else if (crec->ops.copy_ctor) {
-            crec->ops.copy_ctor(dst, data, 1);
-            if (crec->ops.dtor) {
-                crec->ops.dtor(data, 1);
-            }
-        } else if (crec->info->size) {
-            memcpy(dst, data, crec->info->size);
-        }
+        ecs_component_value_move_ctor(crec, dst, data, 1);
     }
 }
 

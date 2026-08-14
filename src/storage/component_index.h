@@ -4,6 +4,7 @@
 #include "sireflect.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 typedef enum {
     EcsComponentRelationTarget = 1 << 0,
@@ -67,11 +68,46 @@ void ecs_component_index_fini();
 
 ecs_component_record_t *ecs_component_index_get(ecs_component_t cid);
 
-void ecs_component_value_move_ctor(
+static inline void ecs_component_value_copy(
     const ecs_component_record_t *record,
-    void *dst,
-    void *src,
-    uint32_t count
-);
+    void *dst, const void *src, uint32_t count
+) {
+    if (!record->info->size) return;
+    if (record->ops.copy) record->ops.copy(dst, src, count);
+    else memcpy(dst, src, (size_t)record->info->size * count);
+}
+
+static inline void ecs_component_value_copy_ctor(
+    const ecs_component_record_t *record,
+    void *dst, const void *src, uint32_t count
+) {
+    if (!record->info->size) return;
+    if (record->ops.copy_ctor) record->ops.copy_ctor(dst, src, count);
+    else memcpy(dst, src, (size_t)record->info->size * count);
+}
+
+static inline void ecs_component_value_move(
+    const ecs_component_record_t *record,
+    void *dst, void *src, uint32_t count
+) {
+    if (!record->info->size) return;
+    if (record->ops.move) record->ops.move(dst, src, count);
+    else if (record->ops.copy) {
+        record->ops.copy(dst, src, count);
+        if (record->ops.dtor) record->ops.dtor(src, count);
+    } else memcpy(dst, src, (size_t)record->info->size * count);
+}
+
+static inline void ecs_component_value_move_ctor(
+    const ecs_component_record_t *record,
+    void *dst, void *src, uint32_t count
+) {
+    if (!record->info->size) return;
+    if (record->ops.move_ctor) record->ops.move_ctor(dst, src, count);
+    else if (record->ops.copy_ctor) {
+        record->ops.copy_ctor(dst, src, count);
+        if (record->ops.dtor) record->ops.dtor(src, count);
+    } else memcpy(dst, src, (size_t)record->info->size * count);
+}
 
 #endif

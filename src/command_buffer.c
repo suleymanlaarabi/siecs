@@ -13,7 +13,6 @@
 #include "world_internal.h"
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
 #define ECS_COMMAND_NONE UINT32_MAX
 
@@ -164,6 +163,53 @@ static ecs_entity_command_t *command_for_entity(
     return command;
 }
 
+static inline void command_buffer_store(
+    ecs_entity_t entity,
+    ecs_component_t id,
+    void *data,
+    ecs_deferred_op_t op
+) {
+    ecs_command_buffer_t *buffer =
+        &ecs_execution_context_current()->commands;
+
+    ecs_entity_command_t *command =
+        command_for_entity(buffer, entity);
+
+    const ecs_component_record_t *record =
+        ecs_component_index_get(id);
+
+    ecs_deferred_change_t *change =
+        change_find(&command->changes, id);
+
+    if (!change) {
+        change = change_add(command, id, op);
+    } else {
+        deferred_change_fini(change);
+        change->op = op;
+    }
+
+    change->data = ecs_arena_alloc(
+        buffer->arena,
+        record->info->size ? record->info->size : 1
+    );
+
+    if (op == EcsDeferredMove) {
+        ecs_component_value_move_ctor(
+            record,
+            change->data,
+            data,
+            1
+        );
+    } else {
+        ecs_component_value_copy_ctor(
+            record,
+            change->data,
+            data,
+            1
+        );
+    }
+}
+
 void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id) {
     ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
@@ -188,54 +234,11 @@ void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id) {
 }
 
 void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void *data) {
-    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
-    ecs_entity_command_t *command = command_for_entity(buffer, entity);
-    const ecs_component_record_t *record = ecs_component_index_get(id);
-
-    uint32_t size = record->info->size ? record->info->size : 1;
-    ecs_deferred_change_t *change = change_find(&command->changes, id);
-    if (!change) {
-        change = change_add(command, id, EcsDeferredCopy);
-    } else {
-        deferred_change_fini(change);
-        change->op = EcsDeferredCopy;
-    }
-    change->data = ecs_arena_alloc(buffer->arena, size);
-    if (record->info->size) {
-        if (record->ops.copy_ctor) {
-            record->ops.copy_ctor(change->data, data, 1);
-        } else {
-            memcpy(change->data, data, record->info->size);
-        }
-    }
+    command_buffer_store(entity, id, (void *)data, EcsDeferredCopy);
 }
 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data) {
-    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
-    ecs_entity_command_t *command = command_for_entity(buffer, entity);
-    const ecs_component_record_t *record = ecs_component_index_get(id);
-
-    uint32_t size = record->info->size ? record->info->size : 1;
-    ecs_deferred_change_t *change = change_find(&command->changes, id);
-    if (!change) {
-        change = change_add(command, id, EcsDeferredMove);
-    } else {
-        deferred_change_fini(change);
-        change->op = EcsDeferredMove;
-    }
-    change->data = ecs_arena_alloc(buffer->arena, size);
-    if (record->info->size) {
-        if (record->ops.move_ctor) {
-            record->ops.move_ctor(change->data, data, 1);
-        } else if (record->ops.copy_ctor) {
-            record->ops.copy_ctor(change->data, data, 1);
-            if (record->ops.dtor) {
-                record->ops.dtor(data, 1);
-            }
-        } else {
-            memcpy(change->data, data, record->info->size);
-        }
-    }
+    command_buffer_store(entity, id, data, EcsDeferredMove);
 }
 
 void ecs_command_buffer_kill(ecs_entity_t entity) {
@@ -391,18 +394,7 @@ static void command_apply_changes(ecs_entity_command_t *command) {
             dst = ecs_table_component_at_column(table, column, entity_record->table_row);
         }
         ecs_emit(table, command->entity, EcsOnSet, changes[i].data);
-        if (record->info->size) {
-            if (record->ops.move) {
-                record->ops.move(dst, changes[i].data, 1);
-            } else if (record->ops.copy) {
-                record->ops.copy(dst, changes[i].data, 1);
-                if (record->ops.dtor) {
-                    record->ops.dtor(changes[i].data, 1);
-                }
-            } else {
-                memcpy(dst, changes[i].data, record->info->size);
-            }
-        }
+        ecs_component_value_move(record, dst, changes[i].data, 1);
         changes[i].data = NULL;
     }
 }
