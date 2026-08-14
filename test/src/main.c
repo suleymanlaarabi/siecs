@@ -80,6 +80,7 @@ void childof_with_relation_deferred_explicit_relation_wins(void);
 void childof_with_relation_double_add_does_not_restore_removed_relation(void);
 void childof_dense_retarget_without_migration(void);
 void childof_dense_retarget_keeps_reverse_sources(void);
+void childof_dense_unrelate_updates_swapped_reverse_index(void);
 void childof_dense_delete_policies(void);
 void childof_bydepth_depth_and_cascade(void);
 void childof_bydepth_targets_return_records(void);
@@ -434,6 +435,10 @@ bake_test_case childof_testcases[] = {
     {
         "dense_retarget_keeps_reverse_sources",
         childof_dense_retarget_keeps_reverse_sources
+    },
+    {
+        "dense_unrelate_updates_swapped_reverse_index",
+        childof_dense_unrelate_updates_swapped_reverse_index
     },
     {
         "dense_delete_policies",
@@ -807,7 +812,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        28,
+        29,
         childof_testcases
     },
     {

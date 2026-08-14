@@ -236,6 +236,63 @@ void childof_dense_retarget_keeps_reverse_sources(void) {
     ecs_fini();
 }
 
+void childof_dense_unrelate_updates_swapped_reverse_index(void) {
+    ecs_init();
+    ECS_RELATION_REGISTER(DenseRel);
+
+    ecs_entity_t target = ecs_new();
+    ecs_entity_t source_a = ecs_new();
+    ecs_entity_t source_b = ecs_new();
+    ecs_entity_t source_c = ecs_new();
+
+    ecs_relate(source_a, DenseRel, target);
+    ecs_relate(source_b, DenseRel, target);
+    ecs_relate(source_c, DenseRel, target);
+
+    const ecs_relation_record_t *record = ecs_relation_record(ecs_rid(DenseRel));
+    ecs_component_t target_component = record->component;
+    ecs_component_t source_component = target_component + 1;
+
+    RelationSource *sources = ecs_get_cid(target, source_component);
+    test_uint(3, sources->entities.size);
+    test_uint(source_a, *sicore_vec_get(&sources->entities, 0, ecs_entity_t));
+    test_uint(source_b, *sicore_vec_get(&sources->entities, 1, ecs_entity_t));
+    test_uint(source_c, *sicore_vec_get(&sources->entities, 2, ecs_entity_t));
+
+    ecs_unrelate(source_a, DenseRel);
+
+    sources = ecs_get_cid(target, source_component);
+    test_uint(2, sources->entities.size);
+    test_uint(source_c, *sicore_vec_get(&sources->entities, 0, ecs_entity_t));
+    test_uint(source_b, *sicore_vec_get(&sources->entities, 1, ecs_entity_t));
+
+    RelationTarget *source_c_target = ecs_get_cid(source_c, target_component);
+    RelationTarget *source_b_target = ecs_get_cid(source_b, target_component);
+    test_uint(0, source_c_target->source_index);
+    test_uint(1, source_b_target->source_index);
+    test_uint(target, source_c_target->entity);
+    test_uint(target, source_b_target->entity);
+    test_false(ecs_has_relation(source_a, DenseRel));
+
+    ecs_unrelate(source_c, DenseRel);
+
+    sources = ecs_get_cid(target, source_component);
+    test_uint(1, sources->entities.size);
+    test_uint(source_b, *sicore_vec_get(&sources->entities, 0, ecs_entity_t));
+
+    source_b_target = ecs_get_cid(source_b, target_component);
+    test_uint(0, source_b_target->source_index);
+    test_uint(target, source_b_target->entity);
+    test_false(ecs_has_relation(source_c, DenseRel));
+
+    ecs_unrelate(source_b, DenseRel);
+
+    test_false(ecs_has_relation(source_b, DenseRel));
+    test_null(ecs_try_get_cid(target, source_component));
+
+    ecs_fini();
+}
+
 void childof_dense_delete_policies(void) {
     ecs_init();
     ECS_RELATION_REGISTER(DenseRel);

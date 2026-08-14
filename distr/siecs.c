@@ -6312,7 +6312,7 @@ void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr)
     if (index != last) {
         ecs_entity_t moved = *sicore_vec_get(&target_source_data->entities, last, ecs_entity_t);
         *sicore_vec_get_mut(&target_source_data->entities, index, ecs_entity_t) = moved;
-        RelationTarget *moved_data = ecs_get_cid(moved, component - 1);
+        RelationTarget *moved_data = ecs_get_cid(moved, component);
         moved_data->source_index = index;
     }
     sicore_vec_remove_last(&target_source_data->entities);
