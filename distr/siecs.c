@@ -6222,6 +6222,44 @@ static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
     return id;
 }
 
+static inline void ecs_dense_relation_remove_source(
+    ecs_entity_t entity,
+    ecs_entity_t target,
+    ecs_component_t target_component,
+    RelationSource *source,
+    uint32_t index
+) {
+    ecs_assert(
+        index < source->entities.size &&
+            *sicore_vec_get(&source->entities, index, ecs_entity_t) == entity,
+        "relation source index is invalid\n"
+    );
+
+    uint32_t last = source->entities.size - 1;
+
+    if (index != last) {
+        ecs_entity_t moved =
+            *sicore_vec_get(&source->entities, last, ecs_entity_t);
+
+        *sicore_vec_get_mut(
+            &source->entities,
+            index,
+            ecs_entity_t
+        ) = moved;
+
+        RelationTarget *moved_data =
+            ecs_get_cid(moved, target_component);
+
+        moved_data->source_index = index;
+    }
+
+    sicore_vec_remove_last(&source->entities);
+
+    if (source->entities.size == 0) {
+        ecs_remove_cid(target, target_component + 1);
+    }
+}
+
 void RelationOnSet(
     ecs_entity_t entity,
     ecs_component_t target_component,
@@ -6241,31 +6279,16 @@ void RelationOnSet(
     }
 
     if (old_target_data->entity) {
-        RelationSource *source = ecs_get_cid(old_target_data->entity, source_component);
-        uint32_t index = old_target_data->source_index;
-        uint32_t last = source->entities.size - 1;
-        if (index >= source->entities.size ||
-            *sicore_vec_get(&source->entities, index, ecs_entity_t) != entity) {
-            index = 0;
-            sicore_vec_iter(&source->entities, ecs_entity_t, current, {
-                if (*current == entity) {
-                    break;
-                }
-                index++;
-            });
-            ecs_assert(index < source->entities.size, "relation source index is invalid\n");
-        }
+        RelationSource *source =
+            ecs_get_cid(old_target_data->entity, source_component);
 
-        if (index != last) {
-            ecs_entity_t moved = *sicore_vec_get(&source->entities, last, ecs_entity_t);
-            *sicore_vec_get_mut(&source->entities, index, ecs_entity_t) = moved;
-            RelationTarget *moved_data = ecs_get_cid(moved, target_component);
-            moved_data->source_index = index;
-        }
-        sicore_vec_remove_last(&source->entities);
-        if (source->entities.size == 0) {
-            ecs_remove_cid(old_target_data->entity, source_component);
-        }
+        ecs_dense_relation_remove_source(
+            entity,
+            old_target_data->entity,
+            target_component,
+            source,
+            old_target_data->source_index
+        );
     }
 
     uint32_t source_index;
@@ -6284,41 +6307,28 @@ void RelationOnSet(
     ((RelationTarget *)current_value)->source_index = source_index;
 }
 
-void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
+void RelationOnRemove(
+    ecs_entity_t entity,
+    ecs_component_t component,
+    void *ptr
+) {
     const RelationTarget *target_data = ptr;
     ecs_component_t source_component = component + 1;
-    RelationSource *target_source_data = ecs_get_cid(target_data->entity, source_component);
+    RelationSource *target_source_data =
+        ecs_get_cid(target_data->entity, source_component);
 
     // Prevent recursive calls to RelationOnRemove when removing relation from child
     if (target_source_data->entities.size == UINT32_MAX) {
         return;
     }
 
-    uint32_t index = target_data->source_index;
-    uint32_t last = target_source_data->entities.size - 1;
-    if (index >= target_source_data->entities.size ||
-        *sicore_vec_get(&target_source_data->entities, index, ecs_entity_t) != entity) {
-        index = 0;
-        sicore_vec_iter(&target_source_data->entities, ecs_entity_t, current, {
-            if (*current == entity) {
-                break;
-            }
-            index++;
-        });
-        ecs_assert(index < target_source_data->entities.size, "relation source index is invalid\n");
-    }
-
-    if (index != last) {
-        ecs_entity_t moved = *sicore_vec_get(&target_source_data->entities, last, ecs_entity_t);
-        *sicore_vec_get_mut(&target_source_data->entities, index, ecs_entity_t) = moved;
-        RelationTarget *moved_data = ecs_get_cid(moved, component);
-        moved_data->source_index = index;
-    }
-    sicore_vec_remove_last(&target_source_data->entities);
-
-    if (target_source_data->entities.size == 0) {
-        ecs_remove_cid(target_data->entity, source_component);
-    }
+    ecs_dense_relation_remove_source(
+        entity,
+        target_data->entity,
+        component,
+        target_source_data,
+        target_data->source_index
+    );
 }
 
 static void RelationSourceDtor(void *ptr, uint32_t count) {

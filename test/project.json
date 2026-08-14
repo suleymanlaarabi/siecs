@@ -105,6 +105,7 @@
           "with_relation_double_add_does_not_restore_removed_relation",
           "dense_retarget_without_migration",
           "dense_retarget_keeps_reverse_sources",
+          "dense_unrelate_keeps_source_indices",
           "dense_unrelate_updates_swapped_reverse_index",
           "dense_delete_policies",
           "bydepth_depth_and_cascade",

@@ -236,6 +236,66 @@ void childof_dense_retarget_keeps_reverse_sources(void) {
     ecs_fini();
 }
 
+void childof_dense_unrelate_keeps_source_indices(void) {
+    ecs_init();
+    ECS_RELATION_REGISTER(DenseRel);
+
+    ecs_entity_t target = ecs_new();
+    ecs_entity_t a = ecs_new();
+    ecs_entity_t b = ecs_new();
+    ecs_entity_t c = ecs_new();
+    ecs_entity_t d = ecs_new();
+
+    ecs_relate(a, DenseRel, target);
+    ecs_relate(b, DenseRel, target);
+    ecs_relate(c, DenseRel, target);
+    ecs_relate(d, DenseRel, target);
+
+    ecs_component_t target_component =
+        ecs_relation_record(ecs_rid(DenseRel))->component;
+
+    ecs_component_t source_component = target_component + 1;
+
+    RelationSource *sources =
+        ecs_get_cid(target, source_component);
+
+    test_uint(4, sources->entities.size);
+
+    ecs_unrelate(b, DenseRel);
+
+    sources = ecs_get_cid(target, source_component);
+
+    test_uint(3, sources->entities.size);
+    test_uint(a, *sicore_vec_get(&sources->entities, 0, ecs_entity_t));
+    test_uint(d, *sicore_vec_get(&sources->entities, 1, ecs_entity_t));
+    test_uint(c, *sicore_vec_get(&sources->entities, 2, ecs_entity_t));
+
+    RelationTarget *d_target =
+        ecs_get_cid(d, target_component);
+
+    test_uint(1, d_target->source_index);
+
+    ecs_unrelate(d, DenseRel);
+
+    sources = ecs_get_cid(target, source_component);
+
+    test_uint(2, sources->entities.size);
+    test_uint(a, *sicore_vec_get(&sources->entities, 0, ecs_entity_t));
+    test_uint(c, *sicore_vec_get(&sources->entities, 1, ecs_entity_t));
+
+    RelationTarget *c_target =
+        ecs_get_cid(c, target_component);
+
+    test_uint(1, c_target->source_index);
+
+    ecs_unrelate(a, DenseRel);
+    ecs_unrelate(c, DenseRel);
+
+    test_null(ecs_try_get_cid(target, source_component));
+
+    ecs_fini();
+}
+
 void childof_dense_unrelate_updates_swapped_reverse_index(void) {
     ecs_init();
     ECS_RELATION_REGISTER(DenseRel);
