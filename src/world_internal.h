@@ -9,7 +9,6 @@
 #include "storage/module_index.h"
 #include "storage/observer_index.h"
 #include "storage/query_index.h"
-#include "storage/resource_index.h"
 #include "storage/system_index.h"
 #include "storage/table_index.h"
 #include "relation.h"
@@ -30,6 +29,11 @@ struct ecs_world_s {
 };
 
 extern ecs_world_t ecs_world;
+
+void ecs_resource_storage_init(void);
+void ecs_resource_storage_fini(void);
+void ecs_module_storage_init(void);
+void ecs_module_storage_fini(void);
 
 typedef ecs_relation_target_t RelationTarget;
 

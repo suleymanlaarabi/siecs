@@ -29,11 +29,7 @@ ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
     ecs_assert_not_scheduler_parallel("observer registration");
     ecs_assert(desc->callback != NULL, "Observer callback cannot be NULL");
     ecs_observer_id_t oid = ecs_observer_index_create(desc);
-    ecs_observer_index_match_tables(
-        table_index.tables,
-        table_index.table_count,
-        oid
-    );
+    ecs_observer_index_match_tables(oid);
     ecs_module_record_observer(oid);
     return oid;
 }

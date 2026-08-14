@@ -84,10 +84,6 @@ uint16_t ecs_query_index_create(const ecs_query_desc_t *desc);
 void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id);
 void ecs_query_index_refresh_table_fields(const ecs_table_t *table, uint16_t table_id);
 
-// Reusable query helpers shared with the observer index.
-ecs_component_t ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query);
-void ecs_query_index_destroy(ecs_query_t *query);
-
 static inline bool ecs_query_term_requires_owned(ecs_query_term_t term) {
     return term.access == EcsOut || term.access == EcsInOut || term.access == EcsInOutOptional;
 }

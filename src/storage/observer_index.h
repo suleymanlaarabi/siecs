@@ -7,7 +7,7 @@
 
 typedef struct {
     ecs_event_t event;
-    ecs_query_t query;
+    ecs_query_id_t query;
     ecs_observer_callback_t callback;
     uintptr_t user_data;
     bool enabled;
@@ -26,11 +26,7 @@ void ecs_observer_index_fini();
 uint16_t ecs_observer_index_create(const ecs_observer_desc_t *desc);
 
 // Cache a freshly created observer onto every existing table it matches.
-void ecs_observer_index_match_tables(
-    ecs_table_t *tables,
-    uint16_t table_count,
-    uint16_t observer_id
-);
+void ecs_observer_index_match_tables(uint16_t observer_id);
 
 // Cache every existing observer that matches a freshly created table.
 void ecs_observer_index_add_table(ecs_table_t *table);

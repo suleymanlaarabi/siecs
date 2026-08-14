@@ -1,75 +1,215 @@
 #include "siecs.h"
-#include "storage/resource_index.h"
+#include "sicore.h"
 #include "utils.h"
 #include "world_internal.h"
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct {
+    const char *name;
+    uint64_t size;
+    void *data;
+    ecs_type_ops_t ops;
+    ecs_resource_hook_t on_set;
+    ecs_resource_hook_t on_remove;
+} ecs_resource_record_t;
+
+static sicore_vec_t ecs_resources;
+static sicore_vec_t ecs_resource_order;
+
+void ecs_resource_storage_init(void) {
+    sicore_vec_init_w_size(&ecs_resources, sizeof(ecs_resource_record_t), 1);
+    sicore_vec_ensure(&ecs_resources, 1, sizeof(ecs_resource_record_t));
+    sicore_vec_init(&ecs_resource_order, sizeof(ecs_resource_t));
+}
+
+static inline ecs_resource_record_t *ecs_resource_record(ecs_resource_t id) {
+    return sicore_vec_get_mut(&ecs_resources, id, ecs_resource_record_t);
+}
+
+static inline bool ecs_resource_registered(ecs_resource_t id) {
+    return id != 0 && id < ecs_resources.size && ecs_resource_record(id)->name != NULL;
+}
+
+static inline void ecs_resource_assert_registered(ecs_resource_t id) {
+    ecs_assert(ecs_resource_registered(id), "invalid resource id: %u\n", id);
+}
 
 static ecs_resource_t ecs_resource_alloc_id(void) {
-    ecs_resource_t id = resource_index.count;
-    ecs_assert(id < UINT16_MAX, "resource id overflow\n");
-    return id;
+    ecs_assert(ecs_resources.size < UINT16_MAX, "resource id overflow\n");
+    return (ecs_resource_t)ecs_resources.size;
 }
 
 ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc) {
     ecs_assert_not_scheduler_parallel("resource registration");
-    return ecs_resource_index_register(ecs_resource_alloc_id(), desc);
-}
-
-ecs_resource_t ecs_resource_find(const char *name) { return ecs_resource_index_find(name); }
-
-const char *ecs_resource_name(ecs_resource_t resource) {
-    ecs_assert(ecs_resource_index_is_registered(resource), "invalid resource id: %u\n", resource);
-    return resource_index.records[resource].name;
-}
-
-bool ecs_resource_is_registered_rid(ecs_resource_t id) {
-    return ecs_resource_index_is_registered(id);
+    ecs_resource_t id = 0;
+    return ecs_resource_register(&id, desc);
 }
 
 ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc) {
     ecs_assert_not_scheduler_parallel("resource registration");
     ecs_assert_not_null(id);
+    ecs_assert_not_null(desc);
+    ecs_assert_not_null(desc->name);
+
+    if (*id && ecs_resource_registered(*id)) {
+        return *id;
+    }
     if (*id == 0) {
         *id = ecs_resource_alloc_id();
     }
-    return ecs_resource_index_register(*id, desc);
+
+    sicore_vec_ensure(&ecs_resources, (uint32_t)*id + 1, sizeof(ecs_resource_record_t));
+    ecs_resource_record_t *record = ecs_resource_record(*id);
+    if (record->name) {
+        return *id;
+    }
+
+    *record = (ecs_resource_record_t){
+        .name = desc->name,
+        .size = desc->size,
+        .data = NULL,
+        .ops = desc->ops,
+        .on_set = desc->on_set,
+        .on_remove = desc->on_remove,
+    };
+    sicore_vec_push(&ecs_resource_order, id, sizeof(*id));
+    return *id;
+}
+
+ecs_resource_t ecs_resource_find(const char *name) {
+    ecs_assert_not_null(name);
+    ecs_resource_record_t *records = ecs_resources.data;
+    for (uint32_t i = 1; i < ecs_resources.size; i++) {
+        if (records[i].name && strcmp(records[i].name, name) == 0) {
+            return (ecs_resource_t)i;
+        }
+    }
+    return 0;
+}
+
+const char *ecs_resource_name(ecs_resource_t resource) {
+    ecs_resource_assert_registered(resource);
+    return ecs_resource_record(resource)->name;
+}
+
+bool ecs_resource_is_registered_rid(ecs_resource_t id) {
+    return ecs_resource_registered(id);
 }
 
 void ecs_set_resource_rid(ecs_resource_t id, const void *data) {
-    ecs_assert_id_valid(id);
     ecs_assert_not_null(data);
+    ecs_resource_assert_registered(id);
+    ecs_resource_record_t *record = ecs_resource_record(id);
 
-    ecs_resource_index_set(id, data);
+    if (record->on_set) {
+        record->on_set(data);
+    }
+    if (!record->data) {
+        record->data = calloc(1, record->size ? record->size : 1);
+        ecs_assert_not_null(record->data);
+        if (record->size) {
+            if (record->ops.copy_ctor) {
+                record->ops.copy_ctor(record->data, data, 1);
+            } else {
+                memcpy(record->data, data, record->size);
+            }
+        }
+        return;
+    }
+    if (!record->size) {
+        return;
+    }
+    if (record->ops.copy) {
+        record->ops.copy(record->data, data, 1);
+    } else {
+        memcpy(record->data, data, record->size);
+    }
 }
 
 void ecs_move_resource_rid(ecs_resource_t id, void *data) {
-    ecs_assert_id_valid(id);
     ecs_assert_not_null(data);
+    ecs_resource_assert_registered(id);
+    ecs_resource_record_t *record = ecs_resource_record(id);
 
-    ecs_resource_index_move(id, data);
+    if (record->on_set) {
+        record->on_set(data);
+    }
+    if (!record->data) {
+        record->data = calloc(1, record->size ? record->size : 1);
+        ecs_assert_not_null(record->data);
+        if (!record->size) {
+            return;
+        }
+        if (record->ops.move_ctor) {
+            record->ops.move_ctor(record->data, data, 1);
+        } else if (record->ops.copy_ctor) {
+            record->ops.copy_ctor(record->data, data, 1);
+            if (record->ops.dtor) {
+                record->ops.dtor(data, 1);
+            }
+        } else {
+            memcpy(record->data, data, record->size);
+        }
+        return;
+    }
+    if (!record->size) {
+        return;
+    }
+    if (record->ops.move) {
+        record->ops.move(record->data, data, 1);
+    } else if (record->ops.copy) {
+        record->ops.copy(record->data, data, 1);
+        if (record->ops.dtor) {
+            record->ops.dtor(data, 1);
+        }
+    } else {
+        memcpy(record->data, data, record->size);
+    }
 }
 
 void *ecs_resource_rid(ecs_resource_t id) {
-    ecs_assert_id_valid(id);
-
-    void *resource = ecs_resource_index_get(id);
-    ecs_assert(resource != NULL, "resource does not exist: %d\n", id);
-    return resource;
+    ecs_resource_assert_registered(id);
+    void *data = ecs_resource_record(id)->data;
+    ecs_assert(data != NULL, "resource does not exist: %u\n", id);
+    return data;
 }
 
 void *ecs_try_resource_rid(ecs_resource_t id) {
-    ecs_assert_id_valid(id);
-
-    return ecs_resource_index_get(id);
+    ecs_resource_assert_registered(id);
+    return ecs_resource_record(id)->data;
 }
 
 bool ecs_has_resource_rid(const ecs_resource_t id) {
-    ecs_assert_id_valid(id);
-
-    return ecs_resource_index_has(id);
+    ecs_resource_assert_registered(id);
+    return ecs_resource_record(id)->data != NULL;
 }
 
 void ecs_remove_resource_rid(ecs_resource_t id) {
-    ecs_assert_id_valid(id);
+    ecs_resource_assert_registered(id);
+    ecs_resource_record_t *record = ecs_resource_record(id);
+    void *data = record->data;
+    if (!data) {
+        return;
+    }
+    record->data = NULL;
+    if (record->on_remove) {
+        record->on_remove(data);
+    }
+    if (record->ops.dtor) {
+        record->ops.dtor(data, 1);
+    }
+    free(data);
+}
 
-    ecs_resource_index_remove(id);
+void ecs_resource_storage_fini(void) {
+    const ecs_resource_t *ids = ecs_resource_order.data;
+    for (uint32_t i = ecs_resource_order.size; i > 0; i--) {
+        ecs_resource_t id = ids[i - 1];
+        if (ecs_resource_record(id)->data) {
+            ecs_remove_resource_rid(id);
+        }
+    }
+    sicore_vec_fini(&ecs_resource_order);
+    sicore_vec_fini(&ecs_resources);
 }

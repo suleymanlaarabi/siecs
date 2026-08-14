@@ -2,9 +2,7 @@
 #include "siecs.h"
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
-#include "storage/module_index.h"
 #include "storage/query_index.h"
-#include "storage/resource_index.h"
 #include "storage/system_index.h"
 #include "storage/table_index.h"
 #include "utils.h"
@@ -12,6 +10,7 @@
 #include <string.h>
 
 ecs_world_t ecs_world;
+ecs_entity_index_t entity_index;
 #ifndef NDEBUG
 static bool ecs_world_started;
 #endif
@@ -27,15 +26,20 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world_started = true;
 #endif
     sireflect_init();
-    ecs_entity_index_init();
+    sicore_vec_init_w_size(
+        &entity_index.entities,
+        sizeof(ecs_entity_record_t),
+        256
+    );
+    entity_index.first_available = UINT32_MAX;
     ecs_component_index_init();
     ecs_relation_index_init();
     ecs_table_index_init();
     ecs_query_index_init();
     ecs_observer_index_init();
     ecs_system_index_init();
-    ecs_module_index_init();
-    ecs_resource_index_init();
+    ecs_module_storage_init();
+    ecs_resource_storage_init();
     ecs_execution_context_init(&ecs_world.main_context);
     ecs_world.active_module = 0;
     ecs_world.features = *features;
@@ -59,10 +63,14 @@ void ecs_fini(void) {
     ecs_table_index_fini();
     ecs_observer_index_fini();
     ecs_system_index_fini();
-    ecs_module_index_fini();
+    ecs_module_storage_fini();
     ecs_query_index_fini();
-    ecs_resource_index_fini();
-    ecs_entity_index_fini();
+    ecs_resource_storage_fini();
+    sicore_vec_fini(
+        &entity_index.entities
+    );
+    entity_index =
+        (ecs_entity_index_t){ 0 };
     ecs_execution_context_fini(&ecs_world.main_context);
     ecs_component_index_fini();
     ecs_relation_index_fini();

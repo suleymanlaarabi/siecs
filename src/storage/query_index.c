@@ -68,14 +68,12 @@ void ecs_query_index_fini() {
             free(cache->fields_ptr);
             free(cache->field_kind_bits);
         }
-        ecs_query_index_destroy(&cache->query);
+        free(cache->query.terms);
     }
     sicore_vec_fini(&index->active_ids);
     sicore_vec_fini(&index->queries);
     *index = (ecs_query_index_t){ 0 };
 }
-
-void ecs_query_index_destroy(ecs_query_t *query) { free(query->terms); }
 
 static uint16_t ecs_query_count_terms(const ecs_query_term_t *terms, uint32_t *access_bits) {
     uint16_t i = 0;
@@ -318,12 +316,6 @@ ecs_query_build(const ecs_query_desc_t *desc, ecs_query_t *query, uint16_t *term
         }
     }
     return ecs_query_rarest_positive_term(query);
-}
-
-ecs_component_t ecs_query_from_desc(const ecs_query_desc_t *desc, ecs_query_t *query) {
-    uint16_t capacity = 0;
-    query->terms = NULL;
-    return ecs_query_build(desc, query, &capacity);
 }
 
 static bool ecs_query_match_up_component_table(const ecs_query_t *query, const ecs_table_t *table) {

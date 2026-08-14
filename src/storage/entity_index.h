@@ -22,9 +22,12 @@ extern ecs_entity_index_t entity_index;
 #define ecs_entity_index_get_record(entity_id)                                                     \
     sicore_vec_get_mut(&entity_index.entities, entity_id, ecs_entity_record_t)
 
-bool ecs_entity_index_is_alive(ecs_entity_t entity);
-
-void ecs_entity_index_init();
-void ecs_entity_index_fini();
+static inline bool ecs_entity_index_is_alive(
+    ecs_entity_t entity
+) {
+    return ecs_entity_index_get_record(
+        ecs_first(entity)
+    )->generation == ecs_second(entity);
+}
 
 #endif
