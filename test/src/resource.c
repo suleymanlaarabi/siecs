@@ -198,6 +198,34 @@ void resource_try_get_missing(void) {
     ecs_fini();
 }
 
+void resource_zero_sized_presence_uses_storage_pointer(void) {
+    ecs_init();
+
+    ecs_resource_t id = ecs_resource_init(
+        &(ecs_resource_desc_t){
+            .name = "ZeroSizedResource",
+            .size = 0,
+        }
+    );
+
+    int marker = 0;
+
+    test_false(ecs_has_resource_rid(id));
+    test_assert(ecs_try_resource_rid(id) == NULL);
+
+    ecs_set_resource_rid(id, &marker);
+
+    test_true(ecs_has_resource_rid(id));
+    test_assert(ecs_try_resource_rid(id) != NULL);
+
+    ecs_remove_resource_rid(id);
+
+    test_false(ecs_has_resource_rid(id));
+    test_assert(ecs_try_resource_rid(id) == NULL);
+
+    ecs_fini();
+}
+
 void resource_remove(void) {
     ecs_init();
     ECS_RESOURCE_REGISTER(ResourceTime);

@@ -83,6 +83,7 @@
           "delta_time",
           "name_lookup",
           "try_get_missing",
+          "zero_sized_presence_uses_storage_pointer",
           "remove",
           "replace",
           "lifecycle_ops_are_used_for_set_move_and_remove",

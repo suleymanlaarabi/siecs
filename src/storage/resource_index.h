@@ -8,6 +8,7 @@
 typedef struct {
     const char *name;
     uint64_t size;
+    void *data;
     ecs_type_ops_t ops;
     ecs_resource_hook_t on_set;
     ecs_resource_hook_t on_remove;
@@ -15,8 +16,6 @@ typedef struct {
 
 typedef struct {
     ecs_resource_record_t *records;
-    void **data;
-    bool *present;
     sicore_vec_t registration_order; // ecs_resource_t
     uint64_t capacity;
     uint64_t count;

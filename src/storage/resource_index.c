@@ -39,28 +39,18 @@ static void ecs_resource_index_ensure(ecs_resource_index_t *index, ecs_resource_
     ecs_resource_record_t *records =
         realloc(index->records, sizeof(ecs_resource_record_t) * capacity);
     ecs_assert_not_null(records);
-    void **data = realloc(index->data, sizeof(void *) * capacity);
-    ecs_assert_not_null(data);
-    bool *present = realloc(index->present, sizeof(bool) * capacity);
-    ecs_assert_not_null(present);
 
     for (uint64_t i = index->capacity; i < capacity; i++) {
         records[i] = (ecs_resource_record_t){ 0 };
-        data[i] = NULL;
-        present[i] = false;
     }
 
     index->records = records;
-    index->data = data;
-    index->present = present;
     index->capacity = capacity;
 }
 
 void ecs_resource_index_init() {
     ecs_resource_index_t *index = &resource_index;
     index->records = NULL;
-    index->data = NULL;
-    index->present = NULL;
     sicore_vec_init(&index->registration_order, sizeof(ecs_resource_t));
     index->capacity = 0;
     index->count = 1;
@@ -70,15 +60,14 @@ void ecs_resource_index_fini() {
     ecs_resource_index_t *index = &resource_index;
     const ecs_resource_t *ids = sicore_vec_data(&index->registration_order, ecs_resource_t);
     for (uint32_t i = index->registration_order.size; i > 0; i--) {
-        if (ids[i - 1] < index->capacity && index->present[ids[i - 1]]) {
+        if (ids[i - 1] < index->capacity &&
+            index->records[ids[i - 1]].data != NULL) {
             ecs_resource_index_remove(ids[i - 1]);
         }
     }
 
     sicore_vec_fini(&index->registration_order);
     free(index->records);
-    free(index->data);
-    free(index->present);
     *index = (ecs_resource_index_t){ 0 };
 }
 
@@ -95,6 +84,7 @@ ecs_resource_t ecs_resource_index_register(ecs_resource_t id, const ecs_resource
     index->records[id] = (ecs_resource_record_t){
         .name = desc->name,
         .size = desc->size,
+        .data = NULL,
         .ops = desc->ops,
         .on_set = desc->on_set,
         .on_remove = desc->on_remove,
@@ -128,12 +118,12 @@ void ecs_resource_index_set(ecs_resource_t id, const void *data) {
     ecs_resource_index_t *index = &resource_index;
     ecs_resource_index_assert_registered(index, id);
 
-    const ecs_resource_record_t *record = &index->records[id];
-    bool was_present = index->present[id];
-    if (!index->present[id]) {
-        index->data[id] = calloc(1, ecs_resource_storage_size(record));
-        ecs_assert_not_null(index->data[id]);
-        index->present[id] = true;
+    ecs_resource_record_t *record = &index->records[id];
+    bool was_present = record->data != NULL;
+
+    if (!was_present) {
+        record->data = calloc(1, ecs_resource_storage_size(record));
+        ecs_assert_not_null(record->data);
     }
 
     if (record->on_set) {
@@ -143,15 +133,15 @@ void ecs_resource_index_set(ecs_resource_t id, const void *data) {
     if (record->size) {
         if (was_present) {
             if (record->ops.copy) {
-                record->ops.copy(index->data[id], data, 1);
+                record->ops.copy(record->data, data, 1);
             } else {
-                memcpy(index->data[id], data, record->size);
+                memcpy(record->data, data, record->size);
             }
         } else {
             if (record->ops.copy_ctor) {
-                record->ops.copy_ctor(index->data[id], data, 1);
+                record->ops.copy_ctor(record->data, data, 1);
             } else {
-                memcpy(index->data[id], data, record->size);
+                memcpy(record->data, data, record->size);
             }
         }
     }
@@ -162,11 +152,11 @@ void ecs_resource_index_move(ecs_resource_t id, void *data) {
     ecs_resource_index_assert_registered(index, id);
 
     ecs_resource_record_t *record = &index->records[id];
-    bool was_present = index->present[id];
-    if (!index->present[id]) {
-        index->data[id] = calloc(1, ecs_resource_storage_size(record));
-        ecs_assert_not_null(index->data[id]);
-        index->present[id] = true;
+    bool was_present = record->data != NULL;
+
+    if (!was_present) {
+        record->data = calloc(1, ecs_resource_storage_size(record));
+        ecs_assert_not_null(record->data);
     }
 
     if (record->on_set) {
@@ -176,25 +166,25 @@ void ecs_resource_index_move(ecs_resource_t id, void *data) {
     if (record->size) {
         if (was_present) {
             if (record->ops.move) {
-                record->ops.move(index->data[id], data, 1);
+                record->ops.move(record->data, data, 1);
             } else if (record->ops.copy) {
-                record->ops.copy(index->data[id], data, 1);
+                record->ops.copy(record->data, data, 1);
                 if (record->ops.dtor) {
                     record->ops.dtor(data, 1);
                 }
             } else {
-                memcpy(index->data[id], data, record->size);
+                memcpy(record->data, data, record->size);
             }
         } else {
             if (record->ops.move_ctor) {
-                record->ops.move_ctor(index->data[id], data, 1);
+                record->ops.move_ctor(record->data, data, 1);
             } else if (record->ops.copy_ctor) {
-                record->ops.copy_ctor(index->data[id], data, 1);
+                record->ops.copy_ctor(record->data, data, 1);
                 if (record->ops.dtor) {
                     record->ops.dtor(data, 1);
                 }
             } else {
-                memcpy(index->data[id], data, record->size);
+                memcpy(record->data, data, record->size);
             }
         }
     }
@@ -203,30 +193,26 @@ void ecs_resource_index_move(ecs_resource_t id, void *data) {
 void *ecs_resource_index_get(ecs_resource_t id) {
     ecs_resource_index_t *index = &resource_index;
     ecs_resource_index_assert_registered(index, id);
-    if (!index->present[id]) {
-        return NULL;
-    }
-
-    return index->data[id];
+    return index->records[id].data;
 }
 
 bool ecs_resource_index_has(ecs_resource_t id) {
     const ecs_resource_index_t *index = &resource_index;
     ecs_resource_index_assert_registered(index, id);
-    return index->present[id];
+    return index->records[id].data != NULL;
 }
 
 void ecs_resource_index_remove(ecs_resource_t id) {
     ecs_resource_index_t *index = &resource_index;
     ecs_resource_index_assert_registered(index, id);
-    if (!index->present[id]) {
+    ecs_resource_record_t *record = &index->records[id];
+
+    if (record->data == NULL) {
         return;
     }
 
-    const ecs_resource_record_t *record = &index->records[id];
-    void *value = index->data[id];
-    index->data[id] = NULL;
-    index->present[id] = false;
+    void *value = record->data;
+    record->data = NULL;
     if (record->on_remove) {
         record->on_remove(value);
     }
