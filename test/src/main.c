@@ -125,6 +125,7 @@ void query_fields_refresh_after_table_growth(void);
 // Testsuite 'system'
 void system_run(void);
 void system_parallel_independent_callbacks(void);
+void system_parallel_worker_context_is_deferred(void);
 void system_parallel_query_table_conflicts(void);
 void system_main_thread_only(void);
 void system_parallel_after_is_a_barrier(void);
@@ -605,6 +606,10 @@ bake_test_case system_testcases[] = {
         system_parallel_independent_callbacks
     },
     {
+        "parallel_worker_context_is_deferred",
+        system_parallel_worker_context_is_deferred
+    },
+    {
         "parallel_query_table_conflicts",
         system_parallel_query_table_conflicts
     },
@@ -816,7 +821,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        28,
+        29,
         system_testcases
     },
     {

@@ -155,6 +155,7 @@
         "testcases": [
           "run",
           "parallel_independent_callbacks",
+          "parallel_worker_context_is_deferred",
           "parallel_query_table_conflicts",
           "main_thread_only",
           "parallel_after_is_a_barrier",

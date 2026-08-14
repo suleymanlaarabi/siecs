@@ -22,6 +22,7 @@ static int system_order[8];
 static ecs_entity_t system_entity;
 static uint32_t system_user_data_dtor_calls;
 static atomic_uint parallel_entered;
+static atomic_uint parallel_context_entered;
 static atomic_uintptr_t parallel_stacks[2];
 static atomic_uint manual_system_calls;
 static atomic_uint after_stage;
@@ -73,6 +74,24 @@ static void parallel_system_b(ecs_iter_t *it) {
     atomic_store_explicit(&parallel_stacks[1], marker, memory_order_relaxed);
     atomic_fetch_add_explicit(&parallel_entered, 1, memory_order_release);
     while (atomic_load_explicit(&parallel_entered, memory_order_acquire) < 2) {
+    }
+}
+
+static void parallel_context_system(ecs_iter_t *it) {
+    (void)it;
+
+    test_assert(ecs_execution_context_current()->scheduler_parallel);
+
+    atomic_fetch_add_explicit(
+        &parallel_context_entered,
+        1,
+        memory_order_release
+    );
+
+    while (atomic_load_explicit(
+               &parallel_context_entered,
+               memory_order_acquire
+           ) < 2) {
     }
 }
 
@@ -284,6 +303,41 @@ void system_parallel_independent_callbacks(void) {
 
     test_uint(2, atomic_load(&parallel_entered));
     test_assert(atomic_load(&parallel_stacks[0]) != atomic_load(&parallel_stacks[1]));
+    ecs_fini();
+}
+
+void system_parallel_worker_context_is_deferred(void) {
+    atomic_store(&parallel_context_entered, 0);
+
+    ecs_with_features({ .worker_threads = 1 });
+
+    ECS_COMPONENT_REGISTER(SystemBatchA);
+    ECS_COMPONENT_REGISTER(SystemBatchB);
+
+    ecs_entity_t first = ecs_new();
+    ecs_entity_t second = ecs_new();
+
+    ecs_set(first, SystemBatchA, { 1 });
+    ecs_set(second, SystemBatchB, { 2 });
+
+    ecs_system({
+        .name = "ParallelContextA",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_in(SystemBatchA) } },
+        .callback = parallel_context_system,
+    });
+
+    ecs_system({
+        .name = "ParallelContextB",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_in(SystemBatchB) } },
+        .callback = parallel_context_system,
+    });
+
+    ecs_progress();
+
+    test_uint(2, atomic_load(&parallel_context_entered));
+
     ecs_fini();
 }
 

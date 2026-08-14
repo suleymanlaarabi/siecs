@@ -171,6 +171,11 @@ void ecs_worker_pool_run_systems(
     pool->job_count = system_count;
     atomic_store_explicit(&pool->next_job, 0, memory_order_relaxed);
     atomic_store_explicit(&pool->completed_jobs, 0, memory_order_relaxed);
+    ecs_world.main_context.scheduler_parallel = true;
+    for (uint16_t i = 0; i < pool->worker_count; i++) {
+        pool->workers[i].context.scheduler_parallel = true;
+    }
+    ecs_execution_context_set(&ecs_world.main_context);
     ecs_platform_mutex_lock(&pool->mutex);
     atomic_store_explicit(
         &pool->epoch,
@@ -180,8 +185,6 @@ void ecs_worker_pool_run_systems(
     ecs_platform_condition_broadcast(&pool->condition);
     ecs_platform_mutex_unlock(&pool->mutex);
 
-    ecs_world.main_context.scheduler_parallel = true;
-    ecs_execution_context_set(&ecs_world.main_context);
     for (;;) {
         uint32_t job_index = atomic_fetch_add_explicit(
             &pool->next_job,
