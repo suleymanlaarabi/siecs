@@ -103,6 +103,7 @@ void childof_relation_only_system_and_observer(void);
 
 // Testsuite 'query'
 void query_terms_field_order(void);
+void query_count_matches_current_query_entities(void);
 void query_out_term_matches_and_returns_field(void);
 void query_not_excludes_tables(void);
 void query_excludes_disabled_by_default(void);
@@ -524,6 +525,10 @@ bake_test_case query_testcases[] = {
         query_terms_field_order
     },
     {
+        "count_matches_current_query_entities",
+        query_count_matches_current_query_entities
+    },
+    {
         "out_term_matches_and_returns_field",
         query_out_term_matches_and_returns_field
     },
@@ -819,7 +824,7 @@ static bake_test_suite suites[] = {
         "query",
         NULL,
         NULL,
-        20,
+        21,
         query_testcases
     },
     {

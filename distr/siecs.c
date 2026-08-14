@@ -7712,8 +7712,10 @@ ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
 }
 
 uint32_t ecs_query_count(ecs_query_id_t query_id) {
+    ecs_assert(query_id < query_index.queries.size, "invalid query id: %u\n", query_id);
     ecs_query_cache_t *cache =
         sicore_vec_get_mut(&query_index.queries, query_id, ecs_query_cache_t);
+    ecs_assert(cache->alive, "query id is not alive: %u\n", query_id);
     uint16_t *tids = cache->table_ids.data;
 
     uint32_t count = 0;

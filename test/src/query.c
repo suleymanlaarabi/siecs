@@ -61,6 +61,32 @@ void query_terms_field_order(void) {
     ecs_fini();
 }
 
+void query_count_matches_current_query_entities(void) {
+    query_test_world();
+
+    ecs_entity_t first = query_test_entity(10, 20, 30);
+    ecs_entity_t second = query_test_entity(40, 50, 60);
+    ecs_entity_t excluded = query_test_entity(70, 80, 90);
+    ecs_add(excluded, Disabled);
+
+    ecs_query_id_t query =
+        ecs_query({ .terms = { ecs_in(QueryPosition) } });
+
+    test_uint(2, ecs_query_count(query));
+
+    ecs_remove(second, QueryPosition);
+    test_uint(1, ecs_query_count(query));
+
+    ecs_add(second, QueryPosition);
+    test_uint(2, ecs_query_count(query));
+
+    ecs_kill(first);
+    test_uint(1, ecs_query_count(query));
+
+    ecs_query_fini(query);
+    ecs_fini();
+}
+
 void query_out_term_matches_and_returns_field(void) {
     query_test_world();
     ecs_entity_t entity = query_test_entity(1, 2, 3);

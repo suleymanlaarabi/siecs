@@ -130,6 +130,7 @@
         "id": "query",
         "testcases": [
           "terms_field_order",
+          "count_matches_current_query_entities",
           "out_term_matches_and_returns_field",
           "not_excludes_tables",
           "excludes_disabled_by_default",
