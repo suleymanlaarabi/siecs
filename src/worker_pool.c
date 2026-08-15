@@ -50,6 +50,14 @@ static void ecs_worker_run_job(ecs_worker_pool_t *pool, uint32_t job_index) {
     }
 }
 
+static inline void ecs_worker_run_jobs(ecs_worker_pool_t *pool) {
+    for (;;) {
+        uint32_t job = atomic_fetch_add_explicit(&pool->next_job, 1, memory_order_relaxed);
+        if (job >= pool->job_count) return;
+        ecs_worker_run_job(pool, job);
+    }
+}
+
 #ifdef _WIN32
 static DWORD ECS_PLATFORM_THREAD_CALL ecs_worker_loop(void *argument)
 #else
@@ -74,17 +82,7 @@ static void *ecs_worker_loop(void *argument)
         seen_epoch = atomic_load_explicit(&pool->epoch, memory_order_relaxed);
         ecs_platform_mutex_unlock(&pool->mutex);
 
-        for (;;) {
-            uint32_t job_index = atomic_fetch_add_explicit(
-                &pool->next_job,
-                1,
-                memory_order_relaxed
-            );
-            if (job_index >= pool->job_count) {
-                break;
-            }
-            ecs_worker_run_job(pool, job_index);
-        }
+        ecs_worker_run_jobs(pool);
     }
 
     ecs_execution_context_set(NULL);
@@ -185,17 +183,7 @@ void ecs_worker_pool_run_systems(
     ecs_platform_condition_broadcast(&pool->condition);
     ecs_platform_mutex_unlock(&pool->mutex);
 
-    for (;;) {
-        uint32_t job_index = atomic_fetch_add_explicit(
-            &pool->next_job,
-            1,
-            memory_order_relaxed
-        );
-        if (job_index >= system_count) {
-            break;
-        }
-        ecs_worker_run_job(pool, job_index);
-    }
+    ecs_worker_run_jobs(pool);
 
     while (atomic_load_explicit(&pool->completed_jobs, memory_order_acquire) < system_count) {
         ecs_platform_mutex_lock(&pool->mutex);

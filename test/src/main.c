@@ -62,6 +62,7 @@ void resource_set_get(void);
 void resource_delta_time(void);
 void resource_name_lookup(void);
 void resource_try_get_missing(void);
+void resource_zero_sized_presence_uses_storage_pointer(void);
 void resource_remove(void);
 void resource_replace(void);
 void resource_lifecycle_ops_are_used_for_set_move_and_remove(void);
@@ -80,6 +81,7 @@ void childof_with_relation_deferred_explicit_relation_wins(void);
 void childof_with_relation_double_add_does_not_restore_removed_relation(void);
 void childof_dense_retarget_without_migration(void);
 void childof_dense_retarget_keeps_reverse_sources(void);
+void childof_dense_unrelate_keeps_source_indices(void);
 void childof_dense_unrelate_updates_swapped_reverse_index(void);
 void childof_dense_delete_policies(void);
 void childof_bydepth_depth_and_cascade(void);
@@ -129,6 +131,7 @@ void system_run(void);
 void system_parallel_independent_callbacks(void);
 void system_parallel_worker_context_is_deferred(void);
 void system_parallel_query_table_conflicts(void);
+void system_batches_invalidate_after_table_creation(void);
 void system_main_thread_only(void);
 void system_parallel_after_is_a_barrier(void);
 void system_resource_access_conflicts(void);
@@ -371,6 +374,10 @@ bake_test_case resource_testcases[] = {
         resource_try_get_missing
     },
     {
+        "zero_sized_presence_uses_storage_pointer",
+        resource_zero_sized_presence_uses_storage_pointer
+    },
+    {
         "remove",
         resource_remove
     },
@@ -436,6 +443,10 @@ bake_test_case childof_testcases[] = {
     {
         "dense_retarget_keeps_reverse_sources",
         childof_dense_retarget_keeps_reverse_sources
+    },
+    {
+        "dense_unrelate_keeps_source_indices",
+        childof_dense_unrelate_keeps_source_indices
     },
     {
         "dense_unrelate_updates_swapped_reverse_index",
@@ -624,6 +635,10 @@ bake_test_case system_testcases[] = {
         system_parallel_query_table_conflicts
     },
     {
+        "batches_invalidate_after_table_creation",
+        system_batches_invalidate_after_table_creation
+    },
+    {
         "main_thread_only",
         system_main_thread_only
     },
@@ -810,14 +825,14 @@ static bake_test_suite suites[] = {
         "resource",
         NULL,
         NULL,
-        11,
+        12,
         resource_testcases
     },
     {
         "childof",
         NULL,
         NULL,
-        29,
+        30,
         childof_testcases
     },
     {
@@ -831,7 +846,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        29,
+        30,
         system_testcases
     },
     {

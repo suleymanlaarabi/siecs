@@ -16,6 +16,10 @@
 #define ecs_assert_not_null(ptr) ecs_assert((ptr) != NULL, "null pointer: %s\n", #ptr)
 #define ecs_assert_entity_valid(entity) ecs_assert(ecs_entity_valid(entity), "invalid entity: %d, entity must be registered\n", ecs_first(entity))
 #define ecs_assert_is_alive(entity) ecs_assert(ecs_is_alive(entity), "entity is dead: %d\n", ecs_first(entity))
+#define ecs_assert_entity_alive(entity) \
+    do { ecs_assert_entity_valid(entity); ecs_assert_is_alive(entity); } while (0)
+#define ecs_assert_component_access(entity, id) \
+    do { ecs_assert_id_valid(id); ecs_assert_entity_alive(entity); } while (0)
 
 #else
 #define ecs_assert(condition, ...)
@@ -23,6 +27,8 @@
 #define ecs_assert_not_null(ptr)
 #define ecs_assert_entity_valid(entity)
 #define ecs_assert_is_alive(entity)
+#define ecs_assert_entity_alive(entity)
+#define ecs_assert_component_access(entity, id)
 #endif
 
 #endif

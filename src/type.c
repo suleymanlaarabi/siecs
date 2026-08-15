@@ -21,62 +21,28 @@ static ecs_type_t ecs_type_alloc(const ecs_type_t *type, int components, int pai
     };
 }
 
-static void ecs_type_copy_ids(
-    ecs_type_t *dst,
-    const ecs_type_t *src,
+static void ecs_array_edit(
+    void *dst,
+    const void *src,
+    size_t element_size,
+    uint16_t count,
     uint16_t at,
     int delta,
-    ecs_component_t component
+    const void *value
 ) {
-    if (!component && !delta) {
-        if (src->component_count) {
-            memcpy(dst->ids, src->ids, (size_t)src->component_count * sizeof(uint16_t));
-        }
+    if (!value && !delta) {
+        if (count) memcpy(dst, src, (size_t)count * element_size);
         return;
     }
-    if (at) {
-        memcpy(dst->ids, src->ids, (size_t)at * sizeof(uint16_t));
-    }
-    if (delta > 0) {
-        dst->ids[at] = component;
-    }
-    uint16_t from = (uint16_t)(at + (delta < 0));
-    uint16_t to = (uint16_t)(at + (delta > 0));
-    if (from < src->component_count) {
-        memcpy(
-            dst->ids + to,
-            src->ids + from,
-            (size_t)(src->component_count - from) * sizeof(uint16_t)
-        );
-    }
-}
-
-static void ecs_type_copy_pairs(
-    ecs_type_t *dst,
-    const ecs_type_t *src,
-    uint16_t at,
-    int delta,
-    ecs_type_pair_t pair
-) {
-    const ecs_type_pair_t *old = ecs_type_pairs(src);
-    ecs_type_pair_t *out = ecs_type_pairs(dst);
-    if (!pair.key && !delta) {
-        if (src->pair_count) {
-            memcpy(out, old, (size_t)src->pair_count * sizeof(ecs_type_pair_t));
-        }
-        return;
-    }
-    if (at) {
-        memcpy(out, old, (size_t)at * sizeof(ecs_type_pair_t));
-    }
-    if (delta >= 0 && pair.key) {
-        out[at] = pair;
-    }
+    uint8_t *out = dst;
+    const uint8_t *in = src;
+    if (at) memcpy(out, in, (size_t)at * element_size);
+    if (delta >= 0) memcpy(out + (size_t)at * element_size, value, element_size);
     uint16_t from = (uint16_t)(at + (delta <= 0));
     uint16_t to = (uint16_t)(at + (delta >= 0));
-    if (from < src->pair_count) {
-        memcpy(out + to, old + from, (size_t)(src->pair_count - from) * sizeof(ecs_type_pair_t));
-    }
+    if (from < count)
+        memcpy(out + (size_t)to * element_size, in + (size_t)from * element_size,
+               (size_t)(count - from) * element_size);
 }
 
 ecs_type_t ecs_type_with(
@@ -100,8 +66,10 @@ ecs_type_t ecs_type_with(
     }
 
     ecs_type_t out = ecs_type_alloc(type, component != 0, pair_delta);
-    ecs_type_copy_ids(&out, type, component_at, component != 0, component);
-    ecs_type_copy_pairs(&out, type, pair_at, pair_delta, pair);
+    ecs_array_edit(out.ids, type->ids, sizeof *type->ids, type->component_count,
+                   component_at, component != 0, component ? &component : NULL);
+    ecs_array_edit(ecs_type_pairs(&out), ecs_type_pairs(type), sizeof pair, type->pair_count,
+                   pair_at, pair_delta, pair.key ? &pair : NULL);
     return out;
 }
 
@@ -114,14 +82,10 @@ ecs_type_t ecs_type_without(
     int pair_delta = pair_key ? -1 : 0;
     uint16_t pair_at = pair_key ? ecs_type_pair_index(type, pair_key) : 0;
     ecs_type_t out = ecs_type_alloc(type, component_delta, pair_delta);
-    ecs_type_copy_ids(&out, type, component_at, component_delta, 0);
-    ecs_type_copy_pairs(
-        &out,
-        type,
-        pair_at,
-        pair_delta,
-        (ecs_type_pair_t){ .key = pair_key }
-    );
+    ecs_array_edit(out.ids, type->ids, sizeof *type->ids, type->component_count,
+                   component_at, component_delta, NULL);
+    ecs_array_edit(ecs_type_pairs(&out), ecs_type_pairs(type), sizeof(ecs_type_pair_t),
+                   type->pair_count, pair_at, pair_delta, NULL);
     return out;
 }
 
@@ -130,7 +94,8 @@ ecs_type_t ecs_type_with_ids(const ecs_type_t *type, const uint16_t *ids, uint16
     if (count) {
         memcpy(out.ids, ids, (size_t)count * sizeof(uint16_t));
     }
-    ecs_type_copy_pairs(&out, type, 0, 0, (ecs_type_pair_t){ 0 });
+    ecs_array_edit(ecs_type_pairs(&out), ecs_type_pairs(type), sizeof(ecs_type_pair_t),
+                   type->pair_count, 0, 0, NULL);
     return out;
 }
 
@@ -158,7 +123,8 @@ ecs_type_t ecs_type_with_added_ids(
         out.ids[out_i++] = ids[added_i++];
     }
 
-    ecs_type_copy_pairs(&out, type, 0, 0, (ecs_type_pair_t){ 0 });
+    ecs_array_edit(ecs_type_pairs(&out), ecs_type_pairs(type), sizeof(ecs_type_pair_t),
+                   type->pair_count, 0, 0, NULL);
     return out;
 }
 

@@ -20,19 +20,15 @@
 #undef ecs_with
 #endif
 
-#define ecs_assert_can_be_updated(entity, ...)                                                     \
-    ecs_assert(!ecs_has_cid_owned(entity, ecs_id(Abstract)), __VA_ARGS__)
+#define ecs_assert_can_be_updated(entity) \
+    ecs_assert(!ecs_has_cid_owned(entity, ecs_id(Abstract)), \
+               "An abstract entity cannot be updated.")
 
 #define entity_edit(entity, table, record)                                                         \
     ecs_entity_record_t *record = ecs_get_record(entity);                                          \
     ecs_table_t *table = ecs_get_table(record->table_id);
 
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
-    ecs_assert_id_valid(cid);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
-    ecs_assert_can_be_updated(entity, "An abstract entity cannot be updated.");
-
     ecs_entity_record_t *record = ecs_get_record(entity);
     uint16_t from_id = record->table_id;
     ecs_table_t *table = ecs_get_table(from_id);
@@ -105,10 +101,8 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
 }
 
 void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
-    ecs_assert_id_valid(cid);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
-    ecs_assert_can_be_updated(entity, "An abstract entity cannot be updated.");
+    ecs_assert_component_access(entity, cid);
+    ecs_assert_can_be_updated(entity);
 
     if (ecs_is_deferred()) {
         ecs_command_buffer_add(entity, cid);
@@ -119,10 +113,6 @@ void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
 }
 
 void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
-    ecs_assert_id_valid(cid);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
-
     ecs_entity_record_t *record = ecs_get_record(entity);
     uint16_t from_id = record->table_id;
     ecs_table_t *table = ecs_get_table(from_id);
@@ -153,9 +143,7 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
 }
 
 void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
-    ecs_assert_id_valid(cid);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
+    ecs_assert_component_access(entity, cid);
 
     if (ecs_is_deferred()) {
         ecs_command_buffer_remove(entity, cid);
@@ -195,9 +183,7 @@ ecs_component_get_from_record(const ecs_entity_record_t *record, ecs_component_t
 }
 
 void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
-    ecs_assert_id_valid(cid);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
+    ecs_assert_component_access(entity, cid);
 
     return ecs_component_get_from_record(ecs_get_record(entity), cid);
 }
@@ -209,10 +195,6 @@ void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) {
 static inline void ecs_store_cid_now(
     ecs_entity_t entity, ecs_component_t cid, void *data, bool move
 ) {
-    ecs_assert_id_valid(cid);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
-
     bool had_value = move && ecs_has_cid_owned(entity, cid);
     ecs_add_cid_now(entity, cid);
     if (!move) ecs_defer_begin();
@@ -238,9 +220,7 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
 }
 
 static inline void ecs_store_cid(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
-    ecs_assert_id_valid(cid);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
+    ecs_assert_component_access(entity, cid);
     if (ecs_is_deferred()) {
         if (move) ecs_command_buffer_move(entity, cid, data);
         else ecs_command_buffer_set(entity, cid, data);
@@ -262,16 +242,14 @@ void ecs_move_cid(ecs_entity_t entity, ecs_component_t cid, void *data) {
 }
 
 bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id) {
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
+    ecs_assert_entity_alive(entity);
 
     uint16_t tid = ecs_get_record(entity)->table_id;
     return ecs_table_has(ecs_get_table(tid), id);
 }
 
 bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id) {
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
+    ecs_assert_entity_alive(entity);
 
     uint16_t tid = ecs_get_record(entity)->table_id;
     return ecs_table_has_owned(ecs_get_table(tid), id);

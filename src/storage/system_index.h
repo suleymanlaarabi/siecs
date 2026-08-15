@@ -4,20 +4,16 @@
 #include <stdint.h>
 
 typedef struct {
-    uint32_t first;
-    uint32_t count;
-} ecs_system_batch_t;
-
-typedef struct {
     const char *name;
     ecs_query_id_t qid;
     void (*callback)(ecs_iter_t *);
     uintptr_t user_data;
     void (*user_data_dtor)(uintptr_t user_data);
     ecs_phase_t phase;
-    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
+    ecs_system_id_t after;
     uint32_t resource_accesses[ECS_SYSTEM_RESOURCE_CAPACITY * 2];
     uint16_t resource_access_count;
+    ecs_system_id_t next_module;
     bool enabled;
     bool main_thread_only;
 } ecs_system_t;
@@ -26,7 +22,8 @@ typedef struct {
     ecs_phase_t id;
     const char *name;
     sicore_vec_t systems;
-    sicore_vec_t batches;
+    uint32_t plan_first;
+    uint32_t plan_count;
 } ecs_phase_info_t;
 
 typedef struct {

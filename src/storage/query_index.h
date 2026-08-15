@@ -48,6 +48,7 @@ typedef struct ecs_query_cache_s {
     uint32_t *field_kind_bits;
     uint16_t field_table_capacity;
     uint32_t active_index;
+    ecs_observer_id_t observer;
     uint16_t next_free;
     bool alive;
     ecs_query_term_t terms[ECS_QUERY_COMPILED_TERM_CAPACITY];

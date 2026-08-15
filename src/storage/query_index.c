@@ -1,4 +1,4 @@
-#include "query_index.h"
+#include "observer_index.h"
 #include "../relation.h"
 #include "../table.h"
 #include "../utils.h"
@@ -61,28 +61,78 @@ void ecs_query_index_fini() {
     *index = (ecs_query_index_t){ 0 };
 }
 
-static bool ecs_query_term_is_field(ecs_query_term_t term) {
+static void ecs_query_compile_term(
+    ecs_query_cache_t *cache,
+    ecs_query_term_t term,
+    ecs_component_t *rarest,
+    uint32_t *rarest_table_count
+) {
+    ecs_query_t *query = &cache->query;
+    uint16_t i = query->term_count++;
+    cache->terms[i] = term;
     ecs_term_access_t access = ecs_query_term_access(term);
-    return access == EcsIn || access == EcsOut || access == EcsInOut || access == EcsInOptional ||
-           access == EcsInOutOptional || access == EcsInUp || access == EcsInUpOptional;
-}
-
-static bool ecs_query_term_is_positive(ecs_query_term_t term) {
-    ecs_term_access_t access = ecs_query_term_access(term);
-    return access == EcsIn || access == EcsOut || access == EcsInOut || access == EcsFilter;
+#ifndef NDEBUG
+    ecs_assert_id_valid(term.id);
+    ecs_relation_id_t source = ecs_query_term_source_relation(term);
+    ecs_assert(access <= EcsInUpOptional, "invalid query term access: %d\n", access);
+    ecs_assert((access >= EcsInUp) == (source != 0), "invalid query up relation\n");
+    for (uint16_t j = 0; j < i; j++)
+        ecs_assert(cache->terms[j].id != term.id, "duplicate query term component: %d\n", term.id);
+#endif
+    if (access != EcsFilter && access != EcsNot) {
+        query->field_mask |= (uint16_t)(1u << i);
+        query->field_count++;
+        uint32_t access_id = term.id;
+        if (access == EcsOut || access == EcsInOut || access == EcsInOutOptional) {
+            access_id |= UINT32_C(1) << 16;
+        }
+        uint16_t at = query->access_count;
+        while (at && (cache->accesses[at - 1] & UINT16_MAX) > term.id) {
+            cache->accesses[at] = cache->accesses[at - 1];
+            at--;
+        }
+        cache->accesses[at] = access_id;
+        query->access_count++;
+    }
+    if (access <= EcsInOut || access == EcsFilter) {
+        query->bloom |= UINT64_C(1) << (term.id % 64);
+        uint32_t table_count = ecs_component_index_get(term.id)->tables.size;
+        if (table_count < *rarest_table_count) {
+            *rarest = term.id;
+            *rarest_table_count = table_count;
+        }
+    }
+    if (access == EcsInUp || access == EcsInUpOptional) {
+        query->up_mask |= (uint16_t)(1u << i);
+#ifndef NDEBUG
+        const ecs_relation_record_t *record =
+            ecs_relation_record(ecs_query_term_source_relation(term));
+        ecs_assert(
+            record->info.desc.storage == EcsRelationByTarget && record->info.desc.acyclic,
+            "ecs_up requires acyclic ByTarget\n"
+        );
+#endif
+    }
 }
 
 static ecs_component_t ecs_query_build(const ecs_query_desc_t *desc, ecs_query_cache_t *cache) {
-    ecs_query_t *query = &cache->query;
-    uint16_t explicit_count = 0;
-    while (desc->terms[explicit_count].id) explicit_count++;
-    uint16_t relation_count = 0;
-    while (desc->relations[relation_count].id) {
-        relation_count++;
+    cache->query = (ecs_query_t){ .is_a = desc->is_a, .order_by = desc->order_by };
+    ecs_component_t rarest = 0;
+    uint32_t rarest_table_count = UINT32_MAX;
+    const ecs_component_t excludes[] = { ecs_id(Disabled), ecs_id(Abstract) };
+    bool has_exclude[2] = { false, false };
+    for (uint16_t i = 0; desc->terms[i].id; i++) {
+        has_exclude[0] |= desc->terms[i].id == excludes[0];
+        has_exclude[1] |= desc->terms[i].id == excludes[1];
+        ecs_query_compile_term(cache, desc->terms[i], &rarest, &rarest_table_count);
     }
-    uint16_t translated_count = 0;
-    uint16_t filter_count = 0;
-    for (uint16_t i = 0; i < relation_count; i++) {
+    for (uint16_t i = 0; i < 2; i++) {
+        if (excludes[i] && !has_exclude[i]) {
+            ecs_query_compile_term(
+                cache, (ecs_query_term_t){ excludes[i], EcsNot }, &rarest, &rarest_table_count);
+        }
+    }
+    for (uint16_t i = 0; desc->relations[i].id; i++) {
         ecs_query_relation_term_t term = desc->relations[i];
         const ecs_relation_record_t *record = ecs_relation_record(term.id);
 #ifndef NDEBUG
@@ -98,111 +148,23 @@ static ecs_component_t ecs_query_build(const ecs_query_desc_t *desc, ecs_query_c
 #endif
         if (record->info.desc.storage != EcsRelationByTarget &&
             (term.kind == EcsRelationRequired || term.kind == EcsRelationExcluded)) {
-            translated_count++;
-        } else {
-            filter_count += term.kind != EcsRelationOptional;
-        }
-    }
-    const ecs_component_t excludes[] = { ecs_id(Disabled), ecs_id(Abstract) };
-    bool has_exclude[2] = { false, false };
-    for (uint16_t i = 0; i < explicit_count; i++) {
-        has_exclude[0] |= desc->terms[i].id == excludes[0];
-        has_exclude[1] |= desc->terms[i].id == excludes[1];
-    }
-    uint16_t exclude_count = 0;
-    for (uint16_t i = 0; i < 2; i++) exclude_count += excludes[i] && !has_exclude[i];
-    query->term_count = explicit_count + exclude_count + translated_count;
-    if (explicit_count) {
-        memcpy(cache->terms, desc->terms, (size_t)explicit_count * sizeof(ecs_query_term_t));
-    }
-    uint16_t out = explicit_count;
-    for (uint16_t i = 0; i < 2; i++) {
-        if (excludes[i] && !has_exclude[i]) {
-            cache->terms[out++] = (ecs_query_term_t){ excludes[i], EcsNot };
-        }
-    }
-    for (uint16_t i = 0; i < relation_count; i++) {
-        ecs_query_relation_term_t term = desc->relations[i];
-        const ecs_relation_record_t *record = ecs_relation_record(term.id);
-        if (record->info.desc.storage != EcsRelationByTarget &&
-            (term.kind == EcsRelationRequired || term.kind == EcsRelationExcluded)) {
-            cache->terms[out++] = (ecs_query_term_t){
-                record->component,
-                term.kind == EcsRelationRequired ? EcsFilter : EcsNot,
-            };
-        }
-    }
-    query->filter_count = filter_count;
-    query->order_by = desc->order_by;
-    out = 0;
-    for (uint16_t i = 0; i < relation_count; i++) {
-        ecs_query_relation_term_t term = desc->relations[i];
-        const ecs_relation_record_t *record = ecs_relation_record(term.id);
-        if ((record->info.desc.storage == EcsRelationByTarget ||
-             (term.kind != EcsRelationRequired && term.kind != EcsRelationExcluded)) &&
-            term.kind != EcsRelationOptional) {
-            cache->filters[out++] = (ecs_query_type_filter_t){
+            ecs_query_compile_term(
+                cache,
+                (ecs_query_term_t){
+                    record->component,
+                    term.kind == EcsRelationRequired ? EcsFilter : EcsNot,
+                },
+                &rarest,
+                &rarest_table_count
+            );
+        } else if (term.kind != EcsRelationOptional) {
+            cache->filters[cache->query.filter_count++] = (ecs_query_type_filter_t){
                 .value = term.target,
                 .id = term.id,
                 .op = term.kind == EcsRelationRequired   ? EcsQueryFilterRequired
                       : term.kind == EcsRelationExcluded ? EcsQueryFilterExcluded
                                                          : EcsQueryFilterExact,
             };
-        }
-    }
-
-    query->is_a = desc->is_a;
-    query->field_count = 0;
-    query->field_mask = 0;
-    query->up_mask = 0;
-    query->access_count = 0;
-    query->bloom = 0;
-    ecs_component_t rarest = 0;
-    uint32_t rarest_table_count = UINT32_MAX;
-    for (uint16_t i = 0; i < query->term_count; i++) {
-        ecs_query_term_t term = cache->terms[i];
-        ecs_term_access_t access = ecs_query_term_access(term);
-#ifndef NDEBUG
-        ecs_assert_id_valid(term.id);
-        ecs_relation_id_t source = ecs_query_term_source_relation(term);
-        ecs_assert(access <= EcsInUpOptional, "invalid query term access: %d\n", access);
-        ecs_assert((access >= EcsInUp) == (source != 0), "invalid query up relation\n");
-        for (uint16_t j = 0; j < i; j++)
-            ecs_assert(cache->terms[j].id != term.id, "duplicate query term component: %d\n", term.id);
-#endif
-        if (ecs_query_term_is_field(term)) {
-            query->field_mask |= (uint16_t)(1u << i);
-            query->field_count++;
-            uint32_t access_id = term.id;
-            if (access == EcsOut || access == EcsInOut || access == EcsInOutOptional) {
-                access_id |= UINT32_C(1) << 16;
-            }
-            uint16_t at = query->access_count;
-            while (at && (cache->accesses[at - 1] & UINT16_MAX) > term.id) {
-                cache->accesses[at] = cache->accesses[at - 1];
-                at--;
-            }
-            cache->accesses[at] = access_id;
-            query->access_count++;
-        }
-        if (ecs_query_term_is_positive(term)) {
-            query->bloom |= UINT64_C(1) << (term.id % 64);
-            uint32_t table_count = ecs_component_index_get(term.id)->tables.size;
-            if (table_count < rarest_table_count) {
-                rarest = term.id;
-                rarest_table_count = table_count;
-            }
-        }
-        if (access == EcsInUp || access == EcsInUpOptional) {
-            query->up_mask |= (uint16_t)(1u << i);
-#ifndef NDEBUG
-            const ecs_relation_record_t *record =
-                ecs_relation_record(ecs_query_term_source_relation(term));
-            ecs_assert(
-                record->info.desc.storage == EcsRelationByTarget && record->info.desc.acyclic,
-                "ecs_up requires acyclic ByTarget\n"
-            );
-#endif
         }
     }
     return rarest;
@@ -381,6 +343,7 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
     query_cache->field_kind_bits = NULL;
     query_cache->field_table_capacity = 0;
     query_cache->active_index = index->active_ids.size;
+    query_cache->observer = UINT32_MAX;
     query_cache->next_free = UINT16_MAX;
     query_cache->alive = true;
     sicore_vec_push_u16(&index->active_ids, id);
@@ -437,6 +400,11 @@ void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id) {
             sicore_vec_get_mut(&query_index.queries, active_ids[i], ecs_query_cache_t);
         if (ecs_query_match_table(cache, table)) {
             ecs_query_cache_add_matched_table(cache, table, table_id);
+            if (cache->observer != UINT32_MAX) {
+                const ecs_observer_t *observer = sicore_vec_get(
+                    &observer_index.observers, cache->observer, ecs_observer_t);
+                ecs_table_add_observer((ecs_table_t *)table, observer->event, cache->observer);
+            }
         }
     }
 }

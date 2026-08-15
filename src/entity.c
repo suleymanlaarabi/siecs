@@ -109,11 +109,7 @@ ecs_entity_t ecs_lookup(const char *key) {
 }
 
 void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
     if (target) {
-        ecs_assert_entity_valid(target);
-        ecs_assert_is_alive(target);
         ecs_assert(entity != target, "entity cannot inherit itself: %d\n", ecs_first(entity));
         ecs_assert(
             !ecs_would_create_base_cycle(entity, target),
@@ -156,10 +152,8 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
 }
 
 void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
-    ecs_assert_entity_valid(entity);
-    ecs_assert_entity_valid(target);
-    ecs_assert_is_alive(entity);
-    ecs_assert_is_alive(target);
+    ecs_assert_entity_alive(entity);
+    ecs_assert_entity_alive(target);
 
     if (ecs_is_deferred()) {
         if (!ecs_has_cid_owned(target, ecs_id(Abstract))) {
@@ -182,9 +176,6 @@ static inline void ecs_entity_index_kill(uint32_t entity_id) {
 }
 
 void ecs_kill_now(ecs_entity_t entity) {
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
-
     ecs_entity_record_t *record = ecs_get_record(entity);
     ecs_table_t *initial_table = ecs_get_table(record->table_id);
     const ecs_component_t *components = initial_table->type.ids;
@@ -234,8 +225,7 @@ void ecs_kill_now(ecs_entity_t entity) {
 }
 
 void ecs_kill(ecs_entity_t entity) {
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
+    ecs_assert_entity_alive(entity);
 
     if (ecs_is_deferred()) {
         ecs_command_buffer_kill(entity);

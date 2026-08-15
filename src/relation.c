@@ -245,10 +245,6 @@ static void ecs_relation_set_depth(
 }
 
 void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
-    ecs_assert_entity_valid(entity);
-    ecs_assert_entity_valid(target);
-    ecs_assert_is_alive(entity);
-    ecs_assert_is_alive(target);
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     ecs_assert(
         !record->info.desc.acyclic || !ecs_relation_would_cycle(entity, relation, target),
@@ -302,6 +298,8 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
 }
 
 void ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
+    ecs_assert_entity_alive(entity);
+    ecs_assert_entity_alive(target);
     if (ecs_is_deferred()) {
         ecs_command_buffer_relate(entity, relation, target);
         return;
@@ -331,8 +329,6 @@ static void ecs_relation_remove_depth(
 }
 
 void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
     ecs_entity_t old_target = ecs_target_id(entity, relation);
     if (!old_target) {
         return;
@@ -353,6 +349,7 @@ void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
 }
 
 void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation) {
+    ecs_assert_entity_alive(entity);
     if (ecs_is_deferred()) {
         ecs_command_buffer_relate(entity, relation, 0);
         return;

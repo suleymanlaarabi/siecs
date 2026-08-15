@@ -21,8 +21,6 @@ void ecs_module_storage_fini(void) {
         if (modules[i].id) {
             *modules[i].id = 0;
         }
-        sicore_vec_fini(&modules[i].observers);
-        sicore_vec_fini(&modules[i].systems);
     }
     sicore_vec_fini(&ecs_modules);
 }
@@ -42,10 +40,10 @@ ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
     ecs_module_t record = {
         .id = desc->id,
         .name = desc->name,
+        .observer = UINT32_MAX,
+        .system = UINT16_MAX,
         .enabled = true,
     };
-    sicore_vec_init(&record.observers, sizeof(ecs_observer_id_t));
-    sicore_vec_init(&record.systems, sizeof(ecs_system_id_t));
     sicore_vec_push(&ecs_modules, &record, sizeof(record));
 
     ecs_module_id_t module = (ecs_module_id_t)(ecs_modules.size - 1);
@@ -62,21 +60,21 @@ ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
     return module;
 }
 
-void ecs_module_enable(ecs_module_id_t module) {
+static void ecs_module_set_enabled(ecs_module_id_t module, bool enabled) {
     ecs_module_t *record = ecs_module_record(module);
-    if (record->enabled) {
-        return;
+    if (record->enabled == enabled) return;
+    for (ecs_system_id_t id = record->system; id != UINT16_MAX;
+         id = ecs_system_index_get(id)->next_module) {
+        if (enabled) ecs_system_enable(id); else ecs_system_disable(id);
     }
-    const ecs_system_id_t *systems = sicore_vec_data(&record->systems, ecs_system_id_t);
-    for (uint32_t i = 0; i < record->systems.size; i++) {
-        ecs_system_enable(systems[i]);
+    for (ecs_observer_id_t id = record->observer; id != UINT32_MAX;
+         id = sicore_vec_get(&observer_index.observers, id, ecs_observer_t)->next_module) {
+        if (enabled) ecs_observer_enable(id); else ecs_observer_disable(id);
     }
-    const ecs_observer_id_t *observers = sicore_vec_data(&record->observers, ecs_observer_id_t);
-    for (uint32_t i = 0; i < record->observers.size; i++) {
-        ecs_observer_enable(observers[i]);
-    }
-    record->enabled = true;
+    record->enabled = enabled;
 }
+
+void ecs_module_enable(ecs_module_id_t module) { ecs_module_set_enabled(module, true); }
 
 ecs_module_id_t ecs_module_find(const ecs_module_id_t *id) {
     if (!id || !*id || *id >= ecs_modules.size) {
@@ -90,19 +88,7 @@ const char *ecs_module_name(ecs_module_id_t module) {
 }
 
 void ecs_module_disable(ecs_module_id_t module) {
-    ecs_module_t *record = ecs_module_record(module);
-    if (!record->enabled) {
-        return;
-    }
-    const ecs_system_id_t *systems = sicore_vec_data(&record->systems, ecs_system_id_t);
-    for (uint32_t i = 0; i < record->systems.size; i++) {
-        ecs_system_disable(systems[i]);
-    }
-    const ecs_observer_id_t *observers = sicore_vec_data(&record->observers, ecs_observer_id_t);
-    for (uint32_t i = 0; i < record->observers.size; i++) {
-        ecs_observer_disable(observers[i]);
-    }
-    record->enabled = false;
+    ecs_module_set_enabled(module, false);
 }
 
 bool ecs_module_is_enabled(const ecs_module_id_t module) {
@@ -112,13 +98,18 @@ bool ecs_module_is_enabled(const ecs_module_id_t module) {
 void ecs_module_record_system(ecs_system_id_t system) {
     ecs_module_id_t module = ecs_world.active_module;
     if (module) {
-        sicore_vec_push_u16(&ecs_module_record(module)->systems, system);
+        ecs_system_t *value = ecs_system_index_get(system);
+        value->next_module = ecs_module_record(module)->system;
+        ecs_module_record(module)->system = system;
     }
 }
 
 void ecs_module_record_observer(ecs_observer_id_t observer) {
     ecs_module_id_t module = ecs_world.active_module;
     if (module) {
-        sicore_vec_push(&ecs_module_record(module)->observers, &observer, sizeof(observer));
+        ecs_observer_t *value =
+            sicore_vec_get_mut(&observer_index.observers, observer, ecs_observer_t);
+        value->next_module = ecs_module_record(module)->observer;
+        ecs_module_record(module)->observer = observer;
     }
 }

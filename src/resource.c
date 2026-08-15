@@ -12,15 +12,16 @@ typedef struct {
     ecs_type_ops_t ops;
     ecs_resource_hook_t on_set;
     ecs_resource_hook_t on_remove;
+    ecs_resource_t previous;
 } ecs_resource_record_t;
 
 static sicore_vec_t ecs_resources;
-static sicore_vec_t ecs_resource_order;
+static ecs_resource_t ecs_last_resource;
 
 void ecs_resource_storage_init(void) {
     sicore_vec_init_w_size(&ecs_resources, sizeof(ecs_resource_record_t), 1);
     sicore_vec_ensure(&ecs_resources, 1, sizeof(ecs_resource_record_t));
-    sicore_vec_init(&ecs_resource_order, sizeof(ecs_resource_t));
+    ecs_last_resource = 0;
 }
 
 static inline ecs_resource_record_t *ecs_resource_record(ecs_resource_t id) {
@@ -72,8 +73,9 @@ ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc
         .ops = desc->ops,
         .on_set = desc->on_set,
         .on_remove = desc->on_remove,
+        .previous = ecs_last_resource,
     };
-    sicore_vec_push(&ecs_resource_order, id, sizeof(*id));
+    ecs_last_resource = *id;
     return *id;
 }
 
@@ -167,13 +169,10 @@ void ecs_remove_resource_rid(ecs_resource_t id) {
 }
 
 void ecs_resource_storage_fini(void) {
-    const ecs_resource_t *ids = ecs_resource_order.data;
-    for (uint32_t i = ecs_resource_order.size; i > 0; i--) {
-        ecs_resource_t id = ids[i - 1];
+    for (ecs_resource_t id = ecs_last_resource; id; id = ecs_resource_record(id)->previous) {
         if (ecs_resource_record(id)->data) {
             ecs_remove_resource_rid(id);
         }
     }
-    sicore_vec_fini(&ecs_resource_order);
     sicore_vec_fini(&ecs_resources);
 }

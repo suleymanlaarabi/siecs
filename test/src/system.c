@@ -407,11 +407,11 @@ void system_batches_invalidate_after_table_creation(void) {
 
     ecs_progress();
     ecs_phase_info_t *phase = ecs_system_index_get_phase(EcsOnUpdate);
-    test_int(1, phase->batches.size);
+    test_int(2, phase->plan_count);
 
     ecs_add(ecs_new(), SystemBatchC);
     ecs_progress();
-    test_int(2, phase->batches.size);
+    test_int(3, phase->plan_count);
     ecs_fini();
 }
 

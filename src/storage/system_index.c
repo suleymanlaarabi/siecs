@@ -1,5 +1,4 @@
 #include "system_index.h"
-#include "index_vec.h"
 #include "../utils.h"
 #include "../world_internal.h"
 #include <stdint.h>
@@ -7,13 +6,13 @@
 
 ecs_system_index_t system_index;
 
-ECS_INDEX_VEC_ID_VALID(ecs_system_id_valid, ecs_system_id_t, system_index.systems)
-ECS_INDEX_VEC_GET_MUT(
-    ecs_system_get_unchecked,
-    ecs_system_id_t,
-    ecs_system_t,
-    system_index.systems
-)
+static inline bool ecs_system_id_valid(ecs_system_id_t id) {
+    return id && id < system_index.systems.size;
+}
+
+static inline ecs_system_t *ecs_system_get_unchecked(ecs_system_id_t id) {
+    return sicore_vec_get_mut(&system_index.systems, id, ecs_system_t);
+}
 
 static uint32_t ecs_phase_order_index(ecs_phase_t phase) {
     const ecs_phase_t *order = system_index.phase_order.data;
@@ -61,7 +60,6 @@ ecs_phase_t ecs_phase_register(const ecs_phase_desc_t *desc) {
         .name = desc && desc->name ? desc->name : "unnamed",
     };
     sicore_vec_init(&info.systems, sizeof(ecs_system_id_t));
-    sicore_vec_init(&info.batches, sizeof(ecs_system_batch_t));
     sicore_vec_push(&index->phases, &info, sizeof info);
     uint32_t old_count = index->phase_order.size;
     sicore_vec_push(&index->phase_order, &id, sizeof id);
@@ -121,10 +119,19 @@ ecs_system_id_t ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query
         .user_data = desc->user_data,
         .user_data_dtor = desc->user_data_dtor,
         .phase = desc->phase,
+        .next_module = UINT16_MAX,
         .enabled = !desc->disabled,
         .main_thread_only = desc->main_thread_only,
     };
-    memcpy(system.after, desc->after, sizeof system.after);
+    for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY && desc->after[i]; i++) {
+#ifndef NDEBUG
+        ecs_assert(ecs_system_id_valid(desc->after[i]), "invalid system dependency: %u\n",
+                   desc->after[i]);
+        ecs_assert(ecs_system_get_unchecked(desc->after[i])->phase == system.phase,
+                   "system dependency must be in the same phase\n");
+#endif
+        if (desc->after[i] > system.after) system.after = desc->after[i];
+    }
     for (uint16_t i = 0; i < ECS_SYSTEM_RESOURCE_CAPACITY && desc->read_resources[i]; i++)
         ecs_access_add(system.resource_accesses, &system.resource_access_count,
                        desc->read_resources[i], false);
@@ -132,14 +139,6 @@ ecs_system_id_t ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query
         ecs_access_add(system.resource_accesses, &system.resource_access_count,
                        desc->write_resources[i], true);
 
-#ifndef NDEBUG
-    for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY && system.after[i]; i++) {
-        ecs_assert(ecs_system_id_valid(system.after[i]), "invalid system dependency: %u\n",
-                   system.after[i]);
-        ecs_assert(ecs_system_get_unchecked(system.after[i])->phase == system.phase,
-                   "system dependency must be in the same phase\n");
-    }
-#endif
     sicore_vec_push(&index->systems, &system, sizeof system);
     ecs_system_id_t id = index->systems.size - 1;
     sicore_vec_push_u16(&ecs_system_index_get_phase(system.phase)->systems, id);
@@ -192,33 +191,27 @@ void ecs_system_index_build_plan(void) {
     for (uint32_t p = 0; p < index->phase_order.size; p++) {
         ecs_phase_info_t *phase = ecs_system_index_get_phase(
             *sicore_vec_get(&index->phase_order, p, ecs_phase_t));
-        sicore_vec_clear(&phase->batches);
+        phase->plan_first = index->execution_order.size;
+        uint32_t batch_first = phase->plan_first;
         const ecs_system_id_t *systems = phase->systems.data;
         for (uint32_t i = 0; i < phase->systems.size; i++) {
             ecs_system_id_t id = systems[i];
             ecs_system_t *current = ecs_system_index_get(id);
             if (!current->enabled) continue;
-            uint32_t at = index->execution_order.size;
-            sicore_vec_push_u16(&index->execution_order, id);
             bool blocked = false;
-            ecs_system_batch_t *batch = phase->batches.size
-                ? sicore_vec_get_mut(&phase->batches, phase->batches.size - 1, ecs_system_batch_t)
-                : NULL;
-            if (batch) {
-                const ecs_system_id_t *order = index->execution_order.data;
-                for (uint32_t j = 0; j < batch->count && !blocked; j++) {
-                    ecs_system_id_t previous_id = order[batch->first + j];
-                    for (uint16_t d = 0; d < ECS_SYSTEM_AFTER_CAPACITY && current->after[d]; d++)
-                        blocked |= current->after[d] == previous_id;
-                    blocked |= ecs_system_conflict(current, ecs_system_index_get(previous_id));
-                }
+            const ecs_system_id_t *order = index->execution_order.data;
+            for (uint32_t j = batch_first; j < index->execution_order.size && !blocked; j++) {
+                ecs_system_id_t previous_id = order[j];
+                blocked |= current->after == previous_id;
+                blocked |= ecs_system_conflict(current, ecs_system_index_get(previous_id));
             }
-            if (batch && !blocked) batch->count++;
-            else {
-                ecs_system_batch_t value = { .first = at, .count = 1 };
-                sicore_vec_push(&phase->batches, &value, sizeof value);
+            if (blocked) {
+                sicore_vec_push_u16(&index->execution_order, 0);
+                batch_first = index->execution_order.size;
             }
+            sicore_vec_push_u16(&index->execution_order, id);
         }
+        phase->plan_count = index->execution_order.size - phase->plan_first;
     }
     index->plan_dirty = false;
 }
@@ -231,7 +224,6 @@ void ecs_system_index_fini(void) {
     for (uint32_t i = 0; i < index->phases.size; i++) {
         ecs_phase_info_t *phase = sicore_vec_get_mut(&index->phases, i, ecs_phase_info_t);
         sicore_vec_fini(&phase->systems);
-        sicore_vec_fini(&phase->batches);
     }
     sicore_vec_fini(&index->execution_order);
     sicore_vec_fini(&index->phase_order);

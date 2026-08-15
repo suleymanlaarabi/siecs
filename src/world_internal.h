@@ -6,7 +6,7 @@
 #include "sireflect.h"
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
-#include "storage/module_index.h"
+#include "module.h"
 #include "storage/observer_index.h"
 #include "storage/query_index.h"
 #include "storage/system_index.h"

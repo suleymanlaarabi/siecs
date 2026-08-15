@@ -77,21 +77,24 @@ void ecs_run_phase(ecs_phase_t phase) {
     pinfo = ecs_system_index_get_phase(phase);
     if (!pinfo) return;
 
-    sicore_vec_t *order = &index->execution_order;
-    for (uint32_t i = 0; i < pinfo->batches.size; i++) {
-        ecs_system_batch_t batch =
-            *sicore_vec_get(&pinfo->batches, i, ecs_system_batch_t);
-        const ecs_system_id_t *systems = sicore_vec_data(order, ecs_system_id_t) + batch.first;
-        if (!ecs_worker_pool_enabled(&ecs_world.worker_pool) || batch.count == 1) {
+    const ecs_system_id_t *order = index->execution_order.data;
+    uint32_t at = pinfo->plan_first, end = at + pinfo->plan_count;
+    while (at < end) {
+        uint32_t first = at;
+        while (at < end && order[at]) at++;
+        uint32_t count = at - first;
+        const ecs_system_id_t *systems = order + first;
+        if (!ecs_worker_pool_enabled(&ecs_world.worker_pool) || count == 1) {
             ecs_world.main_context.scheduler_parallel = false;
             ecs_execution_context_set(&ecs_world.main_context);
-            for (uint32_t j = 0; j < batch.count; j++) {
+            for (uint32_t j = 0; j < count; j++) {
                 ecs_run_system(systems[j]);
             }
         } else {
-            ecs_worker_pool_run_systems(&ecs_world.worker_pool, systems, batch.count);
+            ecs_worker_pool_run_systems(&ecs_world.worker_pool, systems, count);
             ecs_worker_pool_flush(&ecs_world.worker_pool);
         }
+        at++;
     }
 }
 
@@ -144,24 +147,13 @@ void ecs_run(void) {
     ecs_fini();
 }
 
-void ecs_system_enable(ecs_system_id_t system) {
-
+static void ecs_system_set_enabled(ecs_system_id_t system, bool enabled) {
     ecs_system_t *sys = ecs_system_index_get(system);
-    if (sys->enabled == true) {
-        return;
+    if (sys->enabled != enabled) {
+        sys->enabled = enabled;
+        system_index.plan_dirty = true;
     }
-
-    sys->enabled = true;
-    system_index.plan_dirty = true;
 }
 
-void ecs_system_disable(ecs_system_id_t system) {
-
-    ecs_system_t *sys = ecs_system_index_get(system);
-    if (sys->enabled == false) {
-        return;
-    }
-
-    sys->enabled = false;
-    system_index.plan_dirty = true;
-}
+void ecs_system_enable(ecs_system_id_t system) { ecs_system_set_enabled(system, true); }
+void ecs_system_disable(ecs_system_id_t system) { ecs_system_set_enabled(system, false); }

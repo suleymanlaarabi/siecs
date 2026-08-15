@@ -20,22 +20,13 @@ ECS_RELATION_DEFINE(
 sicore_map_t name_map;
 
 static char *name_copy_string(const char *value) {
-    if (!value) {
-        return NULL;
-    }
-
-    size_t size = strlen(value) + 1;
-    char *copy = malloc(size);
-    ecs_assert_not_null(copy);
-    memcpy(copy, value, size);
+    char *copy = value ? strdup(value) : NULL;
+    if (value) ecs_assert_not_null(copy);
     return copy;
 }
 
 static void name_ctor(void *ptr, uint32_t count) {
-    Name *names = ptr;
-    for (uint32_t i = 0; i < count; i++) {
-        names[i].value = NULL;
-    }
+    memset(ptr, 0, (size_t)count * sizeof(Name));
 }
 
 static void name_dtor(void *ptr, uint32_t count) {
@@ -68,12 +59,8 @@ static void name_copy(void *dst, const void *src, uint32_t count) {
 }
 
 static void name_move_ctor(void *dst, void *src, uint32_t count) {
-    Name *out = dst;
-    Name *in = src;
-    for (uint32_t i = 0; i < count; i++) {
-        out[i].value = in[i].value;
-        in[i].value = NULL;
-    }
+    memcpy(dst, src, (size_t)count * sizeof(Name));
+    memset(src, 0, (size_t)count * sizeof(Name));
 }
 
 static void name_move(void *dst, void *src, uint32_t count) {
@@ -109,23 +96,13 @@ void name_on_set(
 ) {
     Name *name = current_value;
     const Name *new_name = new_value;
-
-    if (name == new_name) {
-        if (name->value) {
-            sicore_map_set(&name_map, name->value, ecs_first(entity));
-        }
-        return;
+    if (name != new_name) {
+        char *value = name_copy_string(new_name->value);
+        if (name->value) sicore_map_unset(&name_map, name->value);
+        free(name->value);
+        name->value = value;
     }
-
-    char *value = name_copy_string(new_name->value);
-    if (name->value) {
-        sicore_map_unset(&name_map, name->value);
-    }
-    free(name->value);
-    name->value = value;
-    if (name->value) {
-        sicore_map_set(&name_map, name->value, ecs_first(entity));
-    }
+    if (name->value) sicore_map_set(&name_map, name->value, ecs_first(entity));
 }
 
 void name_on_remove(ecs_entity_t entity, ecs_component_t component, void *data) {
