@@ -5021,11 +5021,14 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
 #ifndef SIECS_WORKER_POOL_H
 #define SIECS_WORKER_POOL_H
 
-#ifndef SIECS_PLATFORM_THREAD_H
-#define SIECS_PLATFORM_THREAD_H
+#ifndef SIECS_PLATFORM_H
+#define SIECS_PLATFORM_H
 
 #include <stdbool.h>
 #include <stdint.h>
+
+double ecs_platform_time_now_sec(void);
+void ecs_platform_time_sleep_sec(double seconds);
 
 #ifdef _WIN32
 #include <windows.h>
@@ -7305,14 +7308,6 @@ uint32_t ecs_platform_hardware_thread_count(void) {
 
 #endif
 
-#ifndef SIECS_PLATFORM_TIME_H
-#define SIECS_PLATFORM_TIME_H
-
-double ecs_platform_time_now_sec(void);
-void ecs_platform_time_sleep_sec(double seconds);
-
-#endif
-
 #ifdef _WIN32
 #include <windows.h>
 #elif defined(__EMSCRIPTEN__)
@@ -8062,8 +8057,11 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     ecs_assert_not_scheduler_parallel("system registration");
     ecs_assert_not_null(desc);
     ecs_assert(desc->callback, "system requires callback function\n");
-    ecs_assert(ecs_system_index_get_phase(desc->phase) != NULL,
-               "invalid system phase: %u\n", desc->phase);
+    ecs_assert(
+        ecs_system_index_get_phase(desc->phase) != NULL,
+        "invalid system phase: %u\n",
+        desc->phase
+    );
 
     const bool has_query = desc->query.terms[0].id || desc->query.relations[0].id ||
                            desc->query.order_by.func || desc->query.is_a;
@@ -8113,13 +8111,15 @@ void ecs_run_phase(ecs_phase_t phase) {
     }
 
     pinfo = ecs_system_index_get_phase(phase);
-    if (!pinfo) return;
+    if (!pinfo)
+        return;
 
     const ecs_system_id_t *order = index->execution_order.data;
     uint32_t at = pinfo->plan_first, end = at + pinfo->plan_count;
     while (at < end) {
         uint32_t first = at;
-        while (at < end && order[at]) at++;
+        while (at < end && order[at])
+            at++;
         uint32_t count = at - first;
         const ecs_system_id_t *systems = order + first;
         if (!ecs_worker_pool_enabled(&ecs_world.worker_pool) || count == 1) {
@@ -8176,7 +8176,6 @@ bool ecs_progress(void) {
     }
 
     return !ecs_world.exit;
-
 }
 
 void ecs_run(void) {
