@@ -1,5 +1,4 @@
 #include "command_buffer.h"
-#include "component_require.h"
 #include "datastructure/arena.h"
 #include "event_ops.h"
 #include "inheritance.h"
@@ -42,45 +41,33 @@ static inline void deferred_change_fini(ecs_deferred_change_t *change) {
     change->data = NULL;
 }
 
-static inline ecs_deferred_change_t *change_find(
-    sicore_vec_t *changes,
-    ecs_component_t id
-) {
-    ecs_deferred_change_t *items = sicore_vec_data(changes, ecs_deferred_change_t);
-    for (uint32_t i = 0; i < changes->size; i++) {
-        if (items[i].id == id) {
-            return &items[i];
-        }
+static uint32_t change_lower_bound(const sicore_vec_t *changes, ecs_component_t id) {
+    const ecs_deferred_change_t *items = changes->data;
+    uint32_t first = 0, count = changes->size;
+    while (count) {
+        uint32_t step = count / 2, middle = first + step;
+        if (items[middle].id < id) { first = middle + 1; count -= step + 1; }
+        else count = step;
     }
-    return NULL;
+    return first;
 }
 
-static inline const ecs_deferred_change_t *change_find_const(
-    const sicore_vec_t *changes,
-    ecs_component_t id
-) {
-    const ecs_deferred_change_t *items =
-        sicore_vec_data(changes, ecs_deferred_change_t);
-    for (uint32_t i = 0; i < changes->size; i++) {
-        if (items[i].id == id) {
-            return &items[i];
-        }
-    }
-    return NULL;
-}
-
-static inline ecs_deferred_change_t *change_add(
+static inline ecs_deferred_change_t *change_get(
     ecs_entity_command_t *command,
     ecs_component_t id,
-    ecs_deferred_op_t op
+    ecs_deferred_op_t op,
+    bool *inserted
 ) {
-    ecs_deferred_change_t change = { .id = id, .op = op };
-    sicore_vec_push(&command->changes, &change, sizeof(change));
-    return sicore_vec_get_mut(
-        &command->changes,
-        command->changes.size - 1,
-        ecs_deferred_change_t
-    );
+    uint32_t at = change_lower_bound(&command->changes, id);
+    ecs_deferred_change_t *items = command->changes.data;
+    *inserted = at == command->changes.size || items[at].id != id;
+    if (!*inserted) return &items[at];
+    sicore_vec_push_empty(&command->changes, sizeof(ecs_deferred_change_t));
+    items = command->changes.data;
+    memmove(items + at + 1, items + at,
+            (command->changes.size - at - 1) * sizeof *items);
+    items[at] = (ecs_deferred_change_t){ .id = id, .op = op };
+    return &items[at];
 }
 
 static inline void command_init(ecs_entity_command_t *command, ecs_entity_t entity) {
@@ -163,82 +150,47 @@ static ecs_entity_command_t *command_for_entity(
     return command;
 }
 
-static inline void command_buffer_store(
+static inline void command_buffer_change(
     ecs_entity_t entity,
     ecs_component_t id,
     void *data,
     ecs_deferred_op_t op
 ) {
-    ecs_command_buffer_t *buffer =
-        &ecs_execution_context_current()->commands;
-
-    ecs_entity_command_t *command =
-        command_for_entity(buffer, entity);
-
-    const ecs_component_record_t *record =
-        ecs_component_index_get(id);
-
-    ecs_deferred_change_t *change =
-        change_find(&command->changes, id);
-
-    if (!change) {
-        change = change_add(command, id, op);
-    } else {
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
+    bool inserted;
+    ecs_deferred_change_t *change = change_get(command, id, op, &inserted);
+    if (!inserted && op == EcsDeferredAdd) {
+        if (change->op == EcsDeferredRemove) change->op = op;
+        return;
+    } else if (!inserted) {
         deferred_change_fini(change);
         change->op = op;
     }
-
-    change->data = ecs_arena_alloc(
-        buffer->arena,
-        record->info->size ? record->info->size : 1
-    );
-
+    if (op == EcsDeferredRemove || op == EcsDeferredAdd) return;
+    const ecs_component_record_t *record = ecs_component_index_get(id);
+    change->data = ecs_arena_alloc(buffer->arena, record->info->size ? record->info->size : 1);
     if (op == EcsDeferredMove) {
-        ecs_component_value_move_ctor(
-            record,
-            change->data,
-            data,
-            1
-        );
+        ecs_component_value_move_ctor(record, change->data, data, 1);
     } else {
-        ecs_component_value_copy_ctor(
-            record,
-            change->data,
-            data,
-            1
-        );
+        ecs_component_value_copy_ctor(record, change->data, data, 1);
     }
 }
 
 void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id) {
-    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
-    ecs_entity_command_t *command = command_for_entity(buffer, entity);
-    ecs_deferred_change_t *change = change_find(&command->changes, id);
-    if (!change) {
-        change_add(command, id, EcsDeferredAdd);
-    } else if (change->op == EcsDeferredRemove) {
-        change->op = EcsDeferredAdd;
-    }
+    command_buffer_change(entity, id, NULL, EcsDeferredAdd);
 }
 
 void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id) {
-    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
-    ecs_entity_command_t *command = command_for_entity(buffer, entity);
-    ecs_deferred_change_t *change = change_find(&command->changes, id);
-    if (!change) {
-        change_add(command, id, EcsDeferredRemove);
-        return;
-    }
-    deferred_change_fini(change);
-    change->op = EcsDeferredRemove;
+    command_buffer_change(entity, id, NULL, EcsDeferredRemove);
 }
 
 void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void *data) {
-    command_buffer_store(entity, id, (void *)data, EcsDeferredCopy);
+    command_buffer_change(entity, id, (void *)data, EcsDeferredCopy);
 }
 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data) {
-    command_buffer_store(entity, id, data, EcsDeferredMove);
+    command_buffer_change(entity, id, data, EcsDeferredMove);
 }
 
 void ecs_command_buffer_kill(ecs_entity_t entity) {
@@ -288,67 +240,45 @@ void ecs_command_buffer_relate(
     sicore_vec_push(&buffer->relations, &value, sizeof value);
 }
 
-static void final_ids_push_sorted(sicore_vec_t *final_ids, ecs_component_t id) {
-    ecs_component_t *ids = sicore_vec_data(final_ids, ecs_component_t);
-    uint32_t i = 0;
-    while (i < final_ids->size && ids[i] < id) {
-        i++;
-    }
-    if (i < final_ids->size && ids[i] == id) {
-        return;
-    }
-
-    sicore_vec_push_empty(final_ids, sizeof(ecs_component_t));
-    ids = sicore_vec_data(final_ids, ecs_component_t);
-    for (uint32_t j = final_ids->size - 1; j > i; j--) {
-        ids[j] = ids[j - 1];
-    }
-    ids[i] = id;
-}
-
-static ecs_type_t
-command_build_type(
+static ecs_type_t command_build_type(
+    ecs_command_buffer_t *buffer,
     const ecs_table_t *table,
-    const ecs_entity_command_t *command
+    ecs_entity_command_t *command
 ) {
-    sicore_vec_t final_ids;
-    sicore_vec_init(&final_ids, sizeof(ecs_component_t));
-    const ecs_deferred_change_t *changes =
-        sicore_vec_data(&command->changes, ecs_deferred_change_t);
-
-    for (uint16_t i = 0; i < table->type.component_count; i++) {
-        ecs_component_t id = table->type.ids[i];
-        const ecs_deferred_change_t *change = change_find_const(&command->changes, id);
-        if (!change || change->op != EcsDeferredRemove) {
-            sicore_vec_push_u16(&final_ids, id);
-        }
-    }
-
     for (uint32_t i = 0; i < command->changes.size; i++) {
-        if (changes[i].op == EcsDeferredRemove) {
-            continue;
+        ecs_deferred_change_t *change = sicore_vec_get_mut(
+            &command->changes, i, ecs_deferred_change_t);
+        if (change->op == EcsDeferredRemove) continue;
+        const ecs_component_record_t *record = ecs_component_index_get(change->id);
+        for (uint32_t r = 0; r < record->required_count; r++) {
+            bool inserted;
+            ecs_deferred_change_t *required =
+                change_get(command, record->required[r], EcsDeferredAdd, &inserted);
+            if (!inserted && required->op == EcsDeferredRemove) required->op = EcsDeferredAdd;
         }
-        ecs_component_t required[ECS_ADD_PLAN_MAX_COMPONENTS];
-        uint16_t required_count = 0;
-        ecs_collect_required_components(
-            table,
-            changes[i].id,
-            required,
-            &required_count,
-            ECS_ADD_PLAN_MAX_COMPONENTS
-        );
-        for (uint16_t r = 0; r < required_count; r++) {
-            final_ids_push_sorted(&final_ids, required[r]);
-        }
-        final_ids_push_sorted(&final_ids, changes[i].id);
     }
 
-    ecs_type_t type = ecs_type_with_ids(
-        &table->type,
-        sicore_vec_data(&final_ids, ecs_component_t),
-        (uint16_t)final_ids.size
+    const ecs_deferred_change_t *changes = command->changes.data;
+    ecs_component_t *ids = ecs_arena_alloc(
+        buffer->arena,
+        sizeof *ids * (table->type.component_count + command->changes.size)
     );
-    sicore_vec_fini(&final_ids);
+    uint16_t ti = 0, ci = 0, count = 0;
+    while (ti < table->type.component_count || ci < command->changes.size) {
+        ecs_component_t table_id = ti < table->type.component_count
+                                       ? table->type.ids[ti] : UINT16_MAX;
+        ecs_component_t change_id = ci < command->changes.size
+                                        ? changes[ci].id : UINT16_MAX;
+        if (table_id < change_id) ids[count++] = table->type.ids[ti++];
+        else if (change_id < table_id) {
+            if (changes[ci].op != EcsDeferredRemove) ids[count++] = change_id;
+            ci++;
+        } else {
+            if (changes[ci].op != EcsDeferredRemove) ids[count++] = table_id;
+            ti++; ci++;
+        }
+    }
+    ecs_type_t type = ecs_type_with_ids(&table->type, ids, count);
     type.base = command->has_base ? command->base : table->type.base;
     return type;
 }
@@ -416,7 +346,11 @@ static void command_apply_relations(
     }
 }
 
-static void command_apply(ecs_entity_command_t *command, const sicore_vec_t *relations) {
+static void command_apply(
+    ecs_command_buffer_t *buffer,
+    ecs_entity_command_t *command,
+    const sicore_vec_t *relations
+) {
     if (!ecs_is_alive(command->entity)) {
         return;
     }
@@ -435,7 +369,7 @@ static void command_apply(ecs_entity_command_t *command, const sicore_vec_t *rel
         return;
     }
 
-    ecs_type_t final_type = command_build_type(old_table, command);
+    ecs_type_t final_type = command_build_type(buffer, old_table, command);
     ecs_inheritance_plan_t inheritance_plan = { 0 };
     bool base_changed = command->has_base && command->base != old_table->type.base;
     if (base_changed) {
@@ -511,7 +445,7 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
         }
 
         for (uint32_t i = 0; i < commands.size; i++) {
-            command_apply(&items[i], &relations);
+            command_apply(buffer, &items[i], &relations);
             command_fini(&items[i]);
         }
         sicore_vec_fini(&commands);

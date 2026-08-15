@@ -27,6 +27,18 @@ class entity {
         return id;
     }
 
+    template <bool Add, typename... T> entity mutate() {
+        if constexpr (sizeof...(T) > 1) {
+            detail::defer_scope scope;
+            ((Add ? ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>())
+                  : ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>())), ...);
+        } else {
+            ((Add ? ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>())
+                  : ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>())), ...);
+        }
+        return *this;
+    }
+
   public:
     /** Construct the null entity handle. */
     entity() noexcept = default;
@@ -77,15 +89,7 @@ class entity {
     /** Add one or more registered components; returns this handle for chaining. */
     template <typename... T>
         requires(sizeof...(T) > 0)
-    entity add() {
-        if constexpr (sizeof...(T) == 1) {
-            (ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>()), ...);
-        } else {
-            detail::defer_scope scope;
-            (ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>()), ...);
-        }
-        return *this;
-    }
+    entity add() { return mutate<true, T...>(); }
 
     /** Mark this entity abstract; application mutation of abstract bases is restricted. */
     entity abstract() {
@@ -96,15 +100,7 @@ class entity {
     /** Remove one or more components; missing components are ignored. */
     template <typename... T>
         requires(sizeof...(T) > 0)
-    entity remove() {
-        if constexpr (sizeof...(T) == 1) {
-            (ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>()), ...);
-        } else {
-            detail::defer_scope scope;
-            (ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>()), ...);
-        }
-        return *this;
-    }
+    entity remove() { return mutate<false, T...>(); }
 
     /** Test that all requested components are present on this entity. */
     template <typename... T>
@@ -113,16 +109,12 @@ class entity {
         return (ecs_has_cid(_entity, detail::ecs_cpp_component_id<T>()) && ...);
     }
 
-    /** Copy a component value into this entity, adding the component if absent. */
-    template <typename T> entity set(const T &value) {
-        ecs_set_cid(_entity, detail::ecs_cpp_component_id<T>(), &value);
-        return *this;
-    }
-
-    /** Move a component value into this entity, consuming the source value. */
+    /** Copy an lvalue or move an rvalue into this entity, adding it if absent. */
     template <typename T> entity set(T &&value) {
         using type = std::remove_cvref_t<T>;
-        ecs_move_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
+        if constexpr (std::is_lvalue_reference_v<T>)
+            ecs_set_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
+        else ecs_move_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
         return *this;
     }
 

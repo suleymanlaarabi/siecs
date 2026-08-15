@@ -20,11 +20,11 @@ struct ChildOf {};
 
 /** Synchronize builtin component ids after the C world is initialized. */
 inline void init_cpp_state() {
-    detail::component_type<Disabled>::id = ecs_id(Disabled);
-    detail::component_type<Name>::id = ecs_id(Name);
+    detail::typed_id<Disabled, detail::id_kind::component> = ecs_id(Disabled);
+    detail::typed_id<Name, detail::id_kind::component> = ecs_id(Name);
 
-    detail::component_type<Abstract>::id = ecs_id(Abstract);
-    detail::relation_type<ChildOf>::id = ecs_rid(ChildOf);
+    detail::typed_id<Abstract, detail::id_kind::component> = ecs_id(Abstract);
+    detail::typed_id<ChildOf, detail::id_kind::relation> = ecs_rid(ChildOf);
 }
 /** Initialize the process-wide active ECS world and C++ builtin ids. */
 inline void init() {

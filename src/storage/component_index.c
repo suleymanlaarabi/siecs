@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-sicore_vec_t ecs_component_default_relation_index;
 ecs_component_index_t component_index;
 
 static sireflect_struct_desc_t *
@@ -76,6 +75,8 @@ void ecs_component_index_register(
         .info = info,
         .required = NULL,
         .required_count = 0,
+        .default_relations = NULL,
+        .default_relation_count = 0,
         .ops = ops,
         .on_set = on_set,
         .on_remove = on_remove,
@@ -108,16 +109,9 @@ void ecs_component_index_fini() {
             free(records[i].info);
         }
         free(records[i].required);
+        free(records[i].default_relations);
         sicore_vec_fini(&records[i].tables);
     }
-    if (ecs_component_default_relation_index.data) {
-        ecs_component_required_relation_t **defaults = ecs_component_default_relation_index.data;
-        for (uint32_t i = 0; i < ecs_component_default_relation_index.size; i++) {
-            free(defaults[i]);
-        }
-        sicore_vec_fini(&ecs_component_default_relation_index);
-    }
-    ecs_component_default_relation_index = (sicore_vec_t){ 0 };
     sicore_vec_fini(&component_index.components);
 }
 

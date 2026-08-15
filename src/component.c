@@ -146,7 +146,7 @@ void RelationSourceOnRemove(ecs_entity_t entity, ecs_component_t component, void
     // Prevent recursive calls to RelationOnRemove when removing relation from child
     source_data->entities.size = UINT32_MAX;
     for (uint32_t i = 0; i < count; i++) {
-        if (relation_record->on_delete_target == EcsDeleteSources) {
+    if (relation_record->info.desc.on_delete_target == EcsDeleteSources) {
             ecs_kill(entities[i]);
         } else {
             ecs_unrelate_id(entities[i], relation);

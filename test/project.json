@@ -161,6 +161,7 @@
           "parallel_independent_callbacks",
           "parallel_worker_context_is_deferred",
           "parallel_query_table_conflicts",
+          "batches_invalidate_after_table_creation",
           "main_thread_only",
           "parallel_after_is_a_barrier",
           "resource_access_conflicts",

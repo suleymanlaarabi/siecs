@@ -204,9 +204,6 @@ The one-time start rule applies only to `ecs_progress()`. Calling
 `ecs_run_system()` ignores phase order and runs only the selected enabled
 system. This is useful for tests or explicit one-off work.
 
-`OnPreUpdate`, `OnUpdate`, `OnPostUpdate`, and `OnRender` are compatibility
-aliases for the matching `Ecs*` phase names.
-
 ## Order Systems in a Phase
 
 Systems in different phases are ordered by the phase list above. Inside one

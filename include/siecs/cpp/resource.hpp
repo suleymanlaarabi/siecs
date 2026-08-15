@@ -26,18 +26,12 @@ template <typename T> class resource_ref {
     /** Adopt a registered resource id; the world owns the storage. */
     explicit resource_ref(ecs_resource_t id) noexcept : _id(id) {}
 
-    template <typename U = T>
-        requires(!std::is_const_v<U>)
-    /** Copy `value` into the resource; the resource must be writable. */
-    void set(const value_type &value) const {
-        ecs_set_resource_rid(_id, &value);
-    }
-
-    template <typename U = T>
-        requires(!std::is_const_v<U>)
-    /** Move `value` into the resource, consuming its source state. */
-    void set(value_type &&value) const {
-        ecs_move_resource_rid(_id, &value);
+    template <typename U>
+        requires(!std::is_const_v<T> && std::is_same_v<std::remove_cvref_t<U>, value_type>)
+    /** Copy an lvalue or move an rvalue into this resource. */
+    void set(U &&value) const {
+        if constexpr (std::is_lvalue_reference_v<U>) ecs_set_resource_rid(_id, &value);
+        else ecs_move_resource_rid(_id, &value);
     }
 
     /** Return storage or null when the resource is absent. */
@@ -73,10 +67,6 @@ template <typename T> class res {
 
 namespace detail {
 
-template <typename T> struct resource_type {
-    static inline ecs_resource_t id;
-};
-
 template <typename T>
 concept c_declared_resource = c_resource_traits<std::remove_cv_t<T>>::value;
 
@@ -100,38 +90,26 @@ template <typename T> struct resource_hook_state {
     static inline resource_hooks<T> hooks{};
 };
 
-template <typename T> static void resource_on_set(const void *ptr) {
-    auto callback = resource_hook_state<T>::hooks.on_set;
-    if (callback != nullptr)
-        callback(*static_cast<const T *>(ptr));
-}
-
-template <typename T> static void resource_on_remove(const void *ptr) {
-    auto callback = resource_hook_state<T>::hooks.on_remove;
+template <typename T, bool Set> static void resource_hook(const void *ptr) {
+    auto callback = Set ? resource_hook_state<T>::hooks.on_set
+                        : resource_hook_state<T>::hooks.on_remove;
     if (callback != nullptr)
         callback(*static_cast<const T *>(ptr));
 }
 
 } // namespace detail
 
-/** Register `T` and return a typed resource handle, installing hooks once. */
-template <typename T>
-    requires detail::c_declared_resource<T>
-static ecs_resource_t ecs_cpp_resource_id() {
+/** Register `T` and return its typed resource id, installing native hooks once. */
+template <typename T> static ecs_resource_t ecs_cpp_resource_id(
+    const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr
+) {
     using type = std::remove_cv_t<T>;
-    return ecs_resource_register(
-        detail::c_resource_traits<type>::id_storage(),
-        detail::c_resource_traits<type>::desc_storage()
-    );
-}
-
-/** Register a native C++ resource and return its id, installing hooks once. */
-template <typename T>
-    requires(!detail::c_declared_resource<T>)
-static ecs_resource_t
-ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) {
-    using type = std::remove_cv_t<T>;
-    ecs_resource_t &rid = detail::resource_type<type>::id;
+    if constexpr (detail::c_declared_resource<type>) {
+        (void)hooks;
+        return ecs_resource_register(detail::c_resource_traits<type>::id_storage(),
+                                     detail::c_resource_traits<type>::desc_storage());
+    }
+    ecs_resource_t &rid = detail::typed_id<type, detail::id_kind::resource>;
 
     if (rid != 0)
         return rid;
@@ -145,8 +123,8 @@ ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) 
         .name = name.c_str(),
         .size = sizeof(type),
         .ops = detail::value_ops<type>(),
-        .on_set = hooks && hooks->on_set ? detail::resource_on_set<type> : nullptr,
-        .on_remove = hooks && hooks->on_remove ? detail::resource_on_remove<type> : nullptr,
+        .on_set = hooks && hooks->on_set ? detail::resource_hook<type, true> : nullptr,
+        .on_remove = hooks && hooks->on_remove ? detail::resource_hook<type, false> : nullptr,
     };
 
     rid = ecs_resource_init(&desc);
@@ -170,7 +148,7 @@ template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {
     if constexpr (detail::c_declared_resource<type>) {
         return *detail::c_resource_traits<type>::id_storage();
     }
-    return detail::resource_type<type>::id;
+    return detail::typed_id<type, detail::id_kind::resource>;
 }
 
 namespace detail {

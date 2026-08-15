@@ -6,19 +6,50 @@
 #include "table.h"
 #include "world_internal.h"
 
+typedef struct {
+    ecs_type_t known;
+    ecs_type_t candidate;
+    uint16_t known_i;
+    uint16_t candidate_i;
+} ecs_type_diff_t;
+
+static inline bool ecs_type_diff_next(ecs_type_diff_t *diff, uint16_t *index) {
+    while (diff->candidate_i < diff->candidate.component_count) {
+        ecs_component_t id = diff->candidate.ids[diff->candidate_i];
+        while (diff->known_i < diff->known.component_count &&
+               diff->known.ids[diff->known_i] < id) diff->known_i++;
+        if (diff->known_i < diff->known.component_count &&
+            diff->known.ids[diff->known_i] == id) { diff->candidate_i++; continue; }
+        *index = diff->candidate_i++;
+        return true;
+    }
+    return false;
+}
+
 static inline void ecs_apply_component_default_relations(
     ecs_entity_t entity,
     ecs_component_t component
 ) {
-    const ecs_component_required_relation_t *defaults =
-        ecs_component_default_relations(component);
-    for (const ecs_component_required_relation_t *required = defaults;
-         required && required->relation;
-         required++) {
+    const ecs_component_record_t *record = ecs_component_index_get(component);
+    for (uint16_t i = 0; i < record->default_relation_count; i++) {
+        const ecs_component_required_relation_t *required = &record->default_relations[i];
         if (!ecs_has_relation_id(entity, required->relation)) {
             ecs_relate_id_now(entity, required->relation, required->target);
         }
     }
+}
+
+static inline bool ecs_emit_component_event(
+    ecs_table_t *table, ecs_entity_t entity, uint32_t row, uint16_t column, bool add
+) {
+    ecs_component_t id = table->type.ids[column];
+    void *data = ecs_table_component_at_column(table, column, row);
+    const ecs_component_record_t *record = ecs_component_index_get(id);
+    ecs_component_on_add_t hook = add ? record->on_add : record->on_remove;
+    bool has_default_relations = record->default_relation_count != 0;
+    if (hook) hook(entity, id, data);
+    ecs_emit(table, entity, add ? EcsOnAdd : EcsOnRemove, data);
+    return has_default_relations;
 }
 
 static inline bool ecs_emit_added_components(
@@ -28,24 +59,10 @@ static inline bool ecs_emit_added_components(
     uint32_t row
 ) {
     bool has_default_relations = false;
-    uint16_t from_i = 0;
-    for (uint16_t to_i = 0; to_i < to_table->type.component_count; to_i++) {
-        ecs_component_t added = to_table->type.ids[to_i];
-        while (from_i < from_table->type.component_count && from_table->type.ids[from_i] < added) {
-            from_i++;
-        }
-        if (from_i < from_table->type.component_count && from_table->type.ids[from_i] == added) {
-            continue;
-        }
-
-        void *data = ecs_table_component_at_column(to_table, to_i, row);
-        const ecs_component_record_t *record = ecs_component_index_get(added);
-        if (record->on_add) {
-            record->on_add(entity, added, data);
-        }
-        ecs_emit(to_table, entity, EcsOnAdd, data);
-        has_default_relations |=
-            ecs_component_default_relations(added) != NULL;
+    ecs_type_diff_t diff = { .known = from_table->type, .candidate = to_table->type };
+    uint16_t column;
+    while (ecs_type_diff_next(&diff, &column)) {
+        has_default_relations |= ecs_emit_component_event(to_table, entity, row, column, true);
     }
     return has_default_relations;
 }
@@ -55,18 +72,10 @@ static inline void ecs_apply_added_component_default_relations(
     const ecs_table_t *to_table,
     ecs_entity_t entity
 ) {
-    ecs_type_t from_type = from_table->type;
-    ecs_type_t to_type = to_table->type;
-    uint16_t from_i = 0;
-    for (uint16_t to_i = 0; to_i < to_type.component_count; to_i++) {
-        ecs_component_t added = to_type.ids[to_i];
-        while (from_i < from_type.component_count && from_type.ids[from_i] < added) {
-            from_i++;
-        }
-        if (from_i == from_type.component_count || from_type.ids[from_i] != added) {
-            ecs_apply_component_default_relations(entity, added);
-        }
-    }
+    ecs_type_diff_t diff = { .known = from_table->type, .candidate = to_table->type };
+    uint16_t column;
+    while (ecs_type_diff_next(&diff, &column))
+        ecs_apply_component_default_relations(entity, diff.candidate.ids[column]);
 }
 
 static inline void ecs_emit_removed_components(
@@ -75,23 +84,10 @@ static inline void ecs_emit_removed_components(
     ecs_entity_t entity,
     uint32_t row
 ) {
-    uint16_t to_i = 0;
-    for (uint16_t from_i = 0; from_i < from_table->type.component_count; from_i++) {
-        ecs_component_t removed = from_table->type.ids[from_i];
-        while (to_i < to_type->component_count && to_type->ids[to_i] < removed) {
-            to_i++;
-        }
-        if (to_i < to_type->component_count && to_type->ids[to_i] == removed) {
-            continue;
-        }
-
-        void *data = ecs_table_component_at_column(from_table, from_i, row);
-        const ecs_component_record_t *record = ecs_component_index_get(removed);
-        if (record->on_remove) {
-            record->on_remove(entity, removed, data);
-        }
-        ecs_emit(from_table, entity, EcsOnRemove, data);
-    }
+    ecs_type_diff_t diff = { .known = *to_type, .candidate = from_table->type };
+    uint16_t column;
+    while (ecs_type_diff_next(&diff, &column))
+        ecs_emit_component_event(from_table, entity, row, column, false);
 }
 
 #endif

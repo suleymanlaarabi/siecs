@@ -52,74 +52,46 @@ namespace detail {
 
 template <> struct is_observer_event<ecs::observer_event> : std::true_type {};
 
-template <typename T> struct event_type {
-    static inline ecs_event_t id = UINT16_MAX;
-};
+template <typename T> inline constexpr ecs_event_t builtin_event = UINT16_MAX;
+template <> inline constexpr ecs_event_t builtin_event<OnAdd> = EcsOnAdd;
+template <> inline constexpr ecs_event_t builtin_event<OnSet> = EcsOnSet;
+template <> inline constexpr ecs_event_t builtin_event<OnRemove> = EcsOnRemove;
+template <> inline constexpr ecs_event_t builtin_event<OnRelationSet> = EcsOnRelationSet;
+template <> inline constexpr ecs_event_t builtin_event<OnRelationRemove> = EcsOnRelationRemove;
+template <typename T> static inline ecs_event_t custom_event = UINT16_MAX;
 
 template <typename T> static ecs_event_t ecs_cpp_event_id() {
-    ecs_event_t &eid = detail::event_type<T>::id;
-
-    if constexpr (std::is_same_v<T, OnAdd>) {
-        eid = EcsOnAdd;
-    } else if constexpr (std::is_same_v<T, OnSet>) {
-        eid = EcsOnSet;
-    } else if constexpr (std::is_same_v<T, OnRemove>) {
-        eid = EcsOnRemove;
-    } else if constexpr (std::is_same_v<T, OnRelationSet>) {
-        eid = EcsOnRelationSet;
-    } else if constexpr (std::is_same_v<T, OnRelationRemove>) {
-        eid = EcsOnRelationRemove;
-    } else {
-        if (eid == UINT16_MAX) {
-            eid = ecs_event();
-        }
-    }
-
-    return eid;
-}
-
-template <typename T> decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event) {
-    using raw = std::remove_cvref_t<T>;
-    if constexpr (is_observer_event_v<T>) {
-        return observer_event(event);
-    } else if constexpr (is_entity_v<T>) {
-        return entity::from(event->entity);
-    } else {
-        void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
-
-        if constexpr (std::is_const_v<std::remove_reference_t<T>>) {
-            return *static_cast<const raw *>(ptr);
-        } else {
-            return *static_cast<raw *>(ptr);
-        }
-    }
+    if constexpr (builtin_event<T> != UINT16_MAX) return builtin_event<T>;
+    if (custom_event<T> == UINT16_MAX) custom_event<T> = ecs_event();
+    return custom_event<T>;
 }
 
 template <typename Args, std::size_t I, typename Resources>
 decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event, Resources &resources) {
     using arg = std::tuple_element_t<I, Args>;
-
     if constexpr (is_res_v<arg>) {
         (void)event;
         return std::get<I>(resources);
+    } else if constexpr (is_observer_event_v<arg>) {
+        return observer_event(event);
+    } else if constexpr (is_entity_v<arg>) {
+        return entity::from(event->entity);
     } else {
-        return ecs_cpp_observer_arg<arg>(event);
+        using raw = std::remove_cvref_t<arg>;
+        void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
+        if constexpr (std::is_const_v<std::remove_reference_t<arg>>)
+            return *static_cast<const raw *>(ptr);
+        else return *static_cast<raw *>(ptr);
     }
 }
 
-template <typename Func, typename Args, std::size_t... Is>
-void ecs_cpp_observer_callback_impl(ecs_observer_event_t *event, std::index_sequence<Is...>) {
+template <typename Func, typename Args>
+void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
     Func func{};
     auto resources = make_resources<Args>();
-    std::invoke(func, ecs_cpp_observer_arg<Args, Is>(event, resources)...);
-}
-
-template <typename Func, typename Tuple>
-void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
-    ecs_cpp_observer_callback_impl<Func, Tuple>(
-        event,
-        std::make_index_sequence<std::tuple_size_v<Tuple>>{}
-    );
+    [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        std::invoke(func, ecs_cpp_observer_arg<Args, Is>(event, resources)...);
+    }(std::make_index_sequence<std::tuple_size_v<Args>>{});
 }
 
 } // namespace detail

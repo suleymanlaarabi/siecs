@@ -7,13 +7,6 @@
 #include "table_ops.h"
 #include <stdint.h>
 
-#ifndef NDEBUG
-bool ecs_component_requires(
-    const     ecs_component_t component,
-    ecs_component_t require
-);
-#endif
-
 static inline void ecs_migrate_same_layout(
     ecs_entity_record_t *record,
     ecs_entity_t entity,

@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#define ECS_COMPONENT_REQUIRE_CAPACITY 32
+
 typedef enum {
     EcsComponentRelationTarget = 1 << 0,
     EcsComponentRelationSource = 1 << 1,
@@ -23,6 +25,8 @@ typedef struct {
     ecs_component_info_t *info;
     uint16_t *required;
     uint32_t required_count;
+    ecs_component_required_relation_t *default_relations;
+    uint16_t default_relation_count;
     ecs_type_ops_t ops;
     ecs_component_on_set_t on_set;
     ecs_component_on_remove_t on_remove;
@@ -36,18 +40,6 @@ typedef struct ecs_component_index_s {
 } ecs_component_index_t;
 
 extern ecs_component_index_t component_index;
-extern sicore_vec_t ecs_component_default_relation_index;
-
-static inline ecs_component_required_relation_t *ecs_component_default_relations(
-    ecs_component_t component
-) {
-    if (component >= ecs_component_default_relation_index.size) {
-        return NULL;
-    }
-    return ((ecs_component_required_relation_t **)ecs_component_default_relation_index.data)[
-        component
-    ];
-}
 
 void ecs_component_index_register(
     ecs_component_t id,
@@ -67,6 +59,12 @@ void ecs_component_index_init();
 void ecs_component_index_fini();
 
 ecs_component_record_t *ecs_component_index_get(ecs_component_t cid);
+
+static inline ecs_component_required_relation_t *ecs_component_default_relations(
+    ecs_component_t component
+) {
+    return ecs_component_index_get(component)->default_relations;
+}
 
 static inline void ecs_component_value_copy(
     const ecs_component_record_t *record,

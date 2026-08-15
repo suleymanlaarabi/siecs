@@ -20,7 +20,7 @@ void ecs_relation_index_fini(void) {
     ecs_relation_index_t *index = &relation_index;
     ecs_relation_record_t *records = index->records.data;
     for (uint32_t r = 1; r < relation_index.records.size; r++) {
-        free(records[r].name);
+        free((char *)records[r].info.name);
     }
     sicore_vec_fini(&relation_index.records);
     relation_index = (ecs_relation_index_t){ 0 };
@@ -49,7 +49,7 @@ ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relatio
         );
         ecs_relation_record_t *existing =
             sicore_vec_get_mut(&relation_index.records, *id, ecs_relation_record_t);
-        if (existing->storage || existing->component) {
+        if (existing->info.name || existing->component) {
             return *id;
         }
     } else {
@@ -66,21 +66,15 @@ ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relatio
     *sicore_vec_get_mut(&relation_index.records, *id, ecs_relation_record_t) =
         (ecs_relation_record_t){
             .component = component,
-            .storage = desc->storage,
-            .on_delete_target = desc->on_delete_target,
-            .acyclic = desc->storage == EcsRelationByDepth || desc->acyclic,
-            .name = name ? strdup(name) : NULL,
+            .info = {
+                .name = name ? strdup(name) : NULL,
+                .desc = {
+                    .storage = desc->storage,
+                    .on_delete_target = desc->on_delete_target,
+                    .acyclic = desc->storage == EcsRelationByDepth || desc->acyclic,
+                },
+            },
         };
-    ecs_relation_record_t *record =
-        sicore_vec_get_mut(&relation_index.records, *id, ecs_relation_record_t);
-    record->info = (ecs_relation_info_t){
-        .name = record->name,
-        .desc = {
-            .storage = (ecs_relation_storage_t)record->storage,
-            .on_delete_target = (ecs_delete_target_t)record->on_delete_target,
-            .acyclic = record->acyclic,
-        },
-    };
     return *id;
 }
 
@@ -101,7 +95,7 @@ const ecs_relation_info_t *ecs_relation_info(ecs_relation_id_t relation) {
 ecs_entity_t
 ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relation, uint32_t row) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
-    if (record->storage == EcsRelationByTarget) {
+    if (record->info.desc.storage == EcsRelationByTarget) {
         return ecs_type_pair_get(&table->type, relation);
     }
     uint16_t column = ecs_table_column_or_invalid(table, record->component);
@@ -115,7 +109,7 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
 ecs_entity_t ecs_table_target_id(const ecs_table_t *table, ecs_relation_id_t relation) {
 #ifndef NDEBUG
     const ecs_relation_record_t *record = ecs_relation_record(relation);
-    ecs_assert(record->storage == EcsRelationByTarget, "ecs_table_target requires ByTarget\n");
+    ecs_assert(record->info.desc.storage == EcsRelationByTarget, "ecs_table_target requires ByTarget\n");
 #endif
     return ecs_type_pair_get(&table->type, relation);
 }
@@ -257,7 +251,7 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
     ecs_assert_is_alive(target);
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     ecs_assert(
-        !record->acyclic || !ecs_relation_would_cycle(entity, relation, target),
+        !record->info.desc.acyclic || !ecs_relation_would_cycle(entity, relation, target),
         "cyclic relation\n"
     );
 
@@ -265,7 +259,7 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
     ecs_entity_record_t *entity_record = NULL;
     ecs_table_t *entity_table = NULL;
     uint16_t relation_column = UINT16_MAX;
-    if (record->storage == EcsRelationDense) {
+    if (record->info.desc.storage == EcsRelationDense) {
         entity_record = ecs_get_record(entity);
         entity_table = ecs_get_table(entity_record->table_id);
         relation_column = ecs_table_column_or_invalid(entity_table, record->component);
@@ -282,7 +276,7 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
         return;
     }
 
-    if (record->storage == EcsRelationDense) {
+    if (record->info.desc.storage == EcsRelationDense) {
         if (relation_column != UINT16_MAX) {
             ecs_relation_set_dense(
                 entity,
@@ -295,7 +289,7 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
             RelationTarget value = { .entity = target };
             ecs_set_cid(entity, record->component, &value);
         }
-    } else if (record->storage == EcsRelationByDepth) {
+    } else if (record->info.desc.storage == EcsRelationByDepth) {
         ecs_relation_set_depth(entity, relation, record, target, old_target != 0);
     } else {
         if (!ecs_has_cid_owned(target, record->component)) {
@@ -349,9 +343,9 @@ void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
     }
 
     const ecs_relation_record_t *record = ecs_relation_record(relation);
-    if (record->storage == EcsRelationDense) {
+    if (record->info.desc.storage == EcsRelationDense) {
         ecs_remove_cid(entity, record->component);
-    } else if (record->storage == EcsRelationByDepth) {
+    } else if (record->info.desc.storage == EcsRelationByDepth) {
         ecs_relation_remove_depth(entity, relation, record);
     } else {
         ecs_relation_remove_pair(entity, UINT16_MAX, relation);
@@ -369,7 +363,7 @@ void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation) {
 bool ecs_has_relation_id(ecs_entity_t entity, ecs_relation_id_t relation) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     const ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
-    if (record->storage != EcsRelationByTarget) {
+    if (record->info.desc.storage != EcsRelationByTarget) {
         return ecs_table_column_or_invalid(table, record->component) != UINT16_MAX;
     }
     return ecs_type_pair_index(&table->type, relation) != UINT16_MAX;
@@ -406,7 +400,7 @@ void ecs_relation_target_on_remove(ecs_entity_t target, ecs_component_t componen
                 }
                 source = table->entities[0];
             }
-            if (record->on_delete_target == EcsDeleteSources) {
+            if (record->info.desc.on_delete_target == EcsDeleteSources) {
                 ecs_kill_now(source);
             } else {
                 ecs_unrelate_id_now(source, relation);

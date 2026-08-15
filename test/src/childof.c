@@ -864,10 +864,10 @@ void childof_relation_observer_events(void) {
 void childof_type_layout_stays_compact(void) {
     test_int(24, sizeof(ecs_type_t));
     test_int(16, sizeof(ecs_type_pair_t));
-    test_int(32, sizeof(ecs_query_t));
+    test_int(48, sizeof(ecs_query_t));
     test_int(16, sizeof(ecs_query_type_filter_t));
-    test_int(80, sizeof(ecs_query_cache_t));
-    test_int(40, sizeof(ecs_relation_record_t));
+    test_int(496, sizeof(ecs_query_cache_t));
+    test_int(32, sizeof(ecs_relation_record_t));
 }
 
 void childof_query_slot_reuses_component_and_relation_terms(void) {

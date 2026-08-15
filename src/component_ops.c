@@ -1,5 +1,4 @@
 #include "command_buffer.h"
-#include "component_require.h"
 #include "datastructure/idmap.h"
 #include "event_ops.h"
 #include "helper.h"
@@ -15,6 +14,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef ecs_with
 #undef ecs_with
@@ -67,7 +67,19 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     }
 
     if (edge == UINT16_MAX) {
-        ecs_type_t new_type = ecs_type_with_requirements(table, cid);
+        ecs_component_t added[ECS_COMPONENT_REQUIRE_CAPACITY];
+        uint16_t count = 0, required = 0;
+        bool component_pending = true;
+        while (required < crec->required_count || component_pending) {
+            ecs_component_t next = required < crec->required_count
+                                       ? crec->required[required]
+                                       : UINT16_MAX;
+            if (component_pending && cid < next) { next = cid; component_pending = false; }
+            else if (component_pending && cid == next) component_pending = false;
+            else required++;
+            if (!ecs_table_has_owned(table, next)) added[count++] = next;
+        }
+        ecs_type_t new_type = ecs_type_with_added_ids(&table->type, added, count);
         edge = ecs_table_index_get_or_create(new_type);
 
         table = ecs_get_table(from_id);
@@ -191,83 +203,62 @@ void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
 }
 
 void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) {
+    return ecs_get_cid(entity, cid);
+}
+
+static inline void ecs_store_cid_now(
+    ecs_entity_t entity, ecs_component_t cid, void *data, bool move
+) {
     ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
-    return ecs_component_get_from_record(ecs_get_record(entity), cid);
+
+    bool had_value = move && ecs_has_cid_owned(entity, cid);
+    ecs_add_cid_now(entity, cid);
+    if (!move) ecs_defer_begin();
+    const ecs_component_record_t *crec = ecs_component_index_get(cid);
+    entity_edit(entity, table, record);
+    void *dst = ecs_table_get_component(table, cid, record->table_row);
+
+    if (crec->on_set) {
+        crec->on_set(entity, cid, data, dst);
+    }
+    ecs_emit(table, entity, EcsOnSet, data);
+    if (crec->relation_flags & EcsComponentRelationTarget) {
+        ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
+    } else if (!move) {
+        ecs_component_value_copy(crec, dst, data, 1);
+    } else if (had_value || crec->ops.ctor) ecs_component_value_move(crec, dst, data, 1);
+    else ecs_component_value_move_ctor(crec, dst, data, 1);
+    if (!move) ecs_defer_end();
 }
 
 void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data) {
+    ecs_store_cid_now(entity, cid, (void *)data, false);
+}
+
+static inline void ecs_store_cid(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     ecs_assert_id_valid(cid);
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
-
-    ecs_add_cid_now(entity, cid);
-    ecs_defer_begin();
-    const ecs_component_record_t *crec = ecs_component_index_get(cid);
-    entity_edit(entity, table, record);
-    void *dst = ecs_table_get_component(table, cid, record->table_row);
-
-    if (crec->on_set) {
-        crec->on_set(entity, cid, data, dst);
+    if (ecs_is_deferred()) {
+        if (move) ecs_command_buffer_move(entity, cid, data);
+        else ecs_command_buffer_set(entity, cid, data);
+        return;
     }
-    ecs_emit(table, entity, EcsOnSet, data);
-    if (crec->relation_flags & EcsComponentRelationTarget) {
-        ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
-    } else {
-        ecs_component_value_copy(crec, dst, data, 1);
-    }
-    ecs_defer_end();
+    ecs_store_cid_now(entity, cid, data, move);
 }
 
 void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
-    ecs_assert_id_valid(cid);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
-
-    if (ecs_is_deferred()) {
-        ecs_command_buffer_set(entity, cid, data);
-        return;
-    }
-
-    ecs_set_cid_now(entity, cid, data);
+    ecs_store_cid(entity, cid, (void *)data, false);
 }
 
 void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
-    ecs_assert_id_valid(cid);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
-
-    bool had_value = ecs_has_cid_owned(entity, cid);
-    ecs_add_cid_now(entity, cid);
-    const ecs_component_record_t *crec = ecs_component_index_get(cid);
-    entity_edit(entity, table, record);
-    void *dst = ecs_table_get_component(table, cid, record->table_row);
-
-    if (crec->on_set) {
-        crec->on_set(entity, cid, data, dst);
-    }
-    ecs_emit(table, entity, EcsOnSet, data);
-    if (crec->relation_flags & EcsComponentRelationTarget) {
-        ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
-    } else if (had_value || crec->ops.ctor) {
-        ecs_component_value_move(crec, dst, data, 1);
-    } else {
-        ecs_component_value_move_ctor(crec, dst, data, 1);
-    }
+    ecs_store_cid_now(entity, cid, data, true);
 }
 
 void ecs_move_cid(ecs_entity_t entity, ecs_component_t cid, void *data) {
-    ecs_assert_id_valid(cid);
-    ecs_assert_entity_valid(entity);
-    ecs_assert_is_alive(entity);
-
-    if (ecs_is_deferred()) {
-        ecs_command_buffer_move(entity, cid, data);
-        return;
-    }
-
-    ecs_move_cid_now(entity, cid, data);
+    ecs_store_cid(entity, cid, data, true);
 }
 
 bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id) {
@@ -286,34 +277,56 @@ bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id) {
     return ecs_table_has_owned(ecs_get_table(tid), id);
 }
 
+static uint32_t ecs_required_lower_bound(
+    const ecs_component_t *ids, uint32_t count, ecs_component_t id
+) {
+    uint32_t first = 0;
+    while (first < count) {
+        uint32_t middle = first + (count - first) / 2;
+        if (ids[middle] < id) first = middle + 1;
+        else count = middle;
+    }
+    return first;
+}
+
+static void ecs_required_add(ecs_component_record_t *record, ecs_component_t id) {
+    uint32_t at = ecs_required_lower_bound(record->required, record->required_count, id);
+    if (at < record->required_count && record->required[at] == id) return;
+    ecs_assert(record->required_count < ECS_COMPONENT_REQUIRE_CAPACITY - 1,
+               "component requirement capacity exceeded\n");
+    record->required = realloc(record->required,
+                               sizeof *record->required * (record->required_count + 1));
+    memmove(record->required + at + 1, record->required + at,
+            (record->required_count - at) * sizeof *record->required);
+    record->required[at] = id;
+    record->required_count++;
+}
+
 static inline void ecs_with_impl(ecs_component_t component, ecs_component_t require) {
     ecs_assert_id_valid(component);
     ecs_assert_id_valid(require);
     ecs_assert(component != require, "component cannot require itself: %d\n", component);
-#ifndef NDEBUG
+    const ecs_component_record_t *required_record = ecs_component_index_get(require);
+    uint32_t cycle = ecs_required_lower_bound(
+        required_record->required, required_record->required_count, component);
     ecs_assert(
-        !ecs_component_requires(require, component),
+        cycle == required_record->required_count || required_record->required[cycle] != component,
         "cyclic component requirement: %d requires %d\n",
         component,
         require
-    );
-#endif
+    ); (void)cycle;
 
-    ecs_component_record_t *record = ecs_component_index_get(component);
-
-    ecs_assert(record->tables.size == 0, "component already used cannot register requirement");
-
-#ifndef NDEBUG
-    for (uint32_t i = 0; i < record->required_count; i++) {
-        if (record->required[i] == require) {
-            ecs_assert(true, "required component already registered");
-        }
+    ecs_component_record_t *records = component_index.components.data;
+    for (uint32_t i = 1; i < component_index.components.size; i++) {
+        ecs_component_record_t *record = &records[i];
+        uint32_t at = ecs_required_lower_bound(record->required, record->required_count, component);
+        if (i != component &&
+            (at == record->required_count || record->required[at] != component)) continue;
+        ecs_assert(record->tables.size == 0, "component already used cannot register requirement");
+        ecs_required_add(record, require);
+        for (uint32_t r = 0; r < required_record->required_count; r++)
+            ecs_required_add(record, required_record->required[r]);
     }
-#endif
-
-    record->required =
-        realloc(record->required, sizeof(ecs_component_t) * (record->required_count + 1));
-    record->required[record->required_count++] = require;
 }
 
 void ecs_with_relation_id(ecs_component_t cid, ecs_relation_id_t relation, ecs_entity_t target) {
@@ -326,33 +339,11 @@ void ecs_with_relation_id(ecs_component_t cid, ecs_relation_id_t relation, ecs_e
     ecs_assert_entity_valid(target);
     ecs_assert_is_alive(target);
 
-#ifndef NDEBUG
     ecs_component_record_t *record = ecs_component_index_get(cid);
     ecs_assert(record->tables.size == 0, "component already used cannot register relation default");
-#endif
 
-    if (!ecs_component_default_relation_index.data) {
-        sicore_vec_init_w_size(
-            &ecs_component_default_relation_index,
-            sizeof(ecs_component_required_relation_t *),
-            256
-        );
-    }
-    sicore_vec_ensure(
-        &ecs_component_default_relation_index,
-        (uint32_t)cid + 1,
-        sizeof(ecs_component_required_relation_t *)
-    );
-    ecs_component_required_relation_t **defaults = sicore_vec_get_mut(
-        &ecs_component_default_relation_index,
-        cid,
-        ecs_component_required_relation_t *
-    );
-
-    uint16_t count = 0;
-    for (const ecs_component_required_relation_t *current = *defaults; current && current->relation;
-         current++, count++) {
-#ifndef NDEBUG
+    for (uint16_t i = 0; i < record->default_relation_count; i++) {
+        const ecs_component_required_relation_t *current = &record->default_relations[i];
         if (current->relation != relation) {
             continue;
         }
@@ -361,14 +352,15 @@ void ecs_with_relation_id(ecs_component_t cid, ecs_relation_id_t relation, ecs_e
             "component already has a different default target for relation: %u\n",
             relation
         );
-#endif
+        return;
     }
 
-    *defaults = realloc(*defaults, sizeof(ecs_component_required_relation_t) * (count + 2));
-    ecs_assert_not_null(*defaults);
-    (*defaults)[count] =
+    record->default_relations = realloc(
+        record->default_relations,
+        sizeof *record->default_relations * (record->default_relation_count + 1)
+    );
+    record->default_relations[record->default_relation_count++] =
         (ecs_component_required_relation_t){ .relation = relation, .target = target };
-    (*defaults)[count + 1] = (ecs_component_required_relation_t){ 0 };
 }
 
 #if defined(__clang__)

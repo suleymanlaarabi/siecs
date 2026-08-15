@@ -1171,92 +1171,43 @@ typedef struct {
  *   });
  */
 #ifdef __cplusplus
+#define SIECS_LITERAL(type, ...) type { __VA_ARGS__ }
+#else
+#define SIECS_LITERAL(type, ...) ((type){__VA_ARGS__})
+#endif
 /* Match a required component and expose it as a read-only field. */
-#define ecs_in(cname)                                                          \
-  ecs_query_term_t { ecs_id(cname), EcsIn }
-/* Match a required component and expose it as a writable field. */
-#define ecs_out(cname)                                                         \
-  ecs_query_term_t { ecs_id(cname), EcsOut }
-/* Match a required component and expose it as a read/write field. */
-#define ecs_inout(cname)                                                       \
-  ecs_query_term_t { ecs_id(cname), EcsInOut }
-/* Match an optional component as a read-only field, or NULL when absent. */
-#define ecs_in_optional(cname)                                                 \
-  ecs_query_term_t { ecs_id(cname), EcsInOptional }
-/* Match an optional component as a read/write field, or NULL when absent. */
-#define ecs_inout_optional(cname)                                              \
-  ecs_query_term_t { ecs_id(cname), EcsInOutOptional }
-/* Match a component without exposing a field pointer. */
-#define ecs_filter(cname)                                                      \
-  ecs_query_term_t { ecs_id(cname), EcsFilter }
-/* Exclude entities that contain the component. */
-#define ecs_not(cname)                                                         \
-  ecs_query_term_t { ecs_id(cname), EcsNot }
-#define ecs_up(cname, relation)                                                \
-  ecs_query_term_t {                                                           \
-    ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUp, ecs_rid(relation))             \
-  }
-#define ecs_up_optional(cname, relation)                                       \
-  ecs_query_term_t {                                                           \
-    ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation))     \
-  }
-#else
-/* C spellings of the typed query term helpers. */
-#define ecs_in(cname) ((ecs_query_term_t){ecs_id(cname), EcsIn})
+#define ecs_in(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsIn)
 /* Writable required field. */
-#define ecs_out(cname) ((ecs_query_term_t){ecs_id(cname), EcsOut})
+#define ecs_out(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsOut)
 /* Read/write required field. */
-#define ecs_inout(cname) ((ecs_query_term_t){ecs_id(cname), EcsInOut})
+#define ecs_inout(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsInOut)
 /* Optional read-only field. */
-#define ecs_in_optional(cname)                                                 \
-  ((ecs_query_term_t){ecs_id(cname), EcsInOptional})
-/* Deprecated compatibility alias for ecs_in_optional; use ecs_in_optional. */
-#define ecs_optional ecs_in_optional
+#define ecs_in_optional(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsInOptional)
 /* Optional read/write field. */
-#define ecs_inout_optional(cname)                                              \
-  ((ecs_query_term_t){ecs_id(cname), EcsInOutOptional})
+#define ecs_inout_optional(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsInOutOptional)
 /* Filter-only required component. */
-#define ecs_filter(cname) ((ecs_query_term_t){ecs_id(cname), EcsFilter})
+#define ecs_filter(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsFilter)
 /* Excluded component. */
-#define ecs_not(cname) ((ecs_query_term_t){ecs_id(cname), EcsNot})
+#define ecs_not(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsNot)
 #define ecs_up(cname, relation)                                                \
-  ((ecs_query_term_t){ecs_id(cname),                                           \
-                      ECS_QUERY_UP_ACCESS(EcsInUp, ecs_rid(relation))})
+  SIECS_LITERAL(ecs_query_term_t, ecs_id(cname),                               \
+                ECS_QUERY_UP_ACCESS(EcsInUp, ecs_rid(relation)))
 #define ecs_up_optional(cname, relation)                                       \
-  ((ecs_query_term_t){                                                         \
-      ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation))})
-#endif
-
-#ifdef __cplusplus
+  SIECS_LITERAL(ecs_query_term_t, ecs_id(cname),                               \
+                ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation)))
 #define ecs_rel(name)                                                          \
-  ecs_query_relation_term_t { 0, ecs_rid(name), EcsRelationRequired }
+  SIECS_LITERAL(ecs_query_relation_term_t, 0, ecs_rid(name), EcsRelationRequired)
 #define ecs_rel_opt(name)                                                      \
-  ecs_query_relation_term_t { 0, ecs_rid(name), EcsRelationOptional }
+  SIECS_LITERAL(ecs_query_relation_term_t, 0, ecs_rid(name), EcsRelationOptional)
 #define ecs_not_rel(name)                                                      \
-  ecs_query_relation_term_t { 0, ecs_rid(name), EcsRelationExcluded }
+  SIECS_LITERAL(ecs_query_relation_term_t, 0, ecs_rid(name), EcsRelationExcluded)
 #define ecs_to(name, entity)                                                   \
-  ecs_query_relation_term_t { entity, ecs_rid(name), EcsRelationTarget }
+  SIECS_LITERAL(ecs_query_relation_term_t, entity, ecs_rid(name), EcsRelationTarget)
 #define ecs_depth(name, value)                                                 \
-  ecs_query_relation_term_t {                                                  \
-    (ecs_entity_t)(value), ecs_rid(name), EcsRelationDepth                     \
-  }
+  SIECS_LITERAL(ecs_query_relation_term_t, (ecs_entity_t)(value),              \
+                ecs_rid(name), EcsRelationDepth)
 #define ecs_order_by_target(name) ecs_order_by_target_id(ecs_rid(name))
 #define ecs_order_by_depth(name) ecs_order_by_depth_id(ecs_rid(name))
-#else
-#define ecs_rel(name)                                                          \
-  ((ecs_query_relation_term_t){0, ecs_rid(name), EcsRelationRequired})
-#define ecs_rel_opt(name)                                                      \
-  ((ecs_query_relation_term_t){0, ecs_rid(name), EcsRelationOptional})
-#define ecs_not_rel(name)                                                      \
-  ((ecs_query_relation_term_t){0, ecs_rid(name), EcsRelationExcluded})
-#define ecs_to(name, entity)                                                   \
-  ((ecs_query_relation_term_t){entity, ecs_rid(name), EcsRelationTarget})
-#define ecs_depth(name, value)                                                 \
-  ((ecs_query_relation_term_t){(ecs_entity_t)(value), ecs_rid(name),           \
-                               EcsRelationDepth})
-#define ecs_order_by_target(name) ecs_order_by_target_id(ecs_rid(name))
-#define ecs_order_by_depth(name) ecs_order_by_depth_id(ecs_rid(name))
-#endif
 
 /* Create an ECS world. */
 SIECS_API void ecs_init(void);
@@ -1541,6 +1492,14 @@ ECS_RELATION_DECLARE(ChildOf);
 
 /* C++ declarations made after this header use the C relation id/descriptor. */
 #ifdef __cplusplus
+#define SIECS_CPP_C_TRAITS(kind, name, id)                                     \
+  extern "C++" { namespace ecs { namespace detail {                          \
+  template <> struct kind<name> {                                             \
+    static constexpr bool value = true;                                       \
+    static constexpr const char *relation_name() noexcept { return #name; }    \
+    static auto id_storage() noexcept { return &id(name); }                    \
+    static auto desc_storage() noexcept { return &id(name##_desc); }           \
+  }; } } }
 #undef ECS_RELATION_DECLARE
 #define ECS_RELATION_DECLARE(name)                                             \
   extern "C++" {                                                              \
@@ -1550,18 +1509,7 @@ ECS_RELATION_DECLARE(ChildOf);
     extern ecs_relation_id_t ecs_rid(name);                                    \
     extern ecs_relation_desc_t ecs_rid(name##_desc);                           \
   }                                                                            \
-  extern "C++" {                                                              \
-    namespace ecs {                                                           \
-    namespace detail {                                                        \
-    template <> struct c_relation_traits<name> {                              \
-      static constexpr bool value = true;                                      \
-      static constexpr const char *relation_name() noexcept { return #name; }   \
-      static auto id_storage() noexcept { return &ecs_rid(name); }             \
-      static auto desc_storage() noexcept { return &ecs_rid(name##_desc); }    \
-    };                                                                        \
-    }                                                                         \
-    }                                                                         \
-  }
+  SIECS_CPP_C_TRAITS(c_relation_traits, name, ecs_rid)
 #endif
 
 /* Register a runtime relation and return its world-local relation id. */
@@ -1589,17 +1537,7 @@ ECS_TAG_DECLARE(Abstract);
     SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                      \
     SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);          \
   }                                                                            \
-  extern "C++" {                                                             \
-  namespace ecs {                                                             \
-  namespace detail {                                                          \
-  template <> struct c_component_traits<cname> {                              \
-    static constexpr bool value = true;                                        \
-    static auto id_storage() noexcept { return &ecs_id(cname); }               \
-    static auto desc_storage() noexcept { return &ecs_id(cname##_desc); }      \
-  };                                                                          \
-  }                                                                           \
-  }                                                                           \
-  }
+  SIECS_CPP_C_TRAITS(c_component_traits, cname, ecs_id)
 
 #undef ECS_TAG_DECLARE
 #define ECS_TAG_DECLARE(cname)                                                  \
@@ -1608,17 +1546,7 @@ ECS_TAG_DECLARE(Abstract);
     SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                      \
     SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);          \
   }                                                                            \
-  extern "C++" {                                                             \
-  namespace ecs {                                                             \
-  namespace detail {                                                          \
-  template <> struct c_component_traits<cname> {                              \
-    static constexpr bool value = true;                                        \
-    static auto id_storage() noexcept { return &ecs_id(cname); }               \
-    static auto desc_storage() noexcept { return &ecs_id(cname##_desc); }      \
-  };                                                                          \
-  }                                                                           \
-  }                                                                           \
-  }
+  SIECS_CPP_C_TRAITS(c_component_traits, cname, ecs_id)
 
 #define SIECS_CPP_STRINGIFY_INNER(...) #__VA_ARGS__
 #define SIECS_CPP_STRINGIFY(...) SIECS_CPP_STRINGIFY_INNER(__VA_ARGS__)
@@ -1649,17 +1577,7 @@ ECS_TAG_DECLARE(Abstract);
     SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                      \
     SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);          \
   }                                                                            \
-  extern "C++" {                                                              \
-    namespace ecs {                                                           \
-    namespace detail {                                                        \
-    template <> struct c_component_traits<cname> {                            \
-      static constexpr bool value = true;                                      \
-      static auto id_storage() noexcept { return &ecs_id(cname); }             \
-      static auto desc_storage() noexcept { return &ecs_id(cname##_desc); }    \
-    };                                                                        \
-    }                                                                         \
-    }                                                                         \
-  }
+  SIECS_CPP_C_TRAITS(c_component_traits, cname, ecs_id)
 #endif
 
 /*
@@ -1948,17 +1866,7 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
     SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                       \
     SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);           \
   }                                                                            \
-  extern "C++" {                                                             \
-  namespace ecs {                                                             \
-  namespace detail {                                                          \
-  template <> struct c_resource_traits<rname> {                               \
-    static constexpr bool value = true;                                        \
-    static auto id_storage() noexcept { return &ecs_id(rname); }               \
-    static auto desc_storage() noexcept { return &ecs_id(rname##_desc); }      \
-  };                                                                          \
-  }                                                                           \
-  }                                                                           \
-  }
+  SIECS_CPP_C_TRAITS(c_resource_traits, rname, ecs_id)
 
 /* Declare a C-compatible resource with C++-only member methods. */
 #define ECS_RESOURCE_DECLARE_CPP(rname, field_block, method_block)             \
@@ -1975,17 +1883,7 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
     SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                       \
     SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);           \
   }                                                                            \
-  extern "C++" {                                                              \
-    namespace ecs {                                                           \
-    namespace detail {                                                        \
-    template <> struct c_resource_traits<rname> {                             \
-      static constexpr bool value = true;                                      \
-      static auto id_storage() noexcept { return &ecs_id(rname); }             \
-      static auto desc_storage() noexcept { return &ecs_id(rname##_desc); }    \
-    };                                                                        \
-    }                                                                         \
-    }                                                                         \
-  }
+  SIECS_CPP_C_TRAITS(c_resource_traits, rname, ecs_id)
 #else
 #define ECS_RESOURCE_DECLARE(rname, ...)                                       \
   typedef struct rname rname;                                                  \
@@ -2043,16 +1941,6 @@ ECS_RESOURCE_DECLARE(DeltaTime, { float value; });
 /* Remove a world resource if it exists. */
 #define ecs_remove_resource(rname) ecs_remove_resource_rid(ecs_id(rname))
 
-/* Deprecated compatibility aliases. Prefer ecs_get_resource* in new code;
- * removal requires a major release. */
-#define ecs_resource(rname) ecs_get_resource(rname)
-/* Deprecated read-only alias for ecs_get_resource_read. */
-#define ecs_resource_read(rname) ecs_get_resource_read(rname)
-/* Deprecated nullable alias for ecs_try_get_resource. */
-#define ecs_try_resource(rname) ecs_try_get_resource(rname)
-/* Deprecated nullable read-only alias for ecs_try_get_resource_read. */
-#define ecs_try_resource_read(rname) ecs_try_get_resource_read(rname)
-
 /* Register a resource descriptor in the active world and return its id. */
 SIECS_API ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
 /* Find a registered resource by name; returns 0 when absent. */
@@ -2077,98 +1965,18 @@ SIECS_API bool ecs_has_resource_rid(const ecs_resource_t id);
 /* Remove a resource and run its destructor/hook; no-op when absent. */
 SIECS_API void ecs_remove_resource_rid(ecs_resource_t id);
 
-#define PP_FE_1(F, a) \
-    F(a)
-
-#define PP_FE_2(F, a, ...) \
-    F(a) PP_FE_1(F, __VA_ARGS__)
-
-#define PP_FE_3(F, a, ...) \
-    F(a) PP_FE_2(F, __VA_ARGS__)
-
-#define PP_FE_4(F, a, ...) \
-    F(a) PP_FE_3(F, __VA_ARGS__)
-
-#define PP_FE_5(F, a, ...) \
-    F(a) PP_FE_4(F, __VA_ARGS__)
-
-#define PP_FE_6(F, a, ...) \
-    F(a) PP_FE_5(F, __VA_ARGS__)
-
-#define PP_FE_7(F, a, ...) \
-    F(a) PP_FE_6(F, __VA_ARGS__)
-
-#define PP_FE_8(F, a, ...) \
-    F(a) PP_FE_7(F, __VA_ARGS__)
-
-#define PP_FE_9(F, a, ...) \
-    F(a) PP_FE_8(F, __VA_ARGS__)
-
-#define PP_FE_10(F, a, ...) \
-    F(a) PP_FE_9(F, __VA_ARGS__)
-
-#define PP_FE_11(F, a, ...) \
-    F(a) PP_FE_10(F, __VA_ARGS__)
-
-#define PP_FE_12(F, a, ...) \
-    F(a) PP_FE_11(F, __VA_ARGS__)
-
-#define PP_FE_13(F, a, ...) \
-    F(a) PP_FE_12(F, __VA_ARGS__)
-
-#define PP_FE_14(F, a, ...) \
-    F(a) PP_FE_13(F, __VA_ARGS__)
-
-#define PP_FE_15(F, a, ...) \
-    F(a) PP_FE_14(F, __VA_ARGS__)
-
-#define PP_FE_16(F, a, ...) \
-    F(a) PP_FE_15(F, __VA_ARGS__)
-
-#define PP_FE_17(F, a, ...) \
-    F(a) PP_FE_16(F, __VA_ARGS__)
-
-#define PP_FE_18(F, a, ...) \
-    F(a) PP_FE_17(F, __VA_ARGS__)
-
-#define PP_FE_19(F, a, ...) \
-    F(a) PP_FE_18(F, __VA_ARGS__)
-
-#define PP_FE_20(F, a, ...) \
-    F(a) PP_FE_19(F, __VA_ARGS__)
-
-#define PP_GET_FE( \
-    _1,  _2,  _3,  _4,  _5, \
-    _6,  _7,  _8,  _9,  _10, \
-    _11, _12, _13, _14, _15, \
-    _16, _17, _18, _19, _20, \
-    NAME, ... \
-) NAME
-
-#define PP_FOR_EACH(F, ...) \
-    PP_GET_FE( \
-        __VA_ARGS__, \
-        PP_FE_20, \
-        PP_FE_19, \
-        PP_FE_18, \
-        PP_FE_17, \
-        PP_FE_16, \
-        PP_FE_15, \
-        PP_FE_14, \
-        PP_FE_13, \
-        PP_FE_12, \
-        PP_FE_11, \
-        PP_FE_10, \
-        PP_FE_9,  \
-        PP_FE_8,  \
-        PP_FE_7,  \
-        PP_FE_6,  \
-        PP_FE_5,  \
-        PP_FE_4,  \
-        PP_FE_3,  \
-        PP_FE_2,  \
-        PP_FE_1   \
-    )(F, __VA_ARGS__)
+#define PP_EMPTY()
+#define PP_DEFER(id) id PP_EMPTY()
+#define PP_OBSTRUCT(...) __VA_ARGS__ PP_DEFER(PP_EMPTY)()
+#define PP_EVAL0(...) __VA_ARGS__
+#define PP_EVAL1(...) PP_EVAL0(PP_EVAL0(PP_EVAL0(__VA_ARGS__)))
+#define PP_EVAL2(...) PP_EVAL1(PP_EVAL1(PP_EVAL1(__VA_ARGS__)))
+#define PP_EVAL3(...) PP_EVAL2(PP_EVAL2(PP_EVAL2(__VA_ARGS__)))
+#define PP_EVAL(...) PP_EVAL3(PP_EVAL3(PP_EVAL3(__VA_ARGS__)))
+#define PP_FOR_EACH_I(F, first, ...)                                           \
+  F(first) __VA_OPT__(PP_OBSTRUCT(PP_FOR_EACH_INDIRECT)()(F, __VA_ARGS__))
+#define PP_FOR_EACH_INDIRECT() PP_FOR_EACH_I
+#define PP_FOR_EACH(F, ...) __VA_OPT__(PP_EVAL(PP_FOR_EACH_I(F, __VA_ARGS__)))
 
 /* Declare that adding a component also adds each following required component. */
 SIECS_API void ecs_with_many(ecs_component_t component, ...);
@@ -2375,16 +2183,6 @@ SIECS_API ecs_phase_t ecs_phase_init(const ecs_phase_desc_t *desc);
 /* Return the registered phase name. */
 SIECS_API const char *ecs_phase_name(ecs_phase_t phase);
 
-/* Deprecated compatibility aliases. Prefer Ecs* names in new code; removal
- * requires a major release. */
-#define OnPreUpdate EcsPreUpdate
-/* Deprecated alias for EcsOnUpdate. */
-#define OnUpdate EcsOnUpdate
-/* Deprecated alias for EcsPostUpdate. */
-#define OnPostUpdate EcsPostUpdate
-/* Deprecated alias for EcsOnRender. */
-#define OnRender EcsOnRender
-
 /*
  * System descriptor.
  *
@@ -2536,9 +2334,8 @@ template <typename T> struct component_options {
 
 namespace detail {
 
-template <typename T> struct component_type {
-    static inline ecs_component_t id = 0;
-};
+enum class id_kind { component, relation, resource };
+template <typename T, id_kind Kind> inline uint16_t typed_id = 0;
 
 template <typename T>
 concept c_declared_component = c_component_traits<std::remove_cv_t<T>>::value;
@@ -2556,16 +2353,10 @@ component_on_set(ecs_entity_t entity, ecs_component_t, const void *new_value, vo
     }
 }
 
-template <typename T>
-static void component_on_remove(ecs_entity_t entity, ecs_component_t, void *value) {
-    auto callback = component_hook_state<T>::hooks.on_remove;
-    if (callback != nullptr)
-        callback(entity, *static_cast<T *>(value));
-}
-
-template <typename T>
-static void component_on_add(ecs_entity_t entity, ecs_component_t, void *value) {
-    auto callback = component_hook_state<T>::hooks.on_add;
+template <typename T, bool Add>
+static void component_hook(ecs_entity_t entity, ecs_component_t, void *value) {
+    auto callback = Add ? component_hook_state<T>::hooks.on_add
+                        : component_hook_state<T>::hooks.on_remove;
     if (callback != nullptr)
         callback(entity, *static_cast<T *>(value));
 }
@@ -2582,61 +2373,37 @@ template <typename T> consteval size_t sisizeof() {
     }
 }
 
-template <typename T> static void value_ctor(void *ptr, uint32_t count) {
+template <typename T, bool Destroy> static void value_lifetime(void *ptr, uint32_t count) {
     T *values = static_cast<T *>(ptr);
     for (uint32_t i = 0; i < count; i++) {
-        std::construct_at(&values[i]);
+        if constexpr (Destroy) std::destroy_at(&values[i]);
+        else std::construct_at(&values[i]);
     }
 }
 
-template <typename T> static void value_dtor(void *ptr, uint32_t count) {
-    T *values = static_cast<T *>(ptr);
-    for (uint32_t i = 0; i < count; i++) {
-        std::destroy_at(&values[i]);
-    }
-}
-
-template <typename T> static void value_copy_ctor(void *dst, const void *src, uint32_t count) {
+template <typename T, bool Move, bool Construct>
+static void value_transfer(
+    void *dst,
+    std::conditional_t<Move, void *, const void *> src,
+    uint32_t count
+) {
     T *out = static_cast<T *>(dst);
-    const T *in = static_cast<const T *>(src);
+    using input = std::conditional_t<Move, T, const T>;
+    input *in = static_cast<input *>(src);
     for (uint32_t i = 0; i < count; i++) {
-        std::construct_at(&out[i], in[i]);
-    }
-}
-
-template <typename T> static void value_copy(void *dst, const void *src, uint32_t count) {
-    T *out = static_cast<T *>(dst);
-    const T *in = static_cast<const T *>(src);
-    for (uint32_t i = 0; i < count; i++) {
-        if constexpr (std::is_copy_assignable_v<T>) {
-            out[i] = in[i];
+        if constexpr (Construct) {
+            if constexpr (Move) std::construct_at(&out[i], std::move(in[i]));
+            else std::construct_at(&out[i], in[i]);
+        } else if constexpr (Move ? std::is_move_assignable_v<T>
+                                  : std::is_copy_assignable_v<T>) {
+            if constexpr (Move) out[i] = std::move(in[i]);
+            else out[i] = in[i];
         } else {
             std::destroy_at(&out[i]);
-            std::construct_at(&out[i], in[i]);
+            if constexpr (Move) std::construct_at(&out[i], std::move(in[i]));
+            else std::construct_at(&out[i], in[i]);
         }
-    }
-}
-
-template <typename T> static void value_move_ctor(void *dst, void *src, uint32_t count) {
-    T *out = static_cast<T *>(dst);
-    T *in = static_cast<T *>(src);
-    for (uint32_t i = 0; i < count; i++) {
-        std::construct_at(&out[i], std::move(in[i]));
-        std::destroy_at(&in[i]);
-    }
-}
-
-template <typename T> static void value_move(void *dst, void *src, uint32_t count) {
-    T *out = static_cast<T *>(dst);
-    T *in = static_cast<T *>(src);
-    for (uint32_t i = 0; i < count; i++) {
-        if constexpr (std::is_move_assignable_v<T>) {
-            out[i] = std::move(in[i]);
-        } else {
-            std::destroy_at(&out[i]);
-            std::construct_at(&out[i], std::move(in[i]));
-        }
-        std::destroy_at(&in[i]);
+        if constexpr (Move) std::destroy_at(&in[i]);
     }
 }
 
@@ -2647,12 +2414,12 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
         return {};
     } else {
         return {
-            .ctor = std::is_default_constructible_v<T> ? value_ctor<T> : nullptr,
-            .dtor = std::is_destructible_v<T> ? value_dtor<T> : nullptr,
-            .copy_ctor = std::is_copy_constructible_v<T> ? value_copy_ctor<T> : nullptr,
-            .copy = std::is_copy_constructible_v<T> ? value_copy<T> : nullptr,
-            .move_ctor = std::is_move_constructible_v<T> ? value_move_ctor<T> : nullptr,
-            .move = std::is_move_constructible_v<T> ? value_move<T> : nullptr,
+            .ctor = std::is_default_constructible_v<T> ? value_lifetime<T, false> : nullptr,
+            .dtor = std::is_destructible_v<T> ? value_lifetime<T, true> : nullptr,
+            .copy_ctor = std::is_copy_constructible_v<T> ? value_transfer<T, false, true> : nullptr,
+            .copy = std::is_copy_constructible_v<T> ? value_transfer<T, false, false> : nullptr,
+            .move_ctor = std::is_move_constructible_v<T> ? value_transfer<T, true, true> : nullptr,
+            .move = std::is_move_constructible_v<T> ? value_transfer<T, true, false> : nullptr,
         };
     }
 }
@@ -2671,7 +2438,7 @@ static ecs_component_t ecs_cpp_component_id(
         );
     }
 
-    ecs_component_t &cid = detail::component_type<T>::id;
+    ecs_component_t &cid = typed_id<T, id_kind::component>;
 
     if (cid != 0)
         return cid;
@@ -2690,18 +2457,16 @@ static ecs_component_t ecs_cpp_component_id(
         reflection.size = sisizeof<T>();
         reflection.align = _Alignof(T);
     }
-    const char *component_name = reflection.name;
-
     if (hooks != nullptr)
         component_hook_state<T>::hooks = *hooks;
 
     ecs_component_desc_t desc = {
-        .name = component_name,
+        .name = reflection.name,
         .size = sisizeof<T>(),
         .ops = value_ops<T>(),
         .on_set = hooks && hooks->on_set ? component_on_set<T> : nullptr,
-        .on_remove = hooks && hooks->on_remove ? component_on_remove<T> : nullptr,
-        .on_add = hooks && hooks->on_add ? component_on_add<T> : nullptr,
+        .on_remove = hooks && hooks->on_remove ? component_hook<T, false> : nullptr,
+        .on_add = hooks && hooks->on_add ? component_hook<T, true> : nullptr,
         .struct_desc = &reflection,
         .inheritance = inheritance,
     };
@@ -2710,10 +2475,6 @@ static ecs_component_t ecs_cpp_component_id(
 
     return cid;
 }
-
-template <typename T> struct relation_type {
-    static inline ecs_relation_id_t id = 0;
-};
 
 template <typename T>
 static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = nullptr) {
@@ -2727,7 +2488,7 @@ static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = n
         );
     }
 
-    ecs_relation_id_t &id = relation_type<T>::id;
+    ecs_relation_id_t &id = typed_id<T, id_kind::relation>;
     if (id)
         return id;
     static const ecs_relation_desc_t dense = {
@@ -2776,6 +2537,18 @@ class entity {
     template <typename> static ecs_entity_t &by_type() {
         static ecs_entity_t id = 0;
         return id;
+    }
+
+    template <bool Add, typename... T> entity mutate() {
+        if constexpr (sizeof...(T) > 1) {
+            detail::defer_scope scope;
+            ((Add ? ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>())
+                  : ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>())), ...);
+        } else {
+            ((Add ? ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>())
+                  : ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>())), ...);
+        }
+        return *this;
     }
 
   public:
@@ -2828,15 +2601,7 @@ class entity {
     /** Add one or more registered components; returns this handle for chaining. */
     template <typename... T>
         requires(sizeof...(T) > 0)
-    entity add() {
-        if constexpr (sizeof...(T) == 1) {
-            (ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>()), ...);
-        } else {
-            detail::defer_scope scope;
-            (ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>()), ...);
-        }
-        return *this;
-    }
+    entity add() { return mutate<true, T...>(); }
 
     /** Mark this entity abstract; application mutation of abstract bases is restricted. */
     entity abstract() {
@@ -2847,15 +2612,7 @@ class entity {
     /** Remove one or more components; missing components are ignored. */
     template <typename... T>
         requires(sizeof...(T) > 0)
-    entity remove() {
-        if constexpr (sizeof...(T) == 1) {
-            (ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>()), ...);
-        } else {
-            detail::defer_scope scope;
-            (ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>()), ...);
-        }
-        return *this;
-    }
+    entity remove() { return mutate<false, T...>(); }
 
     /** Test that all requested components are present on this entity. */
     template <typename... T>
@@ -2864,16 +2621,12 @@ class entity {
         return (ecs_has_cid(_entity, detail::ecs_cpp_component_id<T>()) && ...);
     }
 
-    /** Copy a component value into this entity, adding the component if absent. */
-    template <typename T> entity set(const T &value) {
-        ecs_set_cid(_entity, detail::ecs_cpp_component_id<T>(), &value);
-        return *this;
-    }
-
-    /** Move a component value into this entity, consuming the source value. */
+    /** Copy an lvalue or move an rvalue into this entity, adding it if absent. */
     template <typename T> entity set(T &&value) {
         using type = std::remove_cvref_t<T>;
-        ecs_move_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
+        if constexpr (std::is_lvalue_reference_v<T>)
+            ecs_set_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
+        else ecs_move_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
         return *this;
     }
 
@@ -3141,18 +2894,12 @@ template <typename T> class resource_ref {
     /** Adopt a registered resource id; the world owns the storage. */
     explicit resource_ref(ecs_resource_t id) noexcept : _id(id) {}
 
-    template <typename U = T>
-        requires(!std::is_const_v<U>)
-    /** Copy `value` into the resource; the resource must be writable. */
-    void set(const value_type &value) const {
-        ecs_set_resource_rid(_id, &value);
-    }
-
-    template <typename U = T>
-        requires(!std::is_const_v<U>)
-    /** Move `value` into the resource, consuming its source state. */
-    void set(value_type &&value) const {
-        ecs_move_resource_rid(_id, &value);
+    template <typename U>
+        requires(!std::is_const_v<T> && std::is_same_v<std::remove_cvref_t<U>, value_type>)
+    /** Copy an lvalue or move an rvalue into this resource. */
+    void set(U &&value) const {
+        if constexpr (std::is_lvalue_reference_v<U>) ecs_set_resource_rid(_id, &value);
+        else ecs_move_resource_rid(_id, &value);
     }
 
     /** Return storage or null when the resource is absent. */
@@ -3188,10 +2935,6 @@ template <typename T> class res {
 
 namespace detail {
 
-template <typename T> struct resource_type {
-    static inline ecs_resource_t id;
-};
-
 template <typename T>
 concept c_declared_resource = c_resource_traits<std::remove_cv_t<T>>::value;
 
@@ -3215,38 +2958,26 @@ template <typename T> struct resource_hook_state {
     static inline resource_hooks<T> hooks{};
 };
 
-template <typename T> static void resource_on_set(const void *ptr) {
-    auto callback = resource_hook_state<T>::hooks.on_set;
-    if (callback != nullptr)
-        callback(*static_cast<const T *>(ptr));
-}
-
-template <typename T> static void resource_on_remove(const void *ptr) {
-    auto callback = resource_hook_state<T>::hooks.on_remove;
+template <typename T, bool Set> static void resource_hook(const void *ptr) {
+    auto callback = Set ? resource_hook_state<T>::hooks.on_set
+                        : resource_hook_state<T>::hooks.on_remove;
     if (callback != nullptr)
         callback(*static_cast<const T *>(ptr));
 }
 
 } // namespace detail
 
-/** Register `T` and return a typed resource handle, installing hooks once. */
-template <typename T>
-    requires detail::c_declared_resource<T>
-static ecs_resource_t ecs_cpp_resource_id() {
+/** Register `T` and return its typed resource id, installing native hooks once. */
+template <typename T> static ecs_resource_t ecs_cpp_resource_id(
+    const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr
+) {
     using type = std::remove_cv_t<T>;
-    return ecs_resource_register(
-        detail::c_resource_traits<type>::id_storage(),
-        detail::c_resource_traits<type>::desc_storage()
-    );
-}
-
-/** Register a native C++ resource and return its id, installing hooks once. */
-template <typename T>
-    requires(!detail::c_declared_resource<T>)
-static ecs_resource_t
-ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) {
-    using type = std::remove_cv_t<T>;
-    ecs_resource_t &rid = detail::resource_type<type>::id;
+    if constexpr (detail::c_declared_resource<type>) {
+        (void)hooks;
+        return ecs_resource_register(detail::c_resource_traits<type>::id_storage(),
+                                     detail::c_resource_traits<type>::desc_storage());
+    }
+    ecs_resource_t &rid = detail::typed_id<type, detail::id_kind::resource>;
 
     if (rid != 0)
         return rid;
@@ -3260,8 +2991,8 @@ ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) 
         .name = name.c_str(),
         .size = sizeof(type),
         .ops = detail::value_ops<type>(),
-        .on_set = hooks && hooks->on_set ? detail::resource_on_set<type> : nullptr,
-        .on_remove = hooks && hooks->on_remove ? detail::resource_on_remove<type> : nullptr,
+        .on_set = hooks && hooks->on_set ? detail::resource_hook<type, true> : nullptr,
+        .on_remove = hooks && hooks->on_remove ? detail::resource_hook<type, false> : nullptr,
     };
 
     rid = ecs_resource_init(&desc);
@@ -3285,7 +3016,7 @@ template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {
     if constexpr (detail::c_declared_resource<type>) {
         return *detail::c_resource_traits<type>::id_storage();
     }
-    return detail::resource_type<type>::id;
+    return detail::typed_id<type, detail::id_kind::resource>;
 }
 
 namespace detail {
@@ -3318,6 +3049,7 @@ template <typename Args> inline auto make_resources() {
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <tuple>
 #include <type_traits>
@@ -3357,13 +3089,15 @@ template <typename T> struct is_optional<ecs::optional<T>> : std::true_type {};
 
 template <typename T> inline constexpr bool is_optional_v = is_optional<std::remove_cvref_t<T>>::value;
 
-template <typename T> struct optional_value;
+template <typename T> struct optional_value {
+    using type = std::remove_reference_t<T>;
+};
 template <typename T> struct optional_value<ecs::optional<T>> {
     using type = T;
 };
 
 template <typename T>
-using optional_value_t = typename optional_value<std::remove_cvref_t<T>>::type;
+using optional_value_t = typename optional_value<std::remove_reference_t<T>>::type;
 
 template <typename T> inline constexpr bool is_entity_v = is_entity<std::remove_cvref_t<T>>::value;
 
@@ -3384,7 +3118,7 @@ template <typename Args> consteval std::size_t component_arg_count() {
     return field_index_before<Args, std::tuple_size_v<Args>>();
 }
 
-template <typename T> struct component_cursor {
+template <typename T, bool Optional = false> struct field_cursor {
     T *value;
     std::ptrdiff_t step;
 };
@@ -3393,27 +3127,19 @@ struct entity_cursor {
     ecs_entity_t *value;
 };
 
-template <typename T> struct optional_cursor {
-    T *value;
-    std::ptrdiff_t step;
-};
-
 inline entity cursor_get(entity_cursor &cursor) { return entity::from(*cursor.value); }
 
-template <typename T> inline optional<T> cursor_get(optional_cursor<T> &cursor) {
-    return optional<T>(cursor.value);
+template <typename T, bool Optional> inline decltype(auto) cursor_get(field_cursor<T, Optional> &c) {
+    if constexpr (Optional) return optional<T>(c.value);
+    else return *c.value;
 }
 
-template <typename T> inline decltype(auto) cursor_get(T &cursor) {
-    if constexpr (is_res_v<T>)
-        return (cursor);
-    else
-        return *cursor.value;
-}
+template <typename T> requires is_res_v<T>
+inline T &cursor_get(T &cursor) { return cursor; }
 
-template <bool OwnedOnly, typename T> inline void cursor_next(T &cursor) noexcept {
-    if constexpr (!is_res_v<T>)
-        cursor.value += OwnedOnly ? 1 : cursor.step;
+template <bool OwnedOnly, typename T, bool Optional>
+inline void cursor_next(field_cursor<T, Optional> &cursor) noexcept {
+    if (cursor.value) cursor.value += OwnedOnly ? 1 : cursor.step;
 }
 
 template <bool OwnedOnly> inline void cursor_next(entity_cursor &cursor) noexcept {
@@ -3421,20 +3147,19 @@ template <bool OwnedOnly> inline void cursor_next(entity_cursor &cursor) noexcep
     cursor.value++;
 }
 
-template <bool OwnedOnly, typename T>
-inline void cursor_next(optional_cursor<T> &cursor) noexcept {
-    if (cursor.value != nullptr) {
-        cursor.value += OwnedOnly ? 1 : cursor.step;
-    }
-}
+template <bool OwnedOnly, typename T> requires is_res_v<T>
+inline void cursor_next(T &) noexcept {}
 
 template <typename Args, std::size_t I, typename Resources>
 inline auto make_cursor(ecs_iter_t *it, Resources &resources, bool &has_shared) {
     using arg = std::tuple_element_t<I, Args>;
     if constexpr (is_entity_v<arg>) {
         return entity_cursor{ it->entities };
-    } else if constexpr (is_optional_v<arg>) {
+    } else if constexpr (is_res_v<arg>) {
+        return std::get<I>(resources);
+    } else {
         constexpr std::size_t field = field_index_before<Args, I>();
+        constexpr bool optional = is_optional_v<arg>;
         using value_type = optional_value_t<arg>;
         auto *value = static_cast<value_type *>(ecs_field(it, static_cast<uint16_t>(field)));
         bool shared = false;
@@ -3442,19 +3167,9 @@ inline auto make_cursor(ecs_iter_t *it, Resources &resources, bool &has_shared) 
             shared = ecs_field_is_shared(it, static_cast<uint16_t>(field));
             has_shared |= shared;
         }
-        return optional_cursor<value_type>{ value, static_cast<std::ptrdiff_t>(shared ? 0 : 1) };
-    } else if constexpr (is_res_v<arg>) {
-        return std::get<I>(resources);
-    } else {
-        constexpr std::size_t field = field_index_before<Args, I>();
-        using value_type = std::remove_reference_t<arg>;
-        auto *value = static_cast<value_type *>(ecs_field(it, static_cast<uint16_t>(field)));
-        bool shared = false;
-        if constexpr (std::is_const_v<value_type>) {
-            shared = ecs_field_is_shared(it, static_cast<uint16_t>(field));
-            has_shared |= shared;
-        }
-        return component_cursor<value_type>{ value, static_cast<std::ptrdiff_t>(shared ? 0 : 1) };
+        return field_cursor<value_type, optional>{
+            value, static_cast<std::ptrdiff_t>(shared ? 0 : 1)
+        };
     }
 }
 
@@ -3487,6 +3202,15 @@ inline void run_batch(F &func, ecs_iter_t *it, Resources &resources) {
     } else {
         run_rows<true>(func, cursors, it->count);
     }
+}
+
+template <typename F> inline void each_query(ecs_query_id_t qid, F &&func) {
+    using callback = std::remove_cvref_t<F>;
+    using args = typename function_traits<callback>::args_tuple;
+    callback state(std::forward<F>(func));
+    auto resources = make_resources<args>();
+    ecs_iter_t it = ecs_query_iter(qid);
+    while (ecs_iter_next(&it)) run_batch<callback, args>(state, &it, resources);
 }
 
 template <typename T> consteval ecs_term_access_t term_access() {
@@ -3524,38 +3248,23 @@ inline void append_callback_component_term(
 ) {
     ecs_relation_id_t up_relation = 0;
     for (uint16_t i = 0; i < term_index; i++) {
-        const ecs_term_access_t existing_access = static_cast<ecs_term_access_t>(
-            static_cast<uint32_t>(desc.terms[i].access) & 0xffu
-        );
+        ecs_term_access_t existing_access = static_cast<ecs_term_access_t>(desc.terms[i].access & 0xffu);
         if (desc.terms[i].id != id ||
             (existing_access != EcsFilter && existing_access != EcsInUp &&
              existing_access != EcsInUpOptional)) {
             continue;
         }
-
-        up_relation = static_cast<ecs_relation_id_t>(
-            static_cast<uint32_t>(desc.terms[i].access) >> 8
-        );
-
-        for (uint16_t j = i; j + 1 < term_index; j++) {
-            desc.terms[j] = desc.terms[j + 1];
-        }
-        term_index--;
+        up_relation = static_cast<ecs_relation_id_t>(desc.terms[i].access >> 8);
+        std::memmove(desc.terms + i, desc.terms + i + 1,
+                     (--term_index - i) * sizeof(ecs_query_term_t));
         break;
     }
-
     if (up_relation) {
         assert(access == EcsIn || access == EcsInOptional);
-        desc.terms[term_index++] = {
-            .id = id,
-            .access = ECS_QUERY_UP_ACCESS(
-                access == EcsInOptional ? EcsInUpOptional : EcsInUp,
-                up_relation
-            ),
-        };
-    } else {
-        append_term(desc, term_index, id, access);
+        access = static_cast<ecs_term_access_t>(ECS_QUERY_UP_ACCESS(
+            access == EcsInOptional ? EcsInUpOptional : EcsInUp, up_relation));
     }
+    append_term(desc, term_index, id, access);
 }
 
 template <typename... T>
@@ -3613,28 +3322,15 @@ inline void append_callback_terms(ecs_query_desc_t &desc, uint16_t &term_index) 
 class query_handle {
     ecs_query_id_t _id = 0;
     ecs_query_desc_t _base_desc{};
-    uint16_t _base_term_index = 0;
-    ecs_query_desc_t _active_desc{};
-    uint16_t _active_term_index = 0;
-    bool _has_base_desc = false;
-    bool _has_active_desc = false;
+    uint16_t _base_term_index = UINT16_MAX;
+    uint64_t _signature = 0;
 
-    static bool desc_equals(
-        const ecs_query_desc_t &left,
-        uint16_t left_term_index,
-        const ecs_query_desc_t &right,
-        uint16_t right_term_index
-    ) {
-        if (left.is_a != right.is_a || left_term_index != right_term_index) {
-            return false;
-        }
-        for (uint16_t i = 0; i < left_term_index; i++) {
-            if (left.terms[i].id != right.terms[i].id ||
-                left.terms[i].access != right.terms[i].access) {
-                return false;
-            }
-        }
-        return true;
+    static uint64_t signature(const ecs_query_desc_t &desc, uint16_t count) {
+        uint64_t value = count;
+        for (uint16_t i = 0; i < count; i++)
+            value = (value * 1099511628211ULL) ^ desc.terms[i].id ^
+                    ((uint64_t)desc.terms[i].access << 16);
+        return value;
     }
 
   public:
@@ -3644,8 +3340,7 @@ class query_handle {
     query_handle(const ecs_query_desc_t &desc, uint16_t term_index)
         : _id(ecs_query_init(&desc)),
           _base_desc(desc),
-          _base_term_index(term_index),
-          _has_base_desc(true) {}
+          _base_term_index(term_index) {}
     /** Destroy the owned query, if any. */
     ~query_handle() {
         if (_id != 0) ecs_query_fini(_id);
@@ -3656,33 +3351,15 @@ class query_handle {
     query_handle &operator=(const query_handle &) = delete;
 
     /** Transfer query ownership from `other`; `other` becomes empty. */
-    query_handle(query_handle &&other) noexcept
-        : _id(other._id),
-          _base_desc(other._base_desc),
-          _base_term_index(other._base_term_index),
-          _active_desc(other._active_desc),
-          _active_term_index(other._active_term_index),
-          _has_base_desc(other._has_base_desc),
-          _has_active_desc(other._has_active_desc) {
-        other._id = 0;
-        other._has_base_desc = false;
-        other._has_active_desc = false;
-    }
+    query_handle(query_handle &&other) noexcept { *this = std::move(other); }
 
     /** Replace this query by moving ownership from `other`. */
     query_handle &operator=(query_handle &&other) noexcept {
         if (this != &other) {
-            if (_id != 0) ecs_query_fini(_id);
-            _id = other._id;
-            _base_desc = other._base_desc;
-            _base_term_index = other._base_term_index;
-            _active_desc = other._active_desc;
-            _active_term_index = other._active_term_index;
-            _has_base_desc = other._has_base_desc;
-            _has_active_desc = other._has_active_desc;
-            other._id = 0;
-            other._has_base_desc = false;
-            other._has_active_desc = false;
+            std::swap(_id, other._id);
+            std::swap(_base_desc, other._base_desc);
+            std::swap(_base_term_index, other._base_term_index);
+            std::swap(_signature, other._signature);
         }
         return *this;
     }
@@ -3695,27 +3372,18 @@ class query_handle {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
 
-        if (_has_base_desc) {
+        if (_base_term_index != UINT16_MAX) {
             ecs_query_desc_t desc = _base_desc;
             uint16_t term_index = _base_term_index;
             detail::append_callback_terms<args>(desc, term_index);
-
-            if (!_has_active_desc ||
-                !desc_equals(desc, term_index, _active_desc, _active_term_index)) {
+            uint64_t next_signature = signature(desc, term_index);
+            if (next_signature != _signature) {
                 if (_id != 0) ecs_query_fini(_id);
                 _id = ecs_query_init(&desc);
-                _active_desc = desc;
-                _active_term_index = term_index;
-                _has_active_desc = true;
+                _signature = next_signature;
             }
         }
-
-        callback state(std::forward<F>(func));
-        auto resources = detail::make_resources<args>();
-        ecs_iter_t it = ecs_query_iter(_id);
-        while (ecs_iter_next(&it)) {
-            detail::run_batch<callback, args>(state, &it, resources);
-        }
+        detail::each_query(_id, std::forward<F>(func));
     }
 };
 
@@ -3726,26 +3394,38 @@ class query {
     uint16_t term_index = 0;
     uint16_t relation_index = 0;
 
+    template <ecs_term_access_t Access, typename... T> query &components() {
+        detail::append_terms<T...>(desc, term_index, Access);
+        return *this;
+    }
+
+    template <typename Relation>
+    query &relation(ecs_entity_t target, ecs_query_relation_kind_t kind) {
+        desc.relations[relation_index++] = {
+            .target = target,
+            .id = detail::ecs_cpp_relation_id<Relation>(),
+            .kind = kind,
+        };
+        return *this;
+    }
+
   public:
     /** Construct an empty query descriptor. */
     query() = default;
 
     /** Add required, non-returned filter terms. */
     template <typename... T> query &require() {
-        detail::append_terms<T...>(desc, term_index, EcsFilter);
-        return *this;
+        return components<EcsFilter, T...>();
     }
 
     /** Add optional read/write component terms. */
     template <typename... T> query &optional() {
-        detail::append_terms<T...>(desc, term_index, EcsInOutOptional);
-        return *this;
+        return components<EcsInOutOptional, T...>();
     }
 
     /** Add terms that must be absent from matching tables. */
     template <typename... T> query &exclude() {
-        detail::append_terms<T...>(desc, term_index, EcsNot);
-        return *this;
+        return components<EcsNot, T...>();
     }
 
     /** Restrict matches to entities inheriting from `target`. */
@@ -3757,21 +3437,11 @@ class query {
     query &is_a(entity target) { return is_a(target.id()); }
 
     template <typename Relation> query &with_relation() {
-        desc.relations[relation_index++] = {
-            .target = 0,
-            .id = detail::ecs_cpp_relation_id<Relation>(),
-            .kind = EcsRelationRequired,
-        };
-        return *this;
+        return relation<Relation>(0, EcsRelationRequired);
     }
 
     template <typename Relation> query &to(ecs_entity_t target) {
-        desc.relations[relation_index++] = {
-            .target = target,
-            .id = detail::ecs_cpp_relation_id<Relation>(),
-            .kind = EcsRelationTarget,
-        };
-        return *this;
+        return relation<Relation>(target, EcsRelationTarget);
     }
 
     template <typename Relation> query &to(entity target) {
@@ -3779,12 +3449,7 @@ class query {
     }
 
     template <typename Relation> query &depth(uint32_t value) {
-        desc.relations[relation_index++] = {
-            .target = value,
-            .id = detail::ecs_cpp_relation_id<Relation>(),
-            .kind = EcsRelationDepth,
-        };
-        return *this;
+        return relation<Relation>(value, EcsRelationDepth);
     }
 
     query &order_by(ecs_query_order_t value) {
@@ -3819,16 +3484,12 @@ class query {
 
     /** Build, iterate, and destroy a temporary query around `func`. */
     template <typename F> void each(F &&func) {
-        using args = typename function_traits<std::remove_reference_t<F>>::args_tuple;
-
-        detail::append_callback_terms<args>(desc, term_index);
-
-        ecs_query_id_t qid = this->build();
-        auto resources = detail::make_resources<args>();
-        ecs_iter_t it = ecs_query_iter(qid);
-        while (ecs_iter_next(&it)) {
-            detail::run_batch<F, args>(func, &it, resources);
-        }
+        using args = typename function_traits<std::remove_cvref_t<F>>::args_tuple;
+        ecs_query_desc_t typed = desc;
+        uint16_t typed_count = term_index;
+        detail::append_callback_terms<args>(typed, typed_count);
+        ecs_query_id_t qid = ecs_query_init(&typed);
+        detail::each_query(qid, std::forward<F>(func));
         ecs_query_fini(qid);
     }
 
@@ -3898,74 +3559,46 @@ namespace detail {
 
 template <> struct is_observer_event<ecs::observer_event> : std::true_type {};
 
-template <typename T> struct event_type {
-    static inline ecs_event_t id = UINT16_MAX;
-};
+template <typename T> inline constexpr ecs_event_t builtin_event = UINT16_MAX;
+template <> inline constexpr ecs_event_t builtin_event<OnAdd> = EcsOnAdd;
+template <> inline constexpr ecs_event_t builtin_event<OnSet> = EcsOnSet;
+template <> inline constexpr ecs_event_t builtin_event<OnRemove> = EcsOnRemove;
+template <> inline constexpr ecs_event_t builtin_event<OnRelationSet> = EcsOnRelationSet;
+template <> inline constexpr ecs_event_t builtin_event<OnRelationRemove> = EcsOnRelationRemove;
+template <typename T> static inline ecs_event_t custom_event = UINT16_MAX;
 
 template <typename T> static ecs_event_t ecs_cpp_event_id() {
-    ecs_event_t &eid = detail::event_type<T>::id;
-
-    if constexpr (std::is_same_v<T, OnAdd>) {
-        eid = EcsOnAdd;
-    } else if constexpr (std::is_same_v<T, OnSet>) {
-        eid = EcsOnSet;
-    } else if constexpr (std::is_same_v<T, OnRemove>) {
-        eid = EcsOnRemove;
-    } else if constexpr (std::is_same_v<T, OnRelationSet>) {
-        eid = EcsOnRelationSet;
-    } else if constexpr (std::is_same_v<T, OnRelationRemove>) {
-        eid = EcsOnRelationRemove;
-    } else {
-        if (eid == UINT16_MAX) {
-            eid = ecs_event();
-        }
-    }
-
-    return eid;
-}
-
-template <typename T> decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event) {
-    using raw = std::remove_cvref_t<T>;
-    if constexpr (is_observer_event_v<T>) {
-        return observer_event(event);
-    } else if constexpr (is_entity_v<T>) {
-        return entity::from(event->entity);
-    } else {
-        void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
-
-        if constexpr (std::is_const_v<std::remove_reference_t<T>>) {
-            return *static_cast<const raw *>(ptr);
-        } else {
-            return *static_cast<raw *>(ptr);
-        }
-    }
+    if constexpr (builtin_event<T> != UINT16_MAX) return builtin_event<T>;
+    if (custom_event<T> == UINT16_MAX) custom_event<T> = ecs_event();
+    return custom_event<T>;
 }
 
 template <typename Args, std::size_t I, typename Resources>
 decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event, Resources &resources) {
     using arg = std::tuple_element_t<I, Args>;
-
     if constexpr (is_res_v<arg>) {
         (void)event;
         return std::get<I>(resources);
+    } else if constexpr (is_observer_event_v<arg>) {
+        return observer_event(event);
+    } else if constexpr (is_entity_v<arg>) {
+        return entity::from(event->entity);
     } else {
-        return ecs_cpp_observer_arg<arg>(event);
+        using raw = std::remove_cvref_t<arg>;
+        void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
+        if constexpr (std::is_const_v<std::remove_reference_t<arg>>)
+            return *static_cast<const raw *>(ptr);
+        else return *static_cast<raw *>(ptr);
     }
 }
 
-template <typename Func, typename Args, std::size_t... Is>
-void ecs_cpp_observer_callback_impl(ecs_observer_event_t *event, std::index_sequence<Is...>) {
+template <typename Func, typename Args>
+void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
     Func func{};
     auto resources = make_resources<Args>();
-    std::invoke(func, ecs_cpp_observer_arg<Args, Is>(event, resources)...);
-}
-
-template <typename Func, typename Tuple>
-void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
-    ecs_cpp_observer_callback_impl<Func, Tuple>(
-        event,
-        std::make_index_sequence<std::tuple_size_v<Tuple>>{}
-    );
+    [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        std::invoke(func, ecs_cpp_observer_arg<Args, Is>(event, resources)...);
+    }(std::make_index_sequence<std::tuple_size_v<Args>>{});
 }
 
 } // namespace detail
@@ -4083,14 +3716,11 @@ template <typename Callback> static void system_callback_dtor(uintptr_t user_dat
 
 /** Fluent typed system builder; the resulting C system owns its callback. */
 class system : protected query {
-    const char *name;
-    ecs_phase_t _phase = EcsOnUpdate;
-    ecs_system_id_t _after[ECS_SYSTEM_AFTER_CAPACITY]{};
-    bool _disabled = false;
+    ecs_system_desc_t _system{ .phase = EcsOnUpdate };
 
   public:
     /** Construct a system descriptor with an optional diagnostic name. */
-    explicit system(const char *name = "unnamed") : name(name) {}
+    explicit system(const char *name = "unnamed") { _system.name = name; }
 
     /** Add required filter terms to the system query. */
     template <typename... T> system &require() {
@@ -4112,15 +3742,15 @@ class system : protected query {
 
     /** Select the phase in which the system is scheduled. */
     system &phase(ecs_phase_t _phase) {
-        this->_phase = _phase;
+        _system.phase = _phase;
         return *this;
     }
 
     /** Add a same-phase dependency; capacity is `ECS_SYSTEM_AFTER_CAPACITY`. */
     system &after(ecs_system_id_t dependency) {
         for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY; i++) {
-            if (_after[i] == 0) {
-                _after[i] = dependency;
+            if (_system.after[i] == 0) {
+                _system.after[i] = dependency;
                 return *this;
             }
         }
@@ -4130,7 +3760,7 @@ class system : protected query {
 
     /** Set whether the system starts disabled when registered. */
     system &disabled(bool value = true) {
-        _disabled = value;
+        _system.disabled = value;
         return *this;
     }
 
@@ -4141,21 +3771,11 @@ class system : protected query {
         detail::append_callback_terms<args>(desc, term_index);
         callback *state = new callback(std::forward<F>(func));
 
-        ecs_system_desc_t system_desc = {
-            .name = name,
-            .query = this->desc,
-            .callback = detail::system_callback<callback, args>,
-            .user_data = reinterpret_cast<uintptr_t>(state),
-            .user_data_dtor = detail::system_callback_dtor<callback>,
-            .phase = _phase,
-            .disabled = _disabled,
-        };
-
-        for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY; i++) {
-            system_desc.after[i] = _after[i];
-        }
-
-        return ecs_system_init(&system_desc);
+        _system.query = this->desc;
+        _system.callback = detail::system_callback<callback, args>;
+        _system.user_data = reinterpret_cast<uintptr_t>(state);
+        _system.user_data_dtor = detail::system_callback_dtor<callback>;
+        return ecs_system_init(&_system);
     }
 };
 
@@ -4179,11 +3799,11 @@ struct ChildOf {};
 
 /** Synchronize builtin component ids after the C world is initialized. */
 inline void init_cpp_state() {
-    detail::component_type<Disabled>::id = ecs_id(Disabled);
-    detail::component_type<Name>::id = ecs_id(Name);
+    detail::typed_id<Disabled, detail::id_kind::component> = ecs_id(Disabled);
+    detail::typed_id<Name, detail::id_kind::component> = ecs_id(Name);
 
-    detail::component_type<Abstract>::id = ecs_id(Abstract);
-    detail::relation_type<ChildOf>::id = ecs_rid(ChildOf);
+    detail::typed_id<Abstract, detail::id_kind::component> = ecs_id(Abstract);
+    detail::typed_id<ChildOf, detail::id_kind::relation> = ecs_rid(ChildOf);
 }
 /** Initialize the process-wide active ECS world and C++ builtin ids. */
 inline void init() {

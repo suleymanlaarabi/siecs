@@ -389,6 +389,32 @@ void system_parallel_query_table_conflicts(void) {
     (void)without_c;
 }
 
+void system_batches_invalidate_after_table_creation(void) {
+    ecs_with_features({ .worker_threads = 1 });
+    ECS_COMPONENT_REGISTER(SystemBatchC);
+    ecs_system({
+        .name = "LateTableA",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_inout(SystemBatchC) } },
+        .callback = same_table_writer_system,
+    });
+    ecs_system({
+        .name = "LateTableB",
+        .phase = EcsOnUpdate,
+        .query = { .terms = { ecs_inout(SystemBatchC) } },
+        .callback = same_table_writer_system,
+    });
+
+    ecs_progress();
+    ecs_phase_info_t *phase = ecs_system_index_get_phase(EcsOnUpdate);
+    test_int(1, phase->batches.size);
+
+    ecs_add(ecs_new(), SystemBatchC);
+    ecs_progress();
+    test_int(2, phase->batches.size);
+    ecs_fini();
+}
+
 void system_main_thread_only(void) {
     atomic_store(&main_thread_only_marker, 0);
     ecs_with_features({ .worker_threads = 1 });

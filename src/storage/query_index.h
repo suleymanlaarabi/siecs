@@ -6,25 +6,8 @@
 #include <stdint.h>
 
 #define ECS_QUERY_RETAIN_TABLE_CAPACITY 8
-
-typedef struct {
-    uint64_t bloom;
-    ecs_entity_t is_a;
-    ecs_query_term_t *terms;
-    uint16_t term_count;
-    uint16_t field_count;
-    uint16_t field_mask;
-    uint16_t up_mask;
-} ecs_query_t;
-
-typedef struct {
-    uint16_t filter_count;
-    ecs_query_order_t order_by;
-    uint32_t reserved;
-} ecs_query_type_filter_meta_t;
-
-#define ECS_QUERY_HAS_TYPE_FILTERS UINT16_C(0x8000)
-#define ECS_QUERY_UP_MASK UINT16_C(0x7fff)
+#define ECS_QUERY_COMPILED_TERM_CAPACITY \
+    (ECS_QUERY_TERM_CAPACITY + ECS_QUERY_RELATION_CAPACITY + 2)
 
 typedef enum {
     EcsQueryFilterRequired,
@@ -38,6 +21,18 @@ typedef struct {
     uint8_t op;
 } ecs_query_type_filter_t;
 
+typedef struct {
+    uint64_t bloom;
+    ecs_entity_t is_a;
+    ecs_query_order_t order_by;
+    uint16_t term_count;
+    uint16_t field_count;
+    uint16_t field_mask;
+    uint16_t up_mask;
+    uint16_t filter_count;
+    uint16_t access_count;
+} ecs_query_t;
+
 static inline ecs_term_access_t ecs_query_term_access(ecs_query_term_t term) {
     return (ecs_term_access_t)((uint32_t)term.access & UINT32_C(0xff));
 }
@@ -46,28 +41,18 @@ static inline ecs_relation_id_t ecs_query_term_source_relation(ecs_query_term_t 
     return (ecs_relation_id_t)((uint32_t)term.access >> 8);
 }
 
-static inline ecs_query_type_filter_meta_t *ecs_query_type_filter_meta(const ecs_query_t *query) {
-    uintptr_t end = (uintptr_t)(query->terms + query->term_count);
-    return (ecs_query_type_filter_meta_t *)(
-        (end + _Alignof(ecs_query_type_filter_meta_t) - 1) &
-        ~(uintptr_t)(_Alignof(ecs_query_type_filter_meta_t) - 1)
-    );
-}
-
-static inline ecs_query_type_filter_t *ecs_query_type_filters(const ecs_query_t *query) {
-    return (ecs_query_type_filter_t *)(ecs_query_type_filter_meta(query) + 1);
-}
-
 typedef struct ecs_query_cache_s {
     ecs_query_t query;
     sicore_vec_t table_ids; // uint16_t
     void **fields_ptr;
     uint32_t *field_kind_bits;
     uint16_t field_table_capacity;
-    uint16_t terms_capacity;
     uint32_t active_index;
     uint16_t next_free;
     bool alive;
+    ecs_query_term_t terms[ECS_QUERY_COMPILED_TERM_CAPACITY];
+    ecs_query_type_filter_t filters[ECS_QUERY_RELATION_CAPACITY];
+    uint32_t accesses[ECS_QUERY_TERM_CAPACITY];
 } ecs_query_cache_t;
 
 typedef struct {
@@ -88,8 +73,8 @@ static inline bool ecs_query_term_requires_owned(ecs_query_term_t term) {
     return term.access == EcsOut || term.access == EcsInOut || term.access == EcsInOutOptional;
 }
 
-static inline bool
-ecs_query_match_component_table(const ecs_query_t *query, const ecs_table_t *table) {
+static inline bool ecs_query_match_table(const ecs_query_cache_t *cache, const ecs_table_t *table) {
+    const ecs_query_t *query = &cache->query;
     if (ECS_LIKELY((query->bloom & table->bloom) != query->bloom)) {
         return false;
     }
@@ -97,9 +82,10 @@ ecs_query_match_component_table(const ecs_query_t *query, const ecs_table_t *tab
         return false;
     }
     for (uint16_t i = 0; i < query->term_count; i++) {
-        ecs_query_term_t term = query->terms[i];
-        ecs_term_access_t access = term.access;
-        if (access == EcsInOptional || access == EcsInOutOptional) {
+        ecs_query_term_t term = cache->terms[i];
+        ecs_term_access_t access = ecs_query_term_access(term);
+        if (access == EcsInOptional || access == EcsInOutOptional || access == EcsInUp ||
+            access == EcsInUpOptional) {
             continue;
         }
         if (access == EcsNot) {
@@ -114,10 +100,19 @@ ecs_query_match_component_table(const ecs_query_t *query, const ecs_table_t *tab
             return false;
         }
     }
+    for (uint16_t i = 0; i < query->filter_count; i++) {
+        ecs_query_type_filter_t filter = cache->filters[i];
+        uint16_t pair_index = ecs_type_pair_index(&table->type, filter.id);
+        bool present = pair_index != UINT16_MAX;
+        if ((filter.op == EcsQueryFilterRequired && !present) ||
+            (filter.op == EcsQueryFilterExcluded && present) ||
+            (filter.op == EcsQueryFilterExact &&
+             (!present || ecs_type_pairs(&table->type)[pair_index].value != filter.value))) {
+            return false;
+        }
+    }
     return true;
 }
-
-bool ecs_query_match_table(const ecs_query_t *query, const ecs_table_t *table);
 bool ecs_query_resolve_up_fields(
     ecs_query_cache_t *cache,
     const ecs_table_t *table,

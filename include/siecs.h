@@ -401,92 +401,43 @@ typedef struct {
  *   });
  */
 #ifdef __cplusplus
+#define SIECS_LITERAL(type, ...) type { __VA_ARGS__ }
+#else
+#define SIECS_LITERAL(type, ...) ((type){__VA_ARGS__})
+#endif
 /* Match a required component and expose it as a read-only field. */
-#define ecs_in(cname)                                                          \
-  ecs_query_term_t { ecs_id(cname), EcsIn }
-/* Match a required component and expose it as a writable field. */
-#define ecs_out(cname)                                                         \
-  ecs_query_term_t { ecs_id(cname), EcsOut }
-/* Match a required component and expose it as a read/write field. */
-#define ecs_inout(cname)                                                       \
-  ecs_query_term_t { ecs_id(cname), EcsInOut }
-/* Match an optional component as a read-only field, or NULL when absent. */
-#define ecs_in_optional(cname)                                                 \
-  ecs_query_term_t { ecs_id(cname), EcsInOptional }
-/* Match an optional component as a read/write field, or NULL when absent. */
-#define ecs_inout_optional(cname)                                              \
-  ecs_query_term_t { ecs_id(cname), EcsInOutOptional }
-/* Match a component without exposing a field pointer. */
-#define ecs_filter(cname)                                                      \
-  ecs_query_term_t { ecs_id(cname), EcsFilter }
-/* Exclude entities that contain the component. */
-#define ecs_not(cname)                                                         \
-  ecs_query_term_t { ecs_id(cname), EcsNot }
-#define ecs_up(cname, relation)                                                \
-  ecs_query_term_t {                                                           \
-    ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUp, ecs_rid(relation))             \
-  }
-#define ecs_up_optional(cname, relation)                                       \
-  ecs_query_term_t {                                                           \
-    ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation))     \
-  }
-#else
-/* C spellings of the typed query term helpers. */
-#define ecs_in(cname) ((ecs_query_term_t){ecs_id(cname), EcsIn})
+#define ecs_in(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsIn)
 /* Writable required field. */
-#define ecs_out(cname) ((ecs_query_term_t){ecs_id(cname), EcsOut})
+#define ecs_out(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsOut)
 /* Read/write required field. */
-#define ecs_inout(cname) ((ecs_query_term_t){ecs_id(cname), EcsInOut})
+#define ecs_inout(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsInOut)
 /* Optional read-only field. */
-#define ecs_in_optional(cname)                                                 \
-  ((ecs_query_term_t){ecs_id(cname), EcsInOptional})
-/* Deprecated compatibility alias for ecs_in_optional; use ecs_in_optional. */
-#define ecs_optional ecs_in_optional
+#define ecs_in_optional(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsInOptional)
 /* Optional read/write field. */
-#define ecs_inout_optional(cname)                                              \
-  ((ecs_query_term_t){ecs_id(cname), EcsInOutOptional})
+#define ecs_inout_optional(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsInOutOptional)
 /* Filter-only required component. */
-#define ecs_filter(cname) ((ecs_query_term_t){ecs_id(cname), EcsFilter})
+#define ecs_filter(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsFilter)
 /* Excluded component. */
-#define ecs_not(cname) ((ecs_query_term_t){ecs_id(cname), EcsNot})
+#define ecs_not(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsNot)
 #define ecs_up(cname, relation)                                                \
-  ((ecs_query_term_t){ecs_id(cname),                                           \
-                      ECS_QUERY_UP_ACCESS(EcsInUp, ecs_rid(relation))})
+  SIECS_LITERAL(ecs_query_term_t, ecs_id(cname),                               \
+                ECS_QUERY_UP_ACCESS(EcsInUp, ecs_rid(relation)))
 #define ecs_up_optional(cname, relation)                                       \
-  ((ecs_query_term_t){                                                         \
-      ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation))})
-#endif
-
-#ifdef __cplusplus
+  SIECS_LITERAL(ecs_query_term_t, ecs_id(cname),                               \
+                ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation)))
 #define ecs_rel(name)                                                          \
-  ecs_query_relation_term_t { 0, ecs_rid(name), EcsRelationRequired }
+  SIECS_LITERAL(ecs_query_relation_term_t, 0, ecs_rid(name), EcsRelationRequired)
 #define ecs_rel_opt(name)                                                      \
-  ecs_query_relation_term_t { 0, ecs_rid(name), EcsRelationOptional }
+  SIECS_LITERAL(ecs_query_relation_term_t, 0, ecs_rid(name), EcsRelationOptional)
 #define ecs_not_rel(name)                                                      \
-  ecs_query_relation_term_t { 0, ecs_rid(name), EcsRelationExcluded }
+  SIECS_LITERAL(ecs_query_relation_term_t, 0, ecs_rid(name), EcsRelationExcluded)
 #define ecs_to(name, entity)                                                   \
-  ecs_query_relation_term_t { entity, ecs_rid(name), EcsRelationTarget }
+  SIECS_LITERAL(ecs_query_relation_term_t, entity, ecs_rid(name), EcsRelationTarget)
 #define ecs_depth(name, value)                                                 \
-  ecs_query_relation_term_t {                                                  \
-    (ecs_entity_t)(value), ecs_rid(name), EcsRelationDepth                     \
-  }
+  SIECS_LITERAL(ecs_query_relation_term_t, (ecs_entity_t)(value),              \
+                ecs_rid(name), EcsRelationDepth)
 #define ecs_order_by_target(name) ecs_order_by_target_id(ecs_rid(name))
 #define ecs_order_by_depth(name) ecs_order_by_depth_id(ecs_rid(name))
-#else
-#define ecs_rel(name)                                                          \
-  ((ecs_query_relation_term_t){0, ecs_rid(name), EcsRelationRequired})
-#define ecs_rel_opt(name)                                                      \
-  ((ecs_query_relation_term_t){0, ecs_rid(name), EcsRelationOptional})
-#define ecs_not_rel(name)                                                      \
-  ((ecs_query_relation_term_t){0, ecs_rid(name), EcsRelationExcluded})
-#define ecs_to(name, entity)                                                   \
-  ((ecs_query_relation_term_t){entity, ecs_rid(name), EcsRelationTarget})
-#define ecs_depth(name, value)                                                 \
-  ((ecs_query_relation_term_t){(ecs_entity_t)(value), ecs_rid(name),           \
-                               EcsRelationDepth})
-#define ecs_order_by_target(name) ecs_order_by_target_id(ecs_rid(name))
-#define ecs_order_by_depth(name) ecs_order_by_depth_id(ecs_rid(name))
-#endif
 
 /* Create an ECS world. */
 SIECS_API void ecs_init(void);
@@ -772,6 +723,14 @@ ECS_RELATION_DECLARE(ChildOf);
 
 /* C++ declarations made after this header use the C relation id/descriptor. */
 #ifdef __cplusplus
+#define SIECS_CPP_C_TRAITS(kind, name, id)                                     \
+  extern "C++" { namespace ecs { namespace detail {                          \
+  template <> struct kind<name> {                                             \
+    static constexpr bool value = true;                                       \
+    static constexpr const char *relation_name() noexcept { return #name; }    \
+    static auto id_storage() noexcept { return &id(name); }                    \
+    static auto desc_storage() noexcept { return &id(name##_desc); }           \
+  }; } } }
 #undef ECS_RELATION_DECLARE
 #define ECS_RELATION_DECLARE(name)                                             \
   extern "C++" {                                                              \
@@ -781,18 +740,7 @@ ECS_RELATION_DECLARE(ChildOf);
     extern ecs_relation_id_t ecs_rid(name);                                    \
     extern ecs_relation_desc_t ecs_rid(name##_desc);                           \
   }                                                                            \
-  extern "C++" {                                                              \
-    namespace ecs {                                                           \
-    namespace detail {                                                        \
-    template <> struct c_relation_traits<name> {                              \
-      static constexpr bool value = true;                                      \
-      static constexpr const char *relation_name() noexcept { return #name; }   \
-      static auto id_storage() noexcept { return &ecs_rid(name); }             \
-      static auto desc_storage() noexcept { return &ecs_rid(name##_desc); }    \
-    };                                                                        \
-    }                                                                         \
-    }                                                                         \
-  }
+  SIECS_CPP_C_TRAITS(c_relation_traits, name, ecs_rid)
 #endif
 
 /* Register a runtime relation and return its world-local relation id. */
@@ -820,17 +768,7 @@ ECS_TAG_DECLARE(Abstract);
     SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                      \
     SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);          \
   }                                                                            \
-  extern "C++" {                                                             \
-  namespace ecs {                                                             \
-  namespace detail {                                                          \
-  template <> struct c_component_traits<cname> {                              \
-    static constexpr bool value = true;                                        \
-    static auto id_storage() noexcept { return &ecs_id(cname); }               \
-    static auto desc_storage() noexcept { return &ecs_id(cname##_desc); }      \
-  };                                                                          \
-  }                                                                           \
-  }                                                                           \
-  }
+  SIECS_CPP_C_TRAITS(c_component_traits, cname, ecs_id)
 
 #undef ECS_TAG_DECLARE
 #define ECS_TAG_DECLARE(cname)                                                  \
@@ -839,17 +777,7 @@ ECS_TAG_DECLARE(Abstract);
     SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                      \
     SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);          \
   }                                                                            \
-  extern "C++" {                                                             \
-  namespace ecs {                                                             \
-  namespace detail {                                                          \
-  template <> struct c_component_traits<cname> {                              \
-    static constexpr bool value = true;                                        \
-    static auto id_storage() noexcept { return &ecs_id(cname); }               \
-    static auto desc_storage() noexcept { return &ecs_id(cname##_desc); }      \
-  };                                                                          \
-  }                                                                           \
-  }                                                                           \
-  }
+  SIECS_CPP_C_TRAITS(c_component_traits, cname, ecs_id)
 
 #define SIECS_CPP_STRINGIFY_INNER(...) #__VA_ARGS__
 #define SIECS_CPP_STRINGIFY(...) SIECS_CPP_STRINGIFY_INNER(__VA_ARGS__)
@@ -880,17 +808,7 @@ ECS_TAG_DECLARE(Abstract);
     SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                      \
     SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);          \
   }                                                                            \
-  extern "C++" {                                                              \
-    namespace ecs {                                                           \
-    namespace detail {                                                        \
-    template <> struct c_component_traits<cname> {                            \
-      static constexpr bool value = true;                                      \
-      static auto id_storage() noexcept { return &ecs_id(cname); }             \
-      static auto desc_storage() noexcept { return &ecs_id(cname##_desc); }    \
-    };                                                                        \
-    }                                                                         \
-    }                                                                         \
-  }
+  SIECS_CPP_C_TRAITS(c_component_traits, cname, ecs_id)
 #endif
 
 /*
@@ -1179,17 +1097,7 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
     SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                       \
     SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);           \
   }                                                                            \
-  extern "C++" {                                                             \
-  namespace ecs {                                                             \
-  namespace detail {                                                          \
-  template <> struct c_resource_traits<rname> {                               \
-    static constexpr bool value = true;                                        \
-    static auto id_storage() noexcept { return &ecs_id(rname); }               \
-    static auto desc_storage() noexcept { return &ecs_id(rname##_desc); }      \
-  };                                                                          \
-  }                                                                           \
-  }                                                                           \
-  }
+  SIECS_CPP_C_TRAITS(c_resource_traits, rname, ecs_id)
 
 /* Declare a C-compatible resource with C++-only member methods. */
 #define ECS_RESOURCE_DECLARE_CPP(rname, field_block, method_block)             \
@@ -1206,17 +1114,7 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
     SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                       \
     SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);           \
   }                                                                            \
-  extern "C++" {                                                              \
-    namespace ecs {                                                           \
-    namespace detail {                                                        \
-    template <> struct c_resource_traits<rname> {                             \
-      static constexpr bool value = true;                                      \
-      static auto id_storage() noexcept { return &ecs_id(rname); }             \
-      static auto desc_storage() noexcept { return &ecs_id(rname##_desc); }    \
-    };                                                                        \
-    }                                                                         \
-    }                                                                         \
-  }
+  SIECS_CPP_C_TRAITS(c_resource_traits, rname, ecs_id)
 #else
 #define ECS_RESOURCE_DECLARE(rname, ...)                                       \
   typedef struct rname rname;                                                  \
@@ -1274,16 +1172,6 @@ ECS_RESOURCE_DECLARE(DeltaTime, { float value; });
 /* Remove a world resource if it exists. */
 #define ecs_remove_resource(rname) ecs_remove_resource_rid(ecs_id(rname))
 
-/* Deprecated compatibility aliases. Prefer ecs_get_resource* in new code;
- * removal requires a major release. */
-#define ecs_resource(rname) ecs_get_resource(rname)
-/* Deprecated read-only alias for ecs_get_resource_read. */
-#define ecs_resource_read(rname) ecs_get_resource_read(rname)
-/* Deprecated nullable alias for ecs_try_get_resource. */
-#define ecs_try_resource(rname) ecs_try_get_resource(rname)
-/* Deprecated nullable read-only alias for ecs_try_get_resource_read. */
-#define ecs_try_resource_read(rname) ecs_try_get_resource_read(rname)
-
 /* Register a resource descriptor in the active world and return its id. */
 SIECS_API ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
 /* Find a registered resource by name; returns 0 when absent. */
@@ -1308,100 +1196,18 @@ SIECS_API bool ecs_has_resource_rid(const ecs_resource_t id);
 /* Remove a resource and run its destructor/hook; no-op when absent. */
 SIECS_API void ecs_remove_resource_rid(ecs_resource_t id);
 
-#define PP_FE_1(F, a) \
-    F(a)
-
-#define PP_FE_2(F, a, ...) \
-    F(a) PP_FE_1(F, __VA_ARGS__)
-
-#define PP_FE_3(F, a, ...) \
-    F(a) PP_FE_2(F, __VA_ARGS__)
-
-#define PP_FE_4(F, a, ...) \
-    F(a) PP_FE_3(F, __VA_ARGS__)
-
-#define PP_FE_5(F, a, ...) \
-    F(a) PP_FE_4(F, __VA_ARGS__)
-
-#define PP_FE_6(F, a, ...) \
-    F(a) PP_FE_5(F, __VA_ARGS__)
-
-#define PP_FE_7(F, a, ...) \
-    F(a) PP_FE_6(F, __VA_ARGS__)
-
-#define PP_FE_8(F, a, ...) \
-    F(a) PP_FE_7(F, __VA_ARGS__)
-
-#define PP_FE_9(F, a, ...) \
-    F(a) PP_FE_8(F, __VA_ARGS__)
-
-#define PP_FE_10(F, a, ...) \
-    F(a) PP_FE_9(F, __VA_ARGS__)
-
-#define PP_FE_11(F, a, ...) \
-    F(a) PP_FE_10(F, __VA_ARGS__)
-
-#define PP_FE_12(F, a, ...) \
-    F(a) PP_FE_11(F, __VA_ARGS__)
-
-#define PP_FE_13(F, a, ...) \
-    F(a) PP_FE_12(F, __VA_ARGS__)
-
-#define PP_FE_14(F, a, ...) \
-    F(a) PP_FE_13(F, __VA_ARGS__)
-
-#define PP_FE_15(F, a, ...) \
-    F(a) PP_FE_14(F, __VA_ARGS__)
-
-#define PP_FE_16(F, a, ...) \
-    F(a) PP_FE_15(F, __VA_ARGS__)
-
-#define PP_FE_17(F, a, ...) \
-    F(a) PP_FE_16(F, __VA_ARGS__)
-
-#define PP_FE_18(F, a, ...) \
-    F(a) PP_FE_17(F, __VA_ARGS__)
-
-#define PP_FE_19(F, a, ...) \
-    F(a) PP_FE_18(F, __VA_ARGS__)
-
-#define PP_FE_20(F, a, ...) \
-    F(a) PP_FE_19(F, __VA_ARGS__)
-
-
-#define PP_GET_FE( \
-    _1,  _2,  _3,  _4,  _5, \
-    _6,  _7,  _8,  _9,  _10, \
-    _11, _12, _13, _14, _15, \
-    _16, _17, _18, _19, _20, \
-    NAME, ... \
-) NAME
-
-
-#define PP_FOR_EACH(F, ...) \
-    PP_GET_FE( \
-        __VA_ARGS__, \
-        PP_FE_20, \
-        PP_FE_19, \
-        PP_FE_18, \
-        PP_FE_17, \
-        PP_FE_16, \
-        PP_FE_15, \
-        PP_FE_14, \
-        PP_FE_13, \
-        PP_FE_12, \
-        PP_FE_11, \
-        PP_FE_10, \
-        PP_FE_9,  \
-        PP_FE_8,  \
-        PP_FE_7,  \
-        PP_FE_6,  \
-        PP_FE_5,  \
-        PP_FE_4,  \
-        PP_FE_3,  \
-        PP_FE_2,  \
-        PP_FE_1   \
-    )(F, __VA_ARGS__)
+#define PP_EMPTY()
+#define PP_DEFER(id) id PP_EMPTY()
+#define PP_OBSTRUCT(...) __VA_ARGS__ PP_DEFER(PP_EMPTY)()
+#define PP_EVAL0(...) __VA_ARGS__
+#define PP_EVAL1(...) PP_EVAL0(PP_EVAL0(PP_EVAL0(__VA_ARGS__)))
+#define PP_EVAL2(...) PP_EVAL1(PP_EVAL1(PP_EVAL1(__VA_ARGS__)))
+#define PP_EVAL3(...) PP_EVAL2(PP_EVAL2(PP_EVAL2(__VA_ARGS__)))
+#define PP_EVAL(...) PP_EVAL3(PP_EVAL3(PP_EVAL3(__VA_ARGS__)))
+#define PP_FOR_EACH_I(F, first, ...)                                           \
+  F(first) __VA_OPT__(PP_OBSTRUCT(PP_FOR_EACH_INDIRECT)()(F, __VA_ARGS__))
+#define PP_FOR_EACH_INDIRECT() PP_FOR_EACH_I
+#define PP_FOR_EACH(F, ...) __VA_OPT__(PP_EVAL(PP_FOR_EACH_I(F, __VA_ARGS__)))
 
 /* Declare that adding a component also adds each following required component. */
 SIECS_API void ecs_with_many(ecs_component_t component, ...);
@@ -1609,16 +1415,6 @@ SIECS_API ecs_phase_t ecs_phase_init(const ecs_phase_desc_t *desc);
 /* Return the registered phase name. */
 SIECS_API const char *ecs_phase_name(ecs_phase_t phase);
 
-
-/* Deprecated compatibility aliases. Prefer Ecs* names in new code; removal
- * requires a major release. */
-#define OnPreUpdate EcsPreUpdate
-/* Deprecated alias for EcsOnUpdate. */
-#define OnUpdate EcsOnUpdate
-/* Deprecated alias for EcsPostUpdate. */
-#define OnPostUpdate EcsPostUpdate
-/* Deprecated alias for EcsOnRender. */
-#define OnRender EcsOnRender
 
 /*
  * System descriptor.

@@ -810,6 +810,45 @@ BENCH_SETUP(relation_query_init_bytarget_exact, {
         abort();
 });
 
+static uint64_t scheduler_checksum;
+static void scheduler_bench_system(ecs_iter_t *it) { scheduler_checksum += it->count; }
+
+BENCH_SETUP(scheduler_plan_compile, {
+    ecs_system_id_t systems[256];
+    for (uint32_t i = 0; i < 256; i++) {
+        systems[i] = ecs_system({
+            .name = "SchedulerPlan",
+            .phase = EcsOnUpdate,
+            .callback = scheduler_bench_system,
+        });
+    }
+    BENCH({
+        for (uint32_t i = 0; i < 2000; i++) {
+            if (i & 1) ecs_system_enable(systems[i & 255]);
+            else ecs_system_disable(systems[i & 255]);
+            ecs_run_phase(EcsOnUpdate);
+        }
+    });
+});
+
+BENCH_SETUP(scheduler_loaded_phase, {
+    ecs_component_t component = ecs_component({ .size = sizeof(uint32_t) });
+    for (uint32_t i = 0; i < 1024; i++) {
+        ecs_entity_t entity = ecs_new();
+        ecs_set_cid(entity, component, &i);
+    }
+    for (uint32_t i = 0; i < 64; i++) {
+        ecs_system({
+            .name = "SchedulerLoaded",
+            .phase = EcsOnUpdate,
+            .query = { .terms = { { component, EcsIn } } },
+            .callback = scheduler_bench_system,
+        });
+    }
+    BENCH({ for (uint32_t i = 0; i < 500; i++) ecs_run_phase(EcsOnUpdate); });
+    if (!scheduler_checksum) abort();
+});
+
 int main(int argc, char *argv[]) {
     const char *scope = argc > 1 ? argv[1] : NULL;
     if (argc > 2) {
@@ -845,6 +884,8 @@ int main(int argc, char *argv[]) {
     run_scoped_bench(scope, relation_bydepth_cascade);
     run_scoped_bench(scope, relation_bytarget_exact);
     run_scoped_bench(scope, relation_query_init_bytarget_exact);
+    run_scoped_bench(scope, scheduler_plan_compile);
+    run_scoped_bench(scope, scheduler_loaded_phase);
 
     return 0;
 }

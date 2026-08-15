@@ -32,9 +32,8 @@ template <typename T> struct component_options {
 
 namespace detail {
 
-template <typename T> struct component_type {
-    static inline ecs_component_t id = 0;
-};
+enum class id_kind { component, relation, resource };
+template <typename T, id_kind Kind> inline uint16_t typed_id = 0;
 
 template <typename T>
 concept c_declared_component = c_component_traits<std::remove_cv_t<T>>::value;
@@ -52,16 +51,10 @@ component_on_set(ecs_entity_t entity, ecs_component_t, const void *new_value, vo
     }
 }
 
-template <typename T>
-static void component_on_remove(ecs_entity_t entity, ecs_component_t, void *value) {
-    auto callback = component_hook_state<T>::hooks.on_remove;
-    if (callback != nullptr)
-        callback(entity, *static_cast<T *>(value));
-}
-
-template <typename T>
-static void component_on_add(ecs_entity_t entity, ecs_component_t, void *value) {
-    auto callback = component_hook_state<T>::hooks.on_add;
+template <typename T, bool Add>
+static void component_hook(ecs_entity_t entity, ecs_component_t, void *value) {
+    auto callback = Add ? component_hook_state<T>::hooks.on_add
+                        : component_hook_state<T>::hooks.on_remove;
     if (callback != nullptr)
         callback(entity, *static_cast<T *>(value));
 }
@@ -78,61 +71,37 @@ template <typename T> consteval size_t sisizeof() {
     }
 }
 
-template <typename T> static void value_ctor(void *ptr, uint32_t count) {
+template <typename T, bool Destroy> static void value_lifetime(void *ptr, uint32_t count) {
     T *values = static_cast<T *>(ptr);
     for (uint32_t i = 0; i < count; i++) {
-        std::construct_at(&values[i]);
+        if constexpr (Destroy) std::destroy_at(&values[i]);
+        else std::construct_at(&values[i]);
     }
 }
 
-template <typename T> static void value_dtor(void *ptr, uint32_t count) {
-    T *values = static_cast<T *>(ptr);
-    for (uint32_t i = 0; i < count; i++) {
-        std::destroy_at(&values[i]);
-    }
-}
-
-template <typename T> static void value_copy_ctor(void *dst, const void *src, uint32_t count) {
+template <typename T, bool Move, bool Construct>
+static void value_transfer(
+    void *dst,
+    std::conditional_t<Move, void *, const void *> src,
+    uint32_t count
+) {
     T *out = static_cast<T *>(dst);
-    const T *in = static_cast<const T *>(src);
+    using input = std::conditional_t<Move, T, const T>;
+    input *in = static_cast<input *>(src);
     for (uint32_t i = 0; i < count; i++) {
-        std::construct_at(&out[i], in[i]);
-    }
-}
-
-template <typename T> static void value_copy(void *dst, const void *src, uint32_t count) {
-    T *out = static_cast<T *>(dst);
-    const T *in = static_cast<const T *>(src);
-    for (uint32_t i = 0; i < count; i++) {
-        if constexpr (std::is_copy_assignable_v<T>) {
-            out[i] = in[i];
+        if constexpr (Construct) {
+            if constexpr (Move) std::construct_at(&out[i], std::move(in[i]));
+            else std::construct_at(&out[i], in[i]);
+        } else if constexpr (Move ? std::is_move_assignable_v<T>
+                                  : std::is_copy_assignable_v<T>) {
+            if constexpr (Move) out[i] = std::move(in[i]);
+            else out[i] = in[i];
         } else {
             std::destroy_at(&out[i]);
-            std::construct_at(&out[i], in[i]);
+            if constexpr (Move) std::construct_at(&out[i], std::move(in[i]));
+            else std::construct_at(&out[i], in[i]);
         }
-    }
-}
-
-template <typename T> static void value_move_ctor(void *dst, void *src, uint32_t count) {
-    T *out = static_cast<T *>(dst);
-    T *in = static_cast<T *>(src);
-    for (uint32_t i = 0; i < count; i++) {
-        std::construct_at(&out[i], std::move(in[i]));
-        std::destroy_at(&in[i]);
-    }
-}
-
-template <typename T> static void value_move(void *dst, void *src, uint32_t count) {
-    T *out = static_cast<T *>(dst);
-    T *in = static_cast<T *>(src);
-    for (uint32_t i = 0; i < count; i++) {
-        if constexpr (std::is_move_assignable_v<T>) {
-            out[i] = std::move(in[i]);
-        } else {
-            std::destroy_at(&out[i]);
-            std::construct_at(&out[i], std::move(in[i]));
-        }
-        std::destroy_at(&in[i]);
+        if constexpr (Move) std::destroy_at(&in[i]);
     }
 }
 
@@ -143,12 +112,12 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
         return {};
     } else {
         return {
-            .ctor = std::is_default_constructible_v<T> ? value_ctor<T> : nullptr,
-            .dtor = std::is_destructible_v<T> ? value_dtor<T> : nullptr,
-            .copy_ctor = std::is_copy_constructible_v<T> ? value_copy_ctor<T> : nullptr,
-            .copy = std::is_copy_constructible_v<T> ? value_copy<T> : nullptr,
-            .move_ctor = std::is_move_constructible_v<T> ? value_move_ctor<T> : nullptr,
-            .move = std::is_move_constructible_v<T> ? value_move<T> : nullptr,
+            .ctor = std::is_default_constructible_v<T> ? value_lifetime<T, false> : nullptr,
+            .dtor = std::is_destructible_v<T> ? value_lifetime<T, true> : nullptr,
+            .copy_ctor = std::is_copy_constructible_v<T> ? value_transfer<T, false, true> : nullptr,
+            .copy = std::is_copy_constructible_v<T> ? value_transfer<T, false, false> : nullptr,
+            .move_ctor = std::is_move_constructible_v<T> ? value_transfer<T, true, true> : nullptr,
+            .move = std::is_move_constructible_v<T> ? value_transfer<T, true, false> : nullptr,
         };
     }
 }
@@ -167,7 +136,7 @@ static ecs_component_t ecs_cpp_component_id(
         );
     }
 
-    ecs_component_t &cid = detail::component_type<T>::id;
+    ecs_component_t &cid = typed_id<T, id_kind::component>;
 
     if (cid != 0)
         return cid;
@@ -186,18 +155,16 @@ static ecs_component_t ecs_cpp_component_id(
         reflection.size = sisizeof<T>();
         reflection.align = _Alignof(T);
     }
-    const char *component_name = reflection.name;
-
     if (hooks != nullptr)
         component_hook_state<T>::hooks = *hooks;
 
     ecs_component_desc_t desc = {
-        .name = component_name,
+        .name = reflection.name,
         .size = sisizeof<T>(),
         .ops = value_ops<T>(),
         .on_set = hooks && hooks->on_set ? component_on_set<T> : nullptr,
-        .on_remove = hooks && hooks->on_remove ? component_on_remove<T> : nullptr,
-        .on_add = hooks && hooks->on_add ? component_on_add<T> : nullptr,
+        .on_remove = hooks && hooks->on_remove ? component_hook<T, false> : nullptr,
+        .on_add = hooks && hooks->on_add ? component_hook<T, true> : nullptr,
         .struct_desc = &reflection,
         .inheritance = inheritance,
     };
@@ -206,10 +173,6 @@ static ecs_component_t ecs_cpp_component_id(
 
     return cid;
 }
-
-template <typename T> struct relation_type {
-    static inline ecs_relation_id_t id = 0;
-};
 
 template <typename T>
 static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = nullptr) {
@@ -223,7 +186,7 @@ static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = n
         );
     }
 
-    ecs_relation_id_t &id = relation_type<T>::id;
+    ecs_relation_id_t &id = typed_id<T, id_kind::relation>;
     if (id)
         return id;
     static const ecs_relation_desc_t dense = {

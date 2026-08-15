@@ -24,14 +24,11 @@ template <typename Callback> static void system_callback_dtor(uintptr_t user_dat
 
 /** Fluent typed system builder; the resulting C system owns its callback. */
 class system : protected query {
-    const char *name;
-    ecs_phase_t _phase = EcsOnUpdate;
-    ecs_system_id_t _after[ECS_SYSTEM_AFTER_CAPACITY]{};
-    bool _disabled = false;
+    ecs_system_desc_t _system{ .phase = EcsOnUpdate };
 
   public:
     /** Construct a system descriptor with an optional diagnostic name. */
-    explicit system(const char *name = "unnamed") : name(name) {}
+    explicit system(const char *name = "unnamed") { _system.name = name; }
 
     /** Add required filter terms to the system query. */
     template <typename... T> system &require() {
@@ -53,15 +50,15 @@ class system : protected query {
 
     /** Select the phase in which the system is scheduled. */
     system &phase(ecs_phase_t _phase) {
-        this->_phase = _phase;
+        _system.phase = _phase;
         return *this;
     }
 
     /** Add a same-phase dependency; capacity is `ECS_SYSTEM_AFTER_CAPACITY`. */
     system &after(ecs_system_id_t dependency) {
         for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY; i++) {
-            if (_after[i] == 0) {
-                _after[i] = dependency;
+            if (_system.after[i] == 0) {
+                _system.after[i] = dependency;
                 return *this;
             }
         }
@@ -71,7 +68,7 @@ class system : protected query {
 
     /** Set whether the system starts disabled when registered. */
     system &disabled(bool value = true) {
-        _disabled = value;
+        _system.disabled = value;
         return *this;
     }
 
@@ -82,21 +79,11 @@ class system : protected query {
         detail::append_callback_terms<args>(desc, term_index);
         callback *state = new callback(std::forward<F>(func));
 
-        ecs_system_desc_t system_desc = {
-            .name = name,
-            .query = this->desc,
-            .callback = detail::system_callback<callback, args>,
-            .user_data = reinterpret_cast<uintptr_t>(state),
-            .user_data_dtor = detail::system_callback_dtor<callback>,
-            .phase = _phase,
-            .disabled = _disabled,
-        };
-
-        for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY; i++) {
-            system_desc.after[i] = _after[i];
-        }
-
-        return ecs_system_init(&system_desc);
+        _system.query = this->desc;
+        _system.callback = detail::system_callback<callback, args>;
+        _system.user_data = reinterpret_cast<uintptr_t>(state);
+        _system.user_data_dtor = detail::system_callback_dtor<callback>;
+        return ecs_system_init(&_system);
     }
 };
 

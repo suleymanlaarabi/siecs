@@ -30,7 +30,6 @@ allowed. Deprecation is never inferred from a spelling or from an alias alone.
 | Core world/entity/component/query/system APIs | Stable | Handles belong to the active world; pointers returned by accessors are borrowed and invalidated by mutation that migrates storage. |
 | Typed C++ wrappers (`ecs::entity`, `query_handle`, `system`, `observer`, resource handles) | Stable | Wrappers do not outlive the world; RAII query handles own only their query id; callback views are valid only for the callback. |
 | `ecs::instantiate` | Experimental | `instantiate` currently creates only an empty entity with an `IsA` link, not a deep clone. Its semantics are under active design. |
-| `ecs_resource`, `ecs_resource_read`, `ecs_try_resource*`, `On*` aliases | Deprecated | Use the `ecs_get_resource*` family and `Ecs*` phase names. Removal requires a major release. |
 
 ## Required review for a public API change
 

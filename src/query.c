@@ -49,7 +49,7 @@ uint32_t ecs_query_count(ecs_query_id_t query_id) {
 
     uint32_t count = 0;
     for (uint32_t i = 0; i < cache->table_ids.size; i++) {
-        if (ECS_UNLIKELY(cache->query.up_mask & ECS_QUERY_UP_MASK) &&
+        if (ECS_UNLIKELY(cache->query.up_mask) &&
             !ecs_query_resolve_up_fields(cache, ecs_get_table(tids[i]), i)) {
             continue;
         }
@@ -63,8 +63,8 @@ bool ecs_iter_next(ecs_iter_t *it) {
     do {
         if (++it->table_idx >= it->table_count)
             return false;
-    it->count = table_index.tables[tids[it->table_idx]].entity_count;
-        if (it->count && ECS_UNLIKELY(it->cache->query.up_mask & ECS_QUERY_UP_MASK) &&
+        it->count = table_index.tables[tids[it->table_idx]].entity_count;
+        if (it->count && ECS_UNLIKELY(it->cache->query.up_mask) &&
             !ecs_query_resolve_up_fields(
                 it->cache,
                 ecs_get_table(tids[it->table_idx]),
@@ -86,7 +86,7 @@ bool ecs_iter_next(ecs_iter_t *it) {
 
 const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
-    ecs_assert(record->storage != EcsRelationByTarget, "ecs_targets requires Dense or ByDepth\n");
+    ecs_assert(record->info.desc.storage != EcsRelationByTarget, "ecs_targets requires Dense or ByDepth\n");
     const uint16_t *table_ids = it->cache->table_ids.data;
     const ecs_table_t *table = ecs_get_table(table_ids[it->table_idx]);
     uint16_t column = ecs_table_column_or_invalid(table, record->component);
@@ -96,7 +96,7 @@ const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_i
 ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
 #ifndef NDEBUG
     const ecs_relation_record_t *record = ecs_relation_record(relation);
-    ecs_assert(record->storage == EcsRelationByTarget, "ecs_target_shared requires ByTarget\n");
+    ecs_assert(record->info.desc.storage == EcsRelationByTarget, "ecs_target_shared requires ByTarget\n");
 
 #endif
     const uint16_t *table_ids = it->cache->table_ids.data;
