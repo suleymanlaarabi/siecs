@@ -190,12 +190,12 @@ inline void append_term(
     ecs_query_desc_t &desc,
     uint16_t &term_index,
     ecs_component_t id,
-    ecs_term_access_t access
+    uint32_t access
 ) {
     assert(term_index < ECS_QUERY_TERM_CAPACITY);
     desc.terms[term_index++] = {
         .id = id,
-        .access = static_cast<uint32_t>(access),
+        .access = access,
     };
 }
 
@@ -206,6 +206,7 @@ inline void append_callback_component_term(
     ecs_term_access_t access
 ) {
     ecs_relation_id_t up_relation = 0;
+    uint32_t encoded_access = static_cast<uint32_t>(access);
     for (uint16_t i = 0; i < term_index; i++) {
         ecs_term_access_t existing_access = static_cast<ecs_term_access_t>(desc.terms[i].access & 0xffu);
         if (desc.terms[i].id != id ||
@@ -220,10 +221,10 @@ inline void append_callback_component_term(
     }
     if (up_relation) {
         assert(access == EcsIn || access == EcsInOptional);
-        access = static_cast<ecs_term_access_t>(ECS_QUERY_UP_ACCESS(
-            access == EcsInOptional ? EcsInUpOptional : EcsInUp, up_relation));
+        encoded_access = ECS_QUERY_UP_ACCESS(
+            access == EcsInOptional ? EcsInUpOptional : EcsInUp, up_relation);
     }
-    append_term(desc, term_index, id, access);
+    append_term(desc, term_index, id, encoded_access);
 }
 
 template <typename... T>
