@@ -4775,9 +4775,79 @@ static inline bool ecs_entity_index_is_alive(
 #ifndef SIECS_MODULE_H
 #define SIECS_MODULE_H
 
+#ifndef SIECS_PLATFORM_H
+#define SIECS_PLATFORM_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+double ecs_platform_time_now_sec(void);
+void ecs_platform_time_sleep_sec(double seconds);
+
+#ifdef _WIN32
+#include <windows.h>
+typedef struct {
+    HANDLE handle;
+} ecs_platform_thread_t;
+typedef CRITICAL_SECTION ecs_platform_mutex_t;
+typedef CONDITION_VARIABLE ecs_platform_condition_t;
+#define ECS_PLATFORM_THREAD_CALL WINAPI
+typedef DWORD (ECS_PLATFORM_THREAD_CALL *ecs_platform_thread_func_t)(void *);
+#define ecs_platform_mutex_init(m) InitializeCriticalSection(m)
+#define ecs_platform_mutex_fini(m) DeleteCriticalSection(m)
+#define ecs_platform_mutex_lock(m) EnterCriticalSection(m)
+#define ecs_platform_mutex_unlock(m) LeaveCriticalSection(m)
+#define ecs_platform_condition_init(c) InitializeConditionVariable(c)
+#define ecs_platform_condition_fini(c) ((void)(c))
+#define ecs_platform_condition_wait(c, m) SleepConditionVariableCS(c, m, INFINITE)
+#define ecs_platform_condition_signal(c) WakeConditionVariable(c)
+#define ecs_platform_condition_broadcast(c) WakeAllConditionVariable(c)
+#else
+#include <pthread.h>
+typedef struct {
+    pthread_t handle;
+} ecs_platform_thread_t;
+typedef pthread_mutex_t ecs_platform_mutex_t;
+typedef pthread_cond_t ecs_platform_condition_t;
+typedef void *(*ecs_platform_thread_func_t)(void *);
+#define ECS_PLATFORM_THREAD_CALL
+#define ecs_platform_thread_create(t, f, a) (pthread_create(&(t)->handle, NULL, f, a) == 0)
+#define ecs_platform_thread_join(t) pthread_join((t)->handle, NULL)
+#define ecs_platform_mutex_init(m) pthread_mutex_init(m, NULL)
+#define ecs_platform_mutex_fini(m) pthread_mutex_destroy(m)
+#define ecs_platform_mutex_lock(m) pthread_mutex_lock(m)
+#define ecs_platform_mutex_unlock(m) pthread_mutex_unlock(m)
+#define ecs_platform_condition_init(c) pthread_cond_init(c, NULL)
+#define ecs_platform_condition_fini(c) pthread_cond_destroy(c)
+#define ecs_platform_condition_wait(c, m) pthread_cond_wait(c, m)
+#define ecs_platform_condition_signal(c) pthread_cond_signal(c)
+#define ecs_platform_condition_broadcast(c) pthread_cond_broadcast(c)
+#endif
+
+#ifdef _WIN32
+bool ecs_platform_thread_create(
+    ecs_platform_thread_t *thread,
+    ecs_platform_thread_func_t function,
+    void *argument
+);
+void ecs_platform_thread_join(ecs_platform_thread_t *thread);
+#endif
+
+uint32_t ecs_platform_hardware_thread_count(void);
+
+typedef void *ecs_platform_library_t;
+
+ecs_platform_library_t ecs_platform_library_open(const char *path);
+void *ecs_platform_library_symbol(ecs_platform_library_t library, const char *name);
+void ecs_platform_library_close(ecs_platform_library_t library);
+
+#endif
+
 typedef struct {
     ecs_module_id_t *id;
     const char *name;
+    char *owned_name;
+    ecs_platform_library_t library;
     ecs_observer_id_t observer;
     ecs_system_id_t system;
     bool enabled;
@@ -5020,68 +5090,6 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
 
 #ifndef SIECS_WORKER_POOL_H
 #define SIECS_WORKER_POOL_H
-
-#ifndef SIECS_PLATFORM_H
-#define SIECS_PLATFORM_H
-
-#include <stdbool.h>
-#include <stdint.h>
-
-double ecs_platform_time_now_sec(void);
-void ecs_platform_time_sleep_sec(double seconds);
-
-#ifdef _WIN32
-#include <windows.h>
-typedef struct {
-    HANDLE handle;
-} ecs_platform_thread_t;
-typedef CRITICAL_SECTION ecs_platform_mutex_t;
-typedef CONDITION_VARIABLE ecs_platform_condition_t;
-#define ECS_PLATFORM_THREAD_CALL WINAPI
-typedef DWORD (ECS_PLATFORM_THREAD_CALL *ecs_platform_thread_func_t)(void *);
-#define ecs_platform_mutex_init(m) InitializeCriticalSection(m)
-#define ecs_platform_mutex_fini(m) DeleteCriticalSection(m)
-#define ecs_platform_mutex_lock(m) EnterCriticalSection(m)
-#define ecs_platform_mutex_unlock(m) LeaveCriticalSection(m)
-#define ecs_platform_condition_init(c) InitializeConditionVariable(c)
-#define ecs_platform_condition_fini(c) ((void)(c))
-#define ecs_platform_condition_wait(c, m) SleepConditionVariableCS(c, m, INFINITE)
-#define ecs_platform_condition_signal(c) WakeConditionVariable(c)
-#define ecs_platform_condition_broadcast(c) WakeAllConditionVariable(c)
-#else
-#include <pthread.h>
-typedef struct {
-    pthread_t handle;
-} ecs_platform_thread_t;
-typedef pthread_mutex_t ecs_platform_mutex_t;
-typedef pthread_cond_t ecs_platform_condition_t;
-typedef void *(*ecs_platform_thread_func_t)(void *);
-#define ECS_PLATFORM_THREAD_CALL
-#define ecs_platform_thread_create(t, f, a) (pthread_create(&(t)->handle, NULL, f, a) == 0)
-#define ecs_platform_thread_join(t) pthread_join((t)->handle, NULL)
-#define ecs_platform_mutex_init(m) pthread_mutex_init(m, NULL)
-#define ecs_platform_mutex_fini(m) pthread_mutex_destroy(m)
-#define ecs_platform_mutex_lock(m) pthread_mutex_lock(m)
-#define ecs_platform_mutex_unlock(m) pthread_mutex_unlock(m)
-#define ecs_platform_condition_init(c) pthread_cond_init(c, NULL)
-#define ecs_platform_condition_fini(c) pthread_cond_destroy(c)
-#define ecs_platform_condition_wait(c, m) pthread_cond_wait(c, m)
-#define ecs_platform_condition_signal(c) pthread_cond_signal(c)
-#define ecs_platform_condition_broadcast(c) pthread_cond_broadcast(c)
-#endif
-
-#ifdef _WIN32
-bool ecs_platform_thread_create(
-    ecs_platform_thread_t *thread,
-    ecs_platform_thread_func_t function,
-    void *argument
-);
-void ecs_platform_thread_join(ecs_platform_thread_t *thread);
-#endif
-
-uint32_t ecs_platform_hardware_thread_count(void);
-
-#endif
 
 #include <stdatomic.h>
 #include <stdint.h>
@@ -7078,7 +7086,36 @@ void ecs_module_storage_fini(void) {
             *modules[i].id = 0;
         }
     }
+
+    for (uint32_t i = ecs_modules.size; i > 1; i--) {
+        ecs_module_t *module = &modules[i - 1];
+
+        if (module->library) {
+            ecs_platform_library_close(module->library);
+        }
+
+        free(module->owned_name);
+    }
+
     sicore_vec_fini(&ecs_modules);
+}
+
+static ecs_module_id_t ecs_module_begin(
+    ecs_module_t record,
+    ecs_module_id_t *previous
+) {
+    sicore_vec_push(&ecs_modules, &record, sizeof(record));
+
+    ecs_module_id_t module = (ecs_module_id_t)(ecs_modules.size - 1);
+
+    *previous = ecs_world.active_module;
+    ecs_world.active_module = module;
+
+    return module;
+}
+
+static void ecs_module_end(ecs_module_id_t previous) {
+    ecs_world.active_module = previous;
 }
 
 ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
@@ -7096,24 +7133,135 @@ ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc) {
     ecs_module_t record = {
         .id = desc->id,
         .name = desc->name,
+        .owned_name = NULL,
+        .library = NULL,
         .observer = UINT32_MAX,
         .system = UINT16_MAX,
         .enabled = true,
     };
-    sicore_vec_push(&ecs_modules, &record, sizeof(record));
 
-    ecs_module_id_t module = (ecs_module_id_t)(ecs_modules.size - 1);
+    ecs_module_id_t previous;
+    ecs_module_id_t module = ecs_module_begin(record, &previous);
+
     if (desc->id) {
         *desc->id = module;
     }
-    ecs_module_id_t prev = ecs_world.active_module;
-    ecs_world.active_module = module;
+
     desc->import(desc->desc);
-    ecs_world.active_module = prev;
+
+    ecs_module_end(previous);
+
     if (desc->disabled) {
         ecs_module_disable(module);
     }
     return module;
+}
+
+static char *ecs_module_path_name(const char *path) {
+    const char *name = path;
+
+    for (const char *cursor = path; *cursor; cursor++) {
+        if (*cursor == '/' || *cursor == '\\') {
+            name = cursor + 1;
+        }
+    }
+
+    size_t length = strlen(name);
+    char *copy = malloc(length + 1);
+
+    if (!copy) {
+        abort();
+    }
+
+    memcpy(copy, name, length + 1);
+    return copy;
+}
+
+static char *ecs_module_library_path(const char *path) {
+#ifdef _WIN32
+    static const char suffix[] = ".dll";
+#elif defined(__APPLE__)
+    static const char suffix[] = ".dylib";
+#elif defined(__EMSCRIPTEN__)
+    static const char suffix[] = "";
+#else
+    static const char suffix[] = ".so";
+#endif
+
+    size_t path_length = strlen(path);
+    size_t suffix_length = sizeof(suffix) - 1;
+
+    char *result = malloc(path_length + suffix_length + 1);
+
+    if (!result) {
+        abort();
+    }
+
+    memcpy(result, path, path_length);
+    memcpy(result + path_length, suffix, suffix_length + 1);
+
+    return result;
+}
+
+ecs_module_id_t ecs_module_load(const char *path) {
+    ecs_assert_not_scheduler_parallel("module loading");
+    ecs_assert_not_null(path);
+
+#ifdef __EMSCRIPTEN__
+    (void)path;
+    return 0;
+#else
+    char *library_path = ecs_module_library_path(path);
+    ecs_platform_library_t library = ecs_platform_library_open(library_path);
+    free(library_path);
+
+    if (library == NULL) {
+        return 0;
+    }
+
+    ecs_module_t *modules = ecs_modules.data;
+
+    for (uint32_t i = 1; i < ecs_modules.size; i++) {
+        if (modules[i].library == library) {
+            ecs_platform_library_close(library);
+            return (ecs_module_id_t)i;
+        }
+    }
+
+    ecs_module_dynamic_import_t import;
+    {
+        void *symbol =
+            ecs_platform_library_symbol(library, "ecs_module_import");
+
+        if (!symbol) {
+            ecs_platform_library_close(library);
+            return 0;
+        }
+
+        memcpy(&import, &symbol, sizeof(import));
+    }
+
+    char *name = ecs_module_path_name(path);
+
+    ecs_module_t record = {
+        .id = NULL,
+        .name = name,
+        .owned_name = name,
+        .library = library,
+        .observer = UINT32_MAX,
+        .system = UINT16_MAX,
+        .enabled = true,
+    };
+
+    ecs_module_id_t previous;
+    ecs_module_id_t module = ecs_module_begin(record, &previous);
+
+    import();
+
+    ecs_module_end(previous);
+
+    return module;
+#endif
 }
 
 static void ecs_module_set_enabled(ecs_module_id_t module, bool enabled) {
@@ -7290,6 +7438,21 @@ void ecs_platform_thread_join(ecs_platform_thread_t *thread) {
     thread->handle = NULL;
 }
 
+ecs_platform_library_t ecs_platform_library_open(const char *path) {
+    return (ecs_platform_library_t)LoadLibraryA(path);
+}
+
+void *ecs_platform_library_symbol(
+    ecs_platform_library_t library,
+    const char *name
+) {
+    return (void *)GetProcAddress((HMODULE)library, name);
+}
+
+void ecs_platform_library_close(ecs_platform_library_t library) {
+    FreeLibrary((HMODULE)library);
+}
+
 uint32_t ecs_platform_hardware_thread_count(void) {
     SYSTEM_INFO info;
     GetSystemInfo(&info);
@@ -7300,6 +7463,49 @@ uint32_t ecs_platform_hardware_thread_count(void) {
 
 #include <stdlib.h>
 #include <unistd.h>
+
+#ifndef __EMSCRIPTEN__
+#include <dlfcn.h>
+#endif
+
+#ifdef __EMSCRIPTEN__
+
+ecs_platform_library_t ecs_platform_library_open(const char *path) {
+    (void)path;
+    return NULL;
+}
+
+void *ecs_platform_library_symbol(
+    ecs_platform_library_t library,
+    const char *name
+) {
+    (void)library;
+    (void)name;
+    return NULL;
+}
+
+void ecs_platform_library_close(ecs_platform_library_t library) {
+    (void)library;
+}
+
+#else
+
+ecs_platform_library_t ecs_platform_library_open(const char *path) {
+    return dlopen(path, RTLD_NOW | RTLD_LOCAL);
+}
+
+void *ecs_platform_library_symbol(
+    ecs_platform_library_t library,
+    const char *name
+) {
+    return dlsym(library, name);
+}
+
+void ecs_platform_library_close(ecs_platform_library_t library) {
+    dlclose(library);
+}
+
+#endif
 
 uint32_t ecs_platform_hardware_thread_count(void) {
     long count = sysconf(_SC_NPROCESSORS_ONLN);
@@ -8892,7 +9098,6 @@ void ecs_fini(void) {
     ecs_table_index_fini();
     ecs_observer_index_fini();
     ecs_system_index_fini();
-    ecs_module_storage_fini();
     ecs_query_index_fini();
     ecs_resource_storage_fini();
     sicore_vec_fini(
@@ -8905,6 +9110,7 @@ void ecs_fini(void) {
     ecs_relation_index_fini();
     sireflect_fini();
     sicore_map_fini(&name_map);
+    ecs_module_storage_fini();
 #ifndef NDEBUG
     ecs_world_started = false;
 #endif

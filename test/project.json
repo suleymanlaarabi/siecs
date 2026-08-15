@@ -4,7 +4,8 @@
   "value": {
     "public": false,
     "clangd": true,
-    "use": ["siecs", "sijson", "sireflect", "sicore"]
+    "use": ["siecs", "sijson", "sireflect", "sicore"],
+    "use_runtime": ["siecs.test.my_module"]
   },
   "lang.c": {
     "c-standard": "c17",
@@ -207,6 +208,8 @@
           "enable",
           "disabled_import",
           "double_import_is_noop",
+          "dynamic_load",
+          "dynamic_missing",
           "owns_queries_created_during_import",
           "forgets_manually_destroyed_query",
           "query_id_reuse_does_not_keep_old_owner",

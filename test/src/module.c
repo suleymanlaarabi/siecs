@@ -1,5 +1,8 @@
+#include "platform.h"
 #include "siecs.h"
 #include <siecs_test.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 ECS_COMPONENT_DECLARE(ModulePosition, { int value; });
 ECS_COMPONENT_DECLARE(ModuleVelocity, { int value; });
@@ -23,6 +26,58 @@ static uint32_t module_physics_import_calls;
 static uint32_t module_render_import_calls;
 static int module_last_velocity;
 static ecs_query_id_t module_import_query;
+
+typedef struct {
+    int value;
+} PluginPositionValue;
+
+static const char *module_plugin_path(void) {
+#ifdef _WIN32
+    return "plugins/my_module.dll";
+#elif defined(__APPLE__)
+    return "plugins/my_module.dylib";
+#else
+    return "plugins/my_module.so";
+#endif
+}
+
+static void module_plugin_copy(void) {
+    const char *target = getenv("BAKE_TARGET");
+    char source[1024];
+
+#ifdef _WIN32
+    snprintf(source, sizeof(source), "%s/lib/siecs_test_my_module.dll", target);
+#elif defined(__APPLE__)
+    snprintf(
+        source,
+        sizeof(source),
+        "%s/lib/libsiecs_test_my_module.dylib",
+        target
+    );
+#else
+    snprintf(
+        source,
+        sizeof(source),
+        "%s/lib/libsiecs_test_my_module.so",
+        target
+    );
+#endif
+
+    FILE *input = fopen(source, "rb");
+    test_not_null(input);
+
+    FILE *output = fopen(module_plugin_path(), "wb");
+    test_not_null(output);
+
+    char buffer[4096];
+    size_t size;
+    while ((size = fread(buffer, 1, sizeof(buffer), input))) {
+        fwrite(buffer, 1, size, output);
+    }
+
+    fclose(output);
+    fclose(input);
+}
 
 static void module_reset(void) {
     module_system_calls = 0;
@@ -204,6 +259,79 @@ void module_double_import_is_noop(void) {
     test_int(1, module_physics_import_calls);
     test_int(5, module_last_velocity);
 
+    ecs_fini();
+}
+
+void module_dynamic_load(void) {
+    module_plugin_copy();
+
+    ecs_init();
+    ecs_module_id_t first = ecs_module_load("plugins/my_module");
+
+    test_true(first != 0);
+    test_str("my_module", ecs_module_name(first));
+    test_true(ecs_module_is_enabled(first));
+
+    ecs_platform_library_t library =
+        ecs_platform_library_open(module_plugin_path());
+    test_not_null(library);
+
+    ecs_component_t *component =
+        ecs_platform_library_symbol(library, "_ecs_id_PluginPosition__");
+    uint32_t *import_count =
+        ecs_platform_library_symbol(library, "plugin_import_count");
+    uint32_t *system_count =
+        ecs_platform_library_symbol(library, "plugin_system_count");
+    uint32_t *observer_count =
+        ecs_platform_library_symbol(library, "plugin_observer_count");
+
+    test_not_null(component);
+    test_not_null(import_count);
+    test_not_null(system_count);
+    test_not_null(observer_count);
+
+    ecs_entity_t entity = ecs_new();
+    PluginPositionValue value = { 10 };
+    ecs_set_cid(entity, *component, &value);
+    ecs_progress();
+
+    test_int(11, ((PluginPositionValue *)ecs_get_cid(entity, *component))->value);
+    test_int(1, *system_count);
+    test_int(1, *observer_count);
+
+    ecs_module_disable(first);
+    test_false(ecs_module_is_enabled(first));
+    value.value = 20;
+    ecs_set_cid(entity, *component, &value);
+    ecs_progress();
+
+    test_int(20, ((PluginPositionValue *)ecs_get_cid(entity, *component))->value);
+    test_int(1, *system_count);
+    test_int(1, *observer_count);
+
+    ecs_module_enable(first);
+    test_true(ecs_module_is_enabled(first));
+    value.value = 30;
+    ecs_set_cid(entity, *component, &value);
+    ecs_progress();
+
+    test_int(31, ((PluginPositionValue *)ecs_get_cid(entity, *component))->value);
+    test_int(2, *system_count);
+    test_int(2, *observer_count);
+
+    ecs_module_id_t second = ecs_module_load("plugins/my_module");
+    test_int(first, second);
+    test_int(1, *import_count);
+
+    ecs_platform_library_close(library);
+    ecs_fini();
+
+    remove(module_plugin_path());
+}
+
+void module_dynamic_missing(void) {
+    ecs_init();
+    test_int(0, ecs_module_load("plugins/module_that_does_not_exist"));
     ecs_fini();
 }
 
