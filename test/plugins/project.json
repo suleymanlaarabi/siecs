@@ -1,0 +1,12 @@
+{
+  "id": "siecs.test.my_module",
+  "type": "package",
+  "value": {
+    "public": true,
+    "use": ["siecs"]
+  },
+  "lang.c": {
+    "c-standard": "c17",
+    "export-symbols": true
+  }
+}

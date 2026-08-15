@@ -31,43 +31,36 @@ jobs:
             compiler: Clang
             cc: clang-18
             cxx: clang++-18
-            compiler_package: clang-18
             config: debug
           - os: ubuntu-24.04
             compiler: Clang
             cc: clang-18
             cxx: clang++-18
-            compiler_package: clang-18
             config: release
           - os: ubuntu-24.04
             compiler: Clang
             cc: clang-18
             cxx: clang++-18
-            compiler_package: clang-18
             config: asan
           - os: ubuntu-24.04
             compiler: Clang
             cc: clang-18
             cxx: clang++-18
-            compiler_package: clang-18
             config: ubsan
           - os: ubuntu-24.04
             compiler: Clang
             cc: clang-18
             cxx: clang++-18
-            compiler_package: clang-18
             config: lsan
           - os: ubuntu-24.04
             compiler: GCC
             cc: gcc-14
             cxx: g++-14
-            compiler_package: gcc-14 g++-14
             config: debug
           - os: macos-latest
             compiler: Clang
             cc: clang
             cxx: clang++
-            compiler_package: clang
             config: debug
 
     env:
@@ -76,12 +69,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-
-      - name: Install compiler
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ${{ matrix.compiler_package }}
 
       - name: Install bake
         run: |
@@ -159,11 +146,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-
-      - name: Install toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang make
 
       - name: Install bake
         run: |

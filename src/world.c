@@ -63,7 +63,6 @@ void ecs_fini(void) {
     ecs_table_index_fini();
     ecs_observer_index_fini();
     ecs_system_index_fini();
-    ecs_module_storage_fini();
     ecs_query_index_fini();
     ecs_resource_storage_fini();
     sicore_vec_fini(
@@ -76,6 +75,7 @@ void ecs_fini(void) {
     ecs_relation_index_fini();
     sireflect_fini();
     sicore_map_fini(&name_map);
+    ecs_module_storage_fini();
 #ifndef NDEBUG
     ecs_world_started = false;
 #endif

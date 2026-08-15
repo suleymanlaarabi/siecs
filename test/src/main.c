@@ -170,6 +170,8 @@ void module_name_returns_imported_name(void);
 void module_enable(void);
 void module_disabled_import(void);
 void module_double_import_is_noop(void);
+void module_dynamic_load(void);
+void module_dynamic_missing(void);
 void module_owns_queries_created_during_import(void);
 void module_forgets_manually_destroyed_query(void);
 void module_query_id_reuse_does_not_keep_old_owner(void);
@@ -781,6 +783,14 @@ bake_test_case module_testcases[] = {
         module_double_import_is_noop
     },
     {
+        "dynamic_load",
+        module_dynamic_load
+    },
+    {
+        "dynamic_missing",
+        module_dynamic_missing
+    },
+    {
         "owns_queries_created_during_import",
         module_owns_queries_created_during_import
     },
@@ -860,7 +870,7 @@ static bake_test_suite suites[] = {
         "module",
         NULL,
         NULL,
-        9,
+        11,
         module_testcases
     }
 };

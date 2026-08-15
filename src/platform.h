@@ -58,5 +58,10 @@ void ecs_platform_thread_join(ecs_platform_thread_t *thread);
 
 uint32_t ecs_platform_hardware_thread_count(void);
 
+typedef void *ecs_platform_library_t;
+
+ecs_platform_library_t ecs_platform_library_open(const char *path);
+void *ecs_platform_library_symbol(ecs_platform_library_t library, const char *name);
+void ecs_platform_library_close(ecs_platform_library_t library);
 
 #endif

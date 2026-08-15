@@ -907,6 +907,8 @@ typedef struct ecs_table_s ecs_table_t;
  */
 typedef void (*ecs_module_import_t)(const void *desc);
 
+typedef void (*ecs_module_dynamic_import_t)(void);
+
 /*
  * Module registration descriptor.
  *
@@ -1425,6 +1427,8 @@ SIECS_API void ecs_quit(void);
 
 /* Register/import a module descriptor and return its module id. */
 SIECS_API ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc);
+
+SIECS_API ecs_module_id_t ecs_module_load(const char *path);
 
 /*
  * Find an already imported module by its id storage.
