@@ -1,5 +1,5 @@
 #include "module.h"
-#include "platform_time.h"
+#include "platform.h"
 #include "siecs.h"
 #include "storage/system_index.h"
 #include "utils.h"
@@ -24,8 +24,11 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     ecs_assert_not_scheduler_parallel("system registration");
     ecs_assert_not_null(desc);
     ecs_assert(desc->callback, "system requires callback function\n");
-    ecs_assert(ecs_system_index_get_phase(desc->phase) != NULL,
-               "invalid system phase: %u\n", desc->phase);
+    ecs_assert(
+        ecs_system_index_get_phase(desc->phase) != NULL,
+        "invalid system phase: %u\n",
+        desc->phase
+    );
 
     const bool has_query = desc->query.terms[0].id || desc->query.relations[0].id ||
                            desc->query.order_by.func || desc->query.is_a;
@@ -75,13 +78,15 @@ void ecs_run_phase(ecs_phase_t phase) {
     }
 
     pinfo = ecs_system_index_get_phase(phase);
-    if (!pinfo) return;
+    if (!pinfo)
+        return;
 
     const ecs_system_id_t *order = index->execution_order.data;
     uint32_t at = pinfo->plan_first, end = at + pinfo->plan_count;
     while (at < end) {
         uint32_t first = at;
-        while (at < end && order[at]) at++;
+        while (at < end && order[at])
+            at++;
         uint32_t count = at - first;
         const ecs_system_id_t *systems = order + first;
         if (!ecs_worker_pool_enabled(&ecs_world.worker_pool) || count == 1) {
@@ -138,7 +143,6 @@ bool ecs_progress(void) {
     }
 
     return !ecs_world.exit;
-
 }
 
 void ecs_run(void) {

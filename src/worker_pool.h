@@ -2,7 +2,7 @@
 #define SIECS_WORKER_POOL_H
 
 #include "command_buffer.h"
-#include "platform_thread.h"
+#include "platform.h"
 #include <stdatomic.h>
 #include <stdint.h>
 

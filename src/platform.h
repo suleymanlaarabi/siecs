@@ -1,8 +1,11 @@
-#ifndef SIECS_PLATFORM_THREAD_H
-#define SIECS_PLATFORM_THREAD_H
+#ifndef SIECS_PLATFORM_H
+#define SIECS_PLATFORM_H
 
 #include <stdbool.h>
 #include <stdint.h>
+
+double ecs_platform_time_now_sec(void);
+void ecs_platform_time_sleep_sec(double seconds);
 
 #ifdef _WIN32
 #include <windows.h>
@@ -54,5 +57,6 @@ void ecs_platform_thread_join(ecs_platform_thread_t *thread);
 #endif
 
 uint32_t ecs_platform_hardware_thread_count(void);
+
 
 #endif
