@@ -43,6 +43,21 @@ void ecs_platform_thread_join(ecs_platform_thread_t *thread) {
     thread->handle = NULL;
 }
 
+ecs_platform_library_t ecs_platform_library_open(const char *path) {
+    return (ecs_platform_library_t)LoadLibraryA(path);
+}
+
+void *ecs_platform_library_symbol(
+    ecs_platform_library_t library,
+    const char *name
+) {
+    return (void *)GetProcAddress((HMODULE)library, name);
+}
+
+void ecs_platform_library_close(ecs_platform_library_t library) {
+    FreeLibrary((HMODULE)library);
+}
+
 uint32_t ecs_platform_hardware_thread_count(void) {
     SYSTEM_INFO info;
     GetSystemInfo(&info);
@@ -53,6 +68,49 @@ uint32_t ecs_platform_hardware_thread_count(void) {
 
 #include <stdlib.h>
 #include <unistd.h>
+
+#ifndef __EMSCRIPTEN__
+#include <dlfcn.h>
+#endif
+
+#ifdef __EMSCRIPTEN__
+
+ecs_platform_library_t ecs_platform_library_open(const char *path) {
+    (void)path;
+    return NULL;
+}
+
+void *ecs_platform_library_symbol(
+    ecs_platform_library_t library,
+    const char *name
+) {
+    (void)library;
+    (void)name;
+    return NULL;
+}
+
+void ecs_platform_library_close(ecs_platform_library_t library) {
+    (void)library;
+}
+
+#else
+
+ecs_platform_library_t ecs_platform_library_open(const char *path) {
+    return dlopen(path, RTLD_NOW | RTLD_LOCAL);
+}
+
+void *ecs_platform_library_symbol(
+    ecs_platform_library_t library,
+    const char *name
+) {
+    return dlsym(library, name);
+}
+
+void ecs_platform_library_close(ecs_platform_library_t library) {
+    dlclose(library);
+}
+
+#endif
 
 uint32_t ecs_platform_hardware_thread_count(void) {
     long count = sysconf(_SC_NPROCESSORS_ONLN);

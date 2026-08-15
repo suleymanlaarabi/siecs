@@ -20,7 +20,7 @@
     "export-symbols": true,
     "include": ["src"],
     "${os linux}": {
-      "lib": ["pthread"],
+      "lib": ["pthread", "dl"],
       "${cfg debug}": {
         "export-symbols": true
       },
