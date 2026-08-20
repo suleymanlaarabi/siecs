@@ -46,7 +46,7 @@ int main(void) {
     ecs_observer(
         {
             .on = EcsOnSet,
-            .query = { .terms = { ecs_in(LeakCounter) } },
+            .query = { .components = { ecs_in(LeakCounter) } },
             .callback = on_counter_set,
         }
     );
@@ -55,7 +55,7 @@ int main(void) {
         {
             .name = "Count",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_inout(LeakCounter) } },
+            .query = { .components = { ecs_inout(LeakCounter) } },
             .callback = count_system,
         }
     );

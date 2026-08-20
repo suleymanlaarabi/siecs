@@ -58,7 +58,7 @@ tables correspondantes, puis parcourt chaque table par lots.
 <TabItem label="C">
 ```c
 ecs_query_id_t moving = ecs_query({
-    .terms = { ecs_inout(Position), ecs_in(Velocity) },
+    .components = { ecs_inout(Position), ecs_in(Velocity) },
 });
 
 ecs_iter_t it = ecs_query_iter(moving);

@@ -237,7 +237,7 @@ ecs_system({
     .name = "Move",
     .phase = EcsOnUpdate,
     .query = {
-        .terms = { ecs_inout(Position), ecs_in(Velocity) },
+        .components = { ecs_inout(Position), ecs_in(Velocity) },
     },
     .callback = move_system,
 });
@@ -257,7 +257,8 @@ ecs::system("Move").each([](
 </TabItem>
 </Tabs>
 
-The resource is not part of the query. The system above matches entities with
+The resource is declared in `query.resources` as access metadata. It is never a
+component, field, or archetype criterion. The system above matches entities with
 `Position` and `Velocity`; it does not require entities to have `Time`.
 
 ## ID-based API
@@ -359,3 +360,6 @@ value is stored once in the world and is independent from table iteration.
 
 For hot C systems, resolve the resource once before the loop over `it->count`,
 then reuse the pointer for every entity in the batch.
+
+In typed C++, `ecs::res<const T>` declares `EcsIn` and `ecs::res<T>` declares
+`EcsInOut` in `query.resources`. Neither form creates a component term.

@@ -4,11 +4,13 @@ ECS_COMPONENT_DECLARE(QueryPosition, { int value; });
 ECS_COMPONENT_DECLARE(QueryVelocity, { int value; });
 ECS_COMPONENT_DECLARE(QueryMass, { int value; });
 ECS_COMPONENT_DECLARE(QueryDisabled, { int value; });
+ECS_RESOURCE_DECLARE(QueryResource, { int value; });
 
 ECS_COMPONENT_DEFINE(QueryPosition, .inheritance = EcsInheritShared);
 ECS_COMPONENT_DEFINE(QueryVelocity);
 ECS_COMPONENT_DEFINE(QueryMass);
 ECS_COMPONENT_DEFINE(QueryDisabled);
+ECS_RESOURCE_DEFINE(QueryResource);
 
 static void query_test_world(void) {
     ecs_init();
@@ -17,6 +19,7 @@ static void query_test_world(void) {
     ECS_COMPONENT_REGISTER(QueryVelocity);
     ECS_COMPONENT_REGISTER(QueryMass);
     ECS_COMPONENT_REGISTER(QueryDisabled);
+    ECS_RESOURCE_REGISTER(QueryResource);
 
 }
 
@@ -34,7 +37,7 @@ void query_terms_field_order(void) {
 
     ecs_query_id_t query = ecs_query(
         {
-            .terms = {
+            .components = {
                 ecs_inout(QueryPosition),
                 ecs_filter(QueryMass),
                 ecs_in(QueryVelocity),
@@ -61,6 +64,41 @@ void query_terms_field_order(void) {
     ecs_fini();
 }
 
+void query_resources_do_not_affect_matching_or_fields(void) {
+    query_test_world();
+    ecs_entity_t entity = query_test_entity(10, 20, 30);
+    ecs_query_id_t query = ecs_query({
+        .components = { ecs_in(QueryPosition), ecs_in(QueryVelocity) },
+        .resources = { ecs_in(QueryResource) },
+    });
+    ecs_iter_t it = ecs_query_iter(query);
+    test_true(ecs_iter_next(&it));
+    test_int(1, it.count);
+    test_assert(it.entities[0] == entity);
+    QueryPosition *position = ecs_field(&it, 0);
+    QueryVelocity *velocity = ecs_field(&it, 1);
+    test_not_null(position);
+    test_not_null(velocity);
+    test_int(10, position[0].value);
+    test_int(20, velocity[0].value);
+    test_false(ecs_iter_next(&it));
+    ecs_query_fini(query);
+    ecs_fini();
+}
+
+void query_resource_only_has_no_entity_batches(void) {
+    query_test_world();
+    query_test_entity(10, 20, 30);
+    ecs_query_id_t query = ecs_query({
+        .resources = { ecs_in(QueryResource) },
+    });
+    test_uint(0, ecs_query_count(query));
+    ecs_iter_t it = ecs_query_iter(query);
+    test_false(ecs_iter_next(&it));
+    ecs_query_fini(query);
+    ecs_fini();
+}
+
 void query_count_matches_current_query_entities(void) {
     query_test_world();
 
@@ -70,7 +108,7 @@ void query_count_matches_current_query_entities(void) {
     ecs_add(excluded, Disabled);
 
     ecs_query_id_t query =
-        ecs_query({ .terms = { ecs_in(QueryPosition) } });
+        ecs_query({ .components = { ecs_in(QueryPosition) } });
 
     test_uint(2, ecs_query_count(query));
 
@@ -91,7 +129,7 @@ void query_out_term_matches_and_returns_field(void) {
     query_test_world();
     ecs_entity_t entity = query_test_entity(1, 2, 3);
 
-    ecs_query_id_t query = ecs_query({ .terms = { ecs_out(QueryPosition) } });
+    ecs_query_id_t query = ecs_query({ .components = { ecs_out(QueryPosition) } });
     ecs_iter_t it = ecs_query_iter(query);
 
     test_true(ecs_iter_next(&it));
@@ -113,7 +151,7 @@ void query_not_excludes_tables(void) {
 
     ecs_query_id_t query = ecs_query(
         {
-            .terms = {
+            .components = {
                 ecs_in(QueryPosition),
                 ecs_not(QueryDisabled),
             },
@@ -138,7 +176,7 @@ void query_excludes_disabled_by_default(void) {
     ecs_entity_t disabled = query_test_entity(10, 20, 30);
     ecs_add(disabled, Disabled);
 
-    ecs_query_id_t query = ecs_query({ .terms = { ecs_in(QueryPosition) } });
+    ecs_query_id_t query = ecs_query({ .components = { ecs_in(QueryPosition) } });
 
     ecs_iter_t it = ecs_query_iter(query);
     test_true(ecs_iter_next(&it));
@@ -159,7 +197,7 @@ void query_can_include_disabled_explicitly(void) {
     ecs_add(disabled, Disabled);
 
     ecs_query_id_t query =
-        ecs_query({ .terms = { ecs_in(QueryPosition), ecs_filter(Disabled) } });
+        ecs_query({ .components = { ecs_in(QueryPosition), ecs_filter(Disabled) } });
 
     ecs_iter_t it = ecs_query_iter(query);
     test_true(ecs_iter_next(&it));
@@ -181,7 +219,7 @@ void query_excludes_abstract_by_default(void) {
     ecs_entity_t abstract = query_test_entity(10, 20, 30);
     ecs_add(abstract, Abstract);
 
-    ecs_query_id_t query = ecs_query({ .terms = { ecs_in(QueryPosition) } });
+    ecs_query_id_t query = ecs_query({ .components = { ecs_in(QueryPosition) } });
 
     ecs_iter_t it = ecs_query_iter(query);
     test_true(ecs_iter_next(&it));
@@ -203,7 +241,7 @@ void query_can_include_abstract_explicitly(void) {
     ecs_add(abstract, Abstract);
 
     ecs_query_id_t query =
-        ecs_query({ .terms = { ecs_in(QueryPosition), ecs_filter(Abstract) } });
+        ecs_query({ .components = { ecs_in(QueryPosition), ecs_filter(Abstract) } });
 
     ecs_iter_t it = ecs_query_iter(query);
     test_true(ecs_iter_next(&it));
@@ -225,7 +263,7 @@ void query_optional_field_present(void) {
     query_test_entity(10, 20, 30);
 
     ecs_query_id_t query =
-        ecs_query({ .terms = { ecs_in_optional(QueryPosition), ecs_in(QueryVelocity) } });
+        ecs_query({ .components = { ecs_in_optional(QueryPosition), ecs_in(QueryVelocity) } });
     ecs_iter_t it = ecs_query_iter(query);
 
     test_true(ecs_iter_next(&it));
@@ -252,7 +290,7 @@ void query_optional_field_missing_keeps_field_order(void) {
 
     ecs_query_id_t query = ecs_query(
         {
-            .terms = {
+            .components = {
                 ecs_in_optional(QueryPosition),
                 ecs_inout(QueryVelocity),
             },
@@ -283,7 +321,7 @@ void query_inout_optional_mutates_when_present(void) {
     ecs_entity_t entity = query_test_entity(10, 20, 30);
 
     ecs_query_id_t query =
-        ecs_query({ .terms = { ecs_inout_optional(QueryPosition), ecs_in(QueryVelocity) } });
+        ecs_query({ .components = { ecs_inout_optional(QueryPosition), ecs_in(QueryVelocity) } });
     ecs_iter_t it = ecs_query_iter(query);
 
     test_true(ecs_iter_next(&it));
@@ -312,7 +350,7 @@ void query_inherited_field_is_shared(void) {
     ecs_entity_t entity = ecs_new();
     ecs_is_a(entity, base);
 
-    ecs_query_id_t query = ecs_query({ .terms = { ecs_in(QueryPosition) } });
+    ecs_query_id_t query = ecs_query({ .components = { ecs_in(QueryPosition) } });
     ecs_iter_t it = ecs_query_iter(query);
 
     bool found_shared = false;
@@ -344,7 +382,7 @@ void query_override_field_is_owned(void) {
     ecs_is_a(entity, base);
     ecs_set(entity, QueryPosition, { 100 });
 
-    ecs_query_id_t query = ecs_query({ .terms = { ecs_inout(QueryPosition) } });
+    ecs_query_id_t query = ecs_query({ .components = { ecs_inout(QueryPosition) } });
     ecs_iter_t it = ecs_query_iter(query);
 
     bool found_owned_override = false;
@@ -378,7 +416,7 @@ void query_inout_does_not_match_shared_inherited_field(void) {
     ecs_entity_t entity = ecs_new();
     ecs_is_a(entity, base);
 
-    ecs_query_id_t query = ecs_query({ .terms = { ecs_inout(QueryPosition) } });
+    ecs_query_id_t query = ecs_query({ .components = { ecs_inout(QueryPosition) } });
     ecs_iter_t it = ecs_query_iter(query);
 
     bool found_entity = false;
@@ -403,7 +441,7 @@ void query_inout_optional_ignores_shared_inherited_field(void) {
     ecs_entity_t entity = ecs_new();
     ecs_is_a(entity, base);
 
-    ecs_query_id_t query = ecs_query({ .terms = { ecs_inout_optional(QueryPosition) } });
+    ecs_query_id_t query = ecs_query({ .components = { ecs_inout_optional(QueryPosition) } });
     ecs_iter_t it = ecs_query_iter(query);
 
     bool found_entity = false;
@@ -435,7 +473,7 @@ void query_compact_field_kinds_preserve_none_owned_shared(void) {
 
     ecs_query_id_t query = ecs_query(
         {
-            .terms = {
+            .components = {
                 ecs_in_optional(QueryPosition),
                 ecs_inout(QueryVelocity),
                 ecs_inout_optional(QueryMass),
@@ -545,7 +583,7 @@ void query_is_a_with_component_terms(void) {
     ecs_query_id_t query = ecs_query(
         {
             .is_a = character,
-            .terms = {
+            .components = {
                 ecs_in(QueryPosition),
                 ecs_in(QueryVelocity),
             },
@@ -574,12 +612,12 @@ void query_ids_stay_valid_after_temporary_query_fini(void) {
     query_test_world();
     ecs_entity_t entity = query_test_entity(10, 20, 30);
 
-    ecs_query_id_t temporary = ecs_query({ .terms = { ecs_in(QueryVelocity) } });
-    ecs_query_id_t persistent = ecs_query({ .terms = { ecs_in(QueryPosition) } });
+    ecs_query_id_t temporary = ecs_query({ .components = { ecs_in(QueryVelocity) } });
+    ecs_query_id_t persistent = ecs_query({ .components = { ecs_in(QueryPosition) } });
 
     ecs_query_fini(temporary);
 
-    ecs_query_id_t reused = ecs_query({ .terms = { ecs_in(QueryMass) } });
+    ecs_query_id_t reused = ecs_query({ .components = { ecs_in(QueryMass) } });
 
     ecs_iter_t it = ecs_query_iter(persistent);
     test_true(ecs_iter_next(&it));
@@ -600,7 +638,7 @@ void query_fields_refresh_after_table_growth(void) {
     ecs_entity_t first = ecs_new();
     ecs_set(first, QueryPosition, { 1 });
 
-    ecs_query_id_t query = ecs_query({ .terms = { ecs_inout(QueryPosition) } });
+    ecs_query_id_t query = ecs_query({ .components = { ecs_inout(QueryPosition) } });
 
     ecs_entity_t last = 0;
     for (int32_t i = 2; i <= 64; i++) {

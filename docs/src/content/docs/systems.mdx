@@ -31,7 +31,7 @@ ecs_system_id_t Move = ecs_system({
     .name = "Move",
     .phase = EcsOnUpdate,
     .query = {
-        .terms = { ecs_inout(Position), ecs_in(Velocity) },
+        .components = { ecs_inout(Position), ecs_in(Velocity) },
     },
     .callback = move_system,
 });
@@ -69,7 +69,7 @@ To run a system only on disabled entities, mention `Disabled` explicitly:
 ecs_system({
     .name = "PausedDebug",
     .phase = EcsOnUpdate,
-    .query = { .terms = { ecs_in(Position), ecs_filter(Disabled) } },
+    .query = { .components = { ecs_in(Position), ecs_filter(Disabled) } },
     .callback = paused_debug_system,
 });
 ```
@@ -215,14 +215,14 @@ phase, use `after` when a system depends on another system having run first:
 ecs_system_id_t Integrate = ecs_system({
     .name = "Integrate",
     .phase = EcsOnUpdate,
-    .query = { .terms = { ecs_inout(Position), ecs_in(Velocity) } },
+    .query = { .components = { ecs_inout(Position), ecs_in(Velocity) } },
     .callback = integrate_system,
 });
 
 ecs_system({
     .name = "SyncTransform",
     .phase = EcsOnUpdate,
-    .query = { .terms = { ecs_in(Position), ecs_inout(Transform) } },
+    .query = { .components = { ecs_in(Position), ecs_inout(Transform) } },
     .callback = sync_transform_system,
     .after = { Integrate },
 });
@@ -263,7 +263,7 @@ or toggle it later:
 ecs_system_id_t Damage = ecs_system({
     .name = "Damage",
     .phase = EcsOnUpdate,
-    .query = { .terms = { ecs_inout(Health) } },
+    .query = { .components = { ecs_inout(Health) } },
     .callback = damage_system,
     .disabled = true,
 });

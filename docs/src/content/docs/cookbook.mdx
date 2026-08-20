@@ -81,7 +81,7 @@ auto child = ecs::entity::create().child_of(parent);
 <TabItem label="C">
 ```c
 ecs_query_id_t q = ecs_query({
-    .terms = { ecs_inout(Position), ecs_in_optional(Velocity) },
+    .components = { ecs_inout(Position), ecs_in_optional(Velocity) },
 });
 ```
 </TabItem>
@@ -133,7 +133,7 @@ static void OnPositionSet(ecs_observer_event_t *event) {
 
 ecs_observer({
     .on = EcsOnSet,
-    .query.terms = { ecs_in(Position) },
+    .query.components = { ecs_in(Position) },
     .callback = OnPositionSet,
 });
 ```

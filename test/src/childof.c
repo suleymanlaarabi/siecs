@@ -385,7 +385,7 @@ void childof_bydepth_depth_and_cascade(void) {
     ecs_relate(grandchild, ChildOf, child);
 
     ecs_query_id_t q = ecs_query({
-        .terms = { ecs_in(RelValue) },
+        .components = { ecs_in(RelValue) },
         .order_by = ecs_order_by_depth(ChildOf),
     });
     int expected = 0;
@@ -462,7 +462,7 @@ void childof_cascade_cache_accepts_new_depth(void) {
     ecs_entity_t root = ecs_new();
     ecs_set(root, RelValue, { 0 });
     ecs_query_id_t q = ecs_query({
-        .terms = { ecs_in(RelValue) },
+        .components = { ecs_in(RelValue) },
         .order_by = ecs_order_by_depth(ChildOf),
     });
 
@@ -500,7 +500,7 @@ void childof_bytarget_exact_query_and_retarget(void) {
     ecs_relate(y, GroupOf, a);
 
     ecs_query_id_t q = ecs_query({
-        .terms = { ecs_in(RelValue) },
+        .components = { ecs_in(RelValue) },
         .relations = { ecs_to(GroupOf, a) },
     });
     test_int(2, ecs_query_count(q));
@@ -559,7 +559,7 @@ void childof_bytarget_order_by_target(void) {
     ecs_entity_t first = ecs_new();
     ecs_entity_t second = ecs_new();
     ecs_query_id_t q = ecs_query({
-        .terms = { ecs_in(RelValue) },
+        .components = { ecs_in(RelValue) },
         .order_by = ecs_order_by_target(GroupOf),
     });
 
@@ -583,7 +583,7 @@ void childof_bytarget_order_by_target(void) {
     ecs_query_fini(q);
 
     q = ecs_query({
-        .terms = { ecs_in(RelValue) },
+        .components = { ecs_in(RelValue) },
         .order_by = {
             .func = childof_order_by_target_desc,
             .data = ecs_rid(GroupOf),
@@ -696,7 +696,7 @@ void childof_up_finds_nearest_ancestor(void) {
     ecs_relate(leaf, LocatedIn, middle);
 
     ecs_query_id_t q = ecs_query({
-        .terms = { ecs_up(RelValue, LocatedIn) },
+        .components = { ecs_up(RelValue, LocatedIn) },
         .relations = { ecs_to(LocatedIn, middle) },
     });
     ecs_iter_t it = ecs_query_iter(q);
@@ -716,7 +716,7 @@ void childof_up_optional_returns_null(void) {
     ecs_entity_t source = ecs_new();
     ecs_relate(source, LocatedIn, target);
     ecs_query_id_t q = ecs_query({
-        .terms = { ecs_up_optional(RelValue, LocatedIn) },
+        .components = { ecs_up_optional(RelValue, LocatedIn) },
         .relations = { ecs_rel(LocatedIn) },
     });
     ecs_iter_t it = ecs_query_iter(q);
@@ -866,7 +866,7 @@ void childof_type_layout_stays_compact(void) {
     test_int(16, sizeof(ecs_type_pair_t));
     test_int(48, sizeof(ecs_query_t));
     test_int(16, sizeof(ecs_query_type_filter_t));
-    test_int(496, sizeof(ecs_query_cache_t));
+    test_int(560, sizeof(ecs_query_cache_t));
     test_int(32, sizeof(ecs_relation_record_t));
 }
 
@@ -879,19 +879,19 @@ void childof_query_slot_reuses_component_and_relation_terms(void) {
     ecs_set(member, RelValue, { 1 });
     ecs_relate(member, GroupOf, group);
 
-    ecs_query_id_t components = ecs_query({ .terms = { ecs_in(RelValue) } });
+    ecs_query_id_t components = ecs_query({ .components = { ecs_in(RelValue) } });
     test_uint(1, ecs_query_count(components));
     ecs_query_fini(components);
 
     ecs_query_id_t relation = ecs_query({
-        .terms = { ecs_in(RelValue) },
+        .components = { ecs_in(RelValue) },
         .relations = { ecs_to(GroupOf, group) },
     });
     test_uint(components, relation);
     test_uint(1, ecs_query_count(relation));
     ecs_query_fini(relation);
 
-    ecs_query_id_t components_again = ecs_query({ .terms = { ecs_filter(RelValue) } });
+    ecs_query_id_t components_again = ecs_query({ .components = { ecs_filter(RelValue) } });
     test_uint(components, components_again);
     test_uint(1, ecs_query_count(components_again));
     ecs_query_fini(components_again);

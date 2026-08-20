@@ -202,7 +202,7 @@ void entity_is_a_materializes_owned_components(void) {
     test_int(1, inherit_hook_add_calls);
     test_int(30, inherit_hook_last_value);
 
-    ecs_query_id_t owned_query = ecs_query({ .terms = { ecs_inout(InheritOwnedValue) } });
+    ecs_query_id_t owned_query = ecs_query({ .components = { ecs_inout(InheritOwnedValue) } });
     ecs_iter_t owned_it = ecs_query_iter(owned_query);
     bool found_owned_child = false;
     while (ecs_iter_next(&owned_it)) {
@@ -214,7 +214,7 @@ void entity_is_a_materializes_owned_components(void) {
     test_true(found_owned_child);
     ecs_query_fini(owned_query);
 
-    ecs_query_id_t shared_query = ecs_query({ .terms = { ecs_in(InheritSharedValue) } });
+    ecs_query_id_t shared_query = ecs_query({ .components = { ecs_in(InheritSharedValue) } });
     ecs_iter_t shared_it = ecs_query_iter(shared_query);
     bool found_shared_child = false;
     while (ecs_iter_next(&shared_it)) {

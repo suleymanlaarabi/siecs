@@ -132,7 +132,7 @@ template <typename T> class observer : public query {
             "observer callbacks must read at least one component or observe relation data"
         );
 
-        ecs::detail::append_callback_terms<args>(this->desc, term_index);
+        ecs::detail::append_callback_terms<args>(this->desc, component_index, resource_index);
 
         ecs_observer_desc_t observer_desc = {
             .on = detail::ecs_cpp_event_id<T>(),

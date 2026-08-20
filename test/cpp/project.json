@@ -41,10 +41,10 @@
           "presence_checks_do_not_register",
           "system_read",
           "system_write",
-          "system_without_query_runs_once",
+          "system_resource_only_runs_once",
           "system_empty_callback_runs_once",
           "query_read",
-          "does_not_create_query_term",
+          "does_not_create_component_term",
           "field_index_stays_correct",
           "cpp_raii_component_survives_table_migrations",
           "capturing_system_keeps_state",
@@ -74,7 +74,7 @@
           "does_not_match_missing_component",
           "resource_read",
           "resource_write",
-          "resource_does_not_create_query_term",
+          "resource_does_not_create_component_term",
           "resource_field_index_stays_correct",
           "relation_events"
         ]

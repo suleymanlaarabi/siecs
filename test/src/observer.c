@@ -42,7 +42,7 @@ void observer_enable(void) {
     ecs_observer_id_t observer = ecs_observer(
         {
             .on = EcsOnSet,
-            .query = { .terms = { ecs_in(ObserverValue) } },
+            .query = { .components = { ecs_in(ObserverValue) } },
             .callback = on_observer_value_set,
         }
     );
@@ -77,7 +77,7 @@ void observer_skips_disabled_by_default(void) {
     ecs_observer(
         {
             .on = EcsOnSet,
-            .query = { .terms = { ecs_in(ObserverValue) } },
+            .query = { .components = { ecs_in(ObserverValue) } },
             .callback = on_observer_value_set,
         }
     );
@@ -102,7 +102,7 @@ void observer_can_match_disabled_when_requested(void) {
     ecs_observer(
         {
             .on = EcsOnSet,
-            .query = { .terms = { ecs_in(ObserverValue), ecs_filter(Disabled) } },
+            .query = { .components = { ecs_in(ObserverValue), ecs_filter(Disabled) } },
             .callback = on_observer_value_set,
         }
     );
@@ -126,7 +126,7 @@ void observer_on_remove_runs_when_entity_is_killed(void) {
     ecs_observer(
         {
             .on = EcsOnRemove,
-            .query = { .terms = { ecs_in(ObserverValue) } },
+            .query = { .components = { ecs_in(ObserverValue) } },
             .callback = on_observer_value_remove,
         }
     );
