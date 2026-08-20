@@ -110,7 +110,7 @@ Les relations filtrent les tables ; elles ne créent pas de champ composant.
 <TabItem label="C">
 ```c
 ecs_query_id_t members = ecs_query({
-    .terms = { ecs_in(Position) },
+    .components = { ecs_in(Position) },
     .relations = { ecs_to(GroupOf, group) },
 });
 ```

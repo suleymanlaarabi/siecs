@@ -30,7 +30,7 @@ static void OnPositionSet(ecs_observer_event_t *event) {
 
 ecs_observer({
     .on = EcsOnSet,
-    .query.terms = { ecs_in(Position) },
+    .query.components = { ecs_in(Position) },
     .callback = OnPositionSet,
 });
 ```
@@ -104,7 +104,7 @@ ecs_event_t Damaged = ecs_event();
 
 ecs_observer({
     .on = Damaged,
-    .query.terms = { ecs_in(Health) },
+    .query.components = { ecs_in(Health) },
     .callback = on_damaged,
 });
 

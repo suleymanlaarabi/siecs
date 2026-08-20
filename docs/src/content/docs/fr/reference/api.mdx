@@ -127,7 +127,7 @@ correspondante sous forme de lot. Conservez un identifiant ou un
 <TabItem label="C">
 ```c
 ecs_query_id_t moving = ecs_query({
-    .terms = { ecs_inout(Position), ecs_in(Velocity) },
+    .components = { ecs_inout(Position), ecs_in(Velocity) },
 });
 
 ecs_iter_t it = ecs_query_iter(moving);
@@ -195,7 +195,7 @@ static void move_system(ecs_iter_t *it) {
 ecs_system({
     .name = "Move",
     .phase = EcsOnUpdate,
-    .query = { .terms = { ecs_inout(Position), ecs_in(Velocity) } },
+    .query = { .components = { ecs_inout(Position), ecs_in(Velocity) } },
     .callback = move_system,
 });
 ```
@@ -296,7 +296,7 @@ static void on_position_set(ecs_observer_event_t *event) {
 
 ecs_observer({
     .on = EcsOnSet,
-    .query = { .terms = { ecs_in(Position) } },
+    .query = { .components = { ecs_in(Position) } },
     .callback = on_position_set,
 });
 ```

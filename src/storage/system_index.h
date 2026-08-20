@@ -11,8 +11,7 @@ typedef struct {
     void (*user_data_dtor)(uintptr_t user_data);
     ecs_phase_t phase;
     ecs_system_id_t after;
-    uint32_t resource_accesses[ECS_SYSTEM_RESOURCE_CAPACITY * 2];
-    uint16_t resource_access_count;
+    bool iterates_query;
     ecs_system_id_t next_module;
     bool enabled;
     bool main_thread_only;
@@ -43,7 +42,9 @@ void ecs_system_index_fini(void);
 ecs_phase_t ecs_phase_register(const ecs_phase_desc_t *desc);
 ecs_phase_info_t *ecs_system_index_get_phase(ecs_phase_t phase);
 
-ecs_system_id_t ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query_id_t qid);
+ecs_system_id_t ecs_system_index_create(const ecs_system_desc_t *desc,
+                                        ecs_query_id_t qid,
+                                        bool iterates_query);
 ecs_system_t *ecs_system_index_get(ecs_system_id_t system);
 void ecs_system_index_build_plan(void);
 

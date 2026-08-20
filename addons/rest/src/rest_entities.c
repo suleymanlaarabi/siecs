@@ -3,7 +3,7 @@
 
 static ecs_query_id_t rest_entity_query(ecs_query_relation_term_t relation) {
     return ecs_query({
-        .terms = {
+        .components = {
             ecs_in_optional(Abstract),
             ecs_in_optional(Disabled),
         },

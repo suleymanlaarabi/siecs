@@ -123,10 +123,10 @@ static void make_varied_query_tables(
 }
 
 static ecs_query_desc_t
-make_query_desc(const ecs_component_t *fields, uint32_t field_count, ecs_term_access_t access) {
+make_query_desc(const ecs_component_t *fields, uint32_t field_count, ecs_access_t access) {
     ecs_query_desc_t desc = { 0 };
     for (uint32_t i = 0; i < field_count; i++) {
-        desc.terms[i] = (ecs_query_term_t){ .id = fields[i], .access = access };
+        desc.components[i] = (ecs_component_term_t){ .id = fields[i], .access = access };
     }
     return desc;
 }
@@ -140,7 +140,7 @@ BENCH_SETUP(query_init_rarest_positive, {
     ecs_component_t rare = ecs_component({ 0 });
     make_query_tables(common, rare, table_count, rare_table_count);
     ecs_query_desc_t desc = {
-        .terms = {
+        .components = {
             { .id = common, .access = EcsFilter },
             { .id = rare, .access = EcsFilter },
         },
@@ -215,7 +215,7 @@ BENCH_SETUP(query_init_three_positive_one_not, {
     make_varied_query_tables(positive, 3, &excluded, 1, table_count);
 
     ecs_query_desc_t desc = {
-        .terms = {
+        .components = {
             { .id = positive[0], .access = EcsFilter },
             { .id = positive[1], .access = EcsFilter },
             { .id = positive[2], .access = EcsFilter },
@@ -242,7 +242,7 @@ BENCH_SETUP(query_init_four_positive_one_not, {
     make_varied_query_tables(positive, 4, &excluded, 1, table_count);
 
     ecs_query_desc_t desc = {
-        .terms = {
+        .components = {
             { .id = positive[0], .access = EcsFilter },
             { .id = positive[1], .access = EcsFilter },
             { .id = positive[2], .access = EcsFilter },
@@ -270,7 +270,7 @@ BENCH_SETUP(query_init_three_positive_two_not, {
     make_varied_query_tables(positive, 3, excluded, 2, table_count);
 
     ecs_query_desc_t desc = {
-        .terms = {
+        .components = {
             { .id = positive[0], .access = EcsFilter },
             { .id = positive[1], .access = EcsFilter },
             { .id = positive[2], .access = EcsFilter },
@@ -298,7 +298,7 @@ BENCH_SETUP(query_init_four_positive_two_not, {
     make_varied_query_tables(positive, 4, excluded, 2, table_count);
 
     ecs_query_desc_t desc = {
-        .terms = {
+        .components = {
             { .id = positive[0], .access = EcsFilter },
             { .id = positive[1], .access = EcsFilter },
             { .id = positive[2], .access = EcsFilter },
@@ -841,7 +841,7 @@ BENCH_SETUP(scheduler_loaded_phase, {
         ecs_system({
             .name = "SchedulerLoaded",
             .phase = EcsOnUpdate,
-            .query = { .terms = { { component, EcsIn } } },
+            .query = { .components = { { component, EcsIn } } },
             .callback = scheduler_bench_system,
         });
     }

@@ -13,7 +13,7 @@ correspondante est parcourue sous forme d’un lot d’entités.
 <TabItem label="C">
 ```c
 ecs_query_id_t moving = ecs_query({
-    .terms = { ecs_inout(Position), ecs_in(Velocity) },
+    .components = { ecs_inout(Position), ecs_in(Velocity) },
 });
 
 ecs_iter_t it = ecs_query_iter(moving);
@@ -70,7 +70,7 @@ de champ composant :
 <TabItem label="C">
 ```c
 ecs_query_id_t members = ecs_query({
-    .terms = { ecs_in(Position) },
+    .components = { ecs_in(Position) },
     .relations = { ecs_to(GroupOf, group) },
 });
 ```
@@ -105,7 +105,7 @@ Utilisez `is_a` pour limiter une requête aux entités qui héritent d’une bas
 <TabItem label="C">
 ```c
 ecs_query_id_t enemies = ecs_query({
-    .terms = { ecs_in(Position) },
+    .components = { ecs_in(Position) },
     .is_a = enemy_base,
 });
 ```
@@ -127,7 +127,7 @@ les tables, pas les entités d’une même table :
 <TabItem label="C">
 ```c
 ecs_query_id_t hierarchy = ecs_query({
-    .terms = { ecs_in(Position) },
+    .components = { ecs_in(Position) },
     .relations = { ecs_rel(ChildOf) },
     .order_by = ecs_order_by_depth(ChildOf),
 });
@@ -203,3 +203,29 @@ un `query_handle` C++ construit une seule fois. Ne conservez pas les pointeurs
 de composants à travers une mutation structurelle qui peut déplacer une
 entité. Les identifiants de requête restent valides lorsque les tables sont
 créées ou agrandies ; le cache actualise ses vues de champs.
+
+## Accès aux ressources
+
+Les ressources utilisent leur propre namespace pour déclarer les dépendances
+du scheduler :
+
+```c
+ecs_query({
+    .components = {
+        ecs_inout(Position),
+        ecs_in(Velocity),
+    },
+    .resources = {
+        ecs_in(Time),
+        ecs_inout(Gravity),
+    },
+});
+```
+
+`ECS_QUERY_TERM_CAPACITY` limite les components et
+`ECS_QUERY_RESOURCE_CAPACITY` limite les accès resources. `EcsIn` est une
+lecture du scheduler ; `EcsOut` et `EcsInOut` sont des écritures. La présence
+d’une resource n’est jamais une condition : elle ne modifie ni le matching ni
+les fields. Les modes optional, filter, not et up sont réservés aux components.
+Une query composée uniquement de resources possède un cache mais zéro batch
+d’entités.

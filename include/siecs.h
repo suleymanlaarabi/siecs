@@ -116,11 +116,10 @@ typedef struct ecs_table_s ecs_table_t;
 
 /* Maximum number of terms accepted by a query descriptor. */
 #define ECS_QUERY_TERM_CAPACITY 16
+#define ECS_QUERY_RESOURCE_CAPACITY 16
 #define ECS_QUERY_RELATION_CAPACITY 8
 /* Maximum number of explicit same-phase system dependencies. */
 #define ECS_SYSTEM_AFTER_CAPACITY 16
-/* Maximum resource ids declared as read/write by one system. */
-#define ECS_SYSTEM_RESOURCE_CAPACITY 8
 
 /*
  * Module import callback.
@@ -320,7 +319,7 @@ typedef struct {
   ecs_resource_hook_t on_remove;
 } ecs_resource_desc_t;
 
-/* Query term access mode. */
+/* Component and resource access mode. */
 typedef enum {
   EcsIn,    /* Component must exist and is returned by ecs_field for reading. */
   EcsOut,   /* Component must exist and is returned by ecs_field for writing. */
@@ -335,7 +334,7 @@ typedef enum {
   EcsInUp, /* Read the nearest inherited field through an acyclic ByTarget
               relation. */
   EcsInUpOptional, /* Same as EcsInUp, but permits a missing field. */
-} ecs_term_access_t;
+} ecs_access_t;
 
 /*
  * Query term descriptor.
@@ -344,9 +343,11 @@ typedef enum {
  * Fill this manually only for dynamic component ids.
  */
 typedef struct {
-  ecs_component_t id;
+  uint16_t id;
   uint32_t access;
-} ecs_query_term_t;
+} ecs_access_term_t;
+typedef ecs_access_term_t ecs_component_term_t;
+typedef ecs_access_term_t ecs_resource_term_t;
 
 #define ECS_QUERY_UP_ACCESS(access, relation)                                  \
   ((uint32_t)(access) | ((uint32_t)(relation) << 8))
@@ -379,16 +380,18 @@ typedef struct {
 /*
  * Query descriptor.
  *
- * terms is a zero-terminated component term list. Terms with EcsIn, EcsOut,
+ * components is a zero-terminated component term list. Terms with EcsIn, EcsOut,
  * EcsInOut, EcsInOptional and EcsInOutOptional are returned by ecs_field in
  * declaration order. Optional fields return NULL for tables without the
  * component. EcsFilter and EcsNot only affect table matching.
  *
- * A query may contain component terms, relation terms, a table order or an
- * is_a target.
+ * resources is a zero-terminated resource access list. Optional/filter/not/up
+ * modes apply only to components. Resources never affect matching or produce
+ * fields.
  */
 typedef struct {
-  ecs_query_term_t terms[ECS_QUERY_TERM_CAPACITY];
+  ecs_component_term_t components[ECS_QUERY_TERM_CAPACITY];
+  ecs_resource_term_t resources[ECS_QUERY_RESOURCE_CAPACITY];
   ecs_query_relation_term_t relations[ECS_QUERY_RELATION_CAPACITY];
   ecs_query_order_t order_by;
   ecs_entity_t is_a;
@@ -399,7 +402,7 @@ typedef struct {
  *
  * Example:
  *   ecs_query_id_t q = ecs_query({
- *       .terms = { ecs_inout(Position), ecs_in(Velocity), ecs_filter(Player) }
+ *       .components = { ecs_inout(Position), ecs_in(Velocity), ecs_filter(Player) }
  *   });
  */
 #ifdef __cplusplus
@@ -408,24 +411,24 @@ typedef struct {
 #define SIECS_LITERAL(type, ...) ((type){__VA_ARGS__})
 #endif
 /* Match a required component and expose it as a read-only field. */
-#define ecs_in(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsIn)
+#define ecs_in(cname) SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsIn)
 /* Writable required field. */
-#define ecs_out(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsOut)
+#define ecs_out(cname) SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsOut)
 /* Read/write required field. */
-#define ecs_inout(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsInOut)
+#define ecs_inout(cname) SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsInOut)
 /* Optional read-only field. */
-#define ecs_in_optional(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsInOptional)
+#define ecs_in_optional(cname) SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsInOptional)
 /* Optional read/write field. */
-#define ecs_inout_optional(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsInOutOptional)
+#define ecs_inout_optional(cname) SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsInOutOptional)
 /* Filter-only required component. */
-#define ecs_filter(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsFilter)
+#define ecs_filter(cname) SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsFilter)
 /* Excluded component. */
-#define ecs_not(cname) SIECS_LITERAL(ecs_query_term_t, ecs_id(cname), EcsNot)
+#define ecs_not(cname) SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsNot)
 #define ecs_up(cname, relation)                                                \
-  SIECS_LITERAL(ecs_query_term_t, ecs_id(cname),                               \
+  SIECS_LITERAL(ecs_access_term_t, ecs_id(cname),                               \
                 ECS_QUERY_UP_ACCESS(EcsInUp, ecs_rid(relation)))
 #define ecs_up_optional(cname, relation)                                       \
-  SIECS_LITERAL(ecs_query_term_t, ecs_id(cname),                               \
+  SIECS_LITERAL(ecs_access_term_t, ecs_id(cname),                               \
                 ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation)))
 #define ecs_rel(name)                                                          \
   SIECS_LITERAL(ecs_query_relation_term_t, 0, ecs_rid(name), EcsRelationRequired)
@@ -955,7 +958,7 @@ SIECS_API void ecs_kill(ecs_entity_t entity);
  *
  * Example:
  *   ecs_query_id_t q = ecs_query({
- *       .terms = { ecs_in(Position), ecs_in(Velocity) }
+ *       .components = { ecs_in(Position), ecs_in(Velocity) }
  *   });
  */
 #define ecs_query(...) ecs_query_init(&(ecs_query_desc_t)__VA_ARGS__)
@@ -974,20 +977,21 @@ SIECS_API void ecs_kill(ecs_entity_t entity);
  *   }
  */
 #define ecs_query_each(it, i, ...)                                             \
-  for (ecs_query_id_t _q = ecs_query({{__VA_ARGS__}}); _q;                     \
+  for (ecs_query_id_t _q = ecs_query({ .components = { __VA_ARGS__ } }); _q;   \
        ecs_query_fini(_q), _q = 0)                                             \
     for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)              \
       for (uint32_t i = 0; i < it.count; i++)
 
 /* Iterate entity ids instead of exposing component fields. */
 #define ecs_query_entities(entity, ...)                                        \
-  for (ecs_query_id_t _q = ecs_query({{__VA_ARGS__}}); _q;                     \
+  for (ecs_query_id_t _q = ecs_query({ .components = { __VA_ARGS__ } }); _q;   \
        ecs_query_fini(_q), _q = 0)                                             \
     for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)              \
       for (uint64_t i = 0, entity = *it.entities; i < it.count;                \
            i++, entity = it.entities[i])
 /*
- * Create a query. The query descriptor must read at least one component.
+ * Create a query. A query may contain components, resources, relations, is_a,
+ * or order_by. A query without a table criterion produces no entity batches.
  * Queries created during a module import inherit that module's lifetime.
  */
 SIECS_API ecs_query_id_t ecs_query_init(const ecs_query_desc_t *query);
@@ -1081,7 +1085,9 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
  * Declare and define a resource type.
  *
  * Resources use their own id space and are stored once per world. They are not
- * components, do not appear in queries, and do not consume component ids.
+ * components, do not consume component ids, and use their own namespace in
+ * ecs_query_desc_t.resources for scheduler access metadata. They never become
+ * components or fields.
  *
  * Use ECS_RESOURCE_DECLARE in headers and ECS_RESOURCE_DEFINE once in a C file,
  * or ECS_RESOURCE for local examples/tests.
@@ -1265,7 +1271,7 @@ typedef struct {
  * Example:
  *   ecs_observer({
  *       .on = EcsOnSet,
- *       .query.terms = { ecs_in(Position) },
+ *       .query.components = { ecs_in(Position) },
  *       .callback = on_position_set,
  *   });
  */
@@ -1426,11 +1432,9 @@ SIECS_API const char *ecs_phase_name(ecs_phase_t phase);
  * If query has terms, callback is called once per non-empty iterator batch
  * matching query. If query has no terms, the system runs once with an empty
  * iterator. phase controls when ecs_progress/ecs_run_phase executes the system.
- * after contains up to four system ids that must run before this system in the
- * same phase. read_resources and write_resources are zero-terminated lists of
- * resource ids used to determine scheduler conflicts; read/read access may
- * run concurrently. main_thread_only prevents the scheduler from dispatching
- * this system to a worker thread.
+ * after contains system ids that must run before this system in the same phase.
+ * Scheduler data dependencies come from query.components and query.resources.
+ * main_thread_only prevents worker dispatch.
  */
 typedef struct {
   const char *name;
@@ -1440,8 +1444,6 @@ typedef struct {
   void (*user_data_dtor)(uintptr_t user_data);
   ecs_phase_t phase;
   ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
-  ecs_resource_t read_resources[ECS_SYSTEM_RESOURCE_CAPACITY];
-  ecs_resource_t write_resources[ECS_SYSTEM_RESOURCE_CAPACITY];
   bool disabled;
   bool main_thread_only;
 } ecs_system_desc_t;
@@ -1453,7 +1455,10 @@ typedef struct {
  *   ecs_system({
  *       .name = "Move",
  *       .phase = EcsOnUpdate,
- *       .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
+ *       .query = {
+ *           .components = { ecs_inout(Position), ecs_in(Velocity) },
+ *           .resources = { ecs_in(DeltaTime) },
+ *       },
  *       .callback = Move,
  *   });
  */

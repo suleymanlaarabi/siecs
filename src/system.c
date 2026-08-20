@@ -2,6 +2,7 @@
 #include "platform.h"
 #include "siecs.h"
 #include "storage/system_index.h"
+#include "storage/query_index.h"
 #include "utils.h"
 #include "world_internal.h"
 #include <stdint.h>
@@ -30,11 +31,12 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
         desc->phase
     );
 
-    const bool has_query = desc->query.terms[0].id || desc->query.relations[0].id ||
-                           desc->query.order_by.func || desc->query.is_a;
+    const bool iterates_query = ecs_query_desc_tracks_tables(&desc->query);
+    const bool has_query = iterates_query || desc->query.resources[0].id;
     ecs_system_id_t system = ecs_system_index_create(
         desc,
-        has_query ? ecs_query_init(&desc->query) : ECS_SYSTEM_NO_QUERY
+        has_query ? ecs_query_init(&desc->query) : ECS_SYSTEM_NO_QUERY,
+        iterates_query
     );
     ecs_module_record_system(system);
     return system;
@@ -50,7 +52,7 @@ void ecs_run_system(ecs_system_id_t system) {
     }
 
     ecs_defer_begin();
-    if (sys->qid != ECS_SYSTEM_NO_QUERY) {
+    if (sys->iterates_query) {
         ecs_iter_t it = ecs_query_iter(sys->qid);
         it.user_data = sys->user_data;
         it.delta_time = ecs_world.delta_time;

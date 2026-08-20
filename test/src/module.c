@@ -112,7 +112,7 @@ void module_render_import(const module_render_props_t *props) {
     ecs_system(
         {
             .name = "Render",
-            .query = { .terms = { ecs_in(ModulePosition) } },
+            .query = { .components = { ecs_in(ModulePosition) } },
             .callback = module_render_system,
             .phase = EcsOnRender,
         }
@@ -129,7 +129,7 @@ void module_physics_import(const module_physics_props_t *props) {
     ecs_system(
         {
             .name = "Move",
-            .query = { .terms = { ecs_inout(ModulePosition), ecs_in(ModuleVelocity) } },
+            .query = { .components = { ecs_inout(ModulePosition), ecs_in(ModuleVelocity) } },
             .callback = module_move,
             .phase = EcsOnUpdate,
         }
@@ -140,7 +140,7 @@ void module_physics_import(const module_physics_props_t *props) {
     ecs_observer(
         {
             .on = EcsOnSet,
-            .query = { .terms = { ecs_in(ModulePosition) } },
+            .query = { .components = { ecs_in(ModulePosition) } },
             .callback = module_on_position_set,
         }
     );
@@ -148,7 +148,7 @@ void module_physics_import(const module_physics_props_t *props) {
 
 void module_query_import(const module_query_props_t *props) {
     (void)props;
-    module_import_query = ecs_query({ .terms = { ecs_in(ModulePosition) } });
+    module_import_query = ecs_query({ .components = { ecs_in(ModulePosition) } });
 }
 
 static ecs_entity_t module_entity(int position, int velocity) {
@@ -364,7 +364,7 @@ void module_query_id_reuse_does_not_keep_old_owner(void) {
     ecs_query_id_t old_query = module_import_query;
     ecs_query_fini(old_query);
 
-    ecs_query_id_t outside_query = ecs_query({ .terms = { ecs_in(ModulePosition) } });
+    ecs_query_id_t outside_query = ecs_query({ .components = { ecs_in(ModulePosition) } });
     test_int(old_query, outside_query);
     ecs_fini();
 }

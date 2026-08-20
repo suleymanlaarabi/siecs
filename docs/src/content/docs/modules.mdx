@@ -69,7 +69,7 @@ void physics_import(const physics_props_t *props) {
         .name = "Move",
         .phase = EcsOnUpdate,
         .query = {
-            .terms = { ecs_inout(Position), ecs_in(Velocity) },
+            .components = { ecs_inout(Position), ecs_in(Velocity) },
         },
         .callback = move_system,
     });

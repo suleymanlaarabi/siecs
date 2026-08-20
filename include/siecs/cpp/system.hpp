@@ -76,7 +76,7 @@ class system : protected query {
     template <typename F> ecs_system_id_t each(F &&func) {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
-        detail::append_callback_terms<args>(desc, term_index);
+        detail::append_callback_terms<args>(desc, component_index, resource_index);
         callback *state = new callback(std::forward<F>(func));
 
         _system.query = this->desc;
