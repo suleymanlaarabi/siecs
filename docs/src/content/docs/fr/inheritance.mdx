@@ -113,7 +113,7 @@ Une requête en lecture peut voir un composant hérité, qu’il soit owned ou s
 <TabItem label="C">
 ```c
 ecs_query_id_t q = ecs_query({
-    .terms = { ecs_in(Health) },
+    .components = { ecs_in(Health) },
 });
 ```
 </TabItem>
@@ -143,7 +143,7 @@ entités qui héritent d’une base donnée :
 <TabItem label="C">
 ```c
 ecs_query_id_t enemies = ecs_query({
-    .terms = { ecs_in(Health) },
+    .components = { ecs_in(Health) },
     .is_a = enemy_base,
 });
 ```

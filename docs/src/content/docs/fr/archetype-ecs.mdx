@@ -43,7 +43,7 @@ itération renvoie ensuite un lot de table à la fois :
 <TabItem label="C">
 ```c
 ecs_query_id_t moving = ecs_query({
-    .terms = {
+    .components = {
         ecs_inout(Position),
         ecs_in(Velocity),
         ecs_filter(Visible),

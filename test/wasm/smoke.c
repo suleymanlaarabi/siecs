@@ -35,7 +35,7 @@ int siecs_wasm_smoke(void) {
     ecs_system({
         .name = "WasmSmoke",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_inout(WasmPosition) } },
+        .query = { .components = { ecs_inout(WasmPosition) } },
         .callback = wasm_system,
     });
 

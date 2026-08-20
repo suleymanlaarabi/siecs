@@ -54,7 +54,7 @@ Iteration then returns one matching table batch at a time:
 <TabItem label="C">
 ```c
 ecs_query_id_t moving = ecs_query({
-    .terms = {
+    .components = {
         ecs_inout(Position),
         ecs_in(Velocity),
         ecs_filter(Visible),

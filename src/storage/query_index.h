@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 #define ECS_QUERY_RETAIN_TABLE_CAPACITY 8
-#define ECS_QUERY_COMPILED_TERM_CAPACITY \
+#define ECS_QUERY_COMPILED_COMPONENT_CAPACITY \
     (ECS_QUERY_TERM_CAPACITY + ECS_QUERY_RELATION_CAPACITY + 2)
 
 typedef enum {
@@ -25,20 +25,26 @@ typedef struct {
     uint64_t bloom;
     ecs_entity_t is_a;
     ecs_query_order_t order_by;
-    uint16_t term_count;
+    uint16_t component_term_count;
     uint16_t field_count;
     uint16_t field_mask;
     uint16_t up_mask;
     uint16_t filter_count;
-    uint16_t access_count;
+    uint16_t component_access_count;
+    uint16_t resource_access_count;
 } ecs_query_t;
 
-static inline ecs_term_access_t ecs_query_term_access(ecs_query_term_t term) {
-    return (ecs_term_access_t)((uint32_t)term.access & UINT32_C(0xff));
+static inline ecs_access_t ecs_access_term_access(ecs_access_term_t term) {
+    return (ecs_access_t)(term.access & UINT32_C(0xff));
 }
 
-static inline ecs_relation_id_t ecs_query_term_source_relation(ecs_query_term_t term) {
-    return (ecs_relation_id_t)((uint32_t)term.access >> 8);
+static inline ecs_relation_id_t ecs_access_term_source_relation(ecs_access_term_t term) {
+    return (ecs_relation_id_t)(term.access >> 8);
+}
+
+static inline bool ecs_query_desc_tracks_tables(const ecs_query_desc_t *desc) {
+    return desc->components[0].id || desc->relations[0].id ||
+           desc->order_by.func || desc->is_a;
 }
 
 typedef struct ecs_query_cache_s {
@@ -51,9 +57,10 @@ typedef struct ecs_query_cache_s {
     ecs_observer_id_t observer;
     uint16_t next_free;
     bool alive;
-    ecs_query_term_t terms[ECS_QUERY_COMPILED_TERM_CAPACITY];
+    ecs_component_term_t component_terms[ECS_QUERY_COMPILED_COMPONENT_CAPACITY];
     ecs_query_type_filter_t filters[ECS_QUERY_RELATION_CAPACITY];
-    uint32_t accesses[ECS_QUERY_TERM_CAPACITY];
+    uint32_t component_accesses[ECS_QUERY_TERM_CAPACITY];
+    uint32_t resource_accesses[ECS_QUERY_RESOURCE_CAPACITY];
 } ecs_query_cache_t;
 
 typedef struct {
@@ -70,8 +77,9 @@ uint16_t ecs_query_index_create(const ecs_query_desc_t *desc);
 void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id);
 void ecs_query_index_refresh_table_fields(const ecs_table_t *table, uint16_t table_id);
 
-static inline bool ecs_query_term_requires_owned(ecs_query_term_t term) {
-    return term.access == EcsOut || term.access == EcsInOut || term.access == EcsInOutOptional;
+static inline bool ecs_component_term_requires_owned(ecs_component_term_t term) {
+    const ecs_access_t access = ecs_access_term_access(term);
+    return access == EcsOut || access == EcsInOut || access == EcsInOutOptional;
 }
 
 static inline bool ecs_query_match_table(const ecs_query_cache_t *cache, const ecs_table_t *table) {
@@ -82,9 +90,9 @@ static inline bool ecs_query_match_table(const ecs_query_cache_t *cache, const e
     if (query->is_a && !ecs_table_is_a(table, query->is_a)) {
         return false;
     }
-    for (uint16_t i = 0; i < query->term_count; i++) {
-        ecs_query_term_t term = cache->terms[i];
-        ecs_term_access_t access = ecs_query_term_access(term);
+    for (uint16_t i = 0; i < query->component_term_count; i++) {
+        ecs_component_term_t term = cache->component_terms[i];
+        ecs_access_t access = ecs_access_term_access(term);
         if (access == EcsInOptional || access == EcsInOutOptional || access == EcsInUp ||
             access == EcsInUpOptional) {
             continue;
@@ -93,7 +101,7 @@ static inline bool ecs_query_match_table(const ecs_query_cache_t *cache, const e
             if (ecs_table_has(table, term.id)) {
                 return false;
             }
-        } else if (ecs_query_term_requires_owned(term)) {
+        } else if (ecs_component_term_requires_owned(term)) {
             if (ecs_table_column_or_invalid(table, term.id) == UINT16_MAX) {
                 return false;
             }

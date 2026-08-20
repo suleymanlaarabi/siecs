@@ -166,6 +166,11 @@ void resource_delta_time(void) {
     ecs_system({
         .name = "DeltaTimeResource",
         .phase = EcsOnUpdate,
+        .query = {
+            .resources = {
+                ecs_in(DeltaTime),
+            },
+        },
         .callback = resource_delta_time_system,
     });
     ecs_progress();
@@ -268,7 +273,10 @@ void resource_from_system_c(void) {
         {
             .name = "ResourceMove",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_inout(ResourcePosition) } },
+        .query = {
+            .components = { ecs_inout(ResourcePosition) },
+            .resources = { ecs_in(ResourceTime) },
+        },
             .callback = resource_move_system,
         }
     );

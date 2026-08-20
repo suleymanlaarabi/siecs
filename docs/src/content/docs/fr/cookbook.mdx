@@ -85,7 +85,7 @@ ecs::query().each([](Position &position, ecs::optional<Health> health) {
 ```c
 ecs_observer({
     .on = EcsOnSet,
-    .query.terms = { ecs_in(Position) },
+    .query.components = { ecs_in(Position) },
     .callback = on_position_set,
 });
 ```

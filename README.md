@@ -120,7 +120,7 @@ int main(void) {
     ECS_COMPONENT_REGISTER(Position, Velocity);
 
     ecs_system({
-        .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
+        .query.components = { ecs_inout(Position), ecs_in(Velocity) },
         .callback = Move
     });
 

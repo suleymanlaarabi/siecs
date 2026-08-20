@@ -15,7 +15,7 @@ typed callback arguments in C++.
 
 ```c
 ecs_query_id_t moving = ecs_query({
-    .terms = { ecs_inout(Position), ecs_in(Velocity) },
+    .components = { ecs_inout(Position), ecs_in(Velocity) },
 });
 ```
 
@@ -67,7 +67,7 @@ Mention either component explicitly when it must be included:
 
 ```c
 ecs_query_id_t disabled = ecs_query({
-    .terms = { ecs_in(Position), ecs_filter(Disabled) },
+    .components = { ecs_in(Position), ecs_filter(Disabled) },
 });
 ```
 
@@ -94,7 +94,7 @@ terms to match its presence, target, or depth:
 
 ```c
 ecs_query_id_t members = ecs_query({
-    .terms = { ecs_in(Position) },
+    .components = { ecs_in(Position) },
     .relations = { ecs_to(GroupOf, group) },
 });
 ```
@@ -163,7 +163,7 @@ match is transitive through the inheritance chain:
 
 ```c
 ecs_query_id_t enemies = ecs_query({
-    .terms = { ecs_in(Position) },
+    .components = { ecs_in(Position) },
     .is_a = enemy_base,
 });
 ```
@@ -191,7 +191,7 @@ the same table:
 
 ```c
 ecs_query_id_t hierarchy = ecs_query({
-    .terms = { ecs_in(Position) },
+    .components = { ecs_in(Position) },
     .relations = { ecs_rel(ChildOf) },
     .order_by = ecs_order_by_depth(ChildOf),
 });
@@ -288,3 +288,27 @@ move-only `query_handle`.
 Do not retain component or field pointers across an operation that can migrate
 an entity between tables. Query ids remain valid as tables are created and
 grown; the query cache refreshes its field pointers when table storage moves.
+
+## Resource access
+
+Resources can be declared as scheduler metadata in their own namespace:
+
+```c
+ecs_query({
+    .components = {
+        ecs_inout(Position),
+        ecs_in(Velocity),
+    },
+    .resources = {
+        ecs_in(Time),
+        ecs_inout(Gravity),
+    },
+});
+```
+
+`ECS_QUERY_TERM_CAPACITY` limits component terms and
+`ECS_QUERY_RESOURCE_CAPACITY` limits resource accesses. `EcsIn` is a scheduler
+read; `EcsOut` and `EcsInOut` are scheduler writes. Resource presence is never a
+query condition: resources do not affect matching and produce no fields.
+Optional, filter, not, and up modes are reserved for components. A
+resources-only query has a cache but zero entity batches.

@@ -258,7 +258,7 @@ void system_run(void) {
         {
             .name = "Count",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_inout(SystemPosition) } },
+            .query = { .components = { ecs_inout(SystemPosition) } },
             .callback = count_system,
         }
     );
@@ -289,13 +289,13 @@ void system_parallel_independent_callbacks(void) {
     ecs_system({
         .name = "ParallelA",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_in(SystemBatchA) } },
+        .query = { .components = { ecs_in(SystemBatchA) } },
         .callback = parallel_system_a,
     });
     ecs_system({
         .name = "ParallelB",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_in(SystemBatchB) } },
+        .query = { .components = { ecs_in(SystemBatchB) } },
         .callback = parallel_system_b,
     });
 
@@ -323,14 +323,14 @@ void system_parallel_worker_context_is_deferred(void) {
     ecs_system({
         .name = "ParallelContextA",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_in(SystemBatchA) } },
+        .query = { .components = { ecs_in(SystemBatchA) } },
         .callback = parallel_context_system,
     });
 
     ecs_system({
         .name = "ParallelContextB",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_in(SystemBatchB) } },
+        .query = { .components = { ecs_in(SystemBatchB) } },
         .callback = parallel_context_system,
     });
 
@@ -357,13 +357,13 @@ void system_parallel_query_table_conflicts(void) {
     ecs_system({
         .name = "WriteC",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_inout(SystemBatchC) } },
+        .query = { .components = { ecs_inout(SystemBatchC) } },
         .callback = parallel_system_a,
     });
     ecs_system({
         .name = "WriteNotC",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_not(SystemBatchC) } },
+        .query = { .components = { ecs_not(SystemBatchC) } },
         .callback = parallel_system_b,
     });
     ecs_progress();
@@ -373,13 +373,13 @@ void system_parallel_query_table_conflicts(void) {
     ecs_system({
         .name = "WriteSameTableA",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_inout(SystemBatchC) } },
+        .query = { .components = { ecs_inout(SystemBatchC) } },
         .callback = same_table_writer_system,
     });
     ecs_system({
         .name = "WriteSameTableB",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_inout(SystemBatchC) } },
+        .query = { .components = { ecs_inout(SystemBatchC) } },
         .callback = same_table_writer_system,
     });
     ecs_progress();
@@ -395,13 +395,13 @@ void system_batches_invalidate_after_table_creation(void) {
     ecs_system({
         .name = "LateTableA",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_inout(SystemBatchC) } },
+        .query = { .components = { ecs_inout(SystemBatchC) } },
         .callback = same_table_writer_system,
     });
     ecs_system({
         .name = "LateTableB",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_inout(SystemBatchC) } },
+        .query = { .components = { ecs_inout(SystemBatchC) } },
         .callback = same_table_writer_system,
     });
 
@@ -461,14 +461,14 @@ void system_resource_access_conflicts(void) {
     ecs_system({
         .name = "ReadResourceA",
         .phase = EcsOnUpdate,
+        .query = { .resources = { ecs_in(DeltaTime) } },
         .callback = parallel_system_a,
-        .read_resources = { ecs_id(DeltaTime) },
     });
     ecs_system({
         .name = "ReadResourceB",
         .phase = EcsOnUpdate,
+        .query = { .resources = { ecs_in(DeltaTime) } },
         .callback = parallel_system_b,
-        .read_resources = { ecs_id(DeltaTime) },
     });
 
     ecs_progress();
@@ -481,14 +481,14 @@ void system_resource_access_conflicts(void) {
     ecs_system({
         .name = "WriteResource",
         .phase = EcsOnUpdate,
+        .query = { .resources = { ecs_out(DeltaTime) } },
         .callback = resource_writer_system,
-        .write_resources = { ecs_id(DeltaTime) },
     });
     ecs_system({
         .name = "ReadResourceAfterWrite",
         .phase = EcsOnUpdate,
+        .query = { .resources = { ecs_in(DeltaTime) } },
         .callback = resource_reader_system,
-        .read_resources = { ecs_id(DeltaTime) },
     });
 
     ecs_progress();
@@ -506,13 +506,13 @@ void system_parallel_structural_changes_flush_at_barrier(void) {
     ecs_system_id_t writer = ecs_system({
         .name = "AddTagAtBarrier",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_in(SystemPosition) } },
+        .query = { .components = { ecs_in(SystemPosition) } },
         .callback = add_tag_to_global_entity,
     });
     ecs_system({
         .name = "ReadTagAfterBarrier",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_in(SystemTag) } },
+        .query = { .components = { ecs_in(SystemTag) } },
         .callback = count_tag_system,
         .after = { writer },
     });
@@ -558,13 +558,13 @@ void system_worker_auto_and_reinit(void) {
     ecs_system({
         .name = "StressA",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_in(SystemBatchA) } },
+        .query = { .components = { ecs_in(SystemBatchA) } },
         .callback = stress_system,
     });
     ecs_system({
         .name = "StressB",
         .phase = EcsOnUpdate,
-        .query = { .terms = { ecs_in(SystemBatchB) } },
+        .query = { .components = { ecs_in(SystemBatchB) } },
         .callback = stress_system,
     });
     for (int frame = 0; frame < 500; frame++) {
@@ -604,7 +604,7 @@ void system_phase_order(void) {
         {
             .name = "Render",
             .phase = EcsOnRender,
-            .query = { .terms = { ecs_in(SystemPosition) } },
+            .query = { .components = { ecs_in(SystemPosition) } },
             .callback = order_render,
         }
     );
@@ -612,7 +612,7 @@ void system_phase_order(void) {
         {
             .name = "Update",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_in(SystemPosition) } },
+            .query = { .components = { ecs_in(SystemPosition) } },
             .callback = order_update,
         }
     );
@@ -620,7 +620,7 @@ void system_phase_order(void) {
         {
             .name = "PreUpdate",
             .phase = EcsPreUpdate,
-            .query = { .terms = { ecs_in(SystemPosition) } },
+            .query = { .components = { ecs_in(SystemPosition) } },
             .callback = order_pre_update,
         }
     );
@@ -647,7 +647,7 @@ void system_start_phases_run_once(void) {
         {
             .name = "PreStart",
             .phase = EcsPreStart,
-            .query = { .terms = { ecs_in(SystemPosition) } },
+            .query = { .components = { ecs_in(SystemPosition) } },
             .callback = order_pre_start,
         }
     );
@@ -655,7 +655,7 @@ void system_start_phases_run_once(void) {
         {
             .name = "Start",
             .phase = EcsStart,
-            .query = { .terms = { ecs_in(SystemPosition) } },
+            .query = { .components = { ecs_in(SystemPosition) } },
             .callback = order_start,
         }
     );
@@ -663,7 +663,7 @@ void system_start_phases_run_once(void) {
         {
             .name = "PostStart",
             .phase = EcsPostStart,
-            .query = { .terms = { ecs_in(SystemPosition) } },
+            .query = { .components = { ecs_in(SystemPosition) } },
             .callback = order_post_start,
         }
     );
@@ -671,7 +671,7 @@ void system_start_phases_run_once(void) {
         {
             .name = "Update",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_in(SystemPosition) } },
+            .query = { .components = { ecs_in(SystemPosition) } },
             .callback = order_update,
         }
     );
@@ -701,7 +701,7 @@ void system_after_order(void) {
         {
             .name = "First",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_in(SystemPosition) } },
+            .query = { .components = { ecs_in(SystemPosition) } },
             .callback = order_first,
         }
     );
@@ -709,7 +709,7 @@ void system_after_order(void) {
         {
             .name = "Second",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_in(SystemPosition) } },
+            .query = { .components = { ecs_in(SystemPosition) } },
             .callback = order_second,
             .after = { first },
         }
@@ -736,7 +736,7 @@ void system_enable(void) {
         {
             .name = "Disabled",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_inout(SystemPosition) } },
+            .query = { .components = { ecs_inout(SystemPosition) } },
             .callback = count_system,
             .disabled = true,
         }
@@ -820,7 +820,7 @@ void system_callback_can_advance_iterator(void) {
         {
             .name = "ConsumeNextBatch",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_in(SystemPosition), ecs_filter(Disabled) } },
+            .query = { .components = { ecs_in(SystemPosition), ecs_filter(Disabled) } },
             .callback = consume_next_batch_system,
         }
     );
@@ -847,7 +847,7 @@ void system_skips_disabled_by_default(void) {
         {
             .name = "SkipDisabled",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_inout(SystemPosition) } },
+            .query = { .components = { ecs_inout(SystemPosition) } },
             .callback = count_system,
         }
     );
@@ -875,7 +875,7 @@ void system_can_run_on_disabled_when_requested(void) {
         {
             .name = "RunDisabled",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_inout(SystemPosition), ecs_filter(Disabled) } },
+            .query = { .components = { ecs_inout(SystemPosition), ecs_filter(Disabled) } },
             .callback = count_system,
         }
     );
@@ -904,7 +904,7 @@ void system_defers_structural_changes_until_iteration_end(void) {
         {
             .name = "RemovePosition",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_inout(SystemPosition) } },
+            .query = { .components = { ecs_inout(SystemPosition) } },
             .callback = remove_position_system,
         }
     );
@@ -933,7 +933,7 @@ void system_flushes_between_ordered_systems(void) {
         {
             .name = "AddTag",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_in(SystemPosition) } },
+            .query = { .components = { ecs_in(SystemPosition) } },
             .callback = add_tag_to_global_entity,
         }
     );
@@ -941,7 +941,7 @@ void system_flushes_between_ordered_systems(void) {
         {
             .name = "CountTag",
             .phase = EcsOnUpdate,
-            .query = { .terms = { ecs_in(SystemTag) } },
+            .query = { .components = { ecs_in(SystemTag) } },
             .callback = count_tag_system,
             .after = { writer },
         }

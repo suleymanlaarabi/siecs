@@ -109,7 +109,7 @@ void resource_system_write(void) {
     test_assert(ecs::resource<CppTime>().elapsed == 0.25f);
 }
 
-void resource_system_without_query_runs_once(void) {
+void resource_system_resource_only_runs_once(void) {
     cpp_resource_system_calls = 0;
 
     ecs_test_scope _ecs_scope;
@@ -155,7 +155,7 @@ void resource_query_read(void) {
     test_assert(cpp_resource_position(entity)->x == 5.0f);
 }
 
-void resource_does_not_create_query_term(void) {
+void resource_does_not_create_component_term(void) {
     cpp_resource_query_calls = 0;
 
     ecs_test_scope _ecs_scope;
@@ -244,4 +244,8 @@ void resource_cpp_only_methods(void) {
     test_true(time.get().valid());
     test_true(!cpp_c_method_time{ .dt = 0.0f }.valid());
     test_true(ecs::resource_handle<cpp_c_method_time>().has());
+}
+
+void resource_does_not_create_query_term(void) {
+    // Implement testcase
 }

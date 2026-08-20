@@ -146,7 +146,7 @@ void observer_resource_write(void) {
     test_int(4, ecs::resource<CppObserverTime>().elapsed);
 }
 
-void observer_resource_does_not_create_query_term(void) {
+void observer_resource_does_not_create_component_term(void) {
     cpp_observer_calls = 0;
 
     ecs_test_scope _ecs_scope;

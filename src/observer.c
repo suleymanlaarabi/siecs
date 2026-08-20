@@ -1,6 +1,7 @@
 #include "module.h"
 #include "siecs.h"
 #include "storage/observer_index.h"
+#include "storage/query_index.h"
 #include "utils.h"
 #include "world_internal.h"
 
@@ -59,9 +60,20 @@ ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
     ecs_query_cache_t *cache =
         sicore_vec_get_mut(&query_index.queries, observer->query, ecs_query_cache_t);
     cache->observer = oid;
-    const uint16_t *table_ids = cache->table_ids.data;
-    for (uint32_t i = 0; i < cache->table_ids.size; i++)
-        ecs_table_add_observer(&table_index.tables[table_ids[i]], observer->event, oid);
+    bool global_observer = false;
+    if (cache->active_index == UINT32_MAX && !desc->query.resources[0].id) {
+        global_observer = true;
+        cache->active_index = query_index.active_ids.size;
+        sicore_vec_push_u16(&query_index.active_ids, observer->query);
+        for (uint16_t i = 0; i < table_index.table_count; i++) {
+            ecs_query_index_add_table(&table_index.tables[i], i);
+        }
+    }
+    if (!global_observer) {
+        const uint16_t *table_ids = cache->table_ids.data;
+        for (uint32_t i = 0; i < cache->table_ids.size; i++)
+            ecs_table_add_observer(&table_index.tables[table_ids[i]], observer->event, oid);
+    }
     ecs_module_record_observer(oid);
     return oid;
 }

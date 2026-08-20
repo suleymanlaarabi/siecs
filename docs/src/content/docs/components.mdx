@@ -271,7 +271,7 @@ explicitly:
 <TabItem label="C">
 ```c
 ecs_query({
-    .terms = { ecs_in(Position), ecs_filter(Disabled) },
+    .components = { ecs_in(Position), ecs_filter(Disabled) },
 });
 ```
 </TabItem>

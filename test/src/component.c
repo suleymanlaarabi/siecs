@@ -497,7 +497,7 @@ void component_add_with_required_emits_each_on_add_once(void) {
     ecs_observer(
         {
             .on = EcsOnAdd,
-            .query = { .terms = { ecs_in(RequiredA) } },
+            .query = { .components = { ecs_in(RequiredA) } },
             .callback = on_component_add_observer,
         }
     );
@@ -656,9 +656,9 @@ void component_many_tags_swap_remove_preserves_moved_entity_data(void) {
 
     ecs_query_id_t query = ecs_query(
         {
-            .terms = {
-                (ecs_query_term_t){ data[0], EcsIn },
-                (ecs_query_term_t){ tags[0], EcsFilter },
+            .components = {
+                (ecs_component_term_t){ data[0], EcsIn },
+                (ecs_component_term_t){ tags[0], EcsFilter },
             },
         }
     );

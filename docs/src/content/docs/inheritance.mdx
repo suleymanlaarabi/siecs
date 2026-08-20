@@ -195,7 +195,7 @@ Queries can match inherited components for read-only terms. A query with
 <TabItem label="C">
 ```c
 ecs_query_id_t q = ecs_query({
-    .terms = { ecs_in(Health) },
+    .components = { ecs_in(Health) },
 });
 
 ecs_iter_t it = ecs_query_iter(q);
@@ -251,7 +251,7 @@ where `Health` was materialized through the default owned inheritance:
 <TabItem label="C">
 ```c
 ecs_query_id_t q = ecs_query({
-    .terms = { ecs_inout(Health) },
+    .components = { ecs_inout(Health) },
 });
 ```
 </TabItem>
@@ -274,7 +274,7 @@ Optional writable terms also ignore inherited shared values:
 <TabItem label="C">
 ```c
 ecs_query_id_t q = ecs_query({
-    .terms = { ecs_inout_optional(Health) },
+    .components = { ecs_inout_optional(Health) },
 });
 ```
 </TabItem>
@@ -300,7 +300,7 @@ Queries can be restricted to entities that inherit from a base with
 ```c
 ecs_query_id_t q = ecs_query({
     .is_a = base,
-    .terms = { ecs_in(Position) },
+    .components = { ecs_in(Position) },
 });
 ```
 </TabItem>

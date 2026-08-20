@@ -108,6 +108,11 @@ void sirest_import(const sirest_props_t *props) {
     ecs_system(
         {
             .name = "SiecsRestPoll",
+            .query = {
+                .resources = {
+                    ecs_inout(SiecsRestState),
+                },
+            },
             .callback = rest_poll,
             .phase = EcsPostRender,
         }
