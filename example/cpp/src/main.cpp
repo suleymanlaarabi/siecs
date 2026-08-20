@@ -24,21 +24,11 @@ struct Enemy {};
 struct Voiture {};
 struct NoIntegrate {};
 
-struct MyModule {
-    static inline void import() {
-
-    };
-};
 
 int main() {
-
-    ecs::import<sirest>();
     ecs::init({ .target_fps = 60 });
+    ecs::import<sirest>();
 
-    ecs::entity::create("Parent").child_of(ecs::entity::create("Child"));
-    ecs::query().order_by_depth<ecs::ChildOf>().each([](ecs::entity entity) {
-        std::cout << entity.get<Name>().value;
-    });
 
     ecs::run();
 }
