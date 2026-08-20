@@ -37,7 +37,7 @@ static void on_position_set(ecs_observer_event_t *event) {
 
 ecs_observer({
     .on = EcsOnSet,
-    .query = { .terms = { ecs_in(Position) } },
+    .query = { .components = { ecs_in(Position) } },
     .callback = on_position_set,
 });
 ```
@@ -65,7 +65,7 @@ explicitly when an observer must include them.
 ecs_observer({
     .on = EcsOnSet,
     .query = {
-        .terms = { ecs_in(Position), ecs_filter(Disabled) },
+        .components = { ecs_in(Position), ecs_filter(Disabled) },
     },
     .callback = on_disabled_position_set,
 });
@@ -180,7 +180,7 @@ Pass a small callback context through `user_data`:
 ```c
 ecs_observer({
     .on = EcsOnSet,
-    .query.terms = { ecs_in(Position) },
+    .query.components = { ecs_in(Position) },
     .callback = on_position_set,
     .user_data = (uintptr_t)counter_ptr,
 });
@@ -218,7 +218,7 @@ ecs_event_t Damaged = ecs_event();
 
 ecs_observer({
     .on = Damaged,
-    .query = { .terms = { ecs_in(Health) } },
+    .query = { .components = { ecs_in(Health) } },
     .callback = on_damaged,
 });
 

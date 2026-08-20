@@ -125,7 +125,8 @@ ecs::system("Move").each([](
 </TabItem>
 </Tabs>
 
-La ressource ne fait pas partie de la requête : le système ci-dessus ne
+La ressource peut être déclarée dans `query.resources` comme métadonnée d’accès,
+mais elle n’est ni un component, ni un field, ni un critère d’archetype ; le système ci-dessus ne
 correspond qu’aux entités portant `Position` et `Velocity`.
 
 ## API par identifiant
@@ -195,3 +196,7 @@ L’accès à une ressource est un accès direct par `ecs_resource_t` et coûte 
 La valeur est stockée une seule fois dans le monde, indépendamment des tables.
 Dans un système C chaud, récupérez-la une fois avant la boucle et réutilisez le
 pointeur pour tout le lot.
+
+En C++ typé, `ecs::res<const T>` déclare `EcsIn` et `ecs::res<T>` déclare
+`EcsInOut` dans `query.resources`. Dans les deux cas, aucun terme component
+n’est créé.

@@ -46,7 +46,7 @@ SIECS_PUBLIC_API void ecs_module_import(void) {
     ecs_system(
         {
             .name = "PluginSystem",
-            .query = { .terms = { ecs_inout(PluginPosition) } },
+            .query = { .components = { ecs_inout(PluginPosition) } },
             .callback = plugin_system,
             .phase = EcsOnUpdate,
         }
@@ -55,7 +55,7 @@ SIECS_PUBLIC_API void ecs_module_import(void) {
     ecs_observer(
         {
             .on = EcsOnSet,
-            .query = { .terms = { ecs_in(PluginPosition) } },
+            .query = { .components = { ecs_in(PluginPosition) } },
             .callback = plugin_observer,
         }
     );

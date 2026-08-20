@@ -101,7 +101,7 @@ static void Move(ecs_iter_t *it) {
 ecs_system({
     .name = "Move",
     .phase = EcsOnUpdate,
-    .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
+    .query.components = { ecs_inout(Position), ecs_in(Velocity) },
     .callback = Move,
 });
 ```
@@ -130,7 +130,7 @@ express required, optional, filtered, excluded, inherited or relation data.
 <TabItem label="C">
 ```c
 ecs_query_id_t moving = ecs_query({
-    .terms = { ecs_inout(Position), ecs_in_optional(Velocity) },
+    .components = { ecs_inout(Position), ecs_in_optional(Velocity) },
 });
 
 ecs_iter_t it = ecs_query_iter(moving);
@@ -233,7 +233,7 @@ static void OnPositionSet(ecs_observer_event_t *event) {
 
 ecs_observer({
     .on = EcsOnSet,
-    .query.terms = { ecs_in(Position) },
+    .query.components = { ecs_in(Position) },
     .callback = OnPositionSet,
 });
 ```

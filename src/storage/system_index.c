@@ -1,4 +1,6 @@
 #include "system_index.h"
+#include "../helper.h"
+#include "query_index.h"
 #include "../utils.h"
 #include "../world_internal.h"
 #include <stdint.h>
@@ -98,23 +100,14 @@ void ecs_system_index_init(void) {
     }
 }
 
-static void ecs_access_add(uint32_t *accesses, uint16_t *count, uint16_t id, bool write) {
-    uint16_t at = 0;
-    while (at < *count && (accesses[at] & UINT16_MAX) < id) at++;
-    if (at < *count && (accesses[at] & UINT16_MAX) == id) {
-        accesses[at] |= (uint32_t)write << 16;
-        return;
-    }
-    memmove(accesses + at + 1, accesses + at, (*count - at) * sizeof *accesses);
-    accesses[at] = id | ((uint32_t)write << 16);
-    (*count)++;
-}
-
-ecs_system_id_t ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query_id_t qid) {
+ecs_system_id_t ecs_system_index_create(const ecs_system_desc_t *desc,
+                                        ecs_query_id_t qid,
+                                        bool iterates_query) {
     ecs_system_index_t *index = &system_index;
     ecs_system_t system = {
         .name = desc->name,
         .qid = qid,
+        .iterates_query = iterates_query,
         .callback = desc->callback,
         .user_data = desc->user_data,
         .user_data_dtor = desc->user_data_dtor,
@@ -132,13 +125,6 @@ ecs_system_id_t ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query
 #endif
         if (desc->after[i] > system.after) system.after = desc->after[i];
     }
-    for (uint16_t i = 0; i < ECS_SYSTEM_RESOURCE_CAPACITY && desc->read_resources[i]; i++)
-        ecs_access_add(system.resource_accesses, &system.resource_access_count,
-                       desc->read_resources[i], false);
-    for (uint16_t i = 0; i < ECS_SYSTEM_RESOURCE_CAPACITY && desc->write_resources[i]; i++)
-        ecs_access_add(system.resource_accesses, &system.resource_access_count,
-                       desc->write_resources[i], true);
-
     sicore_vec_push(&index->systems, &system, sizeof system);
     ecs_system_id_t id = index->systems.size - 1;
     sicore_vec_push_u16(&ecs_system_index_get_phase(system.phase)->systems, id);
@@ -151,20 +137,6 @@ ecs_system_t *ecs_system_index_get(ecs_system_id_t system) {
     return ecs_system_get_unchecked(system);
 }
 
-static bool ecs_access_conflict(
-    const uint32_t *a, uint16_t a_count, const uint32_t *b, uint16_t b_count
-) {
-    uint16_t ai = 0, bi = 0;
-    while (ai < a_count && bi < b_count) {
-        uint16_t aid = a[ai], bid = b[bi];
-        if (aid < bid) ai++;
-        else if (bid < aid) bi++;
-        else if ((a[ai] | b[bi]) >> 16) return true;
-        else { ai++; bi++; }
-    }
-    return false;
-}
-
 static bool ecs_query_tables_overlap(const ecs_query_cache_t *a, const ecs_query_cache_t *b) {
     const uint16_t *a_ids = a->table_ids.data, *b_ids = b->table_ids.data;
     for (uint32_t ai = 0; ai < a->table_ids.size; ai++)
@@ -174,14 +146,14 @@ static bool ecs_query_tables_overlap(const ecs_query_cache_t *a, const ecs_query
 }
 
 static bool ecs_system_conflict(const ecs_system_t *a, const ecs_system_t *b) {
-    if (a->main_thread_only || b->main_thread_only ||
-        ecs_access_conflict(a->resource_accesses, a->resource_access_count,
-                            b->resource_accesses, b->resource_access_count)) return true;
+    if (a->main_thread_only || b->main_thread_only) return true;
     if (a->qid == UINT16_MAX || b->qid == UINT16_MAX) return false;
     const ecs_query_cache_t *aq = sicore_vec_get(&query_index.queries, a->qid, ecs_query_cache_t);
     const ecs_query_cache_t *bq = sicore_vec_get(&query_index.queries, b->qid, ecs_query_cache_t);
-    return ecs_access_conflict(aq->accesses, aq->query.access_count,
-                               bq->accesses, bq->query.access_count) &&
+    if (ecs_access_conflict(aq->resource_accesses, aq->query.resource_access_count,
+                            bq->resource_accesses, bq->query.resource_access_count)) return true;
+    return ecs_access_conflict(aq->component_accesses, aq->query.component_access_count,
+                               bq->component_accesses, bq->query.component_access_count) &&
            ecs_query_tables_overlap(aq, bq);
 }
 

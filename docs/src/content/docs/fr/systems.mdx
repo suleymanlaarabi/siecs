@@ -23,7 +23,7 @@ static void Move(ecs_iter_t *it) {
 ecs_system({
     .name = "Move",
     .phase = EcsOnUpdate,
-    .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
+    .query.components = { ecs_inout(Position), ecs_in(Velocity) },
     .callback = Move,
 });
 ```
@@ -53,14 +53,14 @@ Dans une phase, utilisez `after` ou `.after()` pour déclarer une dépendance :
 ecs_system_id_t integrate = ecs_system({
     .name = "Integrate",
     .phase = EcsOnUpdate,
-    .query.terms = { ecs_inout(Position), ecs_in(Velocity) },
+    .query.components = { ecs_inout(Position), ecs_in(Velocity) },
     .callback = Integrate,
 });
 
 ecs_system({
     .name = "Sync",
     .phase = EcsOnUpdate,
-    .query.terms = { ecs_in(Position), ecs_inout(Transform) },
+    .query.components = { ecs_in(Position), ecs_inout(Transform) },
     .callback = Sync,
     .after = { integrate },
 });
@@ -191,14 +191,14 @@ indiquer qu’un système dépend d’un autre :
 ecs_system_id_t Integrate = ecs_system({
     .name = "Integrate",
     .phase = EcsOnUpdate,
-    .query = { .terms = { ecs_inout(Position), ecs_in(Velocity) } },
+    .query = { .components = { ecs_inout(Position), ecs_in(Velocity) } },
     .callback = integrate_system,
 });
 
 ecs_system({
     .name = "SyncTransform",
     .phase = EcsOnUpdate,
-    .query = { .terms = { ecs_in(Position), ecs_inout(Transform) } },
+    .query = { .components = { ecs_in(Position), ecs_inout(Transform) } },
     .callback = sync_transform_system,
     .after = { Integrate },
 });
@@ -231,7 +231,7 @@ Les systèmes sont activés par défaut :
 ecs_system_id_t Damage = ecs_system({
     .name = "Damage",
     .phase = EcsOnUpdate,
-    .query = { .terms = { ecs_inout(Health) } },
+    .query = { .components = { ecs_inout(Health) } },
     .callback = damage_system,
     .disabled = true,
 });

@@ -172,7 +172,7 @@ template <typename F> inline void each_query(ecs_query_id_t qid, F &&func) {
     while (ecs_iter_next(&it)) run_batch<callback, args>(state, &it, resources);
 }
 
-template <typename T> consteval ecs_term_access_t term_access() {
+template <typename T> consteval ecs_access_t term_access() {
     static_assert(
         std::is_lvalue_reference_v<T>,
         "query callback arguments must be lvalue references"
@@ -181,19 +181,19 @@ template <typename T> consteval ecs_term_access_t term_access() {
     return std::is_const_v<std::remove_reference_t<T>> ? EcsIn : EcsInOut;
 }
 
-template <typename T> consteval ecs_term_access_t optional_term_access() {
+template <typename T> consteval ecs_access_t optional_term_access() {
     using value_type = optional_value_t<T>;
     return std::is_const_v<value_type> ? EcsInOptional : EcsInOutOptional;
 }
 
-inline void append_term(
+inline void append_component_term(
     ecs_query_desc_t &desc,
-    uint16_t &term_index,
+    uint16_t &component_index,
     ecs_component_t id,
     uint32_t access
 ) {
-    assert(term_index < ECS_QUERY_TERM_CAPACITY);
-    desc.terms[term_index++] = {
+    assert(component_index < ECS_QUERY_TERM_CAPACITY);
+    desc.components[component_index++] = {
         .id = id,
         .access = access,
     };
@@ -201,22 +201,22 @@ inline void append_term(
 
 inline void append_callback_component_term(
     ecs_query_desc_t &desc,
-    uint16_t &term_index,
+    uint16_t &component_index,
     ecs_component_t id,
-    ecs_term_access_t access
+    ecs_access_t access
 ) {
     ecs_relation_id_t up_relation = 0;
     uint32_t encoded_access = static_cast<uint32_t>(access);
-    for (uint16_t i = 0; i < term_index; i++) {
-        ecs_term_access_t existing_access = static_cast<ecs_term_access_t>(desc.terms[i].access & 0xffu);
-        if (desc.terms[i].id != id ||
+    for (uint16_t i = 0; i < component_index; i++) {
+        ecs_access_t existing_access = static_cast<ecs_access_t>(desc.components[i].access & 0xffu);
+        if (desc.components[i].id != id ||
             (existing_access != EcsFilter && existing_access != EcsInUp &&
              existing_access != EcsInUpOptional)) {
             continue;
         }
-        up_relation = static_cast<ecs_relation_id_t>(desc.terms[i].access >> 8);
-        std::memmove(desc.terms + i, desc.terms + i + 1,
-                     (--term_index - i) * sizeof(ecs_query_term_t));
+        up_relation = static_cast<ecs_relation_id_t>(desc.components[i].access >> 8);
+        std::memmove(desc.components + i, desc.components + i + 1,
+                     (--component_index - i) * sizeof(ecs_component_term_t));
         break;
     }
     if (up_relation) {
@@ -224,16 +224,28 @@ inline void append_callback_component_term(
         encoded_access = ECS_QUERY_UP_ACCESS(
             access == EcsInOptional ? EcsInUpOptional : EcsInUp, up_relation);
     }
-    append_term(desc, term_index, id, encoded_access);
+    append_component_term(desc, component_index, id, encoded_access);
 }
 
 template <typename... T>
-inline void append_terms(ecs_query_desc_t &desc, uint16_t &term_index, ecs_term_access_t access) {
-    (append_term(desc, term_index, ecs::detail::ecs_cpp_component_id<T>(), access), ...);
+inline void append_terms(ecs_query_desc_t &desc, uint16_t &component_index, ecs_access_t access) {
+    (append_component_term(desc, component_index, ecs::detail::ecs_cpp_component_id<T>(), access), ...);
+}
+
+inline void append_resource_term(ecs_query_desc_t &desc, uint16_t &resource_index,
+                                ecs_resource_t id, ecs_access_t access) {
+    assert(resource_index < ECS_QUERY_RESOURCE_CAPACITY);
+    desc.resources[resource_index++] = { .id = id, .access = static_cast<uint32_t>(access) };
+}
+
+template <typename T> consteval ecs_access_t resource_term_access() {
+    using value_type = res_value_t<T>;
+    return std::is_const_v<value_type> ? EcsIn : EcsInOut;
 }
 
 template <typename Args, std::size_t I>
-inline void append_callback_term(ecs_query_desc_t &desc, uint16_t &term_index) {
+inline void append_callback_term(ecs_query_desc_t &desc, uint16_t &component_index,
+                                uint16_t &resource_index) {
     using T = std::tuple_element_t<I, Args>;
     if constexpr (is_entity_v<T>) {
         static_assert(I == 0, "ecs::entity must be the first callback argument");
@@ -244,14 +256,19 @@ inline void append_callback_term(ecs_query_desc_t &desc, uint16_t &term_index) {
     } else if constexpr (is_optional_v<T>) {
         append_callback_component_term(
             desc,
-            term_index,
+            component_index,
             ecs::detail::ecs_cpp_component_id<std::remove_cv_t<optional_value_t<T>>>(),
             optional_term_access<T>()
         );
-    } else if constexpr (!is_res_v<T>) {
+    } else if constexpr (is_res_v<T>) {
+        using resource_type = resource_value_t<T>;
+        append_resource_term(desc, resource_index,
+                             ecs::ecs_cpp_resource_id<resource_type>(),
+                             resource_term_access<T>());
+    } else {
         append_callback_component_term(
             desc,
-            term_index,
+            component_index,
             ecs::detail::ecs_cpp_component_id<std::remove_cvref_t<T>>(),
             term_access<T>()
         );
@@ -261,19 +278,28 @@ inline void append_callback_term(ecs_query_desc_t &desc, uint16_t &term_index) {
 template <typename Args, std::size_t... Is>
 inline void append_callback_terms_impl(
     ecs_query_desc_t &desc,
-    uint16_t &term_index,
+    uint16_t &component_index,
+    uint16_t &resource_index,
     std::index_sequence<Is...>
 ) {
-    (append_callback_term<Args, Is>(desc, term_index), ...);
+    (append_callback_term<Args, Is>(desc, component_index, resource_index), ...);
 }
 
 template <typename Args>
-inline void append_callback_terms(ecs_query_desc_t &desc, uint16_t &term_index) {
+inline void append_callback_terms(ecs_query_desc_t &desc, uint16_t &component_index,
+                                  uint16_t &resource_index) {
     append_callback_terms_impl<Args>(
         desc,
-        term_index,
+        component_index,
+        resource_index,
         std::make_index_sequence<std::tuple_size_v<Args>>{}
     );
+}
+
+inline uint16_t query_resource_count(const ecs_query_desc_t &desc) {
+    uint16_t count = 0;
+    while (count < ECS_QUERY_RESOURCE_CAPACITY && desc.resources[count].id) count++;
+    return count;
 }
 
 } // namespace detail
@@ -282,14 +308,21 @@ inline void append_callback_terms(ecs_query_desc_t &desc, uint16_t &term_index) 
 class query_handle {
     ecs_query_id_t _id = 0;
     ecs_query_desc_t _base_desc{};
-    uint16_t _base_term_index = UINT16_MAX;
+    uint16_t _base_component_index = UINT16_MAX;
+    uint16_t _base_resource_index = UINT16_MAX;
     uint64_t _signature = 0;
 
-    static uint64_t signature(const ecs_query_desc_t &desc, uint16_t count) {
-        uint64_t value = count;
-        for (uint16_t i = 0; i < count; i++)
-            value = (value * 1099511628211ULL) ^ desc.terms[i].id ^
-                    ((uint64_t)desc.terms[i].access << 16);
+    static uint64_t signature(const ecs_query_desc_t &desc, uint16_t component_count,
+                              uint16_t resource_count) {
+        uint64_t value = component_count;
+        for (uint16_t i = 0; i < component_count; i++)
+            value = (value * 1099511628211ULL) ^ desc.components[i].id ^
+                    ((uint64_t)desc.components[i].access << 16);
+        value = (value * 1099511628211ULL) ^
+                (0x9e3779b97f4a7c15ULL + resource_count);
+        for (uint16_t i = 0; i < resource_count; i++)
+            value = (value * 1099511628211ULL) ^ desc.resources[i].id ^
+                    ((uint64_t)desc.resources[i].access << 16);
         return value;
     }
 
@@ -297,10 +330,14 @@ class query_handle {
     /** Adopt an existing query id; the handle destroys it on scope exit. */
     explicit query_handle(ecs_query_id_t id) noexcept : _id(id) {}
     /** Build and own a query from its descriptor and term count. */
-    query_handle(const ecs_query_desc_t &desc, uint16_t term_index)
+    query_handle(const ecs_query_desc_t &desc, uint16_t component_index)
+        : query_handle(desc, component_index, detail::query_resource_count(desc)) {}
+    query_handle(const ecs_query_desc_t &desc, uint16_t component_index, uint16_t resource_index)
         : _id(ecs_query_init(&desc)),
           _base_desc(desc),
-          _base_term_index(term_index) {}
+          _base_component_index(component_index),
+          _base_resource_index(resource_index),
+          _signature(signature(desc, component_index, resource_index)) {}
     /** Destroy the owned query, if any. */
     ~query_handle() {
         if (_id != 0) ecs_query_fini(_id);
@@ -318,7 +355,8 @@ class query_handle {
         if (this != &other) {
             std::swap(_id, other._id);
             std::swap(_base_desc, other._base_desc);
-            std::swap(_base_term_index, other._base_term_index);
+            std::swap(_base_component_index, other._base_component_index);
+            std::swap(_base_resource_index, other._base_resource_index);
             std::swap(_signature, other._signature);
         }
         return *this;
@@ -332,11 +370,12 @@ class query_handle {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
 
-        if (_base_term_index != UINT16_MAX) {
+        if (_base_component_index != UINT16_MAX) {
             ecs_query_desc_t desc = _base_desc;
-            uint16_t term_index = _base_term_index;
-            detail::append_callback_terms<args>(desc, term_index);
-            uint64_t next_signature = signature(desc, term_index);
+            uint16_t component_index = _base_component_index;
+            uint16_t resource_index = _base_resource_index;
+            detail::append_callback_terms<args>(desc, component_index, resource_index);
+            uint64_t next_signature = signature(desc, component_index, resource_index);
             if (next_signature != _signature) {
                 if (_id != 0) ecs_query_fini(_id);
                 _id = ecs_query_init(&desc);
@@ -351,11 +390,12 @@ class query_handle {
 class query {
   protected:
     ecs_query_desc_t desc{};
-    uint16_t term_index = 0;
+    uint16_t component_index = 0;
+    uint16_t resource_index = 0;
     uint16_t relation_index = 0;
 
-    template <ecs_term_access_t Access, typename... T> query &components() {
-        detail::append_terms<T...>(desc, term_index, Access);
+    template <ecs_access_t Access, typename... T> query &components() {
+        detail::append_terms<T...>(desc, component_index, Access);
         return *this;
     }
 
@@ -426,7 +466,7 @@ class query {
     }
 
     template <typename Component, typename Relation> query &up() {
-        desc.terms[term_index++] = {
+        desc.components[component_index++] = {
             .id = detail::ecs_cpp_component_id<Component>(),
             .access = ECS_QUERY_UP_ACCESS(
                 EcsInUp,
@@ -440,14 +480,15 @@ class query {
     ecs_query_id_t build() { return ecs_query_init(&desc); }
 
     /** Build a move-only RAII query handle. */
-    query_handle build_handle() { return query_handle(desc, term_index); }
+    query_handle build_handle() { return query_handle(desc, component_index, resource_index); }
 
     /** Build, iterate, and destroy a temporary query around `func`. */
     template <typename F> void each(F &&func) {
         using args = typename function_traits<std::remove_cvref_t<F>>::args_tuple;
         ecs_query_desc_t typed = desc;
-        uint16_t typed_count = term_index;
-        detail::append_callback_terms<args>(typed, typed_count);
+        uint16_t typed_component_index = component_index;
+        uint16_t typed_resource_index = resource_index;
+        detail::append_callback_terms<args>(typed, typed_component_index, typed_resource_index);
         ecs_query_id_t qid = ecs_query_init(&typed);
         detail::each_query(qid, std::forward<F>(func));
         ecs_query_fini(qid);

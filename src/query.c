@@ -123,7 +123,9 @@ void ecs_query_fini(ecs_query_id_t qid) {
     cache->field_kind_bits = NULL;
     cache->field_table_capacity = 0;
 
-    ecs_query_index_remove_active_id(&query_index, qid);
+    if (cache->active_index != UINT32_MAX) {
+        ecs_query_index_remove_active_id(&query_index, qid);
+    }
     cache->next_free = query_index.first_free;
     cache->alive = false;
     query_index.first_free = qid;
