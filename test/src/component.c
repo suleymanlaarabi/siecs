@@ -349,6 +349,26 @@ void component_on_add(void) {
     ecs_fini();
 }
 
+void component_modified_does_not_call_on_set_hook(void) {
+    reset_hook_state();
+
+    ecs_init();
+    ECS_COMPONENT_REGISTER(HookComponent);
+
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, HookComponent, { 1 });
+    hook_set_calls = 0;
+
+    HookComponent *value = ecs_get(entity, HookComponent);
+    value->value = 2;
+    ecs_modified(entity, HookComponent);
+
+    test_int(0, hook_set_calls);
+    test_int(2, ecs_get(entity, HookComponent)->value);
+
+    ecs_fini();
+}
+
 void component_lifecycle_ops_are_used_for_storage_moves(void) {
     lifecycle_reset();
 

@@ -25,6 +25,7 @@
         "testcases": [
           "listener_failure_reports_details",
           "module_lifecycle",
+          "in_process_dispatch",
           "schema_uses_public_metadata",
           "entity_routes_use_public_introspection",
           "component_mutation_uses_public_metadata"

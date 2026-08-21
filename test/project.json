@@ -54,6 +54,7 @@
           "component_info_is_stable",
           "name_returns_registered_name",
           "on_add",
+          "modified_does_not_call_on_set_hook",
           "lifecycle_ops_are_used_for_storage_moves",
           "deferred_set_overwrite_preserves_lifecycle",
           "add_with_required_uses_current_table_edge",
@@ -199,7 +200,9 @@
           "enable",
           "skips_disabled_by_default",
           "can_match_disabled_when_requested",
-          "on_remove_runs_when_entity_is_killed"
+          "on_remove_runs_when_entity_is_killed",
+          "modified_emits_current_component_value",
+          "modified_supports_zero_sized_tags"
         ]
       },
       {
