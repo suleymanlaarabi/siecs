@@ -7,6 +7,7 @@
 
 static void rest_state_on_remove(const void *ptr);
 static sihttp_response_t rest_health(const sihttp_request_t *req);
+static void rest_register_routes(sihttp_server_t *server);
 
 ECS_RESOURCE_DEFINE(SiecsRestState, .on_remove = rest_state_on_remove);
 ECS_MODULE_DEFINE(sirest);
@@ -65,17 +66,20 @@ static sihttp_server_t *rest_server_create(const sirest_props_t *props) {
         rest_fail(props, errno);
     }
 
-    int listen_result = sihttp_server_listen(server, props->host, (uint16_t)props->port);
-    int listen_errno = errno;
-    if (listen_result != 0) {
-        sihttp_server_fini(server);
-        rest_fail(props, listen_errno);
-    }
+    rest_register_routes(server);
+    if (!props->in_process) {
+        int listen_result = sihttp_server_listen(server, props->host, (uint16_t)props->port);
+        int listen_errno = errno;
+        if (listen_result != 0) {
+            sihttp_server_fini(server);
+            rest_fail(props, listen_errno);
+        }
 
-    if (sihttp_server_start(server) != 0) {
-        int start_errno = errno;
-        sihttp_server_fini(server);
-        rest_fail(props, start_errno);
+        if (sihttp_server_start(server) != 0) {
+            int start_errno = errno;
+            sihttp_server_fini(server);
+            rest_fail(props, start_errno);
+        }
     }
     return server;
 }
@@ -86,6 +90,7 @@ void sirest_import(const sirest_props_t *props) {
         .port = 4040,
         .backlog = 0,
         .max_requests_per_poll = 0,
+        .in_process = false,
     };
     sirest_props_t config = props ? *props : defaults;
     if (config.port == 0) {
@@ -97,6 +102,23 @@ void sirest_import(const sirest_props_t *props) {
 
     sihttp_server_t *server = rest_server_create(&config);
     ecs_set_resource(SiecsRestState, { .server = server });
+    if (!config.in_process) {
+        ecs_system(
+            {
+                .name = "SiecsRestPoll",
+                .query = {
+                    .resources = {
+                        ecs_inout(SiecsRestState),
+                    },
+                },
+                .callback = rest_poll,
+                .phase = EcsPostRender,
+            }
+        );
+    }
+}
+
+static void rest_register_routes(sihttp_server_t *server) {
     sihttp_get(server, "/schema", ecs_rest_get_schema);
     sihttp_get(server, "/entities", ecs_rest_get_entities);
     sihttp_post(server, "/entities", ecs_rest_post_entities);
@@ -104,24 +126,22 @@ void sirest_import(const sirest_props_t *props) {
     sihttp_get(server, "/health", rest_health);
     sihttp_put(server, "/entities/:index/components/:component", ecs_rest_put_entity_component);
     sihttp_get(server, "/entities/:index", ecs_rest_get_entity);
+}
 
-    ecs_system(
-        {
-            .name = "SiecsRestPoll",
-            .query = {
-                .resources = {
-                    ecs_inout(SiecsRestState),
-                },
-            },
-            .callback = rest_poll,
-            .phase = EcsPostRender,
-        }
-    );
+sihttp_response_t sirest_dispatch(
+    sihttp_method_t method,
+    const char *path,
+    const char *body
+) {
+    SiecsRestState *state = ecs_try_get_resource(SiecsRestState);
+
+    return sihttp_server_dispatch(state->server, method, path, body);
 }
 
 static sihttp_response_t rest_health(const sihttp_request_t *req) {
     (void)req;
     sihttp_response_t response = { 0 };
+    response.status = 200;
     response.body = malloc(3);
     if (response.body) {
         memcpy(response.body, "OK", 3);

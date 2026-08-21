@@ -6630,6 +6630,13 @@ void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
     ecs_store_cid(entity, cid, (void *)data, false);
 }
 
+void ecs_modified_cid(ecs_entity_t entity, ecs_component_t cid) {
+    ecs_assert_component_access(entity, cid);
+    entity_edit(entity, table, record);
+    void *data = ecs_table_get_component(table, cid, record->table_row);
+    ecs_emit(table, entity, EcsOnSet, data);
+}
+
 void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
     ecs_store_cid_now(entity, cid, data, true);
 }

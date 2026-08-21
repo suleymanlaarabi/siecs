@@ -84,6 +84,30 @@ void rest_module_lifecycle(void) {
     ecs_fini();
 }
 
+void rest_in_process_dispatch(void) {
+    ecs_init();
+
+    sirest_import(&(sirest_props_t){
+        .in_process = true,
+    });
+
+    sihttp_response_t response = sirest_dispatch(
+        SIHTTP_METHOD_GET,
+        "/health",
+        NULL
+    );
+    test_int(response.status, 200);
+    test_str(response.body, "OK");
+    sihttp_response_fini(&response);
+
+    response = sirest_dispatch(SIHTTP_METHOD_GET, "/entities", NULL);
+    test_int(response.status, 200);
+    test_str(response.body, "[]");
+    sihttp_response_fini(&response);
+
+    ecs_fini();
+}
+
 void rest_schema_uses_public_metadata(void) {
     ecs_init();
     ECS_COMPONENT_REGISTER(RestTestPosition);

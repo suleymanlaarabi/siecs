@@ -943,7 +943,8 @@ typedef struct {
  * trigger_data is event-specific:
  * - EcsOnAdd: pointer to the added component storage.
  * - EcsOnRemove: pointer to the component storage before removal.
- * - EcsOnSet: pointer to the new value passed to ecs_set/ecs_set_cid.
+ * - EcsOnSet: pointer to the new value passed to ecs_set/ecs_set_cid, or the
+ *   current component storage passed by ecs_modified/ecs_modified_cid.
  * - EcsOnRelationSet/EcsOnRelationRemove: pointer to ecs_relation_event_t.
  * - Custom events: pointer passed to ecs_observer_trigger.
  */
@@ -1845,6 +1846,17 @@ SIECS_API void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
  */
 SIECS_API void ecs_set_cid(ecs_entity_t entity, ecs_component_t id,
                            const void *data);
+
+/*
+ * Notify observers after a component was modified in place.
+ *
+ * The component must already exist on the entity. This does not copy data or
+ * invoke component on_set hooks. EcsOnSet observers receive the component's
+ * current storage after the mutation, or NULL for a zero-sized tag.
+ */
+#define ecs_modified(entity, cname) ecs_modified_cid(entity, ecs_id(cname))
+SIECS_API void ecs_modified_cid(ecs_entity_t entity, ecs_component_t id);
+
 /* Move a component value into an entity, consuming data with the registered
  * move operation. data must point to an initialized value of the component. */
 SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
