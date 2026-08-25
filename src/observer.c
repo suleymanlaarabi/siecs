@@ -70,9 +70,10 @@ ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
         }
     }
     if (!global_observer) {
-        const uint16_t *table_ids = cache->table_ids.data;
-        for (uint32_t i = 0; i < cache->table_ids.size; i++)
-            ecs_table_add_observer(&table_index.tables[table_ids[i]], observer->event, oid);
+        for (uint16_t i = 0; i < cache->table_count; i++) {
+            const uint16_t table_id = ecs_query_table_id(cache, i);
+            ecs_table_add_observer(&table_index.tables[table_id], observer->event, oid);
+        }
     }
     ecs_module_record_observer(oid);
     return oid;

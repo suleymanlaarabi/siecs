@@ -138,23 +138,48 @@ ecs_system_t *ecs_system_index_get(ecs_system_id_t system) {
 }
 
 static bool ecs_query_tables_overlap(const ecs_query_cache_t *a, const ecs_query_cache_t *b) {
-    const uint16_t *a_ids = a->table_ids.data, *b_ids = b->table_ids.data;
-    for (uint32_t ai = 0; ai < a->table_ids.size; ai++)
-        for (uint32_t bi = 0; bi < b->table_ids.size; bi++)
-            if (a_ids[ai] == b_ids[bi]) return true;
+    for (uint16_t ai = 0; ai < a->table_count; ai++)
+        for (uint16_t bi = 0; bi < b->table_count; bi++)
+            if (ecs_query_table_id(a, ai) == ecs_query_table_id(b, bi)) return true;
+    return false;
+}
+
+static inline bool ecs_query_access_writes(ecs_access_t access) {
+    return access == EcsOut || access == EcsInOut || access == EcsInOutOptional;
+}
+
+static bool ecs_query_terms_conflict(
+    const ecs_access_term_t *a, uint8_t a_count,
+    const ecs_access_term_t *b, uint8_t b_count
+) {
+    for (uint8_t ai = 0; ai < a_count; ai++) {
+        for (uint8_t bi = 0; bi < b_count; bi++) {
+            if (a[ai].id == b[bi].id &&
+                (ecs_query_access_writes(ecs_access_term_access(a[ai])) ||
+                 ecs_query_access_writes(ecs_access_term_access(b[bi])))) {
+                return true;
+            }
+        }
+    }
     return false;
 }
 
 static bool ecs_system_conflict(const ecs_system_t *a, const ecs_system_t *b) {
     if (a->main_thread_only || b->main_thread_only) return true;
     if (a->qid == UINT16_MAX || b->qid == UINT16_MAX) return false;
-    const ecs_query_cache_t *aq = sicore_vec_get(&query_index.queries, a->qid, ecs_query_cache_t);
-    const ecs_query_cache_t *bq = sicore_vec_get(&query_index.queries, b->qid, ecs_query_cache_t);
-    if (ecs_access_conflict(aq->resource_accesses, aq->query.resource_access_count,
-                            bq->resource_accesses, bq->query.resource_access_count)) return true;
-    return ecs_access_conflict(aq->component_accesses, aq->query.component_access_count,
-                               bq->component_accesses, bq->query.component_access_count) &&
-           ecs_query_tables_overlap(aq, bq);
+    const ecs_query_cache_t *a_cache =
+        sicore_vec_get(&query_index.queries, a->qid, ecs_query_cache_t);
+    const ecs_query_cache_t *b_cache =
+        sicore_vec_get(&query_index.queries, b->qid, ecs_query_cache_t);
+    const ecs_query_t *aq = a_cache->query;
+    const ecs_query_t *bq = b_cache->query;
+    if (ecs_query_terms_conflict(ecs_query_resources(aq), aq->resource_count,
+                                 ecs_query_resources(bq), bq->resource_count)) {
+        return true;
+    }
+    return ecs_query_terms_conflict(ecs_query_fields(aq), aq->field_count,
+                                    ecs_query_fields(bq), bq->field_count) &&
+           ecs_query_tables_overlap(a_cache, b_cache);
 }
 
 void ecs_system_index_build_plan(void) {
