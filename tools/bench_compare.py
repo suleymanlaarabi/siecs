@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import statistics
@@ -16,13 +17,20 @@ from pathlib import Path
 BENCH_LINE = re.compile(r"^\[bench\] ([^:]+): ([0-9]+(?:\.[0-9]+)?) ms$")
 
 
-def run(command: list[str], cwd: Path, *, capture: bool = False) -> str:
+RUNTIME_LIBRARIES = ("libsiecs.so", "libsicore.so", "libsireflect.so", "libsijson.so")
+
+
+def run(
+    command: list[str], cwd: Path, *, capture: bool = False,
+    env: dict[str, str] | None = None,
+) -> str:
     result = subprocess.run(
         command,
         cwd=cwd,
         text=True,
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.STDOUT if capture else None,
+        env=env,
         check=False,
     )
     if result.returncode != 0:
@@ -35,16 +43,33 @@ def build_benchmarks(cwd: Path) -> None:
     run(["bake", "rebuild", "bench", "-r", "--cfg", "release"], cwd, capture=True)
 
 
-def run_benchmarks(cwd: Path, scope: str | None, cpu: int | None) -> dict[str, list[float]]:
-    command = ["bake", "run", "bench", "--cfg", "release"]
+def snapshot_runtime(cwd: Path, destination: Path) -> Path:
+    environment = run(["bake", "env", "--cfg", "release"], cwd, capture=True)
+    target = Path(next(line[12:] for line in environment.splitlines()
+                       if line.startswith("BAKE_TARGET=")))
+    destination.mkdir()
+    binary = destination / "bench"
+    shutil.copy2(cwd / "bench/bin/x64-Linux-release/bench", binary)
+    for library in RUNTIME_LIBRARIES:
+        shutil.copy2(target / "lib" / library, destination / library)
+    return binary
+
+
+def run_benchmarks(binary: Path, scope: str | None, cpu: int | None) -> dict[str, list[float]]:
+    command = [str(binary)]
     if scope:
-        command += ["--", scope]
+        command.append(scope)
     if cpu is not None:
         if shutil.which("taskset") is None:
             raise RuntimeError("--cpu requires taskset on this platform")
         command = ["taskset", "-c", str(cpu), *command]
 
-    output = run(command, cwd, capture=True)
+    environment = os.environ.copy()
+    current_library_path = environment.get("LD_LIBRARY_PATH")
+    environment["LD_LIBRARY_PATH"] = str(binary.parent) + (
+        os.pathsep + current_library_path if current_library_path else ""
+    )
+    output = run(command, binary.parent, capture=True, env=environment)
     measurements: dict[str, list[float]] = {}
     for line in output.splitlines():
         match = BENCH_LINE.match(line.strip())
@@ -170,11 +195,19 @@ def main() -> int:
                 shutil.copy2(root / "bench/src/main.c", baseline / "bench/src/main.c")
                 print(f"Building origin/main ({online_ref[:12]})...", file=sys.stderr)
                 build_benchmarks(baseline)
-                online_runs = [run_benchmarks(baseline, args.scope, args.cpu) for _ in range(args.runs)]
+                online_binary = snapshot_runtime(baseline, Path(temporary) / "online-runtime")
 
                 print("Building local benchmark...", file=sys.stderr)
                 build_benchmarks(root)
-                local_runs = [run_benchmarks(root, args.scope, args.cpu) for _ in range(args.runs)]
+                local_binary = snapshot_runtime(root, Path(temporary) / "local-runtime")
+                online_runs = []
+                local_runs = []
+                for index in range(args.runs):
+                    order = ((online_binary, online_runs), (local_binary, local_runs))
+                    if index & 1:
+                        order = reversed(order)
+                    for binary, runs in order:
+                        runs.append(run_benchmarks(binary, args.scope, args.cpu))
             finally:
                 run(["git", "worktree", "remove", "--force", str(baseline)], root, capture=True)
 

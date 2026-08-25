@@ -35,7 +35,7 @@ ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
     return (ecs_iter_t){
         .cache = cache,
         .table_idx = UINT16_MAX,
-        .table_count = cache->table_ids.size,
+        .table_count = cache->table_count,
         .count = 0,
     };
 }
@@ -45,50 +45,55 @@ uint32_t ecs_query_count(ecs_query_id_t query_id) {
     ecs_query_cache_t *cache =
         sicore_vec_get_mut(&query_index.queries, query_id, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", query_id);
-    uint16_t *tids = cache->table_ids.data;
 
     uint32_t count = 0;
-    for (uint32_t i = 0; i < cache->table_ids.size; i++) {
-        if (ECS_UNLIKELY(cache->query.up_mask) &&
-            !ecs_query_resolve_up_fields(cache, ecs_get_table(tids[i]), i)) {
+    for (uint16_t i = 0; i < cache->table_count; i++) {
+        const uint16_t table_id = ecs_query_table_id(cache, i);
+        const ecs_table_t *table = ecs_get_table(table_id);
+        if (ECS_UNLIKELY(cache->query->up_mask) &&
+            !ecs_query_resolve_up_fields(cache, table, ecs_query_table_at(cache, i))) {
             continue;
         }
-        count += table_index.tables[tids[i]].entity_count;
+        count += table->entity_count;
     }
     return count;
 }
 
 bool ecs_iter_next(ecs_iter_t *it) {
-    uint16_t *tids = it->cache->table_ids.data;
+    ecs_query_cache_t *cache = it->cache;
+    ecs_table_t *table;
     do {
         if (++it->table_idx >= it->table_count)
             return false;
-        it->count = table_index.tables[tids[it->table_idx]].entity_count;
-        if (it->count && ECS_UNLIKELY(it->cache->query.up_mask) &&
+        const uint16_t table_id = ecs_query_table_id(cache, it->table_idx);
+        table = &table_index.tables[table_id];
+        it->count = table->entity_count;
+        if (it->count && ECS_UNLIKELY(cache->query->up_mask) &&
             !ecs_query_resolve_up_fields(
-                it->cache,
-                ecs_get_table(tids[it->table_idx]),
-                it->table_idx
+                cache,
+                table,
+                ecs_query_table_at(cache, it->table_idx)
             )) {
             it->count = 0;
         }
     } while (it->count == 0);
-    if (it->cache->query.field_count == 0) {
+    if (cache->query->field_count == 0) {
         it->ptrs = NULL;
         it->field_kind_bits = 0;
     } else {
-        it->ptrs = &it->cache->fields_ptr[it->table_idx * it->cache->query.field_count];
-        it->field_kind_bits = it->cache->field_kind_bits[it->table_idx];
+        ecs_query_table_t *query_table = ecs_query_table_at(cache, it->table_idx);
+        it->ptrs = query_table->fields;
+        it->field_kind_bits = query_table->field_kind_bits;
     }
-    it->entities = table_index.tables[tids[it->table_idx]].entities;
+    it->entities = table->entities;
     return true;
 }
 
 const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     ecs_assert(record->info.desc.storage != EcsRelationByTarget, "ecs_targets requires Dense or ByDepth\n");
-    const uint16_t *table_ids = it->cache->table_ids.data;
-    const ecs_table_t *table = ecs_get_table(table_ids[it->table_idx]);
+    const uint16_t table_id = ecs_query_table_id(it->cache, it->table_idx);
+    const ecs_table_t *table = ecs_get_table(table_id);
     uint16_t column = ecs_table_column_or_invalid(table, record->component);
     return column == UINT16_MAX ? NULL : table->cls[column].data;
 }
@@ -99,8 +104,8 @@ ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relati
     ecs_assert(record->info.desc.storage == EcsRelationByTarget, "ecs_target_shared requires ByTarget\n");
 
 #endif
-    const uint16_t *table_ids = it->cache->table_ids.data;
-    const ecs_table_t *table = ecs_get_table(table_ids[it->table_idx]);
+    const uint16_t table_id = ecs_query_table_id(it->cache, it->table_idx);
+    const ecs_table_t *table = ecs_get_table(table_id);
     return ecs_table_target_id(table, relation);
 }
 
@@ -111,21 +116,15 @@ void ecs_query_fini(ecs_query_id_t qid) {
         sicore_vec_get_mut(&query_index.queries, qid, ecs_query_cache_t);
     ecs_assert(cache->alive, "query id is not alive: %u\n", qid);
 
-    free(cache->fields_ptr);
-    free(cache->field_kind_bits);
-    if (cache->table_ids.capacity > ECS_QUERY_RETAIN_TABLE_CAPACITY) {
-        sicore_vec_fini(&cache->table_ids);
-        sicore_vec_init(&cache->table_ids, sizeof(uint16_t));
-    } else {
-        cache->table_ids.size = 0;
-    }
-    cache->fields_ptr = NULL;
-    cache->field_kind_bits = NULL;
-    cache->field_table_capacity = 0;
-
     if (cache->active_index != UINT32_MAX) {
         ecs_query_index_remove_active_id(&query_index, qid);
     }
+    free(cache->query);
+    free(cache->tables);
+    cache->query = NULL;
+    cache->tables = NULL;
+    cache->table_capacity = 0;
+    cache->table_count = 0;
     cache->next_free = query_index.first_free;
     cache->alive = false;
     query_index.first_free = qid;

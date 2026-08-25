@@ -31,7 +31,8 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
         desc->phase
     );
 
-    const bool iterates_query = ecs_query_desc_tracks_tables(&desc->query);
+    const bool iterates_query = desc->query.components[0].id ||
+        desc->query.relations[0].id || desc->query.order_by.func || desc->query.is_a;
     const bool has_query = iterates_query || desc->query.resources[0].id;
     ecs_system_id_t system = ecs_system_index_create(
         desc,
