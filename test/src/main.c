@@ -35,6 +35,7 @@ void component_dynamic_component_layout_and_info(void);
 void component_component_info_is_stable(void);
 void component_name_returns_registered_name(void);
 void component_on_add(void);
+void component_modified_does_not_call_on_set_hook(void);
 void component_lifecycle_ops_are_used_for_storage_moves(void);
 void component_deferred_set_overwrite_preserves_lifecycle(void);
 void component_add_with_required_uses_current_table_edge(void);
@@ -104,7 +105,12 @@ void childof_query_slot_reuses_component_and_relation_terms(void);
 void childof_relation_only_system_and_observer(void);
 
 // Testsuite 'query'
+void query_tags_keep_presence_without_data(void);
+void query_full_descriptor_and_empty_candidates(void);
+void query_sorted_growth_preserves_fields_and_equal_order(void);
 void query_terms_field_order(void);
+void query_resources_do_not_affect_matching_or_fields(void);
+void query_resource_only_has_no_entity_batches(void);
 void query_count_matches_current_query_entities(void);
 void query_out_term_matches_and_returns_field(void);
 void query_not_excludes_tables(void);
@@ -131,6 +137,7 @@ void system_run(void);
 void system_parallel_independent_callbacks(void);
 void system_parallel_worker_context_is_deferred(void);
 void system_parallel_query_table_conflicts(void);
+void system_indexed_queries_detect_late_overlap(void);
 void system_batches_invalidate_after_table_creation(void);
 void system_main_thread_only(void);
 void system_parallel_after_is_a_barrier(void);
@@ -159,10 +166,13 @@ void system_quit_makes_progress_return_false(void);
 void system_custom_phase(void);
 
 // Testsuite 'observer'
+void observer_global_registration_does_not_duplicate_queries(void);
 void observer_enable(void);
 void observer_skips_disabled_by_default(void);
 void observer_can_match_disabled_when_requested(void);
 void observer_on_remove_runs_when_entity_is_killed(void);
+void observer_modified_emits_current_component_value(void);
+void observer_modified_supports_zero_sized_tags(void);
 
 // Testsuite 'module'
 void module_import_registers_runtime(void);
@@ -271,6 +281,10 @@ bake_test_case component_testcases[] = {
     {
         "on_add",
         component_on_add
+    },
+    {
+        "modified_does_not_call_on_set_hook",
+        component_modified_does_not_call_on_set_hook
     },
     {
         "lifecycle_ops_are_used_for_storage_moves",
@@ -534,8 +548,28 @@ bake_test_case childof_testcases[] = {
 
 bake_test_case query_testcases[] = {
     {
+        "tags_keep_presence_without_data",
+        query_tags_keep_presence_without_data
+    },
+    {
+        "full_descriptor_and_empty_candidates",
+        query_full_descriptor_and_empty_candidates
+    },
+    {
+        "sorted_growth_preserves_fields_and_equal_order",
+        query_sorted_growth_preserves_fields_and_equal_order
+    },
+    {
         "terms_field_order",
         query_terms_field_order
+    },
+    {
+        "resources_do_not_affect_matching_or_fields",
+        query_resources_do_not_affect_matching_or_fields
+    },
+    {
+        "resource_only_has_no_entity_batches",
+        query_resource_only_has_no_entity_batches
     },
     {
         "count_matches_current_query_entities",
@@ -635,6 +669,10 @@ bake_test_case system_testcases[] = {
     {
         "parallel_query_table_conflicts",
         system_parallel_query_table_conflicts
+    },
+    {
+        "indexed_queries_detect_late_overlap",
+        system_indexed_queries_detect_late_overlap
     },
     {
         "batches_invalidate_after_table_creation",
@@ -744,6 +782,10 @@ bake_test_case system_testcases[] = {
 
 bake_test_case observer_testcases[] = {
     {
+        "global_registration_does_not_duplicate_queries",
+        observer_global_registration_does_not_duplicate_queries
+    },
+    {
         "enable",
         observer_enable
     },
@@ -758,6 +800,14 @@ bake_test_case observer_testcases[] = {
     {
         "on_remove_runs_when_entity_is_killed",
         observer_on_remove_runs_when_entity_is_killed
+    },
+    {
+        "modified_emits_current_component_value",
+        observer_modified_emits_current_component_value
+    },
+    {
+        "modified_supports_zero_sized_tags",
+        observer_modified_supports_zero_sized_tags
     }
 };
 
@@ -828,7 +878,7 @@ static bake_test_suite suites[] = {
         "component",
         NULL,
         NULL,
-        26,
+        27,
         component_testcases
     },
     {
@@ -849,21 +899,21 @@ static bake_test_suite suites[] = {
         "query",
         NULL,
         NULL,
-        21,
+        26,
         query_testcases
     },
     {
         "system",
         NULL,
         NULL,
-        30,
+        31,
         system_testcases
     },
     {
         "observer",
         NULL,
         NULL,
-        4,
+        7,
         observer_testcases
     },
     {

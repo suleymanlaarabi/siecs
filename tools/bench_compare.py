@@ -40,7 +40,10 @@ def run(
 
 
 def build_benchmarks(cwd: Path) -> None:
-    run(["bake", "rebuild", "bench", "-r", "--cfg", "release"], cwd, capture=True)
+    # Recursive dependency discovery can resolve siecs to the registered local
+    # checkout, even when cwd is the baseline worktree. Build this root first.
+    run(["bake", "rebuild", ".", "--cfg", "release"], cwd, capture=True)
+    run(["bake", "rebuild", "bench", "--cfg", "release"], cwd, capture=True)
 
 
 def snapshot_runtime(cwd: Path, destination: Path) -> Path:

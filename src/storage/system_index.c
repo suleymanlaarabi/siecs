@@ -138,9 +138,9 @@ ecs_system_t *ecs_system_index_get(ecs_system_id_t system) {
 }
 
 static bool ecs_query_tables_overlap(const ecs_query_cache_t *a, const ecs_query_cache_t *b) {
+    if (a->table_count > b->table_count) return ecs_query_tables_overlap(b, a);
     for (uint16_t ai = 0; ai < a->table_count; ai++)
-        for (uint16_t bi = 0; bi < b->table_count; bi++)
-            if (ecs_query_table_id(a, ai) == ecs_query_table_id(b, bi)) return true;
+        if (ecs_query_table_position(b, ecs_query_table_id(a, ai)) != UINT16_MAX) return true;
     return false;
 }
 

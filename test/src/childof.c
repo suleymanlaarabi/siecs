@@ -865,8 +865,8 @@ void childof_type_layout_stays_compact(void) {
     test_int(24, sizeof(ecs_type_t));
     test_int(16, sizeof(ecs_type_pair_t));
     test_int(40, sizeof(ecs_query_t));
-    test_int(16, sizeof(ecs_query_type_filter_t));
-    test_int(40, sizeof(ecs_query_cache_t));
+    test_int(16, sizeof(ecs_query_relation_term_t));
+    test_int(56, sizeof(ecs_query_cache_t));
     test_int(32, sizeof(ecs_relation_record_t));
 }
 

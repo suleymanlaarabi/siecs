@@ -11,6 +11,7 @@
 // Testsuite 'rest'
 void rest_listener_failure_reports_details(void);
 void rest_module_lifecycle(void);
+void rest_in_process_dispatch(void);
 void rest_schema_uses_public_metadata(void);
 void rest_entity_routes_use_public_introspection(void);
 void rest_component_mutation_uses_public_metadata(void);
@@ -23,6 +24,10 @@ bake_test_case rest_testcases[] = {
     {
         "module_lifecycle",
         rest_module_lifecycle
+    },
+    {
+        "in_process_dispatch",
+        rest_in_process_dispatch
     },
     {
         "schema_uses_public_metadata",
@@ -44,7 +49,7 @@ static bake_test_suite suites[] = {
         "rest",
         NULL,
         NULL,
-        5,
+        6,
         rest_testcases
     }
 };

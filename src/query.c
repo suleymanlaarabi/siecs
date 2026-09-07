@@ -1,37 +1,13 @@
-#include "command_buffer.h"
-#include "module.h"
 #include "storage/query_index.h"
-#include "table.h"
-#include "utils.h"
 #include "world_internal.h"
-#include <stdint.h>
 #include <stdlib.h>
-
-static void ecs_query_index_remove_active_id(ecs_query_index_t *index, ecs_query_id_t qid) {
-    ecs_query_cache_t *cache = sicore_vec_get_mut(&index->queries, qid, ecs_query_cache_t);
-    uint32_t active_index = cache->active_index;
-    uint32_t last_index = index->active_ids.size - 1;
-
-    if (active_index != last_index) {
-        ecs_query_id_t moved = *sicore_vec_get(&index->active_ids, last_index, ecs_query_id_t);
-        ((ecs_query_id_t *)index->active_ids.data)[active_index] = moved;
-        sicore_vec_get_mut(&index->queries, moved, ecs_query_cache_t)->active_index = active_index;
-    }
-
-    sicore_vec_remove_last(&index->active_ids);
-}
-
 ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) {
     ecs_assert_not_scheduler_parallel("query registration");
     return ecs_query_index_create(desc);
 }
 
 ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
-    ecs_assert(query_id < query_index.queries.size, "invalid query id: %u\n", query_id);
-
-    ecs_query_cache_t *cache =
-        sicore_vec_get_mut(&query_index.queries, query_id, ecs_query_cache_t);
-    ecs_assert(cache->alive, "query id is not alive: %u\n", query_id);
+    ecs_query_cache_t *cache = ecs_query_cache(query_id);
     return (ecs_iter_t){
         .cache = cache,
         .table_idx = UINT16_MAX,
@@ -39,13 +15,8 @@ ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
         .count = 0,
     };
 }
-
 uint32_t ecs_query_count(ecs_query_id_t query_id) {
-    ecs_assert(query_id < query_index.queries.size, "invalid query id: %u\n", query_id);
-    ecs_query_cache_t *cache =
-        sicore_vec_get_mut(&query_index.queries, query_id, ecs_query_cache_t);
-    ecs_assert(cache->alive, "query id is not alive: %u\n", query_id);
-
+    ecs_query_cache_t *cache = ecs_query_cache(query_id);
     uint32_t count = 0;
     for (uint16_t i = 0; i < cache->table_count; i++) {
         const uint16_t table_id = ecs_query_table_id(cache, i);
@@ -58,7 +29,6 @@ uint32_t ecs_query_count(ecs_query_id_t query_id) {
     }
     return count;
 }
-
 bool ecs_iter_next(ecs_iter_t *it) {
     ecs_query_cache_t *cache = it->cache;
     ecs_table_t *table;
@@ -69,11 +39,7 @@ bool ecs_iter_next(ecs_iter_t *it) {
         table = &table_index.tables[table_id];
         it->count = table->entity_count;
         if (it->count && ECS_UNLIKELY(cache->query->up_mask) &&
-            !ecs_query_resolve_up_fields(
-                cache,
-                table,
-                ecs_query_table_at(cache, it->table_idx)
-            )) {
+            !ecs_query_resolve_up_fields(cache, table, ecs_query_table_at(cache, it->table_idx))) {
             it->count = 0;
         }
     } while (it->count == 0);
@@ -88,7 +54,6 @@ bool ecs_iter_next(ecs_iter_t *it) {
     it->entities = table->entities;
     return true;
 }
-
 const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     ecs_assert(record->info.desc.storage != EcsRelationByTarget, "ecs_targets requires Dense or ByDepth\n");
@@ -97,7 +62,6 @@ const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_i
     uint16_t column = ecs_table_column_or_invalid(table, record->component);
     return column == UINT16_MAX ? NULL : table->cls[column].data;
 }
-
 ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
 #ifndef NDEBUG
     const ecs_relation_record_t *record = ecs_relation_record(relation);
@@ -110,22 +74,17 @@ ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relati
 }
 
 void ecs_query_fini(ecs_query_id_t qid) {
-    ecs_assert(qid < query_index.queries.size, "invalid query id: %u\n", qid);
-
-    ecs_query_cache_t *cache =
-        sicore_vec_get_mut(&query_index.queries, qid, ecs_query_cache_t);
-    ecs_assert(cache->alive, "query id is not alive: %u\n", qid);
-
+    ecs_query_cache_t *cache = ecs_query_cache(qid);
     if (cache->active_index != UINT32_MAX) {
-        ecs_query_index_remove_active_id(&query_index, qid);
+        ecs_query_id_t *ids = query_index.active_ids.data;
+        ecs_query_id_t moved = ids[query_index.active_ids.size - 1];
+        ids[cache->active_index] = moved;
+        ecs_query_cache(moved)->active_index = cache->active_index;
+        sicore_vec_remove_last(&query_index.active_ids);
     }
     free(cache->query);
     free(cache->tables);
-    cache->query = NULL;
-    cache->tables = NULL;
-    cache->table_capacity = 0;
-    cache->table_count = 0;
-    cache->next_free = query_index.first_free;
     cache->alive = false;
+    cache->next_free = query_index.first_free;
     query_index.first_free = qid;
 }

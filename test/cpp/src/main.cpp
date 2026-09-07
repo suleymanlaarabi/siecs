@@ -27,10 +27,10 @@ void resource_world_api(void);
 void resource_presence_checks_do_not_register(void);
 void resource_system_read(void);
 void resource_system_write(void);
-void resource_system_without_query_runs_once(void);
+void resource_system_resource_only_runs_once(void);
 void resource_system_empty_callback_runs_once(void);
 void resource_query_read(void);
-void resource_does_not_create_query_term(void);
+void resource_does_not_create_component_term(void);
 void resource_field_index_stays_correct(void);
 void resource_cpp_raii_component_survives_table_migrations(void);
 void resource_capturing_system_keeps_state(void);
@@ -54,7 +54,7 @@ void observer_multi_arg_terms(void);
 void observer_does_not_match_missing_component(void);
 void observer_resource_read(void);
 void observer_resource_write(void);
-void observer_resource_does_not_create_query_term(void);
+void observer_resource_does_not_create_component_term(void);
 void observer_resource_field_index_stays_correct(void);
 void observer_relation_events(void);
 
@@ -133,8 +133,8 @@ bake_test_case resource_testcases[] = {
         resource_system_write
     },
     {
-        "system_without_query_runs_once",
-        resource_system_without_query_runs_once
+        "system_resource_only_runs_once",
+        resource_system_resource_only_runs_once
     },
     {
         "system_empty_callback_runs_once",
@@ -145,8 +145,8 @@ bake_test_case resource_testcases[] = {
         resource_query_read
     },
     {
-        "does_not_create_query_term",
-        resource_does_not_create_query_term
+        "does_not_create_component_term",
+        resource_does_not_create_component_term
     },
     {
         "field_index_stays_correct",
@@ -231,8 +231,8 @@ bake_test_case observer_testcases[] = {
         observer_resource_write
     },
     {
-        "resource_does_not_create_query_term",
-        observer_resource_does_not_create_query_term
+        "resource_does_not_create_component_term",
+        observer_resource_does_not_create_component_term
     },
     {
         "resource_field_index_stays_correct",

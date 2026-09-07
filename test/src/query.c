@@ -1,4 +1,5 @@
 #include <siecs_test.h>
+#include "world_internal.h"
 
 ECS_COMPONENT_DECLARE(QueryPosition, { int value; });
 ECS_COMPONENT_DECLARE(QueryVelocity, { int value; });
@@ -11,6 +12,150 @@ ECS_COMPONENT_DEFINE(QueryVelocity);
 ECS_COMPONENT_DEFINE(QueryMass);
 ECS_COMPONENT_DEFINE(QueryDisabled);
 ECS_RESOURCE_DEFINE(QueryResource);
+
+static void query_test_world(void);
+
+void query_tags_keep_presence_without_data(void) {
+    ecs_init();
+    ecs_component_t tag = ecs_component({ .inheritance = EcsInheritShared });
+    ecs_entity_t base = ecs_new(), owned = ecs_new(), inherited = ecs_new();
+    ecs_add_cid(base, tag);
+    ecs_add_cid(owned, tag);
+    ecs_is_a(inherited, base);
+    for (ecs_access_t access = EcsIn; access <= EcsInOutOptional; access++) {
+        ecs_query_id_t q = ecs_query({ .components = { { tag, access } } });
+        uint32_t owned_rows = 0, shared_rows = 0;
+        ecs_iter_t it = ecs_query_iter(q);
+        while (ecs_iter_next(&it)) {
+            test_null(ecs_field(&it, 0));
+            if (it.entities[0] == owned) {
+                test_int(EcsFieldOwned, ecs_field_kind(&it, 0));
+                owned_rows += it.count;
+            }
+            if (it.entities[0] == inherited) {
+                test_int(access == EcsInOutOptional ? EcsFieldNone : EcsFieldShared,
+                         ecs_field_kind(&it, 0));
+                shared_rows += it.count;
+            }
+        }
+        test_uint(1, owned_rows);
+        test_uint(access == EcsOut || access == EcsInOut ? 0 : 1, shared_rows);
+        ecs_query_fini(q);
+    }
+    ecs_fini();
+}
+
+void query_full_descriptor_and_empty_candidates(void) {
+    ecs_init();
+    ecs_query_desc_t desc = { 0 };
+    ecs_entity_t entity = ecs_new(), target = ecs_new();
+    for (uint8_t i = 0; i < ECS_QUERY_TERM_CAPACITY; i++) {
+        ecs_component_t component = ecs_component({ .size = sizeof(int) });
+        desc.components[i] = (ecs_component_term_t){ component, EcsInOut };
+        int value = i;
+        ecs_set_cid(entity, component, &value);
+    }
+    for (uint8_t i = 0; i < ECS_QUERY_RESOURCE_CAPACITY; i++) {
+        ecs_resource_t resource = ecs_resource_init(&(ecs_resource_desc_t){
+            .name = "QueryCapacityResource", .size = sizeof(int) });
+        desc.resources[i] = (ecs_resource_term_t){ resource, EcsInOut };
+    }
+    for (uint8_t i = 0; i < ECS_QUERY_RELATION_CAPACITY; i++) {
+        ecs_relation_id_t relation = ecs_relation_init(NULL, &(ecs_relation_desc_t){
+            .storage = EcsRelationDense, .on_delete_target = EcsRemoveRelation });
+        desc.relations[i] = (ecs_query_relation_term_t){ .id = relation, .kind = EcsRelationRequired };
+        ecs_relate_id(entity, relation, target);
+    }
+    ecs_query_id_t q = ecs_query_init(&desc);
+    ecs_iter_t it = ecs_query_iter(q);
+    test_true(ecs_iter_next(&it));
+    test_uint(1, it.count);
+    for (uint8_t i = 0; i < ECS_QUERY_TERM_CAPACITY; i++) {
+        test_int(EcsFieldOwned, ecs_field_kind(&it, i));
+        test_int(i, *(int *)ecs_field(&it, i));
+    }
+    test_false(ecs_iter_next(&it));
+    ecs_query_fini(q);
+    for (uint8_t i = 0; i < ECS_QUERY_TERM_CAPACITY; i++) desc.components[i].access = EcsFilter;
+    q = ecs_query_init(&desc);
+    test_uint(1, ecs_query_count(q));
+    it = ecs_query_iter(q);
+    test_true(ecs_iter_next(&it));
+    test_null(it.ptrs);
+    ecs_query_fini(q);
+    desc.components[0].id = ecs_component({ 0 });
+    q = ecs_query_init(&desc);
+    test_uint(0, ecs_query_count(q));
+    ecs_add_cid(entity, desc.components[0].id);
+    test_uint(1, ecs_query_count(q));
+    ecs_query_fini(q);
+    q = ecs_query({ 0 });
+    test_uint(0, ecs_query_count(q));
+    ecs_query_fini(q);
+    ecs_fini();
+}
+
+static int query_group_order(const ecs_table_t *a, const ecs_table_t *b, uint64_t relation) {
+    uint64_t av = ecs_type_pair_get(&a->type, relation) % 4;
+    uint64_t bv = ecs_type_pair_get(&b->type, relation) % 4;
+    return (av > bv) - (av < bv);
+}
+
+void query_sorted_growth_preserves_fields_and_equal_order(void) {
+    query_test_world();
+    ecs_relation_id_t relation = ecs_relation_init(NULL, &(ecs_relation_desc_t){
+        .storage = EcsRelationByTarget, .on_delete_target = EcsRemoveRelation });
+    ecs_entity_t targets[40], entities[40];
+    for (uint32_t i = 0; i < 40; i++) targets[i] = ecs_new();
+    ecs_query_id_t early = ecs_query({
+        .components = { ecs_inout(QueryVelocity) },
+        .order_by = { query_group_order, relation },
+    });
+    for (uint32_t i = 0; i < 40; i++) {
+        entities[i] = ecs_new();
+        ecs_relate_id(entities[i], relation, targets[39 - i]);
+        ecs_set(entities[i], QueryVelocity, { (int)i });
+    }
+    ecs_query_id_t late = ecs_query({
+        .components = { ecs_inout(QueryVelocity) },
+        .order_by = { query_group_order, relation },
+    });
+    for (uint32_t i = 0; i < 40; i++) {
+        for (uint32_t j = 0; j < 9; j++) {
+            ecs_entity_t e = ecs_new();
+            ecs_relate_id(e, relation, targets[39 - i]);
+            ecs_set(e, QueryVelocity, { (int)i });
+        }
+    }
+    ecs_iter_t a = ecs_query_iter(early), b = ecs_query_iter(late);
+    uint32_t seen = 0, previous_group = 0, previous_value = 0;
+    while (ecs_iter_next(&a)) {
+        test_true(ecs_iter_next(&b));
+        test_uint(a.entities[0], b.entities[0]);
+        QueryVelocity *values = ecs_field(&a, 0);
+        uint32_t value = values[0].value;
+        uint32_t group = ecs_target_shared_id(&a, relation) % 4;
+        test_assert(group >= previous_group);
+        if (seen && group == previous_group) test_assert(value > previous_value);
+        test_uint(entities[value], a.entities[0]);
+        test_assert(values == ecs_field(&b, 0));
+        test_uint(10, a.count);
+        for (uint32_t i = 0; i < a.count; i++) test_int(value, values[i].value);
+        previous_group = group;
+        previous_value = value;
+        seen++;
+    }
+    test_false(ecs_iter_next(&b));
+    test_uint(40, seen);
+    test_uint(400, ecs_query_count(early));
+    ecs_query_fini(early);
+    ecs_query_id_t reused = ecs_query({ .components = { ecs_filter(QueryMass) } });
+    test_uint(early, reused);
+    test_uint(0, ecs_query_count(reused));
+    ecs_query_fini(reused);
+    ecs_query_fini(late);
+    ecs_fini();
+}
 
 static void query_test_world(void) {
     ecs_init();

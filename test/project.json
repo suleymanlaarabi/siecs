@@ -133,6 +133,9 @@
       {
         "id": "query",
         "testcases": [
+          "tags_keep_presence_without_data",
+          "full_descriptor_and_empty_candidates",
+          "sorted_growth_preserves_fields_and_equal_order",
           "terms_field_order",
           "resources_do_not_affect_matching_or_fields",
           "resource_only_has_no_entity_batches",
@@ -165,6 +168,7 @@
           "parallel_independent_callbacks",
           "parallel_worker_context_is_deferred",
           "parallel_query_table_conflicts",
+          "indexed_queries_detect_late_overlap",
           "batches_invalidate_after_table_creation",
           "main_thread_only",
           "parallel_after_is_a_barrier",
@@ -197,6 +201,7 @@
       {
         "id": "observer",
         "testcases": [
+          "global_registration_does_not_duplicate_queries",
           "enable",
           "skips_disabled_by_default",
           "can_match_disabled_when_requested",

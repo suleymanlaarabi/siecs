@@ -60,20 +60,11 @@ ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
     ecs_query_cache_t *cache =
         sicore_vec_get_mut(&query_index.queries, observer->query, ecs_query_cache_t);
     cache->observer = oid;
-    bool global_observer = false;
-    if (cache->active_index == UINT32_MAX && !desc->query.resources[0].id) {
-        global_observer = true;
-        cache->active_index = query_index.active_ids.size;
-        sicore_vec_push_u16(&query_index.active_ids, observer->query);
-        for (uint16_t i = 0; i < table_index.table_count; i++) {
-            ecs_query_index_add_table(&table_index.tables[i], i);
-        }
-    }
-    if (!global_observer) {
-        for (uint16_t i = 0; i < cache->table_count; i++) {
-            const uint16_t table_id = ecs_query_table_id(cache, i);
-            ecs_table_add_observer(&table_index.tables[table_id], observer->event, oid);
-        }
+    if (cache->active_index == UINT32_MAX && !desc->query.resources[0].id)
+        ecs_query_index_activate(observer->query, NULL, table_index.table_count);
+    for (uint16_t i = 0; i < cache->table_count; i++) {
+        const uint16_t table_id = ecs_query_table_id(cache, i);
+        ecs_table_add_observer(&table_index.tables[table_id], observer->event, oid);
     }
     ecs_module_record_observer(oid);
     return oid;

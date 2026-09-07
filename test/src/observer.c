@@ -9,6 +9,41 @@ static int observer_last_value;
 static ecs_entity_t observer_last_entity;
 static uint32_t observer_tag_calls;
 
+static void observer_count_event(ecs_observer_event_t *event) {
+    uint32_t *calls = (uint32_t *)event->user_data;
+    (*calls)++;
+}
+
+void observer_global_registration_does_not_duplicate_queries(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(ObserverValue);
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, ObserverValue, { 1 });
+    ecs_query_id_t q = ecs_query({ .components = { ecs_in(ObserverValue) } });
+    ecs_event_t event = ecs_event();
+    uint32_t filtered = 0, first_global = 0, second_global = 0;
+    ecs_observer({ .on = event, .query = { .components = { ecs_filter(ObserverValue) } },
+        .callback = observer_count_event, .user_data = (uintptr_t)&filtered });
+    ecs_observer({ .on = event, .callback = observer_count_event,
+        .user_data = (uintptr_t)&first_global });
+    ecs_observer({ .on = event, .callback = observer_count_event,
+        .user_data = (uintptr_t)&second_global });
+    test_uint(1, ecs_query_count(q));
+    ecs_observer_trigger(entity, event, NULL);
+    test_uint(1, filtered);
+    test_uint(1, first_global);
+    test_uint(1, second_global);
+    ecs_component_t tag = ecs_component({ 0 });
+    ecs_add_cid(entity, tag);
+    test_uint(1, ecs_query_count(q));
+    ecs_observer_trigger(entity, event, NULL);
+    test_uint(2, filtered);
+    test_uint(2, first_global);
+    test_uint(2, second_global);
+    ecs_query_fini(q);
+    ecs_fini();
+}
+
 static void reset_observer_state(void) {
     observer_calls = 0;
     observer_last_value = 0;

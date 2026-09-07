@@ -415,6 +415,33 @@ void system_batches_invalidate_after_table_creation(void) {
     ecs_fini();
 }
 
+void system_indexed_queries_detect_late_overlap(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(SystemPosition);
+    ecs_component_t groups[2] = { ecs_component({ 0 }), ecs_component({ 0 }) };
+    for (uint32_t i = 0; i < 48; i++) {
+        ecs_entity_t e = ecs_new();
+        ecs_add_cid(e, ecs_component({ 0 }));
+        ecs_add_cid(e, groups[i % 2]);
+        ecs_set(e, SystemPosition, { (int)i });
+    }
+    for (uint32_t i = 0; i < 2; i++) {
+        ecs_system({ .name = "IndexedWriter", .phase = EcsOnUpdate,
+            .query = { .components = { ecs_inout(SystemPosition), { groups[i], EcsFilter } } },
+            .callback = count_system });
+    }
+    ecs_system_index_build_plan();
+    ecs_phase_info_t *phase = ecs_system_index_get_phase(EcsOnUpdate);
+    test_uint(2, phase->plan_count);
+    ecs_entity_t shared = ecs_new();
+    ecs_add_cid(shared, groups[0]);
+    ecs_add_cid(shared, groups[1]);
+    ecs_set(shared, SystemPosition, { 0 });
+    ecs_system_index_build_plan();
+    test_uint(3, phase->plan_count);
+    ecs_fini();
+}
+
 void system_main_thread_only(void) {
     atomic_store(&main_thread_only_marker, 0);
     ecs_with_features({ .worker_threads = 1 });
