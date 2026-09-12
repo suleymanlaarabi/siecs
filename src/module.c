@@ -252,7 +252,27 @@ void ecs_module_record_observer(ecs_observer_id_t observer) {
     if (module) {
         ecs_observer_t *value =
             sicore_vec_get_mut(&observer_index.observers, observer, ecs_observer_t);
+        value->module = module;
         value->next_module = ecs_module_record(module)->observer;
         ecs_module_record(module)->observer = observer;
     }
+}
+
+void ecs_module_forget_observer(ecs_observer_id_t observer) {
+    ecs_observer_t *value =
+        sicore_vec_get_mut(&observer_index.observers, observer, ecs_observer_t);
+    ecs_module_id_t module = value->module;
+    if (module == 0) return;
+
+    ecs_module_t *record = ecs_module_record(module);
+    ecs_observer_id_t *link = &record->observer;
+    while (*link != UINT32_MAX) {
+        if (*link == observer) {
+            *link = value->next_module;
+            break;
+        }
+        link = &sicore_vec_get_mut(&observer_index.observers, *link, ecs_observer_t)->next_module;
+    }
+    value->module = 0;
+    value->next_module = UINT32_MAX;
 }

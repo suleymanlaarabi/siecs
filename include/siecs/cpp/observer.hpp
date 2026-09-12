@@ -61,8 +61,10 @@ template <> inline constexpr ecs_event_t builtin_event<OnRelationRemove> = EcsOn
 template <typename T> static inline ecs_event_t custom_event = UINT16_MAX;
 
 template <typename T> static ecs_event_t ecs_cpp_event_id() {
-    if constexpr (builtin_event<T> != UINT16_MAX) return builtin_event<T>;
-    if (custom_event<T> == UINT16_MAX) custom_event<T> = ecs_event();
+    if constexpr (builtin_event<T> != UINT16_MAX)
+        return builtin_event<T>;
+    if (custom_event<T> == UINT16_MAX)
+        custom_event<T> = ecs_event();
     return custom_event<T>;
 }
 
@@ -81,7 +83,8 @@ decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event, Resources &reso
         void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
         if constexpr (std::is_const_v<std::remove_reference_t<arg>>)
             return *static_cast<const raw *>(ptr);
-        else return *static_cast<raw *>(ptr);
+        else
+            return *static_cast<raw *>(ptr);
     }
 }
 
@@ -99,6 +102,7 @@ void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
 /** Typed observer builder; callbacks must be stateless and default constructible. */
 template <typename T> class observer : public query {
     uintptr_t _user_data = 0;
+    ecs_entity_t _target = 0;
 
   public:
     /** Start an empty observer query for event tag `T`. */
@@ -107,6 +111,11 @@ template <typename T> class observer : public query {
     /** Set opaque callback user data; the pointer is borrowed, not deleted. */
     observer &user_data(uintptr_t value) {
         _user_data = value;
+        return *this;
+    }
+
+    observer &target(ecs::entity value) noexcept {
+        _target = value.id();
         return *this;
     }
 
@@ -127,15 +136,16 @@ template <typename T> class observer : public query {
         using traits = function_traits<callback>;
         using args = typename traits::args_tuple;
         static_assert(
-            detail::component_arg_count<args>() > 0 || std::is_same_v<T, OnRelationSet> ||
-                std::is_same_v<T, OnRelationRemove>,
-            "observer callbacks must read at least one component or observe relation data"
+            detail::component_arg_count<args>() > 0 || detail::builtin_event<T> == UINT16_MAX ||
+                std::is_same_v<T, OnRelationSet> || std::is_same_v<T, OnRelationRemove>,
+            "lifecycle observers must read at least one component"
         );
 
         ecs::detail::append_callback_terms<args>(this->desc, component_index, resource_index);
 
         ecs_observer_desc_t observer_desc = {
             .on = detail::ecs_cpp_event_id<T>(),
+            .entity = _target,
             .query = this->desc,
             .callback = detail::ecs_cpp_observer_callback<callback, args>,
             .user_data = _user_data,
@@ -144,5 +154,12 @@ template <typename T> class observer : public query {
         return ecs_observer_init(&observer_desc);
     }
 };
+
+template <typename Event, typename F> ecs::entity entity::observe(F &&callback) {
+    ecs::observer<Event> value;
+    value.target(*this);
+    value.each(std::forward<F>(callback));
+    return *this;
+}
 
 } // namespace ecs

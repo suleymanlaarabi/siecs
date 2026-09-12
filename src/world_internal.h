@@ -52,25 +52,51 @@ static inline void ecs_emit(
     ecs_component_t component,
     const void *trigger_data
 ) {
-    if (table->observers_by_event.size <= event) {
-        return;
+    if (table->observers_by_event.size > event) {
+        const sicore_vec_t *list = sicore_vec_get(&table->observers_by_event, event, sicore_vec_t);
+        uint32_t n = list->size;
+        for (uint32_t i = 0; i < n; i++) {
+            ecs_observer_id_t oid = *sicore_vec_get(list, i, ecs_observer_id_t);
+            ecs_observer_t *obs = sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
+            if (!obs->enabled) {
+                continue;
+            }
+            ecs_observer_event_t observer_event = {
+                .entity = entity,
+                .event = event,
+                .component = component,
+                .user_data = obs->user_data,
+                .trigger_data = trigger_data,
+            };
+            obs->callback(&observer_event);
+        }
     }
-    const sicore_vec_t *list = sicore_vec_get(&table->observers_by_event, event, sicore_vec_t);
-    uint32_t n = list->size;
-    for (uint32_t i = 0; i < n; i++) {
-        uint16_t oid = *sicore_vec_get(list, i, uint16_t);
-        ecs_observer_t *obs = sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
-        if (!obs->enabled) {
-            continue;
+
+    uint64_t key = ecs_observer_target_key(ecs_entity_id(entity), event);
+    uint32_t at = ecs_observer_target_lower_bound(key);
+    const uint64_t *keys = observer_index.target_keys.data;
+    if (at == observer_index.target_keys.size || keys[at] != key) return;
+
+    uint16_t table_id = (uint16_t)(table - table_index.tables);
+    const ecs_observer_id_t *ids = observer_index.target_observers.data;
+    uint32_t count = observer_index.target_keys.size;
+    while (at < count && keys[at] == key) {
+        ecs_observer_id_t oid = ids[at++];
+        ecs_observer_t *observer =
+            sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
+        if (!observer->enabled) continue;
+        if (observer->query != ECS_OBSERVER_NO_QUERY) {
+            ecs_query_cache_t *cache = ecs_query_cache(observer->query);
+            if (ecs_query_table_position(cache, table_id) == UINT16_MAX) continue;
         }
         ecs_observer_event_t observer_event = {
             .entity = entity,
             .event = event,
             .component = component,
-            .user_data = obs->user_data,
+            .user_data = observer->user_data,
             .trigger_data = trigger_data,
         };
-        obs->callback(&observer_event);
+        observer->callback(&observer_event);
     }
 }
 

@@ -812,6 +812,7 @@ BENCH_SETUP(relation_query_init_bytarget_exact, {
 
 static uint64_t scheduler_checksum;
 static void scheduler_bench_system(ecs_iter_t *it) { scheduler_checksum += it->count; }
+static void observer_bench_ignore(ecs_observer_event_t *event) { (void)event; }
 
 BENCH_SETUP(scheduler_plan_compile, {
     ecs_system_id_t systems[256];
@@ -847,6 +848,50 @@ BENCH_SETUP(scheduler_loaded_phase, {
     }
     BENCH({ for (uint32_t i = 0; i < 500; i++) ecs_run_phase(EcsOnUpdate); });
     if (!scheduler_checksum) abort();
+});
+
+BENCH_SETUP(observer_target_one, {
+    arg(entity_count, 100000);
+    arg(iter_count, 100000);
+    ecs_entity_t target = ecs_new();
+    for (uint32_t i = 1; i < entity_count; i++) ecs_new();
+    ecs_event_t event = ecs_event();
+    ecs_observer({ .on = event, .entity = target, .callback = observer_bench_ignore });
+    BENCH({ for (uint32_t i = 0; i < iter_count; i++) ecs_observer_trigger(target, event, NULL); });
+});
+
+BENCH_SETUP(observer_target_many, {
+    arg(entity_count, 100000);
+    arg(observer_count, 10000);
+    arg(iter_count, 100000);
+    ecs_entity_t target = ecs_new();
+    ecs_event_t event = ecs_event();
+    ecs_observer({ .on = event, .entity = target, .callback = observer_bench_ignore });
+    for (uint32_t i = 1; i < observer_count; i++) {
+        ecs_entity_t entity = ecs_new();
+        ecs_observer({ .on = event, .entity = entity, .callback = observer_bench_ignore });
+    }
+    for (uint32_t i = observer_count; i < entity_count; i++) ecs_new();
+    BENCH({ for (uint32_t i = 0; i < iter_count; i++) ecs_observer_trigger(target, event, NULL); });
+});
+
+BENCH_SETUP(observer_target_table_creation, {
+    arg(observer_count, 10000);
+    arg(table_count, 1000);
+    ecs_entity_t target = ecs_new();
+    ecs_event_t event = ecs_event();
+    for (uint32_t i = 0; i < observer_count; i++) {
+        ecs_observer({ .on = event, .entity = target, .callback = observer_bench_ignore });
+    }
+    ecs_component_t *tags = malloc(sizeof(*tags) * table_count);
+    register_components(tags, table_count);
+    BENCH({
+        for (uint32_t i = 0; i < table_count; i++) {
+            ecs_entity_t entity = ecs_new();
+            ecs_add_cid(entity, tags[i]);
+        }
+    });
+    free(tags);
 });
 
 int main(int argc, char *argv[]) {
@@ -886,6 +931,9 @@ int main(int argc, char *argv[]) {
     run_scoped_bench(scope, relation_query_init_bytarget_exact);
     run_scoped_bench(scope, scheduler_plan_compile);
     run_scoped_bench(scope, scheduler_loaded_phase);
+    run_scoped_bench(scope, observer_target_one);
+    run_scoped_bench(scope, observer_target_many);
+    run_scoped_bench(scope, observer_target_table_creation);
 
     return 0;
 }

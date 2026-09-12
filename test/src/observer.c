@@ -1,4 +1,6 @@
 #include "siecs.h"
+#include "storage/observer_index.h"
+#include "storage/query_index.h"
 #include <siecs_test.h>
 
 ECS_COMPONENT_DECLARE(ObserverValue, { int value; });
@@ -29,6 +31,133 @@ static void observer_capture_component(ecs_observer_event_t *event) {
 static void observer_count_event(ecs_observer_event_t *event) {
     uint32_t *calls = (uint32_t *)event->user_data;
     (*calls)++;
+}
+
+static void observer_ignore_event(ecs_observer_event_t *event) {
+    (void)event;
+}
+
+void observer_target_exact_entity(void) {
+    ecs_init();
+    ecs_entity_t target = ecs_new(), other = ecs_new();
+    ecs_event_t event = ecs_event();
+    uint32_t calls = 0;
+    ecs_observer({ .on = event, .entity = target, .callback = observer_count_event,
+        .user_data = (uintptr_t)&calls });
+    ecs_observer_trigger(other, event, NULL);
+    test_uint(0, calls);
+    ecs_observer_trigger(target, event, NULL);
+    test_uint(1, calls);
+    ecs_fini();
+}
+
+void observer_target_no_query(void) {
+    ecs_init();
+    ecs_entity_t target = ecs_new();
+    uint32_t active = query_index.active_ids.size;
+    ecs_observer_id_t id = ecs_observer({ .on = ecs_event(), .entity = target,
+        .callback = observer_count_event });
+    ecs_observer_t *observer = sicore_vec_get_mut(&observer_index.observers, id, ecs_observer_t);
+    test_uint(ECS_OBSERVER_NO_QUERY, observer->query);
+    test_uint(active, query_index.active_ids.size);
+    ecs_fini();
+}
+
+void observer_target_filtered(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(ObserverPosition);
+    ecs_entity_t target = ecs_new();
+    ecs_event_t event = ecs_event();
+    uint32_t calls = 0;
+    ecs_observer({ .on = event, .entity = target,
+        .query = { .components = { ecs_filter(ObserverPosition) } },
+        .callback = observer_count_event, .user_data = (uintptr_t)&calls });
+    ecs_observer_trigger(target, event, NULL);
+    test_uint(0, calls);
+    ecs_set(target, ObserverPosition, { 1, 2 });
+    ecs_observer_trigger(target, event, NULL);
+    test_uint(1, calls);
+    ecs_add_cid(target, ecs_component({ 0 }));
+    ecs_observer_trigger(target, event, NULL);
+    test_uint(2, calls);
+    ecs_fini();
+}
+
+void observer_target_destroy(void) {
+    ecs_init();
+    ecs_entity_t target = ecs_new();
+    ecs_event_t event = ecs_event();
+    uint32_t calls = 0;
+    ecs_observer_id_t id = ecs_observer({ .on = event, .entity = target,
+        .callback = observer_count_event, .user_data = (uintptr_t)&calls });
+    ecs_observer_fini(id);
+    ecs_observer_trigger(target, event, NULL);
+    test_uint(0, calls);
+    test_uint(id, ecs_observer({ .on = event, .entity = target, .callback = observer_count_event }));
+    ecs_fini();
+}
+
+void observer_target_entity_kill(void) {
+    ecs_init();
+    ecs_entity_t target = ecs_new(), other = ecs_new();
+    ecs_event_t event_a = ecs_event(), event_b = ecs_event();
+    ecs_observer({ .on = event_a, .entity = target, .callback = observer_count_event });
+    ecs_observer({ .on = event_b, .entity = target, .callback = observer_count_event });
+    ecs_observer({ .on = event_a, .entity = other, .callback = observer_count_event });
+    ecs_kill(target);
+    test_uint(1, observer_index.target_keys.size);
+    test_uint(1, observer_index.target_observers.size);
+    test_uint(ecs_observer_target_key(ecs_entity_id(other), event_a),
+        *(uint64_t *)observer_index.target_keys.data);
+    ecs_fini();
+}
+
+void observer_target_index_reuse(void) {
+    ecs_init();
+    ecs_entity_t target = ecs_new();
+    ecs_event_t event = ecs_event();
+    uint32_t calls = 0;
+    ecs_observer({ .on = event, .entity = target, .callback = observer_count_event,
+        .user_data = (uintptr_t)&calls });
+    uint32_t index = ecs_entity_id(target);
+    ecs_kill(target);
+    ecs_entity_t reused = ecs_new();
+    test_uint(index, ecs_entity_id(reused));
+    ecs_observer_trigger(reused, event, NULL);
+    test_uint(0, calls);
+    ecs_fini();
+}
+
+void observer_target_on_remove(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(ObserverValue);
+    ecs_entity_t target = ecs_new();
+    ecs_set(target, ObserverValue, { 1 });
+    uint32_t calls = 0;
+    ecs_observer({ .on = EcsOnRemove, .entity = target, .callback = observer_count_event,
+        .user_data = (uintptr_t)&calls });
+    ecs_kill(target);
+    test_uint(1, calls);
+    test_uint(0, observer_index.target_keys.size);
+    ecs_fini();
+}
+
+void observer_target_many(void) {
+    enum { observer_count = 65536, entity_count = 256 };
+    ecs_init();
+    ecs_event_t event = ecs_event();
+    ecs_entity_t entities[entity_count];
+    for (uint32_t i = 0; i < entity_count; i++) entities[i] = ecs_new();
+    for (uint32_t i = 0; i < observer_count; i++) {
+        ecs_observer({ .on = event, .entity = entities[i / 256], .callback = observer_ignore_event });
+    }
+    uint32_t calls = 0;
+    ecs_observer_id_t global = ecs_observer({ .on = event, .callback = observer_count_event,
+        .user_data = (uintptr_t)&calls });
+    test_uint(observer_count, global);
+    ecs_observer_trigger(entities[0], event, NULL);
+    test_uint(1, calls);
+    ecs_fini();
 }
 
 void observer_global_registration_does_not_duplicate_queries(void) {

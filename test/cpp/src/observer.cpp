@@ -29,10 +29,9 @@ struct CppRelationObserverState {
 };
 
 static CppObserverPosition *cpp_observer_position(ecs::entity entity) {
-    return static_cast<CppObserverPosition *>(ecs_get_cid(
-                entity.id(),
-        ecs::detail::ecs_cpp_component_id<CppObserverPosition>()
-    ));
+    return static_cast<CppObserverPosition *>(
+        ecs_get_cid(entity.id(), ecs::detail::ecs_cpp_component_id<CppObserverPosition>())
+    );
 }
 
 void observer_custom_event(void) {
@@ -50,6 +49,34 @@ void observer_custom_event(void) {
 
     test_int(1, cpp_observer_calls);
     test_int(3, cpp_observer_position(entity)->value);
+}
+
+void observer_entity_custom_event(void) {
+    cpp_observer_calls = 0;
+    ecs_test_scope _ecs_scope;
+    auto target = ecs::entity::create();
+    auto other = ecs::entity::create();
+
+    target.observe<CppObserverEvent>([](ecs::observer_event) { cpp_observer_calls++; });
+    ecs::trigger<CppObserverEvent>(other);
+    test_int(0, cpp_observer_calls);
+    ecs::trigger<CppObserverEvent>(target);
+    test_int(1, cpp_observer_calls);
+
+    ecs::observe<CppObserverEvent>().target(target).each([](ecs::observer_event) {
+        cpp_observer_calls++;
+    });
+    ecs::trigger<CppObserverEvent>(target);
+    test_int(3, cpp_observer_calls);
+
+    ecs::observe<CppObserverEvent>().target(target).each([](CppObserverPosition &) {
+        cpp_observer_calls++;
+    });
+    ecs::trigger<CppObserverEvent>(target);
+    test_int(5, cpp_observer_calls);
+    target.set(CppObserverPosition{ .value = 1 });
+    ecs::trigger<CppObserverEvent>(target);
+    test_int(8, cpp_observer_calls);
 }
 
 void observer_const_arg(void) {
@@ -79,7 +106,7 @@ void observer_multi_arg_terms(void) {
                       .set(CppObserverVelocity{ .value = 3 });
 
     ecs::observe<CppObserverEvent>().each([](CppObserverPosition &position,
-                                              const CppObserverVelocity &velocity) {
+                                             const CppObserverVelocity &velocity) {
         position.value += velocity.value;
         cpp_observer_calls++;
     });
@@ -97,7 +124,7 @@ void observer_does_not_match_missing_component(void) {
     auto entity = ecs::entity::create().set(CppObserverPosition{ .value = 1 });
 
     ecs::observe<CppObserverEvent>().each([](CppObserverPosition &position,
-                                              const CppObserverVelocity &velocity) {
+                                             const CppObserverVelocity &velocity) {
         position.value += velocity.value;
         cpp_observer_calls++;
     });
@@ -116,7 +143,7 @@ void observer_resource_read(void) {
     auto entity = ecs::entity::create().set(CppObserverPosition{ .value = 1 });
 
     ecs::observe<CppObserverEvent>().each([](ecs::res<const CppObserverTime> time,
-                                              CppObserverPosition &position) {
+                                             CppObserverPosition &position) {
         position.value += time->dt;
         cpp_observer_calls++;
     });
@@ -135,7 +162,7 @@ void observer_resource_write(void) {
     auto entity = ecs::entity::create().set(CppObserverPosition{ .value = 1 });
 
     ecs::observe<CppObserverEvent>().each([](ecs::res<CppObserverTime> time,
-                                              CppObserverPosition &position) {
+                                             CppObserverPosition &position) {
         time->elapsed += time->dt + position.value;
         cpp_observer_calls++;
     });
@@ -154,7 +181,7 @@ void observer_resource_does_not_create_component_term(void) {
     auto entity = ecs::entity::create().set(CppObserverPosition{ .value = 1 });
 
     ecs::observe<CppObserverEvent>().each([](ecs::res<const CppObserverTime> time,
-                                              CppObserverPosition &position) {
+                                             CppObserverPosition &position) {
         position.value += time->dt;
         cpp_observer_calls++;
     });
@@ -175,8 +202,8 @@ void observer_resource_field_index_stays_correct(void) {
                       .set(CppObserverVelocity{ .value = 2 });
 
     ecs::observe<CppObserverEvent>().each([](ecs::res<const CppObserverTime> time,
-                                              CppObserverPosition &position,
-                                              CppObserverVelocity &velocity) {
+                                             CppObserverPosition &position,
+                                             CppObserverVelocity &velocity) {
         position.value += time->dt + velocity.value;
         velocity.value = 8;
         cpp_observer_calls++;

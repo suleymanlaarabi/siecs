@@ -1277,6 +1277,7 @@ SIECS_API void ecs_with_relation_id(
  */
 typedef struct {
   ecs_event_t on;
+  ecs_entity_t entity;
   ecs_query_desc_t query;
   ecs_observer_callback_t callback;
   uintptr_t user_data;
@@ -1309,6 +1310,7 @@ SIECS_API ecs_event_t ecs_event_register(ecs_event_t *id);
 
 /* Create an observer. desc->callback must not be NULL. */
 SIECS_API ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc);
+SIECS_API void ecs_observer_fini(ecs_observer_id_t id);
 
 /* Enable or disable an observer; disabled observers remain registered. */
 SIECS_API void ecs_observer_enable(ecs_observer_id_t id);

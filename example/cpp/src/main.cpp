@@ -33,5 +33,13 @@ int main() {
         pos.y += vel.y;
     });
 
+    struct OnClick {};
+
+    ecs::entity e = ecs::entity::create().observe<OnClick>([](ecs::entity e) {
+        std::cout << "clicked: " << e.id();
+    });
+
+    ecs::trigger<OnClick>(e);
+
     ecs::run();
 }

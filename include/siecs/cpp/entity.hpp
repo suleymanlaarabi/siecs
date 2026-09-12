@@ -1,5 +1,6 @@
 #pragma once
 #include "siecs/cpp/component.hpp"
+#include "siecs/cpp/world.hpp"
 #include <cstring>
 #include <string>
 
@@ -31,10 +32,12 @@ class entity {
         if constexpr (sizeof...(T) > 1) {
             detail::defer_scope scope;
             ((Add ? ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>())
-                  : ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>())), ...);
+                  : ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>())),
+             ...);
         } else {
             ((Add ? ecs_add_cid(_entity, detail::ecs_cpp_component_id<T>())
-                  : ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>())), ...);
+                  : ecs_remove_cid(_entity, detail::ecs_cpp_component_id<T>())),
+             ...);
         }
         return *this;
     }
@@ -89,7 +92,9 @@ class entity {
     /** Add one or more registered components; returns this handle for chaining. */
     template <typename... T>
         requires(sizeof...(T) > 0)
-    entity add() { return mutate<true, T...>(); }
+    entity add() {
+        return mutate<true, T...>();
+    }
 
     /** Mark this entity abstract; application mutation of abstract bases is restricted. */
     entity abstract() {
@@ -100,7 +105,9 @@ class entity {
     /** Remove one or more components; missing components are ignored. */
     template <typename... T>
         requires(sizeof...(T) > 0)
-    entity remove() { return mutate<false, T...>(); }
+    entity remove() {
+        return mutate<false, T...>();
+    }
 
     /** Test that all requested components are present on this entity. */
     template <typename... T>
@@ -114,7 +121,8 @@ class entity {
         using type = std::remove_cvref_t<T>;
         if constexpr (std::is_lvalue_reference_v<T>)
             ecs_set_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
-        else ecs_move_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
+        else
+            ecs_move_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
         return *this;
     }
 
@@ -152,6 +160,8 @@ class entity {
     [[nodiscard]] bool is_alive() const { return _entity != 0 && ecs_is_alive(_entity); }
     /** Kill this entity; subsequent component access is invalid. */
     void kill() { ecs_kill(_entity); }
+
+    template <typename Event, typename F> entity observe(F &&callback);
 
     /** Add an inheritance link to `target`. */
     entity is_a(entity target) {

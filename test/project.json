@@ -213,7 +213,15 @@
           "on_add_reports_component",
           "on_remove_reports_component",
           "custom_event_reports_zero_component",
-          "deferred_on_set_reports_component_at_flush"
+          "deferred_on_set_reports_component_at_flush",
+          "target_exact_entity",
+          "target_no_query",
+          "target_filtered",
+          "target_destroy",
+          "target_entity_kill",
+          "target_index_reuse",
+          "target_on_remove",
+          "target_many"
         ]
       },
       {

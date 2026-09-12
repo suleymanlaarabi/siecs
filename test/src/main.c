@@ -179,6 +179,14 @@ void observer_on_add_reports_component(void);
 void observer_on_remove_reports_component(void);
 void observer_custom_event_reports_zero_component(void);
 void observer_deferred_on_set_reports_component_at_flush(void);
+void observer_target_exact_entity(void);
+void observer_target_no_query(void);
+void observer_target_filtered(void);
+void observer_target_destroy(void);
+void observer_target_entity_kill(void);
+void observer_target_index_reuse(void);
+void observer_target_on_remove(void);
+void observer_target_many(void);
 
 // Testsuite 'module'
 void module_import_registers_runtime(void);
@@ -838,6 +846,38 @@ bake_test_case observer_testcases[] = {
     {
         "deferred_on_set_reports_component_at_flush",
         observer_deferred_on_set_reports_component_at_flush
+    },
+    {
+        "target_exact_entity",
+        observer_target_exact_entity
+    },
+    {
+        "target_no_query",
+        observer_target_no_query
+    },
+    {
+        "target_filtered",
+        observer_target_filtered
+    },
+    {
+        "target_destroy",
+        observer_target_destroy
+    },
+    {
+        "target_entity_kill",
+        observer_target_entity_kill
+    },
+    {
+        "target_index_reuse",
+        observer_target_index_reuse
+    },
+    {
+        "target_on_remove",
+        observer_target_on_remove
+    },
+    {
+        "target_many",
+        observer_target_many
     }
 };
 
@@ -943,7 +983,7 @@ static bake_test_suite suites[] = {
         "observer",
         NULL,
         NULL,
-        12,
+        20,
         observer_testcases
     },
     {

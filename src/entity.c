@@ -221,6 +221,7 @@ void ecs_kill_now(ecs_entity_t entity) {
     // Remove from table
     ecs_table_remove_entity_update_record(table, entity, record->table_row, true);
 
+    ecs_observer_fini_entity(entity);
     ecs_entity_index_kill(ecs_first(entity));
 }
 
