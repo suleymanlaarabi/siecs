@@ -110,16 +110,16 @@
 /* Convenience macro for exporting symbols */
 #ifndef sicore_STATIC
 #if defined(sicore_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
-#define SICORE_API __declspec(dllexport)
+  #define SICORE_API __declspec(dllexport)
 #elif defined(sicore_EXPORTS)
-#define SICORE_API __attribute__((__visibility__("default")))
+  #define SICORE_API __attribute__((__visibility__("default")))
 #elif defined(_MSC_VER)
-#define SICORE_API __declspec(dllimport)
+  #define SICORE_API __declspec(dllimport)
 #else
-#define SICORE_API
+  #define SICORE_API
 #endif
 #else
-#define SICORE_API
+  #define SICORE_API
 #endif
 
 #endif
@@ -265,16 +265,16 @@ bool sicore_map_unset(sicore_map_t *map, const char *key);
 /* Convenience macro for exporting symbols */
 #ifndef sireflect_STATIC
 #if defined(sireflect_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
-#define SIREFLECT_API __declspec(dllexport)
+  #define SIREFLECT_API __declspec(dllexport)
 #elif defined(sireflect_EXPORTS)
-#define SIREFLECT_API __attribute__((__visibility__("default")))
+  #define SIREFLECT_API __attribute__((__visibility__("default")))
 #elif defined(_MSC_VER)
-#define SIREFLECT_API __declspec(dllimport)
+  #define SIREFLECT_API __declspec(dllimport)
 #else
-#define SIREFLECT_API
+  #define SIREFLECT_API
 #endif
 #else
-#define SIREFLECT_API
+  #define SIREFLECT_API
 #endif
 
 #endif
@@ -469,20 +469,24 @@ SIREFLECT_API const char *sireflect_error(void);
  * Registers a struct type from its textual field list.
  * Returns the existing handle if the same type was already registered.
  */
-SIREFLECT_API sireflect_handle_t sireflect_register_struct(const sireflect_struct_desc_t *desc);
+SIREFLECT_API sireflect_handle_t
+sireflect_register_struct(const sireflect_struct_desc_t *desc);
 
 /*
  * Tries to register a struct type from its textual field list.
  * Returns SIREFLECT_INVALID_HANDLE when the descriptor or reflected field syntax is invalid.
  */
-SIREFLECT_API sireflect_handle_t sireflect_try_register_struct(const sireflect_struct_desc_t *desc);
+SIREFLECT_API sireflect_handle_t
+sireflect_try_register_struct(const sireflect_struct_desc_t *desc);
 
 /*
  * Tries to register a dynamic struct and derives its C layout from the
  * registered field types. Returns SIREFLECT_INVALID_HANDLE on invalid input.
  */
-SIREFLECT_API sireflect_handle_t
-sireflect_try_register_dynamic_struct(const char *name, const char *fields);
+SIREFLECT_API sireflect_handle_t sireflect_try_register_dynamic_struct(
+    const char *name,
+    const char *fields
+);
 
 /* Finds a type handle by name, or SIREFLECT_INVALID_HANDLE if missing. */
 SIREFLECT_API sireflect_handle_t sireflect_type_by_name(const char *name);
@@ -518,8 +522,7 @@ SIREFLECT_API size_t sireflect_type_element_count(sireflect_handle_t ref);
 SIREFLECT_API sireflect_handle_t sireflect_type_pointee(sireflect_handle_t ref);
 
 /* Finds metadata for a field by name. */
-SIREFLECT_API const sireflect_field_info_t *
-sireflect_field_info(sireflect_handle_t type, const char *field);
+SIREFLECT_API const sireflect_field_info_t *sireflect_field_info(sireflect_handle_t type, const char *field);
 
 /* Returns the type handle of a field. */
 SIREFLECT_API sireflect_handle_t sireflect_field_type(sireflect_handle_t type, const char *field);
@@ -528,15 +531,26 @@ SIREFLECT_API sireflect_handle_t sireflect_field_type(sireflect_handle_t type, c
 SIREFLECT_API size_t sireflect_field_size(sireflect_handle_t ref, const char *field);
 
 /* Returns a const pointer to a field inside an object. */
-SIREFLECT_API const void *
-sireflect_field_ptr(sireflect_handle_t type, const void *obj, const char *field);
+SIREFLECT_API const void *sireflect_field_ptr(
+    sireflect_handle_t type,
+    const void *obj,
+    const char *field
+);
 
 /* Returns a mutable pointer to a field inside an object. */
-SIREFLECT_API void *sireflect_field_mut_ptr(sireflect_handle_t type, void *obj, const char *field);
+SIREFLECT_API void *sireflect_field_mut_ptr(
+    sireflect_handle_t type,
+    void *obj,
+    const char *field
+);
 
 /* Copies value bytes into a field. Returns 0 on success. */
-SIREFLECT_API int
-sireflect_field_copy(sireflect_handle_t type, void *obj, const char *field, const void *value);
+SIREFLECT_API int sireflect_field_copy(
+    sireflect_handle_t type,
+    void *obj,
+    const char *field,
+    const void *value
+);
 
 #ifdef __cplusplus
 }
@@ -574,16 +588,16 @@ sireflect_field_copy(sireflect_handle_t type, void *obj, const char *field, cons
 /* Convenience macro for exporting symbols */
 #ifndef sijson_STATIC
 #if defined(sijson_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
-#define SIJSON_API __declspec(dllexport)
+  #define SIJSON_API __declspec(dllexport)
 #elif defined(sijson_EXPORTS)
-#define SIJSON_API __attribute__((__visibility__("default")))
+  #define SIJSON_API __attribute__((__visibility__("default")))
 #elif defined(_MSC_VER)
-#define SIJSON_API __declspec(dllimport)
+  #define SIJSON_API __declspec(dllimport)
 #else
-#define SIJSON_API
+  #define SIJSON_API
 #endif
 #else
-#define SIJSON_API
+  #define SIJSON_API
 #endif
 
 #endif
@@ -758,8 +772,7 @@ SIJSON_API void *sijson_from_json_impl(
  */
 #define sijson_free(type, ptr) sijson_free_impl(&sijson_handle(type), &sireflect_desc(type), (ptr))
 
-SIJSON_API void
-sijson_free_impl(sireflect_handle_t *ref, const sireflect_struct_desc_t *desc, void *ptr);
+SIJSON_API void sijson_free_impl(sireflect_handle_t *ref, const sireflect_struct_desc_t *desc, void *ptr);
 
 /*
  * Returns the error message from the last failed operation.
@@ -813,15 +826,15 @@ namespace ecs {
 namespace detail {
 
 template <typename T> struct c_component_traits {
-    static constexpr bool value = false;
+  static constexpr bool value = false;
 };
 
 template <typename T> struct c_resource_traits {
-    static constexpr bool value = false;
+  static constexpr bool value = false;
 };
 
 template <typename T> struct c_relation_traits {
-    static constexpr bool value = false;
+  static constexpr bool value = false;
 };
 
 } // namespace detail
@@ -916,12 +929,12 @@ typedef void (*ecs_module_dynamic_import_t)(void);
  * observers captured during import. Components remain registered.
  */
 typedef struct {
-    const char *name;
-    ecs_module_id_t *id;
-    ecs_module_import_t import;
-    const void *desc;
-    uint32_t desc_size;
-    bool disabled;
+  const char *name;
+  ecs_module_id_t *id;
+  ecs_module_import_t import;
+  const void *desc;
+  uint32_t desc_size;
+  bool disabled;
 } ecs_module_desc_t;
 
 /*
@@ -940,11 +953,11 @@ typedef struct {
  * - Custom events: pointer passed to ecs_observer_trigger.
  */
 typedef struct {
-    ecs_entity_t entity;
-    ecs_event_t event;
-    ecs_component_t component;
-    uintptr_t user_data;
-    const void *trigger_data;
+  ecs_entity_t entity;
+  ecs_event_t event;
+  ecs_component_t component;
+  uintptr_t user_data;
+  const void *trigger_data;
 } ecs_observer_event_t;
 
 /*
@@ -956,16 +969,17 @@ typedef struct {
  * target. The payload is borrowed and valid only during the callback.
  */
 typedef struct {
-    ecs_relation_id_t relation;
-    ecs_entity_t old_target;
-    ecs_entity_t new_target;
+  ecs_relation_id_t relation;
+  ecs_entity_t old_target;
+  ecs_entity_t new_target;
 } ecs_relation_event_t;
 
 /* Observer callback; event storage is valid only during the callback. */
 typedef void (*ecs_observer_callback_t)(ecs_observer_event_t *event);
 
 /* Called after a component slot is added and zero-initialized. */
-typedef void (*ecs_component_on_add_t)(ecs_entity_t entity, ecs_component_t component, void *value);
+typedef void (*ecs_component_on_add_t)(ecs_entity_t entity,
+                                       ecs_component_t component, void *value);
 
 /*
  * Called before ecs_set_cid copies new_value into current_value.
@@ -973,19 +987,15 @@ typedef void (*ecs_component_on_add_t)(ecs_entity_t entity, ecs_component_t comp
  * current_value is the component slot currently stored on the entity. Hooks can
  * inspect the old value there, and may mutate it before the final copy.
  */
-typedef void (*ecs_component_on_set_t)(
-    ecs_entity_t entity,
-    ecs_component_t component,
-    const void *new_value,
-    void *current_value
-);
+typedef void (*ecs_component_on_set_t)(ecs_entity_t entity,
+                                       ecs_component_t component,
+                                       const void *new_value,
+                                       void *current_value);
 
 /* Called before a component slot is removed. */
-typedef void (*ecs_component_on_remove_t)(
-    ecs_entity_t entity,
-    ecs_component_t component,
-    void *value
-);
+typedef void (*ecs_component_on_remove_t)(ecs_entity_t entity,
+                                          ecs_component_t component,
+                                          void *value);
 
 /*
  * Value lifecycle operations for non-trivial component/resource storage.
@@ -1008,21 +1018,21 @@ typedef void (*ecs_type_move_t)(void *dst, void *src, uint32_t count);
 
 /* Controls how a component is materialized through an IsA inheritance link. */
 typedef enum {
-    /* Copy the effective base value into the inheriting entity. */
-    EcsInheritOwned = 0,
-    /* Keep the component on the base and resolve it as shared data. */
-    EcsInheritShared = 1
+  /* Copy the effective base value into the inheriting entity. */
+  EcsInheritOwned = 0,
+  /* Keep the component on the base and resolve it as shared data. */
+  EcsInheritShared = 1
 } ecs_component_inheritance_t;
 
 /* Iterator storage returned by ecs_query_iter; ptrs/entities are batch views.
  */
 typedef struct {
-    ecs_type_ctor_t ctor;
-    ecs_type_dtor_t dtor;
-    ecs_type_copy_t copy_ctor;
-    ecs_type_copy_t copy;
-    ecs_type_move_t move_ctor;
-    ecs_type_move_t move;
+  ecs_type_ctor_t ctor;
+  ecs_type_dtor_t dtor;
+  ecs_type_copy_t copy_ctor;
+  ecs_type_copy_t copy;
+  ecs_type_move_t move_ctor;
+  ecs_type_move_t move;
 } ecs_type_ops_t;
 
 /*
@@ -1034,32 +1044,32 @@ typedef struct {
  *
  */
 typedef struct {
-    const char *name;
-    uint64_t size;
-    ecs_type_ops_t ops;
-    ecs_component_on_set_t on_set;
-    ecs_component_on_remove_t on_remove;
-    ecs_component_on_add_t on_add;
-    const sireflect_struct_desc_t *struct_desc;
-    ecs_component_inheritance_t inheritance;
+  const char *name;
+  uint64_t size;
+  ecs_type_ops_t ops;
+  ecs_component_on_set_t on_set;
+  ecs_component_on_remove_t on_remove;
+  ecs_component_on_add_t on_add;
+  const sireflect_struct_desc_t *struct_desc;
+  ecs_component_inheritance_t inheritance;
 } ecs_component_desc_t;
 
 /* Immutable metadata for a registered component. */
 typedef struct {
-    const char *name;
-    uint64_t size;
-    sireflect_handle_t type;
-    /* Copied reflection descriptor, borrowed until ecs_fini(). */
-    const sireflect_struct_desc_t *reflection;
-    ecs_component_inheritance_t inheritance;
+  const char *name;
+  uint64_t size;
+  sireflect_handle_t type;
+  /* Copied reflection descriptor, borrowed until ecs_fini(). */
+  const sireflect_struct_desc_t *reflection;
+  ecs_component_inheritance_t inheritance;
 } ecs_component_info_t;
 
 /* Dynamic reflected component descriptor. Sireflect derives size and alignment.
  */
 typedef struct {
-    const char *name;
-    const char *fields;
-    ecs_component_inheritance_t inheritance;
+  const char *name;
+  const char *fields;
+  ecs_component_inheritance_t inheritance;
 } ecs_dynamic_component_desc_t;
 
 /*
@@ -1078,28 +1088,28 @@ typedef void (*ecs_resource_hook_t)(const void *ptr);
  * reverse first-registration order.
  */
 typedef struct {
-    const char *name;
-    uint64_t size;
-    ecs_type_ops_t ops;
-    ecs_resource_hook_t on_set;
-    ecs_resource_hook_t on_remove;
+  const char *name;
+  uint64_t size;
+  ecs_type_ops_t ops;
+  ecs_resource_hook_t on_set;
+  ecs_resource_hook_t on_remove;
 } ecs_resource_desc_t;
 
 /* Component and resource access mode. */
 typedef enum {
-    EcsIn,            /* Component must exist and is returned by ecs_field for reading. */
-    EcsOut,           /* Component must exist and is returned by ecs_field for writing. */
-    EcsInOut,         /* Component must exist and is returned by ecs_field for read/write.
-                       */
-    EcsInOptional,    /* Component is returned by ecs_field if present, NULL
-                         otherwise. */
-    EcsInOutOptional, /* Component is returned by ecs_field if present, NULL
-                         otherwise. */
-    EcsFilter,        /* Component must exist but is not returned by ecs_field. */
-    EcsNot,           /* Component must not exist and is not returned by ecs_field. */
-    EcsInUp,          /* Read the nearest inherited field through an acyclic ByTarget
-                         relation. */
-    EcsInUpOptional,  /* Same as EcsInUp, but permits a missing field. */
+  EcsIn,    /* Component must exist and is returned by ecs_field for reading. */
+  EcsOut,   /* Component must exist and is returned by ecs_field for writing. */
+  EcsInOut, /* Component must exist and is returned by ecs_field for read/write.
+             */
+  EcsInOptional,    /* Component is returned by ecs_field if present, NULL
+                       otherwise. */
+  EcsInOutOptional, /* Component is returned by ecs_field if present, NULL
+                       otherwise. */
+  EcsFilter,        /* Component must exist but is not returned by ecs_field. */
+  EcsNot,  /* Component must not exist and is not returned by ecs_field. */
+  EcsInUp, /* Read the nearest inherited field through an acyclic ByTarget
+              relation. */
+  EcsInUpOptional, /* Same as EcsInUp, but permits a missing field. */
 } ecs_access_t;
 
 /*
@@ -1109,35 +1119,38 @@ typedef enum {
  * Fill this manually only for dynamic component ids.
  */
 typedef struct {
-    uint16_t id;
-    uint32_t access;
+  uint16_t id;
+  uint32_t access;
 } ecs_access_term_t;
 typedef ecs_access_term_t ecs_component_term_t;
 typedef ecs_access_term_t ecs_resource_term_t;
 
-#define ECS_QUERY_UP_ACCESS(access, relation) ((uint32_t)(access) | ((uint32_t)(relation) << 8))
+#define ECS_QUERY_UP_ACCESS(access, relation)                                  \
+  ((uint32_t)(access) | ((uint32_t)(relation) << 8))
 
 typedef enum {
-    EcsRelationRequired,
-    EcsRelationOptional,
-    EcsRelationExcluded,
-    EcsRelationTarget,
-    EcsRelationDepth
+  EcsRelationRequired,
+  EcsRelationOptional,
+  EcsRelationExcluded,
+  EcsRelationTarget,
+  EcsRelationDepth
 } ecs_query_relation_kind_t;
 
 typedef struct {
-    ecs_entity_t target;
-    ecs_relation_id_t id;
-    ecs_query_relation_kind_t kind;
+  ecs_entity_t target;
+  ecs_relation_id_t id;
+  ecs_query_relation_kind_t kind;
 } ecs_query_relation_term_t;
 
 /* Return a negative value when a precedes b, zero for equal order, or a
  * positive value when b precedes a. The callback must not mutate the world. */
-typedef int (*ecs_query_order_func_t)(const ecs_table_t *a, const ecs_table_t *b, uint64_t data);
+typedef int (*ecs_query_order_func_t)(const ecs_table_t *a,
+                                      const ecs_table_t *b,
+                                      uint64_t data);
 
 typedef struct {
-    ecs_query_order_func_t func;
-    uint64_t data;
+  ecs_query_order_func_t func;
+  uint64_t data;
 } ecs_query_order_t;
 
 /*
@@ -1153,11 +1166,11 @@ typedef struct {
  * fields.
  */
 typedef struct {
-    ecs_component_term_t components[ECS_QUERY_TERM_CAPACITY];
-    ecs_resource_term_t resources[ECS_QUERY_RESOURCE_CAPACITY];
-    ecs_query_relation_term_t relations[ECS_QUERY_RELATION_CAPACITY];
-    ecs_query_order_t order_by;
-    ecs_entity_t is_a;
+  ecs_component_term_t components[ECS_QUERY_TERM_CAPACITY];
+  ecs_resource_term_t resources[ECS_QUERY_RESOURCE_CAPACITY];
+  ecs_query_relation_term_t relations[ECS_QUERY_RELATION_CAPACITY];
+  ecs_query_order_t order_by;
+  ecs_entity_t is_a;
 } ecs_query_desc_t;
 
 /*
@@ -1169,10 +1182,9 @@ typedef struct {
  *   });
  */
 #ifdef __cplusplus
-#define SIECS_LITERAL(type, ...)                                                                   \
-    type { __VA_ARGS__ }
+#define SIECS_LITERAL(type, ...) type { __VA_ARGS__ }
 #else
-#define SIECS_LITERAL(type, ...) ((type){ __VA_ARGS__ })
+#define SIECS_LITERAL(type, ...) ((type){__VA_ARGS__})
 #endif
 /* Match a required component and expose it as a read-only field. */
 #define ecs_in(cname) SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsIn)
@@ -1188,24 +1200,23 @@ typedef struct {
 #define ecs_filter(cname) SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsFilter)
 /* Excluded component. */
 #define ecs_not(cname) SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsNot)
-#define ecs_up(cname, relation)                                                                    \
-    SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), ECS_QUERY_UP_ACCESS(EcsInUp, ecs_rid(relation)))
-#define ecs_up_optional(cname, relation)                                                           \
-    SIECS_LITERAL(                                                                                 \
-        ecs_access_term_t,                                                                         \
-        ecs_id(cname),                                                                             \
-        ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation))                                    \
-    )
-#define ecs_rel(name)                                                                              \
-    SIECS_LITERAL(ecs_query_relation_term_t, 0, ecs_rid(name), EcsRelationRequired)
-#define ecs_rel_opt(name)                                                                          \
-    SIECS_LITERAL(ecs_query_relation_term_t, 0, ecs_rid(name), EcsRelationOptional)
-#define ecs_not_rel(name)                                                                          \
-    SIECS_LITERAL(ecs_query_relation_term_t, 0, ecs_rid(name), EcsRelationExcluded)
-#define ecs_to(name, entity)                                                                       \
-    SIECS_LITERAL(ecs_query_relation_term_t, entity, ecs_rid(name), EcsRelationTarget)
-#define ecs_depth(name, value)                                                                     \
-    SIECS_LITERAL(ecs_query_relation_term_t, (ecs_entity_t)(value), ecs_rid(name), EcsRelationDepth)
+#define ecs_up(cname, relation)                                                \
+  SIECS_LITERAL(ecs_access_term_t, ecs_id(cname),                               \
+                ECS_QUERY_UP_ACCESS(EcsInUp, ecs_rid(relation)))
+#define ecs_up_optional(cname, relation)                                       \
+  SIECS_LITERAL(ecs_access_term_t, ecs_id(cname),                               \
+                ECS_QUERY_UP_ACCESS(EcsInUpOptional, ecs_rid(relation)))
+#define ecs_rel(name)                                                          \
+  SIECS_LITERAL(ecs_query_relation_term_t, 0, ecs_rid(name), EcsRelationRequired)
+#define ecs_rel_opt(name)                                                      \
+  SIECS_LITERAL(ecs_query_relation_term_t, 0, ecs_rid(name), EcsRelationOptional)
+#define ecs_not_rel(name)                                                      \
+  SIECS_LITERAL(ecs_query_relation_term_t, 0, ecs_rid(name), EcsRelationExcluded)
+#define ecs_to(name, entity)                                                   \
+  SIECS_LITERAL(ecs_query_relation_term_t, entity, ecs_rid(name), EcsRelationTarget)
+#define ecs_depth(name, value)                                                 \
+  SIECS_LITERAL(ecs_query_relation_term_t, (ecs_entity_t)(value),              \
+                ecs_rid(name), EcsRelationDepth)
 #define ecs_order_by_target(name) ecs_order_by_target_id(ecs_rid(name))
 #define ecs_order_by_depth(name) ecs_order_by_depth_id(ecs_rid(name))
 
@@ -1214,17 +1225,18 @@ SIECS_API void ecs_init(void);
 
 /* World feature descriptor. */
 typedef struct {
-    /* Target frames per second for the world's update loop. */
-    uint16_t target_fps;
-    /* Persistent workers in addition to the thread calling ecs_progress(). */
-    uint16_t worker_threads;
+  /* Target frames per second for the world's update loop. */
+  uint16_t target_fps;
+  /* Persistent workers in addition to the thread calling ecs_progress(). */
+  uint16_t worker_threads;
 } ecs_world_feat_desc_t;
 
 /* Select the number of logical CPUs minus the calling thread. */
 #define ECS_WORKERS_AUTO UINT16_MAX
 
 /* Create a world with the given features. */
-#define ecs_with_features(...) ecs_init_w_features(&(ecs_world_feat_desc_t)__VA_ARGS__)
+#define ecs_with_features(...)                                                 \
+  ecs_init_w_features(&(ecs_world_feat_desc_t)__VA_ARGS__)
 
 /* Initialize a world with the given features. */
 SIECS_API void ecs_init_w_features(const ecs_world_feat_desc_t *features);
@@ -1250,16 +1262,16 @@ SIECS_API void ecs_quit(void);
  * descriptor instead of creating a second registration.
  */
 /* Declare a component type and its descriptor in a public header. */
-#define ECS_COMPONENT_DECLARE(cname, ...)                                                          \
-    SIJSON_DECLARE(cname, __VA_ARGS__)                                                             \
-    SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                                         \
-    SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc)
+#define ECS_COMPONENT_DECLARE(cname, ...)                                      \
+  SIJSON_DECLARE(cname, __VA_ARGS__)                                           \
+  SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                        \
+  SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc)
 
-#define ECS_CTOR(cname, ...)                                                                       \
+#define ECS_CTOR(cname, ...)                                                                \
     static void cname##_ctor(void *ptr, uint32_t count) {                                          \
         cname *__values = ptr;                                                                     \
         for (uint32_t i = 0; i < count; i++) {                                                     \
-            __values[i] = (cname)__VA_ARGS__;                                                      \
+            __values[i] = (cname) __VA_ARGS__;                                                      \
         }                                                                                          \
     }
 
@@ -1273,26 +1285,27 @@ SIECS_API void ecs_quit(void);
 
 #ifndef __cplusplus
 /* C sees only the shared fields and keeps the existing declaration ABI. */
-#define ECS_COMPONENT_DECLARE_CPP(cname, fields, methods) ECS_COMPONENT_DECLARE(cname, { fields })
+#define ECS_COMPONENT_DECLARE_CPP(cname, fields, methods)                       \
+  ECS_COMPONENT_DECLARE(cname, { fields })
 #endif
 #define SIECS_COMPONENT_META_DEFINE(cname) SIJSON_DEFINE(cname)
 #define SIECS_COMPONENT_META_INIT(cname) .struct_desc = &sireflect_desc(cname),
-#define SIECS_TAG_META_DEFINE(cname)                                                               \
-    static const sireflect_struct_desc_t sireflect_desc(                                           \
-        cname                                                                                      \
-    ) = { .name = #cname, .fields = "{}", .size = 0, .align = 1 };
+#define SIECS_TAG_META_DEFINE(cname)                                           \
+  static const sireflect_struct_desc_t sireflect_desc(cname) = {               \
+      .name = #cname, .fields = "{}", .size = 0, .align = 1};
 /*
  * Define a component declared with ECS_COMPONENT_DECLARE.
  *
  * Use once in a C file:
  *   ECS_COMPONENT_DEFINE(Position);
  */
-#define ECS_COMPONENT_DEFINE(cname, ...)                                                           \
-    SIECS_COMPONENT_META_DEFINE(cname)                                                             \
-    SIECS_PUBLIC_API ecs_component_desc_t ecs_id(                                                  \
-        cname##_desc                                                                               \
-    ) = { .name = #cname, .size = sizeof(cname), SIECS_COMPONENT_META_INIT(cname) __VA_ARGS__ };   \
-    SIECS_PUBLIC_API ecs_component_t ecs_id(cname) = 0
+#define ECS_COMPONENT_DEFINE(cname, ...)                                       \
+  SIECS_COMPONENT_META_DEFINE(cname)                                           \
+  SIECS_PUBLIC_API ecs_component_desc_t ecs_id(cname##_desc) = {                \
+      .name = #cname,                                                          \
+      .size = sizeof(cname),                                                   \
+      SIECS_COMPONENT_META_INIT(cname) __VA_ARGS__};                           \
+  SIECS_PUBLIC_API ecs_component_t ecs_id(cname) = 0
 
 /*
  * Declare a tag component without declaring a zero-member struct.
@@ -1302,23 +1315,22 @@ SIECS_API void ecs_quit(void);
  * ecs::entity::has<Tag>(). Tags intentionally have no reflected data or
  * storage column; their descriptor therefore has size zero.
  */
-#define ECS_TAG_DECLARE(cname)                                                                     \
-    typedef struct cname##_tag_t cname;                                                            \
-    SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                                         \
-    SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc)
+#define ECS_TAG_DECLARE(cname)                                                 \
+  typedef struct cname##_tag_t cname;                                          \
+  SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                        \
+  SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc)
 
 /* Define a tag component declared with ECS_TAG_DECLARE. */
-#define ECS_TAG_DEFINE(cname, ...)                                                                 \
-    SIECS_TAG_META_DEFINE(cname)                                                                   \
-    SIECS_PUBLIC_API ecs_component_desc_t ecs_id(                                                  \
-        cname##_desc                                                                               \
-    ) = { .name = #cname, .size = 0, SIECS_COMPONENT_META_INIT(cname) __VA_ARGS__ };               \
-    SIECS_PUBLIC_API ecs_component_t ecs_id(cname) = 0
+#define ECS_TAG_DEFINE(cname, ...)                                             \
+  SIECS_TAG_META_DEFINE(cname)                                                 \
+  SIECS_PUBLIC_API ecs_component_desc_t ecs_id(cname##_desc) = {                \
+      .name = #cname, .size = 0, SIECS_COMPONENT_META_INIT(cname) __VA_ARGS__};            \
+  SIECS_PUBLIC_API ecs_component_t ecs_id(cname) = 0
 
 /* Declare and define a tag component in one translation unit. */
-#define ECS_TAG(cname)                                                                             \
-    ECS_TAG_DECLARE(cname);                                                                        \
-    ECS_TAG_DEFINE(cname)
+#define ECS_TAG(cname)                                                         \
+  ECS_TAG_DECLARE(cname);                                                      \
+  ECS_TAG_DEFINE(cname)
 
 /*
  * Register a component type in a world.
@@ -1326,8 +1338,7 @@ SIECS_API void ecs_quit(void);
  * Must be called before using the typed helpers for that component with this
  * world. Stores the generated component id in ecs_id(cname).
  */
-#define ECS_COMPONENT_REGISTER_ONE(cname)                                                          \
-    ecs_component_register(&ecs_id(cname), &ecs_id(cname##_desc));
+#define ECS_COMPONENT_REGISTER_ONE(cname) ecs_component_register(&ecs_id(cname), &ecs_id(cname##_desc));
 #define ECS_COMPONENT_REGISTER(...) PP_FOR_EACH(ECS_COMPONENT_REGISTER_ONE, __VA_ARGS__)
 
 /*
@@ -1336,20 +1347,22 @@ SIECS_API void ecs_quit(void);
  * Example:
  *   ECS_COMPONENT(Position, { float x; float y; });
  */
-#define ECS_COMPONENT(cname, ...)                                                                  \
-    ECS_COMPONENT_DECLARE(cname, __VA_ARGS__);                                                     \
-    ECS_COMPONENT_DEFINE(cname);
+#define ECS_COMPONENT(cname, ...)                                              \
+  ECS_COMPONENT_DECLARE(cname, __VA_ARGS__);                                   \
+  ECS_COMPONENT_DEFINE(cname);
 
 #ifdef __cplusplus
-#define ECS_MODULE_CPP_DECLARE(module_name)                                                        \
-    struct module_name {                                                                           \
-        using props_t = module_name##_props_t;                                                     \
-        static ecs_module_id_t *id_storage() noexcept { return &ecs_id(module_name); }             \
-        static ecs_module_import_t import_callback() noexcept {                                    \
-            return ecs_id(module_name##_import_wrapper);                                           \
-        }                                                                                          \
-        static constexpr const char *name() noexcept { return #module_name; }                      \
-    };
+#define ECS_MODULE_CPP_DECLARE(module_name)                                    \
+  struct module_name {                                                         \
+    using props_t = module_name##_props_t;                                     \
+    static ecs_module_id_t *id_storage() noexcept {                            \
+      return &ecs_id(module_name);                                             \
+    }                                                                          \
+    static ecs_module_import_t import_callback() noexcept {                    \
+      return ecs_id(module_name##_import_wrapper);                             \
+    }                                                                          \
+    static constexpr const char *name() noexcept { return #module_name; }       \
+  };
 #else
 #define ECS_MODULE_CPP_DECLARE(...)
 #endif
@@ -1369,20 +1382,20 @@ SIECS_API void ecs_quit(void);
  * C module id and import wrapper, so C and C++ imports share one module.
  */
 #ifdef __cplusplus
-#define ECS_MODULE_DECLARE(module_name, ...)                                                       \
-    typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;                        \
-    extern "C" {                                                                                   \
-    SIECS_PUBLIC_API extern ecs_module_id_t ecs_id(module_name);                                   \
-    SIECS_PUBLIC_API void ecs_id(module_name##_import_wrapper)(const void *desc);                  \
-    void module_name##_import(const module_name##_props_t *props);                                 \
-    }                                                                                              \
-    ECS_MODULE_CPP_DECLARE(module_name)
+#define ECS_MODULE_DECLARE(module_name, ...)                                   \
+  typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;      \
+  extern "C" {                                                                \
+    SIECS_PUBLIC_API extern ecs_module_id_t ecs_id(module_name);                \
+    SIECS_PUBLIC_API void ecs_id(module_name##_import_wrapper)(const void *desc); \
+    void module_name##_import(const module_name##_props_t *props);             \
+  }                                                                            \
+  ECS_MODULE_CPP_DECLARE(module_name)
 #else
-#define ECS_MODULE_DECLARE(module_name, ...)                                                       \
-    typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;                        \
-    SIECS_PUBLIC_API extern ecs_module_id_t ecs_id(module_name);                                   \
-    SIECS_PUBLIC_API void ecs_id(module_name##_import_wrapper)(const void *desc);                  \
-    void module_name##_import(const module_name##_props_t *props);
+#define ECS_MODULE_DECLARE(module_name, ...)                                   \
+  typedef struct module_name##_props_t __VA_ARGS__ module_name##_props_t;      \
+  SIECS_PUBLIC_API extern ecs_module_id_t ecs_id(module_name);                  \
+  SIECS_PUBLIC_API void ecs_id(module_name##_import_wrapper)(const void *desc); \
+  void module_name##_import(const module_name##_props_t *props);
 #endif
 
 /*
@@ -1390,11 +1403,11 @@ SIECS_API void ecs_quit(void);
  *
  * Use once in a C file before implementing module_name_import.
  */
-#define ECS_MODULE_DEFINE(module_name)                                                             \
-    SIECS_PUBLIC_API ecs_module_id_t ecs_id(module_name) = 0;                                      \
-    SIECS_PUBLIC_API void ecs_id(module_name##_import_wrapper)(const void *desc) {                 \
-        module_name##_import((const module_name##_props_t *)desc);                                 \
-    }
+#define ECS_MODULE_DEFINE(module_name)                                         \
+  SIECS_PUBLIC_API ecs_module_id_t ecs_id(module_name) = 0;                     \
+  SIECS_PUBLIC_API void ecs_id(module_name##_import_wrapper)(const void *desc) { \
+    module_name##_import((const module_name##_props_t *)desc);                 \
+  }
 
 /*
  * Import a typed module into a world.
@@ -1404,14 +1417,14 @@ SIECS_API void ecs_quit(void);
  * return the existing id without calling module_name_import again; the first
  * props value wins.
  */
-#define ECS_MODULE_IMPORT(module_name, ...)                                                        \
-    (ecs_id(module_name) = ecs_module_init(&(ecs_module_desc_t){                                   \
-         .name = #module_name,                                                                     \
-         .id = &ecs_id(module_name),                                                               \
-         .import = ecs_id(module_name##_import_wrapper),                                           \
-         .desc = &(module_name##_props_t)__VA_ARGS__,                                              \
-         .desc_size = sizeof(module_name##_props_t),                                               \
-     }))
+#define ECS_MODULE_IMPORT(module_name, ...)                                    \
+  (ecs_id(module_name) = ecs_module_init(&(ecs_module_desc_t){                 \
+       .name = #module_name,                                                   \
+       .id = &ecs_id(module_name),                                             \
+       .import = ecs_id(module_name##_import_wrapper),                         \
+       .desc = &(module_name##_props_t)__VA_ARGS__,                            \
+       .desc_size = sizeof(module_name##_props_t),                             \
+   }))
 
 /*
  * Register/import a module with a raw descriptor.
@@ -1448,77 +1461,76 @@ SIECS_API void ecs_module_disable(ecs_module_id_t module);
 /* Return whether a module is currently enabled in this world. */
 SIECS_API bool ecs_module_is_enabled(ecs_module_id_t module);
 
-typedef enum { EcsRelationDense, EcsRelationByDepth, EcsRelationByTarget } ecs_relation_storage_t;
+typedef enum {
+  EcsRelationDense,
+  EcsRelationByDepth,
+  EcsRelationByTarget
+} ecs_relation_storage_t;
 
 /* Per-source relation data stored by Dense and ByDepth relations. */
 typedef struct {
-    ecs_entity_t entity;
-    uint32_t source_index;
+  ecs_entity_t entity;
+  uint32_t source_index;
 } ecs_relation_target_t;
 
 typedef enum { EcsRemoveRelation, EcsDeleteSources } ecs_delete_target_t;
 
 typedef struct {
-    ecs_relation_storage_t storage;
-    ecs_delete_target_t on_delete_target;
-    bool acyclic;
+  ecs_relation_storage_t storage;
+  ecs_delete_target_t on_delete_target;
+  bool acyclic;
 } ecs_relation_desc_t;
 
 typedef struct {
-    const char *name;
-    ecs_relation_desc_t desc;
+  const char *name;
+  ecs_relation_desc_t desc;
 } ecs_relation_info_t;
 
-#define ECS_RELATION_DECLARE(name)                                                                 \
-    SIECS_PUBLIC_API extern ecs_relation_id_t ecs_rid(name);                                       \
-    SIECS_PUBLIC_API extern ecs_relation_desc_t ecs_rid(name##_desc)
+#define ECS_RELATION_DECLARE(name)                                             \
+  SIECS_PUBLIC_API extern ecs_relation_id_t ecs_rid(name);                      \
+  SIECS_PUBLIC_API extern ecs_relation_desc_t ecs_rid(name##_desc)
 
-#define ECS_RELATION_DEFINE(name, ...)                                                             \
-    SIECS_PUBLIC_API ecs_relation_desc_t ecs_rid(name##_desc) = __VA_ARGS__;                       \
-    SIECS_PUBLIC_API ecs_relation_id_t ecs_rid(name) = 0
+#define ECS_RELATION_DEFINE(name, ...)                                         \
+  SIECS_PUBLIC_API ecs_relation_desc_t ecs_rid(name##_desc) = __VA_ARGS__;      \
+  SIECS_PUBLIC_API ecs_relation_id_t ecs_rid(name) = 0
 
-#define ECS_RELATION(name, ...)                                                                    \
-    ECS_RELATION_DECLARE(name);                                                                    \
-    ECS_RELATION_DEFINE(name, __VA_ARGS__)
+#define ECS_RELATION(name, ...)                                                \
+  ECS_RELATION_DECLARE(name);                                                  \
+  ECS_RELATION_DEFINE(name, __VA_ARGS__)
 
-#define ECS_RELATION_REGISTER_ONE(cname)                                                           \
-    ecs_relation_register(&ecs_rid(cname), #cname, &ecs_rid(cname##_desc));
+#define ECS_RELATION_REGISTER_ONE(cname) ecs_relation_register(&ecs_rid(cname), #cname, &ecs_rid(cname##_desc));
 #define ECS_RELATION_REGISTER(...) PP_FOR_EACH(ECS_RELATION_REGISTER_ONE, __VA_ARGS__)
 
 ECS_RELATION_DECLARE(ChildOf);
 
 /* C++ declarations made after this header use the C relation id/descriptor. */
 #ifdef __cplusplus
-#define SIECS_CPP_C_TRAITS(kind, name, id)                                                         \
-    extern "C++" {                                                                                 \
-    namespace ecs {                                                                                \
-    namespace detail {                                                                             \
-    template <> struct kind<name> {                                                                \
-        static constexpr bool value = true;                                                        \
-        static constexpr const char *relation_name() noexcept { return #name; }                    \
-        static auto id_storage() noexcept { return &id(name); }                                    \
-        static auto desc_storage() noexcept { return &id(name##_desc); }                           \
-    };                                                                                             \
-    }                                                                                              \
-    }                                                                                              \
-    }
+#define SIECS_CPP_C_TRAITS(kind, name, id)                                     \
+  extern "C++" { namespace ecs { namespace detail {                          \
+  template <> struct kind<name> {                                             \
+    static constexpr bool value = true;                                       \
+    static constexpr const char *relation_name() noexcept { return #name; }    \
+    static auto id_storage() noexcept { return &id(name); }                    \
+    static auto desc_storage() noexcept { return &id(name##_desc); }           \
+  }; } } }
 #undef ECS_RELATION_DECLARE
-#define ECS_RELATION_DECLARE(name)                                                                 \
-    extern "C++" {                                                                                 \
-    struct name {};                                                                                \
-    }                                                                                              \
-    extern "C" {                                                                                   \
-    extern ecs_relation_id_t ecs_rid(name);                                                        \
-    extern ecs_relation_desc_t ecs_rid(name##_desc);                                               \
-    }                                                                                              \
-    SIECS_CPP_C_TRAITS(c_relation_traits, name, ecs_rid)
+#define ECS_RELATION_DECLARE(name)                                             \
+  extern "C++" {                                                              \
+    struct name {};                                                            \
+  }                                                                            \
+  extern "C" {                                                                \
+    extern ecs_relation_id_t ecs_rid(name);                                    \
+    extern ecs_relation_desc_t ecs_rid(name##_desc);                           \
+  }                                                                            \
+  SIECS_CPP_C_TRAITS(c_relation_traits, name, ecs_rid)
 #endif
 
 /* Register a runtime relation and return its world-local relation id. */
-SIECS_API ecs_relation_id_t ecs_relation_init(const char *name, const ecs_relation_desc_t *desc);
+SIECS_API ecs_relation_id_t ecs_relation_init(const char *name,
+                                              const ecs_relation_desc_t *desc);
 /* Register a declared relation once and update its stable id storage. */
-SIECS_API ecs_relation_id_t
-ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relation_desc_t *desc);
+SIECS_API ecs_relation_id_t ecs_relation_register(
+    ecs_relation_id_t *id, const char *name, const ecs_relation_desc_t *desc);
 
 /* Builtin component for entity names; the world owns a copied value. */
 ECS_COMPONENT_DECLARE(Name, { char *value; });
@@ -1532,59 +1544,53 @@ ECS_TAG_DECLARE(Abstract);
 /* C++ declarations made after this header use the C id/descriptor directly. */
 #ifdef __cplusplus
 #undef ECS_COMPONENT_DECLARE
-#define ECS_COMPONENT_DECLARE(cname, ...)                                                          \
-    SIJSON_DECLARE(cname, __VA_ARGS__)                                                             \
-    extern "C" {                                                                                   \
-    SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                                         \
-    SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);                             \
-    }                                                                                              \
-    SIECS_CPP_C_TRAITS(c_component_traits, cname, ecs_id)
+#define ECS_COMPONENT_DECLARE(cname, ...)                                      \
+  SIJSON_DECLARE(cname, __VA_ARGS__)                                           \
+  extern "C" {                                                                \
+    SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                      \
+    SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);          \
+  }                                                                            \
+  SIECS_CPP_C_TRAITS(c_component_traits, cname, ecs_id)
 
 #undef ECS_TAG_DECLARE
-#define ECS_TAG_DECLARE(cname)                                                                     \
-    typedef struct cname##_tag_t cname;                                                            \
-    extern "C" {                                                                                   \
-    SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                                         \
-    SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);                             \
-    }                                                                                              \
-    SIECS_CPP_C_TRAITS(c_component_traits, cname, ecs_id)
+#define ECS_TAG_DECLARE(cname)                                                  \
+  typedef struct cname##_tag_t cname;                                          \
+  extern "C" {                                                                \
+    SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                      \
+    SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);          \
+  }                                                                            \
+  SIECS_CPP_C_TRAITS(c_component_traits, cname, ecs_id)
 
 #define SIECS_CPP_STRINGIFY_INNER(...) #__VA_ARGS__
 #define SIECS_CPP_STRINGIFY(...) SIECS_CPP_STRINGIFY_INNER(__VA_ARGS__)
-#define SIECS_CPP_FIELD_SOURCE(fields) "{" SIECS_CPP_STRINGIFY(fields) "}"
+#define SIECS_CPP_FIELD_SOURCE(fields)                                         \
+  "{" SIECS_CPP_STRINGIFY(fields) "}"
 #define SIECS_CPP_LAYOUT_TYPE_INNER(cname) __siecs_cpp_layout_##cname
 #define SIECS_CPP_LAYOUT_TYPE(cname) SIECS_CPP_LAYOUT_TYPE_INNER(cname)
 
 /* Declare a C-compatible component with C++-only member methods. */
-#define ECS_COMPONENT_DECLARE_CPP(cname, field_block, method_block)                                \
-    extern "C++" {                                                                                 \
-    typedef struct cname cname;                                                                    \
-    struct cname {                                                                                 \
-        field_block method_block                                                                   \
-    };                                                                                             \
-    struct SIECS_CPP_LAYOUT_TYPE(cname) {                                                          \
-        field_block                                                                                \
-    };                                                                                             \
-    static_assert(                                                                                 \
-        sizeof(cname) == sizeof(SIECS_CPP_LAYOUT_TYPE(cname)),                                     \
-        "C++ component methods must not add instance data"                                         \
-    );                                                                                             \
-    static_assert(                                                                                 \
-        _Alignof(cname) == _Alignof(SIECS_CPP_LAYOUT_TYPE(cname)),                                 \
-        "C++ component methods must preserve alignment"                                            \
-    );                                                                                             \
-    SIREFLECT_UNUSED static const sireflect_struct_desc_t                                          \
-        sireflect_desc(cname) = { .name = #cname,                                                  \
-                                  .fields = SIECS_CPP_FIELD_SOURCE(field_block),                   \
-                                  .size = sizeof(cname),                                           \
-                                  .align = _Alignof(cname) };                                      \
-    }                                                                                              \
-    extern "C" {                                                                                   \
-    extern sireflect_handle_t sijson_handle(cname);                                                \
-    SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                                         \
-    SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);                             \
-    }                                                                                              \
-    SIECS_CPP_C_TRAITS(c_component_traits, cname, ecs_id)
+#define ECS_COMPONENT_DECLARE_CPP(cname, field_block, method_block)            \
+  extern "C++" {                                                              \
+    typedef struct cname cname;                                                \
+    struct cname { field_block method_block };                                 \
+    struct SIECS_CPP_LAYOUT_TYPE(cname) { field_block };                       \
+    static_assert(sizeof(cname) == sizeof(SIECS_CPP_LAYOUT_TYPE(cname)),       \
+                  "C++ component methods must not add instance data");       \
+    static_assert(_Alignof(cname) == _Alignof(SIECS_CPP_LAYOUT_TYPE(cname)),   \
+                  "C++ component methods must preserve alignment");          \
+    SIREFLECT_UNUSED static const sireflect_struct_desc_t                     \
+        sireflect_desc(cname) = {                                              \
+            .name = #cname,                                                     \
+            .fields = SIECS_CPP_FIELD_SOURCE(field_block),                     \
+            .size = sizeof(cname),                                              \
+            .align = _Alignof(cname)};                                          \
+  }                                                                            \
+  extern "C" {                                                                \
+    extern sireflect_handle_t sijson_handle(cname);                            \
+    SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                      \
+    SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);          \
+  }                                                                            \
+  SIECS_CPP_C_TRAITS(c_component_traits, cname, ecs_id)
 #endif
 
 /*
@@ -1596,7 +1602,8 @@ ECS_TAG_DECLARE(Abstract);
  *       .size = sizeof(Position)
  *   });
  */
-#define ecs_component(...) ecs_component_init(&(ecs_component_desc_t)__VA_ARGS__)
+#define ecs_component(...)                                                     \
+  ecs_component_init(&(ecs_component_desc_t)__VA_ARGS__)
 
 /* Register a component descriptor and return its component id. */
 SIECS_API ecs_component_t ecs_component_init(const ecs_component_desc_t *desc);
@@ -1608,14 +1615,16 @@ ecs_component_register(ecs_component_t *id, const ecs_component_desc_t *desc);
 
 /* Return immutable component metadata stable until ecs_fini(), or NULL for an
  * invalid id. */
-SIECS_API const ecs_component_info_t *ecs_component_info(ecs_component_t component);
+SIECS_API const ecs_component_info_t *
+ecs_component_info(ecs_component_t component);
 
 /* Return the number of component slots, including reserved id 0. */
 SIECS_API uint32_t ecs_component_count(void);
 
 /* Register a reflected component whose C layout is derived by Sireflect.
  * Returns 0 on error. */
-SIECS_API ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc);
+SIECS_API ecs_component_t
+ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc);
 
 /* Register a zero-sized reflected tag. Returns 0 on error. */
 SIECS_API ecs_component_t ecs_tag_init(const char *name);
@@ -1629,7 +1638,8 @@ SIECS_API uint32_t ecs_relation_count(void);
 /* Return immutable relation metadata borrowed until the next relation
  * registration or ecs_fini().
  */
-SIECS_API const ecs_relation_info_t *ecs_relation_info(ecs_relation_id_t relation);
+SIECS_API const ecs_relation_info_t *
+ecs_relation_info(ecs_relation_id_t relation);
 
 /* Look up a live entity by its registered name; returns 0 when absent. */
 ecs_entity_t ecs_lookup(const char *key);
@@ -1674,30 +1684,39 @@ SIECS_API ecs_entity_t ecs_entity_base(ecs_entity_t entity);
  */
 SIECS_API void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 
-#define ecs_relate(entity, relation, target) ecs_relate_id(entity, ecs_rid(relation), target)
-#define ecs_unrelate(entity, relation) ecs_unrelate_id(entity, ecs_rid(relation))
-#define ecs_has_relation(entity, relation) ecs_has_relation_id(entity, ecs_rid(relation))
-#define ecs_has_relation_to(entity, relation, target)                                              \
-    ecs_has_relation_to_id(entity, ecs_rid(relation), target)
+#define ecs_relate(entity, relation, target)                                   \
+  ecs_relate_id(entity, ecs_rid(relation), target)
+#define ecs_unrelate(entity, relation)                                         \
+  ecs_unrelate_id(entity, ecs_rid(relation))
+#define ecs_has_relation(entity, relation)                                     \
+  ecs_has_relation_id(entity, ecs_rid(relation))
+#define ecs_has_relation_to(entity, relation, target)                          \
+  ecs_has_relation_to_id(entity, ecs_rid(relation), target)
 #define ecs_target(entity, relation) ecs_target_id(entity, ecs_rid(relation))
 
 /* Add or retarget one relation edge. In Debug, both entities must be alive. */
-SIECS_API void ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target);
+SIECS_API void ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation,
+                             ecs_entity_t target);
 /* Remove one relation edge; this is a no-op when the source has no such edge.
  */
 SIECS_API void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation);
 /* Return whether the source has an edge for relation. */
-SIECS_API bool ecs_has_relation_id(ecs_entity_t entity, ecs_relation_id_t relation);
+SIECS_API bool ecs_has_relation_id(ecs_entity_t entity,
+                                   ecs_relation_id_t relation);
 /* Return whether the source edge has exactly target, including its generation.
  */
-SIECS_API bool
-ecs_has_relation_to_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target);
+SIECS_API bool ecs_has_relation_to_id(ecs_entity_t entity,
+                                      ecs_relation_id_t relation,
+                                      ecs_entity_t target);
 /* Return the source edge target, or zero when absent. */
-SIECS_API ecs_entity_t ecs_target_id(ecs_entity_t entity, ecs_relation_id_t relation);
+SIECS_API ecs_entity_t ecs_target_id(ecs_entity_t entity,
+                                     ecs_relation_id_t relation);
 
 /* Return a relation target stored in a ByTarget table. */
-SIECS_API ecs_entity_t ecs_table_target_id(const ecs_table_t *table, ecs_relation_id_t relation);
-#define ecs_table_target(table, relation) ecs_table_target_id(table, ecs_rid(relation))
+SIECS_API ecs_entity_t ecs_table_target_id(const ecs_table_t *table,
+                                           ecs_relation_id_t relation);
+#define ecs_table_target(table, relation) \
+  ecs_table_target_id(table, ecs_rid(relation))
 
 /* Return whether a component is available on a table, including its base. */
 SIECS_API bool ecs_table_has_id(const ecs_table_t *table, ecs_component_t component);
@@ -1732,18 +1751,19 @@ SIECS_API void ecs_kill(ecs_entity_t entity);
  *       p[i].x += v[i].x;
  *   }
  */
-#define ecs_query_each(it, i, ...)                                                                 \
-    for (ecs_query_id_t _q = ecs_query({ .components = { __VA_ARGS__ } }); _q;                     \
-         ecs_query_fini(_q), _q = 0)                                                               \
-        for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)                              \
-            for (uint32_t i = 0; i < it.count; i++)
+#define ecs_query_each(it, i, ...)                                             \
+  for (ecs_query_id_t _q = ecs_query({ .components = { __VA_ARGS__ } }); _q;   \
+       ecs_query_fini(_q), _q = 0)                                             \
+    for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)              \
+      for (uint32_t i = 0; i < it.count; i++)
 
 /* Iterate entity ids instead of exposing component fields. */
-#define ecs_query_entities(entity, ...)                                                            \
-    for (ecs_query_id_t _q = ecs_query({ .components = { __VA_ARGS__ } }); _q;                     \
-         ecs_query_fini(_q), _q = 0)                                                               \
-        for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)                              \
-            for (uint64_t i = 0, entity = *it.entities; i < it.count; i++, entity = it.entities[i])
+#define ecs_query_entities(entity, ...)                                        \
+  for (ecs_query_id_t _q = ecs_query({ .components = { __VA_ARGS__ } }); _q;   \
+       ecs_query_fini(_q), _q = 0)                                             \
+    for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)              \
+      for (uint64_t i = 0, entity = *it.entities; i < it.count;                \
+           i++, entity = it.entities[i])
 /*
  * Create a query. A query may contain components, resources, relations, is_a,
  * or order_by. A query without a table criterion produces no entity batches.
@@ -1803,7 +1823,8 @@ bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id);
 SIECS_API void *ecs_get_cid(ecs_entity_t entity, ecs_component_t id);
 
 /* Get a typed component pointer, or NULL if the entity does not have it. */
-#define ecs_try_get(entity, cname) ((cname *)ecs_try_get_cid(entity, ecs_id(cname)))
+#define ecs_try_get(entity, cname)                                             \
+  ((cname *)ecs_try_get_cid(entity, ecs_id(cname)))
 
 /*
  * Get an owned or inherited component pointer by id.
@@ -1819,7 +1840,8 @@ SIECS_API void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
  * receive the new value and current storage before the copy. EcsOnSet observers
  * receive the new value before it is copied into storage.
  */
-#define ecs_set(entity, cname, ...) ecs_set_cid(entity, ecs_id(cname), &(cname)__VA_ARGS__)
+#define ecs_set(entity, cname, ...)                                            \
+  ecs_set_cid(entity, ecs_id(cname), &(cname)__VA_ARGS__)
 
 /*
  * Set a component value by id.
@@ -1827,7 +1849,8 @@ SIECS_API void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid);
  * data must point to at least the registered component size. Adds the component
  * if needed.
  */
-SIECS_API void ecs_set_cid(ecs_entity_t entity, ecs_component_t id, const void *data);
+SIECS_API void ecs_set_cid(ecs_entity_t entity, ecs_component_t id,
+                           const void *data);
 
 /*
  * Notify observers after a component was modified in place.
@@ -1841,7 +1864,8 @@ SIECS_API void ecs_modified_cid(ecs_entity_t entity, ecs_component_t id);
 
 /* Move a component value into an entity, consuming data with the registered
  * move operation. data must point to an initialized value of the component. */
-SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data);
+SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id,
+                            void *data);
 
 /*
  * Declare and define a resource type.
@@ -1862,63 +1886,56 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
  *   ECS_RESOURCE(Time, { float dt; float elapsed; });
  */
 #ifdef __cplusplus
-#define ECS_RESOURCE_DECLARE(rname, ...)                                                           \
-    typedef struct rname rname;                                                                    \
-    struct rname __VA_ARGS__;                                                                      \
-    extern "C" {                                                                                   \
-    SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                                          \
-    SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);                              \
-    }                                                                                              \
-    SIECS_CPP_C_TRAITS(c_resource_traits, rname, ecs_id)
+#define ECS_RESOURCE_DECLARE(rname, ...)                                       \
+  typedef struct rname rname;                                                  \
+  struct rname __VA_ARGS__;                                                    \
+  extern "C" {                                                                \
+    SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                       \
+    SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);           \
+  }                                                                            \
+  SIECS_CPP_C_TRAITS(c_resource_traits, rname, ecs_id)
 
 /* Declare a C-compatible resource with C++-only member methods. */
-#define ECS_RESOURCE_DECLARE_CPP(rname, field_block, method_block)                                 \
-    extern "C++" {                                                                                 \
-    typedef struct rname rname;                                                                    \
-    struct rname {                                                                                 \
-        field_block method_block                                                                   \
-    };                                                                                             \
-    struct SIECS_CPP_LAYOUT_TYPE(rname) {                                                          \
-        field_block                                                                                \
-    };                                                                                             \
-    static_assert(                                                                                 \
-        sizeof(rname) == sizeof(SIECS_CPP_LAYOUT_TYPE(rname)),                                     \
-        "C++ resource methods must not add instance data"                                          \
-    );                                                                                             \
-    static_assert(                                                                                 \
-        _Alignof(rname) == _Alignof(SIECS_CPP_LAYOUT_TYPE(rname)),                                 \
-        "C++ resource methods must preserve alignment"                                             \
-    );                                                                                             \
-    }                                                                                              \
-    extern "C" {                                                                                   \
-    SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                                          \
-    SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);                              \
-    }                                                                                              \
-    SIECS_CPP_C_TRAITS(c_resource_traits, rname, ecs_id)
+#define ECS_RESOURCE_DECLARE_CPP(rname, field_block, method_block)             \
+  extern "C++" {                                                              \
+    typedef struct rname rname;                                                \
+    struct rname { field_block method_block };                                 \
+    struct SIECS_CPP_LAYOUT_TYPE(rname) { field_block };                       \
+    static_assert(sizeof(rname) == sizeof(SIECS_CPP_LAYOUT_TYPE(rname)),       \
+                  "C++ resource methods must not add instance data");        \
+    static_assert(_Alignof(rname) == _Alignof(SIECS_CPP_LAYOUT_TYPE(rname)),   \
+                  "C++ resource methods must preserve alignment");           \
+  }                                                                            \
+  extern "C" {                                                                \
+    SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                       \
+    SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);           \
+  }                                                                            \
+  SIECS_CPP_C_TRAITS(c_resource_traits, rname, ecs_id)
 #else
-#define ECS_RESOURCE_DECLARE(rname, ...)                                                           \
-    typedef struct rname rname;                                                                    \
-    struct rname __VA_ARGS__;                                                                      \
-    SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                                          \
-    SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc)
+#define ECS_RESOURCE_DECLARE(rname, ...)                                       \
+  typedef struct rname rname;                                                  \
+  struct rname __VA_ARGS__;                                                    \
+  SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                         \
+  SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc)
 
-#define ECS_RESOURCE_DECLARE_CPP(rname, fields, methods) ECS_RESOURCE_DECLARE(rname, { fields })
+#define ECS_RESOURCE_DECLARE_CPP(rname, fields, methods)                       \
+  ECS_RESOURCE_DECLARE(rname, { fields })
 #endif
 
 /* Define a resource descriptor and its stable id storage. */
-#define ECS_RESOURCE_DEFINE(rname, ...)                                                            \
-    SIECS_PUBLIC_API ecs_resource_desc_t ecs_id(rname##_desc) = { .name = #rname,                  \
-                                                                  .size = sizeof(rname),           \
-                                                                  __VA_ARGS__ };                   \
-    SIECS_PUBLIC_API ecs_resource_t ecs_id(rname) = 0
+#define ECS_RESOURCE_DEFINE(rname, ...)                                        \
+  SIECS_PUBLIC_API ecs_resource_desc_t ecs_id(rname##_desc) = {                 \
+      .name = #rname, .size = sizeof(rname), __VA_ARGS__};                     \
+  SIECS_PUBLIC_API ecs_resource_t ecs_id(rname) = 0
 
 /* Register a declared resource in the active world. */
-#define ECS_RESOURCE_REGISTER(rname) ecs_resource_register(&ecs_id(rname), &ecs_id(rname##_desc))
+#define ECS_RESOURCE_REGISTER(rname)                                           \
+  ecs_resource_register(&ecs_id(rname), &ecs_id(rname##_desc))
 
 /* Declare and define a resource in one translation unit. */
-#define ECS_RESOURCE(rname, ...)                                                                   \
-    ECS_RESOURCE_DECLARE(rname, __VA_ARGS__);                                                      \
-    ECS_RESOURCE_DEFINE(rname)
+#define ECS_RESOURCE(rname, ...)                                               \
+  ECS_RESOURCE_DECLARE(rname, __VA_ARGS__);                                    \
+  ECS_RESOURCE_DEFINE(rname)
 
 /* Builtin resource containing the current frame delta time in seconds. */
 ECS_RESOURCE_DECLARE(DeltaTime, { float value; });
@@ -1929,17 +1946,21 @@ ECS_RESOURCE_DECLARE(DeltaTime, { float value; });
  * Example:
  *   ecs_set_resource(Time, { .dt = 0.016f, .elapsed = 0.0f });
  */
-#define ecs_set_resource(rname, ...) ecs_set_resource_rid(ecs_id(rname), &(rname)__VA_ARGS__)
+#define ecs_set_resource(rname, ...)                                           \
+  ecs_set_resource_rid(ecs_id(rname), &(rname)__VA_ARGS__)
 
 /* Get a world resource. The resource must exist. */
 #define ecs_get_resource(rname) ((rname *)ecs_resource_rid(ecs_id(rname)))
 /* Get a const world resource. The resource must exist. */
-#define ecs_get_resource_read(rname) ((const rname *)ecs_resource_rid(ecs_id(rname)))
+#define ecs_get_resource_read(rname)                                           \
+  ((const rname *)ecs_resource_rid(ecs_id(rname)))
 
 /* Get a world resource, or NULL if it does not exist. */
-#define ecs_try_get_resource(rname) ((rname *)ecs_try_resource_rid(ecs_id(rname)))
+#define ecs_try_get_resource(rname)                                            \
+  ((rname *)ecs_try_resource_rid(ecs_id(rname)))
 /* Get a const world resource, or NULL if it does not exist. */
-#define ecs_try_get_resource_read(rname) ((const rname *)ecs_try_resource_rid(ecs_id(rname)))
+#define ecs_try_get_resource_read(rname)                                       \
+  ((const rname *)ecs_try_resource_rid(ecs_id(rname)))
 
 /* Return whether a world resource exists. */
 #define ecs_has_resource(rname) ecs_has_resource_rid(ecs_id(rname))
@@ -1956,7 +1977,8 @@ SIECS_API const char *ecs_resource_name(ecs_resource_t resource);
 /* Return whether a resource id is registered in the active world. */
 SIECS_API bool ecs_resource_is_registered_rid(ecs_resource_t id);
 /* Register a resource using stable id storage; returns the resulting id. */
-SIECS_API ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc);
+SIECS_API ecs_resource_t ecs_resource_register(ecs_resource_t *id,
+                                               const ecs_resource_desc_t *desc);
 /* Copy or move data into a registered resource. */
 SIECS_API void ecs_set_resource_rid(ecs_resource_t id, const void *data);
 /* Move an initialized resource value into storage and consume the source. */
@@ -1978,8 +2000,8 @@ SIECS_API void ecs_remove_resource_rid(ecs_resource_t id);
 #define PP_EVAL2(...) PP_EVAL1(PP_EVAL1(PP_EVAL1(__VA_ARGS__)))
 #define PP_EVAL3(...) PP_EVAL2(PP_EVAL2(PP_EVAL2(__VA_ARGS__)))
 #define PP_EVAL(...) PP_EVAL3(PP_EVAL3(PP_EVAL3(__VA_ARGS__)))
-#define PP_FOR_EACH_I(F, first, ...)                                                               \
-    F(first) __VA_OPT__(PP_OBSTRUCT(PP_FOR_EACH_INDIRECT)()(F, __VA_ARGS__))
+#define PP_FOR_EACH_I(F, first, ...)                                           \
+  F(first) __VA_OPT__(PP_OBSTRUCT(PP_FOR_EACH_INDIRECT)()(F, __VA_ARGS__))
 #define PP_FOR_EACH_INDIRECT() PP_FOR_EACH_I
 #define PP_FOR_EACH(F, ...) __VA_OPT__(PP_EVAL(PP_FOR_EACH_I(F, __VA_ARGS__)))
 
@@ -1996,11 +2018,14 @@ SIECS_API void ecs_with_many(ecs_component_t component, ...);
  * the relation only when the source has no relation for it; an existing or
  * explicitly added relation is preserved.
  */
-SIECS_API void
-ecs_with_relation_id(ecs_component_t component, ecs_relation_id_t relation, ecs_entity_t target);
+SIECS_API void ecs_with_relation_id(
+    ecs_component_t component,
+    ecs_relation_id_t relation,
+    ecs_entity_t target
+);
 
-#define ecs_with_relation(component, relation, target)                                             \
-    ecs_with_relation_id(ecs_id(component), ecs_rid(relation), target)
+#define ecs_with_relation(component, relation, target) \
+  ecs_with_relation_id(ecs_id(component), ecs_rid(relation), target)
 
 /* Builtin observer events. */
 #define EcsOnAdd 0
@@ -2020,11 +2045,11 @@ ecs_with_relation_id(ecs_component_t component, ecs_relation_id_t relation, ecs_
  * user_data is copied into ecs_observer_event_t for the callback.
  */
 typedef struct {
-    ecs_event_t on;
-    ecs_entity_t entity;
-    ecs_query_desc_t query;
-    ecs_observer_callback_t callback;
-    uintptr_t user_data;
+  ecs_event_t on;
+  ecs_entity_t entity;
+  ecs_query_desc_t query;
+  ecs_observer_callback_t callback;
+  uintptr_t user_data;
 } ecs_observer_desc_t;
 
 /*
@@ -2066,8 +2091,8 @@ SIECS_API void ecs_observer_disable(ecs_observer_id_t id);
  *
  * Observers matching the entity's current table and event id will be called.
  */
-SIECS_API void
-ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *trigger_data);
+SIECS_API void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event,
+                                    const void *trigger_data);
 
 /*
  * Query iterator.
@@ -2078,23 +2103,23 @@ ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *trigger
  * entities points to the current batch after ecs_iter_next returns true.
  */
 typedef enum {
-    EcsFieldNone,
-    EcsFieldOwned,
-    EcsFieldShared,
+  EcsFieldNone,
+  EcsFieldOwned,
+  EcsFieldShared,
 } ecs_field_kind_t;
 
 /* Iterator storage returned by ecs_query_iter; ptrs/entities are batch views.
  */
 typedef struct {
-    uint32_t count;
-    ecs_entity_t *entities;
-    void **ptrs;
-    float delta_time;
-    struct ecs_query_cache_s *cache;
-    uint32_t field_kind_bits;
-    uintptr_t user_data;
-    uint16_t table_idx;
-    uint16_t table_count;
+  uint32_t count;
+  ecs_entity_t *entities;
+  void **ptrs;
+  float delta_time;
+  struct ecs_query_cache_s *cache;
+  uint32_t field_kind_bits;
+  uintptr_t user_data;
+  uint16_t table_idx;
+  uint16_t table_count;
 } ecs_iter_t;
 
 /*
@@ -2119,12 +2144,14 @@ SIECS_API uint32_t ecs_query_count(ecs_query_id_t query_id);
  */
 SIECS_API bool ecs_iter_next(ecs_iter_t *it);
 /* Return contiguous relation target records for a Dense or ByDepth batch. */
-SIECS_API const ecs_relation_target_t *
-ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation);
+SIECS_API const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it,
+                                                      ecs_relation_id_t relation);
 #define ecs_targets(it, relation) ecs_targets_id(it, ecs_rid(relation))
 /* Return the shared relation target for a ByTarget batch. */
-SIECS_API ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relation);
-#define ecs_target_shared(it, relation) ecs_target_shared_id(it, ecs_rid(relation))
+SIECS_API ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it,
+                                            ecs_relation_id_t relation);
+#define ecs_target_shared(it, relation)                                       \
+  ecs_target_shared_id(it, ecs_rid(relation))
 
 /*
  * Return the component array for a read term in the current iterator batch.
@@ -2134,44 +2161,46 @@ SIECS_API ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_i
  * table does not have the component. EcsFilter and EcsNot terms affect matching
  * but are not returned as fields.
  */
-static inline ecs_field_kind_t ecs_field_kind(const ecs_iter_t *it, uint16_t field_index) {
-    ecs_field_kind_t kind = (ecs_field_kind_t)((it->field_kind_bits >> (field_index * 2)) & 0x3u);
-    return kind;
+static inline ecs_field_kind_t ecs_field_kind(const ecs_iter_t *it,
+                                              uint16_t field_index) {
+  ecs_field_kind_t kind =
+      (ecs_field_kind_t)((it->field_kind_bits >> (field_index * 2)) & 0x3u);
+  return kind;
 }
 
 /* Return the current field pointer; call only after ecs_iter_next() succeeds.
  */
 static inline void *ecs_field(ecs_iter_t *it, uint16_t field_index) {
-    return it->ptrs[field_index];
+  return it->ptrs[field_index];
 }
 
 /* Return whether a current field is inherited/shared rather than owned. */
 static inline bool ecs_field_is_shared(ecs_iter_t *it, uint16_t field_index) {
-    return ecs_field_kind(it, field_index) == EcsFieldShared;
+  return ecs_field_kind(it, field_index) == EcsFieldShared;
 }
 
 typedef uint32_t ecs_phase_t;
-#define ECS_PHASE_NONE ((ecs_phase_t) - 1)
+#define ECS_PHASE_NONE ((ecs_phase_t)-1)
 
 enum {
-    EcsPreStart = 0,
-    EcsStart = 1,
-    EcsPostStart = 2,
-    EcsOnLoad = 3,
-    EcsPostLoad = 4,
-    EcsPreUpdate = 5,
-    EcsOnUpdate = 6,
-    EcsPostUpdate = 7,
-    EcsPreRender = 8,
-    EcsOnRender = 9,
-    EcsPostRender = 10,
-    EcsPhaseCount = 11,
+  EcsPreStart = 0,
+  EcsStart = 1,
+  EcsPostStart = 2,
+  EcsOnLoad = 3,
+  EcsPostLoad = 4,
+  EcsPreUpdate = 5,
+  EcsOnUpdate = 6,
+  EcsPostUpdate = 7,
+  EcsPreRender = 8,
+  EcsOnRender = 9,
+  EcsPostRender = 10,
+  EcsPhaseCount = 11,
 };
 
 typedef struct {
-    const char *name;
-    ecs_phase_t after;
-    ecs_phase_t before;
+  const char *name;
+  ecs_phase_t after;
+  ecs_phase_t before;
 } ecs_phase_desc_t;
 
 /* Create a phase from a compound-literal descriptor. */
@@ -2194,15 +2223,15 @@ SIECS_API const char *ecs_phase_name(ecs_phase_t phase);
  * main_thread_only prevents worker dispatch.
  */
 typedef struct {
-    const char *name;
-    ecs_query_desc_t query;
-    void (*callback)(ecs_iter_t *);
-    uintptr_t user_data;
-    void (*user_data_dtor)(uintptr_t user_data);
-    ecs_phase_t phase;
-    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
-    bool disabled;
-    bool main_thread_only;
+  const char *name;
+  ecs_query_desc_t query;
+  void (*callback)(ecs_iter_t *);
+  uintptr_t user_data;
+  void (*user_data_dtor)(uintptr_t user_data);
+  ecs_phase_t phase;
+  ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
+  bool disabled;
+  bool main_thread_only;
 } ecs_system_desc_t;
 
 /*
@@ -2354,8 +2383,8 @@ component_on_set(ecs_entity_t entity, ecs_component_t, const void *new_value, vo
 
 template <typename T, bool Add>
 static void component_hook(ecs_entity_t entity, ecs_component_t, void *value) {
-    auto callback =
-        Add ? component_hook_state<T>::hooks.on_add : component_hook_state<T>::hooks.on_remove;
+    auto callback = Add ? component_hook_state<T>::hooks.on_add
+                        : component_hook_state<T>::hooks.on_remove;
     if (callback != nullptr)
         callback(entity, *static_cast<T *>(value));
 }
@@ -2375,39 +2404,34 @@ template <typename T> consteval size_t sisizeof() {
 template <typename T, bool Destroy> static void value_lifetime(void *ptr, uint32_t count) {
     T *values = static_cast<T *>(ptr);
     for (uint32_t i = 0; i < count; i++) {
-        if constexpr (Destroy)
-            std::destroy_at(&values[i]);
-        else
-            std::construct_at(&values[i]);
+        if constexpr (Destroy) std::destroy_at(&values[i]);
+        else std::construct_at(&values[i]);
     }
 }
 
 template <typename T, bool Move, bool Construct>
-static void
-value_transfer(void *dst, std::conditional_t<Move, void *, const void *> src, uint32_t count) {
+static void value_transfer(
+    void *dst,
+    std::conditional_t<Move, void *, const void *> src,
+    uint32_t count
+) {
     T *out = static_cast<T *>(dst);
     using input = std::conditional_t<Move, T, const T>;
     input *in = static_cast<input *>(src);
     for (uint32_t i = 0; i < count; i++) {
         if constexpr (Construct) {
-            if constexpr (Move)
-                std::construct_at(&out[i], std::move(in[i]));
-            else
-                std::construct_at(&out[i], in[i]);
-        } else if constexpr (Move ? std::is_move_assignable_v<T> : std::is_copy_assignable_v<T>) {
-            if constexpr (Move)
-                out[i] = std::move(in[i]);
-            else
-                out[i] = in[i];
+            if constexpr (Move) std::construct_at(&out[i], std::move(in[i]));
+            else std::construct_at(&out[i], in[i]);
+        } else if constexpr (Move ? std::is_move_assignable_v<T>
+                                  : std::is_copy_assignable_v<T>) {
+            if constexpr (Move) out[i] = std::move(in[i]);
+            else out[i] = in[i];
         } else {
             std::destroy_at(&out[i]);
-            if constexpr (Move)
-                std::construct_at(&out[i], std::move(in[i]));
-            else
-                std::construct_at(&out[i], in[i]);
+            if constexpr (Move) std::construct_at(&out[i], std::move(in[i]));
+            else std::construct_at(&out[i], in[i]);
         }
-        if constexpr (Move)
-            std::destroy_at(&in[i]);
+        if constexpr (Move) std::destroy_at(&in[i]);
     }
 }
 
@@ -2676,7 +2700,16 @@ class entity {
     /** Kill this entity; subsequent component access is invalid. */
     void kill() { ecs_kill(_entity); }
 
-    template <typename Event, typename F> ecs_observer_id_t observer(F &&callback);
+    /** Observe events of type `Event` using the provided callback. */
+    template <typename Event, typename F> entity observe(F &&callback);
+
+    /** Add child entities to this entity. */
+    template <typename... Entities> entity children(Entities... entities) {
+        for (ecs_entity_t entity : { entities... }) {
+            ecs_relate(entity, ChildOf, *this);
+        }
+        return *this;
+    }
 
     /** Add an inheritance link to `target`. */
     entity is_a(entity target) {
@@ -2837,48 +2870,48 @@ template <typename T, typename... Args> struct module_import_context {
 
 namespace ecs {
 
-template <typename T> struct function_traits;
+    template <typename T> struct function_traits;
 
-// function pointer
-template <typename R, typename... Args> struct function_traits<R (*)(Args...)> {
-    using return_type = R;
-    using args_tuple = std::tuple<Args...>;
-};
+    // function pointer
+    template <typename R, typename... Args> struct function_traits<R (*)(Args...)> {
+        using return_type = R;
+        using args_tuple = std::tuple<Args...>;
+    };
 
-// function reference
-template <typename R, typename... Args> struct function_traits<R (&)(Args...)> {
-    using return_type = R;
-    using args_tuple = std::tuple<Args...>;
-};
+    // function reference
+    template <typename R, typename... Args> struct function_traits<R (&)(Args...)> {
+        using return_type = R;
+        using args_tuple = std::tuple<Args...>;
+    };
 
-// member function pointer const
-template <typename C, typename R, typename... Args>
-struct function_traits<R (C::*)(Args...) const> {
-    using return_type = R;
-    using args_tuple = std::tuple<Args...>;
-};
+    // member function pointer const
+    template <typename C, typename R, typename... Args>
+    struct function_traits<R (C::*)(Args...) const> {
+        using return_type = R;
+        using args_tuple = std::tuple<Args...>;
+    };
 
-// member function pointer non-const
-template <typename C, typename R, typename... Args> struct function_traits<R (C::*)(Args...)> {
-    using return_type = R;
-    using args_tuple = std::tuple<Args...>;
-};
+    // member function pointer non-const
+    template <typename C, typename R, typename... Args> struct function_traits<R (C::*)(Args...)> {
+        using return_type = R;
+        using args_tuple = std::tuple<Args...>;
+    };
 
-// lambda / functor
-template <typename F>
-struct function_traits : function_traits<decltype(&std::remove_reference_t<F>::operator())> {};
+    // lambda / functor
+    template <typename F>
+    struct function_traits : function_traits<decltype(&std::remove_reference_t<F>::operator())> {};
 
-template <typename Tuple, typename Fn, std::size_t... I>
-constexpr void for_each_type_impl(Fn &&fn, std::index_sequence<I...>) {
-    (fn.template operator()<std::tuple_element_t<I, Tuple>>(), ...);
+    template <typename Tuple, typename Fn, std::size_t... I>
+    constexpr void for_each_type_impl(Fn &&fn, std::index_sequence<I...>) {
+        (fn.template operator()<std::tuple_element_t<I, Tuple>>(), ...);
+    }
+
+    template <typename Tuple, typename Fn> constexpr void for_each_type(Fn &&fn) {
+        constexpr std::size_t N = std::tuple_size_v<Tuple>;
+        for_each_type_impl<Tuple>(std::forward<Fn>(fn), std::make_index_sequence<N>{});
+    }
+
 }
-
-template <typename Tuple, typename Fn> constexpr void for_each_type(Fn &&fn) {
-    constexpr std::size_t N = std::tuple_size_v<Tuple>;
-    for_each_type_impl<Tuple>(std::forward<Fn>(fn), std::make_index_sequence<N>{});
-}
-
-} // namespace ecs
 
 #pragma once
 #pragma once
@@ -3247,7 +3280,9 @@ inline void run_rows(F &func, Cursors &cursors, uint32_t count) {
     } else {
         for (uint32_t row = 0; row < count; row++) {
             std::apply(
-                [&](auto &...cursor) { std::invoke(func, cursor_get_at(cursor, row)...); },
+                [&](auto &...cursor) {
+                    std::invoke(func, cursor_get_at(cursor, row)...);
+                },
                 cursors
             );
         }
@@ -3768,10 +3803,11 @@ template <typename T> class observer : public query {
     }
 };
 
-template <typename Event, typename F> ecs_observer_id_t entity::observe(F &&callback) {
+template <typename Event, typename F> ecs::entity entity::observe(F &&callback) {
     ecs::observer<Event> value;
     value.target(*this);
-    return value.each(std::forward<F>(callback));
+    value.each(std::forward<F>(callback));
+    return *this;
 }
 
 } // namespace ecs
@@ -3786,7 +3822,9 @@ class phase {
     mutable ecs_phase_t _id = 0;
 
   public:
-    explicit phase(const char *name = "unnamed") { desc.name = name; }
+    explicit phase(const char *name = "unnamed") {
+        desc.name = name;
+    }
 
     phase &after(ecs_phase_t p) {
         desc.after = p;
@@ -3805,7 +3843,9 @@ class phase {
         return _id;
     }
 
-    operator ecs_phase_t() const { return id(); }
+    operator ecs_phase_t() const {
+        return id();
+    }
 };
 
 } // namespace ecs
@@ -4107,3 +4147,4 @@ inline entity instantiate(entity base) { return entity::create().is_a(base); }
 #endif
 
 #endif
+

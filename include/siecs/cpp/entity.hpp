@@ -161,7 +161,16 @@ class entity {
     /** Kill this entity; subsequent component access is invalid. */
     void kill() { ecs_kill(_entity); }
 
+    /** Observe events of type `Event` using the provided callback. */
     template <typename Event, typename F> entity observe(F &&callback);
+
+    /** Add child entities to this entity. */
+    template <typename... Entities> entity children(Entities... entities) {
+        for (ecs_entity_t entity : { entities... }) {
+            ecs_relate(entity, ChildOf, *this);
+        }
+        return *this;
+    }
 
     /** Add an inheritance link to `target`. */
     entity is_a(entity target) {
