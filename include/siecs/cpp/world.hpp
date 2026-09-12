@@ -47,11 +47,6 @@ inline void run() { ecs_run(); }
 /** Run enabled systems from the specified phase. */
 inline void run_phase(ecs_phase_t phase) { ecs_run_phase(phase); }
 
-
-
-
-
-
 /** Register or return the component id associated with `T`. */
 template <typename T> inline ecs_component_t component() {
     return detail::ecs_cpp_component_id<T>();
@@ -162,7 +157,7 @@ module_ref<T> import() {
 /** Import a native C++ module once; arguments are passed to its static import. */
 template <typename T, typename... Args>
     requires(!detail::c_declared_module<T>) && detail::module_importable<T, Args...>
-[[nodiscard]] module_ref<T> import(Args &&...args) {
+module_ref<T> import(Args &&...args) {
     if (detail::module_type<T>::id != 0) {
         return module_ref<T>(detail::module_type<T>::id);
     }

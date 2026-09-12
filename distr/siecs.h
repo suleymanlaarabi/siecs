@@ -4000,7 +4000,7 @@ module_ref<T> import() {
 /** Import a native C++ module once; arguments are passed to its static import. */
 template <typename T, typename... Args>
     requires(!detail::c_declared_module<T>) && detail::module_importable<T, Args...>
-[[nodiscard]] module_ref<T> import(Args &&...args) {
+module_ref<T> import(Args &&...args) {
     if (detail::module_type<T>::id != 0) {
         return module_ref<T>(detail::module_type<T>::id);
     }
