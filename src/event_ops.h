@@ -48,7 +48,13 @@ static inline bool ecs_emit_component_event(
     ecs_component_on_add_t hook = add ? record->on_add : record->on_remove;
     bool has_default_relations = record->default_relation_count != 0;
     if (hook) hook(entity, id, data);
-    ecs_emit(table, entity, add ? EcsOnAdd : EcsOnRemove, data);
+    ecs_emit(
+        table,
+        entity,
+        add ? EcsOnAdd : EcsOnRemove,
+        id,
+        data
+    );
     return has_default_relations;
 }
 

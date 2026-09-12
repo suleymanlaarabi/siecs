@@ -5141,8 +5141,13 @@ typedef struct {
     sicore_vec_get_mut(&entity_index.entities, ecs_first(entity), ecs_entity_record_t)
 #define ecs_get_table(tid) ecs_table_index_at(tid)
 
-static inline void
-ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void *trigger_data) {
+static inline void ecs_emit(
+    ecs_table_t *table,
+    ecs_entity_t entity,
+    ecs_event_t event,
+    ecs_component_t component,
+    const void *trigger_data
+) {
     if (table->observers_by_event.size <= event) {
         return;
     }
@@ -5157,6 +5162,7 @@ ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void 
         ecs_observer_event_t observer_event = {
             .entity = entity,
             .event = event,
+            .component = component,
             .user_data = obs->user_data,
             .trigger_data = trigger_data,
         };
@@ -5378,7 +5384,13 @@ static inline bool ecs_emit_component_event(
     ecs_component_on_add_t hook = add ? record->on_add : record->on_remove;
     bool has_default_relations = record->default_relation_count != 0;
     if (hook) hook(entity, id, data);
-    ecs_emit(table, entity, add ? EcsOnAdd : EcsOnRemove, data);
+    ecs_emit(
+        table,
+        entity,
+        add ? EcsOnAdd : EcsOnRemove,
+        id,
+        data
+    );
     return has_default_relations;
 }
 
@@ -5891,7 +5903,13 @@ static void command_apply_changes(ecs_entity_command_t *command) {
             column = ecs_table_get_column_index(table, id);
             dst = ecs_table_component_at_column(table, column, entity_record->table_row);
         }
-        ecs_emit(table, command->entity, EcsOnSet, changes[i].data);
+        ecs_emit(
+            table,
+            command->entity,
+            EcsOnSet,
+            changes[i].id,
+            changes[i].data
+        );
         ecs_component_value_move(record, dst, changes[i].data, 1);
         changes[i].data = NULL;
     }
@@ -6384,7 +6402,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
         if (crec->on_add) {
             crec->on_add(entity, cid, component_data);
         }
-        ecs_emit(new_table, entity, EcsOnAdd, component_data);
+        ecs_emit(new_table, entity, EcsOnAdd, cid, component_data);
         if (ECS_UNLIKELY(ecs_component_default_relations(cid))) {
             ecs_apply_component_default_relations(entity, cid);
         }
@@ -6423,7 +6441,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     if (crec->on_add) {
         crec->on_add(entity, cid, component_data);
     }
-    ecs_emit(new_table, entity, EcsOnAdd, component_data);
+    ecs_emit(new_table, entity, EcsOnAdd, cid, component_data);
     if (ECS_UNLIKELY(ecs_component_default_relations(cid))) {
         ecs_apply_component_default_relations(entity, cid);
     }
@@ -6466,7 +6484,7 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     if (crec->on_remove) {
         crec->on_remove(entity, cid, removed_data);
     }
-    ecs_emit(table, entity, EcsOnRemove, removed_data);
+    ecs_emit(table, entity, EcsOnRemove, cid, removed_data);
 
     ecs_migrate(record, entity, table, new_table_id, 0);
 }
@@ -6534,7 +6552,7 @@ static inline void ecs_store_cid_now(
     if (crec->on_set) {
         crec->on_set(entity, cid, data, dst);
     }
-    ecs_emit(table, entity, EcsOnSet, data);
+    ecs_emit(table, entity, EcsOnSet, cid, data);
     if (crec->relation_flags & EcsComponentRelationTarget) {
         ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
     } else if (!move) {
@@ -6566,7 +6584,7 @@ void ecs_modified_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_component_access(entity, cid);
     entity_edit(entity, table, record);
     void *data = ecs_table_get_component(table, cid, record->table_row);
-    ecs_emit(table, entity, EcsOnSet, data);
+    ecs_emit(table, entity, EcsOnSet, cid, data);
 }
 
 void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
@@ -6889,7 +6907,7 @@ void ecs_kill_now(ecs_entity_t entity) {
             }
             removed_data = ecs_table_component_at_column(table, col_idx, record->table_row);
         }
-        ecs_emit(table, entity, EcsOnRemove, removed_data);
+        ecs_emit(table, entity, EcsOnRemove, component, removed_data);
     }
 
     if (!ecs_is_alive(entity)) {
@@ -7381,7 +7399,7 @@ void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *tr
 
     ecs_entity_record_t *record = ecs_get_record(entity);
     ecs_table_t *table = ecs_get_table(record->table_id);
-    ecs_emit(table, entity, event, trigger_data);
+    ecs_emit(table, entity, event, 0, trigger_data);
 }
 
 #ifdef _WIN32
@@ -7750,7 +7768,7 @@ static void ecs_emit_relation_event(
         .old_target = old_target,
         .new_target = new_target,
     };
-    ecs_emit(table, entity, event, &relation_event);
+    ecs_emit(table, entity, event, 0, &relation_event);
 }
 
 static void ecs_relation_set_dense(
@@ -7769,7 +7787,7 @@ static void ecs_relation_set_dense(
     if (crec->on_set) {
         crec->on_set(entity, component, &value, current);
     }
-    ecs_emit(table, entity, EcsOnSet, &value);
+    ecs_emit(table, entity, EcsOnSet, component, &value);
     current->entity = value.entity;
     ecs_defer_end();
 }

@@ -55,7 +55,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
         if (crec->on_add) {
             crec->on_add(entity, cid, component_data);
         }
-        ecs_emit(new_table, entity, EcsOnAdd, component_data);
+        ecs_emit(new_table, entity, EcsOnAdd, cid, component_data);
         if (ECS_UNLIKELY(ecs_component_default_relations(cid))) {
             ecs_apply_component_default_relations(entity, cid);
         }
@@ -94,7 +94,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     if (crec->on_add) {
         crec->on_add(entity, cid, component_data);
     }
-    ecs_emit(new_table, entity, EcsOnAdd, component_data);
+    ecs_emit(new_table, entity, EcsOnAdd, cid, component_data);
     if (ECS_UNLIKELY(ecs_component_default_relations(cid))) {
         ecs_apply_component_default_relations(entity, cid);
     }
@@ -137,7 +137,7 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     if (crec->on_remove) {
         crec->on_remove(entity, cid, removed_data);
     }
-    ecs_emit(table, entity, EcsOnRemove, removed_data);
+    ecs_emit(table, entity, EcsOnRemove, cid, removed_data);
 
     ecs_migrate(record, entity, table, new_table_id, 0);
 }
@@ -205,7 +205,7 @@ static inline void ecs_store_cid_now(
     if (crec->on_set) {
         crec->on_set(entity, cid, data, dst);
     }
-    ecs_emit(table, entity, EcsOnSet, data);
+    ecs_emit(table, entity, EcsOnSet, cid, data);
     if (crec->relation_flags & EcsComponentRelationTarget) {
         ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
     } else if (!move) {
@@ -237,7 +237,7 @@ void ecs_modified_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_component_access(entity, cid);
     entity_edit(entity, table, record);
     void *data = ecs_table_get_component(table, cid, record->table_row);
-    ecs_emit(table, entity, EcsOnSet, data);
+    ecs_emit(table, entity, EcsOnSet, cid, data);
 }
 
 void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {

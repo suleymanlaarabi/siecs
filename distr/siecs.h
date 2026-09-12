@@ -940,6 +940,10 @@ typedef struct {
 /*
  * Event payload passed to observer callbacks.
  *
+ * component identifies the component responsible for EcsOnAdd, EcsOnRemove,
+ * and EcsOnSet. It is 0 for custom events and EcsOnRelationSet /
+ * EcsOnRelationRemove.
+ *
  * trigger_data is event-specific:
  * - EcsOnAdd: pointer to the added component storage.
  * - EcsOnRemove: pointer to the component storage before removal.
@@ -951,6 +955,7 @@ typedef struct {
 typedef struct {
   ecs_entity_t entity;
   ecs_event_t event;
+  ecs_component_t component;
   uintptr_t user_data;
   const void *trigger_data;
 } ecs_observer_event_t;

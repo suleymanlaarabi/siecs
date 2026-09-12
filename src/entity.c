@@ -208,7 +208,7 @@ void ecs_kill_now(ecs_entity_t entity) {
             }
             removed_data = ecs_table_component_at_column(table, col_idx, record->table_row);
         }
-        ecs_emit(table, entity, EcsOnRemove, removed_data);
+        ecs_emit(table, entity, EcsOnRemove, component, removed_data);
     }
 
     if (!ecs_is_alive(entity)) {

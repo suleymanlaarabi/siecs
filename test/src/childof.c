@@ -777,6 +777,15 @@ static void relation_observer_group_filter_callback(ecs_observer_event_t *event)
     relation_observer_group_filter_calls++;
 }
 
+static ecs_component_t relation_observer_component;
+static ecs_relation_id_t relation_observer_relation;
+
+static void relation_observer_capture_source(ecs_observer_event_t *event) {
+    const ecs_relation_event_t *data = event->trigger_data;
+    relation_observer_component = event->component;
+    relation_observer_relation = data->relation;
+}
+
 void childof_relation_observer_events(void) {
     ecs_init();
     ECS_RELATION_REGISTER(DenseRel);
@@ -858,6 +867,25 @@ void childof_relation_observer_events(void) {
     test_uint(0, relation_observer_state.new_target);
     test_false(ecs_has_relation(group_source, GroupOf));
 
+    ecs_fini();
+}
+
+void childof_relation_observer_reports_relation_without_component(void) {
+    ecs_init();
+    ECS_RELATION_REGISTER(DenseRel);
+    ecs_entity_t source = ecs_new();
+    ecs_entity_t target = ecs_new();
+    relation_observer_component = UINT16_MAX;
+    relation_observer_relation = 0;
+    ecs_observer({
+        .on = EcsOnRelationSet,
+        .callback = relation_observer_capture_source,
+    });
+
+    ecs_relate(source, DenseRel, target);
+
+    test_uint(0, relation_observer_component);
+    test_uint(ecs_rid(DenseRel), relation_observer_relation);
     ecs_fini();
 }
 

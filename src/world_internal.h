@@ -45,8 +45,13 @@ typedef struct {
     sicore_vec_get_mut(&entity_index.entities, ecs_first(entity), ecs_entity_record_t)
 #define ecs_get_table(tid) ecs_table_index_at(tid)
 
-static inline void
-ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void *trigger_data) {
+static inline void ecs_emit(
+    ecs_table_t *table,
+    ecs_entity_t entity,
+    ecs_event_t event,
+    ecs_component_t component,
+    const void *trigger_data
+) {
     if (table->observers_by_event.size <= event) {
         return;
     }
@@ -61,6 +66,7 @@ ecs_emit(ecs_table_t *table, ecs_entity_t entity, ecs_event_t event, const void 
         ecs_observer_event_t observer_event = {
             .entity = entity,
             .event = event,
+            .component = component,
             .user_data = obs->user_data,
             .trigger_data = trigger_data,
         };

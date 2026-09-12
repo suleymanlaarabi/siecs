@@ -128,7 +128,7 @@ static void ecs_emit_relation_event(
         .old_target = old_target,
         .new_target = new_target,
     };
-    ecs_emit(table, entity, event, &relation_event);
+    ecs_emit(table, entity, event, 0, &relation_event);
 }
 
 static void ecs_relation_set_dense(
@@ -147,7 +147,7 @@ static void ecs_relation_set_dense(
     if (crec->on_set) {
         crec->on_set(entity, component, &value, current);
     }
-    ecs_emit(table, entity, EcsOnSet, &value);
+    ecs_emit(table, entity, EcsOnSet, component, &value);
     current->entity = value.entity;
     ecs_defer_end();
 }

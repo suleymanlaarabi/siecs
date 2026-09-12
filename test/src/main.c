@@ -100,6 +100,7 @@ void childof_up_finds_nearest_ancestor(void);
 void childof_up_optional_returns_null(void);
 void childof_deferred_relation_keeps_last_target(void);
 void childof_relation_observer_events(void);
+void childof_relation_observer_reports_relation_without_component(void);
 void childof_type_layout_stays_compact(void);
 void childof_query_slot_reuses_component_and_relation_terms(void);
 void childof_relation_only_system_and_observer(void);
@@ -173,6 +174,11 @@ void observer_can_match_disabled_when_requested(void);
 void observer_on_remove_runs_when_entity_is_killed(void);
 void observer_modified_emits_current_component_value(void);
 void observer_modified_supports_zero_sized_tags(void);
+void observer_on_set_reports_component(void);
+void observer_on_add_reports_component(void);
+void observer_on_remove_reports_component(void);
+void observer_custom_event_reports_zero_component(void);
+void observer_deferred_on_set_reports_component_at_flush(void);
 
 // Testsuite 'module'
 void module_import_registers_runtime(void);
@@ -533,6 +539,10 @@ bake_test_case childof_testcases[] = {
         childof_relation_observer_events
     },
     {
+        "relation_observer_reports_relation_without_component",
+        childof_relation_observer_reports_relation_without_component
+    },
+    {
         "type_layout_stays_compact",
         childof_type_layout_stays_compact
     },
@@ -808,6 +818,26 @@ bake_test_case observer_testcases[] = {
     {
         "modified_supports_zero_sized_tags",
         observer_modified_supports_zero_sized_tags
+    },
+    {
+        "on_set_reports_component",
+        observer_on_set_reports_component
+    },
+    {
+        "on_add_reports_component",
+        observer_on_add_reports_component
+    },
+    {
+        "on_remove_reports_component",
+        observer_on_remove_reports_component
+    },
+    {
+        "custom_event_reports_zero_component",
+        observer_custom_event_reports_zero_component
+    },
+    {
+        "deferred_on_set_reports_component_at_flush",
+        observer_deferred_on_set_reports_component_at_flush
     }
 };
 
@@ -892,7 +922,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        30,
+        31,
         childof_testcases
     },
     {
@@ -913,7 +943,7 @@ static bake_test_suite suites[] = {
         "observer",
         NULL,
         NULL,
-        7,
+        12,
         observer_testcases
     },
     {

@@ -323,7 +323,13 @@ static void command_apply_changes(ecs_entity_command_t *command) {
             column = ecs_table_get_column_index(table, id);
             dst = ecs_table_component_at_column(table, column, entity_record->table_row);
         }
-        ecs_emit(table, command->entity, EcsOnSet, changes[i].data);
+        ecs_emit(
+            table,
+            command->entity,
+            EcsOnSet,
+            changes[i].id,
+            changes[i].data
+        );
         ecs_component_value_move(record, dst, changes[i].data, 1);
         changes[i].data = NULL;
     }

@@ -84,5 +84,5 @@ void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *tr
 
     ecs_entity_record_t *record = ecs_get_record(entity);
     ecs_table_t *table = ecs_get_table(record->table_id);
-    ecs_emit(table, entity, event, trigger_data);
+    ecs_emit(table, entity, event, 0, trigger_data);
 }

@@ -125,6 +125,7 @@
           "up_optional_returns_null",
           "deferred_relation_keeps_last_target",
           "relation_observer_events",
+          "relation_observer_reports_relation_without_component",
           "type_layout_stays_compact",
           "query_slot_reuses_component_and_relation_terms",
           "relation_only_system_and_observer"
@@ -207,7 +208,12 @@
           "can_match_disabled_when_requested",
           "on_remove_runs_when_entity_is_killed",
           "modified_emits_current_component_value",
-          "modified_supports_zero_sized_tags"
+          "modified_supports_zero_sized_tags",
+          "on_set_reports_component",
+          "on_add_reports_component",
+          "on_remove_reports_component",
+          "custom_event_reports_zero_component",
+          "deferred_on_set_reports_component_at_flush"
         ]
       },
       {
