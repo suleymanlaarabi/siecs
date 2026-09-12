@@ -62,6 +62,7 @@
           "owned_inherited_field_is_owned_by_default",
           "each_receives_entity",
           "each_defers_structural_mutation",
+          "ordered_filter_build_is_aligned",
           "system_each_receives_entity",
           "system_reads_shared_fields_with_interleaved_resource"
         ]

@@ -58,6 +58,9 @@ _Static_assert(sizeof(ecs_query_cache_t) <= 64, "query cache must fit a cache li
 static inline ecs_query_table_t *ecs_query_table_at(const ecs_query_cache_t *cache, uint16_t i) {
     return (ecs_query_table_t *)(cache->tables + (size_t)i * cache->query->stride);
 }
+static inline uint8_t *ecs_query_table_bytes_at(const ecs_query_cache_t *cache, uint16_t i) {
+    return cache->tables + (size_t)i * cache->query->stride;
+}
 static inline uint16_t ecs_query_table_id(const ecs_query_cache_t *cache, uint16_t i) {
     if (!cache->query->field_count) return ((const uint16_t *)cache->tables)[i];
     return *(const uint16_t *)(cache->tables + (size_t)i * cache->query->stride);

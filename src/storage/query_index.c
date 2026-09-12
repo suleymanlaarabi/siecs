@@ -258,9 +258,9 @@ static void ecs_query_sort(ecs_query_cache_t *cache, uint8_t *scratch, uint16_t 
     ecs_query_order_t order = cache->query->order_by;
     if (end - begin <= 16) {
         for (uint16_t i = begin + 1; i < end; i++) {
-            memcpy(scratch, ecs_query_table_at(cache, i), stride);
+            memcpy(scratch, ecs_query_table_bytes_at(cache, i), stride);
             uint16_t at = ecs_query_insert(cache, ecs_get_table(*(uint16_t *)scratch), begin, i);
-            memcpy(ecs_query_table_at(cache, at), scratch, stride);
+            memcpy(ecs_query_table_bytes_at(cache, at), scratch, stride);
         }
         return;
     }
@@ -272,7 +272,8 @@ static void ecs_query_sort(ecs_query_cache_t *cache, uint8_t *scratch, uint16_t 
     for (uint16_t i = begin; i < end; i++) {
         bool left = b == end || (a < mid && order.func(ecs_get_table(ecs_query_table_id(cache, a)),
             ecs_get_table(ecs_query_table_id(cache, b)), order.data) <= 0);
-        memcpy(scratch + i * stride, ecs_query_table_at(cache, left ? a++ : b++), stride);
+        memcpy(scratch + i * stride,
+               ecs_query_table_bytes_at(cache, left ? a++ : b++), stride);
     }
     memcpy(cache->tables + begin * stride, scratch + begin * stride, (end - begin) * stride);
 }

@@ -17,6 +17,8 @@ struct CppQueryScale {
     float value;
 };
 
+struct CppQueryOrderRelation {};
+
 struct CppQueryOwnedInherited {
     int value;
 };
@@ -193,6 +195,26 @@ void query_each_defers_structural_mutation(void) {
     test_assert(!first.has<CppQueryVelocity>());
     test_assert(!second.has<CppQueryVelocity>());
     test_assert(!third.has<CppQueryVelocity>());
+}
+
+void query_ordered_filter_build_is_aligned(void) {
+    ecs_test_scope _ecs_scope;
+
+    ecs::relation<CppQueryOrderRelation>({
+        .storage = EcsRelationByTarget,
+        .on_delete_target = EcsRemoveRelation,
+    });
+    auto group = ecs::entity::create();
+    (void)ecs::entity::create().relate<CppQueryOrderRelation>(group).set(CppQueryVelocity{});
+    (void)ecs::entity::create().relate<CppQueryOrderRelation>(group).set(CppQueryMass{});
+
+    auto handle = ecs::query()
+                      .to<CppQueryOrderRelation>(group)
+                      .order_by_target<CppQueryOrderRelation>()
+                      .build_handle();
+    int calls = 0;
+    handle.each([&](ecs::entity) { ++calls; });
+    test_int(2, calls);
 }
 
 void query_system_reads_shared_fields_with_interleaved_resource(void) {
