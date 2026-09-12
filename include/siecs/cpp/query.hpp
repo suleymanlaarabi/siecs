@@ -166,6 +166,7 @@ inline void run_batch(F &func, ecs_iter_t *it, Resources &resources) {
 template <typename F> inline void each_query(ecs_query_id_t qid, F &&func) {
     using callback = std::remove_cvref_t<F>;
     using args = typename function_traits<callback>::args_tuple;
+    defer_scope defer;
     callback state(std::forward<F>(func));
     auto resources = make_resources<args>();
     ecs_iter_t it = ecs_query_iter(qid);

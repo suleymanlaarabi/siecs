@@ -171,6 +171,30 @@ void query_each_receives_entity(void) {
     test_true(saw_second);
 }
 
+void query_each_defers_structural_mutation(void) {
+    ecs_test_scope _ecs_scope;
+
+    auto first = ecs::entity::create().set(CppQueryVelocity{});
+    auto second = ecs::entity::create().set(CppQueryVelocity{});
+    auto third = ecs::entity::create().set(CppQueryVelocity{});
+
+    int calls = 0;
+
+    ecs::query().each([&](ecs::entity entity, CppQueryVelocity &) {
+        test_assert(entity.has<CppQueryVelocity>());
+
+        entity.remove<CppQueryVelocity>();
+
+        test_assert(entity.has<CppQueryVelocity>());
+        ++calls;
+    });
+
+    test_assert(calls == 3);
+    test_assert(!first.has<CppQueryVelocity>());
+    test_assert(!second.has<CppQueryVelocity>());
+    test_assert(!third.has<CppQueryVelocity>());
+}
+
 void query_system_reads_shared_fields_with_interleaved_resource(void) {
     ecs_test_scope _ecs_scope;
     register_shared_query_position();
