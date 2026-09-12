@@ -8089,7 +8089,6 @@ ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc) {
 }
 
 ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc) {
-    ecs_assert_not_scheduler_parallel("resource registration");
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
     ecs_assert_not_null(desc->name);
@@ -8097,6 +8096,7 @@ ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc
     if (*id && ecs_resource_registered(*id)) {
         return *id;
     }
+    ecs_assert_not_scheduler_parallel("resource registration");
     if (*id == 0) {
         *id = ecs_resource_alloc_id();
     }

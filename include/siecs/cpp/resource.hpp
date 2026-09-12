@@ -30,8 +30,10 @@ template <typename T> class resource_ref {
         requires(!std::is_const_v<T> && std::is_same_v<std::remove_cvref_t<U>, value_type>)
     /** Copy an lvalue or move an rvalue into this resource. */
     void set(U &&value) const {
-        if constexpr (std::is_lvalue_reference_v<U>) ecs_set_resource_rid(_id, &value);
-        else ecs_move_resource_rid(_id, &value);
+        if constexpr (std::is_lvalue_reference_v<U>)
+            ecs_set_resource_rid(_id, &value);
+        else
+            ecs_move_resource_rid(_id, &value);
     }
 
     /** Return storage or null when the resource is absent. */
@@ -91,8 +93,8 @@ template <typename T> struct resource_hook_state {
 };
 
 template <typename T, bool Set> static void resource_hook(const void *ptr) {
-    auto callback = Set ? resource_hook_state<T>::hooks.on_set
-                        : resource_hook_state<T>::hooks.on_remove;
+    auto callback =
+        Set ? resource_hook_state<T>::hooks.on_set : resource_hook_state<T>::hooks.on_remove;
     if (callback != nullptr)
         callback(*static_cast<const T *>(ptr));
 }
@@ -100,14 +102,16 @@ template <typename T, bool Set> static void resource_hook(const void *ptr) {
 } // namespace detail
 
 /** Register `T` and return its typed resource id, installing native hooks once. */
-template <typename T> static ecs_resource_t ecs_cpp_resource_id(
-    const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr
-) {
+template <typename T>
+static ecs_resource_t
+ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) {
     using type = std::remove_cv_t<T>;
     if constexpr (detail::c_declared_resource<type>) {
         (void)hooks;
-        return ecs_resource_register(detail::c_resource_traits<type>::id_storage(),
-                                     detail::c_resource_traits<type>::desc_storage());
+        return ecs_resource_register(
+            detail::c_resource_traits<type>::id_storage(),
+            detail::c_resource_traits<type>::desc_storage()
+        );
     }
     ecs_resource_t &rid = detail::typed_id<type, detail::id_kind::resource>;
 
