@@ -43,6 +43,79 @@ static CppQueryPosition *cpp_query_position(ecs::entity entity) {
     ));
 }
 
+void query_required_owned_fields_advance(void) {
+    ecs_test_scope _ecs_scope;
+
+    (void)ecs::entity::create()
+        .set(CppQueryPosition{ .x = 1.0f })
+        .set(CppQueryVelocity{ .x = 10.0f });
+    (void)ecs::entity::create()
+        .set(CppQueryPosition{ .x = 2.0f })
+        .set(CppQueryVelocity{ .x = 20.0f });
+
+    int calls = 0;
+    bool saw_first = false;
+    bool saw_second = false;
+
+    ecs::query().each([&](const CppQueryPosition &position,
+                          const CppQueryVelocity &velocity) {
+        calls++;
+        saw_first |= position.x == 1.0f && velocity.x == 10.0f;
+        saw_second |= position.x == 2.0f && velocity.x == 20.0f;
+    });
+
+    test_int(2, calls);
+    test_true(saw_first);
+    test_true(saw_second);
+}
+
+void query_optional_field_absent_stays_null(void) {
+    ecs_test_scope _ecs_scope;
+
+    (void)ecs::entity::create().set(CppQueryVelocity{ .x = 1.0f });
+    (void)ecs::entity::create().set(CppQueryVelocity{ .x = 2.0f });
+
+    int calls = 0;
+    float sum = 0.0f;
+
+    ecs::query().each([&](ecs::optional<const CppQueryPosition> position,
+                          const CppQueryVelocity &velocity) {
+        test_assert(!position);
+        sum += velocity.x;
+        calls++;
+    });
+
+    test_int(2, calls);
+    test_assert(sum == 3.0f);
+}
+
+void query_optional_field_present_advances(void) {
+    ecs_test_scope _ecs_scope;
+
+    (void)ecs::entity::create()
+        .set(CppQueryPosition{ .x = 1.0f })
+        .set(CppQueryVelocity{ .x = 10.0f });
+    (void)ecs::entity::create()
+        .set(CppQueryPosition{ .x = 2.0f })
+        .set(CppQueryVelocity{ .x = 20.0f });
+
+    int calls = 0;
+    bool saw_first = false;
+    bool saw_second = false;
+
+    ecs::query().each([&](ecs::optional<const CppQueryPosition> position,
+                          const CppQueryVelocity &velocity) {
+        test_assert(static_cast<bool>(position));
+        calls++;
+        saw_first |= position->x == 1.0f && velocity.x == 10.0f;
+        saw_second |= position->x == 2.0f && velocity.x == 20.0f;
+    });
+
+    test_int(2, calls);
+    test_true(saw_first);
+    test_true(saw_second);
+}
+
 void query_reads_shared_inherited_field(void) {
     ecs_test_scope _ecs_scope;
 

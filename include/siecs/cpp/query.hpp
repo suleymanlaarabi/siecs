@@ -46,7 +46,8 @@ inline constexpr bool is_observer_event_v = is_observer_event<std::remove_cvref_
 template <typename T> struct is_optional : std::false_type {};
 template <typename T> struct is_optional<ecs::optional<T>> : std::true_type {};
 
-template <typename T> inline constexpr bool is_optional_v = is_optional<std::remove_cvref_t<T>>::value;
+template <typename T>
+inline constexpr bool is_optional_v = is_optional<std::remove_cvref_t<T>>::value;
 
 template <typename T> struct optional_value {
     using type = std::remove_reference_t<T>;
@@ -88,17 +89,28 @@ struct entity_cursor {
 
 inline entity cursor_get(entity_cursor &cursor) { return entity::from(*cursor.value); }
 
-template <typename T, bool Optional> inline decltype(auto) cursor_get(field_cursor<T, Optional> &c) {
-    if constexpr (Optional) return optional<T>(c.value);
-    else return *c.value;
+template <typename T, bool Optional>
+inline decltype(auto) cursor_get(field_cursor<T, Optional> &c) {
+    if constexpr (Optional)
+        return optional<T>(c.value);
+    else
+        return *c.value;
 }
 
-template <typename T> requires is_res_v<T>
-inline T &cursor_get(T &cursor) { return cursor; }
+template <typename T>
+    requires is_res_v<T>
+inline T &cursor_get(T &cursor) {
+    return cursor;
+}
 
 template <bool OwnedOnly, typename T, bool Optional>
 inline void cursor_next(field_cursor<T, Optional> &cursor) noexcept {
-    if (cursor.value) cursor.value += OwnedOnly ? 1 : cursor.step;
+    if constexpr (Optional) {
+        if (cursor.value)
+            cursor.value += OwnedOnly ? 1 : cursor.step;
+    } else {
+        cursor.value += OwnedOnly ? 1 : cursor.step;
+    }
 }
 
 template <bool OwnedOnly> inline void cursor_next(entity_cursor &cursor) noexcept {
@@ -106,7 +118,8 @@ template <bool OwnedOnly> inline void cursor_next(entity_cursor &cursor) noexcep
     cursor.value++;
 }
 
-template <bool OwnedOnly, typename T> requires is_res_v<T>
+template <bool OwnedOnly, typename T>
+    requires is_res_v<T>
 inline void cursor_next(T &) noexcept {}
 
 template <typename Args, std::size_t I, typename Resources>
@@ -126,9 +139,8 @@ inline auto make_cursor(ecs_iter_t *it, Resources &resources, bool &has_shared) 
             shared = ecs_field_is_shared(it, static_cast<uint16_t>(field));
             has_shared |= shared;
         }
-        return field_cursor<value_type, optional>{
-            value, static_cast<std::ptrdiff_t>(shared ? 0 : 1)
-        };
+        return field_cursor<value_type, optional>{ value,
+                                                   static_cast<std::ptrdiff_t>(shared ? 0 : 1) };
     }
 }
 
@@ -170,7 +182,8 @@ template <typename F> inline void each_query(ecs_query_id_t qid, F &&func) {
     callback state(std::forward<F>(func));
     auto resources = make_resources<args>();
     ecs_iter_t it = ecs_query_iter(qid);
-    while (ecs_iter_next(&it)) run_batch<callback, args>(state, &it, resources);
+    while (ecs_iter_next(&it))
+        run_batch<callback, args>(state, &it, resources);
 }
 
 template <typename T> consteval ecs_access_t term_access() {
@@ -216,25 +229,33 @@ inline void append_callback_component_term(
             continue;
         }
         up_relation = static_cast<ecs_relation_id_t>(desc.components[i].access >> 8);
-        std::memmove(desc.components + i, desc.components + i + 1,
-                     (--component_index - i) * sizeof(ecs_component_term_t));
+        std::memmove(
+            desc.components + i,
+            desc.components + i + 1,
+            (--component_index - i) * sizeof(ecs_component_term_t)
+        );
         break;
     }
     if (up_relation) {
         assert(access == EcsIn || access == EcsInOptional);
-        encoded_access = ECS_QUERY_UP_ACCESS(
-            access == EcsInOptional ? EcsInUpOptional : EcsInUp, up_relation);
+        encoded_access =
+            ECS_QUERY_UP_ACCESS(access == EcsInOptional ? EcsInUpOptional : EcsInUp, up_relation);
     }
     append_component_term(desc, component_index, id, encoded_access);
 }
 
 template <typename... T>
 inline void append_terms(ecs_query_desc_t &desc, uint16_t &component_index, ecs_access_t access) {
-    (append_component_term(desc, component_index, ecs::detail::ecs_cpp_component_id<T>(), access), ...);
+    (append_component_term(desc, component_index, ecs::detail::ecs_cpp_component_id<T>(), access),
+     ...);
 }
 
-inline void append_resource_term(ecs_query_desc_t &desc, uint16_t &resource_index,
-                                ecs_resource_t id, ecs_access_t access) {
+inline void append_resource_term(
+    ecs_query_desc_t &desc,
+    uint16_t &resource_index,
+    ecs_resource_t id,
+    ecs_access_t access
+) {
     assert(resource_index < ECS_QUERY_RESOURCE_CAPACITY);
     desc.resources[resource_index++] = { .id = id, .access = static_cast<uint32_t>(access) };
 }
@@ -245,8 +266,8 @@ template <typename T> consteval ecs_access_t resource_term_access() {
 }
 
 template <typename Args, std::size_t I>
-inline void append_callback_term(ecs_query_desc_t &desc, uint16_t &component_index,
-                                uint16_t &resource_index) {
+inline void
+append_callback_term(ecs_query_desc_t &desc, uint16_t &component_index, uint16_t &resource_index) {
     using T = std::tuple_element_t<I, Args>;
     if constexpr (is_entity_v<T>) {
         static_assert(I == 0, "ecs::entity must be the first callback argument");
@@ -263,9 +284,12 @@ inline void append_callback_term(ecs_query_desc_t &desc, uint16_t &component_ind
         );
     } else if constexpr (is_res_v<T>) {
         using resource_type = resource_value_t<T>;
-        append_resource_term(desc, resource_index,
-                             ecs::ecs_cpp_resource_id<resource_type>(),
-                             resource_term_access<T>());
+        append_resource_term(
+            desc,
+            resource_index,
+            ecs::ecs_cpp_resource_id<resource_type>(),
+            resource_term_access<T>()
+        );
     } else {
         append_callback_component_term(
             desc,
@@ -287,8 +311,8 @@ inline void append_callback_terms_impl(
 }
 
 template <typename Args>
-inline void append_callback_terms(ecs_query_desc_t &desc, uint16_t &component_index,
-                                  uint16_t &resource_index) {
+inline void
+append_callback_terms(ecs_query_desc_t &desc, uint16_t &component_index, uint16_t &resource_index) {
     append_callback_terms_impl<Args>(
         desc,
         component_index,
@@ -299,7 +323,8 @@ inline void append_callback_terms(ecs_query_desc_t &desc, uint16_t &component_in
 
 inline uint16_t query_resource_count(const ecs_query_desc_t &desc) {
     uint16_t count = 0;
-    while (count < ECS_QUERY_RESOURCE_CAPACITY && desc.resources[count].id) count++;
+    while (count < ECS_QUERY_RESOURCE_CAPACITY && desc.resources[count].id)
+        count++;
     return count;
 }
 
@@ -313,14 +338,13 @@ class query_handle {
     uint16_t _base_resource_index = UINT16_MAX;
     uint64_t _signature = 0;
 
-    static uint64_t signature(const ecs_query_desc_t &desc, uint16_t component_count,
-                              uint16_t resource_count) {
+    static uint64_t
+    signature(const ecs_query_desc_t &desc, uint16_t component_count, uint16_t resource_count) {
         uint64_t value = component_count;
         for (uint16_t i = 0; i < component_count; i++)
             value = (value * 1099511628211ULL) ^ desc.components[i].id ^
                     ((uint64_t)desc.components[i].access << 16);
-        value = (value * 1099511628211ULL) ^
-                (0x9e3779b97f4a7c15ULL + resource_count);
+        value = (value * 1099511628211ULL) ^ (0x9e3779b97f4a7c15ULL + resource_count);
         for (uint16_t i = 0; i < resource_count; i++)
             value = (value * 1099511628211ULL) ^ desc.resources[i].id ^
                     ((uint64_t)desc.resources[i].access << 16);
@@ -334,14 +358,13 @@ class query_handle {
     query_handle(const ecs_query_desc_t &desc, uint16_t component_index)
         : query_handle(desc, component_index, detail::query_resource_count(desc)) {}
     query_handle(const ecs_query_desc_t &desc, uint16_t component_index, uint16_t resource_index)
-        : _id(ecs_query_init(&desc)),
-          _base_desc(desc),
-          _base_component_index(component_index),
+        : _id(ecs_query_init(&desc)), _base_desc(desc), _base_component_index(component_index),
           _base_resource_index(resource_index),
           _signature(signature(desc, component_index, resource_index)) {}
     /** Destroy the owned query, if any. */
     ~query_handle() {
-        if (_id != 0) ecs_query_fini(_id);
+        if (_id != 0)
+            ecs_query_fini(_id);
     }
 
     /** Query handles cannot be copied because they own a C query id. */
@@ -378,7 +401,8 @@ class query_handle {
             detail::append_callback_terms<args>(desc, component_index, resource_index);
             uint64_t next_signature = signature(desc, component_index, resource_index);
             if (next_signature != _signature) {
-                if (_id != 0) ecs_query_fini(_id);
+                if (_id != 0)
+                    ecs_query_fini(_id);
                 _id = ecs_query_init(&desc);
                 _signature = next_signature;
             }
@@ -415,19 +439,13 @@ class query {
     query() = default;
 
     /** Add required, non-returned filter terms. */
-    template <typename... T> query &require() {
-        return components<EcsFilter, T...>();
-    }
+    template <typename... T> query &require() { return components<EcsFilter, T...>(); }
 
     /** Add optional read/write component terms. */
-    template <typename... T> query &optional() {
-        return components<EcsInOutOptional, T...>();
-    }
+    template <typename... T> query &optional() { return components<EcsInOutOptional, T...>(); }
 
     /** Add terms that must be absent from matching tables. */
-    template <typename... T> query &exclude() {
-        return components<EcsNot, T...>();
-    }
+    template <typename... T> query &exclude() { return components<EcsNot, T...>(); }
 
     /** Restrict matches to entities inheriting from `target`. */
     query &is_a(ecs_entity_t target) {
@@ -445,9 +463,7 @@ class query {
         return relation<Relation>(target, EcsRelationTarget);
     }
 
-    template <typename Relation> query &to(entity target) {
-        return to<Relation>(target.id());
-    }
+    template <typename Relation> query &to(entity target) { return to<Relation>(target.id()); }
 
     template <typename Relation> query &depth(uint32_t value) {
         return relation<Relation>(value, EcsRelationDepth);
@@ -469,10 +485,7 @@ class query {
     template <typename Component, typename Relation> query &up() {
         desc.components[component_index++] = {
             .id = detail::ecs_cpp_component_id<Component>(),
-            .access = ECS_QUERY_UP_ACCESS(
-                EcsInUp,
-                detail::ecs_cpp_relation_id<Relation>()
-            ),
+            .access = ECS_QUERY_UP_ACCESS(EcsInUp, detail::ecs_cpp_relation_id<Relation>()),
         };
         return *this;
     }

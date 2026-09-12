@@ -24,11 +24,14 @@ struct Enemy {};
 struct Voiture {};
 struct NoIntegrate {};
 
-
 int main() {
     ecs::init({ .target_fps = 60 });
     ecs::import<sirest>();
 
+    ecs::system().each([](Position &pos, const Velocity &vel) {
+        pos.x += vel.x;
+        pos.y += vel.y;
+    });
 
     ecs::run();
 }

@@ -55,6 +55,9 @@
       {
         "id": "query",
         "testcases": [
+          "required_owned_fields_advance",
+          "optional_field_absent_stays_null",
+          "optional_field_present_advances",
           "reads_shared_inherited_field",
           "mutable_does_not_match_shared_inherited_field",
           "reads_shared_and_writes_owned_field",

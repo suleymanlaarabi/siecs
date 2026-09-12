@@ -6,7 +6,7 @@ QUIET_BAKE = grep -Ev '^\[[[:space:]]*(test|build|run|runall|[0-9]+%)|^cmd:|^pat
 WASM_NODE ?= node
 BENCH_CPU ?= 0
 
-.PHONY: clean bench bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-release test-rest test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release build-wasm-debug build-wasm-release test-wasm test-wasm-browser act-ci act-docs act
+.PHONY: clean bench bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-release test-rest test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release build-wasm-debug build-wasm-release test-wasm test-wasm-browser vec-cpp act-ci act-docs act
 
 ACT ?= act
 ACT_PLATFORM ?= ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
@@ -89,6 +89,29 @@ test-cpp:
 test-cpp-release:
 	@bake rebuild test/cpp -r --cfg release >/dev/null
 	@bash -o pipefail -c "bake test test/cpp --cfg release 2>&1 | $(QUIET_BAKE)"
+
+vec-cpp:
+	@bake rebuild example/cpp -r --cfg release >/dev/null
+	@log=$$(mktemp /tmp/siecs-vec-cpp-log.XXXXXX); \
+	obj=$$(mktemp /tmp/siecs-vec-cpp-obj.XXXXXX); \
+	trap 'rm -f "$$log" "$$obj"' EXIT; \
+	compiler='$(CXX)'; version=$$($$compiler --version 2>/dev/null | head -n 1); \
+	case "$$version" in \
+		*clang*) vec_flags='-Rpass=loop-vectorize' ;; \
+		*GCC*|*g++*) vec_flags='-fopt-info-vec-optimized' ;; \
+		*) printf 'vec-cpp: compilateur non supporte: %s\n' "$$version" >&2; exit 2 ;; \
+	esac; \
+	$$compiler -O3 -std=c++20 $$vec_flags \
+		-Iexample/cpp/../../include -Iexample/cpp/include -I$(BAKE_HOME)/include \
+		-c example/cpp/src/main.cpp -o "$$obj" >"$$log" 2>&1; status=$$?; \
+	if [ $$status -ne 0 ]; then cat "$$log"; exit $$status; fi; \
+	printf 'Vectorisation de example/cpp/src/main.cpp (%s)\n' "$$version"; \
+	awk '/(^|[/\\])main\.cpp:[0-9]+:[0-9]+:.*(optimized:|remark:).*vectorized/ { \
+		found = 1; detail = $$0; location = $$0; \
+		sub(/:[[:space:]]*(optimized|remark):.*/, "", location); \
+		sub(/^[^:]*:[0-9]+:[0-9]+:[[:space:]]*/, "", detail); \
+		printf "  systeme ECS: %s\n  compilateur: %s\n", location, detail \
+	} END { if (!found) print "  aucune boucle ou systeme ECS vectorise" }' "$$log"
 
 test-rest:
 	@bake rebuild addons/rest/test -r >/dev/null

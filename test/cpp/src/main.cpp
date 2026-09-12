@@ -38,6 +38,9 @@ void resource_c_declared_resource(void);
 void resource_cpp_only_methods(void);
 
 // Testsuite 'query'
+void query_required_owned_fields_advance(void);
+void query_optional_field_absent_stays_null(void);
+void query_optional_field_present_advances(void);
 void query_reads_shared_inherited_field(void);
 void query_mutable_does_not_match_shared_inherited_field(void);
 void query_reads_shared_and_writes_owned_field(void);
@@ -173,6 +176,18 @@ bake_test_case resource_testcases[] = {
 };
 
 bake_test_case query_testcases[] = {
+    {
+        "required_owned_fields_advance",
+        query_required_owned_fields_advance
+    },
+    {
+        "optional_field_absent_stays_null",
+        query_optional_field_absent_stays_null
+    },
+    {
+        "optional_field_present_advances",
+        query_optional_field_present_advances
+    },
     {
         "reads_shared_inherited_field",
         query_reads_shared_inherited_field
@@ -315,7 +330,7 @@ static bake_test_suite suites[] = {
         "query",
         NULL,
         NULL,
-        10,
+        13,
         query_testcases
     },
     {
