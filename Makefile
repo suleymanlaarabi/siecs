@@ -5,6 +5,7 @@ DEPS_LIB = -L$(BAKE_TARGET)/lib -lsijson -lsireflect -lsicore
 QUIET_BAKE = grep -Ev '^\[[[:space:]]*(test|build|run|runall|[0-9]+%)|^cmd:|^path:'
 WASM_NODE ?= node
 BENCH_CPU ?= 0
+VEC_ARCH_FLAGS ?=
 
 .PHONY: clean bench bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-release test-rest test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release build-wasm-debug build-wasm-release test-wasm test-wasm-browser vec-cpp act-ci act-docs act
 
@@ -101,16 +102,16 @@ vec-cpp:
 		*GCC*|*g++*) vec_flags='-fopt-info-vec-optimized' ;; \
 		*) printf 'vec-cpp: compilateur non supporte: %s\n' "$$version" >&2; exit 2 ;; \
 	esac; \
-	$$compiler -O3 -std=c++20 $$vec_flags \
+	$$compiler -O3 $(VEC_ARCH_FLAGS) -std=c++20 $$vec_flags \
 		-Iexample/cpp/../../include -Iexample/cpp/include -I$(BAKE_HOME)/include \
 		-c example/cpp/src/main.cpp -o "$$obj" >"$$log" 2>&1; status=$$?; \
 	if [ $$status -ne 0 ]; then cat "$$log"; exit $$status; fi; \
 	printf 'Vectorisation de example/cpp/src/main.cpp (%s)\n' "$$version"; \
-	awk '/(^|[/\\])main\.cpp:[0-9]+:[0-9]+:.*(optimized:|remark:).*vectorized/ { \
+	awk '/(^|[/\\])query\.hpp:[0-9]+:[0-9]+:.*(optimized:[[:space:]]+loop vectorized|remark:[[:space:]]+vectorized loop)/ { \
 		found = 1; detail = $$0; location = $$0; \
 		sub(/:[[:space:]]*(optimized|remark):.*/, "", location); \
 		sub(/^[^:]*:[0-9]+:[0-9]+:[[:space:]]*/, "", detail); \
-		printf "  systeme ECS: %s\n  compilateur: %s\n", location, detail \
+		printf "  boucle ECS: %s\n  compilateur: %s\n", location, detail \
 	} END { if (!found) print "  aucune boucle ou systeme ECS vectorise" }' "$$log"
 
 test-rest:

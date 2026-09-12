@@ -103,6 +103,30 @@ inline T &cursor_get(T &cursor) {
     return cursor;
 }
 
+template <typename T, bool Optional>
+inline decltype(auto)
+cursor_get_at(field_cursor<T, Optional> &cursor, std::ptrdiff_t row) noexcept {
+    const std::ptrdiff_t offset = row * cursor.step;
+    if constexpr (Optional) {
+        auto *value = cursor.value;
+        if (value)
+            value += offset;
+        return optional<T>(value);
+    } else {
+        return *(cursor.value + offset);
+    }
+}
+
+inline entity cursor_get_at(entity_cursor &cursor, std::ptrdiff_t row) noexcept {
+    return entity::from(cursor.value[row]);
+}
+
+template <typename T>
+    requires is_res_v<T>
+inline T &cursor_get_at(T &cursor, std::ptrdiff_t) noexcept {
+    return cursor;
+}
+
 template <bool OwnedOnly, typename T, bool Optional>
 inline void cursor_next(field_cursor<T, Optional> &cursor) noexcept {
     if constexpr (Optional) {
@@ -152,14 +176,25 @@ make_cursors(ecs_iter_t *it, Resources &resources, bool &has_shared, std::index_
 
 template <bool OwnedOnly, typename F, typename Cursors>
 inline void run_rows(F &func, Cursors &cursors, uint32_t count) {
-    for (uint32_t row = 0; row < count; row++) {
-        std::apply(
-            [&](auto &...cursor) {
-                std::invoke(func, cursor_get(cursor)...);
-                (cursor_next<OwnedOnly>(cursor), ...);
-            },
-            cursors
-        );
+    if constexpr (OwnedOnly) {
+        for (uint32_t row = 0; row < count; row++) {
+            std::apply(
+                [&](auto &...cursor) {
+                    std::invoke(func, cursor_get(cursor)...);
+                    (cursor_next<OwnedOnly>(cursor), ...);
+                },
+                cursors
+            );
+        }
+    } else {
+        for (uint32_t row = 0; row < count; row++) {
+            std::apply(
+                [&](auto &...cursor) {
+                    std::invoke(func, cursor_get_at(cursor, row)...);
+                },
+                cursors
+            );
+        }
     }
 }
 
