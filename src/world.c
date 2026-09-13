@@ -40,6 +40,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_system_index_init();
     ecs_module_storage_init();
     ecs_resource_storage_init();
+    ecs_arena_init(&ecs_world.scene_strings);
     ecs_execution_context_init(&ecs_world.main_context);
     ecs_world.active_module = 0;
     ecs_world.features = *features;
@@ -65,6 +66,7 @@ void ecs_fini(void) {
     ecs_system_index_fini();
     ecs_query_index_fini();
     ecs_resource_storage_fini();
+    ecs_arena_fini(&ecs_world.scene_strings);
     sicore_vec_fini(
         &entity_index.entities
     );

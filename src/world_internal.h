@@ -26,6 +26,7 @@ struct ecs_world_s {
     bool exit;
     double delta_time;
     double last_time;
+    ecs_arena_t scene_strings;
 };
 
 extern ecs_world_t ecs_world;

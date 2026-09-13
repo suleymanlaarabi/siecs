@@ -41,6 +41,7 @@ typedef struct {
 typedef struct {
     ecs_entity_t *local_to_entity;
     uint32_t entity_count;
+    bool component_owns_strings;
 } ecs_scene_load_ctx_t;
 
 static void ecs_scene_writer_init(ecs_scene_writer_t *w) {
@@ -180,7 +181,7 @@ static bool ecs_scene_type_needs_codec(sireflect_handle_t type) {
     return false;
 }
 
-static bool ecs_scene_type_has_pointer(sireflect_handle_t type) {
+static bool ecs_scene_type_has_unsupported_pointer(sireflect_handle_t type) {
     if (type == SIREFLECT_INVALID_HANDLE)
         return false;
 
@@ -188,16 +189,19 @@ static bool ecs_scene_type_has_pointer(sireflect_handle_t type) {
     if (!info)
         return false;
 
-    if (info->kind == sireflect_kind_pointer || info->kind == sireflect_kind_ptr ||
-        info->kind == sireflect_kind_function_pointer) {
+    if (info->kind == sireflect_kind_pointer) {
+        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
+        return !element || element->kind != sireflect_kind_char;
+    }
+    if (info->kind == sireflect_kind_ptr || info->kind == sireflect_kind_function_pointer) {
         return true;
     }
     if (info->kind == sireflect_kind_array) {
-        return ecs_scene_type_has_pointer(info->element_type);
+        return ecs_scene_type_has_unsupported_pointer(info->element_type);
     }
     if (info->kind == sireflect_kind_struct) {
         for (size_t i = 0; i < info->fields.field_count; i++) {
-            if (ecs_scene_type_has_pointer(info->fields.fields[i].type))
+            if (ecs_scene_type_has_unsupported_pointer(info->fields.fields[i].type))
                 return true;
         }
     }
@@ -222,16 +226,8 @@ static bool ecs_scene_component_supported(const ecs_component_record_t *record) 
     }
 
     if (record->info->type != SIREFLECT_INVALID_HANDLE &&
-        ecs_scene_type_has_pointer(record->info->type)) {
-        /*
-         * Deep pointer data requires proper ownership operations. This is true
-         * for the builtin Name component. Without copy + dtor, deserializing a
-         * pointed value would create dangling or leaking storage.
-         */
-        if (!record->ops.dtor || (!record->ops.copy && !record->ops.copy_ctor)) {
-            return false;
-        }
-    }
+        ecs_scene_type_has_unsupported_pointer(record->info->type))
+        return false;
 
     return true;
 }
@@ -260,13 +256,15 @@ static bool ecs_scene_save_string(ecs_scene_writer_t *w, const char *value) {
     return ecs_scene_write_u32(w, (uint32_t)length) && ecs_scene_write(w, value, length);
 }
 
-static bool ecs_scene_load_string(ecs_scene_reader_t *r, char **value) {
+static bool
+ecs_scene_load_string(ecs_scene_reader_t *r, void *value, const ecs_scene_load_ctx_t *ctx) {
     uint32_t length = ecs_scene_read_u32(r);
     if (!r->ok)
         return false;
 
     if (length == ECS_SCENE_NULL_INDEX) {
-        *value = NULL;
+        char *string = NULL;
+        memcpy(value, &string, sizeof string);
         return true;
     }
 
@@ -275,18 +273,21 @@ static bool ecs_scene_load_string(ecs_scene_reader_t *r, char **value) {
         return false;
     }
 
-    char *string = malloc((size_t)length + 1);
+    char *string = ctx->component_owns_strings
+                       ? malloc((size_t)length + 1)
+                       : ecs_arena_alloc(&ecs_world.scene_strings, length + 1);
     if (!string) {
         r->ok = false;
         return false;
     }
 
     if (!ecs_scene_reader_take(r, string, length)) {
-        free(string);
+        if (ctx->component_owns_strings)
+            free(string);
         return false;
     }
     string[length] = '\0';
-    *value = string;
+    memcpy(value, &string, sizeof string);
     return true;
 }
 
@@ -350,7 +351,9 @@ static bool ecs_scene_save_value(
         const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
         if (!element || element->kind != sireflect_kind_char)
             return false;
-        return ecs_scene_save_string(w, *(char *const *)value);
+        const char *string;
+        memcpy(&string, value, sizeof string);
+        return ecs_scene_save_string(w, string);
     }
 
     case sireflect_kind_ptr:
@@ -471,7 +474,7 @@ static bool ecs_scene_load_value(
         const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
         if (!element || element->kind != sireflect_kind_char)
             return false;
-        return ecs_scene_load_string(r, (char **)value);
+        return ecs_scene_load_string(r, value, ctx);
     }
 
     case sireflect_kind_ptr:
@@ -1072,12 +1075,15 @@ static bool ecs_scene_load_component_payload(
         if (record->info->type == SIREFLECT_INVALID_HANDLE)
             return false;
 
+        ecs_scene_load_ctx_t component_ctx = *ctx;
+        component_ctx.component_owns_strings = record->ops.dtor != NULL;
+
         for (uint32_t row = 0; row < row_count; row++) {
             void *temp = calloc(1, component_size);
             if (!temp)
                 return false;
 
-            bool ok = ecs_scene_load_value(&payload, record->info->type, temp, ctx);
+            bool ok = ecs_scene_load_value(&payload, record->info->type, temp, &component_ctx);
             if (ok)
                 ecs_set_cid(entities[row], component, temp);
             if (record->ops.dtor)

@@ -1504,6 +1504,7 @@ SIECS_API void ecs_system_disable(ecs_system_id_t system);
  * Entity handles are never persisted. References to entities inside reflected
  * components and ECS relations are stored as scene-local indices and remapped
  * to fresh runtime entities by ecs_load().
+ * Reflected char pointers without lifecycle hooks remain valid until ecs_fini().
  *
  * The scene is intentionally tied to the currently registered component /
  * relation layout of the binary that loads it.
