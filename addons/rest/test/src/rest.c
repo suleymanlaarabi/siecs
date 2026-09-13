@@ -25,6 +25,14 @@ ECS_RELATION_DEFINE(
     }
 );
 
+ECS_RELATION_DECLARE(RestTestLoop);
+ECS_RELATION_DEFINE(
+    RestTestLoop,
+    {
+        .storage = EcsRelationDense,
+    }
+);
+
 void rest_listener_failure_reports_details(void) {
     int output[2];
     test_assert(pipe(output) == 0);
@@ -167,7 +175,7 @@ void rest_entity_routes_use_public_introspection(void) {
 
 void rest_relation_routes_are_generic_and_validated(void) {
     ecs_init();
-    ECS_RELATION_REGISTER(RestTestLink);
+    ECS_RELATION_REGISTER(RestTestLink, RestTestLoop);
     sirest_import(&(sirest_props_t){ .in_process = true });
 
     ecs_entity_t source = ecs_new();
@@ -225,6 +233,61 @@ void rest_relation_routes_are_generic_and_validated(void) {
     test_str("relation would create a cycle", sijson_string(sijson_object_get(error, "error")));
     sihttp_response_fini(&response);
 
+    snprintf(body, sizeof(body), "{\"target\":%u}", ecs_entity_id(target));
+    snprintf(
+        source_path,
+        sizeof(source_path),
+        "/entities/%ujunk/relations/%u",
+        ecs_entity_id(source),
+        ecs_rid(RestTestLink)
+    );
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, body);
+    test_int(404, response.status);
+    sihttp_response_fini(&response);
+
+    snprintf(
+        source_path,
+        sizeof(source_path),
+        "/entities/%u/relations/%ujunk",
+        ecs_entity_id(source),
+        ecs_rid(RestTestLink)
+    );
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, body);
+    test_int(404, response.status);
+    sihttp_response_fini(&response);
+
+    ecs_entity_t isolated = ecs_new();
+    snprintf(
+        source_path,
+        sizeof(source_path),
+        "/entities/%u/relations/%u",
+        ecs_entity_id(isolated),
+        ecs_rid(RestTestLink)
+    );
+    snprintf(body, sizeof(body), "{\"target\":%u}", ecs_entity_id(isolated));
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, body);
+    test_int(409, response.status);
+    sihttp_response_fini(&response);
+
+    ecs_entity_t loop_left = ecs_new();
+    ecs_entity_t loop_right = ecs_new();
+    ecs_relate(loop_left, RestTestLoop, loop_right);
+    ecs_relate(loop_right, RestTestLoop, loop_left);
+    test_true(
+        ecs_rest_relation_would_cycle(
+            isolated,
+            ecs_rid(RestTestLoop),
+            loop_left
+        )
+    );
+
+    snprintf(
+        source_path,
+        sizeof(source_path),
+        "/entities/%u/relations/%u",
+        ecs_entity_id(source),
+        ecs_rid(RestTestLink)
+    );
     response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, "{}");
     test_int(400, response.status);
     sihttp_response_fini(&response);

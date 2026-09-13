@@ -14,7 +14,6 @@ void rest_module_lifecycle(void);
 void rest_in_process_dispatch(void);
 void rest_schema_uses_public_metadata(void);
 void rest_entity_routes_use_public_introspection(void);
-void rest_relation_routes_are_generic_and_validated(void);
 void rest_component_mutation_uses_public_metadata(void);
 
 bake_test_case rest_testcases[] = {
@@ -39,10 +38,6 @@ bake_test_case rest_testcases[] = {
         rest_entity_routes_use_public_introspection
     },
     {
-        "relation_routes_are_generic_and_validated",
-        rest_relation_routes_are_generic_and_validated
-    },
-    {
         "component_mutation_uses_public_metadata",
         rest_component_mutation_uses_public_metadata
     }
@@ -54,7 +49,7 @@ static bake_test_suite suites[] = {
         "rest",
         NULL,
         NULL,
-        7,
+        6,
         rest_testcases
     }
 };

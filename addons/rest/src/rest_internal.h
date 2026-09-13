@@ -19,6 +19,11 @@ sijson_value_t ecs_rest_entity_relation_json(
     ecs_entity_t target
 );
 sijson_value_t ecs_rest_entity_relations_json(ecs_entity_t entity);
+bool ecs_rest_relation_would_cycle(
+    ecs_entity_t source,
+    ecs_relation_id_t relation,
+    ecs_entity_t target
+);
 sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity);
 bool ecs_rest_entity_component_is_reflected(ecs_component_t component);
 sijson_value_t ecs_rest_entity_component_json(ecs_component_t component, const void *ptr);
