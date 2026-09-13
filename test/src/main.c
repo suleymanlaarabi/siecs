@@ -99,6 +99,13 @@ void childof_relation_query_presence_optional_and_not(void);
 void childof_up_finds_nearest_ancestor(void);
 void childof_up_optional_returns_null(void);
 void childof_deferred_relation_keeps_last_target(void);
+void childof_generic_isa_has_relation(void);
+void childof_generic_isa_target(void);
+void childof_generic_isa_retarget(void);
+void childof_generic_isa_unrelate(void);
+void childof_generic_isa_cycle(void);
+void childof_generic_isa_deferred(void);
+void childof_generic_isa_relation_event(void);
 void childof_relation_observer_events(void);
 void childof_relation_observer_reports_relation_without_component(void);
 void childof_type_layout_stays_compact(void);
@@ -543,6 +550,34 @@ bake_test_case childof_testcases[] = {
         childof_deferred_relation_keeps_last_target
     },
     {
+        "generic_isa_has_relation",
+        childof_generic_isa_has_relation
+    },
+    {
+        "generic_isa_target",
+        childof_generic_isa_target
+    },
+    {
+        "generic_isa_retarget",
+        childof_generic_isa_retarget
+    },
+    {
+        "generic_isa_unrelate",
+        childof_generic_isa_unrelate
+    },
+    {
+        "generic_isa_cycle",
+        childof_generic_isa_cycle
+    },
+    {
+        "generic_isa_deferred",
+        childof_generic_isa_deferred
+    },
+    {
+        "generic_isa_relation_event",
+        childof_generic_isa_relation_event
+    },
+    {
         "relation_observer_events",
         childof_relation_observer_events
     },
@@ -962,7 +997,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        31,
+        38,
         childof_testcases
     },
     {
