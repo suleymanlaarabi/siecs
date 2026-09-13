@@ -1,6 +1,5 @@
 #pragma once
 #include "siecs/cpp/component.hpp"
-#include "siecs/cpp/world.hpp"
 #include <cstring>
 #include <string>
 
