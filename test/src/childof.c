@@ -887,6 +887,9 @@ void childof_relation_observer_events(void) {
     ecs_entity_t killed_isa_source = ecs_new();
     ecs_relate_id(killed_isa_source, ecs_rid(IsA), killed_isa_base);
     test_int(7, relation_observer_state.set_calls);
+    ecs_entity_t dead_slot = ecs_new();
+    ecs_kill(dead_slot);
+    test_false(ecs_is_alive(dead_slot));
     ecs_kill(killed_isa_base);
     test_int(3, relation_observer_state.remove_calls);
     test_uint(ecs_rid(IsA), relation_observer_state.relation);
