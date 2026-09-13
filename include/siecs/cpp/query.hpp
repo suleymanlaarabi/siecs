@@ -61,6 +61,12 @@ using optional_value_t = typename optional_value<std::remove_reference_t<T>>::ty
 
 template <typename T> inline constexpr bool is_entity_v = is_entity<std::remove_cvref_t<T>>::value;
 
+template <typename Args> consteval bool has_entity_arg() {
+    return []<std::size_t... Is>(std::index_sequence<Is...>) {
+        return (is_entity_v<std::tuple_element_t<Is, Args>> || ... || false);
+    }(std::make_index_sequence<std::tuple_size_v<Args>>{});
+}
+
 template <typename Args, std::size_t I> consteval std::size_t field_index_before() {
     return []<std::size_t... Is>(std::index_sequence<Is...>) {
         return (
@@ -356,6 +362,15 @@ append_callback_terms(ecs_query_desc_t &desc, uint16_t &component_index, uint16_
     );
 }
 
+template <typename Args> inline void enable_entity_iteration(ecs_query_desc_t &desc) {
+    if constexpr (has_entity_arg<Args>()) {
+        if (!desc.components[0].id && !desc.relations[0].id && !desc.is_a &&
+            !desc.order_by.func) {
+            desc.match_all = true;
+        }
+    }
+}
+
 inline uint16_t query_resource_count(const ecs_query_desc_t &desc) {
     uint16_t count = 0;
     while (count < ECS_QUERY_RESOURCE_CAPACITY && desc.resources[count].id)
@@ -375,7 +390,7 @@ class query_handle {
 
     static uint64_t
     signature(const ecs_query_desc_t &desc, uint16_t component_count, uint16_t resource_count) {
-        uint64_t value = component_count;
+        uint64_t value = component_count ^ (desc.match_all ? UINT64_C(1) << 63 : 0);
         for (uint16_t i = 0; i < component_count; i++)
             value = (value * 1099511628211ULL) ^ desc.components[i].id ^
                     ((uint64_t)desc.components[i].access << 16);
@@ -434,6 +449,7 @@ class query_handle {
             uint16_t component_index = _base_component_index;
             uint16_t resource_index = _base_resource_index;
             detail::append_callback_terms<args>(desc, component_index, resource_index);
+            detail::enable_entity_iteration<args>(desc);
             uint64_t next_signature = signature(desc, component_index, resource_index);
             if (next_signature != _signature) {
                 if (_id != 0)
@@ -538,6 +554,7 @@ class query {
         uint16_t typed_component_index = component_index;
         uint16_t typed_resource_index = resource_index;
         detail::append_callback_terms<args>(typed, typed_component_index, typed_resource_index);
+        detail::enable_entity_iteration<args>(typed);
         ecs_query_id_t qid = ecs_query_init(&typed);
         detail::each_query(qid, std::forward<F>(func));
         ecs_query_fini(qid);

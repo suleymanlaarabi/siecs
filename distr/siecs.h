@@ -1171,6 +1171,8 @@ typedef struct {
     ecs_query_relation_term_t relations[ECS_QUERY_RELATION_CAPACITY];
     ecs_query_order_t order_by;
     ecs_entity_t is_a;
+    /* Match every ordinary table when no table criterion is present. */
+    bool match_all;
 } ecs_query_desc_t;
 
 /*
@@ -1760,7 +1762,9 @@ SIECS_API void ecs_kill(ecs_entity_t entity);
             for (uint64_t i = 0, entity = *it.entities; i < it.count; i++, entity = it.entities[i])
 /*
  * Create a query. A query may contain components, resources, relations, is_a,
- * or order_by. A query without a table criterion produces no entity batches.
+ * or order_by. Set match_all to iterate every ordinary table when no table
+ * criterion is present. Otherwise, a query without a table criterion produces
+ * no entity batches.
  * Queries created during a module import inherit that module's lifetime.
  */
 SIECS_API ecs_query_id_t ecs_query_init(const ecs_query_desc_t *query);
@@ -3167,6 +3171,12 @@ using optional_value_t = typename optional_value<std::remove_reference_t<T>>::ty
 
 template <typename T> inline constexpr bool is_entity_v = is_entity<std::remove_cvref_t<T>>::value;
 
+template <typename Args> consteval bool has_entity_arg() {
+    return []<std::size_t... Is>(std::index_sequence<Is...>) {
+        return (is_entity_v<std::tuple_element_t<Is, Args>> || ... || false);
+    }(std::make_index_sequence<std::tuple_size_v<Args>>{});
+}
+
 template <typename Args, std::size_t I> consteval std::size_t field_index_before() {
     return []<std::size_t... Is>(std::index_sequence<Is...>) {
         return (
@@ -3462,6 +3472,15 @@ append_callback_terms(ecs_query_desc_t &desc, uint16_t &component_index, uint16_
     );
 }
 
+template <typename Args> inline void enable_entity_iteration(ecs_query_desc_t &desc) {
+    if constexpr (has_entity_arg<Args>()) {
+        if (!desc.components[0].id && !desc.relations[0].id && !desc.is_a &&
+            !desc.order_by.func) {
+            desc.match_all = true;
+        }
+    }
+}
+
 inline uint16_t query_resource_count(const ecs_query_desc_t &desc) {
     uint16_t count = 0;
     while (count < ECS_QUERY_RESOURCE_CAPACITY && desc.resources[count].id)
@@ -3481,7 +3500,7 @@ class query_handle {
 
     static uint64_t
     signature(const ecs_query_desc_t &desc, uint16_t component_count, uint16_t resource_count) {
-        uint64_t value = component_count;
+        uint64_t value = component_count ^ (desc.match_all ? UINT64_C(1) << 63 : 0);
         for (uint16_t i = 0; i < component_count; i++)
             value = (value * 1099511628211ULL) ^ desc.components[i].id ^
                     ((uint64_t)desc.components[i].access << 16);
@@ -3540,6 +3559,7 @@ class query_handle {
             uint16_t component_index = _base_component_index;
             uint16_t resource_index = _base_resource_index;
             detail::append_callback_terms<args>(desc, component_index, resource_index);
+            detail::enable_entity_iteration<args>(desc);
             uint64_t next_signature = signature(desc, component_index, resource_index);
             if (next_signature != _signature) {
                 if (_id != 0)
@@ -3644,6 +3664,7 @@ class query {
         uint16_t typed_component_index = component_index;
         uint16_t typed_resource_index = resource_index;
         detail::append_callback_terms<args>(typed, typed_component_index, typed_resource_index);
+        detail::enable_entity_iteration<args>(typed);
         ecs_query_id_t qid = ecs_query_init(&typed);
         detail::each_query(qid, std::forward<F>(func));
         ecs_query_fini(qid);
@@ -3874,7 +3895,7 @@ namespace detail {
 template <typename Callback, typename Args> static void system_callback(ecs_iter_t *it) {
     Callback &callback = *reinterpret_cast<Callback *>(it->user_data);
     auto resources = make_resources<Args>();
-    if constexpr (component_arg_count<Args>() == 0) {
+    if constexpr (component_arg_count<Args>() == 0 && !has_entity_arg<Args>()) {
         std::apply(callback, resources);
     } else {
         run_batch<Callback, Args>(callback, it, resources);
@@ -3948,6 +3969,7 @@ class system : protected query {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
         detail::append_callback_terms<args>(desc, component_index, resource_index);
+        detail::enable_entity_iteration<args>(desc);
         callback *state = new callback(std::forward<F>(func));
 
         _system.query = this->desc;

@@ -9,7 +9,7 @@ namespace detail {
 template <typename Callback, typename Args> static void system_callback(ecs_iter_t *it) {
     Callback &callback = *reinterpret_cast<Callback *>(it->user_data);
     auto resources = make_resources<Args>();
-    if constexpr (component_arg_count<Args>() == 0) {
+    if constexpr (component_arg_count<Args>() == 0 && !has_entity_arg<Args>()) {
         std::apply(callback, resources);
     } else {
         run_batch<Callback, Args>(callback, it, resources);
@@ -83,6 +83,7 @@ class system : protected query {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
         detail::append_callback_terms<args>(desc, component_index, resource_index);
+        detail::enable_entity_iteration<args>(desc);
         callback *state = new callback(std::forward<F>(func));
 
         _system.query = this->desc;

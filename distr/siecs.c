@@ -9845,7 +9845,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
         desc->phase
     );
 
-    const bool iterates_query = desc->query.components[0].id ||
+    const bool iterates_query = desc->query.match_all || desc->query.components[0].id ||
         desc->query.relations[0].id || desc->query.order_by.func || desc->query.is_a;
     ecs_assert(
         !desc->no_defer || !iterates_query,
@@ -10985,7 +10985,8 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
     ecs_query_builder_t b = { .query = { .is_a = desc->is_a, .order_by = desc->order_by },
         .candidates = { .count = table_index.table_count } };
     ecs_query_t *q = &b.query;
-    bool tracks = desc->components[0].id || desc->relations[0].id || desc->is_a || desc->order_by.func;
+    bool tracks = desc->match_all || desc->components[0].id || desc->relations[0].id ||
+        desc->is_a || desc->order_by.func;
     ecs_component_t excludes[] = { ecs_id(Disabled), ecs_id(Abstract) };
     for (uint8_t i = 0; i < ECS_QUERY_TERM_CAPACITY && desc->components[i].id; i++) {
         ecs_component_term_t term = desc->components[i];
