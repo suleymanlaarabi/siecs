@@ -1,13 +1,13 @@
 #include "helper.h"
 #include "sicore.h"
 #include "siecs.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include "sireflect.h"
 #include "storage/table_index.h"
 #include "utils.h"
 #include "world_internal.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 ECS_RELATION_DEFINE(
     ChildOf,
@@ -27,15 +27,7 @@ ECS_RELATION_DEFINE(
 );
 sicore_map_t name_map;
 
-static char *name_copy_string(const char *value) {
-    char *copy = value ? strdup(value) : NULL;
-    if (value) ecs_assert_not_null(copy);
-    return copy;
-}
-
-static void name_ctor(void *ptr, uint32_t count) {
-    memset(ptr, 0, (size_t)count * sizeof(Name));
-}
+static void name_ctor(void *ptr, uint32_t count) { memset(ptr, 0, (size_t)count * sizeof(Name)); }
 
 static void name_dtor(void *ptr, uint32_t count) {
     Name *names = ptr;
@@ -49,7 +41,7 @@ static void name_copy_ctor(void *dst, const void *src, uint32_t count) {
     Name *out = dst;
     const Name *in = src;
     for (uint32_t i = 0; i < count; i++) {
-        out[i].value = name_copy_string(in[i].value);
+        out[i].value = strdup(in[i].value);
     }
 }
 
@@ -60,7 +52,7 @@ static void name_copy(void *dst, const void *src, uint32_t count) {
         if (out[i].value && in[i].value && strcmp(out[i].value, in[i].value) == 0) {
             continue;
         }
-        char *copy = name_copy_string(in[i].value);
+        char *copy = strdup(in[i].value);
         free(out[i].value);
         out[i].value = copy;
     }
@@ -105,12 +97,14 @@ void name_on_set(
     Name *name = current_value;
     const Name *new_name = new_value;
     if (name != new_name) {
-        char *value = name_copy_string(new_name->value);
-        if (name->value) sicore_map_unset(&name_map, name->value);
+        char *value = strdup(new_name->value);
+        if (name->value)
+            sicore_map_unset(&name_map, name->value);
         free(name->value);
         name->value = value;
     }
-    if (name->value) sicore_map_set(&name_map, name->value, ecs_first(entity));
+    if (name->value)
+        sicore_map_set(&name_map, name->value, ecs_first(entity));
 }
 
 void name_on_remove(ecs_entity_t entity, ecs_component_t component, void *data) {
@@ -147,21 +141,14 @@ void ecs_bootstrap() {
     ecs_component({ .name = "Invalid" });
 
     // Register the ecs_entity_t struct reflection.
-    sireflect_register_struct(
-        &(sireflect_struct_desc_t){
-            .name = "ecs_entity_t",
-            .fields = "{ uint32_t id; uint32_t generation; }",
-            .size = sizeof(ecs_entity_t),
-            .align = _Alignof(ecs_entity_t),
-        }
-    );
+    sireflect_register_struct(&(sireflect_struct_desc_t){
+        .name = "ecs_entity_t",
+        .fields = "{ uint32_t id; uint32_t generation; }",
+        .size = sizeof(ecs_entity_t),
+        .align = _Alignof(ecs_entity_t),
+    });
 
-    ecs_relation_register_virtual(
-        &ecs_rid(IsA),
-        "IsA",
-        &ecs_rid(IsA_desc),
-        &ecs_relation_ops_isa
-    );
+    ecs_relation_register_virtual(&ecs_rid(IsA), "IsA", &ecs_rid(IsA_desc), &ecs_relation_ops_isa);
     ECS_RELATION_REGISTER(ChildOf);
     ECS_COMPONENT_REGISTER(Name);
     ECS_RESOURCE_REGISTER(DeltaTime);
@@ -169,5 +156,4 @@ void ecs_bootstrap() {
     sicore_map_init(&name_map);
     ECS_COMPONENT_REGISTER(Disabled);
     ECS_COMPONENT_REGISTER(Abstract);
-
 }

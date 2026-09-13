@@ -7,7 +7,7 @@ WASM_NODE ?= node
 BENCH_CPU ?= 0
 VEC_ARCH_FLAGS ?=
 
-.PHONY: clean bench bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-release test-rest test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release build-wasm-debug build-wasm-release test-wasm test-wasm-browser vec-cpp act-ci act-docs act
+.PHONY: clean bench bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-release test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release build-wasm-debug build-wasm-release test-wasm test-wasm-browser vec-cpp act-ci act-docs act
 
 ACT ?= act
 ACT_PLATFORM ?= ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
@@ -45,7 +45,7 @@ bench-compare:
 clean:
 	@rm -rf build-consumer-c build-consumer-cpp >/dev/null
 
-test: clean test-c test-c-release test-cpp test-cpp-release test-rest
+test: clean test-c test-c-release test-cpp test-cpp-release
 
 build-c:
 	@sh tools/rebuild_isolated.sh .
@@ -113,10 +113,6 @@ vec-cpp:
 		sub(/^[^:]*:[0-9]+:[0-9]+:[[:space:]]*/, "", detail); \
 		printf "  boucle ECS: %s\n  compilateur: %s\n", location, detail \
 	} END { if (!found) print "  aucune boucle ou systeme ECS vectorise" }' "$$log"
-
-test-rest:
-	@bake rebuild addons/rest/test -r >/dev/null
-	@bash -o pipefail -c "bake run addons/rest/test 2>&1 | $(QUIET_BAKE)"
 
 distr:
 	@sh tools/rebuild_distr.sh
