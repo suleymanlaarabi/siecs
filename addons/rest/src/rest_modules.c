@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__APPLE__)
 #include <unistd.h>
 #endif
 
@@ -19,7 +19,7 @@ sihttp_response_t ecs_rest_post_modules(const sihttp_request_t *req) {
     if (state && state->max_scene_bytes && req->body_size > state->max_scene_bytes)
         return ecs_rest_error_response(413, "module too large");
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     return ecs_rest_error_response(501, "dynamic module upload requires Linux");
 #else
     char directory[] = "/tmp/siecs-module-XXXXXX";
