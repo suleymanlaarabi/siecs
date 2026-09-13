@@ -10,6 +10,8 @@
 
 // Testsuite 'public'
 void public_metadata_and_entity_introspection(void);
+void public_scene_save_memory_roundtrip(void);
+void public_scene_invalid_load_is_non_destructive(void);
 
 // Testsuite 'entity'
 void entity_create(void);
@@ -212,6 +214,14 @@ bake_test_case public_testcases[] = {
     {
         "metadata_and_entity_introspection",
         public_metadata_and_entity_introspection
+    },
+    {
+        "scene_save_memory_roundtrip",
+        public_scene_save_memory_roundtrip
+    },
+    {
+        "scene_invalid_load_is_non_destructive",
+        public_scene_invalid_load_is_non_destructive
     }
 };
 
@@ -969,7 +979,7 @@ static bake_test_suite suites[] = {
         "public",
         NULL,
         NULL,
-        1,
+        3,
         public_testcases
     },
     {

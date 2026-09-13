@@ -1,11 +1,9 @@
 #include "rest_internal.h"
 
-static bool rest_request_reflected_component(
-    const sihttp_request_t *req,
-    ecs_component_t *component
-) {
+static bool
+rest_request_reflected_component(const sihttp_request_t *req, ecs_component_t *component) {
     return ecs_rest_request_component(req, component) &&
-        ecs_rest_entity_component_is_reflected(*component);
+           ecs_rest_entity_component_is_reflected(*component);
 }
 
 sihttp_response_t ecs_rest_post_entity_component(const sihttp_request_t *req) {

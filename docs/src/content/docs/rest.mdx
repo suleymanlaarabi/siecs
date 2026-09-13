@@ -35,6 +35,8 @@ ECS_MODULE_IMPORT(SiecsRest, { .port = 4040 });
 The default port is `4040`; the server listens on the configured port and is polled by `ecs_progress()`
 while the imported module is enabled. The package owns the server lifetime and
 stops it when the world is finalized.
+Scene uploads default to a `64 MiB` limit; configure `max_scene_bytes` in
+`sirest_props_t` when a different limit is required.
 
 ## Routes
 
@@ -42,6 +44,8 @@ stops it when the world is finalized.
 | --- | --- |
 | `GET /health` | Returns `OK` when the server is reachable. |
 | `GET /schema` | Lists reflected component schemas and editor field types. |
+| `GET /scene` | Returns the current scene as a native SIECS binary. |
+| `POST /scene` | Loads a native SIECS binary scene into the current world. |
 | `GET /entities` | Lists root entities and entities without a parent. |
 | `POST /entities` | Creates a new entity and returns its list item payload. |
 | `GET /entities/:index` | Returns one entity detail by entity index. |
@@ -137,6 +141,18 @@ Content-Type: application/json
 
 { "value": { "x": 10, "y": 20 } }
 ```
+
+## Binary Scenes
+
+`GET /scene` responds with `application/octet-stream` and the exact native SIECS
+scene bytes. `POST /scene` accepts those bytes with the same content type and
+returns `204` when loading succeeds. Invalid or incompatible data returns `400`;
+an upload over the configured limit returns `413`.
+
+Loading has append semantics: `POST /scene` instantiates the saved entities in
+the current world and does not clear or replace entities that already exist.
+The binary is tied to the component and relation layout registered by the
+binary that loads it.
 
 Editor clients should fetch `/schema`, fetch `/entities/:index`, render form
 controls from reflected field types, then submit the full component value after

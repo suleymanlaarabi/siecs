@@ -36,6 +36,8 @@ ecs::fini();
 
 Le port par défaut est `4040`. Le serveur est traité pendant `ecs_progress()`
 et s’arrête avec le monde.
+Les scènes envoyées sont limitées par défaut à `64 MiB`; utilisez
+`max_scene_bytes` dans `sirest_props_t` pour modifier cette limite.
 
 ## Routes
 
@@ -43,6 +45,8 @@ et s’arrête avec le monde.
 | --- | --- |
 | `GET /health` | Vérifier que le serveur répond. |
 | `GET /schema` | Lire les schémas des composants réfléchis. |
+| `GET /scene` | Retourner la scène courante au format binaire natif SIECS. |
+| `POST /scene` | Charger une scène binaire native dans le monde courant. |
 | `GET /entities` | Lister les entités racines. |
 | `POST /entities` | Créer une entité. |
 | `GET /entities/:index` | Lire le détail d’une entité. |
@@ -106,6 +110,19 @@ Content-Type: application/json
 
 { "value": { "x": 10, "y": 20 } }
 ```
+
+## Scènes binaires
+
+`GET /scene` répond avec `application/octet-stream` et les octets exacts de la
+scène SIECS native. `POST /scene` accepte ces octets avec le même type de
+contenu et retourne `204` si le chargement réussit. Une donnée invalide ou
+incompatible retourne `400`; un fichier dépassant la limite configurée retourne
+`413`.
+
+Le chargement est additif : `POST /scene` instancie les entités sauvegardées
+dans le monde courant et ne supprime ni ne remplace les entités existantes. Le
+format binaire dépend du layout des composants et relations enregistré par le
+binaire qui le charge.
 
 La mise à jour est atomique au niveau du composant : aucune sémantique de
 patch partiel n’est imposée aux structures.

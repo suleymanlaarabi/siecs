@@ -1508,7 +1508,14 @@ SIECS_API void ecs_system_disable(ecs_system_id_t system);
  * The scene is intentionally tied to the currently registered component /
  * relation layout of the binary that loads it.
  */
-bool ecs_save(const char *path);
+/* On success, data_out is owned by the caller and must be released with
+ * ecs_scene_free(). On failure, outputs are reset to NULL and 0. */
+SIECS_API bool ecs_save_memory(void **data_out, size_t *size_out);
+SIECS_API void ecs_scene_free(void *data);
+/* Validate a complete scene without creating or changing any entity. */
+SIECS_API bool ecs_scene_validate(const void *data, size_t size);
+SIECS_API bool ecs_load_memory(const void *data, size_t size);
+SIECS_API bool ecs_save(const char *path);
 
 /*
  * Instantiate a previously saved scene into the current world.
@@ -1517,7 +1524,7 @@ bool ecs_save(const char *path);
  * this function. Loading the same file multiple times creates independent new
  * entities each time.
  */
-bool ecs_load(const char *path);
+SIECS_API bool ecs_load(const char *path);
 
 #ifdef __cplusplus
 }

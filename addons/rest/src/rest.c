@@ -60,6 +60,7 @@ static sihttp_server_t *rest_server_create(const sirest_props_t *props) {
             .port = props->port,
             .backlog = props->backlog,
             .max_requests_per_poll = props->max_requests_per_poll,
+            .max_body_bytes = props->max_scene_bytes,
         }
     );
     if (!server) {
@@ -90,18 +91,25 @@ void sirest_import(const sirest_props_t *props) {
         .port = 4040,
         .backlog = 0,
         .max_requests_per_poll = 0,
+        .max_scene_bytes = 64u * 1024u * 1024u,
         .in_process = false,
     };
     sirest_props_t config = props ? *props : defaults;
     if (config.port == 0) {
         config.port = defaults.port;
     }
+    if (config.max_scene_bytes == 0) {
+        config.max_scene_bytes = defaults.max_scene_bytes;
+    }
 
     ecs_id(SiecsRestState) = 0;
     ECS_RESOURCE_REGISTER(SiecsRestState);
 
     sihttp_server_t *server = rest_server_create(&config);
-    ecs_set_resource(SiecsRestState, { .server = server });
+    ecs_set_resource(SiecsRestState, {
+        .server = server,
+        .max_scene_bytes = config.max_scene_bytes,
+    });
     if (!config.in_process) {
         ecs_system(
             {
@@ -121,6 +129,8 @@ void sirest_import(const sirest_props_t *props) {
 
 static void rest_register_routes(sihttp_server_t *server) {
     sihttp_get(server, "/schema", ecs_rest_get_schema);
+    sihttp_get(server, "/scene", ecs_rest_get_scene);
+    sihttp_post(server, "/scene", ecs_rest_post_scene);
     sihttp_get(server, "/entities", ecs_rest_get_entities);
     sihttp_get(server, "/entities/all", ecs_rest_get_all_entities);
     sihttp_post(server, "/entities", ecs_rest_post_entities);
@@ -145,6 +155,16 @@ sihttp_response_t sirest_dispatch(
     return sihttp_server_dispatch(state->server, method, path, body);
 }
 
+sihttp_response_t sirest_dispatch_bytes(
+    sihttp_method_t method,
+    const char *path,
+    const void *data,
+    size_t size
+) {
+    SiecsRestState *state = ecs_try_get_resource(SiecsRestState);
+    return sihttp_server_dispatch_bytes(state->server, method, path, data, size);
+}
+
 static sihttp_response_t rest_health(const sihttp_request_t *req) {
     (void)req;
     sihttp_response_t response = { 0 };
@@ -152,6 +172,7 @@ static sihttp_response_t rest_health(const sihttp_request_t *req) {
     response.body = malloc(3);
     if (response.body) {
         memcpy(response.body, "OK", 3);
+        response.body_size = 2;
     }
     return response;
 }

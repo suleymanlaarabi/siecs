@@ -319,6 +319,73 @@ void rest_poll_mutations_are_immediate(void) {
     ecs_fini();
 }
 
+void rest_scene_get_returns_binary(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RestTestPosition);
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, RestTestPosition, { .x = 1, .y = 2 });
+    sirest_import(&(sirest_props_t){ .in_process = true });
+
+    sihttp_response_t response = sirest_dispatch(SIHTTP_METHOD_GET, "/scene", NULL);
+    test_int(200, response.status);
+    test_int(SIHTTP_CONTENT_BINARY, response.content_type);
+    test_true(response.body != NULL);
+    test_true(response.body_size > 24);
+    test_assert(memcmp(response.body, "SIECSSCN", 8) == 0);
+    test_not_null(memchr(response.body, 0, response.body_size));
+    sihttp_response_fini(&response);
+    ecs_fini();
+}
+
+void rest_scene_post_loads_binary(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RestTestPosition);
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, RestTestPosition, { .x = 3, .y = 4 });
+    sirest_import(&(sirest_props_t){ .in_process = true });
+
+    sihttp_response_t saved = sirest_dispatch(SIHTTP_METHOD_GET, "/scene", NULL);
+    test_int(200, saved.status);
+    size_t size = saved.body_size;
+    void *data = malloc(size);
+    test_not_null(data);
+    memcpy(data, saved.body, size);
+    sihttp_response_fini(&saved);
+
+    sihttp_response_t loaded = sirest_dispatch_bytes(
+        SIHTTP_METHOD_POST, "/scene", data, size
+    );
+    test_int(204, loaded.status);
+    sihttp_response_fini(&loaded);
+    test_true(ecs_has(ecs_entity_from_index(2), RestTestPosition));
+    test_int(3, (int)ecs_get(ecs_entity_from_index(2), RestTestPosition)->x);
+
+    free(data);
+    ecs_fini();
+}
+
+void rest_scene_post_rejects_invalid_and_empty(void) {
+    ecs_init();
+    sirest_import(&(sirest_props_t){ .in_process = true, .max_scene_bytes = 32 });
+
+    sihttp_response_t response = sirest_dispatch_bytes(
+        SIHTTP_METHOD_POST, "/scene", NULL, 0
+    );
+    assert_rest_error(&response, 400, "invalid scene");
+
+    unsigned char invalid[8] = { 0 };
+    response = sirest_dispatch_bytes(SIHTTP_METHOD_POST, "/scene", invalid, sizeof(invalid));
+    assert_rest_error(&response, 400, "invalid scene");
+
+    unsigned char too_large[33] = { 0 };
+    response = sirest_dispatch_bytes(
+        SIHTTP_METHOD_POST, "/scene", too_large, sizeof(too_large)
+    );
+    assert_rest_error(&response, 413, "scene too large");
+
+    ecs_fini();
+}
+
 void rest_module_lifecycle(void) {
     ecs_init();
 

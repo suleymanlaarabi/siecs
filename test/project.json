@@ -22,7 +22,9 @@
       {
         "id": "public",
         "testcases": [
-          "metadata_and_entity_introspection"
+          "metadata_and_entity_introspection",
+          "scene_save_memory_roundtrip",
+          "scene_invalid_load_is_non_destructive"
         ]
       },
       {

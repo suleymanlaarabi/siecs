@@ -17,6 +17,9 @@ void rest_entity_routes_use_public_introspection(void);
 void rest_relation_routes_are_generic_and_validated(void);
 void rest_component_mutation_uses_public_metadata(void);
 void rest_poll_mutations_are_immediate(void);
+void rest_scene_get_returns_binary(void);
+void rest_scene_post_loads_binary(void);
+void rest_scene_post_rejects_invalid_and_empty(void);
 
 bake_test_case rest_testcases[] = {
     {
@@ -50,6 +53,18 @@ bake_test_case rest_testcases[] = {
     {
         "poll_mutations_are_immediate",
         rest_poll_mutations_are_immediate
+    },
+    {
+        "scene_get_returns_binary",
+        rest_scene_get_returns_binary
+    },
+    {
+        "scene_post_loads_binary",
+        rest_scene_post_loads_binary
+    },
+    {
+        "scene_post_rejects_invalid_and_empty",
+        rest_scene_post_rejects_invalid_and_empty
     }
 };
 
@@ -59,7 +74,7 @@ static bake_test_suite suites[] = {
         "rest",
         NULL,
         NULL,
-        8,
+        11,
         rest_testcases
     }
 };

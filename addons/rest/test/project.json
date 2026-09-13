@@ -30,7 +30,10 @@
           "entity_routes_use_public_introspection",
           "relation_routes_are_generic_and_validated",
           "component_mutation_uses_public_metadata",
-          "poll_mutations_are_immediate"
+          "poll_mutations_are_immediate",
+          "scene_get_returns_binary",
+          "scene_post_loads_binary",
+          "scene_post_rejects_invalid_and_empty"
         ]
       }
     ]

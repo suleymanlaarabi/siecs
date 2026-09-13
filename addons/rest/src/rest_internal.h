@@ -6,10 +6,14 @@
 #include <sihttp.h>
 #include <siecs.h>
 
-ECS_RESOURCE_DECLARE(SiecsRestState, { sihttp_server_t *server; });
+ECS_RESOURCE_DECLARE(SiecsRestState, {
+    sihttp_server_t *server;
+    size_t max_scene_bytes;
+});
 
 sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body);
 sihttp_response_t ecs_rest_error_response(int status, const char *message);
+sihttp_response_t ecs_rest_binary_response(void *data, size_t size);
 ecs_entity_t ecs_rest_request_entity(const sihttp_request_t *req);
 bool ecs_rest_request_component(
     const sihttp_request_t *req,
@@ -59,5 +63,7 @@ sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_delete_entity_component(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req);
+sihttp_response_t ecs_rest_get_scene(const sihttp_request_t *req);
+sihttp_response_t ecs_rest_post_scene(const sihttp_request_t *req);
 
 #endif

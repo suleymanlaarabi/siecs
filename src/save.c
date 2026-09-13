@@ -362,6 +362,55 @@ static bool ecs_scene_save_value(
     }
 }
 
+static bool ecs_scene_validate_value(
+    ecs_scene_reader_t *r,
+    sireflect_handle_t type,
+    uint32_t entity_count
+) {
+    const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (!info)
+        return false;
+
+    if (ecs_scene_is_entity_type(info)) {
+        uint32_t local = ecs_scene_read_u32(r);
+        return r->ok && (local == ECS_SCENE_NULL_INDEX || local < entity_count);
+    }
+
+    switch (info->kind) {
+    case sireflect_kind_struct:
+        for (size_t i = 0; i < info->fields.field_count; i++) {
+            if (!ecs_scene_validate_value(r, info->fields.fields[i].type, entity_count))
+                return false;
+        }
+        return true;
+
+    case sireflect_kind_array:
+        for (size_t i = 0; i < info->element_count; i++) {
+            if (!ecs_scene_validate_value(r, info->element_type, entity_count))
+                return false;
+        }
+        return true;
+
+    case sireflect_kind_pointer: {
+        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
+        if (!element || element->kind != sireflect_kind_char)
+            return false;
+
+        uint32_t length = ecs_scene_read_u32(r);
+        if (!r->ok || length == ECS_SCENE_NULL_INDEX)
+            return r->ok;
+        return ecs_scene_reader_skip(r, length);
+    }
+
+    case sireflect_kind_ptr:
+    case sireflect_kind_function_pointer:
+        return false;
+
+    default:
+        return ecs_scene_reader_skip(r, info->size);
+    }
+}
+
 static bool ecs_scene_load_value(
     ecs_scene_reader_t *r,
     sireflect_handle_t type,
@@ -613,7 +662,17 @@ static bool ecs_scene_write_relations(
     return true;
 }
 
-bool ecs_save(const char *path) {
+SIECS_API void ecs_scene_free(void *data) {
+    free(data);
+}
+
+SIECS_API bool ecs_save_memory(void **data_out, size_t *size_out) {
+    if (!data_out || !size_out)
+        return false;
+
+    *data_out = NULL;
+    *size_out = 0;
+
     ecs_scene_save_ctx_t ctx = { 0 };
     uint32_t entity_count = 0;
     uint32_t table_count = 0;
@@ -642,18 +701,34 @@ bool ecs_save(const char *path) {
         ok = ecs_scene_writer_patch_u32(&writer, relation_count_offset, relation_edge_count);
 
     if (ok) {
-        FILE *file = fopen(path, "wb");
-        if (!file) {
-            ok = false;
-        } else {
-            ok = fwrite(writer.data, 1, writer.size, file) == writer.size;
-            if (fclose(file) != 0)
-                ok = false;
-        }
+        *data_out = writer.data;
+        *size_out = writer.size;
+        writer.data = NULL;
     }
 
     free(ctx.entity_to_local);
     ecs_scene_writer_fini(&writer);
+    return ok;
+}
+
+SIECS_API bool ecs_save(const char *path) {
+    if (!path)
+        return false;
+
+    void *data = NULL;
+    size_t size = 0;
+    if (!ecs_save_memory(&data, &size))
+        return false;
+
+    FILE *file = fopen(path, "wb");
+    bool ok = file != NULL;
+    if (ok) {
+        ok = fwrite(data, 1, size, file) == size;
+        if (fclose(file) != 0)
+            ok = false;
+    }
+
+    ecs_scene_free(data);
     return ok;
 }
 
@@ -692,6 +767,13 @@ static bool ecs_scene_read_file(const char *path, unsigned char **data_out, size
     return true;
 }
 
+static bool ecs_scene_validate_tables(
+    ecs_scene_reader_t *r,
+    uint32_t table_count,
+    uint32_t entity_count,
+    const unsigned char **relations_begin
+);
+
 static bool ecs_scene_read_header(
     ecs_scene_reader_t *r,
     uint32_t *table_count,
@@ -714,10 +796,133 @@ static bool ecs_scene_read_header(
     return r->ok;
 }
 
+SIECS_API bool ecs_scene_validate(const void *input, size_t size) {
+    if (!input || size < ECS_SCENE_MAGIC_SIZE + sizeof(uint32_t) * 4)
+        return false;
+
+    const unsigned char *data = input;
+    ecs_scene_reader_t header = { .ptr = data, .end = data + size, .ok = true };
+    uint32_t table_count = 0;
+    uint32_t entity_count = 0;
+    uint32_t relation_edge_count = 0;
+    if (!ecs_scene_read_header(&header, &table_count, &entity_count, &relation_edge_count))
+        return false;
+
+    if (table_count > (size - (size_t)(header.ptr - data)) / 8u)
+        return false;
+
+    ecs_scene_reader_t tables = { .ptr = header.ptr, .end = data + size, .ok = true };
+    const unsigned char *relations_begin = NULL;
+    if (!ecs_scene_validate_tables(
+            &tables, table_count, entity_count, &relations_begin
+        )) {
+        return false;
+    }
+
+    ecs_scene_reader_t relations = {
+        .ptr = relations_begin,
+        .end = data + size,
+        .ok = true,
+    };
+    if (relation_edge_count > (size_t)(relations.end - relations.ptr) / 12u)
+        return false;
+
+    for (uint32_t i = 0; i < relation_edge_count; i++) {
+        uint32_t source = ecs_scene_read_u32(&relations);
+        uint16_t relation = ecs_scene_read_u16(&relations);
+        uint16_t reserved = ecs_scene_read_u16(&relations);
+        uint32_t target = ecs_scene_read_u32(&relations);
+        if (!relations.ok || reserved != 0 || source >= entity_count || target >= entity_count ||
+            relation == 0 || relation >= relation_index.records.size)
+            return false;
+
+        const ecs_relation_record_t *record = ecs_relation_record(relation);
+        if (!record->info.name && !record->component && !record->ops)
+            return false;
+    }
+
+    return relations.ok && relations.ptr == relations.end;
+}
+
 static bool ecs_scene_validate_component_id(ecs_component_t component) {
     return component != 0 && component < component_index.components.size &&
            ecs_component_index_get(component)->info != NULL &&
            !ecs_scene_component_is_relation_internal(component);
+}
+
+static bool ecs_scene_validate_tables(
+    ecs_scene_reader_t *r,
+    uint32_t table_count,
+    uint32_t entity_count,
+    const unsigned char **relations_begin
+) {
+    uint32_t local_base = 0;
+
+    for (uint32_t t = 0; t < table_count; t++) {
+        uint32_t row_count = ecs_scene_read_u32(r);
+        uint16_t component_count = ecs_scene_read_u16(r);
+        uint16_t reserved = ecs_scene_read_u16(r);
+        if (!r->ok || reserved != 0 || local_base > entity_count ||
+            row_count > entity_count - local_base)
+            return false;
+
+        ecs_component_t *components = component_count
+            ? malloc((size_t)component_count * sizeof(ecs_component_t))
+            : NULL;
+        if (component_count && !components)
+            return false;
+        for (uint16_t i = 0; i < component_count; i++) {
+            components[i] = ecs_scene_read_u16(r);
+            if (!r->ok || !ecs_scene_validate_component_id(components[i]) ||
+                (i && components[i - 1] >= components[i]))
+                goto invalid_table;
+
+            const ecs_component_record_t *record = ecs_component_index_get(components[i]);
+            if (record->info->size > UINT32_MAX || !ecs_scene_component_supported(record))
+                goto invalid_table;
+        }
+
+        for (uint16_t i = 0; i < component_count; i++) {
+            const ecs_component_record_t *record = ecs_component_index_get(components[i]);
+            uint32_t payload_size = ecs_scene_read_u32(r);
+            uint32_t component_size = (uint32_t)record->info->size;
+            if (!r->ok || (size_t)payload_size > (size_t)(r->end - r->ptr))
+                goto invalid_table;
+
+            const unsigned char *payload_end = r->ptr + payload_size;
+            if (!component_size) {
+                if (payload_size != 0)
+                    goto invalid_table;
+            } else if (!ecs_scene_component_use_codec(record)) {
+                if (row_count && (size_t)component_size > SIZE_MAX / row_count)
+                    goto invalid_table;
+                if ((size_t)component_size * row_count != payload_size)
+                    goto invalid_table;
+            } else {
+                ecs_scene_reader_t payload = { .ptr = r->ptr, .end = payload_end, .ok = true };
+                for (uint32_t row = 0; row < row_count; row++) {
+                    if (!ecs_scene_validate_value(&payload, record->info->type, entity_count))
+                        goto invalid_table;
+                }
+                if (!payload.ok || payload.ptr != payload.end)
+                    goto invalid_table;
+            }
+            r->ptr = payload_end;
+        }
+
+        free(components);
+        local_base += row_count;
+        continue;
+
+    invalid_table:
+        free(components);
+        return false;
+    }
+
+    if (local_base != entity_count)
+        return false;
+    *relations_begin = r->ptr;
+    return true;
 }
 
 static bool ecs_scene_create_table_entities(
@@ -975,14 +1180,11 @@ static bool ecs_scene_load_relations(
     return true;
 }
 
-bool ecs_load(const char *path) {
-    if (!path)
+SIECS_API bool ecs_load_memory(const void *input, size_t size) {
+    if (!input || !ecs_scene_validate(input, size))
         return false;
 
-    unsigned char *data = NULL;
-    size_t size = 0;
-    if (!ecs_scene_read_file(path, &data, &size))
-        return false;
+    const unsigned char *data = input;
 
     ecs_scene_reader_t header_reader = {
         .ptr = data,
@@ -994,7 +1196,6 @@ bool ecs_load(const char *path) {
     uint32_t entity_count = 0;
     uint32_t relation_edge_count = 0;
     if (!ecs_scene_read_header(&header_reader, &table_count, &entity_count, &relation_edge_count)) {
-        free(data);
         return false;
     }
 
@@ -1002,7 +1203,6 @@ bool ecs_load(const char *path) {
     ecs_entity_t *local_to_entity =
         entity_count ? malloc((size_t)entity_count * sizeof(ecs_entity_t)) : NULL;
     if (entity_count && !local_to_entity) {
-        free(data);
         return false;
     }
 
@@ -1046,6 +1246,19 @@ bool ecs_load(const char *path) {
      * trusted scene files produced by ecs_save().
      */
     free(local_to_entity);
-    free(data);
+    return ok;
+}
+
+SIECS_API bool ecs_load(const char *path) {
+    if (!path)
+        return false;
+
+    unsigned char *data = NULL;
+    size_t size = 0;
+    if (!ecs_scene_read_file(path, &data, &size))
+        return false;
+
+    bool ok = ecs_load_memory(data, size);
+    ecs_scene_free(data);
     return ok;
 }

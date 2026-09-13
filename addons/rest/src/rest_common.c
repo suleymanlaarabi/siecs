@@ -106,6 +106,7 @@ sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body) {
     sihttp_response_t response = { 0 };
     response.status = status;
     response.body = json;
+    response.body_size = json ? strlen(json) : 0;
     response.content_type = SIHTTP_CONTENT_JSON;
     return response;
 }
@@ -117,4 +118,13 @@ sihttp_response_t ecs_rest_error_response(int status, const char *message) {
     sijson_object_set(body, "error", sijson_make_string(message));
 
     return ecs_rest_json_response(status, body);
+}
+
+sihttp_response_t ecs_rest_binary_response(void *data, size_t size) {
+    return (sihttp_response_t){
+        .status = 200,
+        .body = data,
+        .body_size = size,
+        .content_type = SIHTTP_CONTENT_BINARY,
+    };
 }
