@@ -123,6 +123,7 @@ static void rest_register_routes(sihttp_server_t *server) {
     sihttp_get(server, "/entities", ecs_rest_get_entities);
     sihttp_post(server, "/entities", ecs_rest_post_entities);
     sihttp_get(server, "/entities/:index/children", ecs_rest_get_entity_children);
+    sihttp_get(server, "/entities/:index/relations", ecs_rest_get_entity_relations);
     sihttp_get(server, "/health", rest_health);
     sihttp_put(server, "/entities/:index/components/:component", ecs_rest_put_entity_component);
     sihttp_get(server, "/entities/:index", ecs_rest_get_entity);

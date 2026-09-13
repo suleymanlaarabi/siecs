@@ -71,11 +71,6 @@ sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
         sijson_make_number(ecs_entity_generation(entity))
     );
 
-    ecs_entity_t parent = ecs_target(entity, ChildOf);
-    if (parent) {
-        sijson_object_set(detail, "parent", ecs_rest_entity_json(parent));
-    }
-
     sijson_value_t components = sijson_make_array();
     for (uint32_t id = 1; id < ecs_component_count(); id++) {
         ecs_component_t component = (ecs_component_t)id;
@@ -88,12 +83,8 @@ sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
         }
     }
 
-    ecs_entity_t base = ecs_entity_base(entity);
-    if (base) {
-        sijson_object_set(detail, "isA", ecs_rest_entity_detail_json(base));
-    }
-
     sijson_object_set(detail, "children", ecs_rest_entity_children_json(entity));
+    sijson_object_set(detail, "relations", ecs_rest_entity_relations_json(entity));
     sijson_object_set(detail, "components", components);
     return detail;
 }
