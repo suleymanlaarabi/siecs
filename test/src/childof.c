@@ -843,8 +843,14 @@ void childof_generic_isa_cycle(void) {
     ecs_entity_t entity = ecs_new();
 
     ecs_relate_id(entity, ecs_rid(IsA), base);
+#ifndef NDEBUG
     test_expect_abort();
     ecs_relate_id(base, ecs_rid(IsA), entity);
+#else
+    test_true(ecs_has_relation_id(entity, ecs_rid(IsA)));
+    test_uint(base, ecs_entity_base(entity));
+    ecs_fini();
+#endif
 }
 
 void childof_generic_isa_deferred(void) {
