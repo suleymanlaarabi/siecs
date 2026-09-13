@@ -786,6 +786,120 @@ static void relation_observer_capture_source(ecs_observer_event_t *event) {
     relation_observer_relation = data->relation;
 }
 
+void childof_generic_isa_has_relation(void) {
+    ecs_init();
+    ecs_entity_t base = ecs_new();
+    ecs_entity_t entity = ecs_new();
+
+    ecs_is_a(entity, base);
+
+    test_true(ecs_has_relation_id(entity, ecs_rid(IsA)));
+    ecs_fini();
+}
+
+void childof_generic_isa_target(void) {
+    ecs_init();
+    ecs_entity_t base = ecs_new();
+    ecs_entity_t entity = ecs_new();
+
+    ecs_is_a(entity, base);
+
+    test_uint(base, ecs_target_id(entity, ecs_rid(IsA)));
+    ecs_fini();
+}
+
+void childof_generic_isa_retarget(void) {
+    ecs_init();
+    ecs_entity_t first = ecs_new();
+    ecs_entity_t second = ecs_new();
+    ecs_entity_t entity = ecs_new();
+
+    ecs_relate_id(entity, ecs_rid(IsA), first);
+    test_uint(first, ecs_entity_base(entity));
+
+    ecs_relate_id(entity, ecs_rid(IsA), second);
+    test_uint(second, ecs_entity_base(entity));
+    test_uint(second, ecs_target_id(entity, ecs_rid(IsA)));
+    ecs_fini();
+}
+
+void childof_generic_isa_unrelate(void) {
+    ecs_init();
+    ecs_entity_t base = ecs_new();
+    ecs_entity_t entity = ecs_new();
+
+    ecs_relate_id(entity, ecs_rid(IsA), base);
+    test_uint(base, ecs_entity_base(entity));
+
+    ecs_unrelate_id(entity, ecs_rid(IsA));
+    test_false(ecs_has_relation_id(entity, ecs_rid(IsA)));
+    test_uint(0, ecs_entity_base(entity));
+    ecs_fini();
+}
+
+void childof_generic_isa_cycle(void) {
+    ecs_init();
+    ecs_entity_t base = ecs_new();
+    ecs_entity_t entity = ecs_new();
+
+    ecs_relate_id(entity, ecs_rid(IsA), base);
+    test_expect_abort();
+    ecs_relate_id(base, ecs_rid(IsA), entity);
+}
+
+void childof_generic_isa_deferred(void) {
+    ecs_init();
+    ecs_entity_t first = ecs_new();
+    ecs_entity_t second = ecs_new();
+    ecs_entity_t entity = ecs_new();
+
+    ecs_defer_begin();
+    ecs_relate_id(entity, ecs_rid(IsA), first);
+    ecs_relate_id(entity, ecs_rid(IsA), second);
+    ecs_defer_end();
+
+    test_true(ecs_has_relation_id(entity, ecs_rid(IsA)));
+    test_uint(second, ecs_entity_base(entity));
+    ecs_fini();
+}
+
+void childof_generic_isa_relation_event(void) {
+    ecs_init();
+    ecs_entity_t first = ecs_new();
+    ecs_entity_t second = ecs_new();
+    ecs_entity_t entity = ecs_new();
+
+    relation_observer_state = (RelationObserverState){};
+    ecs_observer({
+        .on = EcsOnRelationSet,
+        .callback = relation_transition_observer_callback,
+    });
+    ecs_observer({
+        .on = EcsOnRelationRemove,
+        .callback = relation_transition_observer_callback,
+    });
+
+    ecs_relate_id(entity, ecs_rid(IsA), first);
+    test_int(1, relation_observer_state.set_calls);
+    test_uint(ecs_rid(IsA), relation_observer_state.relation);
+    test_uint(0, relation_observer_state.old_target);
+    test_uint(first, relation_observer_state.new_target);
+    test_uint(first, relation_observer_state.target_at_callback);
+
+    ecs_relate_id(entity, ecs_rid(IsA), second);
+    test_int(2, relation_observer_state.set_calls);
+    test_uint(first, relation_observer_state.old_target);
+    test_uint(second, relation_observer_state.new_target);
+    test_uint(second, relation_observer_state.target_at_callback);
+
+    ecs_unrelate_id(entity, ecs_rid(IsA));
+    test_int(1, relation_observer_state.remove_calls);
+    test_uint(second, relation_observer_state.old_target);
+    test_uint(0, relation_observer_state.new_target);
+    test_uint(second, relation_observer_state.target_at_callback);
+    ecs_fini();
+}
+
 void childof_relation_observer_events(void) {
     ecs_init();
     ECS_RELATION_REGISTER(DenseRel);
