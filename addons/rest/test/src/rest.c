@@ -1,7 +1,7 @@
 #include "rest_internal.h"
 #include "siecs_rest.h"
-#include <siecs_test.h>
 #include <errno.h>
+#include <siecs_test.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,6 +15,15 @@ ECS_COMPONENT_DECLARE(RestTestPosition, {
 });
 
 ECS_COMPONENT_DEFINE(RestTestPosition);
+
+ECS_RELATION_DECLARE(RestTestLink);
+ECS_RELATION_DEFINE(
+    RestTestLink,
+    {
+        .storage = EcsRelationDense,
+        .acyclic = true,
+    }
+);
 
 void rest_listener_failure_reports_details(void) {
     int output[2];
@@ -91,11 +100,7 @@ void rest_in_process_dispatch(void) {
         .in_process = true,
     });
 
-    sihttp_response_t response = sirest_dispatch(
-        SIHTTP_METHOD_GET,
-        "/health",
-        NULL
-    );
+    sihttp_response_t response = sirest_dispatch(SIHTTP_METHOD_GET, "/health", NULL);
     test_int(response.status, 200);
     test_str(response.body, "OK");
     sihttp_response_fini(&response);
@@ -120,10 +125,12 @@ void rest_schema_uses_public_metadata(void) {
     sijson_value_t relations = sijson_object_get(schema, "relations");
     sijson_value_t position = find_by_name(components, "RestTestPosition");
     sijson_value_t child_of = find_by_name(relations, "ChildOf");
+    sijson_value_t is_a = find_by_name(relations, "IsA");
 
     test_not_null((void *)schema);
     test_not_null((void *)position);
     test_not_null((void *)child_of);
+    test_not_null((void *)is_a);
     test_int(2, (int)sijson_array_len(sijson_object_get(position, "fields")));
     test_int(EcsRelationByDepth, (int)sijson_number(sijson_object_get(child_of, "storage")));
 
@@ -151,6 +158,85 @@ void rest_entity_routes_use_public_introspection(void) {
     test_not_null(
         (void *)find_by_name(sijson_object_get(detail, "components"), "RestTestPosition")
     );
+    test_null((void *)sijson_object_get(detail, "parent"));
+    test_null((void *)sijson_object_get(detail, "isA"));
+    test_not_null((void *)sijson_object_get(detail, "relations"));
+
+    ecs_fini();
+}
+
+void rest_relation_routes_are_generic_and_validated(void) {
+    ecs_init();
+    ECS_RELATION_REGISTER(RestTestLink);
+    sirest_import(&(sirest_props_t){ .in_process = true });
+
+    ecs_entity_t source = ecs_new();
+    ecs_entity_t target = ecs_new();
+    char source_path[128];
+    char target_path[128];
+    char body[64];
+    snprintf(
+        source_path,
+        sizeof(source_path),
+        "/entities/%u/relations/%u",
+        ecs_entity_id(source),
+        ecs_rid(RestTestLink)
+    );
+    snprintf(
+        target_path,
+        sizeof(target_path),
+        "/entities/%u/relations/%u",
+        ecs_entity_id(target),
+        ecs_rid(RestTestLink)
+    );
+    snprintf(body, sizeof(body), "{\"target\":%u}", ecs_entity_id(target));
+
+    sihttp_response_t response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, body);
+    test_int(200, response.status);
+    sijson_value_t relation = sijson_parse(response.body);
+    test_int(ecs_rid(RestTestLink), (int)sijson_number(sijson_object_get(relation, "id")));
+    test_str("RestTestLink", sijson_string(sijson_object_get(relation, "name")));
+    sijson_value_t target_ref = sijson_object_get(relation, "target");
+    test_int(3, (int)sijson_object_len(target_ref));
+    test_uint(
+        ecs_entity_id(target),
+        (uint32_t)sijson_number(sijson_object_get(target_ref, "index"))
+    );
+    sihttp_response_fini(&response);
+
+    snprintf(source_path, sizeof(source_path), "/entities/%u/relations", ecs_entity_id(source));
+    response = sirest_dispatch(SIHTTP_METHOD_GET, source_path, NULL);
+    test_int(200, response.status);
+    sijson_value_t relations = sijson_parse(response.body);
+    test_not_null((void *)find_by_name(relations, "RestTestLink"));
+    sihttp_response_fini(&response);
+
+    snprintf(
+        source_path,
+        sizeof(source_path),
+        "/entities/%u/relations/%u",
+        ecs_entity_id(source),
+        ecs_rid(RestTestLink)
+    );
+    snprintf(body, sizeof(body), "{\"target\":%u}", ecs_entity_id(source));
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, target_path, body);
+    test_int(409, response.status);
+    sijson_value_t error = sijson_parse(response.body);
+    test_str("relation would create a cycle", sijson_string(sijson_object_get(error, "error")));
+    sihttp_response_fini(&response);
+
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, "{}");
+    test_int(400, response.status);
+    sihttp_response_fini(&response);
+
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, "{\"target\":4294967295}");
+    test_int(404, response.status);
+    sihttp_response_fini(&response);
+
+    response = sirest_dispatch(SIHTTP_METHOD_DELETE, source_path, NULL);
+    test_int(204, response.status);
+    test_false(ecs_has_relation_id(source, ecs_rid(RestTestLink)));
+    sihttp_response_fini(&response);
 
     ecs_fini();
 }
