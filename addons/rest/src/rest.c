@@ -131,6 +131,7 @@ static void rest_register_routes(sihttp_server_t *server) {
     sihttp_get(server, "/schema", ecs_rest_get_schema);
     sihttp_get(server, "/scene", ecs_rest_get_scene);
     sihttp_post(server, "/scene", ecs_rest_post_scene);
+    sihttp_post(server, "/modules", ecs_rest_post_modules);
     sihttp_get(server, "/entities", ecs_rest_get_entities);
     sihttp_get(server, "/entities/all", ecs_rest_get_all_entities);
     sihttp_post(server, "/entities", ecs_rest_post_entities);

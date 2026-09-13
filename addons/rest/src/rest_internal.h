@@ -9,6 +9,7 @@
 ECS_RESOURCE_DECLARE(SiecsRestState, {
     sihttp_server_t *server;
     size_t max_scene_bytes;
+    ecs_module_id_t loaded_module;
 });
 
 sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body);
@@ -65,5 +66,6 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_get_scene(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_post_scene(const sihttp_request_t *req);
+sihttp_response_t ecs_rest_post_modules(const sihttp_request_t *req);
 
 #endif

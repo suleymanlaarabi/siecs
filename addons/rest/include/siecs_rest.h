@@ -38,6 +38,7 @@ sihttp_response_t ecs_rest_binary_response(void *data, size_t size);
  * GET    /schema
  * GET    /scene
  * POST   /scene
+ * POST   /modules
  * GET    /entities
  * GET    /entities/all
  * POST   /entities
@@ -52,6 +53,9 @@ sihttp_response_t ecs_rest_binary_response(void *data, size_t size);
  *
  * POST /scene instantiates the saved scene into the current world. It does not
  * clear or replace entities that already exist.
+ * POST /modules accepts a Linux shared object as application/octet-stream,
+ * loads it, and invokes its exported ecs_module_import entry point. A later
+ * upload disables the previously uploaded module before activating the new one.
  */
 
 #ifdef __cplusplus
