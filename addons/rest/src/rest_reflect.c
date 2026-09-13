@@ -38,6 +38,23 @@ static bool validate_component_shape(
     return true;
 }
 
+bool ecs_rest_decode_component_value(
+    ecs_component_t component,
+    sijson_value_t value,
+    void **decoded
+) {
+    const ecs_component_info_t *info = ecs_component_info(component);
+    if (!info || !validate_component_shape(info, value)) {
+        return false;
+    }
+
+    char *json = sijson_stringify(value);
+    sireflect_handle_t ref = info->type;
+    *decoded = json ? sijson_from_json_impl(&ref, info->reflection, json) : NULL;
+    free(json);
+    return *decoded && !sijson_error();
+}
+
 static sijson_value_t component_value_json(
     const ecs_component_info_t *info,
     const void *ptr
@@ -78,26 +95,18 @@ sihttp_response_t ecs_rest_set_entity_component(
     if (!ecs_rest_entity_component_is_reflected(component)) {
         return ecs_rest_error_response(404, "component not found");
     }
-    if (!ecs_has_cid(entity, component)) {
+    if (!ecs_has_cid_owned(entity, component)) {
         return ecs_rest_error_response(404, "entity component not found");
     }
 
-    sijson_value_t body = sijson_parse(body_text);
+    sijson_value_t body = body_text ? sijson_parse(body_text) : NULL;
     sijson_value_t value = body ? sijson_object_get(body, "value") : NULL;
     if (!body || sijson_type(body) != SIJSON_OBJECT || sijson_object_len(body) != 1 || !value) {
         return ecs_rest_error_response(400, "invalid json body");
     }
 
-    const ecs_component_info_t *info = ecs_component_info(component);
-    if (!validate_component_shape(info, value)) {
-        return ecs_rest_error_response(400, "invalid component value");
-    }
-
-    char *json = sijson_stringify(value);
-    sireflect_handle_t ref = info->type;
-    void *decoded = json ? sijson_from_json_impl(&ref, info->reflection, json) : NULL;
-    free(json);
-    if (!decoded || sijson_error()) {
+    void *decoded = NULL;
+    if (!ecs_rest_decode_component_value(component, value, &decoded)) {
         return ecs_rest_error_response(400, "invalid component value");
     }
 

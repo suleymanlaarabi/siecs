@@ -1,79 +1,5 @@
 #include "rest_internal.h"
-#include <stddef.h>
 #include <stdint.h>
-
-static bool ecs_rest_path_uint_segment(
-    const sihttp_request_t *req,
-    size_t segment,
-    uint32_t limit,
-    uint32_t *result
-) {
-    if (!req || !req->path) {
-        return false;
-    }
-
-    const char *cursor = req->path;
-    if (*cursor == '/') {
-        cursor++;
-    }
-
-    for (size_t current = 0;; current++) {
-        const char *end = cursor;
-        while (*end && *end != '/' && *end != '?') {
-            end++;
-        }
-
-        if (current == segment) {
-            if (cursor == end) {
-                return false;
-            }
-
-            uint32_t value = 0;
-            for (const char *digit = cursor; digit < end; digit++) {
-                if (*digit < '0' || *digit > '9') {
-                    return false;
-                }
-
-                uint32_t number = (uint32_t)(*digit - '0');
-                if (value > (limit - number) / 10) {
-                    return false;
-                }
-                value = value * 10 + number;
-            }
-
-            *result = value;
-            return true;
-        }
-
-        if (*end != '/') {
-            return false;
-        }
-        cursor = end + 1;
-    }
-}
-
-static ecs_entity_t ecs_rest_request_entity(const sihttp_request_t *req) {
-    uint32_t index = 0;
-    return ecs_rest_path_uint_segment(req, 1, UINT32_MAX, &index) && index
-        ? ecs_entity_from_index(index)
-        : 0;
-}
-
-static const ecs_relation_info_t *ecs_rest_request_relation(
-    const sihttp_request_t *req,
-    ecs_relation_id_t *relation
-) {
-    uint32_t value = 0;
-    if (
-        !ecs_rest_path_uint_segment(req, 3, UINT16_MAX, &value) || !value ||
-        value >= ecs_relation_count()
-    ) {
-        return NULL;
-    }
-
-    *relation = (ecs_relation_id_t)value;
-    return ecs_relation_info(*relation);
-}
 
 bool ecs_rest_relation_would_cycle(
     ecs_entity_t source,
@@ -167,10 +93,10 @@ sihttp_response_t ecs_rest_put_entity_relation(const sihttp_request_t *req) {
     }
 
     ecs_relation_id_t relation = 0;
-    const ecs_relation_info_t *info = ecs_rest_request_relation(req, &relation);
-    if (!info) {
+    if (!ecs_rest_request_relation(req, &relation)) {
         return ecs_rest_error_response(404, "relation not found");
     }
+    const ecs_relation_info_t *info = ecs_relation_info(relation);
 
     sijson_value_t body = req->body ? sijson_parse(req->body) : NULL;
     sijson_value_t target_value = body && sijson_type(body) == SIJSON_OBJECT

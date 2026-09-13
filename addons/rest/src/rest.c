@@ -127,7 +127,9 @@ static void rest_register_routes(sihttp_server_t *server) {
     sihttp_put(server, "/entities/:index/relations/:relation", ecs_rest_put_entity_relation);
     sihttp_delete(server, "/entities/:index/relations/:relation", ecs_rest_delete_entity_relation);
     sihttp_get(server, "/health", rest_health);
+    sihttp_post(server, "/entities/:index/components/:component", ecs_rest_post_entity_component);
     sihttp_put(server, "/entities/:index/components/:component", ecs_rest_put_entity_component);
+    sihttp_delete(server, "/entities/:index/components/:component", ecs_rest_delete_entity_component);
     sihttp_get(server, "/entities/:index", ecs_rest_get_entity);
 }
 

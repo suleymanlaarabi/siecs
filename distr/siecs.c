@@ -9180,9 +9180,6 @@ static bool ecs_scene_write_relations(
 }
 
 bool ecs_save(const char *path) {
-    if (!path)
-        return false;
-
     ecs_scene_save_ctx_t ctx = { 0 };
     uint32_t entity_count = 0;
     uint32_t table_count = 0;

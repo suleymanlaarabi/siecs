@@ -108,10 +108,7 @@ sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *req) {
 sihttp_response_t ecs_rest_get_entity(const sihttp_request_t *req) {
     sijson_clean();
 
-    int64_t index = sihttp_param(req, "index");
-    ecs_entity_t entity = index > 0 && index <= UINT32_MAX
-        ? ecs_entity_from_index((uint32_t)index)
-        : 0;
+    ecs_entity_t entity = ecs_rest_request_entity(req);
     if (!entity) {
         return ecs_rest_error_response(404, "entity not found");
     }
@@ -121,32 +118,11 @@ sihttp_response_t ecs_rest_get_entity(const sihttp_request_t *req) {
 sihttp_response_t ecs_rest_get_entity_children(const sihttp_request_t *req) {
     sijson_clean();
 
-    int64_t index = sihttp_param(req, "index");
-    ecs_entity_t entity = index > 0 && index <= UINT32_MAX
-        ? ecs_entity_from_index((uint32_t)index)
-        : 0;
+    ecs_entity_t entity = ecs_rest_request_entity(req);
     if (!entity) {
         return ecs_rest_error_response(404, "entity not found");
     }
     return ecs_rest_json_response(200, ecs_rest_entity_children_json(entity));
-}
-
-sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req) {
-    int64_t component = sihttp_param(req, "component");
-    int64_t index = sihttp_param(req, "index");
-    ecs_entity_t entity = index > 0 && index <= UINT32_MAX
-        ? ecs_entity_from_index((uint32_t)index)
-        : 0;
-    if (!entity) {
-        sijson_clean();
-        return ecs_rest_error_response(404, "entity not found");
-    }
-    if (component <= 0 || component >= ecs_component_count() || component > UINT16_MAX) {
-        sijson_clean();
-        return ecs_rest_error_response(404, "component not found");
-    }
-
-    return ecs_rest_set_entity_component(entity, (ecs_component_t)component, req->body);
 }
 
 sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req) {

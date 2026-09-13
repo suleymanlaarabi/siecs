@@ -85,6 +85,13 @@ static sijson_value_t find_by_name(sijson_value_t array, const char *name) {
     return NULL;
 }
 
+static void assert_rest_error(sihttp_response_t *response, int status, const char *message) {
+    test_int(status, response->status);
+    sijson_value_t body = sijson_parse(response->body);
+    test_str(message, sijson_string(sijson_object_get(body, "error")));
+    sihttp_response_fini(response);
+}
+
 void rest_module_lifecycle(void) {
     ecs_init();
 
@@ -233,6 +240,20 @@ void rest_relation_routes_are_generic_and_validated(void) {
     test_str("relation would create a cycle", sijson_string(sijson_object_get(error, "error")));
     sihttp_response_fini(&response);
 
+    snprintf(
+        source_path,
+        sizeof(source_path),
+        "/entities/%u/relations/%u",
+        ecs_entity_id(source),
+        ecs_rid(RestTestLink)
+    );
+    ecs_entity_t replacement = ecs_new();
+    snprintf(body, sizeof(body), "{\"target\":%u}", ecs_entity_id(replacement));
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, body);
+    test_int(200, response.status);
+    test_uint(replacement, ecs_target_id(source, ecs_rid(RestTestLink)));
+    sihttp_response_fini(&response);
+
     snprintf(body, sizeof(body), "{\"target\":%u}", ecs_entity_id(target));
     snprintf(
         source_path,
@@ -292,10 +313,43 @@ void rest_relation_routes_are_generic_and_validated(void) {
     test_int(400, response.status);
     sihttp_response_fini(&response);
 
-    response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, "{\"target\":4294967295}");
-    test_int(404, response.status);
-    sihttp_response_fini(&response);
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, "{\"target\":0}");
+    assert_rest_error(&response, 400, "invalid json body");
 
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, "{\"target\":-1}");
+    assert_rest_error(&response, 400, "invalid json body");
+
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, "{\"target\":1.5}");
+    assert_rest_error(&response, 400, "invalid json body");
+
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, "{\"target\":4294967295}");
+    assert_rest_error(&response, 404, "target not found");
+
+    snprintf(
+        source_path,
+        sizeof(source_path),
+        "/entities/4294967295/relations/%u",
+        ecs_rid(RestTestLink)
+    );
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, body);
+    assert_rest_error(&response, 404, "entity not found");
+
+    snprintf(
+        source_path,
+        sizeof(source_path),
+        "/entities/%u/relations/65535",
+        ecs_entity_id(source)
+    );
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, source_path, body);
+    assert_rest_error(&response, 404, "relation not found");
+
+    snprintf(
+        source_path,
+        sizeof(source_path),
+        "/entities/%u/relations/%u",
+        ecs_entity_id(source),
+        ecs_rid(RestTestLink)
+    );
     response = sirest_dispatch(SIHTTP_METHOD_DELETE, source_path, NULL);
     test_int(204, response.status);
     test_false(ecs_has_relation_id(source, ecs_rid(RestTestLink)));
@@ -307,19 +361,142 @@ void rest_relation_routes_are_generic_and_validated(void) {
 void rest_component_mutation_uses_public_metadata(void) {
     ecs_init();
     ECS_COMPONENT_REGISTER(RestTestPosition);
+    sirest_import(&(sirest_props_t){ .in_process = true });
 
     ecs_entity_t entity = ecs_new();
-    ecs_set(entity, RestTestPosition, { 1.0f, 2.0f });
-    sihttp_response_t response = ecs_rest_set_entity_component(
-        entity,
-        ecs_id(RestTestPosition),
-        "{\"value\":{\"x\":30,\"y\":40}}"
+    char path[128];
+    char entity_path[64];
+    snprintf(
+        path,
+        sizeof(path),
+        "/entities/%u/components/%u",
+        ecs_entity_id(entity),
+        ecs_id(RestTestPosition)
     );
 
+    sihttp_response_t response = sirest_dispatch(SIHTTP_METHOD_POST, path, "{}");
+    test_int(201, response.status);
+    test_true(ecs_has(entity, RestTestPosition));
+    test_int(0, (int)ecs_get(entity, RestTestPosition)->x);
+    test_int(0, (int)ecs_get(entity, RestTestPosition)->y);
+    sijson_value_t component = sijson_parse(response.body);
+    test_int(ecs_id(RestTestPosition), (int)sijson_number(sijson_object_get(component, "id")));
+    test_str("RestTestPosition", sijson_string(sijson_object_get(component, "name")));
+    sihttp_response_fini(&response);
+
+    snprintf(entity_path, sizeof(entity_path), "/entities/%u", ecs_entity_id(entity));
+    response = sirest_dispatch(SIHTTP_METHOD_GET, entity_path, NULL);
+    test_int(200, response.status);
+    sijson_value_t detail = sijson_parse(response.body);
+    test_not_null(
+        (void *)find_by_name(sijson_object_get(detail, "components"), "RestTestPosition")
+    );
+    sihttp_response_fini(&response);
+
+    response = sirest_dispatch(SIHTTP_METHOD_POST, path, "{}");
+    assert_rest_error(&response, 409, "entity already has component");
+
+    response = sirest_dispatch(SIHTTP_METHOD_PUT, path, NULL);
+    assert_rest_error(&response, 400, "invalid json body");
+    test_int(0, (int)ecs_get(entity, RestTestPosition)->x);
+    test_int(0, (int)ecs_get(entity, RestTestPosition)->y);
+
+    response = sirest_dispatch(
+        SIHTTP_METHOD_PUT,
+        path,
+        "{\"value\":{\"x\":30,\"y\":40}}"
+    );
     test_int(200, response.status);
     test_int(30, (int)ecs_get(entity, RestTestPosition)->x);
     test_int(40, (int)ecs_get(entity, RestTestPosition)->y);
-    free(response.body);
+    sihttp_response_fini(&response);
+
+    response = sirest_dispatch(SIHTTP_METHOD_GET, entity_path, NULL);
+    test_int(200, response.status);
+    detail = sijson_parse(response.body);
+    component = find_by_name(sijson_object_get(detail, "components"), "RestTestPosition");
+    test_not_null((void *)component);
+    sijson_value_t value = sijson_object_get(component, "value");
+    test_int(30, (int)sijson_number(sijson_object_get(value, "x")));
+    test_int(40, (int)sijson_number(sijson_object_get(value, "y")));
+    sihttp_response_fini(&response);
+
+    response = sirest_dispatch(SIHTTP_METHOD_DELETE, path, NULL);
+    test_int(204, response.status);
+    test_false(ecs_has(entity, RestTestPosition));
+    sihttp_response_fini(&response);
+
+    response = sirest_dispatch(SIHTTP_METHOD_GET, entity_path, NULL);
+    test_int(200, response.status);
+    detail = sijson_parse(response.body);
+    test_null(
+        (void *)find_by_name(sijson_object_get(detail, "components"), "RestTestPosition")
+    );
+    sihttp_response_fini(&response);
+
+    response = sirest_dispatch(SIHTTP_METHOD_DELETE, path, NULL);
+    assert_rest_error(&response, 404, "entity component not found");
+
+    response = sirest_dispatch(
+        SIHTTP_METHOD_PUT,
+        path,
+        "{\"value\":{\"x\":30,\"y\":40}}"
+    );
+    assert_rest_error(&response, 404, "entity component not found");
+
+    response = sirest_dispatch(
+        SIHTTP_METHOD_POST,
+        path,
+        "{\"value\":{\"x\":10,\"y\":20}}"
+    );
+    test_int(201, response.status);
+    test_int(10, (int)ecs_get(entity, RestTestPosition)->x);
+    test_int(20, (int)ecs_get(entity, RestTestPosition)->y);
+    sihttp_response_fini(&response);
+
+    ecs_entity_t invalid_entity = ecs_new();
+    snprintf(
+        path,
+        sizeof(path),
+        "/entities/%u/components/%u",
+        ecs_entity_id(invalid_entity),
+        ecs_id(RestTestPosition)
+    );
+    response = sirest_dispatch(
+        SIHTTP_METHOD_POST,
+        path,
+        "{\"value\":{\"x\":\"bad\",\"y\":20}}"
+    );
+    assert_rest_error(&response, 400, "invalid component value");
+    test_false(ecs_has(invalid_entity, RestTestPosition));
+
+    response = sirest_dispatch(SIHTTP_METHOD_POST, path, "{invalid");
+    assert_rest_error(&response, 400, "invalid json body");
+
+    response = sirest_dispatch(
+        SIHTTP_METHOD_POST,
+        path,
+        "{\"value\":{\"x\":10,\"y\":20},\"extra\":true}"
+    );
+    assert_rest_error(&response, 400, "invalid json body");
+
+    snprintf(
+        path,
+        sizeof(path),
+        "/entities/%u/components/65535",
+        ecs_entity_id(entity)
+    );
+    response = sirest_dispatch(SIHTTP_METHOD_POST, path, "{}");
+    assert_rest_error(&response, 404, "component not found");
+
+    snprintf(
+        path,
+        sizeof(path),
+        "/entities/4294967295/components/%u",
+        ecs_id(RestTestPosition)
+    );
+    response = sirest_dispatch(SIHTTP_METHOD_POST, path, "{}");
+    assert_rest_error(&response, 404, "entity not found");
 
     ecs_fini();
 }

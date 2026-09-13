@@ -10,6 +10,15 @@ ECS_RESOURCE_DECLARE(SiecsRestState, { sihttp_server_t *server; });
 
 sihttp_response_t ecs_rest_json_response(int status, sijson_value_t body);
 sihttp_response_t ecs_rest_error_response(int status, const char *message);
+ecs_entity_t ecs_rest_request_entity(const sihttp_request_t *req);
+bool ecs_rest_request_component(
+    const sihttp_request_t *req,
+    ecs_component_t *component
+);
+bool ecs_rest_request_relation(
+    const sihttp_request_t *req,
+    ecs_relation_id_t *relation
+);
 
 sijson_value_t ecs_rest_entity_json(ecs_entity_t entity);
 sijson_value_t ecs_rest_entity_ref_json(ecs_entity_t entity);
@@ -27,6 +36,11 @@ bool ecs_rest_relation_would_cycle(
 sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity);
 bool ecs_rest_entity_component_is_reflected(ecs_component_t component);
 sijson_value_t ecs_rest_entity_component_json(ecs_component_t component, const void *ptr);
+bool ecs_rest_decode_component_value(
+    ecs_component_t component,
+    sijson_value_t value,
+    void **decoded
+);
 sihttp_response_t ecs_rest_set_entity_component(
     ecs_entity_t entity,
     ecs_component_t component,
@@ -39,7 +53,9 @@ sihttp_response_t ecs_rest_get_entity_children(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_get_entity_relations(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_put_entity_relation(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_delete_entity_relation(const sihttp_request_t *req);
+sihttp_response_t ecs_rest_post_entity_component(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_put_entity_component(const sihttp_request_t *req);
+sihttp_response_t ecs_rest_delete_entity_component(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req);
 

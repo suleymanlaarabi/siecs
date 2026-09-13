@@ -24,6 +24,20 @@ sihttp_response_t sirest_dispatch(
     const char *body
 );
 
+/* Explorer routes:
+ * GET    /schema
+ * GET    /entities
+ * POST   /entities
+ * GET    /entities/:index
+ * GET    /entities/:index/children
+ * GET    /entities/:index/relations
+ * PUT    /entities/:index/relations/:relation
+ * DELETE /entities/:index/relations/:relation
+ * POST   /entities/:index/components/:component
+ * PUT    /entities/:index/components/:component
+ * DELETE /entities/:index/components/:component
+ */
+
 #ifdef __cplusplus
 }
 #endif
