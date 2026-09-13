@@ -728,6 +728,7 @@ typedef struct {
     ecs_relation_register(&ecs_rid(cname), #cname, &ecs_rid(cname##_desc));
 #define ECS_RELATION_REGISTER(...) PP_FOR_EACH(ECS_RELATION_REGISTER_ONE, __VA_ARGS__)
 
+ECS_RELATION_DECLARE(IsA);
 ECS_RELATION_DECLARE(ChildOf);
 
 /* C++ declarations made after this header use the C relation id/descriptor. */

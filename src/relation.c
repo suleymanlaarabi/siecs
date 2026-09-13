@@ -11,6 +11,26 @@
 
 ecs_relation_index_t relation_index;
 
+static void ecs_relation_default_set_now(
+    ecs_entity_t entity,
+    ecs_relation_id_t relation,
+    ecs_entity_t target
+);
+static void ecs_relation_default_remove_now(ecs_entity_t entity, ecs_relation_id_t relation);
+static bool ecs_relation_default_has(ecs_entity_t entity, ecs_relation_id_t relation);
+static ecs_entity_t ecs_relation_default_target(ecs_entity_t entity, ecs_relation_id_t relation);
+
+static const ecs_relation_ops_t ecs_relation_default_ops = {
+    .set_now = ecs_relation_default_set_now,
+    .remove_now = ecs_relation_default_remove_now,
+    .has = ecs_relation_default_has,
+    .target = ecs_relation_default_target,
+};
+
+static const ecs_relation_ops_t *ecs_relation_record_ops(const ecs_relation_record_t *record) {
+    return record->ops ? record->ops : &ecs_relation_default_ops;
+}
+
 void ecs_relation_index_init(void) {
     sicore_vec_init_w_size(&relation_index.records, sizeof(ecs_relation_record_t), 1);
     sicore_vec_ensure(&relation_index.records, 1, sizeof(ecs_relation_record_t));
@@ -26,8 +46,13 @@ void ecs_relation_index_fini(void) {
     relation_index = (ecs_relation_index_t){ 0 };
 }
 
-ecs_relation_id_t
-ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relation_desc_t *desc) {
+static ecs_relation_id_t ecs_relation_register_with_ops(
+    ecs_relation_id_t *id,
+    const char *name,
+    const ecs_relation_desc_t *desc,
+    const ecs_relation_ops_t *ops,
+    bool virtual_relation
+) {
     ecs_assert_not_scheduler_parallel("relation registration");
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
@@ -49,7 +74,7 @@ ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relatio
         );
         ecs_relation_record_t *existing =
             sicore_vec_get_mut(&relation_index.records, *id, ecs_relation_record_t);
-        if (existing->info.name || existing->component) {
+        if (existing->info.name || existing->component || existing->ops) {
             return *id;
         }
     } else {
@@ -61,8 +86,13 @@ ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relatio
         (uint32_t)*id + 1,
         sizeof(ecs_relation_record_t)
     );
-    ecs_component_t component =
-        ecs_component_register_relation_internal(name, *id, desc->storage == EcsRelationByTarget);
+    ecs_component_t component = virtual_relation
+                                    ? 0
+                                    : ecs_component_register_relation_internal(
+                                          name,
+                                          *id,
+                                          desc->storage == EcsRelationByTarget
+                                      );
     *sicore_vec_get_mut(&relation_index.records, *id, ecs_relation_record_t) =
         (ecs_relation_record_t){
             .component = component,
@@ -74,8 +104,28 @@ ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relatio
                     .acyclic = desc->storage == EcsRelationByDepth || desc->acyclic,
                 },
             },
+            .ops = ops,
         };
     return *id;
+}
+
+ecs_relation_id_t
+ecs_relation_register(ecs_relation_id_t *id, const char *name, const ecs_relation_desc_t *desc) {
+    return ecs_relation_register_with_ops(id, name, desc, &ecs_relation_default_ops, false);
+}
+
+ecs_relation_id_t ecs_relation_register_virtual(
+    ecs_relation_id_t *id,
+    const char *name,
+    const ecs_relation_desc_t *desc,
+    const ecs_relation_ops_t *ops
+) {
+    ecs_assert_not_null(ops);
+    ecs_assert_not_null(ops->set_now);
+    ecs_assert_not_null(ops->remove_now);
+    ecs_assert_not_null(ops->has);
+    ecs_assert_not_null(ops->target);
+    return ecs_relation_register_with_ops(id, name, desc, ops, true);
 }
 
 ecs_relation_id_t ecs_relation_init(const char *name, const ecs_relation_desc_t *desc) {
@@ -244,14 +294,13 @@ static void ecs_relation_set_depth(
     ecs_relation_update_children_depth(entity, relation, depth);
 }
 
-void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
+static void ecs_relation_default_set_now(
+    ecs_entity_t entity,
+    ecs_relation_id_t relation,
+    ecs_entity_t target
+) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
-    ecs_assert(
-        !record->info.desc.acyclic || !ecs_relation_would_cycle(entity, relation, target),
-        "cyclic relation\n"
-    );
-
-    ecs_entity_t old_target;
+    ecs_entity_t old_target = ecs_relation_default_target(entity, relation);
     ecs_entity_record_t *entity_record = NULL;
     ecs_table_t *entity_table = NULL;
     uint16_t relation_column = UINT16_MAX;
@@ -259,17 +308,6 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
         entity_record = ecs_get_record(entity);
         entity_table = ecs_get_table(entity_record->table_id);
         relation_column = ecs_table_column_or_invalid(entity_table, record->component);
-    }
-
-    if (relation_column != UINT16_MAX) {
-        const RelationTarget *current =
-            ecs_table_component_at_column(entity_table, relation_column, entity_record->table_row);
-        old_target = current->entity;
-    } else {
-        old_target = ecs_target_id(entity, relation);
-    }
-    if (old_target == target) {
-        return;
     }
 
     if (record->info.desc.storage == EcsRelationDense) {
@@ -293,8 +331,59 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
         }
         ecs_relation_set_pair(entity, 0, relation, target);
     }
+}
 
-    ecs_emit_relation_event(entity, relation, EcsOnRelationSet, old_target, target);
+static void ecs_relation_isa_set_now(
+    ecs_entity_t entity,
+    ecs_relation_id_t relation,
+    ecs_entity_t target
+) {
+    (void)relation;
+    ecs_is_a_now(entity, target);
+}
+
+static void ecs_relation_isa_remove_now(ecs_entity_t entity, ecs_relation_id_t relation) {
+    (void)relation;
+    ecs_is_a_now(entity, 0);
+}
+
+static bool ecs_relation_isa_has(ecs_entity_t entity, ecs_relation_id_t relation) {
+    (void)relation;
+    return ecs_entity_base_raw(entity) != 0;
+}
+
+static ecs_entity_t ecs_relation_isa_target(ecs_entity_t entity, ecs_relation_id_t relation) {
+    (void)relation;
+    return ecs_entity_base_raw(entity);
+}
+
+const ecs_relation_ops_t ecs_relation_ops_isa = {
+    .set_now = ecs_relation_isa_set_now,
+    .remove_now = ecs_relation_isa_remove_now,
+    .has = ecs_relation_isa_has,
+    .target = ecs_relation_isa_target,
+};
+
+void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
+    const ecs_relation_record_t *record = ecs_relation_record(relation);
+    const ecs_relation_ops_t *ops = ecs_relation_record_ops(record);
+    ecs_assert(
+        !record->info.desc.acyclic || !ecs_relation_would_cycle(entity, relation, target),
+        "cyclic relation\n"
+    );
+
+    ecs_entity_t old_target = ops->target(entity, relation);
+    if (old_target == target) {
+        return;
+    }
+
+    ops->set_now(entity, relation, target);
+    ecs_entity_t new_target = ops->target(entity, relation);
+    if (old_target == new_target) {
+        return;
+    }
+
+    ecs_emit_relation_event(entity, relation, EcsOnRelationSet, old_target, new_target);
 }
 
 void ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
@@ -328,16 +417,7 @@ static void ecs_relation_remove_depth(
     ecs_relation_update_children_depth(entity, relation, 0);
 }
 
-void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
-    ecs_entity_t old_target = ecs_target_id(entity, relation);
-    if (!old_target) {
-        return;
-    }
-    ecs_emit_relation_event(entity, relation, EcsOnRelationRemove, old_target, 0);
-    if (!ecs_is_alive(entity) || ecs_target_id(entity, relation) != old_target) {
-        return;
-    }
-
+static void ecs_relation_default_remove_now(ecs_entity_t entity, ecs_relation_id_t relation) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     if (record->info.desc.storage == EcsRelationDense) {
         ecs_remove_cid(entity, record->component);
@@ -346,6 +426,21 @@ void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
     } else {
         ecs_relation_remove_pair(entity, UINT16_MAX, relation);
     }
+}
+
+void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
+    const ecs_relation_record_t *record = ecs_relation_record(relation);
+    const ecs_relation_ops_t *ops = ecs_relation_record_ops(record);
+    ecs_entity_t old_target = ops->target(entity, relation);
+    if (!old_target) {
+        return;
+    }
+    ecs_emit_relation_event(entity, relation, EcsOnRelationRemove, old_target, 0);
+    if (!ecs_is_alive(entity) || ops->target(entity, relation) != old_target) {
+        return;
+    }
+
+    ops->remove_now(entity, relation);
 }
 
 void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation) {
@@ -357,7 +452,7 @@ void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation) {
     ecs_unrelate_id_now(entity, relation);
 }
 
-bool ecs_has_relation_id(ecs_entity_t entity, ecs_relation_id_t relation) {
+static bool ecs_relation_default_has(ecs_entity_t entity, ecs_relation_id_t relation) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     const ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
     if (record->info.desc.storage != EcsRelationByTarget) {
@@ -366,10 +461,20 @@ bool ecs_has_relation_id(ecs_entity_t entity, ecs_relation_id_t relation) {
     return ecs_type_pair_index(&table->type, relation) != UINT16_MAX;
 }
 
-ecs_entity_t ecs_target_id(ecs_entity_t entity, ecs_relation_id_t relation) {
+static ecs_entity_t ecs_relation_default_target(ecs_entity_t entity, ecs_relation_id_t relation) {
     const ecs_entity_record_t *entity_record = ecs_get_record(entity);
     const ecs_table_t *table = ecs_get_table(entity_record->table_id);
     return ecs_relation_target_at_table(table, relation, entity_record->table_row);
+}
+
+bool ecs_has_relation_id(ecs_entity_t entity, ecs_relation_id_t relation) {
+    const ecs_relation_record_t *record = ecs_relation_record(relation);
+    return ecs_relation_record_ops(record)->has(entity, relation);
+}
+
+ecs_entity_t ecs_target_id(ecs_entity_t entity, ecs_relation_id_t relation) {
+    const ecs_relation_record_t *record = ecs_relation_record(relation);
+    return ecs_relation_record_ops(record)->target(entity, relation);
 }
 
 bool ecs_has_relation_to_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {

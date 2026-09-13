@@ -2,6 +2,7 @@
 #include "event_ops.h"
 #include "helper.h"
 #include "inheritance.h"
+#include "relation.h"
 #include "siecs.h"
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
@@ -95,9 +96,13 @@ bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
     return ecs_is(base, target);
 }
 
-ecs_entity_t ecs_entity_base(ecs_entity_t entity) {
+ecs_entity_t ecs_entity_base_raw(ecs_entity_t entity) {
     ecs_assert_is_alive(entity);
     return ecs_get_table(ecs_get_record(entity)->table_id)->type.base;
+}
+
+ecs_entity_t ecs_entity_base(ecs_entity_t entity) {
+    return ecs_target_id(entity, ecs_rid(IsA));
 }
 
 ecs_entity_t ecs_lookup(const char *key) {
@@ -152,18 +157,7 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
 }
 
 void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
-    ecs_assert_entity_alive(entity);
-    ecs_assert_entity_alive(target);
-
-    if (ecs_is_deferred()) {
-        if (!ecs_has_cid_owned(target, ecs_id(Abstract))) {
-            ecs_add_cid(target, ecs_id(Abstract));
-        }
-        ecs_command_buffer_set_base(entity, target);
-        return;
-    }
-
-    ecs_is_a_now(entity, target);
+    ecs_relate_id(entity, ecs_rid(IsA), target);
 }
 
 static inline void ecs_entity_index_kill(uint32_t entity_id) {

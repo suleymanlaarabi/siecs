@@ -867,6 +867,22 @@ void childof_relation_observer_events(void) {
     test_uint(0, relation_observer_state.new_target);
     test_false(ecs_has_relation(group_source, GroupOf));
 
+    ecs_entity_t isa_base = ecs_new();
+    ecs_entity_t isa_source = ecs_new();
+    ecs_relate_id(isa_source, ecs_rid(IsA), isa_base);
+    test_int(6, relation_observer_state.set_calls);
+    test_uint(ecs_rid(IsA), relation_observer_state.relation);
+    test_uint(0, relation_observer_state.old_target);
+    test_uint(isa_base, relation_observer_state.new_target);
+    test_uint(isa_base, relation_observer_state.target_at_callback);
+
+    ecs_unrelate_id(isa_source, ecs_rid(IsA));
+    test_int(2, relation_observer_state.remove_calls);
+    test_uint(ecs_rid(IsA), relation_observer_state.relation);
+    test_uint(isa_base, relation_observer_state.old_target);
+    test_uint(0, relation_observer_state.new_target);
+    test_uint(isa_base, relation_observer_state.target_at_callback);
+
     ecs_fini();
 }
 
@@ -895,7 +911,7 @@ void childof_type_layout_stays_compact(void) {
     test_int(40, sizeof(ecs_query_t));
     test_int(16, sizeof(ecs_query_relation_term_t));
     test_int(56, sizeof(ecs_query_cache_t));
-    test_int(32, sizeof(ecs_relation_record_t));
+    test_int(40, sizeof(ecs_relation_record_t));
 }
 
 void childof_query_slot_reuses_component_and_relation_terms(void) {

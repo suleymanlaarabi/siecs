@@ -171,19 +171,19 @@ class entity {
 
     /** Add an inheritance link to `target`. */
     entity is_a(entity target) {
-        ecs_is_a(_entity, target.id());
+        ecs_relate_id(_entity, ecs_rid(IsA), target.id());
         return *this;
     }
 
     /** Add an inheritance link to the singleton entity for `T`. */
     template <typename T> entity is_a() {
-        ecs_is_a(_entity, ecs::entity::create<T>());
+        ecs_relate_id(_entity, ecs_rid(IsA), ecs::entity::create<T>());
         return *this;
     }
 
     /** C-compatible overload of `is_a`; target must be a live entity. */
     entity is_a(ecs_entity_t target) {
-        ecs_is_a(_entity, target);
+        ecs_relate_id(_entity, ecs_rid(IsA), target);
         return *this;
     }
 

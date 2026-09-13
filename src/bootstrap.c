@@ -17,6 +17,14 @@ ECS_RELATION_DEFINE(
         .acyclic = true,
     }
 );
+ECS_RELATION_DEFINE(
+    IsA,
+    {
+        .storage = EcsRelationByDepth,
+        .on_delete_target = EcsRemoveRelation,
+        .acyclic = true,
+    }
+);
 sicore_map_t name_map;
 
 static char *name_copy_string(const char *value) {
@@ -148,6 +156,12 @@ void ecs_bootstrap() {
         }
     );
 
+    ecs_relation_register_virtual(
+        &ecs_rid(IsA),
+        "IsA",
+        &ecs_rid(IsA_desc),
+        &ecs_relation_ops_isa
+    );
     ECS_RELATION_REGISTER(ChildOf);
     ECS_COMPONENT_REGISTER(Name);
     ECS_RESOURCE_REGISTER(DeltaTime);
