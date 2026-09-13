@@ -148,6 +148,9 @@ sihttp_response_t ecs_rest_delete_entity_relation(const sihttp_request_t *req) {
     if (!ecs_rest_request_relation(req, &relation)) {
         return ecs_rest_error_response(404, "relation not found");
     }
+    if (!ecs_has_relation_id(source, relation)) {
+        return ecs_rest_error_response(404, "relation not present on entity");
+    }
 
     ecs_unrelate_id(source, relation);
     sihttp_response_t response = { 0 };

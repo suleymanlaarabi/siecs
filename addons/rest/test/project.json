@@ -29,7 +29,8 @@
           "schema_uses_public_metadata",
           "entity_routes_use_public_introspection",
           "relation_routes_are_generic_and_validated",
-          "component_mutation_uses_public_metadata"
+          "component_mutation_uses_public_metadata",
+          "poll_mutations_are_immediate"
         ]
       }
     ]

@@ -15,6 +15,7 @@ typedef struct {
     ecs_system_id_t next_module;
     bool enabled;
     bool main_thread_only;
+    bool no_defer;
 } ecs_system_t;
 
 typedef struct {

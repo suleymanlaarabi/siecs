@@ -115,6 +115,7 @@ ecs_system_id_t ecs_system_index_create(const ecs_system_desc_t *desc,
         .next_module = UINT16_MAX,
         .enabled = !desc->disabled,
         .main_thread_only = desc->main_thread_only,
+        .no_defer = desc->no_defer,
     };
     for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY && desc->after[i]; i++) {
 #ifndef NDEBUG

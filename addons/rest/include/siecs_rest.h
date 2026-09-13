@@ -27,6 +27,7 @@ sihttp_response_t sirest_dispatch(
 /* Explorer routes:
  * GET    /schema
  * GET    /entities
+ * GET    /entities/all
  * POST   /entities
  * GET    /entities/:index
  * GET    /entities/:index/children

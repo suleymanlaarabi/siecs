@@ -113,6 +113,7 @@ void sirest_import(const sirest_props_t *props) {
                 },
                 .callback = rest_poll,
                 .phase = EcsPostRender,
+                .no_defer = true,
             }
         );
     }
@@ -121,6 +122,7 @@ void sirest_import(const sirest_props_t *props) {
 static void rest_register_routes(sihttp_server_t *server) {
     sihttp_get(server, "/schema", ecs_rest_get_schema);
     sihttp_get(server, "/entities", ecs_rest_get_entities);
+    sihttp_get(server, "/entities/all", ecs_rest_get_all_entities);
     sihttp_post(server, "/entities", ecs_rest_post_entities);
     sihttp_get(server, "/entities/:index/children", ecs_rest_get_entity_children);
     sihttp_get(server, "/entities/:index/relations", ecs_rest_get_entity_relations);

@@ -1,10 +1,13 @@
 #include "rest_internal.h"
 #include "siecs_rest.h"
 #include <errno.h>
+#include <arpa/inet.h>
 #include <siecs_test.h>
+#include <netinet/in.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/socket.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -90,6 +93,230 @@ static void assert_rest_error(sihttp_response_t *response, int status, const cha
     sijson_value_t body = sijson_parse(response->body);
     test_str(message, sijson_string(sijson_object_get(body, "error")));
     sihttp_response_fini(response);
+}
+
+static uint16_t rest_available_port(void) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    test_assert(fd >= 0);
+    struct sockaddr_in address = {
+        .sin_family = AF_INET,
+        .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+    };
+    test_assert(bind(fd, (struct sockaddr *)&address, sizeof(address)) == 0);
+    socklen_t length = sizeof(address);
+    test_assert(getsockname(fd, (struct sockaddr *)&address, &length) == 0);
+    uint16_t port = ntohs(address.sin_port);
+    close(fd);
+    return port;
+}
+
+static char *rest_http_request(
+    uint16_t port,
+    const char *method,
+    const char *path,
+    const char *body,
+    int *status
+) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    test_assert(fd >= 0);
+    struct sockaddr_in address = {
+        .sin_family = AF_INET,
+        .sin_port = htons(port),
+        .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+    };
+    test_assert(connect(fd, (struct sockaddr *)&address, sizeof(address)) == 0);
+
+    size_t body_len = body ? strlen(body) : 0;
+    char request[1024];
+    int request_len = snprintf(
+        request,
+        sizeof(request),
+        "%s %s HTTP/1.1\r\nHost: localhost\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n%s",
+        method,
+        path,
+        body_len,
+        body ? body : ""
+    );
+    test_assert(request_len > 0 && (size_t)request_len < sizeof(request));
+    test_assert(send(fd, request, (size_t)request_len, 0) == request_len);
+    test_true(ecs_progress());
+
+    char response[8192];
+    size_t response_len = 0;
+    while (response_len + 1 < sizeof(response)) {
+        ssize_t received = recv(
+            fd,
+            response + response_len,
+            sizeof(response) - response_len - 1,
+            0
+        );
+        if (received <= 0) {
+            break;
+        }
+        response_len += (size_t)received;
+    }
+    close(fd);
+    response[response_len] = 0;
+    test_assert(sscanf(response, "HTTP/1.1 %d", status) == 1);
+
+    const char *response_body = strstr(response, "\r\n\r\n");
+    response_body = response_body ? response_body + 4 : "";
+    size_t response_body_len = response_len - (size_t)(response_body - response);
+    char *copy = malloc(response_body_len + 1);
+    test_not_null(copy);
+    memcpy(copy, response_body, response_body_len);
+    copy[response_body_len] = 0;
+    return copy;
+}
+
+void rest_poll_mutations_are_immediate(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(RestTestPosition);
+
+    uint16_t port = rest_available_port();
+    sirest_import(&(sirest_props_t){
+        .host = "127.0.0.1",
+        .port = port,
+    });
+    uint16_t server_port = sihttp_server_port(ecs_get_resource(SiecsRestState)->server);
+
+    ecs_entity_t entity = ecs_new();
+    char path[128];
+    snprintf(
+        path,
+        sizeof(path),
+        "/entities/%u/components/%u",
+        ecs_entity_id(entity),
+        ecs_id(RestTestPosition)
+    );
+
+    int status;
+    char *body = rest_http_request(server_port, "POST", path, "{}", &status);
+    test_int(201, status);
+    sijson_value_t component = sijson_parse(body);
+    sijson_value_t value = sijson_object_get(component, "value");
+    test_int(0, (int)sijson_number(sijson_object_get(value, "x")));
+    test_int(0, (int)sijson_number(sijson_object_get(value, "y")));
+    free(body);
+
+    body = rest_http_request(
+        server_port,
+        "PUT",
+        path,
+        "{\"value\":{\"x\":42,\"y\":12}}",
+        &status
+    );
+    test_int(200, status);
+    component = sijson_parse(body);
+    value = sijson_object_get(component, "value");
+    test_int(42, (int)sijson_number(sijson_object_get(value, "x")));
+    test_int(12, (int)sijson_number(sijson_object_get(value, "y")));
+    free(body);
+
+    ecs_entity_t parent = ecs_new();
+    ecs_entity_t replacement = ecs_new();
+    ecs_entity_t child = ecs_new();
+    char relation_path[128];
+    snprintf(
+        relation_path,
+        sizeof(relation_path),
+        "/entities/%u/relations/%u",
+        ecs_entity_id(child),
+        ecs_rid(ChildOf)
+    );
+    char relation_body[64];
+    snprintf(relation_body, sizeof(relation_body), "{\"target\":%u}", ecs_entity_id(parent));
+
+    body = rest_http_request(server_port, "PUT", relation_path, relation_body, &status);
+    test_int(200, status);
+    free(body);
+
+    body = rest_http_request(server_port, "GET", "/entities", NULL, &status);
+    test_int(200, status);
+    sijson_value_t roots = sijson_parse(body);
+    test_null((void *)find_by_name(roots, ecs_entity_name(child)));
+    free(body);
+
+    char children_path[128];
+    snprintf(children_path, sizeof(children_path), "/entities/%u/children", ecs_entity_id(parent));
+    body = rest_http_request(server_port, "GET", children_path, NULL, &status);
+    test_int(200, status);
+    sijson_value_t children = sijson_parse(body);
+    test_not_null((void *)find_by_name(children, ecs_entity_name(child)));
+    free(body);
+
+    snprintf(
+        relation_body,
+        sizeof(relation_body),
+        "{\"target\":%u}",
+        ecs_entity_id(replacement)
+    );
+    body = rest_http_request(server_port, "PUT", relation_path, relation_body, &status);
+    test_int(200, status);
+    free(body);
+
+    body = rest_http_request(server_port, "GET", children_path, NULL, &status);
+    test_int(200, status);
+    children = sijson_parse(body);
+    test_null((void *)find_by_name(children, ecs_entity_name(child)));
+    free(body);
+
+    snprintf(
+        children_path,
+        sizeof(children_path),
+        "/entities/%u/children",
+        ecs_entity_id(replacement)
+    );
+    body = rest_http_request(server_port, "GET", children_path, NULL, &status);
+    test_int(200, status);
+    children = sijson_parse(body);
+    test_not_null((void *)find_by_name(children, ecs_entity_name(child)));
+    free(body);
+
+    char replacement_relation_path[128];
+    snprintf(
+        replacement_relation_path,
+        sizeof(replacement_relation_path),
+        "/entities/%u/relations/%u",
+        ecs_entity_id(replacement),
+        ecs_rid(ChildOf)
+    );
+    snprintf(relation_body, sizeof(relation_body), "{\"target\":%u}", ecs_entity_id(child));
+    body = rest_http_request(
+        server_port,
+        "PUT",
+        replacement_relation_path,
+        relation_body,
+        &status
+    );
+    test_int(409, status);
+    free(body);
+
+    body = rest_http_request(server_port, "DELETE", relation_path, NULL, &status);
+    test_int(204, status);
+    free(body);
+    body = rest_http_request(server_port, "GET", "/entities", NULL, &status);
+    test_int(200, status);
+    roots = sijson_parse(body);
+    test_not_null((void *)find_by_name(roots, ecs_entity_name(child)));
+    free(body);
+
+    body = rest_http_request(server_port, "DELETE", relation_path, NULL, &status);
+    test_int(404, status);
+    test_str("relation not present on entity", sijson_string(
+        sijson_object_get(sijson_parse(body), "error")
+    ));
+    free(body);
+
+    char all_path[] = "/entities/all";
+    body = rest_http_request(server_port, "GET", all_path, NULL, &status);
+    test_int(200, status);
+    sijson_value_t all = sijson_parse(body);
+    test_not_null((void *)find_by_name(all, ecs_entity_name(parent)));
+    test_not_null((void *)find_by_name(all, ecs_entity_name(child)));
+    free(body);
+
+    ecs_fini();
 }
 
 void rest_module_lifecycle(void) {

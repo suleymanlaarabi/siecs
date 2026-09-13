@@ -5040,6 +5040,7 @@ typedef struct {
     ecs_system_id_t next_module;
     bool enabled;
     bool main_thread_only;
+    bool no_defer;
 } ecs_system_t;
 
 typedef struct {
@@ -9640,6 +9641,10 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
 
     const bool iterates_query = desc->query.components[0].id ||
         desc->query.relations[0].id || desc->query.order_by.func || desc->query.is_a;
+    ecs_assert(
+        !desc->no_defer || !iterates_query,
+        "no_defer systems cannot iterate entity queries"
+    );
     const bool has_query = iterates_query || desc->query.resources[0].id;
     ecs_system_id_t system = ecs_system_index_create(
         desc,
@@ -9659,7 +9664,9 @@ void ecs_run_system(ecs_system_id_t system) {
         return;
     }
 
-    ecs_defer_begin();
+    if (!sys->no_defer) {
+        ecs_defer_begin();
+    }
     if (sys->iterates_query) {
         ecs_iter_t it = ecs_query_iter(sys->qid);
         it.user_data = sys->user_data;
@@ -9675,7 +9682,9 @@ void ecs_run_system(ecs_system_id_t system) {
         };
         sys->callback(&it);
     }
-    ecs_defer_end();
+    if (!sys->no_defer) {
+        ecs_defer_end();
+    }
 }
 
 void ecs_run_phase(ecs_phase_t phase) {
@@ -11119,6 +11128,7 @@ ecs_system_id_t ecs_system_index_create(const ecs_system_desc_t *desc,
         .next_module = UINT16_MAX,
         .enabled = !desc->disabled,
         .main_thread_only = desc->main_thread_only,
+        .no_defer = desc->no_defer,
     };
     for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY && desc->after[i]; i++) {
 #ifndef NDEBUG

@@ -16,6 +16,7 @@ void rest_schema_uses_public_metadata(void);
 void rest_entity_routes_use_public_introspection(void);
 void rest_relation_routes_are_generic_and_validated(void);
 void rest_component_mutation_uses_public_metadata(void);
+void rest_poll_mutations_are_immediate(void);
 
 bake_test_case rest_testcases[] = {
     {
@@ -45,6 +46,10 @@ bake_test_case rest_testcases[] = {
     {
         "component_mutation_uses_public_metadata",
         rest_component_mutation_uses_public_metadata
+    },
+    {
+        "poll_mutations_are_immediate",
+        rest_poll_mutations_are_immediate
     }
 };
 
@@ -54,7 +59,7 @@ static bake_test_suite suites[] = {
         "rest",
         NULL,
         NULL,
-        7,
+        8,
         rest_testcases
     }
 };

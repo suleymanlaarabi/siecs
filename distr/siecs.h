@@ -2206,6 +2206,8 @@ SIECS_API const char *ecs_phase_name(ecs_phase_t phase);
  * after contains system ids that must run before this system in the same phase.
  * Scheduler data dependencies come from query.components and query.resources.
  * main_thread_only prevents worker dispatch.
+ * no_defer runs the system without deferring ECS mutations. It cannot be used
+ * with entity query iteration.
  */
 typedef struct {
     const char *name;
@@ -2217,6 +2219,7 @@ typedef struct {
     ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
     bool disabled;
     bool main_thread_only;
+    bool no_defer;
 } ecs_system_desc_t;
 
 /*

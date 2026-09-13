@@ -20,7 +20,7 @@ bool ecs_rest_request_relation(
     ecs_relation_id_t *relation
 );
 
-sijson_value_t ecs_rest_entity_json(ecs_entity_t entity);
+sijson_value_t ecs_rest_entity_json(ecs_entity_t entity, bool has_children);
 sijson_value_t ecs_rest_entity_ref_json(ecs_entity_t entity);
 sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity);
 sijson_value_t ecs_rest_entity_relation_json(
@@ -48,6 +48,7 @@ sihttp_response_t ecs_rest_set_entity_component(
 );
 
 sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *req);
+sihttp_response_t ecs_rest_get_all_entities(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_get_entity(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_get_entity_children(const sihttp_request_t *req);
 sihttp_response_t ecs_rest_get_entity_relations(const sihttp_request_t *req);
