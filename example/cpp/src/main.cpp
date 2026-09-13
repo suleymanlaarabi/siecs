@@ -1,3 +1,4 @@
+#include "siecs/cpp/entity.hpp"
 #include "siecs/cpp/world.hpp"
 #include <concepts>
 #include <cstdint>
@@ -28,18 +29,7 @@ int main() {
     ecs::init({ .target_fps = 60 });
     ecs::import<sirest>();
 
-    ecs::system().each([](Position &pos, const Velocity &vel) {
-        pos.x += vel.x;
-        pos.y += vel.y;
-    });
-
-    struct OnClick {};
-
-    ecs::entity e = ecs::entity::create().observe<OnClick>([](ecs::entity e) {
-        std::cout << "clicked: " << e.id();
-    });
-
-    ecs::trigger<OnClick>(e);
+    ecs::entity::create().relate<Enemy>(ecs::entity::create());
 
     ecs::run();
 }

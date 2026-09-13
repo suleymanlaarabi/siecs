@@ -2689,9 +2689,7 @@ class entity {
 
     /** Add child entities to this entity. */
     template <typename... Entities> entity children(Entities... entities) {
-        for (ecs_entity_t entity : { entities... }) {
-            ecs_relate(entity, ChildOf, *this);
-        }
+        (entities.child_of(*this), ...);
         return *this;
     }
 
