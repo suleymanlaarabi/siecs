@@ -170,6 +170,11 @@ static inline void ecs_entity_index_kill(uint32_t entity_id) {
 }
 
 void ecs_kill_now(ecs_entity_t entity) {
+    ecs_relation_virtual_target_on_remove(entity);
+    if (!ecs_is_alive(entity)) {
+        return;
+    }
+
     ecs_entity_record_t *record = ecs_get_record(entity);
     ecs_table_t *initial_table = ecs_get_table(record->table_id);
     const ecs_component_t *components = initial_table->type.ids;

@@ -481,6 +481,29 @@ bool ecs_has_relation_to_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs
     return ecs_target_id(entity, relation) == target;
 }
 
+void ecs_relation_virtual_target_on_remove(ecs_entity_t target) {
+    for (ecs_relation_id_t relation = 1; relation < relation_index.records.size; relation++) {
+        const ecs_relation_record_t *record = ecs_relation_record(relation);
+        if (record->component || !record->ops) {
+            continue;
+        }
+
+        ecs_delete_target_t on_delete_target = record->info.desc.on_delete_target;
+        for (uint32_t entity_id = 1; entity_id < entity_index.entities.size; entity_id++) {
+            ecs_entity_t source = ecs_entity_from_index(entity_id);
+            if (!source || source == target || ecs_target_id(source, relation) != target) {
+                continue;
+            }
+
+            if (on_delete_target == EcsDeleteSources) {
+                ecs_kill_now(source);
+            } else {
+                ecs_unrelate_id_now(source, relation);
+            }
+        }
+    }
+}
+
 void ecs_relation_target_on_remove(ecs_entity_t target, ecs_component_t component, void *ptr) {
     (void)ptr;
     ecs_relation_id_t relation =

@@ -883,6 +883,18 @@ void childof_relation_observer_events(void) {
     test_uint(0, relation_observer_state.new_target);
     test_uint(isa_base, relation_observer_state.target_at_callback);
 
+    ecs_entity_t killed_isa_base = ecs_new();
+    ecs_entity_t killed_isa_source = ecs_new();
+    ecs_relate_id(killed_isa_source, ecs_rid(IsA), killed_isa_base);
+    test_int(7, relation_observer_state.set_calls);
+    ecs_kill(killed_isa_base);
+    test_int(3, relation_observer_state.remove_calls);
+    test_uint(ecs_rid(IsA), relation_observer_state.relation);
+    test_uint(killed_isa_base, relation_observer_state.old_target);
+    test_uint(0, relation_observer_state.new_target);
+    test_uint(killed_isa_base, relation_observer_state.target_at_callback);
+    test_false(ecs_has_relation_id(killed_isa_source, ecs_rid(IsA)));
+
     ecs_fini();
 }
 

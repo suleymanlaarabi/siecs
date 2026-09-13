@@ -25,6 +25,7 @@ extern ecs_relation_index_t relation_index;
 
 void ecs_relation_index_init(void);
 void ecs_relation_index_fini(void);
+void ecs_relation_virtual_target_on_remove(ecs_entity_t target);
 ecs_relation_id_t ecs_relation_register_virtual(
     ecs_relation_id_t *id,
     const char *name,
