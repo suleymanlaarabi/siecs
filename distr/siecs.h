@@ -1498,6 +1498,7 @@ typedef struct {
     ecs_relation_register(&ecs_rid(cname), #cname, &ecs_rid(cname##_desc));
 #define ECS_RELATION_REGISTER(...) PP_FOR_EACH(ECS_RELATION_REGISTER_ONE, __VA_ARGS__)
 
+ECS_RELATION_DECLARE(IsA);
 ECS_RELATION_DECLARE(ChildOf);
 
 /* C++ declarations made after this header use the C relation id/descriptor. */
@@ -2264,6 +2265,27 @@ SIECS_API void ecs_system_enable(ecs_system_id_t system);
 /* Disable a system without unregistering it. */
 SIECS_API void ecs_system_disable(ecs_system_id_t system);
 
+/*
+ * Save the current ECS world as an instantiable binary scene.
+ *
+ * Entity handles are never persisted. References to entities inside reflected
+ * components and ECS relations are stored as scene-local indices and remapped
+ * to fresh runtime entities by ecs_load().
+ *
+ * The scene is intentionally tied to the currently registered component /
+ * relation layout of the binary that loads it.
+ */
+bool ecs_save(const char *path);
+
+/*
+ * Instantiate a previously saved scene into the current world.
+ *
+ * Components / relations / modules must already be registered before calling
+ * this function. Loading the same file multiple times creates independent new
+ * entities each time.
+ */
+bool ecs_load(const char *path);
+
 #ifdef __cplusplus
 }
 #endif
@@ -2695,19 +2717,19 @@ class entity {
 
     /** Add an inheritance link to `target`. */
     entity is_a(entity target) {
-        ecs_is_a(_entity, target.id());
+        ecs_relate_id(_entity, ecs_rid(IsA), target.id());
         return *this;
     }
 
     /** Add an inheritance link to the singleton entity for `T`. */
     template <typename T> entity is_a() {
-        ecs_is_a(_entity, ecs::entity::create<T>());
+        ecs_relate_id(_entity, ecs_rid(IsA), ecs::entity::create<T>());
         return *this;
     }
 
     /** C-compatible overload of `is_a`; target must be a live entity. */
     entity is_a(ecs_entity_t target) {
-        ecs_is_a(_entity, target);
+        ecs_relate_id(_entity, ecs_rid(IsA), target);
         return *this;
     }
 

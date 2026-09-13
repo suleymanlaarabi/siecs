@@ -1495,6 +1495,27 @@ SIECS_API void ecs_system_enable(ecs_system_id_t system);
 /* Disable a system without unregistering it. */
 SIECS_API void ecs_system_disable(ecs_system_id_t system);
 
+/*
+ * Save the current ECS world as an instantiable binary scene.
+ *
+ * Entity handles are never persisted. References to entities inside reflected
+ * components and ECS relations are stored as scene-local indices and remapped
+ * to fresh runtime entities by ecs_load().
+ *
+ * The scene is intentionally tied to the currently registered component /
+ * relation layout of the binary that loads it.
+ */
+bool ecs_save(const char *path);
+
+/*
+ * Instantiate a previously saved scene into the current world.
+ *
+ * Components / relations / modules must already be registered before calling
+ * this function. Loading the same file multiple times creates independent new
+ * entities each time.
+ */
+bool ecs_load(const char *path);
+
 #ifdef __cplusplus
 }
 #endif
