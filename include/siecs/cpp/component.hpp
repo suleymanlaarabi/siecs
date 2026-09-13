@@ -32,7 +32,7 @@ template <typename T> struct component_options {
 
 namespace detail {
 
-enum class id_kind { component, relation, resource };
+enum class id_kind : uint8_t { component, relation, resource };
 template <typename T, id_kind Kind> inline uint16_t typed_id = 0;
 
 template <typename T>

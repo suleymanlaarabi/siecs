@@ -9,11 +9,8 @@ static bool rest_path_uint_segment(
     uint32_t limit,
     uint32_t *result
 ) {
-    if (!req || !req->path) {
-        return false;
-    }
-
     const char *cursor = req->path;
+
     if (*cursor == '/') {
         cursor++;
     }
@@ -56,19 +53,14 @@ static bool rest_path_uint_segment(
 ecs_entity_t ecs_rest_request_entity(const sihttp_request_t *req) {
     uint32_t index = 0;
     return rest_path_uint_segment(req, 1, UINT32_MAX, &index) && index
-        ? ecs_entity_from_index(index)
-        : 0;
+               ? ecs_entity_from_index(index)
+               : 0;
 }
 
-bool ecs_rest_request_component(
-    const sihttp_request_t *req,
-    ecs_component_t *component
-) {
+bool ecs_rest_request_component(const sihttp_request_t *req, ecs_component_t *component) {
     uint32_t value = 0;
-    if (
-        !rest_path_uint_segment(req, 3, UINT16_MAX, &value) || !value ||
-        value >= ecs_component_count() || !ecs_component_info((ecs_component_t)value)
-    ) {
+    if (!rest_path_uint_segment(req, 3, UINT16_MAX, &value) || !value ||
+        value >= ecs_component_count() || !ecs_component_info((ecs_component_t)value)) {
         return false;
     }
 
@@ -76,15 +68,10 @@ bool ecs_rest_request_component(
     return true;
 }
 
-bool ecs_rest_request_relation(
-    const sihttp_request_t *req,
-    ecs_relation_id_t *relation
-) {
+bool ecs_rest_request_relation(const sihttp_request_t *req, ecs_relation_id_t *relation) {
     uint32_t value = 0;
-    if (
-        !rest_path_uint_segment(req, 3, UINT16_MAX, &value) || !value ||
-        value >= ecs_relation_count() || !ecs_relation_info((ecs_relation_id_t)value)
-    ) {
+    if (!rest_path_uint_segment(req, 3, UINT16_MAX, &value) || !value ||
+        value >= ecs_relation_count() || !ecs_relation_info((ecs_relation_id_t)value)) {
         return false;
     }
 

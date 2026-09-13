@@ -135,8 +135,8 @@ sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
     sijson_value_t components = sijson_make_array();
     for (uint32_t id = 1; id < ecs_component_count(); id++) {
         ecs_component_t component = (ecs_component_t)id;
-        const ecs_component_info_t *info = ecs_component_info(component);
-        if (info && info->reflection && ecs_has_cid_owned(entity, component)) {
+        if (ecs_rest_entity_component_is_reflected(component) &&
+            ecs_has_cid_owned(entity, component)) {
             sijson_array_push(
                 components,
                 ecs_rest_entity_component_json(component, ecs_get_cid(entity, component))
