@@ -260,7 +260,6 @@ bool sicore_map_unset(sicore_map_t *map, const char *key);
 #define SIREFLECT_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
-/* No dependencies */
 
 /* Convenience macro for exporting symbols */
 #ifndef sireflect_STATIC
