@@ -31,8 +31,8 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
         desc->phase
     );
 
-    const bool iterates_query = desc->query.match_all || desc->query.components[0].id ||
-        desc->query.relations[0].id || desc->query.order_by.func || desc->query.is_a;
+    const bool iterates_query = desc->query.components[0].id || desc->query.relations[0].id ||
+        desc->query.order_by.func || desc->query.is_a;
     ecs_assert(
         !desc->no_defer || !iterates_query,
         "no_defer systems cannot iterate entity queries"

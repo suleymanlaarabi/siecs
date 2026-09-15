@@ -40,8 +40,7 @@ static void count_system(ecs_iter_t *it) {
 int main(void) {
     ecs_init();
 
-    ECS_COMPONENT_REGISTER(LeakCounter);
-    ECS_COMPONENT_REGISTER(LeakHooked);
+    ECS_COMPONENT_REGISTER(LeakCounter, LeakHooked);
 
     ecs_observer(
         {

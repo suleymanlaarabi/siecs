@@ -73,8 +73,6 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
     ecs_query_builder_t b = { .query = { .is_a = desc->is_a, .order_by = desc->order_by },
         .candidates = { .count = table_index.table_count } };
     ecs_query_t *q = &b.query;
-    bool tracks = desc->match_all || desc->components[0].id || desc->relations[0].id ||
-        desc->is_a || desc->order_by.func;
     ecs_component_t excludes[] = { ecs_id(Disabled), ecs_id(Abstract) };
     for (uint8_t i = 0; i < ECS_QUERY_TERM_CAPACITY && desc->components[i].id; i++) {
         ecs_component_term_t term = desc->components[i];
@@ -82,7 +80,7 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
             if (term.id == excludes[j]) excludes[j] = 0;
         ecs_query_compile_term(&b, term);
     }
-    for (uint8_t i = 0; tracks && i < 2; i++)
+    for (uint8_t i = 0; i < 2; i++)
         if (excludes[i]) ecs_query_compile_term(&b, (ecs_component_term_t){ excludes[i], EcsNot });
     for (uint8_t i = 0; i < ECS_QUERY_RELATION_CAPACITY && desc->relations[i].id; i++) {
         ecs_query_relation_term_t term = desc->relations[i];
@@ -131,7 +129,7 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
     ecs_query_cache_t *cache = sicore_vec_get_mut(&query_index.queries, id, ecs_query_cache_t);
     *cache = (ecs_query_cache_t){ .query = compiled, .alive = true,
         .active_index = UINT32_MAX, .observer = UINT32_MAX, .next_free = UINT16_MAX };
-    if (tracks) ecs_query_index_activate(id, b.candidates.ids, b.candidates.count);
+    ecs_query_index_activate(id, b.candidates.ids, b.candidates.count);
     return id;
 }
 static bool ecs_query_bind(const ecs_query_t *q, const ecs_table_t *table, ecs_query_table_t *entry) {

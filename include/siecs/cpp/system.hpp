@@ -83,7 +83,6 @@ class system : protected query {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
         detail::append_callback_terms<args>(desc, component_index, resource_index);
-        detail::enable_entity_iteration<args>(desc);
         callback *state = new callback(std::forward<F>(func));
 
         _system.query = this->desc;

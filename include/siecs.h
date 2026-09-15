@@ -401,8 +401,6 @@ typedef struct {
     ecs_query_relation_term_t relations[ECS_QUERY_RELATION_CAPACITY];
     ecs_query_order_t order_by;
     ecs_entity_t is_a;
-    /* Match every ordinary table when no table criterion is present. */
-    bool match_all;
 } ecs_query_desc_t;
 
 /*
@@ -1014,9 +1012,7 @@ SIECS_API void ecs_kill(ecs_entity_t entity);
             for (uint64_t i = 0, entity = *it.entities; i < it.count; i++, entity = it.entities[i])
 /*
  * Create a query. A query may contain components, resources, relations, is_a,
- * or order_by. Set match_all to iterate every ordinary table when no table
- * criterion is present. Otherwise, a query without a table criterion produces
- * no entity batches.
+ * or order_by. A query without a table criterion matches every ordinary table.
  * Queries created during a module import inherit that module's lifetime.
  */
 SIECS_API ecs_query_id_t ecs_query_init(const ecs_query_desc_t *query);
