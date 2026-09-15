@@ -15,7 +15,6 @@ scheduled systems, relations, and runtime reflection.
 
 ## Project links
 
-- [Website](https://siecs.dev/)
 - [Documentation](https://docs.siecs.dev/)
 
 > [!CAUTION]
