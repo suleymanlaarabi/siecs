@@ -76,6 +76,8 @@ class entity {
         return value;
     }
 
+    static entity instantiate(entity prefab) { return create().is_a(prefab); }
+
     /** Wrap an id without changing world state. */
     static entity from(ecs_entity_t id) noexcept { return entity(id); }
     /** Return the null entity handle. */
