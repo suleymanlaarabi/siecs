@@ -29,7 +29,8 @@ struct ecs_worker_pool_s {
     atomic_uint epoch;
     atomic_bool stop;
     ecs_platform_mutex_t mutex;
-    ecs_platform_condition_t condition;
+    ecs_platform_condition_t work_condition;
+    ecs_platform_condition_t completion_condition;
 };
 
 void ecs_worker_pool_init(ecs_worker_pool_t *pool, uint16_t requested_workers);
