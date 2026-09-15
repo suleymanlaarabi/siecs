@@ -90,7 +90,7 @@ void query_full_descriptor_and_empty_candidates(void) {
     test_uint(1, ecs_query_count(q));
     ecs_query_fini(q);
     q = ecs_query({ 0 });
-    test_uint(0, ecs_query_count(q));
+    test_uint(2, ecs_query_count(q));
     ecs_query_fini(q);
     ecs_fini();
 }
@@ -231,14 +231,16 @@ void query_resources_do_not_affect_matching_or_fields(void) {
     ecs_fini();
 }
 
-void query_resource_only_has_no_entity_batches(void) {
+void query_resource_only_matches_all_tables(void) {
     query_test_world();
     query_test_entity(10, 20, 30);
     ecs_query_id_t query = ecs_query({
         .resources = { ecs_in(QueryResource) },
     });
-    test_uint(0, ecs_query_count(query));
+    test_uint(1, ecs_query_count(query));
     ecs_iter_t it = ecs_query_iter(query);
+    test_true(ecs_iter_next(&it));
+    test_int(1, it.count);
     test_false(ecs_iter_next(&it));
     ecs_query_fini(query);
     ecs_fini();

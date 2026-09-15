@@ -124,7 +124,7 @@ void query_full_descriptor_and_empty_candidates(void);
 void query_sorted_growth_preserves_fields_and_equal_order(void);
 void query_terms_field_order(void);
 void query_resources_do_not_affect_matching_or_fields(void);
-void query_resource_only_has_no_entity_batches(void);
+void query_resource_only_matches_all_tables(void);
 void query_count_matches_current_query_entities(void);
 void query_out_term_matches_and_returns_field(void);
 void query_not_excludes_tables(void);
@@ -646,8 +646,8 @@ bake_test_case query_testcases[] = {
         query_resources_do_not_affect_matching_or_fields
     },
     {
-        "resource_only_has_no_entity_batches",
-        query_resource_only_has_no_entity_batches
+        "resource_only_matches_all_tables",
+        query_resource_only_matches_all_tables
     },
     {
         "count_matches_current_query_entities",

@@ -155,7 +155,7 @@
           "sorted_growth_preserves_fields_and_equal_order",
           "terms_field_order",
           "resources_do_not_affect_matching_or_fields",
-          "resource_only_has_no_entity_batches",
+          "resource_only_matches_all_tables",
           "count_matches_current_query_entities",
           "out_term_matches_and_returns_field",
           "not_excludes_tables",
