@@ -4636,7 +4636,6 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer);
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t id);
 void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t id);
 void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t id, const void *data);
-void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t id, void *data);
 void ecs_kill_now(ecs_entity_t entity);
 void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target);
 
@@ -6453,13 +6452,11 @@ const char *ecs_component_name(ecs_component_t component) {
 
 #include <stdarg.h>
 
-#ifdef ecs_with
-#undef ecs_with
-#endif
-
-#define ecs_assert_can_be_updated(entity) \
-    ecs_assert(!ecs_has_cid_owned(entity, ecs_id(Abstract)), \
-               "An abstract entity cannot be updated.")
+#define ecs_assert_can_be_updated(entity)                                                          \
+    ecs_assert(                                                                                    \
+        !ecs_has_cid_owned(entity, ecs_id(Abstract)),                                              \
+        "An abstract entity cannot be updated."                                                    \
+    )
 
 #define entity_edit(entity, table, record)                                                         \
     ecs_entity_record_t *record = ecs_get_record(entity);                                          \
@@ -6504,13 +6501,17 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
         uint16_t count = 0, required = 0;
         bool component_pending = true;
         while (required < crec->required_count || component_pending) {
-            ecs_component_t next = required < crec->required_count
-                                       ? crec->required[required]
-                                       : UINT16_MAX;
-            if (component_pending && cid < next) { next = cid; component_pending = false; }
-            else if (component_pending && cid == next) component_pending = false;
-            else required++;
-            if (!ecs_table_has_owned(table, next)) added[count++] = next;
+            ecs_component_t next =
+                required < crec->required_count ? crec->required[required] : UINT16_MAX;
+            if (component_pending && cid < next) {
+                next = cid;
+                component_pending = false;
+            } else if (component_pending && cid == next)
+                component_pending = false;
+            else
+                required++;
+            if (!ecs_table_has_owned(table, next))
+                added[count++] = next;
         }
         ecs_type_t new_type = ecs_type_with_added_ids(&table->type, added, count);
         edge = ecs_table_index_get_or_create(new_type);
@@ -6625,16 +6626,14 @@ void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
     return ecs_component_get_from_record(ecs_get_record(entity), cid);
 }
 
-void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) {
-    return ecs_get_cid(entity, cid);
-}
+void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) { return ecs_get_cid(entity, cid); }
 
-static inline void ecs_store_cid_now(
-    ecs_entity_t entity, ecs_component_t cid, void *data, bool move
-) {
+static inline void
+ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     bool had_value = move && ecs_has_cid_owned(entity, cid);
     ecs_add_cid_now(entity, cid);
-    if (!move) ecs_defer_begin();
+    if (!move)
+        ecs_defer_begin();
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
     entity_edit(entity, table, record);
     void *dst = ecs_table_get_component(table, cid, record->table_row);
@@ -6647,9 +6646,12 @@ static inline void ecs_store_cid_now(
         ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
     } else if (!move) {
         ecs_component_value_copy(crec, dst, data, 1);
-    } else if (had_value || crec->ops.ctor) ecs_component_value_move(crec, dst, data, 1);
-    else ecs_component_value_move_ctor(crec, dst, data, 1);
-    if (!move) ecs_defer_end();
+    } else if (had_value || crec->ops.ctor)
+        ecs_component_value_move(crec, dst, data, 1);
+    else
+        ecs_component_value_move_ctor(crec, dst, data, 1);
+    if (!move)
+        ecs_defer_end();
 }
 
 void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data) {
@@ -6659,8 +6661,10 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
 static inline void ecs_store_cid(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     ecs_assert_component_access(entity, cid);
     if (ecs_is_deferred()) {
-        if (move) ecs_command_buffer_move(entity, cid, data);
-        else ecs_command_buffer_set(entity, cid, data);
+        if (move)
+            ecs_command_buffer_move(entity, cid, data);
+        else
+            ecs_command_buffer_set(entity, cid, data);
         return;
     }
     ecs_store_cid_now(entity, cid, data, move);
@@ -6675,10 +6679,6 @@ void ecs_modified_cid(ecs_entity_t entity, ecs_component_t cid) {
     entity_edit(entity, table, record);
     void *data = ecs_table_get_component(table, cid, record->table_row);
     ecs_emit(table, entity, EcsOnSet, cid, data);
-}
-
-void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data) {
-    ecs_store_cid_now(entity, cid, data, true);
 }
 
 void ecs_move_cid(ecs_entity_t entity, ecs_component_t cid, void *data) {
@@ -6699,27 +6699,34 @@ bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id) {
     return ecs_table_has_owned(ecs_get_table(tid), id);
 }
 
-static uint32_t ecs_required_lower_bound(
-    const ecs_component_t *ids, uint32_t count, ecs_component_t id
-) {
+static uint32_t
+ecs_required_lower_bound(const ecs_component_t *ids, uint32_t count, ecs_component_t id) {
     uint32_t first = 0;
     while (first < count) {
         uint32_t middle = first + (count - first) / 2;
-        if (ids[middle] < id) first = middle + 1;
-        else count = middle;
+        if (ids[middle] < id)
+            first = middle + 1;
+        else
+            count = middle;
     }
     return first;
 }
 
 static void ecs_required_add(ecs_component_record_t *record, ecs_component_t id) {
     uint32_t at = ecs_required_lower_bound(record->required, record->required_count, id);
-    if (at < record->required_count && record->required[at] == id) return;
-    ecs_assert(record->required_count < ECS_COMPONENT_REQUIRE_CAPACITY - 1,
-               "component requirement capacity exceeded\n");
-    record->required = realloc(record->required,
-                               sizeof *record->required * (record->required_count + 1));
-    memmove(record->required + at + 1, record->required + at,
-            (record->required_count - at) * sizeof *record->required);
+    if (at < record->required_count && record->required[at] == id)
+        return;
+    ecs_assert(
+        record->required_count < ECS_COMPONENT_REQUIRE_CAPACITY - 1,
+        "component requirement capacity exceeded\n"
+    );
+    record->required =
+        realloc(record->required, sizeof *record->required * (record->required_count + 1));
+    memmove(
+        record->required + at + 1,
+        record->required + at,
+        (record->required_count - at) * sizeof *record->required
+    );
     record->required[at] = id;
     record->required_count++;
 }
@@ -6730,20 +6737,24 @@ static inline void ecs_with_impl(ecs_component_t component, ecs_component_t requ
     ecs_assert(component != require, "component cannot require itself: %d\n", component);
     const ecs_component_record_t *required_record = ecs_component_index_get(require);
     uint32_t cycle = ecs_required_lower_bound(
-        required_record->required, required_record->required_count, component);
+        required_record->required,
+        required_record->required_count,
+        component
+    );
     ecs_assert(
         cycle == required_record->required_count || required_record->required[cycle] != component,
         "cyclic component requirement: %d requires %d\n",
         component,
         require
-    ); (void)cycle;
+    );
+    (void)cycle;
 
     ecs_component_record_t *records = component_index.components.data;
     for (uint32_t i = 1; i < component_index.components.size; i++) {
         ecs_component_record_t *record = &records[i];
         uint32_t at = ecs_required_lower_bound(record->required, record->required_count, component);
-        if (i != component &&
-            (at == record->required_count || record->required[at] != component)) continue;
+        if (i != component && (at == record->required_count || record->required[at] != component))
+            continue;
         ecs_assert(record->tables.size == 0, "component already used cannot register requirement");
         ecs_required_add(record, require);
         for (uint32_t r = 0; r < required_record->required_count; r++)

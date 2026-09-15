@@ -1,8 +1,8 @@
 #ifndef SIECS_COMMAND_BUFFER_H
 #define SIECS_COMMAND_BUFFER_H
 
-#include "siecs.h"
 #include "datastructure/arena.h"
+#include "siecs.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -77,7 +77,6 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer);
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t id);
 void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t id);
 void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t id, const void *data);
-void ecs_move_cid_now(ecs_entity_t entity, ecs_component_t id, void *data);
 void ecs_kill_now(ecs_entity_t entity);
 void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target);
 
