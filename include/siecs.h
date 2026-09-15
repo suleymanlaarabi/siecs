@@ -474,10 +474,32 @@ typedef struct {
 /* Initialize a world with the given features. */
 SIECS_API void ecs_init_w_features(const ecs_world_feat_desc_t *features);
 
+typedef void (*ecs_fini_callback_t)(void *data);
+
+typedef struct ecs_fini_desc_t {
+    ecs_fini_callback_t callback;
+    void *data;
+} ecs_fini_desc_t;
+
+#define ecs_at_fini(...) ecs_at_fini_init(&(ecs_fini_desc_t)__VA_ARGS__)
+
 /*
- * Destroy the world. Live component teardown runs before resource teardown, so
- * component on_remove hooks can still access world resources. Resources are
- * finalized in reverse first-registration order.
+ * Register a callback for the current world finalization.
+ *
+ * Callbacks execute exactly once, in reverse registration order, after
+ * worker threads have stopped and before table/component/resource teardown.
+ * `data` is borrowed and must remain valid until the callback executes.
+ * Registering another fini callback from a fini callback is invalid.
+ */
+SIECS_API void ecs_at_fini_init(const ecs_fini_desc_t *desc);
+
+/*
+ * Finalize the world.
+ *
+ * Worker threads stop first. Registered fini callbacks then execute in
+ * reverse registration order. Live component teardown follows while world
+ * resources are still available, then resources and the remaining world
+ * storage are finalized.
  */
 SIECS_API void ecs_fini(void);
 

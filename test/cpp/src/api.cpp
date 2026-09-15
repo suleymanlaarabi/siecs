@@ -1,6 +1,7 @@
 #include <siecs.h>
 #include "c_types_test.h"
 #include <test.h>
+#include <memory>
 
 struct ApiPosition {
     int value;
@@ -30,6 +31,30 @@ struct ApiHookTime {
 
 static uint32_t api_component_set_calls = 0;
 static uint32_t api_resource_set_calls = 0;
+
+void api_at_fini_captures_callable_state(void) {
+    int calls = 0;
+    std::weak_ptr<int> state_lifetime;
+
+    ecs::init();
+
+    {
+        auto state = std::make_shared<int>(42);
+        state_lifetime = state;
+
+        ecs::at_fini([state, &calls]() {
+            test_int(*state, 42);
+            calls++;
+        });
+    }
+
+    test_false(state_lifetime.expired());
+
+    ecs::fini();
+
+    test_int(calls, 1);
+    test_true(state_lifetime.expired());
+}
 
 static void api_hooked_on_set(ecs_entity_t, const ApiHooked &, ApiHooked &) {
     api_component_set_calls++;
@@ -259,4 +284,3 @@ void api_cpp_custom_phase(void) {
     test_int(2, order[1]);
     test_int(3, order[2]);
 }
-

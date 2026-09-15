@@ -74,6 +74,10 @@ void resource_hooks(void);
 void resource_fini_runs_after_component_remove(void);
 void resource_fini_uses_reverse_registration_order(void);
 
+// Testsuite 'world'
+void world_at_fini_runs_all_in_reverse_registration_order(void);
+void world_at_fini_is_cleared_on_restart(void);
+
 // Testsuite 'childof'
 void childof_kill_parent(void);
 void childof_with_relation_adds_default_relation(void);
@@ -451,6 +455,17 @@ bake_test_case resource_testcases[] = {
     {
         "fini_uses_reverse_registration_order",
         resource_fini_uses_reverse_registration_order
+    }
+};
+
+bake_test_case world_testcases[] = {
+    {
+        "at_fini_runs_all_in_reverse_registration_order",
+        world_at_fini_runs_all_in_reverse_registration_order
+    },
+    {
+        "at_fini_is_cleared_on_restart",
+        world_at_fini_is_cleared_on_restart
     }
 };
 
@@ -1004,6 +1019,13 @@ static bake_test_suite suites[] = {
         resource_testcases
     },
     {
+        "world",
+        NULL,
+        NULL,
+        2,
+        world_testcases
+    },
+    {
         "childof",
         NULL,
         NULL,
@@ -1041,5 +1063,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 9);
+    return bake_test_run("siecs.test", argc, argv, suites, 10);
 }

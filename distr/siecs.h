@@ -1243,10 +1243,32 @@ typedef struct {
 /* Initialize a world with the given features. */
 SIECS_API void ecs_init_w_features(const ecs_world_feat_desc_t *features);
 
+typedef void (*ecs_fini_callback_t)(void *data);
+
+typedef struct ecs_fini_desc_t {
+    ecs_fini_callback_t callback;
+    void *data;
+} ecs_fini_desc_t;
+
+#define ecs_at_fini(...) ecs_at_fini_init(&(ecs_fini_desc_t)__VA_ARGS__)
+
 /*
- * Destroy the world. Live component teardown runs before resource teardown, so
- * component on_remove hooks can still access world resources. Resources are
- * finalized in reverse first-registration order.
+ * Register a callback for the current world finalization.
+ *
+ * Callbacks execute exactly once, in reverse registration order, after
+ * worker threads have stopped and before table/component/resource teardown.
+ * `data` is borrowed and must remain valid until the callback executes.
+ * Registering another fini callback from a fini callback is invalid.
+ */
+SIECS_API void ecs_at_fini_init(const ecs_fini_desc_t *desc);
+
+/*
+ * Finalize the world.
+ *
+ * Worker threads stop first. Registered fini callbacks then execute in
+ * reverse registration order. Live component teardown follows while world
+ * resources are still available, then resources and the remaining world
+ * storage are finalized.
  */
 SIECS_API void ecs_fini(void);
 
@@ -3990,6 +4012,7 @@ inline void disable_system(ecs_system_id_t id) { ecs_system_disable(id); }
 
 #include <cstring>
 #include <string>
+#include <type_traits>
 #include <tuple>
 #include <utility>
 
@@ -4017,6 +4040,36 @@ inline void init(const ecs_world_feat_desc_t &features) {
 }
 /** Destroy the active world; all entity, query, module and resource handles expire. */
 inline void fini() { ecs_fini(); }
+
+namespace detail {
+
+template <typename Callback>
+static void at_fini_callback(void *data) {
+    Callback *callback = static_cast<Callback *>(data);
+    (*callback)();
+    delete callback;
+}
+
+} // namespace detail
+
+template <typename F>
+inline void at_fini(F &&func) {
+    using callback = std::remove_cvref_t<F>;
+
+    static_assert(
+        std::is_invocable_v<callback &>,
+        "ecs::at_fini callback must be invocable as void()"
+    );
+
+    callback *state = new callback(std::forward<F>(func));
+
+    ecs_fini_desc_t desc{
+        .callback = detail::at_fini_callback<callback>,
+        .data = state,
+    };
+
+    ::ecs_at_fini_init(&desc);
+}
 /** Request that future progress calls stop. */
 inline void quit() { ecs_quit(); }
 /** Run one frame; returns false after `quit()` has been requested. */

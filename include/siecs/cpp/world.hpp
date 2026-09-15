@@ -11,6 +11,7 @@
 #include "siecs/cpp/type.hpp"
 #include <cstring>
 #include <string>
+#include <type_traits>
 #include <tuple>
 #include <utility>
 
@@ -38,6 +39,36 @@ inline void init(const ecs_world_feat_desc_t &features) {
 }
 /** Destroy the active world; all entity, query, module and resource handles expire. */
 inline void fini() { ecs_fini(); }
+
+namespace detail {
+
+template <typename Callback>
+static void at_fini_callback(void *data) {
+    Callback *callback = static_cast<Callback *>(data);
+    (*callback)();
+    delete callback;
+}
+
+} // namespace detail
+
+template <typename F>
+inline void at_fini(F &&func) {
+    using callback = std::remove_cvref_t<F>;
+
+    static_assert(
+        std::is_invocable_v<callback &>,
+        "ecs::at_fini callback must be invocable as void()"
+    );
+
+    callback *state = new callback(std::forward<F>(func));
+
+    ecs_fini_desc_t desc{
+        .callback = detail::at_fini_callback<callback>,
+        .data = state,
+    };
+
+    ::ecs_at_fini_init(&desc);
+}
 /** Request that future progress calls stop. */
 inline void quit() { ecs_quit(); }
 /** Run one frame; returns false after `quit()` has been requested. */

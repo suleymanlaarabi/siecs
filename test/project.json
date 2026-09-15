@@ -98,6 +98,13 @@
         ]
       },
       {
+        "id": "world",
+        "testcases": [
+          "at_fini_runs_all_in_reverse_registration_order",
+          "at_fini_is_cleared_on_restart"
+        ]
+      },
+      {
         "id": "childof",
         "testcases": [
           "kill_parent",

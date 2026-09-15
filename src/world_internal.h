@@ -22,6 +22,7 @@ struct ecs_world_s {
     ecs_world_feat_desc_t features;
     ecs_execution_context_t main_context;
     ecs_worker_pool_t worker_pool;
+    sicore_vec_t fini_callbacks;
     bool did_start;
     bool exit;
     double delta_time;

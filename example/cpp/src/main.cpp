@@ -37,6 +37,7 @@ void my_scene() {
 int main() {
     ecs::init({ .target_fps = 60 });
     ecs::import<sirest>();
+
     // ecs_load("./my_scene");
     // my_scene();
     ecs::run();

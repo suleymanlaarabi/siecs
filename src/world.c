@@ -42,6 +42,10 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_resource_storage_init();
     ecs_arena_init(&ecs_world.scene_strings);
     ecs_execution_context_init(&ecs_world.main_context);
+    sicore_vec_init(
+        &ecs_world.fini_callbacks,
+        sizeof(ecs_fini_desc_t)
+    );
     ecs_world.active_module = 0;
     ecs_world.features = *features;
     ecs_world.did_start = false;
@@ -54,11 +58,44 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
 
 void ecs_init(void) { ecs_init_w_features(&(ecs_world_feat_desc_t){ 0 }); }
 
+void ecs_at_fini_init(const ecs_fini_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("fini callback registration");
+    ecs_assert_not_null(desc);
+    ecs_assert_not_null(desc->callback);
+    ecs_assert(
+        !ecs_world_finished,
+        "ecs_at_fini called during or after ecs_fini\n"
+    );
+
+    sicore_vec_push(
+        &ecs_world.fini_callbacks,
+        desc,
+        sizeof(*desc)
+    );
+}
+
+static void ecs_fini_callbacks_run(void) {
+    const uint32_t count = ecs_world.fini_callbacks.size;
+
+    for (uint32_t i = count; i > 0; i--) {
+        ecs_fini_desc_t desc = *sicore_vec_get(
+            &ecs_world.fini_callbacks,
+            i - 1,
+            ecs_fini_desc_t
+        );
+
+        desc.callback(desc.data);
+    }
+
+    sicore_vec_fini(&ecs_world.fini_callbacks);
+}
+
 void ecs_fini(void) {
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
     ecs_world_finished = true;
 
     ecs_worker_pool_fini(&ecs_world.worker_pool);
+    ecs_fini_callbacks_run();
 
     /* Live component teardown must finish while world resources are available. */
     ecs_table_index_fini();
