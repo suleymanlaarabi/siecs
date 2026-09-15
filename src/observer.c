@@ -21,7 +21,7 @@ void ecs_observer_index_init(void) {
 void ecs_observer_index_fini(void) {
     ecs_observer_t *observers = observer_index.observers.data;
     for (uint32_t i = 0; i < observer_index.observers.size; i++) {
-        if (observers[i].callback != NULL && observers[i].query != ECS_OBSERVER_NO_QUERY)
+        if (observers[i].query != ECS_OBSERVER_NO_QUERY)
             ecs_query_fini(observers[i].query);
     }
     sicore_vec_fini(&observer_index.target_observers);

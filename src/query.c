@@ -21,6 +21,7 @@ uint32_t ecs_query_count(ecs_query_id_t query_id) {
     for (uint16_t i = 0; i < cache->table_count; i++) {
         const uint16_t table_id = ecs_query_table_id(cache, i);
         const ecs_table_t *table = ecs_get_table(table_id);
+        if (!table->entity_count) continue;
         if (ECS_UNLIKELY(cache->query->up_mask) &&
             !ecs_query_resolve_up_fields(cache, table, ecs_query_table_at(cache, i))) {
             continue;
@@ -63,11 +64,6 @@ const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_i
     return column == UINT16_MAX ? NULL : table->cls[column].data;
 }
 ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
-#ifndef NDEBUG
-    const ecs_relation_record_t *record = ecs_relation_record(relation);
-    ecs_assert(record->info.desc.storage == EcsRelationByTarget, "ecs_target_shared requires ByTarget\n");
-
-#endif
     const uint16_t table_id = ecs_query_table_id(it->cache, it->table_idx);
     const ecs_table_t *table = ecs_get_table(table_id);
     return ecs_table_target_id(table, relation);

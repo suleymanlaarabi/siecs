@@ -12,7 +12,6 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     table->type = type;
     table->entity_capacity = 1;
     table->entity_count = 0;
-    table->add_edge.aux = 0;
     table->entities = malloc(sizeof(ecs_entity_t) * table->entity_capacity);
     table->cls =
         type.component_count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.component_count);

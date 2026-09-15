@@ -122,9 +122,7 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
             ecs_first(entity),
             ecs_first(target)
         );
-        if (!ecs_has_cid_owned(target, ecs_id(Abstract))) {
-            ecs_add_cid_now(target, ecs_id(Abstract));
-        }
+        ecs_add_cid_now(target, ecs_id(Abstract));
     }
 
     ecs_entity_record_t *record = ecs_get_record(entity);
@@ -143,11 +141,6 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     );
     new_type.base = target;
     uint16_t to_table_id = ecs_table_index_get_or_create(new_type);
-    if (to_table_id == from_table_id) {
-        ecs_inheritance_plan_fini(&plan);
-        return;
-    }
-
     from_table = ecs_get_table(from_table_id);
     ecs_migrate(record, entity, from_table, to_table_id, 0);
     ecs_table_t *to_table = ecs_get_table(to_table_id);
@@ -237,9 +230,8 @@ void ecs_kill(ecs_entity_t entity) {
 
 const char *ecs_entity_name(ecs_entity_t entity) {
     static char *buff = NULL;
-    if (ecs_has(entity, Name)) {
-        return ecs_get(entity, Name)->value;
-    }
+    const Name *name = ecs_try_get(entity, Name);
+    if (name) return name->value;
     if (!buff) {
         buff = calloc(20, sizeof(char));
     }

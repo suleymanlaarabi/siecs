@@ -82,15 +82,12 @@ void ecs_run_system(ecs_system_id_t system) {
 void ecs_run_phase(ecs_phase_t phase) {
     ecs_system_index_t *index = &system_index;
     ecs_phase_info_t *pinfo = ecs_system_index_get_phase(phase);
-    ecs_assert(pinfo != NULL, "invalid system phase: %u\n", phase);
+    if (!pinfo)
+        return;
 
     if (index->plan_dirty) {
         ecs_system_index_build_plan();
     }
-
-    pinfo = ecs_system_index_get_phase(phase);
-    if (!pinfo)
-        return;
 
     const ecs_system_id_t *order = index->execution_order.data;
     uint32_t at = pinfo->plan_first, end = at + pinfo->plan_count;

@@ -62,10 +62,6 @@ ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc
 
     sicore_vec_ensure(&ecs_resources, (uint32_t)*id + 1, sizeof(ecs_resource_record_t));
     ecs_resource_record_t *record = ecs_resource_record(*id);
-    if (record->name) {
-        return *id;
-    }
-
     *record = (ecs_resource_record_t){
         .name = desc->name,
         .size = desc->size,

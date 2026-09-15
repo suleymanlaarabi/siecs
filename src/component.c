@@ -87,8 +87,8 @@ void RelationOnSet(
     }
 
     uint32_t source_index;
-    if (ecs_has_cid(target_data->entity, source_component)) {
-        RelationSource *source_data = ecs_get_cid(target_data->entity, source_component);
+    RelationSource *source_data = ecs_try_get_cid(target_data->entity, source_component);
+    if (source_data) {
         source_index = source_data->entities.size;
         sicore_vec_push_u64(&source_data->entities, entity);
     } else {
@@ -161,13 +161,6 @@ static ecs_component_t ecs_component_register_type(
 ) {
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
-
-    if (*id != 0 && *id < component_index.components.size) {
-        const ecs_component_record_t *existing = ecs_component_index_get(*id);
-        if (existing->tables.data) {
-            return *id;
-        }
-    }
 
     if (*id == 0) {
         *id = ecs_component_alloc_ids(1);

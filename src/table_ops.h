@@ -41,10 +41,6 @@ static inline void ecs_table_ctor_column(
     uint32_t row
 ) {
     const ecs_column_t *column = &table->cls[col];
-    if (column->size == 0) {
-        return;
-    }
-
     void *dst = ecs_table_component_at_column(table, col, row);
     if (column->flags & EcsColumnZeroCtor) {
         memset(dst, 0, column->size);

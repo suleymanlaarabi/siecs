@@ -5589,10 +5589,6 @@ static inline void ecs_table_ctor_column(
     uint32_t row
 ) {
     const ecs_column_t *column = &table->cls[col];
-    if (column->size == 0) {
-        return;
-    }
-
     void *dst = ecs_table_component_at_column(table, col, row);
     if (column->flags & EcsColumnZeroCtor) {
         memset(dst, 0, column->size);
@@ -6224,8 +6220,8 @@ void RelationOnSet(
     }
 
     uint32_t source_index;
-    if (ecs_has_cid(target_data->entity, source_component)) {
-        RelationSource *source_data = ecs_get_cid(target_data->entity, source_component);
+    RelationSource *source_data = ecs_try_get_cid(target_data->entity, source_component);
+    if (source_data) {
         source_index = source_data->entities.size;
         sicore_vec_push_u64(&source_data->entities, entity);
     } else {
@@ -6298,13 +6294,6 @@ static ecs_component_t ecs_component_register_type(
 ) {
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
-
-    if (*id != 0 && *id < component_index.components.size) {
-        const ecs_component_record_t *existing = ecs_component_index_get(*id);
-        if (existing->tables.data) {
-            return *id;
-        }
-    }
 
     if (*id == 0) {
         *id = ecs_component_alloc_ids(1);
@@ -6916,9 +6905,7 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
             ecs_first(entity),
             ecs_first(target)
         );
-        if (!ecs_has_cid_owned(target, ecs_id(Abstract))) {
-            ecs_add_cid_now(target, ecs_id(Abstract));
-        }
+        ecs_add_cid_now(target, ecs_id(Abstract));
     }
 
     ecs_entity_record_t *record = ecs_get_record(entity);
@@ -6937,11 +6924,6 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     );
     new_type.base = target;
     uint16_t to_table_id = ecs_table_index_get_or_create(new_type);
-    if (to_table_id == from_table_id) {
-        ecs_inheritance_plan_fini(&plan);
-        return;
-    }
-
     from_table = ecs_get_table(from_table_id);
     ecs_migrate(record, entity, from_table, to_table_id, 0);
     ecs_table_t *to_table = ecs_get_table(to_table_id);
@@ -7031,9 +7013,8 @@ void ecs_kill(ecs_entity_t entity) {
 
 const char *ecs_entity_name(ecs_entity_t entity) {
     static char *buff = NULL;
-    if (ecs_has(entity, Name)) {
-        return ecs_get(entity, Name)->value;
-    }
+    const Name *name = ecs_try_get(entity, Name);
+    if (name) return name->value;
     if (!buff) {
         buff = calloc(20, sizeof(char));
     }
@@ -7450,7 +7431,7 @@ void ecs_observer_index_init(void) {
 void ecs_observer_index_fini(void) {
     ecs_observer_t *observers = observer_index.observers.data;
     for (uint32_t i = 0; i < observer_index.observers.size; i++) {
-        if (observers[i].callback != NULL && observers[i].query != ECS_OBSERVER_NO_QUERY)
+        if (observers[i].query != ECS_OBSERVER_NO_QUERY)
             ecs_query_fini(observers[i].query);
     }
     sicore_vec_fini(&observer_index.target_observers);
@@ -7805,6 +7786,7 @@ uint32_t ecs_query_count(ecs_query_id_t query_id) {
     for (uint16_t i = 0; i < cache->table_count; i++) {
         const uint16_t table_id = ecs_query_table_id(cache, i);
         const ecs_table_t *table = ecs_get_table(table_id);
+        if (!table->entity_count) continue;
         if (ECS_UNLIKELY(cache->query->up_mask) &&
             !ecs_query_resolve_up_fields(cache, table, ecs_query_table_at(cache, i))) {
             continue;
@@ -7847,11 +7829,6 @@ const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_i
     return column == UINT16_MAX ? NULL : table->cls[column].data;
 }
 ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
-#ifndef NDEBUG
-    const ecs_relation_record_t *record = ecs_relation_record(relation);
-    ecs_assert(record->info.desc.storage == EcsRelationByTarget, "ecs_target_shared requires ByTarget\n");
-
-#endif
     const uint16_t table_id = ecs_query_table_id(it->cache, it->table_idx);
     const ecs_table_t *table = ecs_get_table(table_id);
     return ecs_table_target_id(table, relation);
@@ -8190,9 +8167,7 @@ static void ecs_relation_default_set_now(
     } else if (record->info.desc.storage == EcsRelationByDepth) {
         ecs_relation_set_depth(entity, relation, record, target, old_target != 0);
     } else {
-        if (!ecs_has_cid_owned(target, record->component)) {
-            ecs_add_cid_now(target, record->component);
-        }
+        ecs_add_cid_now(target, record->component);
         ecs_relation_set_pair(entity, 0, relation, target);
     }
 }
@@ -8355,7 +8330,7 @@ void ecs_relation_virtual_target_on_remove(ecs_entity_t target) {
         ecs_delete_target_t on_delete_target = record->info.desc.on_delete_target;
         for (uint32_t entity_id = 1; entity_id < entity_index.entities.size; entity_id++) {
             ecs_entity_t source = ecs_entity_from_index(entity_id);
-            if (!source || !ecs_is_alive(source) || source == target ||
+            if (!source || source == target ||
                 ecs_target_id(source, relation) != target) {
                 continue;
             }
@@ -8456,10 +8431,6 @@ ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc
 
     sicore_vec_ensure(&ecs_resources, (uint32_t)*id + 1, sizeof(ecs_resource_record_t));
     ecs_resource_record_t *record = ecs_resource_record(*id);
-    if (record->name) {
-        return *id;
-    }
-
     *record = (ecs_resource_record_t){
         .name = desc->name,
         .size = desc->size,
@@ -9887,15 +9858,12 @@ void ecs_run_system(ecs_system_id_t system) {
 void ecs_run_phase(ecs_phase_t phase) {
     ecs_system_index_t *index = &system_index;
     ecs_phase_info_t *pinfo = ecs_system_index_get_phase(phase);
-    ecs_assert(pinfo != NULL, "invalid system phase: %u\n", phase);
+    if (!pinfo)
+        return;
 
     if (index->plan_dirty) {
         ecs_system_index_build_plan();
     }
-
-    pinfo = ecs_system_index_get_phase(phase);
-    if (!pinfo)
-        return;
 
     const ecs_system_id_t *order = index->execution_order.data;
     uint32_t at = pinfo->plan_first, end = at + pinfo->plan_count;
@@ -9982,7 +9950,6 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     table->type = type;
     table->entity_capacity = 1;
     table->entity_count = 0;
-    table->add_edge.aux = 0;
     table->entities = malloc(sizeof(ecs_entity_t) * table->entity_capacity);
     table->cls =
         type.component_count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.component_count);
