@@ -58,7 +58,6 @@ ecs_phase_t ecs_phase_register(const ecs_phase_desc_t *desc) {
                "phase dependency crosses start boundary\n");
 
     ecs_phase_info_t info = {
-        .id = id,
         .name = desc && desc->name ? desc->name : "unnamed",
     };
     sicore_vec_init(&info.systems, sizeof(ecs_system_id_t));

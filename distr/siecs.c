@@ -4285,8 +4285,6 @@ ecs_type_t ecs_type_with_added_ids(
     const ecs_component_t *ids,
     uint16_t count
 );
-ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
-
 static inline ecs_type_pair_t *ecs_type_pairs(const ecs_type_t *type) {
     uintptr_t end = (uintptr_t)type->ids +
                     (uintptr_t)type->component_count * sizeof(uint16_t);
@@ -4908,7 +4906,7 @@ static inline ecs_relation_id_t ecs_access_term_source_relation(ecs_access_term_
 }
 
 typedef struct {
-    uint16_t id, _padding;
+    uint16_t id;
     uint32_t field_kind_bits;
     void *fields[];
 } ecs_query_table_t;
@@ -5043,7 +5041,6 @@ typedef struct {
 } ecs_system_t;
 
 typedef struct {
-    ecs_phase_t id;
     const char *name;
     sicore_vec_t systems;
     uint32_t plan_first;
@@ -5143,8 +5140,6 @@ typedef struct {
     ecs_platform_thread_t thread;
     ecs_execution_context_t context;
     ecs_worker_pool_t *pool;
-    uint16_t index;
-    _Alignas(64) atomic_uint completed;
 } ecs_worker_t;
 
 struct ecs_worker_pool_s {
@@ -7597,11 +7592,9 @@ void ecs_observer_fini(ecs_observer_id_t id) {
 
     ecs_observer_id_t next_free = observer_index.first_free;
     *observer = (ecs_observer_t){ 0 };
-    observer->callback = NULL;
     observer->next_module = next_free;
     observer->target_entity = ECS_OBSERVER_GLOBAL_ENTITY;
     observer->query = ECS_OBSERVER_NO_QUERY;
-    observer->enabled = false;
     observer_index.first_free = id;
 }
 
@@ -8717,59 +8710,45 @@ static bool ecs_scene_is_entity_type(const sireflect_type_info_t *info) {
     return info && info->name && strcmp(info->name, "ecs_entity_t") == 0;
 }
 
-static bool ecs_scene_type_needs_codec(sireflect_handle_t type) {
+enum {
+    ECS_SCENE_TYPE_NEEDS_CODEC = 1 << 0,
+    ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER = 1 << 1,
+};
+
+static uint8_t ecs_scene_type_flags(sireflect_handle_t type) {
     if (type == SIREFLECT_INVALID_HANDLE)
-        return false;
+        return 0;
 
     const sireflect_type_info_t *info = sireflect_type_info(type);
     if (!info)
-        return false;
+        return 0;
     if (ecs_scene_is_entity_type(info))
-        return true;
+        return ECS_SCENE_TYPE_NEEDS_CODEC;
 
     if (info->kind == sireflect_kind_pointer || info->kind == sireflect_kind_ptr ||
         info->kind == sireflect_kind_function_pointer) {
-        return true;
+        uint8_t flags = ECS_SCENE_TYPE_NEEDS_CODEC;
+        if (info->kind == sireflect_kind_pointer) {
+            const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
+            if (!element || element->kind != sireflect_kind_char)
+                flags |= ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER;
+        } else {
+            flags |= ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER;
+        }
+        return flags;
     }
 
-    if (info->kind == sireflect_kind_array) {
-        return ecs_scene_type_needs_codec(info->element_type);
-    }
+    if (info->kind == sireflect_kind_array)
+        return ecs_scene_type_flags(info->element_type);
 
     if (info->kind == sireflect_kind_struct) {
+        uint8_t flags = 0;
         for (size_t i = 0; i < info->fields.field_count; i++) {
-            if (ecs_scene_type_needs_codec(info->fields.fields[i].type))
-                return true;
+            flags |= ecs_scene_type_flags(info->fields.fields[i].type);
         }
+        return flags;
     }
 
-    return false;
-}
-
-static bool ecs_scene_type_has_unsupported_pointer(sireflect_handle_t type) {
-    if (type == SIREFLECT_INVALID_HANDLE)
-        return false;
-
-    const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (!info)
-        return false;
-
-    if (info->kind == sireflect_kind_pointer) {
-        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-        return !element || element->kind != sireflect_kind_char;
-    }
-    if (info->kind == sireflect_kind_ptr || info->kind == sireflect_kind_function_pointer) {
-        return true;
-    }
-    if (info->kind == sireflect_kind_array) {
-        return ecs_scene_type_has_unsupported_pointer(info->element_type);
-    }
-    if (info->kind == sireflect_kind_struct) {
-        for (size_t i = 0; i < info->fields.field_count; i++) {
-            if (ecs_scene_type_has_unsupported_pointer(info->fields.fields[i].type))
-                return true;
-        }
-    }
     return false;
 }
 
@@ -8779,7 +8758,8 @@ static bool ecs_scene_component_use_codec(const ecs_component_record_t *record) 
     if (record->info->type == SIREFLECT_INVALID_HANDLE) {
         return ecs_scene_has_type_ops(record);
     }
-    return ecs_scene_has_type_ops(record) || ecs_scene_type_needs_codec(record->info->type);
+    return ecs_scene_has_type_ops(record) ||
+        (ecs_scene_type_flags(record->info->type) & ECS_SCENE_TYPE_NEEDS_CODEC);
 }
 
 static bool ecs_scene_component_supported(const ecs_component_record_t *record) {
@@ -8791,7 +8771,7 @@ static bool ecs_scene_component_supported(const ecs_component_record_t *record) 
     }
 
     if (record->info->type != SIREFLECT_INVALID_HANDLE &&
-        ecs_scene_type_has_unsupported_pointer(record->info->type))
+        (ecs_scene_type_flags(record->info->type) & ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER))
         return false;
 
     return true;
@@ -10437,12 +10417,6 @@ ecs_type_t ecs_type_with_added_ids(
     return out;
 }
 
-ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base) {
-    ecs_type_t out = ecs_type_with_ids(type, type->ids, type->component_count);
-    out.base = base;
-    return out;
-}
-
 void ecs_type_fini(ecs_type_t *type) {
     free(type->ids);
     type->ids = NULL;
@@ -10568,8 +10542,6 @@ void ecs_worker_pool_init(ecs_worker_pool_t *pool, uint16_t requested_workers) {
     for (uint16_t i = 0; i < requested_workers; i++) {
         ecs_worker_t *worker = &pool->workers[i];
         worker->pool = pool;
-        worker->index = i;
-        atomic_init(&worker->completed, 0);
         ecs_execution_context_init(&worker->context);
         bool created = ecs_platform_thread_create(&worker->thread, ecs_worker_loop, worker);
         ecs_assert(created, "failed to create ECS worker thread\n"); (void)created;
@@ -11291,7 +11263,6 @@ ecs_phase_t ecs_phase_register(const ecs_phase_desc_t *desc) {
                "phase dependency crosses start boundary\n");
 
     ecs_phase_info_t info = {
-        .id = id,
         .name = desc && desc->name ? desc->name : "unnamed",
     };
     sicore_vec_init(&info.systems, sizeof(ecs_system_id_t));

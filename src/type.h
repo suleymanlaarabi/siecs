@@ -33,8 +33,6 @@ ecs_type_t ecs_type_with_added_ids(
     const ecs_component_t *ids,
     uint16_t count
 );
-ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base);
-
 static inline ecs_type_pair_t *ecs_type_pairs(const ecs_type_t *type) {
     uintptr_t end = (uintptr_t)type->ids +
                     (uintptr_t)type->component_count * sizeof(uint16_t);

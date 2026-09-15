@@ -19,7 +19,6 @@ typedef struct {
 } ecs_system_t;
 
 typedef struct {
-    ecs_phase_t id;
     const char *name;
     sicore_vec_t systems;
     uint32_t plan_first;

@@ -700,9 +700,8 @@ static ecs_type_t component_type_with_position_and_base(ecs_entity_t base) {
         ecs_id(Position),
         (ecs_type_pair_t){ 0 }
     );
-    ecs_type_t with_base = ecs_type_with_base(&with_position, base);
-    ecs_type_fini(&with_position);
-    return with_base;
+    with_position.base = base;
+    return with_position;
 }
 
 void component_same_local_type_with_different_base_creates_different_tables(void) {
@@ -799,7 +798,8 @@ void component_table_index_indexes_generic_pairs(void) {
         0,
         (ecs_type_pair_t){ .key = 7, .value = UINT64_C(0x123456789abcdef0) }
     );
-    ecs_type_t same = ecs_type_with_base(&first, 0);
+    ecs_type_t same = ecs_type_with_ids(&first, first.ids, first.component_count);
+    same.base = 0;
     ecs_type_t second = ecs_type_with(
         &first,
         ecs_id(Position),

@@ -152,59 +152,45 @@ static bool ecs_scene_is_entity_type(const sireflect_type_info_t *info) {
     return info && info->name && strcmp(info->name, "ecs_entity_t") == 0;
 }
 
-static bool ecs_scene_type_needs_codec(sireflect_handle_t type) {
+enum {
+    ECS_SCENE_TYPE_NEEDS_CODEC = 1 << 0,
+    ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER = 1 << 1,
+};
+
+static uint8_t ecs_scene_type_flags(sireflect_handle_t type) {
     if (type == SIREFLECT_INVALID_HANDLE)
-        return false;
+        return 0;
 
     const sireflect_type_info_t *info = sireflect_type_info(type);
     if (!info)
-        return false;
+        return 0;
     if (ecs_scene_is_entity_type(info))
-        return true;
+        return ECS_SCENE_TYPE_NEEDS_CODEC;
 
     if (info->kind == sireflect_kind_pointer || info->kind == sireflect_kind_ptr ||
         info->kind == sireflect_kind_function_pointer) {
-        return true;
+        uint8_t flags = ECS_SCENE_TYPE_NEEDS_CODEC;
+        if (info->kind == sireflect_kind_pointer) {
+            const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
+            if (!element || element->kind != sireflect_kind_char)
+                flags |= ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER;
+        } else {
+            flags |= ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER;
+        }
+        return flags;
     }
 
-    if (info->kind == sireflect_kind_array) {
-        return ecs_scene_type_needs_codec(info->element_type);
-    }
+    if (info->kind == sireflect_kind_array)
+        return ecs_scene_type_flags(info->element_type);
 
     if (info->kind == sireflect_kind_struct) {
+        uint8_t flags = 0;
         for (size_t i = 0; i < info->fields.field_count; i++) {
-            if (ecs_scene_type_needs_codec(info->fields.fields[i].type))
-                return true;
+            flags |= ecs_scene_type_flags(info->fields.fields[i].type);
         }
+        return flags;
     }
 
-    return false;
-}
-
-static bool ecs_scene_type_has_unsupported_pointer(sireflect_handle_t type) {
-    if (type == SIREFLECT_INVALID_HANDLE)
-        return false;
-
-    const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (!info)
-        return false;
-
-    if (info->kind == sireflect_kind_pointer) {
-        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-        return !element || element->kind != sireflect_kind_char;
-    }
-    if (info->kind == sireflect_kind_ptr || info->kind == sireflect_kind_function_pointer) {
-        return true;
-    }
-    if (info->kind == sireflect_kind_array) {
-        return ecs_scene_type_has_unsupported_pointer(info->element_type);
-    }
-    if (info->kind == sireflect_kind_struct) {
-        for (size_t i = 0; i < info->fields.field_count; i++) {
-            if (ecs_scene_type_has_unsupported_pointer(info->fields.fields[i].type))
-                return true;
-        }
-    }
     return false;
 }
 
@@ -214,7 +200,8 @@ static bool ecs_scene_component_use_codec(const ecs_component_record_t *record) 
     if (record->info->type == SIREFLECT_INVALID_HANDLE) {
         return ecs_scene_has_type_ops(record);
     }
-    return ecs_scene_has_type_ops(record) || ecs_scene_type_needs_codec(record->info->type);
+    return ecs_scene_has_type_ops(record) ||
+        (ecs_scene_type_flags(record->info->type) & ECS_SCENE_TYPE_NEEDS_CODEC);
 }
 
 static bool ecs_scene_component_supported(const ecs_component_record_t *record) {
@@ -226,7 +213,7 @@ static bool ecs_scene_component_supported(const ecs_component_record_t *record) 
     }
 
     if (record->info->type != SIREFLECT_INVALID_HANDLE &&
-        ecs_scene_type_has_unsupported_pointer(record->info->type))
+        (ecs_scene_type_flags(record->info->type) & ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER))
         return false;
 
     return true;

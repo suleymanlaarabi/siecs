@@ -38,7 +38,7 @@ static inline ecs_relation_id_t ecs_access_term_source_relation(ecs_access_term_
 }
 
 typedef struct {
-    uint16_t id, _padding;
+    uint16_t id;
     uint32_t field_kind_bits;
     void *fields[];
 } ecs_query_table_t;

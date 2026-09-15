@@ -16,8 +16,6 @@ typedef struct {
     ecs_platform_thread_t thread;
     ecs_execution_context_t context;
     ecs_worker_pool_t *pool;
-    uint16_t index;
-    _Alignas(64) atomic_uint completed;
 } ecs_worker_t;
 
 struct ecs_worker_pool_s {

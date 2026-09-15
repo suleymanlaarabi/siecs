@@ -116,8 +116,6 @@ void ecs_worker_pool_init(ecs_worker_pool_t *pool, uint16_t requested_workers) {
     for (uint16_t i = 0; i < requested_workers; i++) {
         ecs_worker_t *worker = &pool->workers[i];
         worker->pool = pool;
-        worker->index = i;
-        atomic_init(&worker->completed, 0);
         ecs_execution_context_init(&worker->context);
         bool created = ecs_platform_thread_create(&worker->thread, ecs_worker_loop, worker);
         ecs_assert(created, "failed to create ECS worker thread\n"); (void)created;

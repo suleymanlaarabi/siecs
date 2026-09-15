@@ -128,12 +128,6 @@ ecs_type_t ecs_type_with_added_ids(
     return out;
 }
 
-ecs_type_t ecs_type_with_base(const ecs_type_t *type, ecs_entity_t base) {
-    ecs_type_t out = ecs_type_with_ids(type, type->ids, type->component_count);
-    out.base = base;
-    return out;
-}
-
 void ecs_type_fini(ecs_type_t *type) {
     free(type->ids);
     type->ids = NULL;

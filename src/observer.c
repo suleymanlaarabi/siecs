@@ -163,11 +163,9 @@ void ecs_observer_fini(ecs_observer_id_t id) {
 
     ecs_observer_id_t next_free = observer_index.first_free;
     *observer = (ecs_observer_t){ 0 };
-    observer->callback = NULL;
     observer->next_module = next_free;
     observer->target_entity = ECS_OBSERVER_GLOBAL_ENTITY;
     observer->query = ECS_OBSERVER_NO_QUERY;
-    observer->enabled = false;
     observer_index.first_free = id;
 }
 
