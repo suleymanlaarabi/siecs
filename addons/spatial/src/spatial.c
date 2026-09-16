@@ -3,14 +3,14 @@
 #include <math.h>
 #include <string.h>
 
-ECS_COMPONENT_DEFINE(Position2d);
-ECS_COMPONENT_DEFINE(GlobalPosition2d);
-ECS_COMPONENT_DEFINE(Rotation2d);
-ECS_COMPONENT_DEFINE(GlobalRotation2d);
-ECS_CTOR(Scale2d, { 1.0f, 1.0f });
-ECS_COMPONENT_DEFINE(Scale2d, .ops = { .ctor = ecs_ctor_id(Scale2d) });
-ECS_CTOR(GlobalScale2d, { 1.0f, 1.0f });
-ECS_COMPONENT_DEFINE(GlobalScale2d, .ops = { .ctor = ecs_ctor_id(GlobalScale2d) });
+ECS_COMPONENT_DEFINE(Position);
+ECS_COMPONENT_DEFINE(GlobalPosition);
+ECS_COMPONENT_DEFINE(Rotation);
+ECS_COMPONENT_DEFINE(GlobalRotation);
+ECS_CTOR(Scale, { 1.0f, 1.0f });
+ECS_COMPONENT_DEFINE(Scale, .ops = { .ctor = ecs_ctor_id(Scale) });
+ECS_CTOR(GlobalScale, { 1.0f, 1.0f });
+ECS_COMPONENT_DEFINE(GlobalScale, .ops = { .ctor = ecs_ctor_id(GlobalScale) });
 
 ECS_COMPONENT_DEFINE(Position3d);
 ECS_COMPONENT_DEFINE(GlobalPosition3d);
@@ -25,8 +25,8 @@ ECS_TAG_DEFINE(Static);
 ECS_MODULE_DEFINE(sispatial);
 
 static void spatial_position_2d_propagate(ecs_iter_t *it) {
-    const Position2d *restrict local = ecs_field(it, 0);
-    GlobalPosition2d *restrict global = ecs_field(it, 1);
+    const Position *restrict local = ecs_field(it, 0);
+    GlobalPosition *restrict global = ecs_field(it, 1);
     const ecs_relation_target_t *parents = ecs_targets(it, ChildOf);
 
     if (parents == NULL) {
@@ -42,9 +42,9 @@ static void spatial_position_2d_propagate(ecs_iter_t *it) {
     for (uint32_t i = 0; i < it->count; i++) {
         const ecs_entity_t parent_entity = parents[i].entity;
         if (parent_entity != cached_parent) {
-            const GlobalPosition2d *position = ecs_try_get(parent_entity, GlobalPosition2d);
-            const GlobalRotation2d *rotation = ecs_try_get(parent_entity, GlobalRotation2d);
-            const GlobalScale2d *scale = ecs_try_get(parent_entity, GlobalScale2d);
+            const GlobalPosition *position = ecs_try_get(parent_entity, GlobalPosition);
+            const GlobalRotation *rotation = ecs_try_get(parent_entity, GlobalRotation);
+            const GlobalScale *scale = ecs_try_get(parent_entity, GlobalScale);
             parent_x = position != NULL ? position->x : 0.0f;
             parent_y = position != NULL ? position->y : 0.0f;
             parent_scale_x = scale != NULL ? scale->x : 1.0f;
@@ -62,8 +62,8 @@ static void spatial_position_2d_propagate(ecs_iter_t *it) {
 }
 
 static void spatial_rotation_2d_propagate(ecs_iter_t *it) {
-    const Rotation2d *restrict local = ecs_field(it, 0);
-    GlobalRotation2d *restrict global = ecs_field(it, 1);
+    const Rotation *restrict local = ecs_field(it, 0);
+    GlobalRotation *restrict global = ecs_field(it, 1);
     const ecs_relation_target_t *parents = ecs_targets(it, ChildOf);
 
     if (parents == NULL) {
@@ -76,7 +76,7 @@ static void spatial_rotation_2d_propagate(ecs_iter_t *it) {
     for (uint32_t i = 0; i < it->count; i++) {
         const ecs_entity_t parent_entity = parents[i].entity;
         if (parent_entity != cached_parent) {
-            const GlobalRotation2d *parent = ecs_try_get(parent_entity, GlobalRotation2d);
+            const GlobalRotation *parent = ecs_try_get(parent_entity, GlobalRotation);
             parent_value = parent != NULL ? parent->value : 0.0f;
             cached_parent = parent_entity;
         }
@@ -85,8 +85,8 @@ static void spatial_rotation_2d_propagate(ecs_iter_t *it) {
 }
 
 static void spatial_scale_2d_propagate(ecs_iter_t *it) {
-    const Scale2d *restrict local = ecs_field(it, 0);
-    GlobalScale2d *restrict global = ecs_field(it, 1);
+    const Scale *restrict local = ecs_field(it, 0);
+    GlobalScale *restrict global = ecs_field(it, 1);
     const ecs_relation_target_t *parents = ecs_targets(it, ChildOf);
 
     if (parents == NULL) {
@@ -99,7 +99,7 @@ static void spatial_scale_2d_propagate(ecs_iter_t *it) {
     for (uint32_t i = 0; i < it->count; i++) {
         const ecs_entity_t parent_entity = parents[i].entity;
         if (parent_entity != cached_parent) {
-            const GlobalScale2d *parent = ecs_try_get(parent_entity, GlobalScale2d);
+            const GlobalScale *parent = ecs_try_get(parent_entity, GlobalScale);
             parent_x = parent != NULL ? parent->x : 1.0f;
             parent_y = parent != NULL ? parent->y : 1.0f;
             cached_parent = parent_entity;
@@ -219,12 +219,12 @@ void sispatial_import(const sispatial_props_t *props) {
     (void)props;
 
     ECS_COMPONENT_REGISTER(
-        Position2d,
-        GlobalPosition2d,
-        Rotation2d,
-        GlobalRotation2d,
-        Scale2d,
-        GlobalScale2d,
+        Position,
+        GlobalPosition,
+        Rotation,
+        GlobalRotation,
+        Scale,
+        GlobalScale,
         Position3d,
         GlobalPosition3d,
         Rotation3d,
@@ -234,9 +234,9 @@ void sispatial_import(const sispatial_props_t *props) {
         Static
     );
 
-    ecs_with(Position2d, GlobalPosition2d, GlobalRotation2d, GlobalScale2d);
-    ecs_with(Rotation2d, GlobalRotation2d);
-    ecs_with(Scale2d, GlobalScale2d);
+    ecs_with(Position, GlobalPosition, GlobalRotation, GlobalScale);
+    ecs_with(Rotation, GlobalRotation);
+    ecs_with(Scale, GlobalScale);
     ecs_with(Position3d, GlobalPosition3d, GlobalRotation3d, GlobalScale3d);
     ecs_with(Rotation3d, GlobalRotation3d);
     ecs_with(Scale3d, GlobalScale3d);
@@ -245,33 +245,35 @@ void sispatial_import(const sispatial_props_t *props) {
         {
             .name = "SpatialRotation2dPropagation",
             .query = {
-                .components = { ecs_in(Rotation2d), ecs_inout(GlobalRotation2d), ecs_not(Static) },
+                .components = { ecs_in(Rotation), ecs_inout(GlobalRotation), ecs_not(Static) },
                 .order_by = ecs_order_by_depth(ChildOf),
             },
             .callback = spatial_rotation_2d_propagate,
             .phase = EcsPostUpdate,
         }
     );
+
     const ecs_system_id_t scale_2d_system = ecs_system(
         {
             .name = "SpatialScale2dPropagation",
             .query = {
-                .components = { ecs_in(Scale2d), ecs_inout(GlobalScale2d), ecs_not(Static) },
+                .components = { ecs_in(Scale), ecs_inout(GlobalScale), ecs_not(Static) },
                 .order_by = ecs_order_by_depth(ChildOf),
             },
             .callback = spatial_scale_2d_propagate,
             .phase = EcsPostUpdate,
         }
     );
+
     ecs_system(
         {
             .name = "SpatialPosition2dPropagation",
             .query = {
                 .components = {
-                    ecs_in(Position2d),
-                    ecs_inout(GlobalPosition2d),
-                    ecs_in(GlobalRotation2d),
-                    ecs_in(GlobalScale2d),
+                    ecs_in(Position),
+                    ecs_inout(GlobalPosition),
+                    ecs_in(GlobalRotation),
+                    ecs_in(GlobalScale),
                     ecs_not(Static),
                 },
                 .order_by = ecs_order_by_depth(ChildOf),
@@ -297,6 +299,7 @@ void sispatial_import(const sispatial_props_t *props) {
             .phase = EcsPostUpdate,
         }
     );
+
     const ecs_system_id_t scale_3d_system = ecs_system(
         {
             .name = "SpatialScale3dPropagation",
@@ -312,6 +315,7 @@ void sispatial_import(const sispatial_props_t *props) {
             .phase = EcsPostUpdate,
         }
     );
+
     ecs_system(
         {
             .name = "SpatialPosition3dPropagation",

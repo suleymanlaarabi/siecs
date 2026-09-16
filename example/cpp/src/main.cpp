@@ -1,27 +1,27 @@
+#include "siecs/cpp/world.hpp"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <siecs_rest.h>
 #include <siecs_spatial.h>
 
 int main() {
     ecs::init();
+    ecs::import<sirest>();
     ecs::import<sispatial>();
 
     constexpr float half_pi = 1.57079632679489661923f;
 
     ecs::entity root = ecs::entity::create().set(
-        Position2d{5.0f, 5.0f},
-        Rotation2d{half_pi},
-        Scale2d{2.0f, 3.0f}
+        Position2d{ 5.0f, 5.0f },
+        Rotation2d{ half_pi },
+        Scale2d{ 2.0f, 3.0f }
     );
 
-    ecs::entity child = ecs::entity::create()
-        .set(
-            Position2d{5.0f, 5.0f},
-            Rotation2d{0.0f},
-            Scale2d{0.5f, 2.0f}
-        )
-        .child_of(root);
+    ecs::entity child =
+        ecs::entity::create()
+            .set(Position2d{ 5.0f, 5.0f }, Rotation2d{ 0.0f }, Scale2d{ 0.5f, 2.0f })
+            .child_of(root);
 
     ecs::progress();
 
@@ -44,13 +44,12 @@ int main() {
     );
 
     ecs::entity root_3d = ecs::entity::create().set(
-        Position3d{1.0f, 2.0f, 3.0f},
-        Rotation3d{0.0f, 0.0f, half_pi},
-        Scale3d{2.0f}
+        Position3d{ 1.0f, 2.0f, 3.0f },
+        Rotation3d{ 0.0f, 0.0f, half_pi },
+        Scale3d{ 2.0f }
     );
-    ecs::entity child_3d = ecs::entity::create()
-        .set(Position3d{1.0f, 0.0f, 0.0f})
-        .child_of(root_3d);
+    ecs::entity child_3d =
+        ecs::entity::create().set(Position3d{ 1.0f, 0.0f, 0.0f }).child_of(root_3d);
 
     ecs::progress();
 
@@ -66,6 +65,6 @@ int main() {
         position_3d.z
     );
 
-    ecs::fini();
+    ecs::run();
     return 0;
 }
