@@ -5,6 +5,7 @@
 
 ECS_COMPONENT_DEFINE(Position2d);
 ECS_COMPONENT_DEFINE(GlobalPosition2d);
+ECS_COMPONENT_DEFINE(Velocity2d);
 ECS_COMPONENT_DEFINE(Rotation2d);
 ECS_COMPONENT_DEFINE(GlobalRotation2d);
 ECS_CTOR(Scale2d, { 1.0f, 1.0f });
@@ -14,6 +15,7 @@ ECS_COMPONENT_DEFINE(GlobalScale2d, .ops = { .ctor = ecs_ctor_id(GlobalScale2d) 
 
 ECS_COMPONENT_DEFINE(Position3d);
 ECS_COMPONENT_DEFINE(GlobalPosition3d);
+ECS_COMPONENT_DEFINE(Velocity3d);
 ECS_COMPONENT_DEFINE(Rotation3d);
 ECS_COMPONENT_DEFINE(GlobalRotation3d);
 ECS_CTOR(Scale3d, { 1.0f, 1.0f, 1.0f });
