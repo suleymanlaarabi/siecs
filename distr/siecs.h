@@ -2592,6 +2592,44 @@ static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = n
 
 } // namespace detail
 
+/** Lightweight typed handle for a registered component id. */
+template <typename T>
+class component_ref {
+public:
+    explicit constexpr component_ref(ecs_component_t id) noexcept
+        : _id(id) {}
+
+    /** Return the raw C component id. */
+    [[nodiscard]] constexpr ecs_component_t id() const noexcept {
+        return _id;
+    }
+
+    /** Preserve interoperability with APIs taking ecs_component_t. */
+    constexpr operator ecs_component_t() const noexcept {
+        return _id;
+    }
+
+    /**
+     * Declare components automatically added with T.
+     *
+     * Declare requirements before T participates in an entity table.
+     */
+    template <typename... Required>
+        requires(sizeof...(Required) > 0)
+    component_ref with() const {
+        ::ecs_with_many(
+            _id,
+            detail::ecs_cpp_component_id<Required>()...,
+            0
+        );
+
+        return *this;
+    }
+
+private:
+    ecs_component_t _id;
+};
+
 } // namespace ecs
 
 #pragma once
@@ -4089,27 +4127,36 @@ inline void run() { ecs_run(); }
 inline void run_phase(ecs_phase_t phase) { ecs_run_phase(phase); }
 
 /** Register or return the component id associated with `T`. */
-template <typename T> inline ecs_component_t component() {
-    return detail::ecs_cpp_component_id<T>();
+template <typename T> inline component_ref<T> component() {
+    return component_ref<T>(
+        detail::ecs_cpp_component_id<T>()
+    );
 }
 
 /** Register a component and install its lifecycle hooks before first use. */
 template <typename T>
     requires(!detail::c_declared_component<T>)
-inline ecs_component_t component(const component_hooks<T> &hooks) {
-    return detail::ecs_cpp_component_id<T>(&hooks);
+inline component_ref<T> component(const component_hooks<T> &hooks) {
+    return component_ref<T>(
+        detail::ecs_cpp_component_id<T>(&hooks)
+    );
 }
 
 /** Register a native C++ component with lifecycle and inheritance options. */
 template <typename T>
     requires(!detail::c_declared_component<T>)
-inline ecs_component_t component(const component_options<T> &options) {
-    return detail::ecs_cpp_component_id<T>(&options.hooks, options.inheritance);
+inline component_ref<T> component(const component_options<T> &options) {
+    return component_ref<T>(
+        detail::ecs_cpp_component_id<T>(
+            &options.hooks,
+            options.inheritance
+        )
+    );
 }
 
 /** Declare that adding `Component` implicitly adds `Required` first. */
 template <typename Component, typename Required> inline void component_requires() {
-    ecs_with_many(component<Component>(), component<Required>(), 0);
+    (void)component<Component>().template with<Required>();
 }
 
 /** Register `T` in the separate relation namespace. */

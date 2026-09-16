@@ -13,7 +13,10 @@ struct Velocity {
 int main() {
     ecs::init();
 
-    ecs::entity entity = ecs::entity::create().set(Position{ 1.0f, 2.0f }).set(Velocity{ 3.0f, 4.0f });
+    ecs::component<Velocity>().with<Position>();
+
+    ecs::entity entity = ecs::entity::create()
+                             .set(Velocity{ 3.0f, 4.0f });
 
     ecs::system("Move").each([](Position &pos, const Velocity &vel) {
         pos.x += vel.x;
@@ -27,7 +30,7 @@ int main() {
     );
 
     assert(position != nullptr);
-    assert(position->x == 4.0f);
-    assert(position->y == 6.0f);
+    assert(position->x == 3.0f);
+    assert(position->y == 4.0f);
     ecs::fini();
 }

@@ -11,6 +11,18 @@ struct ApiVelocity {
     int value;
 };
 
+struct ApiWithRoot {
+    int value;
+};
+
+struct ApiWithRequired {
+    int value;
+};
+
+struct ApiWithSecond {};
+
+struct ApiWithLeaf {};
+
 struct ApiRelation {};
 
 struct ApiGroup {};
@@ -207,7 +219,7 @@ void api_c_declared_component(void) {
     cpp_c_position_on_set_calls = 0;
 
     ecs_test_scope _ecs_scope;
-    auto id = ecs::component<cpp_c_position>();
+    ecs_component_t id = ecs::component<cpp_c_position>();
     test_int(ecs_id(cpp_c_position), id);
 
     auto entity = ecs::entity::create().set(cpp_c_position{ .value = 1 });
@@ -234,7 +246,7 @@ void api_c_declared_relation(void) {
 void api_cpp_only_methods(void) {
     ecs_test_scope _ecs_scope;
 
-    auto id = ecs::component<cpp_c_method_position>();
+    ecs_component_t id = ecs::component<cpp_c_method_position>();
     test_int(ecs_id(cpp_c_method_position), id);
     test_str(
         "{ int value; }",
@@ -301,4 +313,69 @@ void api_cpp_system_interval(void) {
 
     ecs::run_system(system);
     test_int(1, calls);
+}
+
+void api_component_with(void) {
+    ecs_test_scope _ecs_scope;
+
+    ecs::component<ApiWithRequired>()
+        .with<ApiWithLeaf>();
+
+    auto root = ecs::component<ApiWithRoot>()
+                    .with<ApiWithRequired, ApiWithSecond>();
+
+    ecs_component_t raw_root = root;
+
+    test_int(
+        raw_root,
+        ecs::component<ApiWithRoot>().id()
+    );
+
+    auto added = ecs::entity::create()
+                     .add<ApiWithRoot>();
+
+    test_true((
+        added.has<
+            ApiWithRoot,
+            ApiWithRequired,
+            ApiWithSecond,
+            ApiWithLeaf
+        >()
+    ));
+
+    auto existing = ecs::entity::create()
+                        .set(ApiWithRequired{ 42 });
+
+    existing.add<ApiWithRoot>();
+
+    test_true((
+        existing.has<
+            ApiWithRoot,
+            ApiWithRequired,
+            ApiWithSecond,
+            ApiWithLeaf
+        >()
+    ));
+
+    test_int(
+        42,
+        existing.get<ApiWithRequired>().value
+    );
+
+    auto set_entity = ecs::entity::create()
+                          .set(ApiWithRoot{ 7 });
+
+    test_true((
+        set_entity.has<
+            ApiWithRoot,
+            ApiWithRequired,
+            ApiWithSecond,
+            ApiWithLeaf
+        >()
+    ));
+
+    test_int(
+        7,
+        set_entity.get<ApiWithRoot>().value
+    );
 }

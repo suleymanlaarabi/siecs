@@ -207,4 +207,42 @@ static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = n
 
 } // namespace detail
 
+/** Lightweight typed handle for a registered component id. */
+template <typename T>
+class component_ref {
+public:
+    explicit constexpr component_ref(ecs_component_t id) noexcept
+        : _id(id) {}
+
+    /** Return the raw C component id. */
+    [[nodiscard]] constexpr ecs_component_t id() const noexcept {
+        return _id;
+    }
+
+    /** Preserve interoperability with APIs taking ecs_component_t. */
+    constexpr operator ecs_component_t() const noexcept {
+        return _id;
+    }
+
+    /**
+     * Declare components automatically added with T.
+     *
+     * Declare requirements before T participates in an entity table.
+     */
+    template <typename... Required>
+        requires(sizeof...(Required) > 0)
+    component_ref with() const {
+        ::ecs_with_many(
+            _id,
+            detail::ecs_cpp_component_id<Required>()...,
+            0
+        );
+
+        return *this;
+    }
+
+private:
+    ecs_component_t _id;
+};
+
 } // namespace ecs

@@ -22,6 +22,7 @@
           "cpp_only_methods",
           "cpp_custom_phase",
           "cpp_system_interval",
+          "component_with",
           "at_fini_captures_callable_state"
         ]
       },
