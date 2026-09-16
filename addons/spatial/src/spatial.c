@@ -222,6 +222,7 @@ void sispatial_import(const sispatial_props_t *props) {
 
     ECS_COMPONENT_REGISTER(
         Position2d,
+        Velocity2d,
         GlobalPosition2d,
         Rotation2d,
         GlobalRotation2d,
@@ -229,6 +230,7 @@ void sispatial_import(const sispatial_props_t *props) {
         GlobalScale2d,
         Position3d,
         GlobalPosition3d,
+        Velocity3d,
         Rotation3d,
         GlobalRotation3d,
         Scale3d,
