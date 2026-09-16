@@ -48,6 +48,24 @@ class system : protected query {
         return *this;
     }
 
+    /** Set the query ordering callback. */
+    system &order_by(ecs_query_order_t value) {
+        query::order_by(value);
+        return *this;
+    }
+
+    /** Order query results by the target of a relation. */
+    template <typename Relation> system &order_by_target() {
+        query::order_by_target<Relation>();
+        return *this;
+    }
+
+    /** Order query results by the depth of a relation. */
+    template <typename Relation> system &order_by_depth() {
+        query::order_by_depth<Relation>();
+        return *this;
+    }
+
     /** Select the phase in which the system is scheduled. */
     system &phase(ecs_phase_t _phase) {
         _system.phase = _phase;
