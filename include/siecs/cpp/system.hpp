@@ -54,6 +54,12 @@ class system : protected query {
         return *this;
     }
 
+    /** Set the automatic execution interval in seconds. Zero runs every frame. */
+    system &interval(double seconds) {
+        _system.interval = seconds;
+        return *this;
+    }
+
     /** Set whether the system is only run on the main thread. */
     system &immediate() {
         _system.main_thread_only = true;

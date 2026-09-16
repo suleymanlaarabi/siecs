@@ -116,6 +116,8 @@ static inline void ecs_assert_not_scheduler_parallel(const char *operation) {
     );
 }
 
+void ecs_system_run_prepared(ecs_system_id_t system);
+
 void ecs_bootstrap(void);
 
 extern sicore_map_t name_map;

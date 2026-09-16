@@ -284,3 +284,21 @@ void api_cpp_custom_phase(void) {
     test_int(2, order[1]);
     test_int(3, order[2]);
 }
+
+void api_cpp_system_interval(void) {
+    ecs_test_scope _ecs_scope;
+
+    int calls = 0;
+
+    auto system = ecs::system("CppInterval")
+                      .interval(60.0)
+                      .each([&]() {
+                          calls++;
+                      });
+
+    ecs::progress();
+    test_int(0, calls);
+
+    ecs::run_system(system);
+    test_int(1, calls);
+}

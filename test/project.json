@@ -218,6 +218,10 @@
           "deferred_set_adds_required_components",
           "deferred_changes_coalesce_by_component",
           "quit_makes_progress_return_false",
+          "interval_throttles_progress",
+          "interval_manual_execution_is_forced",
+          "interval_resets_on_enable_transition",
+          "interval_does_not_gate_start_phase",
           "custom_phase"
         ]
       },

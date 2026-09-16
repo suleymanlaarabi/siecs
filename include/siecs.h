@@ -1460,6 +1460,19 @@ SIECS_API const char *ecs_phase_name(ecs_phase_t phase);
  * main_thread_only prevents worker dispatch.
  * no_defer runs the system without deferring ECS mutations. It cannot be used
  * with entity query iteration.
+ *
+ * interval is the automatic scheduling period in seconds. Zero runs the
+ * system every recurring frame. A positive value waits until at least that
+ * amount of frame time has accumulated, then runs once and restarts the
+ * accumulator without catch-up execution.
+ *
+ * Start phases remain one-shot and ignore interval.
+ * ecs_run_system and ecs_run_phase are forced executions and ignore interval
+ * without changing its accumulated time.
+ *
+ * For an automatically scheduled interval system, ecs_iter_t.delta_time is
+ * the accumulated time since its previous automatic execution. The DeltaTime
+ * resource remains the current frame delta.
  */
 typedef struct {
     const char *name;
@@ -1472,6 +1485,7 @@ typedef struct {
     bool disabled;
     bool main_thread_only;
     bool no_defer;
+    double interval;
 } ecs_system_desc_t;
 
 /*
@@ -1486,6 +1500,7 @@ typedef struct {
  *           .resources = { ecs_in(DeltaTime) },
  *       },
  *       .callback = Move,
+ *       .interval = 0.5,
  *   });
  */
 /* Create a system from a compound-literal descriptor. */
@@ -1508,10 +1523,12 @@ SIECS_API bool ecs_progress(void);
 /* Run all enabled systems in phase order. */
 SIECS_API void ecs_run(void);
 
-/* Run all enabled systems from one phase. */
+/* Run all enabled systems from one phase immediately, ignoring interval
+ * without changing interval accumulation. */
 SIECS_API void ecs_run_phase(ecs_phase_t phase);
 
-/* Run one enabled system immediately. */
+/* Run one enabled system immediately, ignoring interval without changing
+ * interval accumulation. */
 SIECS_API void ecs_run_system(ecs_system_id_t system);
 
 /* Enable or disable a system. Disabled systems stay registered but do not run.

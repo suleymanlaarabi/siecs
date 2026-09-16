@@ -11,6 +11,9 @@ typedef struct {
     void (*user_data_dtor)(uintptr_t user_data);
     ecs_phase_t phase;
     ecs_system_id_t after;
+    double interval;
+    double interval_elapsed;
+    float prepared_delta_time;
     bool iterates_query;
     ecs_system_id_t next_module;
     bool enabled;

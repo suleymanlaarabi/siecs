@@ -181,6 +181,10 @@ void system_deferred_set_overwrite_keeps_latest_value(void);
 void system_deferred_set_adds_required_components(void);
 void system_deferred_changes_coalesce_by_component(void);
 void system_quit_makes_progress_return_false(void);
+void system_interval_throttles_progress(void);
+void system_interval_manual_execution_is_forced(void);
+void system_interval_resets_on_enable_transition(void);
+void system_interval_does_not_gate_start_phase(void);
 void system_custom_phase(void);
 
 // Testsuite 'observer'
@@ -868,6 +872,22 @@ bake_test_case system_testcases[] = {
         system_quit_makes_progress_return_false
     },
     {
+        "interval_throttles_progress",
+        system_interval_throttles_progress
+    },
+    {
+        "interval_manual_execution_is_forced",
+        system_interval_manual_execution_is_forced
+    },
+    {
+        "interval_resets_on_enable_transition",
+        system_interval_resets_on_enable_transition
+    },
+    {
+        "interval_does_not_gate_start_phase",
+        system_interval_does_not_gate_start_phase
+    },
+    {
         "custom_phase",
         system_custom_phase
     }
@@ -1065,7 +1085,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        31,
+        35,
         system_testcases
     },
     {

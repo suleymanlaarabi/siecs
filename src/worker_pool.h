@@ -36,10 +36,11 @@ struct ecs_worker_pool_s {
 void ecs_worker_pool_init(ecs_worker_pool_t *pool, uint16_t requested_workers);
 void ecs_worker_pool_fini(ecs_worker_pool_t *pool);
 bool ecs_worker_pool_enabled(const ecs_worker_pool_t *pool);
-void ecs_worker_pool_run_systems(
+void ecs_worker_pool_run_prepared_systems(
     ecs_worker_pool_t *pool,
     const ecs_system_id_t *systems,
-    uint32_t system_count
+    uint32_t system_count,
+    uint32_t runnable_count
 );
 void ecs_worker_pool_flush(ecs_worker_pool_t *pool);
 

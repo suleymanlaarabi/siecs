@@ -14,6 +14,7 @@ void api_c_declared_component(void);
 void api_c_declared_relation(void);
 void api_cpp_only_methods(void);
 void api_cpp_custom_phase(void);
+void api_cpp_system_interval(void);
 void api_at_fini_captures_callable_state(void);
 
 // Testsuite 'entity_state'
@@ -96,6 +97,10 @@ bake_test_case api_testcases[] = {
     {
         "cpp_custom_phase",
         api_cpp_custom_phase
+    },
+    {
+        "cpp_system_interval",
+        api_cpp_system_interval
     },
     {
         "at_fini_captures_callable_state",
@@ -319,7 +324,7 @@ static bake_test_suite suites[] = {
         "api",
         NULL,
         NULL,
-        6,
+        7,
         api_testcases
     },
     {

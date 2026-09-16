@@ -21,6 +21,7 @@
           "c_declared_relation",
           "cpp_only_methods",
           "cpp_custom_phase",
+          "cpp_system_interval",
           "at_fini_captures_callable_state"
         ]
       },

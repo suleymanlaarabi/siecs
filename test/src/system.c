@@ -16,6 +16,7 @@ ECS_COMPONENT_DEFINE(SystemBatchB);
 ECS_COMPONENT_DEFINE(SystemBatchC);
 
 static uint32_t system_calls;
+static float system_delta_time;
 static uint32_t system_seen;
 static uint32_t system_order_count;
 static int system_order[8];
@@ -44,6 +45,7 @@ static void count_tag_system(ecs_iter_t *it);
 
 static void reset_system_test_state(void) {
     system_calls = 0;
+    system_delta_time = 0.0f;
     system_seen = 0;
     system_order_count = 0;
 }
@@ -57,6 +59,11 @@ static void count_system(ecs_iter_t *it) {
     }
 
     system_calls++;
+}
+
+static void interval_system(ecs_iter_t *it) {
+    system_calls++;
+    system_delta_time = it->delta_time;
 }
 
 static void parallel_system_a(ecs_iter_t *it) {
@@ -1119,6 +1126,138 @@ void system_quit_makes_progress_return_false(void) {
     );
 
     test_false(ecs_progress());
+    test_uint(1, system_calls);
+
+    ecs_fini();
+}
+
+void system_interval_throttles_progress(void) {
+    reset_system_test_state();
+    ecs_init();
+
+    ecs_system({
+        .name = "Interval",
+        .phase = EcsOnUpdate,
+        .callback = interval_system,
+        .interval = 0.5,
+    });
+
+    ecs_progress();
+    test_uint(0, system_calls);
+
+    ecs_world.last_time =
+        ecs_platform_time_now_sec() - 2.0;
+
+    ecs_progress();
+
+    test_uint(1, system_calls);
+    test_assert(system_delta_time >= 1.9f);
+
+    ecs_world.last_time =
+        ecs_platform_time_now_sec() - 0.001;
+
+    ecs_progress();
+
+    test_uint(1, system_calls);
+
+    ecs_world.last_time =
+        ecs_platform_time_now_sec() - 0.6;
+
+    ecs_progress();
+
+    test_uint(2, system_calls);
+    test_assert(system_delta_time >= 0.5f);
+
+    ecs_fini();
+}
+
+void system_interval_manual_execution_is_forced(void) {
+    reset_system_test_state();
+    ecs_init();
+
+    ecs_system_id_t system = ecs_system({
+        .name = "IntervalManual",
+        .phase = EcsOnUpdate,
+        .callback = interval_system,
+        .interval = 0.5,
+    });
+
+    ecs_progress();
+    test_uint(0, system_calls);
+
+    ecs_world.last_time =
+        ecs_platform_time_now_sec() - 0.1;
+
+    ecs_progress();
+    test_uint(0, system_calls);
+
+    ecs_run_system(system);
+    test_uint(1, system_calls);
+
+    ecs_run_phase(EcsOnUpdate);
+    test_uint(2, system_calls);
+
+    ecs_world.last_time =
+        ecs_platform_time_now_sec() - 0.45;
+
+    ecs_progress();
+
+    test_uint(3, system_calls);
+
+    ecs_fini();
+}
+
+void system_interval_resets_on_enable_transition(void) {
+    reset_system_test_state();
+    ecs_init();
+
+    ecs_system_id_t system = ecs_system({
+        .name = "IntervalEnable",
+        .phase = EcsOnUpdate,
+        .callback = interval_system,
+        .interval = 0.5,
+    });
+
+    ecs_progress();
+
+    ecs_world.last_time =
+        ecs_platform_time_now_sec() - 0.3;
+
+    ecs_progress();
+    test_uint(0, system_calls);
+
+    ecs_system_disable(system);
+    ecs_system_enable(system);
+
+    ecs_world.last_time =
+        ecs_platform_time_now_sec() - 0.25;
+
+    ecs_progress();
+    test_uint(0, system_calls);
+
+    ecs_world.last_time =
+        ecs_platform_time_now_sec() - 0.3;
+
+    ecs_progress();
+    test_uint(1, system_calls);
+
+    ecs_fini();
+}
+
+void system_interval_does_not_gate_start_phase(void) {
+    reset_system_test_state();
+    ecs_init();
+
+    ecs_system({
+        .name = "IntervalStart",
+        .phase = EcsStart,
+        .callback = interval_system,
+        .interval = 60.0,
+    });
+
+    ecs_progress();
+    ecs_progress();
+
     test_uint(1, system_calls);
 
     ecs_fini();

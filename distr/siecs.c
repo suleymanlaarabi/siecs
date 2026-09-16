@@ -5017,6 +5017,9 @@ typedef struct {
     void (*user_data_dtor)(uintptr_t user_data);
     ecs_phase_t phase;
     ecs_system_id_t after;
+    double interval;
+    double interval_elapsed;
+    float prepared_delta_time;
     bool iterates_query;
     ecs_system_id_t next_module;
     bool enabled;
@@ -5144,10 +5147,11 @@ struct ecs_worker_pool_s {
 void ecs_worker_pool_init(ecs_worker_pool_t *pool, uint16_t requested_workers);
 void ecs_worker_pool_fini(ecs_worker_pool_t *pool);
 bool ecs_worker_pool_enabled(const ecs_worker_pool_t *pool);
-void ecs_worker_pool_run_systems(
+void ecs_worker_pool_run_prepared_systems(
     ecs_worker_pool_t *pool,
     const ecs_system_id_t *systems,
-    uint32_t system_count
+    uint32_t system_count,
+    uint32_t runnable_count
 );
 void ecs_worker_pool_flush(ecs_worker_pool_t *pool);
 
@@ -5253,6 +5257,8 @@ static inline void ecs_assert_not_scheduler_parallel(const char *operation) {
         operation
     );
 }
+
+void ecs_system_run_prepared(ecs_system_id_t system);
 
 void ecs_bootstrap(void);
 
@@ -9790,6 +9796,10 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     ecs_assert_not_null(desc);
     ecs_assert(desc->callback, "system requires callback function\n");
     ecs_assert(
+        desc->interval >= 0.0,
+        "system interval must be >= 0 seconds\n"
+    );
+    ecs_assert(
         ecs_system_index_get_phase(desc->phase) != NULL,
         "invalid system phase: %u\n",
         desc->phase
@@ -9813,9 +9823,10 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
 
 const char *ecs_system_name(ecs_system_id_t system) { return ecs_system_index_get(system)->name; }
 
-void ecs_run_system(ecs_system_id_t system) {
-
-    ecs_system_t *sys = ecs_system_index_get(system);
+static void ecs_system_run_with_delta(
+    ecs_system_t *sys,
+    float delta_time
+) {
     if (!sys->enabled) {
         return;
     }
@@ -9826,7 +9837,8 @@ void ecs_run_system(ecs_system_id_t system) {
     if (sys->iterates_query) {
         ecs_iter_t it = ecs_query_iter(sys->qid);
         it.user_data = sys->user_data;
-        it.delta_time = ecs_world.delta_time;
+        it.delta_time = delta_time;
+
         while (ecs_iter_next(&it)) {
             sys->callback(&it);
         }
@@ -9834,45 +9846,124 @@ void ecs_run_system(ecs_system_id_t system) {
         ecs_iter_t it = {
             .count = 1,
             .user_data = sys->user_data,
-            .delta_time = ecs_world.delta_time,
+            .delta_time = delta_time,
         };
+
         sys->callback(&it);
     }
+
     if (!sys->no_defer) {
         ecs_defer_end();
     }
 }
 
-void ecs_run_phase(ecs_phase_t phase) {
+void ecs_system_run_prepared(ecs_system_id_t system) {
+    ecs_system_t *sys = ecs_system_index_get(system);
+    ecs_system_run_with_delta(sys, sys->prepared_delta_time);
+}
+
+void ecs_run_system(ecs_system_id_t system) {
+    ecs_system_t *sys = ecs_system_index_get(system);
+    ecs_system_run_with_delta(
+        sys,
+        (float)ecs_world.delta_time
+    );
+}
+
+static bool ecs_system_prepare_scheduled(ecs_system_t *sys) {
+    if (sys->interval == 0.0) {
+        sys->prepared_delta_time = (float)ecs_world.delta_time;
+        return true;
+    }
+
+    sys->interval_elapsed += ecs_world.delta_time;
+
+    if (sys->interval_elapsed < sys->interval) {
+        sys->prepared_delta_time = -1.0f;
+        return false;
+    }
+
+    sys->prepared_delta_time = (float)sys->interval_elapsed;
+    sys->interval_elapsed = 0.0;
+    return true;
+}
+
+static void ecs_run_phase_internal(
+    ecs_phase_t phase,
+    bool respect_interval
+) {
     ecs_system_index_t *index = &system_index;
     ecs_phase_info_t *pinfo = ecs_system_index_get_phase(phase);
-    if (!pinfo)
+
+    if (!pinfo) {
         return;
+    }
 
     if (index->plan_dirty) {
         ecs_system_index_build_plan();
     }
 
     const ecs_system_id_t *order = index->execution_order.data;
-    uint32_t at = pinfo->plan_first, end = at + pinfo->plan_count;
+    uint32_t at = pinfo->plan_first;
+    uint32_t end = at + pinfo->plan_count;
+
     while (at < end) {
         uint32_t first = at;
-        while (at < end && order[at])
+
+        while (at < end && order[at]) {
             at++;
+        }
+
         uint32_t count = at - first;
         const ecs_system_id_t *systems = order + first;
-        if (!ecs_worker_pool_enabled(&ecs_world.worker_pool) || count == 1) {
-            ecs_world.main_context.scheduler_parallel = false;
-            ecs_execution_context_set(&ecs_world.main_context);
-            for (uint32_t j = 0; j < count; j++) {
-                ecs_run_system(systems[j]);
+        uint32_t runnable_count = 0;
+
+        for (uint32_t j = 0; j < count; j++) {
+            ecs_system_t *sys = ecs_system_index_get(systems[j]);
+
+            if (!sys->enabled) {
+                sys->prepared_delta_time = -1.0f;
+                continue;
             }
-        } else {
-            ecs_worker_pool_run_systems(&ecs_world.worker_pool, systems, count);
-            ecs_worker_pool_flush(&ecs_world.worker_pool);
+
+            if (respect_interval) {
+                runnable_count += ecs_system_prepare_scheduled(sys);
+            } else {
+                sys->prepared_delta_time = (float)ecs_world.delta_time;
+                runnable_count++;
+            }
         }
+
+        if (runnable_count != 0) {
+            if (!ecs_worker_pool_enabled(&ecs_world.worker_pool) ||
+                runnable_count == 1) {
+                ecs_world.main_context.scheduler_parallel = false;
+                ecs_execution_context_set(&ecs_world.main_context);
+
+                for (uint32_t j = 0; j < count; j++) {
+                    ecs_system_t *sys = ecs_system_index_get(systems[j]);
+
+                    if (sys->prepared_delta_time >= 0.0f) {
+                        ecs_system_run_prepared(systems[j]);
+                    }
+                }
+            } else {
+                ecs_worker_pool_run_prepared_systems(
+                    &ecs_world.worker_pool,
+                    systems,
+                    count,
+                    runnable_count
+                );
+                ecs_worker_pool_flush(&ecs_world.worker_pool);
+            }
+        }
+
         at++;
     }
+}
+
+void ecs_run_phase(ecs_phase_t phase) {
+    ecs_run_phase_internal(phase, false);
 }
 
 bool ecs_progress(void) {
@@ -9895,15 +9986,23 @@ bool ecs_progress(void) {
 
     if (!ecs_world.did_start) {
         for (uint32_t i = 0; i < index->start_phase_count; i++) {
-            ecs_phase_t phase = *sicore_vec_get(&index->phase_order, i, ecs_phase_t);
+            ecs_phase_t phase =
+                *sicore_vec_get(&index->phase_order, i, ecs_phase_t);
             ecs_run_phase(phase);
         }
+
         ecs_world.did_start = true;
     }
 
-    for (uint32_t i = index->start_phase_count; i < index->phase_order.size; i++) {
-        ecs_phase_t phase = *sicore_vec_get(&index->phase_order, i, ecs_phase_t);
-        ecs_run_phase(phase);
+    for (
+        uint32_t i = index->start_phase_count;
+        i < index->phase_order.size;
+        i++
+    ) {
+        ecs_phase_t phase =
+            *sicore_vec_get(&index->phase_order, i, ecs_phase_t);
+
+        ecs_run_phase_internal(phase, true);
     }
 
     if (ecs_world.features.target_fps) {
@@ -9927,6 +10026,8 @@ static void ecs_system_set_enabled(ecs_system_id_t system, bool enabled) {
     ecs_system_t *sys = ecs_system_index_get(system);
     if (sys->enabled != enabled) {
         sys->enabled = enabled;
+        sys->interval_elapsed = 0.0;
+        sys->prepared_delta_time = -1.0f;
         system_index.plan_dirty = true;
     }
 }
@@ -10418,7 +10519,7 @@ static void ecs_worker_free(void *memory) {
 
 static void ecs_worker_run_job(ecs_worker_pool_t *pool, uint32_t job_index) {
     ecs_worker_job_t *job = &pool->jobs[job_index];
-    ecs_run_system(job->system);
+    ecs_system_run_prepared(job->system);
     uint32_t completed = atomic_fetch_add_explicit(
         &pool->completed_jobs,
         1,
@@ -10530,24 +10631,34 @@ bool ecs_worker_pool_enabled(const ecs_worker_pool_t *pool) {
     return pool->worker_count != 0;
 }
 
-void ecs_worker_pool_run_systems(
+void ecs_worker_pool_run_prepared_systems(
     ecs_worker_pool_t *pool,
     const ecs_system_id_t *systems,
-    uint32_t system_count
+    uint32_t system_count,
+    uint32_t runnable_count
 ) {
-    if (system_count > pool->job_capacity) {
+    if (runnable_count > pool->job_capacity) {
         uint32_t capacity = pool->job_capacity ? pool->job_capacity : 4;
-        while (capacity < system_count) {
+        while (capacity < runnable_count) {
             capacity *= 2;
         }
         pool->jobs = realloc(pool->jobs, capacity * sizeof(ecs_worker_job_t));
         ecs_assert_not_null(pool->jobs);
         pool->job_capacity = capacity;
     }
+    uint32_t job_count = 0;
+
     for (uint32_t i = 0; i < system_count; i++) {
-        pool->jobs[i].system = systems[i];
+        ecs_system_t *sys = ecs_system_index_get(systems[i]);
+
+        if (sys->prepared_delta_time < 0.0f) {
+            continue;
+        }
+
+        pool->jobs[job_count++].system = systems[i];
     }
-    pool->job_count = system_count;
+
+    pool->job_count = job_count;
     atomic_store_explicit(&pool->next_job, 0, memory_order_relaxed);
     atomic_store_explicit(&pool->completed_jobs, 0, memory_order_relaxed);
     ecs_world.main_context.scheduler_parallel = true;
@@ -10566,9 +10677,19 @@ void ecs_worker_pool_run_systems(
 
     ecs_worker_run_jobs(pool);
 
-    while (atomic_load_explicit(&pool->completed_jobs, memory_order_acquire) < system_count) {
+    while (
+        atomic_load_explicit(
+            &pool->completed_jobs,
+            memory_order_acquire
+        ) < pool->job_count
+    ) {
         ecs_platform_mutex_lock(&pool->mutex);
-        if (atomic_load_explicit(&pool->completed_jobs, memory_order_acquire) < system_count) {
+        if (
+            atomic_load_explicit(
+                &pool->completed_jobs,
+                memory_order_acquire
+            ) < pool->job_count
+        ) {
             ecs_platform_condition_wait(&pool->completion_condition, &pool->mutex);
         }
         ecs_platform_mutex_unlock(&pool->mutex);
@@ -11308,6 +11429,9 @@ ecs_system_id_t ecs_system_index_create(const ecs_system_desc_t *desc,
         .user_data = desc->user_data,
         .user_data_dtor = desc->user_data_dtor,
         .phase = desc->phase,
+        .interval = desc->interval,
+        .interval_elapsed = 0.0,
+        .prepared_delta_time = -1.0f,
         .next_module = UINT16_MAX,
         .enabled = !desc->disabled,
         .main_thread_only = desc->main_thread_only,
