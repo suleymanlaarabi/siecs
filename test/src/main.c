@@ -78,7 +78,11 @@ void resource_fini_uses_reverse_registration_order(void);
 void world_at_fini_runs_all_in_reverse_registration_order(void);
 void world_at_fini_is_cleared_on_restart(void);
 
+// Testsuite 'rest'
+void rest_is_a_and_child_of_same_target_routes(void);
+
 // Testsuite 'childof'
+void childof_is_a_and_child_of_same_target_queries(void);
 void childof_kill_parent(void);
 void childof_with_relation_adds_default_relation(void);
 void childof_with_relation_preserves_existing_relation(void);
@@ -469,7 +473,18 @@ bake_test_case world_testcases[] = {
     }
 };
 
+bake_test_case rest_testcases[] = {
+    {
+        "is_a_and_child_of_same_target_routes",
+        rest_is_a_and_child_of_same_target_routes
+    }
+};
+
 bake_test_case childof_testcases[] = {
+    {
+        "is_a_and_child_of_same_target_queries",
+        childof_is_a_and_child_of_same_target_queries
+    },
     {
         "kill_parent",
         childof_kill_parent
@@ -1026,10 +1041,17 @@ static bake_test_suite suites[] = {
         world_testcases
     },
     {
+        "rest",
+        NULL,
+        NULL,
+        1,
+        rest_testcases
+    },
+    {
         "childof",
         NULL,
         NULL,
-        38,
+        39,
         childof_testcases
     },
     {
@@ -1063,5 +1085,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 10);
+    return bake_test_run("siecs.test", argc, argv, suites, 11);
 }

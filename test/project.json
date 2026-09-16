@@ -4,7 +4,7 @@
   "value": {
     "public": false,
     "clangd": true,
-    "use": ["siecs", "sijson", "sireflect", "sicore"],
+    "use": ["siecs", "siecs_rest", "sijson", "sireflect", "sicore"],
     "use_runtime": ["siecs.test.my_module"]
   },
   "lang.c": {
@@ -105,8 +105,15 @@
         ]
       },
       {
+        "id": "rest",
+        "testcases": [
+          "is_a_and_child_of_same_target_routes"
+        ]
+      },
+      {
         "id": "childof",
         "testcases": [
+          "is_a_and_child_of_same_target_queries",
           "kill_parent",
           "with_relation_adds_default_relation",
           "with_relation_preserves_existing_relation",

@@ -258,7 +258,9 @@ static void ecs_relation_update_children_depth(
     uint32_t parent_depth
 ) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
-    RelationSource *source = ecs_try_get_cid(parent, record->component + 1);
+    RelationSource *source = ecs_has_cid_owned(parent, record->component + 1)
+        ? ecs_get_cid(parent, record->component + 1)
+        : NULL;
     uint32_t count = source ? source->entities.size : 0;
     for (uint32_t i = 0; i < count; i++) {
         source = ecs_get_cid(parent, record->component + 1);

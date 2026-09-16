@@ -38,6 +38,11 @@ int main() {
     ecs::init({ .target_fps = 60 });
     ecs::import<sirest>();
 
+    ecs::entity a = ecs::entity::create();
+    ecs::entity b = ecs::entity::create();
+
+    // a.child_of(b).is_a(b);
+
     // ecs_load("./my_scene");
     // my_scene();
     ecs::run();

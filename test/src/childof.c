@@ -59,6 +59,82 @@ ECS_RELATION_DEFINE(LocatedIn, {
 
 static void register_value(void) { ECS_COMPONENT_REGISTER(RelValue); }
 
+static void childof_run_rest_entity_queries(ecs_entity_t parent, ecs_entity_t child) {
+    ecs_query_id_t query = ecs_query({
+        .components = {
+            ecs_in_optional(Abstract),
+            ecs_in_optional(Disabled),
+        },
+        .relations = { ecs_rel(ChildOf) },
+    });
+    test_int(1, ecs_query_count(query));
+    ecs_iter_t it = ecs_query_iter(query);
+    test_true(ecs_iter_next(&it));
+    test_uint(child, it.entities[0]);
+    const ecs_relation_target_t *targets = ecs_targets(&it, ChildOf);
+    test_true(targets != NULL);
+    test_uint(parent, targets[0].entity);
+    test_false(ecs_iter_next(&it));
+    ecs_query_fini(query);
+
+    query = ecs_query({
+        .components = {
+            ecs_in_optional(Abstract),
+            ecs_in_optional(Disabled),
+        },
+        .relations = { ecs_not_rel(ChildOf) },
+    });
+    bool found_parent = false;
+    it = ecs_query_iter(query);
+    while (ecs_iter_next(&it)) {
+        for (uint32_t i = 0; i < it.count; i++) {
+            test_assert(it.entities[i] != child);
+            found_parent |= it.entities[i] == parent;
+        }
+    }
+    test_true(found_parent);
+    ecs_query_fini(query);
+
+    for (uint8_t i = 0; i < 4; i++) {
+        query = ecs_query({
+            .components = {
+                ecs_in_optional(Abstract),
+                ecs_in_optional(Disabled),
+            },
+            .relations = { ecs_rel(ChildOf) },
+        });
+        it = ecs_query_iter(query);
+        test_true(ecs_iter_next(&it));
+        targets = ecs_targets(&it, ChildOf);
+        test_uint(parent, targets[0].entity);
+        ecs_query_fini(query);
+    }
+}
+
+static void childof_is_a_same_target_case(bool is_a_first) {
+    ecs_init();
+    ecs_entity_t a = ecs_new();
+    ecs_entity_t b = ecs_new();
+
+    if (is_a_first) {
+        ecs_relate(b, IsA, a);
+        ecs_relate(b, ChildOf, a);
+    } else {
+        ecs_relate(b, ChildOf, a);
+        ecs_relate(b, IsA, a);
+    }
+
+    test_true(ecs_is(b, a));
+    test_uint(a, ecs_target(b, ChildOf));
+    childof_run_rest_entity_queries(a, b);
+    ecs_fini();
+}
+
+void childof_is_a_and_child_of_same_target_queries(void) {
+    childof_is_a_same_target_case(true);
+    childof_is_a_same_target_case(false);
+}
+
 void childof_kill_parent(void) {
     ecs_init();
     ecs_entity_t parent = ecs_new();
