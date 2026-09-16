@@ -1,0 +1,17 @@
+{
+    "id": "siecs_spatial",
+    "type": "package",
+    "value": {
+        "author": "Suleyman Laarabi",
+        "description": "Spatial hierarchy module for SIECS",
+        "public": true,
+        "clangd": true,
+        "use": ["siecs"]
+    },
+    "lang.c": {
+        "c-standard": "c17",
+        "export-symbols": true,
+        "include": ["src", "include"],
+        "lib": ["m"]
+    }
+}

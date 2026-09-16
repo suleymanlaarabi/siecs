@@ -14,12 +14,12 @@
  * dependencies will automatically show up in this file. Include bake_config.h
  * in your main project file. Do not edit! */
 
-#ifndef SIECS_EXAMPLE_CPP_BAKE_CONFIG_H
-#define SIECS_EXAMPLE_CPP_BAKE_CONFIG_H
+#ifndef SIECS_SPATIAL_TEST_BAKE_CONFIG_H
+#define SIECS_SPATIAL_TEST_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
-#include <siecs.h>
 #include <siecs_spatial.h>
+#include <bake_test.h>
 
 #endif
 

@@ -1,0 +1,28 @@
+{
+    "id": "siecs_spatial.test",
+    "type": "application",
+    "value": {
+        "language": "cpp",
+        "public": false,
+        "clangd": true,
+        "use": ["siecs_spatial"]
+    },
+    "lang.cpp": {
+        "cpp-standard": "c++20"
+    },
+    "test": {
+        "testsuites": [
+            {
+                "id": "spatial",
+                "testcases": [
+                    "component_requirements_and_defaults",
+                    "position_hierarchy",
+                    "rotation_hierarchy",
+                    "scale_hierarchy",
+                    "static_is_not_updated",
+                    "cpp_api"
+                ]
+            }
+        ]
+    }
+}
