@@ -2515,8 +2515,11 @@ static ecs_component_t ecs_cpp_component_id(
     using type = std::remove_cv_t<T>;
     if constexpr (c_declared_component<type>) {
         (void)hooks;
+        ecs_component_t *id = c_component_traits<type>::id_storage();
+        if (*id != 0)
+            return *id;
         return ecs_component_register(
-            c_component_traits<type>::id_storage(),
+            id,
             c_component_traits<type>::desc_storage()
         );
     }
