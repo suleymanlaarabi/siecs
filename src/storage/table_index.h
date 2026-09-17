@@ -12,9 +12,9 @@ typedef struct {
 } ecs_type_slot_t;
 
 typedef struct {
-    uint64_t value;
+    uint64_t value; // zero marks an empty slot
     uint16_t *tables;
-    uint16_t key;
+    uint16_t key; // zero indexes IsA base tables
     uint16_t table_count;
     uint16_t table_capacity;
     uint16_t first_table;
@@ -47,5 +47,6 @@ uint16_t ecs_table_index_get_or_create(
     ecs_type_t type
 );
 ecs_pair_tables_t ecs_table_index_pair_tables(uint16_t key, uint64_t value);
+ecs_pair_tables_t ecs_table_index_base_tables(ecs_entity_t base);
 
 #endif

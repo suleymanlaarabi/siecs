@@ -489,6 +489,23 @@ void ecs_relation_virtual_target_on_remove(ecs_entity_t target) {
         }
 
         ecs_delete_target_t on_delete_target = record->info.desc.on_delete_target;
+        if (relation == ecs_rid(IsA)) {
+            uint16_t table_count = ecs_table_index_base_tables(target).count;
+            for (uint16_t i = 0; i < table_count; i++) {
+                ecs_pair_tables_t tables = ecs_table_index_base_tables(target);
+                ecs_table_t *table = ecs_get_table(tables.ids[i]);
+                while (table->entity_count) {
+                    ecs_entity_t source = table->entities[table->entity_count - 1];
+                    if (on_delete_target == EcsDeleteSources) {
+                        ecs_kill_now(source);
+                    } else {
+                        ecs_unrelate_id_now(source, relation);
+                    }
+                }
+            }
+            continue;
+        }
+
         for (uint32_t entity_id = 1; entity_id < entity_index.entities.size; entity_id++) {
             ecs_entity_t source = ecs_entity_from_index(entity_id);
             if (!source || source == target ||
