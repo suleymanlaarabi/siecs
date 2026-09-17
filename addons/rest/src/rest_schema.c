@@ -113,6 +113,10 @@ static const char *ecs_rest_editor_type(
         return "boolean";
     }
 
+    if (sireflect_type_is_enum(type)) {
+        return "enum";
+    }
+
     if (sireflect_is_numeric(type->kind)) {
         return "number";
     }
@@ -133,6 +137,22 @@ static const char *ecs_rest_editor_type(
     return "unsupported";
 }
 
+static sijson_value_t ecs_rest_enum_options_json(sireflect_handle_t id) {
+    const sireflect_enum_values_t *values =
+        sireflect_type_enum_values(id);
+
+    sijson_value_t options = sijson_make_array();
+
+    for (size_t i = 0; i < values->value_count; i++) {
+        sijson_array_push(
+            options,
+            sijson_make_string(values->values[i].name)
+        );
+    }
+
+    return options;
+}
+
 static sijson_value_t ecs_rest_type_json(sireflect_handle_t id) {
     const sireflect_type_info_t *type = sireflect_type_info(id);
 
@@ -140,6 +160,13 @@ static sijson_value_t ecs_rest_type_json(sireflect_handle_t id) {
     sijson_object_set(object, "id", sijson_make_number(id));
     sijson_object_set(object, "name", sijson_make_string(type->name ? type->name : ""));
     sijson_object_set(object, "editor", sijson_make_string(ecs_rest_editor_type(id, type)));
+    if (sireflect_type_is_enum(type)) {
+        sijson_object_set(
+            object,
+            "options",
+            ecs_rest_enum_options_json(id)
+        );
+    }
     return object;
 }
 

@@ -106,9 +106,10 @@
       },
       {
         "id": "rest",
-        "testcases": [
-          "is_a_and_child_of_same_target_routes"
-        ]
+    "testcases": [
+      "is_a_and_child_of_same_target_routes",
+      "enum_schema_and_component_roundtrip"
+    ]
       },
       {
         "id": "childof",
