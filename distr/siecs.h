@@ -1704,8 +1704,18 @@ SIECS_API bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
 SIECS_API ecs_entity_t ecs_entity_base(ecs_entity_t entity);
 
 /*
- * Add an inheritance link from entity to target; both handles must be live.
- * The target is made Abstract automatically.
+ * Add or retarget an inheritance link from entity to target; both handles must
+ * be live. The target is made Abstract automatically.
+ *
+ * A transition to a new target recursively instantiates a snapshot of the
+ * target's owned ChildOf subtree. Each generated descendant is ChildOf its
+ * generated parent and IsA its corresponding source descendant. Reapplying the
+ * same target is a no-op.
+ * The destination itself is skipped if encountered among the source children,
+ * preventing recursive self-instantiation.
+ *
+ * Later ChildOf changes on the target are not synchronized. Retargeting or
+ * removing IsA does not delete descendants instantiated by an earlier snapshot.
  */
 SIECS_API void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 
@@ -2712,6 +2722,7 @@ class entity {
         return value;
     }
 
+    /** Create an IsA instance and recursively snapshot the prefab's owned ChildOf subtree. */
     static entity instantiate(entity prefab) { return create().is_a(prefab); }
 
     /** Wrap an id without changing world state. */
@@ -2807,19 +2818,19 @@ class entity {
         return *this;
     }
 
-    /** Add an inheritance link to `target`. */
+    /** Add or retarget IsA; a new target recursively snapshots its owned ChildOf subtree. */
     entity is_a(entity target) {
         ecs_relate_id(_entity, ecs_rid(IsA), target.id());
         return *this;
     }
 
-    /** Add an inheritance link to the singleton entity for `T`. */
+    /** Add IsA to the singleton for `T` with the same ChildOf snapshot semantics. */
     template <typename T> entity is_a() {
         ecs_relate_id(_entity, ecs_rid(IsA), ecs::entity::create<T>());
         return *this;
     }
 
-    /** C-compatible overload of `is_a`; target must be a live entity. */
+    /** C-compatible IsA overload with the same ChildOf snapshot semantics. */
     entity is_a(ecs_entity_t target) {
         ecs_relate_id(_entity, ecs_rid(IsA), target);
         return *this;

@@ -115,6 +115,9 @@ void childof_generic_isa_retarget(void);
 void childof_generic_isa_unrelate(void);
 void childof_generic_isa_cycle(void);
 void childof_generic_isa_deferred(void);
+void childof_isa_clones_child_tree(void);
+void childof_isa_clone_snapshot_and_same_target_noop(void);
+void childof_isa_clones_child_tree_deferred(void);
 void childof_generic_isa_relation_event(void);
 void childof_relation_observer_events(void);
 void childof_relation_observer_reports_relation_without_component(void);
@@ -618,6 +621,18 @@ bake_test_case childof_testcases[] = {
         childof_generic_isa_deferred
     },
     {
+        "isa_clones_child_tree",
+        childof_isa_clones_child_tree
+    },
+    {
+        "isa_clone_snapshot_and_same_target_noop",
+        childof_isa_clone_snapshot_and_same_target_noop
+    },
+    {
+        "isa_clones_child_tree_deferred",
+        childof_isa_clones_child_tree_deferred
+    },
+    {
         "generic_isa_relation_event",
         childof_generic_isa_relation_event
     },
@@ -1071,7 +1086,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        39,
+        42,
         childof_testcases
     },
     {

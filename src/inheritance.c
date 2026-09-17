@@ -1,4 +1,6 @@
 #include "inheritance.h"
+#include "command_buffer.h"
+#include "relation.h"
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
 #include "utils.h"
@@ -126,5 +128,77 @@ void ecs_inheritance_plan_copy(
         } else if (record->info->size) {
             memcpy(destination, source, record->info->size);
         }
+    }
+}
+
+void ecs_inheritance_instantiate_children(
+    ecs_entity_t entity,
+    ecs_entity_t base
+) {
+    const ecs_relation_record_t *childof =
+        ecs_relation_record(ecs_rid(ChildOf));
+    const ecs_component_t source_component = childof->component + 1;
+
+    if (!ecs_has_cid_owned(base, source_component)) {
+        return;
+    }
+
+    const RelationSource *base_source =
+        ecs_get_cid(base, source_component);
+    const uint32_t child_count = base_source->entities.size;
+
+    if (child_count == 0) {
+        return;
+    }
+
+    if (!ecs_has_cid_owned(entity, source_component)) {
+        RelationSource source = { 0 };
+        sicore_vec_init_w_size(
+            &source.entities,
+            sizeof(ecs_entity_t),
+            child_count
+        );
+        ecs_set_cid_now(entity, source_component, &source);
+    } else {
+        RelationSource *source =
+            ecs_get_cid(entity, source_component);
+        const uint32_t required =
+            source->entities.size + child_count;
+
+        while (source->entities.capacity < required) {
+            sicore_vec_grow(
+                &source->entities,
+                sizeof(ecs_entity_t)
+            );
+        }
+    }
+
+    for (uint32_t i = 0; i < child_count; i++) {
+        const ecs_entity_t base_child =
+            *sicore_vec_get(
+                &base_source->entities,
+                i,
+                ecs_entity_t
+            );
+
+        /* The destination may itself belong to the source subtree. Cloning
+         * it would recursively include the descendants being generated. */
+        if (base_child == entity) {
+            continue;
+        }
+
+        const ecs_entity_t child = ecs_new();
+
+        ecs_relate_id_now(
+            child,
+            ecs_rid(ChildOf),
+            entity
+        );
+
+        ecs_relate_id_now(
+            child,
+            ecs_rid(IsA),
+            base_child
+        );
     }
 }

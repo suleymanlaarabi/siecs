@@ -862,6 +862,41 @@ static void relation_observer_capture_source(ecs_observer_event_t *event) {
     relation_observer_relation = data->relation;
 }
 
+static RelationSource *childof_owned_sources(ecs_entity_t parent) {
+    const ecs_component_t source_component =
+        ecs_relation_record(ecs_rid(ChildOf))->component + 1;
+
+    return ecs_has_cid_owned(parent, source_component)
+        ? ecs_get_cid(parent, source_component)
+        : NULL;
+}
+
+static ecs_entity_t childof_instance_child(
+    ecs_entity_t parent,
+    ecs_entity_t base
+) {
+    RelationSource *sources = childof_owned_sources(parent);
+
+    if (!sources) {
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < sources->entities.size; i++) {
+        const ecs_entity_t child =
+            *sicore_vec_get(
+                &sources->entities,
+                i,
+                ecs_entity_t
+            );
+
+        if (ecs_entity_base(child) == base) {
+            return child;
+        }
+    }
+
+    return 0;
+}
+
 void childof_generic_isa_has_relation(void) {
     ecs_init();
     ecs_entity_t base = ecs_new();
@@ -942,6 +977,215 @@ void childof_generic_isa_deferred(void) {
 
     test_true(ecs_has_relation_id(entity, ecs_rid(IsA)));
     test_uint(second, ecs_entity_base(entity));
+    ecs_fini();
+}
+
+void childof_isa_clones_child_tree(void) {
+    ecs_init();
+
+    ecs_entity_t base_root = ecs_new();
+    ecs_entity_t base_child_a = ecs_new();
+    ecs_entity_t base_child_b = ecs_new();
+    ecs_entity_t base_grandchild = ecs_new();
+
+    ecs_relate(base_child_a, ChildOf, base_root);
+    ecs_relate(base_child_b, ChildOf, base_root);
+    ecs_relate(base_grandchild, ChildOf, base_child_a);
+
+    ecs_entity_t instance = ecs_new();
+    ecs_relate_id(instance, ecs_rid(IsA), base_root);
+
+    RelationSource *instance_sources =
+        childof_owned_sources(instance);
+    test_assert(instance_sources != NULL);
+    test_uint(2, instance_sources->entities.size);
+
+    ecs_entity_t child_a =
+        childof_instance_child(instance, base_child_a);
+    ecs_entity_t child_b =
+        childof_instance_child(instance, base_child_b);
+
+    test_assert(child_a != 0);
+    test_assert(child_b != 0);
+    test_assert(child_a != child_b);
+
+    test_uint(instance, ecs_target(child_a, ChildOf));
+    test_uint(instance, ecs_target(child_b, ChildOf));
+    test_uint(base_child_a, ecs_entity_base(child_a));
+    test_uint(base_child_b, ecs_entity_base(child_b));
+
+    ecs_entity_t grandchild =
+        childof_instance_child(child_a, base_grandchild);
+
+    test_assert(grandchild != 0);
+    test_uint(child_a, ecs_target(grandchild, ChildOf));
+    test_uint(base_grandchild, ecs_entity_base(grandchild));
+
+    RelationSource *base_root_sources =
+        childof_owned_sources(base_root);
+    test_assert(base_root_sources != NULL);
+    test_uint(2, base_root_sources->entities.size);
+    test_uint(
+        base_child_a,
+        *sicore_vec_get(
+            &base_root_sources->entities,
+            0,
+            ecs_entity_t
+        )
+    );
+    test_uint(
+        base_child_b,
+        *sicore_vec_get(
+            &base_root_sources->entities,
+            1,
+            ecs_entity_t
+        )
+    );
+
+    RelationSource *base_child_sources =
+        childof_owned_sources(base_child_a);
+    test_assert(base_child_sources != NULL);
+    test_uint(1, base_child_sources->entities.size);
+    test_uint(
+        base_grandchild,
+        *sicore_vec_get(
+            &base_child_sources->entities,
+            0,
+            ecs_entity_t
+        )
+    );
+
+    ecs_fini();
+}
+
+void childof_isa_clone_snapshot_and_same_target_noop(void) {
+    ecs_init();
+
+    ecs_entity_t first_base = ecs_new();
+    ecs_entity_t first_base_child = ecs_new();
+    ecs_relate(first_base_child, ChildOf, first_base);
+
+    ecs_entity_t instance = ecs_new();
+    ecs_is_a(instance, first_base);
+
+    RelationSource *sources = childof_owned_sources(instance);
+    test_assert(sources != NULL);
+    test_uint(1, sources->entities.size);
+
+    const ecs_entity_t first_clone =
+        *sicore_vec_get(
+            &sources->entities,
+            0,
+            ecs_entity_t
+        );
+
+    ecs_is_a(instance, first_base);
+
+    sources = childof_owned_sources(instance);
+    test_uint(1, sources->entities.size);
+    test_uint(
+        first_clone,
+        *sicore_vec_get(
+            &sources->entities,
+            0,
+            ecs_entity_t
+        )
+    );
+
+    ecs_entity_t late_child = ecs_new();
+    ecs_relate(late_child, ChildOf, first_base);
+
+    sources = childof_owned_sources(instance);
+    test_uint(1, sources->entities.size);
+    test_uint(
+        0,
+        childof_instance_child(instance, late_child)
+    );
+
+    ecs_entity_t second_base = ecs_new();
+    ecs_entity_t second_base_child = ecs_new();
+    ecs_relate(second_base_child, ChildOf, second_base);
+
+    ecs_is_a(instance, second_base);
+
+    sources = childof_owned_sources(instance);
+    test_uint(2, sources->entities.size);
+    test_true(ecs_is_alive(first_clone));
+    test_uint(instance, ecs_target(first_clone, ChildOf));
+
+    const ecs_entity_t second_clone =
+        childof_instance_child(instance, second_base_child);
+    test_assert(second_clone != 0);
+    test_uint(instance, ecs_target(second_clone, ChildOf));
+
+    ecs_unrelate_id(instance, ecs_rid(IsA));
+
+    test_uint(0, ecs_entity_base(instance));
+
+    sources = childof_owned_sources(instance);
+    test_uint(2, sources->entities.size);
+    test_true(ecs_is_alive(first_clone));
+    test_true(ecs_is_alive(second_clone));
+    test_uint(instance, ecs_target(first_clone, ChildOf));
+    test_uint(instance, ecs_target(second_clone, ChildOf));
+
+    ecs_fini();
+}
+
+void childof_isa_clones_child_tree_deferred(void) {
+    ecs_init();
+
+    ecs_entity_t base_root = ecs_new();
+    ecs_entity_t base_child = ecs_new();
+    ecs_entity_t base_grandchild = ecs_new();
+
+    ecs_relate(base_child, ChildOf, base_root);
+    ecs_relate(base_grandchild, ChildOf, base_child);
+
+    ecs_entity_t instance = ecs_new();
+
+    ecs_defer_begin();
+    ecs_relate_id(instance, ecs_rid(IsA), base_root);
+    ecs_defer_end();
+
+    ecs_entity_t child =
+        childof_instance_child(instance, base_child);
+    test_assert(child != 0);
+    test_uint(instance, ecs_target(child, ChildOf));
+    test_uint(base_child, ecs_entity_base(child));
+
+    ecs_entity_t grandchild =
+        childof_instance_child(child, base_grandchild);
+    test_assert(grandchild != 0);
+    test_uint(child, ecs_target(grandchild, ChildOf));
+    test_uint(base_grandchild, ecs_entity_base(grandchild));
+
+    RelationSource *base_sources =
+        childof_owned_sources(base_root);
+    test_assert(base_sources != NULL);
+    test_uint(1, base_sources->entities.size);
+    test_uint(
+        base_child,
+        *sicore_vec_get(
+            &base_sources->entities,
+            0,
+            ecs_entity_t
+        )
+    );
+
+    RelationSource *base_child_sources =
+        childof_owned_sources(base_child);
+    test_assert(base_child_sources != NULL);
+    test_uint(1, base_child_sources->entities.size);
+    test_uint(
+        base_grandchild,
+        *sicore_vec_get(
+            &base_child_sources->entities,
+            0,
+            ecs_entity_t
+        )
+    );
+
     ecs_fini();
 }
 

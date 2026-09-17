@@ -76,6 +76,7 @@ class entity {
         return value;
     }
 
+    /** Create an IsA instance and recursively snapshot the prefab's owned ChildOf subtree. */
     static entity instantiate(entity prefab) { return create().is_a(prefab); }
 
     /** Wrap an id without changing world state. */
@@ -171,19 +172,19 @@ class entity {
         return *this;
     }
 
-    /** Add an inheritance link to `target`. */
+    /** Add or retarget IsA; a new target recursively snapshots its owned ChildOf subtree. */
     entity is_a(entity target) {
         ecs_relate_id(_entity, ecs_rid(IsA), target.id());
         return *this;
     }
 
-    /** Add an inheritance link to the singleton entity for `T`. */
+    /** Add IsA to the singleton for `T` with the same ChildOf snapshot semantics. */
     template <typename T> entity is_a() {
         ecs_relate_id(_entity, ecs_rid(IsA), ecs::entity::create<T>());
         return *this;
     }
 
-    /** C-compatible overload of `is_a`; target must be a live entity. */
+    /** C-compatible IsA overload with the same ChildOf snapshot semantics. */
     entity is_a(ecs_entity_t target) {
         ecs_relate_id(_entity, ecs_rid(IsA), target);
         return *this;

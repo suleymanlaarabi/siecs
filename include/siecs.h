@@ -935,8 +935,18 @@ SIECS_API bool ecs_is(ecs_entity_t entity, ecs_entity_t target);
 SIECS_API ecs_entity_t ecs_entity_base(ecs_entity_t entity);
 
 /*
- * Add an inheritance link from entity to target; both handles must be live.
- * The target is made Abstract automatically.
+ * Add or retarget an inheritance link from entity to target; both handles must
+ * be live. The target is made Abstract automatically.
+ *
+ * A transition to a new target recursively instantiates a snapshot of the
+ * target's owned ChildOf subtree. Each generated descendant is ChildOf its
+ * generated parent and IsA its corresponding source descendant. Reapplying the
+ * same target is a no-op.
+ * The destination itself is skipped if encountered among the source children,
+ * preventing recursive self-instantiation.
+ *
+ * Later ChildOf changes on the target are not synchronized. Retargeting or
+ * removing IsA does not delete descendants instantiated by an earlier snapshot.
  */
 SIECS_API void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 

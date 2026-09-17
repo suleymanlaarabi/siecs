@@ -147,6 +147,10 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     ecs_inheritance_plan_copy(&plan, target, to_table, record->table_row);
     ecs_emit_added_components(from_table, to_table, entity, record->table_row);
     ecs_inheritance_plan_fini(&plan);
+
+    if (target) {
+        ecs_inheritance_instantiate_children(entity, target);
+    }
 }
 
 void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
