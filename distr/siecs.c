@@ -557,8 +557,226 @@ void sireflect_error_set(const char *message);
 
 #endif
 
+#ifndef SIREFLECT_REGISTRY_H
+#define SIREFLECT_REGISTRY_H
+
+#ifndef SICORE_H
+#endif
+
+typedef struct sireflect_registry_t sireflect_registry_t;
+
+struct sireflect_registry_t {
+    sicore_vec_t types;
+    sicore_map_t types_by_name;
+};
+
+sireflect_registry_t *sireflect_registry_current(void);
+bool sireflect_registry_is_initialized(void);
+
+sireflect_handle_t sireflect_registry_add_type(
+    const char *name,
+    sireflect_kind_t kind,
+    size_t size,
+    size_t align,
+    sireflect_field_info_t *fields,
+    size_t field_count,
+    sireflect_enum_value_t *enum_values,
+    size_t enum_value_count
+);
+
+sireflect_handle_t sireflect_registry_get_or_add_array_type(
+    sireflect_handle_t element_type,
+    size_t element_count
+);
+
+sireflect_handle_t
+sireflect_registry_get_or_add_pointer_type(sireflect_handle_t pointee_type);
+
+sireflect_handle_t sireflect_registry_get_or_add_function_pointer_type(
+    sireflect_handle_t return_type
+);
+
+sireflect_handle_t sireflect_registry_handle_by_name(const char *name);
+
+sireflect_type_info_t *sireflect_registry_type_at(sireflect_handle_t handle);
+
+const sireflect_type_info_t *sireflect_registry_const_type_at(sireflect_handle_t handle);
+
+#endif
+
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+
+static void skip_space(const char **cursor) {
+    while (isspace((unsigned char)**cursor)) {
+        (*cursor)++;
+    }
+}
+
+static bool parse_identifier(const char **cursor, char **out_name) {
+    const char *start = *cursor;
+    if (!isalpha((unsigned char)*start) && *start != '_') {
+        return false;
+    }
+    (*cursor)++;
+    while (isalnum((unsigned char)**cursor) || **cursor == '_') {
+        (*cursor)++;
+    }
+
+    size_t length = (size_t)(*cursor - start);
+    char *name = malloc(length + 1);
+    if (name == NULL) {
+        sireflect_error_set("failed to allocate enum value name");
+        return false;
+    }
+    memcpy(name, start, length);
+    name[length] = '\0';
+    *out_name = name;
+    return true;
+}
+
+static void free_values(sireflect_enum_value_t *values, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        free((char *)values[i].name);
+    }
+    free(values);
+}
+
+static bool parse_values(
+    const char *source,
+    sireflect_enum_value_t **out_values,
+    size_t *out_count
+) {
+    const char *cursor = source;
+    sireflect_enum_value_t *values = NULL;
+    size_t count = 0;
+    int64_t previous = -1;
+
+    skip_space(&cursor);
+    if (*cursor++ != '{') {
+        sireflect_error_set("enum values must start with '{'");
+        return false;
+    }
+
+    for (;;) {
+        skip_space(&cursor);
+        if (*cursor == '}') {
+            cursor++;
+            break;
+        }
+
+        char *name = NULL;
+        if (!parse_identifier(&cursor, &name)) {
+            sireflect_error_set("expected enum value name");
+            free_values(values, count);
+            return false;
+        }
+
+        skip_space(&cursor);
+        int64_t value;
+        if (*cursor == '=') {
+            cursor++;
+            skip_space(&cursor);
+            errno = 0;
+            char *end = NULL;
+            value = strtoll(cursor, &end, 0);
+            if (end == cursor || errno == ERANGE) {
+                sireflect_error_set("enum value must be an integer literal");
+                free(name);
+                free_values(values, count);
+                return false;
+            }
+            cursor = end;
+        } else {
+            if (previous == INT64_MAX) {
+                sireflect_error_set("enum value overflows int64_t");
+                free(name);
+                free_values(values, count);
+                return false;
+            }
+            value = previous + 1;
+        }
+
+        sireflect_enum_value_t *next = realloc(values, (count + 1) * sizeof(*values));
+        if (next == NULL) {
+            sireflect_error_set("failed to allocate enum values");
+            free(name);
+            free_values(values, count);
+            return false;
+        }
+        values = next;
+        values[count++] = (sireflect_enum_value_t){ .name = name, .value = value };
+        previous = value;
+
+        skip_space(&cursor);
+        if (*cursor == ',') {
+            cursor++;
+            continue;
+        }
+        if (*cursor == '}') {
+            cursor++;
+            break;
+        }
+        sireflect_error_set("expected ',' or '}' after enum value");
+        free_values(values, count);
+        return false;
+    }
+
+    skip_space(&cursor);
+    if (*cursor != '\0') {
+        sireflect_error_set("unexpected text after enum values");
+        free_values(values, count);
+        return false;
+    }
+    if (count == 0) {
+        sireflect_error_set("enum must contain at least one value");
+        free(values);
+        return false;
+    }
+
+    *out_values = values;
+    *out_count = count;
+    return true;
+}
+
+sireflect_handle_t sireflect_try_register_enum(const sireflect_enum_desc_t *desc) {
+    sireflect_error_clear();
+    if (!sireflect_registry_is_initialized() || desc == NULL || desc->name == NULL ||
+        desc->values == NULL || desc->size == 0 || desc->align == 0) {
+        sireflect_error_set(
+            sireflect_registry_is_initialized() ? "invalid enum descriptor" : "sireflect is not initialized"
+        );
+        return SIREFLECT_INVALID_HANDLE;
+    }
+
+    sireflect_handle_t existing = sireflect_type_by_name(desc->name);
+    if (existing != SIREFLECT_INVALID_HANDLE) {
+        const sireflect_type_info_t *type = sireflect_type_info(existing);
+        if (type->kind != sireflect_kind_enum || type->size != desc->size || type->align != desc->align) {
+            sireflect_error_set("existing type is incompatible with enum descriptor");
+            return SIREFLECT_INVALID_HANDLE;
+        }
+        return existing;
+    }
+
+    sireflect_enum_value_t *values = NULL;
+    size_t value_count = 0;
+    if (!parse_values(desc->values, &values, &value_count)) {
+        return SIREFLECT_INVALID_HANDLE;
+    }
+    return sireflect_registry_add_type(
+        desc->name, sireflect_kind_enum, desc->size, desc->align, NULL, 0, values, value_count
+    );
+}
+
+sireflect_handle_t sireflect_register_enum(const sireflect_enum_desc_t *desc) {
+    sireflect_handle_t handle = sireflect_try_register_enum(desc);
+    sireflect_assert(handle != SIREFLECT_INVALID_HANDLE, "failed to register enum");
+    return handle;
+}
 
 static char *sireflect_current_error = NULL;
 
@@ -693,52 +911,6 @@ bool sireflect_parse_struct_fields(
 
 #endif
 
-#ifndef SIREFLECT_REGISTRY_H
-#define SIREFLECT_REGISTRY_H
-
-#ifndef SICORE_H
-#endif
-
-typedef struct sireflect_registry_t sireflect_registry_t;
-
-struct sireflect_registry_t {
-    sicore_vec_t types;
-    sicore_map_t types_by_name;
-};
-
-sireflect_registry_t *sireflect_registry_current(void);
-bool sireflect_registry_is_initialized(void);
-
-sireflect_handle_t sireflect_registry_add_type(
-    const char *name,
-    sireflect_kind_t kind,
-    size_t size,
-    size_t align,
-    sireflect_field_info_t *fields,
-    size_t field_count
-);
-
-sireflect_handle_t sireflect_registry_get_or_add_array_type(
-    sireflect_handle_t element_type,
-    size_t element_count
-);
-
-sireflect_handle_t
-sireflect_registry_get_or_add_pointer_type(sireflect_handle_t pointee_type);
-
-sireflect_handle_t sireflect_registry_get_or_add_function_pointer_type(
-    sireflect_handle_t return_type
-);
-
-sireflect_handle_t sireflect_registry_handle_by_name(const char *name);
-
-sireflect_type_info_t *sireflect_registry_type_at(sireflect_handle_t handle);
-
-const sireflect_type_info_t *sireflect_registry_const_type_at(sireflect_handle_t handle);
-
-#endif
-
-#include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -1766,7 +1938,9 @@ sireflect_handle_t sireflect_registry_add_type(
     size_t size,
     size_t align,
     sireflect_field_info_t *fields,
-    size_t field_count
+    size_t field_count,
+    sireflect_enum_value_t *enum_values,
+    size_t enum_value_count
 ) {
     sireflect_registry_t *reg = sireflect_registry_current();
 
@@ -1783,6 +1957,11 @@ sireflect_handle_t sireflect_registry_add_type(
             {
                 .fields = fields,
                 .field_count = field_count,
+            },
+        .enum_values =
+            {
+                .values = enum_values,
+                .value_count = enum_value_count,
             },
         .element_type = SIREFLECT_INVALID_HANDLE,
         .element_count = 0,
@@ -1821,6 +2000,8 @@ sireflect_registry_get_or_add_pointer_type(sireflect_handle_t pointee_type) {
         sizeof(ptr),
         _Alignof(ptr),
         NULL,
+        0,
+        NULL,
         0
     );
     free(name);
@@ -1858,6 +2039,8 @@ sireflect_handle_t sireflect_registry_get_or_add_function_pointer_type(
         sizeof(ptr),
         _Alignof(ptr),
         NULL,
+        0,
+        NULL,
         0
     );
     free(name);
@@ -1894,6 +2077,8 @@ sireflect_handle_t sireflect_registry_get_or_add_array_type(
         element->size * element_count,
         element->align,
         NULL,
+        0,
+        NULL,
         0
     );
     free(name);
@@ -1906,10 +2091,10 @@ sireflect_handle_t sireflect_registry_get_or_add_array_type(
 }
 
 #define add_type(name, kind) \
-    sireflect_registry_add_type(#name, kind, sizeof(name), _Alignof(name), NULL, 0)
+    sireflect_registry_add_type(#name, kind, sizeof(name), _Alignof(name), NULL, 0, NULL, 0)
 
 #define add_named_type(c_type, reflected_name, kind) \
-    sireflect_registry_add_type(reflected_name, kind, sizeof(c_type), _Alignof(c_type), NULL, 0)
+    sireflect_registry_add_type(reflected_name, kind, sizeof(c_type), _Alignof(c_type), NULL, 0, NULL, 0)
 
 static inline void sireflect_register_builtin_types(void) {
     add_type(u8, sireflect_kind_u8);
@@ -1978,6 +2163,11 @@ static void sireflect_registry_clear(void) {
         }
 
         free(type->fields.fields);
+
+        for (size_t e = 0; e < type->enum_values.value_count; e++) {
+            free((char *)type->enum_values.values[e].name);
+        }
+        free(type->enum_values.values);
     }
 
     sicore_map_fini(&reg->types_by_name);
@@ -2082,7 +2272,9 @@ sireflect_try_register_struct(const sireflect_struct_desc_t *desc) {
         desc->size,
         desc->align,
         parsed_fields,
-        field_count
+        field_count,
+        NULL,
+        0
     );
 }
 
@@ -2141,7 +2333,9 @@ sireflect_register_struct(const sireflect_struct_desc_t *desc) {
                 desc->size,
                 desc->align,
                 parsed_fields,
-                field_count
+                field_count,
+                NULL,
+                0
             );
         }
     }
@@ -2199,7 +2393,9 @@ sireflect_handle_t sireflect_try_register_dynamic_struct(
         size,
         align,
         parsed_fields,
-        field_count
+        field_count,
+        NULL,
+        0
     );
 }
 
@@ -2261,6 +2457,8 @@ const char *sireflect_kind_name(sireflect_kind_t kind) {
         return "unsigned long long";
     case sireflect_kind_function_pointer:
         return "function pointer";
+    case sireflect_kind_enum:
+        return "enum";
     }
 
     return "unknown";
@@ -2298,6 +2496,7 @@ bool sireflect_is_numeric(sireflect_kind_t kind) {
     case sireflect_kind_struct:
     case sireflect_kind_array:
     case sireflect_kind_function_pointer:
+    case sireflect_kind_enum:
         return false;
     }
 
@@ -2336,6 +2535,49 @@ bool sireflect_type_is_struct(const sireflect_type_info_t *info) {
 
     sireflect_assert(info != NULL, "type metadata must not be NULL");
     return info->kind == sireflect_kind_struct;
+}
+
+bool sireflect_type_is_enum(const sireflect_type_info_t *info) {
+    sireflect_error_clear();
+
+    sireflect_assert(info != NULL, "type metadata must not be NULL");
+    return info->kind == sireflect_kind_enum;
+}
+
+const sireflect_enum_values_t *
+sireflect_type_enum_values(sireflect_handle_t type) {
+    sireflect_error_clear();
+
+    const sireflect_type_info_t *info = sireflect_type_info(type);
+    sireflect_assert(info->kind == sireflect_kind_enum, "type must be an enum");
+    return &info->enum_values;
+}
+
+const sireflect_enum_value_t *
+sireflect_enum_value_by_name(sireflect_handle_t type, const char *name) {
+    sireflect_error_clear();
+    sireflect_assert(name != NULL, "enum value name must not be NULL");
+
+    const sireflect_enum_values_t *values = sireflect_type_enum_values(type);
+    for (size_t i = 0; i < values->value_count; i++) {
+        if (strcmp(values->values[i].name, name) == 0) {
+            return &values->values[i];
+        }
+    }
+    return NULL;
+}
+
+const sireflect_enum_value_t *
+sireflect_enum_value_by_value(sireflect_handle_t type, int64_t value) {
+    sireflect_error_clear();
+
+    const sireflect_enum_values_t *values = sireflect_type_enum_values(type);
+    for (size_t i = 0; i < values->value_count; i++) {
+        if (values->values[i].value == value) {
+            return &values->values[i];
+        }
+    }
+    return NULL;
 }
 
 bool sireflect_type_is_array(const sireflect_type_info_t *info) {
@@ -2911,8 +3153,6 @@ sijson_value_t sijson_parse(const char *json) {
     return value;
 }
 
-#include <limits.h>
-
 static void *g_from_json_buffer;
 static size_t g_from_json_capacity;
 
@@ -2955,6 +3195,50 @@ static bool sijson_is_char_pointer_type(const sireflect_type_info_t *type) {
 
 static bool
 sijson_write_reflected(sijson_writer_t *writer, sireflect_handle_t type, const void *ptr);
+
+static const sireflect_enum_value_t *
+sijson_enum_value_from_storage(const sireflect_type_info_t *enum_type, const void *ptr) {
+    if (enum_type == NULL || enum_type->kind != sireflect_kind_enum || ptr == NULL ||
+        enum_type->size == 0 || enum_type->size > sizeof(uint64_t)) {
+        return NULL;
+    }
+
+    uint64_t raw = 0;
+    memcpy(&raw, ptr, enum_type->size);
+    uint64_t mask = enum_type->size == sizeof(raw)
+                        ? UINT64_MAX
+                        : (UINT64_C(1) << (enum_type->size * CHAR_BIT)) - 1;
+    const sireflect_enum_values_t *values = &enum_type->enum_values;
+    for (size_t i = 0; i < values->value_count; i++) {
+        if ((raw & mask) == ((uint64_t)values->values[i].value & mask)) {
+            return &values->values[i];
+        }
+    }
+    return NULL;
+}
+
+static bool sijson_assign_enum(
+    const sireflect_type_info_t *enum_type,
+    void *field_ptr,
+    sijson_value_t value
+) {
+    if (value == NULL || value->type != SIJSON_STRING) {
+        return sijson_set_error("expected JSON string for enum");
+    }
+    if (enum_type->size == 0 || enum_type->size > sizeof(uint64_t)) {
+        return sijson_set_error("unsupported enum storage size");
+    }
+
+    const sireflect_enum_values_t *values = &enum_type->enum_values;
+    for (size_t i = 0; i < values->value_count; i++) {
+        if (strcmp(values->values[i].name, value->as.string) == 0) {
+            uint64_t raw = (uint64_t)values->values[i].value;
+            memcpy(field_ptr, &raw, enum_type->size);
+            return true;
+        }
+    }
+    return sijson_set_error("unknown enum value");
+}
 
 static bool sijson_write_reflected_field(
     sijson_writer_t *writer,
@@ -3075,6 +3359,14 @@ static bool sijson_write_reflected_field(
         return sijson_writer_cstr(writer, number);
     case sireflect_kind_char:
         return sijson_writer_string(writer, (char[2]){ *(const char *)field_ptr, '\0' });
+    case sireflect_kind_enum: {
+        const sireflect_enum_value_t *value =
+            sijson_enum_value_from_storage(field_type, field_ptr);
+        if (value == NULL) {
+            return sijson_set_error("unknown enum value");
+        }
+        return sijson_writer_string(writer, value->name);
+    }
     case sireflect_kind_ptr:
         return sijson_writer_string(writer, *(char *const *)field_ptr);
     case sireflect_kind_pointer:
@@ -3372,6 +3664,8 @@ static bool sijson_assign_field(
         }
         *(char *)field_ptr = value->as.string[0];
         return true;
+    case sireflect_kind_enum:
+        return sijson_assign_enum(field_type, field_ptr, value);
     case sireflect_kind_ptr:
     case sireflect_kind_pointer:
         if (!sijson_is_char_pointer_type(field_type)) {
@@ -3554,6 +3848,7 @@ static void sijson_free_reflected_field(const sireflect_type_info_t *field_type,
     case sireflect_kind_int:
     case sireflect_kind_long:
     case sireflect_kind_function_pointer:
+    case sireflect_kind_enum:
         return;
     }
 }
