@@ -1,6 +1,6 @@
 #include "siecs_spatial.h"
-
 #include <math.h>
+#include <stdint.h>
 #include <string.h>
 
 ECS_COMPONENT_DEFINE(Position2d);
@@ -107,7 +107,8 @@ static void spatial_3d_propagate(ecs_iter_t *it) {
     float cx = 1.0f, cy = 1.0f, cz = 1.0f;
     float sin_x = 0.0f, sin_y = 0.0f, sin_z = 0.0f;
 
-    for (uint32_t i = 0; i < it->count; i++) {
+    const uint32_t count = it->count;
+    for (uint32_t i = 0; i < count; i++) {
         const ecs_entity_t parent_entity = parents[i].entity;
 
         if (parent_entity != cached_parent) {
@@ -160,6 +161,29 @@ static void spatial_3d_propagate(ecs_iter_t *it) {
         global_scale[i].x = sx * scale[i].x;
         global_scale[i].y = sy * scale[i].y;
         global_scale[i].z = sz * scale[i].z;
+    }
+}
+
+void spatial_2d_integrate(ecs_iter_t *it) {
+    Position2d *restrict position = ecs_field(it, 0);
+    const Velocity2d *restrict velocity = ecs_field(it, 1);
+
+    const uint32_t count = it->count;
+    for (uint32_t i = 0; i < count; i++) {
+        position[i].x += velocity[i].x * it->delta_time;
+        position[i].y += velocity[i].y * it->delta_time;
+    }
+}
+
+void spatial_3d_integrate(ecs_iter_t *it) {
+    Position3d *restrict position = ecs_field(it, 0);
+    const Velocity3d *restrict velocity = ecs_field(it, 1);
+
+    const uint32_t count = it->count;
+    for (uint32_t i = 0; i < count; i++) {
+        position[i].x += velocity[i].x * it->delta_time;
+        position[i].y += velocity[i].y * it->delta_time;
+        position[i].z += velocity[i].z * it->delta_time;
     }
 }
 
@@ -223,6 +247,34 @@ void sispatial_import(const sispatial_props_t *props) {
                 .order_by = ecs_order_by_depth(ChildOf),
             },
             .callback = spatial_3d_propagate,
+            .phase = EcsPostUpdate,
+        }
+    );
+
+    ecs_system(
+        {
+            .name = "Spatial2dIntegrate",
+            .query = {
+                .components = {
+                    ecs_inout(Position2d),
+                    ecs_in(Velocity2d),
+                },
+            },
+            .callback = spatial_2d_integrate,
+            .phase = EcsPostUpdate,
+        }
+    );
+
+    ecs_system(
+        {
+            .name = "Spatial3dIntegrate",
+            .query = {
+                .components = {
+                    ecs_inout(Position3d),
+                    ecs_in(Velocity3d),
+                },
+            },
+            .callback = spatial_3d_integrate,
             .phase = EcsPostUpdate,
         }
     );
