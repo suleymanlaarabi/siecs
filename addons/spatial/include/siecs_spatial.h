@@ -46,7 +46,7 @@ DEFINE_F32(Rotation2d);
 DEFINE_F32(GlobalRotation2d);
 
 DEFINE_VEC3(Position3d);
-DEFINE_VEC2(Velocity3d);
+DEFINE_VEC3(Velocity3d);
 DEFINE_VEC3(GlobalPosition3d);
 DEFINE_VEC3(Rotation3d);
 DEFINE_VEC3(GlobalRotation3d);
