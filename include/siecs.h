@@ -204,6 +204,12 @@ typedef struct {
     ecs_entity_t new_target;
 } ecs_relation_event_t;
 
+/* Borrowed view of the direct sources targeting an entity through a relation. */
+typedef struct {
+    const ecs_entity_t *entities;
+    uint32_t count;
+} ecs_relation_sources_t;
+
 /* Observer callback; event storage is valid only during the callback. */
 typedef void (*ecs_observer_callback_t)(ecs_observer_event_t *event);
 
@@ -970,6 +976,15 @@ SIECS_API bool
 ecs_has_relation_to_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target);
 /* Return the source edge target, or zero when absent. */
 SIECS_API ecs_entity_t ecs_target_id(ecs_entity_t entity, ecs_relation_id_t relation);
+
+/*
+ * Return the direct sources targeting target through relation.
+ *
+ * The returned storage is borrowed and remains valid only until the relation
+ * is mutated. Relations without a source index return an empty view.
+ */
+SIECS_API ecs_relation_sources_t
+ecs_relation_sources(ecs_entity_t target, ecs_relation_id_t relation);
 
 /* Return a relation target stored in a ByTarget table. */
 SIECS_API ecs_entity_t ecs_table_target_id(const ecs_table_t *table, ecs_relation_id_t relation);

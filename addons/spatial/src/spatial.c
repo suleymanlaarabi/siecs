@@ -152,6 +152,53 @@ static inline void spatial_3d_compute_static(
     global_scale->z = sz * scale->z;
 }
 
+static void spatial_2d_static_propagate_subtree(ecs_entity_t entity);
+static void spatial_3d_static_propagate_subtree(ecs_entity_t entity);
+
+static void spatial_2d_static_propagate_children(ecs_entity_t entity) {
+    const ecs_relation_sources_t children =
+        ecs_relation_sources(entity, ecs_rid(ChildOf));
+
+    for (uint32_t i = 0; i < children.count; i++) {
+        const ecs_entity_t child = children.entities[i];
+        if (ecs_has(child, Static) && ecs_has(child, Position2d)) {
+            spatial_2d_static_propagate_subtree(child);
+        }
+    }
+}
+
+static void spatial_3d_static_propagate_children(ecs_entity_t entity) {
+    const ecs_relation_sources_t children =
+        ecs_relation_sources(entity, ecs_rid(ChildOf));
+
+    for (uint32_t i = 0; i < children.count; i++) {
+        const ecs_entity_t child = children.entities[i];
+        if (ecs_has(child, Static) && ecs_has(child, Position3d)) {
+            spatial_3d_static_propagate_subtree(child);
+        }
+    }
+}
+
+static void spatial_2d_static_propagate_subtree(ecs_entity_t entity) {
+    spatial_2d_compute_static(
+        entity,
+        ecs_get(entity, Position2d),
+        ecs_get(entity, Rotation2d),
+        ecs_get(entity, Scale2d)
+    );
+    spatial_2d_static_propagate_children(entity);
+}
+
+static void spatial_3d_static_propagate_subtree(ecs_entity_t entity) {
+    spatial_3d_compute_static(
+        entity,
+        ecs_get(entity, Position3d),
+        ecs_get(entity, Rotation3d),
+        ecs_get(entity, Scale3d)
+    );
+    spatial_3d_static_propagate_children(entity);
+}
+
 static void spatial_2d_static_on_set(ecs_observer_event_t *event) {
     const ecs_component_t component = event->component;
 
@@ -179,6 +226,7 @@ static void spatial_2d_static_on_set(ecs_observer_event_t *event) {
     }
 
     spatial_2d_compute_static(entity, position, rotation, scale);
+    spatial_2d_static_propagate_children(entity);
 }
 
 static void spatial_3d_static_on_set(ecs_observer_event_t *event) {
@@ -204,6 +252,33 @@ static void spatial_3d_static_on_set(ecs_observer_event_t *event) {
     }
 
     spatial_3d_compute_static(entity, position, rotation, scale);
+    spatial_3d_static_propagate_children(entity);
+}
+
+static void spatial_2d_static_on_add(ecs_observer_event_t *event) {
+    if (event->component == ecs_id(Position2d)) {
+        spatial_2d_static_propagate_subtree(event->entity);
+    }
+}
+
+static void spatial_3d_static_on_add(ecs_observer_event_t *event) {
+    if (event->component == ecs_id(Position3d)) {
+        spatial_3d_static_propagate_subtree(event->entity);
+    }
+}
+
+static void spatial_2d_static_on_relation_set(ecs_observer_event_t *event) {
+    const ecs_relation_event_t *relation = event->trigger_data;
+    if (relation->relation == ecs_rid(ChildOf)) {
+        spatial_2d_static_propagate_subtree(event->entity);
+    }
+}
+
+static void spatial_3d_static_on_relation_set(ecs_observer_event_t *event) {
+    const ecs_relation_event_t *relation = event->trigger_data;
+    if (relation->relation == ecs_rid(ChildOf)) {
+        spatial_3d_static_propagate_subtree(event->entity);
+    }
 }
 
 static void spatial_2d_propagate(ecs_iter_t *it) {
@@ -456,6 +531,7 @@ void sispatial_import(const sispatial_props_t *props) {
                 .components = {
                     ecs_filter(Position2d),
                     ecs_filter(Static),
+                    ecs_in_optional(Abstract),
                 },
             },
             .callback = spatial_2d_static_on_set,
@@ -469,9 +545,66 @@ void sispatial_import(const sispatial_props_t *props) {
                 .components = {
                     ecs_filter(Position3d),
                     ecs_filter(Static),
+                    ecs_in_optional(Abstract),
                 },
             },
             .callback = spatial_3d_static_on_set,
+        }
+    );
+
+    ecs_observer(
+        {
+            .on = EcsOnAdd,
+            .query = {
+                .components = {
+                    ecs_filter(Position2d),
+                    ecs_filter(Static),
+                    ecs_in_optional(Abstract),
+                },
+            },
+            .callback = spatial_2d_static_on_add,
+        }
+    );
+
+    ecs_observer(
+        {
+            .on = EcsOnAdd,
+            .query = {
+                .components = {
+                    ecs_filter(Position3d),
+                    ecs_filter(Static),
+                    ecs_in_optional(Abstract),
+                },
+            },
+            .callback = spatial_3d_static_on_add,
+        }
+    );
+
+    ecs_observer(
+        {
+            .on = EcsOnRelationSet,
+            .query = {
+                .components = {
+                    ecs_filter(Position2d),
+                    ecs_filter(Static),
+                    ecs_in_optional(Abstract),
+                },
+            },
+            .callback = spatial_2d_static_on_relation_set,
+        }
+    );
+
+    ecs_observer(
+        {
+            .on = EcsOnRelationSet,
+            .query = {
+                .components = {
+                    ecs_filter(Position3d),
+                    ecs_filter(Static),
+                    ecs_in_optional(Abstract),
+                },
+            },
+            .callback = spatial_3d_static_on_relation_set,
         }
     );
 
