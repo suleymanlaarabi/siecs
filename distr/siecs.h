@@ -1090,6 +1090,17 @@ typedef enum {
     EcsInheritShared = 1
 } ecs_component_inheritance_t;
 
+#ifndef NDEBUG
+typedef enum {
+    EcsMutable = 0,
+    EcsSetOnly = 1,
+} ecs_component_mutation_t;
+
+#define ECS_SET_ONLY .mutation = EcsSetOnly,
+#else
+#define ECS_SET_ONLY
+#endif
+
 /* Iterator storage returned by ecs_query_iter; ptrs/entities are batch views.
  */
 typedef struct {
@@ -1118,6 +1129,9 @@ typedef struct {
     ecs_component_on_add_t on_add;
     const sireflect_struct_desc_t *struct_desc;
     ecs_component_inheritance_t inheritance;
+#ifndef NDEBUG
+    ecs_component_mutation_t mutation;
+#endif
 } ecs_component_desc_t;
 
 /* Immutable metadata for a registered component. */
@@ -1128,6 +1142,9 @@ typedef struct {
     /* Copied reflection descriptor, borrowed until ecs_fini(). */
     const sireflect_struct_desc_t *reflection;
     ecs_component_inheritance_t inheritance;
+#ifndef NDEBUG
+    ecs_component_mutation_t mutation;
+#endif
 } ecs_component_info_t;
 
 /* Dynamic reflected component descriptor. Sireflect derives size and alignment.
@@ -1136,6 +1153,9 @@ typedef struct {
     const char *name;
     const char *fields;
     ecs_component_inheritance_t inheritance;
+#ifndef NDEBUG
+    ecs_component_mutation_t mutation;
+#endif
 } ecs_dynamic_component_desc_t;
 
 /*
@@ -2496,6 +2516,9 @@ template <typename T> struct component_hooks {
 template <typename T> struct component_options {
     component_hooks<T> hooks{};
     ecs_component_inheritance_t inheritance = EcsInheritOwned;
+#ifndef NDEBUG
+    ecs_component_mutation_t mutation = EcsMutable;
+#endif
 };
 
 namespace detail {
@@ -2599,6 +2622,10 @@ template <typename T>
 static ecs_component_t ecs_cpp_component_id(
     const component_hooks<T> *hooks = nullptr,
     ecs_component_inheritance_t inheritance = EcsInheritOwned
+#ifndef NDEBUG
+    ,
+    ecs_component_mutation_t mutation = EcsMutable
+#endif
 ) {
     using type = std::remove_cv_t<T>;
     if constexpr (c_declared_component<type>) {
@@ -2640,6 +2667,9 @@ static ecs_component_t ecs_cpp_component_id(
         .on_add = hooks && hooks->on_add ? component_hook<T, true> : nullptr,
         .struct_desc = &reflection,
         .inheritance = inheritance,
+#ifndef NDEBUG
+        .mutation = mutation,
+#endif
     };
 
     cid = ecs_component_init(&desc);
@@ -2711,6 +2741,7 @@ template <typename T> class component_ref {
 } // namespace ecs
 
 #pragma once
+#include <cassert>
 #include <cstring>
 #include <string>
 
@@ -2849,14 +2880,38 @@ class entity {
         return *this;
     }
 
+    /** Return const component storage, or null when absent. */
+    template <typename T> [[nodiscard]] const T *try_get() {
+        return static_cast<const T *>(ecs_try_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
+    }
+
+    /** Return const component storage; the component must be present. */
+    template <typename T> [[nodiscard]] const T &get() {
+        return *static_cast<const T *>(ecs_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
+    }
+
     /** Return mutable component storage, or null when absent. */
-    template <typename T> [[nodiscard]] T *try_get() {
-        return static_cast<T *>(ecs_try_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
+    template <typename T> [[nodiscard]] T *try_get_mut() {
+        ecs_component_t id = detail::ecs_cpp_component_id<T>();
+#ifndef NDEBUG
+        assert(
+            ecs_component_info(id)->mutation != EcsSetOnly &&
+            "SetOnly component can only be modified with set()"
+        );
+#endif
+        return static_cast<T *>(ecs_try_get_cid(_entity, id));
     }
 
     /** Return mutable component storage; the component must be present. */
-    template <typename T> [[nodiscard]] T &get() {
-        return *static_cast<T *>(ecs_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
+    template <typename T> [[nodiscard]] T &get_mut() {
+        ecs_component_t id = detail::ecs_cpp_component_id<T>();
+#ifndef NDEBUG
+        assert(
+            ecs_component_info(id)->mutation != EcsSetOnly &&
+            "SetOnly component can only be modified with set()"
+        );
+#endif
+        return *static_cast<T *>(ecs_get_cid(_entity, id));
     }
 
     /** Return const component storage, or null when absent. */
@@ -4231,7 +4286,14 @@ inline component_ref<T> component(const component_hooks<T> &hooks) {
 template <typename T>
     requires(!detail::c_declared_component<T>)
 inline component_ref<T> component(const component_options<T> &options) {
-    return component_ref<T>(detail::ecs_cpp_component_id<T>(&options.hooks, options.inheritance));
+    return component_ref<T>(detail::ecs_cpp_component_id<T>(
+        &options.hooks,
+        options.inheritance
+#ifndef NDEBUG
+        ,
+        options.mutation
+#endif
+    ));
 }
 
 /** Declare that adding `Component` implicitly adds `Required` first. */

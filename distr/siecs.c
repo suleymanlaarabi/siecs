@@ -5104,6 +5104,9 @@ void ecs_component_index_register(
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
     ecs_component_inheritance_t inheritance,
+#ifndef NDEBUG
+    ecs_component_mutation_t mutation,
+#endif
     uint32_t relation_flags,
     sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
@@ -6797,6 +6800,9 @@ static ecs_component_t ecs_component_register_type(
         desc->on_remove,
         desc->on_add,
         desc->inheritance,
+#ifndef NDEBUG
+        desc->mutation,
+#endif
         0,
         type,
         desc->struct_desc
@@ -6821,6 +6827,9 @@ ecs_component_t ecs_component_register_relation_internal(
         by_target ? ecs_relation_target_on_remove : RelationOnRemove,
         NULL,
         EcsInheritShared,
+#ifndef NDEBUG
+        EcsMutable,
+#endif
         target_flags,
         SIREFLECT_INVALID_HANDLE,
         NULL
@@ -6838,6 +6847,9 @@ ecs_component_t ecs_component_register_relation_internal(
         RelationSourceOnRemove,
         NULL,
         EcsInheritShared,
+#ifndef NDEBUG
+        EcsMutable,
+#endif
         ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationSource),
         SIREFLECT_INVALID_HANDLE,
         NULL
@@ -6896,6 +6908,9 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
         .size = info->size,
         .struct_desc = &reflection,
         .inheritance = desc->inheritance,
+#ifndef NDEBUG
+        .mutation = desc->mutation,
+#endif
     };
 
     component.name = desc->name;
@@ -7145,6 +7160,12 @@ void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
 }
 
 void ecs_modified_cid(ecs_entity_t entity, ecs_component_t cid) {
+#ifndef NDEBUG
+    ecs_assert(
+        ecs_component_info(cid)->mutation != EcsSetOnly,
+        "SetOnly component can only be modified with set()"
+    );
+#endif
     ecs_assert_component_access(entity, cid);
     entity_edit(entity, table, record);
     void *data = ecs_table_get_component(table, cid, record->table_row);
@@ -11459,6 +11480,9 @@ void ecs_component_index_register(
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
     ecs_component_inheritance_t inheritance,
+#ifndef NDEBUG
+    ecs_component_mutation_t mutation,
+#endif
     uint32_t relation_flags,
     sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
@@ -11486,6 +11510,9 @@ void ecs_component_index_register(
         .type = type,
         .reflection = reflection,
         .inheritance = inheritance,
+#ifndef NDEBUG
+        .mutation = mutation,
+#endif
     };
     if (name && !info->name) {
         abort();
@@ -11583,6 +11610,12 @@ static void ecs_query_compile_term(ecs_query_builder_t *b, ecs_component_term_t 
         "invalid query access or up relation\n"
     );
 #ifndef NDEBUG
+    if (access == EcsOut || access == EcsInOut || access == EcsInOutOptional) {
+        ecs_assert(
+            ecs_component_info(term.id)->mutation != EcsSetOnly,
+            "SetOnly component cannot be used as writable query field"
+        );
+    }
     for (uint8_t i = 0; i < q->field_count + q->match_count; i++) {
         uint8_t at = i < q->field_count ? i : ECS_COMPILED_TERMS - 1 - (i - q->field_count);
         ecs_assert(b->terms[at].id != term.id, "duplicate query component: %u\n", term.id);
