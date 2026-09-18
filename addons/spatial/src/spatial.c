@@ -17,7 +17,7 @@ ECS_COMPONENT_DEFINE(Position3d);
 ECS_COMPONENT_DEFINE(GlobalPosition3d);
 ECS_COMPONENT_DEFINE(Velocity3d);
 ECS_COMPONENT_DEFINE(Rotation3d);
-ECS_COMPONENT_DEFINE(GlobalRotation3d);
+ECS_COMPONENT_DEFINE(GlobalOrientation3d);
 ECS_CTOR(Scale3d, { 1.0f, 1.0f, 1.0f });
 ECS_COMPONENT_DEFINE(Scale3d, .ops = { .ctor = ecs_ctor_id(Scale3d) });
 ECS_CTOR(GlobalScale3d, { 1.0f, 1.0f, 1.0f });
@@ -25,6 +25,60 @@ ECS_COMPONENT_DEFINE(GlobalScale3d, .ops = { .ctor = ecs_ctor_id(GlobalScale3d) 
 
 ECS_TAG_DEFINE(Static);
 ECS_MODULE_DEFINE(sispatial);
+
+static inline GlobalOrientation3d spatial_3d_orientation_from_rotation(const Rotation3d *rotation) {
+    const float half_pitch = rotation->pitch * 0.5f;
+    const float half_yaw = rotation->yaw * 0.5f;
+    const float half_roll = rotation->roll * 0.5f;
+    const float sin_pitch = sinf(half_pitch);
+    const float cos_pitch = cosf(half_pitch);
+    const float sin_yaw = sinf(half_yaw);
+    const float cos_yaw = cosf(half_yaw);
+    const float sin_roll = sinf(half_roll);
+    const float cos_roll = cosf(half_roll);
+
+    return (GlobalOrientation3d){
+        .x = sin_pitch * cos_yaw * cos_roll - cos_pitch * sin_yaw * sin_roll,
+        .y = cos_pitch * sin_yaw * cos_roll + sin_pitch * cos_yaw * sin_roll,
+        .z = cos_pitch * cos_yaw * sin_roll - sin_pitch * sin_yaw * cos_roll,
+        .w = cos_pitch * cos_yaw * cos_roll + sin_pitch * sin_yaw * sin_roll,
+    };
+}
+
+static inline GlobalOrientation3d
+spatial_3d_orientation_multiply(const GlobalOrientation3d *left, const GlobalOrientation3d *right) {
+    return (GlobalOrientation3d){
+        .x = left->w * right->x + left->x * right->w + left->y * right->z - left->z * right->y,
+        .y = left->w * right->y - left->x * right->z + left->y * right->w + left->z * right->x,
+        .z = left->w * right->z + left->x * right->y - left->y * right->x + left->z * right->w,
+        .w = left->w * right->w - left->x * right->x - left->y * right->y - left->z * right->z,
+    };
+}
+
+static inline Direction3d
+spatial_3d_rotate_direction(const GlobalOrientation3d *orientation, Direction3d direction) {
+    const Direction3d q = { orientation->x, orientation->y, orientation->z };
+    const Direction3d cross = {
+        q.y * direction.z - q.z * direction.y,
+        q.z * direction.x - q.x * direction.z,
+        q.x * direction.y - q.y * direction.x,
+    };
+    const Direction3d double_cross = {
+        q.y * cross.z - q.z * cross.y,
+        q.z * cross.x - q.x * cross.z,
+        q.x * cross.y - q.y * cross.x,
+    };
+
+    return (Direction3d){
+        .x = direction.x + 2.0f * (orientation->w * cross.x + double_cross.x),
+        .y = direction.y + 2.0f * (orientation->w * cross.y + double_cross.y),
+        .z = direction.z + 2.0f * (orientation->w * cross.z + double_cross.z),
+    };
+}
+
+Direction3d sispatial_forward_3d(const GlobalOrientation3d *orientation) {
+    return spatial_3d_rotate_direction(orientation, (Direction3d){ 0.0f, 0.0f, -1.0f });
+}
 
 static inline void spatial_2d_compute_static(
     ecs_entity_t entity,
@@ -83,7 +137,7 @@ static inline void spatial_3d_compute_static(
     const Scale3d *restrict scale
 ) {
     GlobalPosition3d *restrict global_position = ecs_get(entity, GlobalPosition3d);
-    GlobalRotation3d *restrict global_rotation = ecs_get(entity, GlobalRotation3d);
+    GlobalOrientation3d *restrict global_orientation = ecs_get(entity, GlobalOrientation3d);
     GlobalScale3d *restrict global_scale = ecs_get(entity, GlobalScale3d);
 
     const ecs_entity_t parent = ecs_target(entity, ChildOf);
@@ -93,9 +147,7 @@ static inline void spatial_3d_compute_static(
         global_position->y = position->y;
         global_position->z = position->z;
 
-        global_rotation->x = rotation->x;
-        global_rotation->y = rotation->y;
-        global_rotation->z = rotation->z;
+        *global_orientation = spatial_3d_orientation_from_rotation(rotation);
 
         global_scale->x = scale->x;
         global_scale->y = scale->y;
@@ -104,16 +156,16 @@ static inline void spatial_3d_compute_static(
     }
 
     const GlobalPosition3d *parent_position = ecs_try_get(parent, GlobalPosition3d);
-    const GlobalRotation3d *parent_rotation = ecs_try_get(parent, GlobalRotation3d);
+    const GlobalOrientation3d *parent_orientation = ecs_try_get(parent, GlobalOrientation3d);
     const GlobalScale3d *parent_scale = ecs_try_get(parent, GlobalScale3d);
 
     const float px = parent_position != NULL ? parent_position->x : 0.0f;
     const float py = parent_position != NULL ? parent_position->y : 0.0f;
     const float pz = parent_position != NULL ? parent_position->z : 0.0f;
 
-    const float rx = parent_rotation != NULL ? parent_rotation->x : 0.0f;
-    const float ry = parent_rotation != NULL ? parent_rotation->y : 0.0f;
-    const float rz = parent_rotation != NULL ? parent_rotation->z : 0.0f;
+    const GlobalOrientation3d identity = { .x = 0.0f, .y = 0.0f, .z = 0.0f, .w = 1.0f };
+    const GlobalOrientation3d *orientation =
+        parent_orientation != NULL ? parent_orientation : &identity;
 
     const float sx = parent_scale != NULL ? parent_scale->x : 1.0f;
     const float sy = parent_scale != NULL ? parent_scale->y : 1.0f;
@@ -123,29 +175,14 @@ static inline void spatial_3d_compute_static(
     const float y = position->y * sy;
     const float z = position->z * sz;
 
-    const float cx = cosf(rx);
-    const float cy = cosf(ry);
-    const float cz = cosf(rz);
+    const Direction3d offset = spatial_3d_rotate_direction(orientation, (Direction3d){ x, y, z });
 
-    const float sin_x = sinf(rx);
-    const float sin_y = sinf(ry);
-    const float sin_z = sinf(rz);
+    global_position->x = px + offset.x;
+    global_position->y = py + offset.y;
+    global_position->z = pz + offset.z;
 
-    const float x1 = x;
-    const float y1 = cx * y - sin_x * z;
-    const float z1 = sin_x * y + cx * z;
-
-    const float x2 = cy * x1 + sin_y * z1;
-    const float y2 = y1;
-    const float z2 = -sin_y * x1 + cy * z1;
-
-    global_position->x = px + cz * x2 - sin_z * y2;
-    global_position->y = py + sin_z * x2 + cz * y2;
-    global_position->z = pz + z2;
-
-    global_rotation->x = rx + rotation->x;
-    global_rotation->y = ry + rotation->y;
-    global_rotation->z = rz + rotation->z;
+    const GlobalOrientation3d local_orientation = spatial_3d_orientation_from_rotation(rotation);
+    *global_orientation = spatial_3d_orientation_multiply(orientation, &local_orientation);
 
     global_scale->x = sx * scale->x;
     global_scale->y = sy * scale->y;
@@ -156,8 +193,7 @@ static void spatial_2d_static_propagate_subtree(ecs_entity_t entity);
 static void spatial_3d_static_propagate_subtree(ecs_entity_t entity);
 
 static void spatial_2d_static_propagate_children(ecs_entity_t entity) {
-    const ecs_relation_sources_t children =
-        ecs_relation_sources(entity, ecs_rid(ChildOf));
+    const ecs_relation_sources_t children = ecs_relation_sources(entity, ecs_rid(ChildOf));
 
     for (uint32_t i = 0; i < children.count; i++) {
         const ecs_entity_t child = children.entities[i];
@@ -168,8 +204,7 @@ static void spatial_2d_static_propagate_children(ecs_entity_t entity) {
 }
 
 static void spatial_3d_static_propagate_children(ecs_entity_t entity) {
-    const ecs_relation_sources_t children =
-        ecs_relation_sources(entity, ecs_rid(ChildOf));
+    const ecs_relation_sources_t children = ecs_relation_sources(entity, ecs_rid(ChildOf));
 
     for (uint32_t i = 0; i < children.count; i++) {
         const ecs_entity_t child = children.entities[i];
@@ -357,14 +392,16 @@ static void spatial_3d_propagate(ecs_iter_t *it) {
     const Rotation3d *restrict rotation = ecs_field(it, 1);
     const Scale3d *restrict scale = ecs_field(it, 2);
     GlobalPosition3d *restrict global_position = ecs_field(it, 3);
-    GlobalRotation3d *restrict global_rotation = ecs_field(it, 4);
+    GlobalOrientation3d *restrict global_orientation = ecs_field(it, 4);
     GlobalScale3d *restrict global_scale = ecs_field(it, 5);
 
     const ecs_relation_target_t *parents = ecs_targets(it, ChildOf);
 
     if (parents == NULL) {
         memcpy(global_position, position, sizeof(*global_position) * it->count);
-        memcpy(global_rotation, rotation, sizeof(*global_rotation) * it->count);
+        for (uint32_t i = 0; i < it->count; i++) {
+            global_orientation[i] = spatial_3d_orientation_from_rotation(&rotation[i]);
+        }
         memcpy(global_scale, scale, sizeof(*global_scale) * it->count);
         return;
     }
@@ -375,21 +412,11 @@ static void spatial_3d_propagate(ecs_iter_t *it) {
     float py = 0.0f;
     float pz = 0.0f;
 
-    float rx = 0.0f;
-    float ry = 0.0f;
-    float rz = 0.0f;
+    GlobalOrientation3d parent_orientation = { .x = 0.0f, .y = 0.0f, .z = 0.0f, .w = 1.0f };
 
     float sx = 1.0f;
     float sy = 1.0f;
     float sz = 1.0f;
-
-    float cx = 1.0f;
-    float cy = 1.0f;
-    float cz = 1.0f;
-
-    float sin_x = 0.0f;
-    float sin_y = 0.0f;
-    float sin_z = 0.0f;
 
     const uint32_t count = it->count;
 
@@ -399,7 +426,8 @@ static void spatial_3d_propagate(ecs_iter_t *it) {
         if (parent_entity != cached_parent) {
             const GlobalPosition3d *parent_position = ecs_try_get(parent_entity, GlobalPosition3d);
 
-            const GlobalRotation3d *parent_rotation = ecs_try_get(parent_entity, GlobalRotation3d);
+            const GlobalOrientation3d *parent_global_orientation =
+                ecs_try_get(parent_entity, GlobalOrientation3d);
 
             const GlobalScale3d *parent_scale = ecs_try_get(parent_entity, GlobalScale3d);
 
@@ -407,21 +435,17 @@ static void spatial_3d_propagate(ecs_iter_t *it) {
             py = parent_position != NULL ? parent_position->y : 0.0f;
             pz = parent_position != NULL ? parent_position->z : 0.0f;
 
-            rx = parent_rotation != NULL ? parent_rotation->x : 0.0f;
-            ry = parent_rotation != NULL ? parent_rotation->y : 0.0f;
-            rz = parent_rotation != NULL ? parent_rotation->z : 0.0f;
+            parent_orientation = parent_global_orientation != NULL ? *parent_global_orientation
+                                                                   : (GlobalOrientation3d){
+                                                                         .x = 0.0f,
+                                                                         .y = 0.0f,
+                                                                         .z = 0.0f,
+                                                                         .w = 1.0f,
+                                                                     };
 
             sx = parent_scale != NULL ? parent_scale->x : 1.0f;
             sy = parent_scale != NULL ? parent_scale->y : 1.0f;
             sz = parent_scale != NULL ? parent_scale->z : 1.0f;
-
-            cx = cosf(rx);
-            cy = cosf(ry);
-            cz = cosf(rz);
-
-            sin_x = sinf(rx);
-            sin_y = sinf(ry);
-            sin_z = sinf(rz);
 
             cached_parent = parent_entity;
         }
@@ -430,25 +454,19 @@ static void spatial_3d_propagate(ecs_iter_t *it) {
         const float y = position[i].y * sy;
         const float z = position[i].z * sz;
 
-        const float x1 = x;
-        const float y1 = cx * y - sin_x * z;
-        const float z1 = sin_x * y + cx * z;
+        const Direction3d offset =
+            spatial_3d_rotate_direction(&parent_orientation, (Direction3d){ x, y, z });
 
-        const float x2 = cy * x1 + sin_y * z1;
-        const float y2 = y1;
-        const float z2 = -sin_y * x1 + cy * z1;
+        global_position[i].x = px + offset.x;
 
-        global_position[i].x = px + cz * x2 - sin_z * y2;
+        global_position[i].y = py + offset.y;
 
-        global_position[i].y = py + sin_z * x2 + cz * y2;
+        global_position[i].z = pz + offset.z;
 
-        global_position[i].z = pz + z2;
-
-        global_rotation[i].x = rx + rotation[i].x;
-
-        global_rotation[i].y = ry + rotation[i].y;
-
-        global_rotation[i].z = rz + rotation[i].z;
+        const GlobalOrientation3d local_orientation =
+            spatial_3d_orientation_from_rotation(&rotation[i]);
+        global_orientation[i] =
+            spatial_3d_orientation_multiply(&parent_orientation, &local_orientation);
 
         global_scale[i].x = sx * scale[i].x;
 
@@ -501,7 +519,7 @@ void sispatial_import(const sispatial_props_t *props) {
         GlobalPosition3d,
         Velocity3d,
         Rotation3d,
-        GlobalRotation3d,
+        GlobalOrientation3d,
         Scale3d,
         GlobalScale3d,
 
@@ -510,7 +528,7 @@ void sispatial_import(const sispatial_props_t *props) {
 
     ecs_with(Position2d, Rotation2d, Scale2d, GlobalPosition2d, GlobalRotation2d, GlobalScale2d);
 
-    ecs_with(Position3d, Rotation3d, Scale3d, GlobalPosition3d, GlobalRotation3d, GlobalScale3d);
+    ecs_with(Position3d, Rotation3d, Scale3d, GlobalPosition3d, GlobalOrientation3d, GlobalScale3d);
 
     /*
      * Static transforms are excluded from the per-frame propagation systems.
@@ -637,7 +655,7 @@ void sispatial_import(const sispatial_props_t *props) {
                     ecs_in(Rotation3d),
                     ecs_in(Scale3d),
                     ecs_inout(GlobalPosition3d),
-                    ecs_inout(GlobalRotation3d),
+                    ecs_inout(GlobalOrientation3d),
                     ecs_inout(GlobalScale3d),
                     ecs_not(Static),
                 },
@@ -658,7 +676,7 @@ void sispatial_import(const sispatial_props_t *props) {
                 },
             },
             .callback = spatial_2d_integrate,
-            .phase = EcsPostUpdate,
+            .phase = EcsOnUpdate,
         }
     );
 
@@ -672,7 +690,7 @@ void sispatial_import(const sispatial_props_t *props) {
                 },
             },
             .callback = spatial_3d_integrate,
-            .phase = EcsPostUpdate,
+            .phase = EcsOnUpdate,
         }
     );
 }
