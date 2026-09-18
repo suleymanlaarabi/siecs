@@ -48,6 +48,12 @@ static void ecs_query_compile_term(ecs_query_builder_t *b, ecs_component_term_t 
         "invalid query access or up relation\n"
     );
 #ifndef NDEBUG
+    if (access == EcsOut || access == EcsInOut || access == EcsInOutOptional) {
+        ecs_assert(
+            ecs_component_info(term.id)->mutation != EcsSetOnly,
+            "SetOnly component cannot be used as writable query field"
+        );
+    }
     for (uint8_t i = 0; i < q->field_count + q->match_count; i++) {
         uint8_t at = i < q->field_count ? i : ECS_COMPILED_TERMS - 1 - (i - q->field_count);
         ecs_assert(b->terms[at].id != term.id, "duplicate query component: %u\n", term.id);

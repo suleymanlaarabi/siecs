@@ -165,6 +165,9 @@ static ecs_component_t ecs_component_register_type(
         desc->on_remove,
         desc->on_add,
         desc->inheritance,
+#ifndef NDEBUG
+        desc->mutation,
+#endif
         0,
         type,
         desc->struct_desc
@@ -189,6 +192,9 @@ ecs_component_t ecs_component_register_relation_internal(
         by_target ? ecs_relation_target_on_remove : RelationOnRemove,
         NULL,
         EcsInheritShared,
+#ifndef NDEBUG
+        EcsMutable,
+#endif
         target_flags,
         SIREFLECT_INVALID_HANDLE,
         NULL
@@ -206,6 +212,9 @@ ecs_component_t ecs_component_register_relation_internal(
         RelationSourceOnRemove,
         NULL,
         EcsInheritShared,
+#ifndef NDEBUG
+        EcsMutable,
+#endif
         ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationSource),
         SIREFLECT_INVALID_HANDLE,
         NULL
@@ -264,6 +273,9 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
         .size = info->size,
         .struct_desc = &reflection,
         .inheritance = desc->inheritance,
+#ifndef NDEBUG
+        .mutation = desc->mutation,
+#endif
     };
 
     component.name = desc->name;

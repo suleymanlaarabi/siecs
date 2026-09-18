@@ -1,5 +1,6 @@
 #pragma once
 #include "siecs/cpp/component.hpp"
+#include <cassert>
 #include <cstring>
 #include <string>
 
@@ -138,14 +139,38 @@ class entity {
         return *this;
     }
 
+    /** Return const component storage, or null when absent. */
+    template <typename T> [[nodiscard]] const T *try_get() {
+        return static_cast<const T *>(ecs_try_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
+    }
+
+    /** Return const component storage; the component must be present. */
+    template <typename T> [[nodiscard]] const T &get() {
+        return *static_cast<const T *>(ecs_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
+    }
+
     /** Return mutable component storage, or null when absent. */
-    template <typename T> [[nodiscard]] T *try_get() {
-        return static_cast<T *>(ecs_try_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
+    template <typename T> [[nodiscard]] T *try_get_mut() {
+        ecs_component_t id = detail::ecs_cpp_component_id<T>();
+#ifndef NDEBUG
+        assert(
+            ecs_component_info(id)->mutation != EcsSetOnly &&
+            "SetOnly component can only be modified with set()"
+        );
+#endif
+        return static_cast<T *>(ecs_try_get_cid(_entity, id));
     }
 
     /** Return mutable component storage; the component must be present. */
-    template <typename T> [[nodiscard]] T &get() {
-        return *static_cast<T *>(ecs_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
+    template <typename T> [[nodiscard]] T &get_mut() {
+        ecs_component_t id = detail::ecs_cpp_component_id<T>();
+#ifndef NDEBUG
+        assert(
+            ecs_component_info(id)->mutation != EcsSetOnly &&
+            "SetOnly component can only be modified with set()"
+        );
+#endif
+        return *static_cast<T *>(ecs_get_cid(_entity, id));
     }
 
     /** Return const component storage, or null when absent. */

@@ -39,6 +39,9 @@ void ecs_component_index_register(
     ecs_component_on_remove_t on_remove,
     ecs_component_on_add_t on_add,
     ecs_component_inheritance_t inheritance,
+#ifndef NDEBUG
+    ecs_component_mutation_t mutation,
+#endif
     uint32_t relation_flags,
     sireflect_handle_t type,
     const sireflect_struct_desc_t *reflection_desc
@@ -66,6 +69,9 @@ void ecs_component_index_register(
         .type = type,
         .reflection = reflection,
         .inheritance = inheritance,
+#ifndef NDEBUG
+        .mutation = mutation,
+#endif
     };
     if (name && !info->name) {
         abort();

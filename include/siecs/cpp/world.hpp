@@ -92,7 +92,14 @@ inline component_ref<T> component(const component_hooks<T> &hooks) {
 template <typename T>
     requires(!detail::c_declared_component<T>)
 inline component_ref<T> component(const component_options<T> &options) {
-    return component_ref<T>(detail::ecs_cpp_component_id<T>(&options.hooks, options.inheritance));
+    return component_ref<T>(detail::ecs_cpp_component_id<T>(
+        &options.hooks,
+        options.inheritance
+#ifndef NDEBUG
+        ,
+        options.mutation
+#endif
+    ));
 }
 
 /** Declare that adding `Component` implicitly adds `Required` first. */

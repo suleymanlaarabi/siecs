@@ -263,6 +263,17 @@ typedef enum {
     EcsInheritShared = 1
 } ecs_component_inheritance_t;
 
+#ifndef NDEBUG
+typedef enum {
+    EcsMutable = 0,
+    EcsSetOnly = 1,
+} ecs_component_mutation_t;
+
+#define ECS_SET_ONLY .mutation = EcsSetOnly,
+#else
+#define ECS_SET_ONLY
+#endif
+
 /* Iterator storage returned by ecs_query_iter; ptrs/entities are batch views.
  */
 typedef struct {
@@ -291,6 +302,9 @@ typedef struct {
     ecs_component_on_add_t on_add;
     const sireflect_struct_desc_t *struct_desc;
     ecs_component_inheritance_t inheritance;
+#ifndef NDEBUG
+    ecs_component_mutation_t mutation;
+#endif
 } ecs_component_desc_t;
 
 /* Immutable metadata for a registered component. */
@@ -301,6 +315,9 @@ typedef struct {
     /* Copied reflection descriptor, borrowed until ecs_fini(). */
     const sireflect_struct_desc_t *reflection;
     ecs_component_inheritance_t inheritance;
+#ifndef NDEBUG
+    ecs_component_mutation_t mutation;
+#endif
 } ecs_component_info_t;
 
 /* Dynamic reflected component descriptor. Sireflect derives size and alignment.
@@ -309,6 +326,9 @@ typedef struct {
     const char *name;
     const char *fields;
     ecs_component_inheritance_t inheritance;
+#ifndef NDEBUG
+    ecs_component_mutation_t mutation;
+#endif
 } ecs_dynamic_component_desc_t;
 
 /*

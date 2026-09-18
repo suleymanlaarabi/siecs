@@ -239,6 +239,12 @@ void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
 }
 
 void ecs_modified_cid(ecs_entity_t entity, ecs_component_t cid) {
+#ifndef NDEBUG
+    ecs_assert(
+        ecs_component_info(cid)->mutation != EcsSetOnly,
+        "SetOnly component can only be modified with set()"
+    );
+#endif
     ecs_assert_component_access(entity, cid);
     entity_edit(entity, table, record);
     void *data = ecs_table_get_component(table, cid, record->table_row);
