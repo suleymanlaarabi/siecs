@@ -8690,6 +8690,31 @@ ecs_entity_t ecs_target_id(ecs_entity_t entity, ecs_relation_id_t relation) {
     return ecs_relation_record_ops(record)->target(entity, relation);
 }
 
+ecs_relation_sources_t
+ecs_relation_sources(ecs_entity_t target, ecs_relation_id_t relation) {
+    ecs_assert_entity_alive(target);
+
+    if (relation == 0 || relation >= relation_index.records.size) {
+        return (ecs_relation_sources_t){ 0 };
+    }
+
+    const ecs_relation_record_t *record = ecs_relation_record(relation);
+    if (record->component == 0 || record->info.desc.storage == EcsRelationByTarget) {
+        return (ecs_relation_sources_t){ 0 };
+    }
+
+    const ecs_component_t source_component = record->component + 1;
+    if (!ecs_has_cid_owned(target, source_component)) {
+        return (ecs_relation_sources_t){ 0 };
+    }
+
+    const RelationSource *source = ecs_get_cid(target, source_component);
+    return (ecs_relation_sources_t){
+        .entities = source->entities.data,
+        .count = source->entities.size,
+    };
+}
+
 bool ecs_has_relation_to_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
     return ecs_target_id(entity, relation) == target;
 }
