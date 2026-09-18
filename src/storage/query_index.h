@@ -14,8 +14,9 @@ typedef struct {
 } ecs_query_t;
 
 static inline size_t ecs_query_size(const ecs_query_t *q) {
-    return sizeof(*q) + (q->field_count + q->match_count + q->resource_count) *
-        sizeof(ecs_access_term_t) + q->filter_count * sizeof(ecs_query_relation_term_t);
+    return sizeof(*q) +
+           (q->field_count + q->match_count + q->resource_count) * sizeof(ecs_access_term_t) +
+           q->filter_count * sizeof(ecs_query_relation_term_t);
 }
 
 static inline const ecs_component_term_t *ecs_query_fields(const ecs_query_t *q) {
@@ -62,13 +63,16 @@ static inline uint8_t *ecs_query_table_bytes_at(const ecs_query_cache_t *cache, 
     return cache->tables + (size_t)i * cache->query->stride;
 }
 static inline uint16_t ecs_query_table_id(const ecs_query_cache_t *cache, uint16_t i) {
-    if (!cache->query->field_count) return ((const uint16_t *)cache->tables)[i];
+    if (!cache->query->field_count)
+        return ((const uint16_t *)cache->tables)[i];
     return *(const uint16_t *)(cache->tables + (size_t)i * cache->query->stride);
 }
 static inline uint16_t ecs_query_table_position(const ecs_query_cache_t *cache, uint16_t id) {
-    if (cache->positions.ids) return ecs_id_map_at_or_invalid(&cache->positions, id);
+    if (cache->positions.ids)
+        return ecs_id_map_at_or_invalid(&cache->positions, id);
     for (uint16_t i = 0; i < cache->table_count; i++)
-        if (ecs_query_table_id(cache, i) == id) return i;
+        if (ecs_query_table_id(cache, i) == id)
+            return i;
     return UINT16_MAX;
 }
 
@@ -92,6 +96,9 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc);
 void ecs_query_index_activate(ecs_query_id_t id, const uint16_t *tables, uint16_t count);
 void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id);
 void ecs_query_index_refresh_table_fields(const ecs_table_t *table, uint16_t table_id);
-bool ecs_query_resolve_up_fields(ecs_query_cache_t *cache, const ecs_table_t *table,
-                                 ecs_query_table_t *entry);
+bool ecs_query_resolve_up_fields(
+    ecs_query_cache_t *cache,
+    const ecs_table_t *table,
+    ecs_query_table_t *entry
+);
 #endif

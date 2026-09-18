@@ -38,11 +38,8 @@ static void ecs_worker_free(void *memory) {
 static void ecs_worker_run_job(ecs_worker_pool_t *pool, uint32_t job_index) {
     ecs_worker_job_t *job = &pool->jobs[job_index];
     ecs_system_run_prepared(job->system);
-    uint32_t completed = atomic_fetch_add_explicit(
-        &pool->completed_jobs,
-        1,
-        memory_order_release
-    ) + 1;
+    uint32_t completed =
+        atomic_fetch_add_explicit(&pool->completed_jobs, 1, memory_order_release) + 1;
     if (completed == pool->job_count) {
         ecs_platform_mutex_lock(&pool->mutex);
         ecs_platform_condition_signal(&pool->completion_condition);
@@ -53,7 +50,8 @@ static void ecs_worker_run_job(ecs_worker_pool_t *pool, uint32_t job_index) {
 static inline void ecs_worker_run_jobs(ecs_worker_pool_t *pool) {
     for (;;) {
         uint32_t job = atomic_fetch_add_explicit(&pool->next_job, 1, memory_order_relaxed);
-        if (job >= pool->job_count) return;
+        if (job >= pool->job_count)
+            return;
         ecs_worker_run_job(pool, job);
     }
 }
@@ -119,7 +117,8 @@ void ecs_worker_pool_init(ecs_worker_pool_t *pool, uint16_t requested_workers) {
         worker->pool = pool;
         ecs_execution_context_init(&worker->context);
         bool created = ecs_platform_thread_create(&worker->thread, ecs_worker_loop, worker);
-        ecs_assert(created, "failed to create ECS worker thread\n"); (void)created;
+        ecs_assert(created, "failed to create ECS worker thread\n");
+        (void)created;
     }
 }
 
@@ -145,9 +144,7 @@ void ecs_worker_pool_fini(ecs_worker_pool_t *pool) {
     *pool = (ecs_worker_pool_t){ 0 };
 }
 
-bool ecs_worker_pool_enabled(const ecs_worker_pool_t *pool) {
-    return pool->worker_count != 0;
-}
+bool ecs_worker_pool_enabled(const ecs_worker_pool_t *pool) { return pool->worker_count != 0; }
 
 void ecs_worker_pool_run_prepared_systems(
     ecs_worker_pool_t *pool,
@@ -195,19 +192,9 @@ void ecs_worker_pool_run_prepared_systems(
 
     ecs_worker_run_jobs(pool);
 
-    while (
-        atomic_load_explicit(
-            &pool->completed_jobs,
-            memory_order_acquire
-        ) < pool->job_count
-    ) {
+    while (atomic_load_explicit(&pool->completed_jobs, memory_order_acquire) < pool->job_count) {
         ecs_platform_mutex_lock(&pool->mutex);
-        if (
-            atomic_load_explicit(
-                &pool->completed_jobs,
-                memory_order_acquire
-            ) < pool->job_count
-        ) {
+        if (atomic_load_explicit(&pool->completed_jobs, memory_order_acquire) < pool->job_count) {
             ecs_platform_condition_wait(&pool->completion_condition, &pool->mutex);
         }
         ecs_platform_mutex_unlock(&pool->mutex);

@@ -45,11 +45,7 @@ void *ecs_table_get_component(ecs_table_t *table, ecs_component_t component_id, 
 
 // Append an observer id to this table's dense list for the given event,
 // growing the per-event slot array on demand.
-void ecs_table_add_observer(
-    ecs_table_t *table,
-    ecs_event_t event,
-    ecs_observer_id_t observer_id
-);
+void ecs_table_add_observer(ecs_table_t *table, ecs_event_t event, ecs_observer_id_t observer_id);
 void ecs_table_remove_observer(
     ecs_table_t *table,
     ecs_event_t event,

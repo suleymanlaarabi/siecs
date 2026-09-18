@@ -15,7 +15,7 @@ typedef struct {
 typedef CRITICAL_SECTION ecs_platform_mutex_t;
 typedef CONDITION_VARIABLE ecs_platform_condition_t;
 #define ECS_PLATFORM_THREAD_CALL WINAPI
-typedef DWORD (ECS_PLATFORM_THREAD_CALL *ecs_platform_thread_func_t)(void *);
+typedef DWORD(ECS_PLATFORM_THREAD_CALL *ecs_platform_thread_func_t)(void *);
 #define ecs_platform_mutex_init(m) InitializeCriticalSection(m)
 #define ecs_platform_mutex_fini(m) DeleteCriticalSection(m)
 #define ecs_platform_mutex_lock(m) EnterCriticalSection(m)

@@ -53,8 +53,8 @@ component_on_set(ecs_entity_t entity, ecs_component_t, const void *new_value, vo
 
 template <typename T, bool Add>
 static void component_hook(ecs_entity_t entity, ecs_component_t, void *value) {
-    auto callback = Add ? component_hook_state<T>::hooks.on_add
-                        : component_hook_state<T>::hooks.on_remove;
+    auto callback =
+        Add ? component_hook_state<T>::hooks.on_add : component_hook_state<T>::hooks.on_remove;
     if (callback != nullptr)
         callback(entity, *static_cast<T *>(value));
 }
@@ -74,34 +74,39 @@ template <typename T> consteval size_t sisizeof() {
 template <typename T, bool Destroy> static void value_lifetime(void *ptr, uint32_t count) {
     T *values = static_cast<T *>(ptr);
     for (uint32_t i = 0; i < count; i++) {
-        if constexpr (Destroy) std::destroy_at(&values[i]);
-        else std::construct_at(&values[i]);
+        if constexpr (Destroy)
+            std::destroy_at(&values[i]);
+        else
+            std::construct_at(&values[i]);
     }
 }
 
 template <typename T, bool Move, bool Construct>
-static void value_transfer(
-    void *dst,
-    std::conditional_t<Move, void *, const void *> src,
-    uint32_t count
-) {
+static void
+value_transfer(void *dst, std::conditional_t<Move, void *, const void *> src, uint32_t count) {
     T *out = static_cast<T *>(dst);
     using input = std::conditional_t<Move, T, const T>;
     input *in = static_cast<input *>(src);
     for (uint32_t i = 0; i < count; i++) {
         if constexpr (Construct) {
-            if constexpr (Move) std::construct_at(&out[i], std::move(in[i]));
-            else std::construct_at(&out[i], in[i]);
-        } else if constexpr (Move ? std::is_move_assignable_v<T>
-                                  : std::is_copy_assignable_v<T>) {
-            if constexpr (Move) out[i] = std::move(in[i]);
-            else out[i] = in[i];
+            if constexpr (Move)
+                std::construct_at(&out[i], std::move(in[i]));
+            else
+                std::construct_at(&out[i], in[i]);
+        } else if constexpr (Move ? std::is_move_assignable_v<T> : std::is_copy_assignable_v<T>) {
+            if constexpr (Move)
+                out[i] = std::move(in[i]);
+            else
+                out[i] = in[i];
         } else {
             std::destroy_at(&out[i]);
-            if constexpr (Move) std::construct_at(&out[i], std::move(in[i]));
-            else std::construct_at(&out[i], in[i]);
+            if constexpr (Move)
+                std::construct_at(&out[i], std::move(in[i]));
+            else
+                std::construct_at(&out[i], in[i]);
         }
-        if constexpr (Move) std::destroy_at(&in[i]);
+        if constexpr (Move)
+            std::destroy_at(&in[i]);
     }
 }
 
@@ -133,10 +138,7 @@ static ecs_component_t ecs_cpp_component_id(
         ecs_component_t *id = c_component_traits<type>::id_storage();
         if (*id != 0)
             return *id;
-        return ecs_component_register(
-            id,
-            c_component_traits<type>::desc_storage()
-        );
+        return ecs_component_register(id, c_component_traits<type>::desc_storage());
     }
 
     ecs_component_t &cid = typed_id<T, id_kind::component>;
@@ -211,21 +213,15 @@ static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = n
 } // namespace detail
 
 /** Lightweight typed handle for a registered component id. */
-template <typename T>
-class component_ref {
-public:
-    explicit constexpr component_ref(ecs_component_t id) noexcept
-        : _id(id) {}
+template <typename T> class component_ref {
+  public:
+    explicit constexpr component_ref(ecs_component_t id) noexcept : _id(id) {}
 
     /** Return the raw C component id. */
-    [[nodiscard]] constexpr ecs_component_t id() const noexcept {
-        return _id;
-    }
+    [[nodiscard]] constexpr ecs_component_t id() const noexcept { return _id; }
 
     /** Preserve interoperability with APIs taking ecs_component_t. */
-    constexpr operator ecs_component_t() const noexcept {
-        return _id;
-    }
+    constexpr operator ecs_component_t() const noexcept { return _id; }
 
     /**
      * Declare components automatically added with T.
@@ -235,16 +231,12 @@ public:
     template <typename... Required>
         requires(sizeof...(Required) > 0)
     component_ref with() const {
-        ::ecs_with_many(
-            _id,
-            detail::ecs_cpp_component_id<Required>()...,
-            0
-        );
+        ::ecs_with_many(_id, detail::ecs_cpp_component_id<Required>()..., 0);
 
         return *this;
     }
 
-private:
+  private:
     ecs_component_t _id;
 };
 

@@ -60,52 +60,73 @@ void ecs_component_index_fini();
 
 ecs_component_record_t *ecs_component_index_get(ecs_component_t cid);
 
-static inline ecs_component_required_relation_t *ecs_component_default_relations(
-    ecs_component_t component
-) {
+static inline ecs_component_required_relation_t *
+ecs_component_default_relations(ecs_component_t component) {
     return ecs_component_index_get(component)->default_relations;
 }
 
 static inline void ecs_component_value_copy(
     const ecs_component_record_t *record,
-    void *dst, const void *src, uint32_t count
+    void *dst,
+    const void *src,
+    uint32_t count
 ) {
-    if (!record->info->size) return;
-    if (record->ops.copy) record->ops.copy(dst, src, count);
-    else memcpy(dst, src, (size_t)record->info->size * count);
+    if (!record->info->size)
+        return;
+    if (record->ops.copy)
+        record->ops.copy(dst, src, count);
+    else
+        memcpy(dst, src, (size_t)record->info->size * count);
 }
 
 static inline void ecs_component_value_copy_ctor(
     const ecs_component_record_t *record,
-    void *dst, const void *src, uint32_t count
+    void *dst,
+    const void *src,
+    uint32_t count
 ) {
-    if (!record->info->size) return;
-    if (record->ops.copy_ctor) record->ops.copy_ctor(dst, src, count);
-    else memcpy(dst, src, (size_t)record->info->size * count);
+    if (!record->info->size)
+        return;
+    if (record->ops.copy_ctor)
+        record->ops.copy_ctor(dst, src, count);
+    else
+        memcpy(dst, src, (size_t)record->info->size * count);
 }
 
 static inline void ecs_component_value_move(
     const ecs_component_record_t *record,
-    void *dst, void *src, uint32_t count
+    void *dst,
+    void *src,
+    uint32_t count
 ) {
-    if (!record->info->size) return;
-    if (record->ops.move) record->ops.move(dst, src, count);
+    if (!record->info->size)
+        return;
+    if (record->ops.move)
+        record->ops.move(dst, src, count);
     else if (record->ops.copy) {
         record->ops.copy(dst, src, count);
-        if (record->ops.dtor) record->ops.dtor(src, count);
-    } else memcpy(dst, src, (size_t)record->info->size * count);
+        if (record->ops.dtor)
+            record->ops.dtor(src, count);
+    } else
+        memcpy(dst, src, (size_t)record->info->size * count);
 }
 
 static inline void ecs_component_value_move_ctor(
     const ecs_component_record_t *record,
-    void *dst, void *src, uint32_t count
+    void *dst,
+    void *src,
+    uint32_t count
 ) {
-    if (!record->info->size) return;
-    if (record->ops.move_ctor) record->ops.move_ctor(dst, src, count);
+    if (!record->info->size)
+        return;
+    if (record->ops.move_ctor)
+        record->ops.move_ctor(dst, src, count);
     else if (record->ops.copy_ctor) {
         record->ops.copy_ctor(dst, src, count);
-        if (record->ops.dtor) record->ops.dtor(src, count);
-    } else memcpy(dst, src, (size_t)record->info->size * count);
+        if (record->ops.dtor)
+            record->ops.dtor(src, count);
+    } else
+        memcpy(dst, src, (size_t)record->info->size * count);
 }
 
 #endif

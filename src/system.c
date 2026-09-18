@@ -1,8 +1,8 @@
 #include "module.h"
 #include "platform.h"
 #include "siecs.h"
-#include "storage/system_index.h"
 #include "storage/query_index.h"
+#include "storage/system_index.h"
 #include "utils.h"
 #include "world_internal.h"
 #include <stdint.h>
@@ -25,10 +25,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     ecs_assert_not_scheduler_parallel("system registration");
     ecs_assert_not_null(desc);
     ecs_assert(desc->callback, "system requires callback function\n");
-    ecs_assert(
-        desc->interval >= 0.0,
-        "system interval must be >= 0 seconds\n"
-    );
+    ecs_assert(desc->interval >= 0.0, "system interval must be >= 0 seconds\n");
     ecs_assert(
         ecs_system_index_get_phase(desc->phase) != NULL,
         "invalid system phase: %u\n",
@@ -36,7 +33,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     );
 
     const bool iterates_query = desc->query.components[0].id || desc->query.relations[0].id ||
-        desc->query.order_by.func || desc->query.is_a;
+                                desc->query.order_by.func || desc->query.is_a;
     ecs_assert(
         !desc->no_defer || !iterates_query,
         "no_defer systems cannot iterate entity queries"
@@ -53,10 +50,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
 
 const char *ecs_system_name(ecs_system_id_t system) { return ecs_system_index_get(system)->name; }
 
-static void ecs_system_run_with_delta(
-    ecs_system_t *sys,
-    float delta_time
-) {
+static void ecs_system_run_with_delta(ecs_system_t *sys, float delta_time) {
     if (!sys->enabled) {
         return;
     }
@@ -94,10 +88,7 @@ void ecs_system_run_prepared(ecs_system_id_t system) {
 
 void ecs_run_system(ecs_system_id_t system) {
     ecs_system_t *sys = ecs_system_index_get(system);
-    ecs_system_run_with_delta(
-        sys,
-        (float)ecs_world.delta_time
-    );
+    ecs_system_run_with_delta(sys, (float)ecs_world.delta_time);
 }
 
 static bool ecs_system_prepare_scheduled(ecs_system_t *sys) {
@@ -118,10 +109,7 @@ static bool ecs_system_prepare_scheduled(ecs_system_t *sys) {
     return true;
 }
 
-static void ecs_run_phase_internal(
-    ecs_phase_t phase,
-    bool respect_interval
-) {
+static void ecs_run_phase_internal(ecs_phase_t phase, bool respect_interval) {
     ecs_system_index_t *index = &system_index;
     ecs_phase_info_t *pinfo = ecs_system_index_get_phase(phase);
 
@@ -165,8 +153,7 @@ static void ecs_run_phase_internal(
         }
 
         if (runnable_count != 0) {
-            if (!ecs_worker_pool_enabled(&ecs_world.worker_pool) ||
-                runnable_count == 1) {
+            if (!ecs_worker_pool_enabled(&ecs_world.worker_pool) || runnable_count == 1) {
                 ecs_world.main_context.scheduler_parallel = false;
                 ecs_execution_context_set(&ecs_world.main_context);
 
@@ -192,9 +179,7 @@ static void ecs_run_phase_internal(
     }
 }
 
-void ecs_run_phase(ecs_phase_t phase) {
-    ecs_run_phase_internal(phase, false);
-}
+void ecs_run_phase(ecs_phase_t phase) { ecs_run_phase_internal(phase, false); }
 
 bool ecs_progress(void) {
     double frame_start = ecs_platform_time_now_sec();
@@ -216,21 +201,15 @@ bool ecs_progress(void) {
 
     if (!ecs_world.did_start) {
         for (uint32_t i = 0; i < index->start_phase_count; i++) {
-            ecs_phase_t phase =
-                *sicore_vec_get(&index->phase_order, i, ecs_phase_t);
+            ecs_phase_t phase = *sicore_vec_get(&index->phase_order, i, ecs_phase_t);
             ecs_run_phase(phase);
         }
 
         ecs_world.did_start = true;
     }
 
-    for (
-        uint32_t i = index->start_phase_count;
-        i < index->phase_order.size;
-        i++
-    ) {
-        ecs_phase_t phase =
-            *sicore_vec_get(&index->phase_order, i, ecs_phase_t);
+    for (uint32_t i = index->start_phase_count; i < index->phase_order.size; i++) {
+        ecs_phase_t phase = *sicore_vec_get(&index->phase_order, i, ecs_phase_t);
 
         ecs_run_phase_internal(phase, true);
     }

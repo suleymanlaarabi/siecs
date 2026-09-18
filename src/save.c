@@ -201,7 +201,7 @@ static bool ecs_scene_component_use_codec(const ecs_component_record_t *record) 
         return ecs_scene_has_type_ops(record);
     }
     return ecs_scene_has_type_ops(record) ||
-        (ecs_scene_type_flags(record->info->type) & ECS_SCENE_TYPE_NEEDS_CODEC);
+           (ecs_scene_type_flags(record->info->type) & ECS_SCENE_TYPE_NEEDS_CODEC);
 }
 
 static bool ecs_scene_component_supported(const ecs_component_record_t *record) {
@@ -352,11 +352,8 @@ static bool ecs_scene_save_value(
     }
 }
 
-static bool ecs_scene_validate_value(
-    ecs_scene_reader_t *r,
-    sireflect_handle_t type,
-    uint32_t entity_count
-) {
+static bool
+ecs_scene_validate_value(ecs_scene_reader_t *r, sireflect_handle_t type, uint32_t entity_count) {
     const sireflect_type_info_t *info = sireflect_type_info(type);
     if (!info)
         return false;
@@ -652,9 +649,7 @@ static bool ecs_scene_write_relations(
     return true;
 }
 
-SIECS_API void ecs_scene_free(void *data) {
-    free(data);
-}
+SIECS_API void ecs_scene_free(void *data) { free(data); }
 
 SIECS_API bool ecs_save_memory(void **data_out, size_t *size_out) {
     if (!data_out || !size_out)
@@ -803,9 +798,7 @@ SIECS_API bool ecs_scene_validate(const void *input, size_t size) {
 
     ecs_scene_reader_t tables = { .ptr = header.ptr, .end = data + size, .ok = true };
     const unsigned char *relations_begin = NULL;
-    if (!ecs_scene_validate_tables(
-            &tables, table_count, entity_count, &relations_begin
-        )) {
+    if (!ecs_scene_validate_tables(&tables, table_count, entity_count, &relations_begin)) {
         return false;
     }
 
@@ -856,9 +849,8 @@ static bool ecs_scene_validate_tables(
             row_count > entity_count - local_base)
             return false;
 
-        ecs_component_t *components = component_count
-            ? malloc((size_t)component_count * sizeof(ecs_component_t))
-            : NULL;
+        ecs_component_t *components =
+            component_count ? malloc((size_t)component_count * sizeof(ecs_component_t)) : NULL;
         if (component_count && !components)
             return false;
         for (uint16_t i = 0; i < component_count; i++) {

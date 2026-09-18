@@ -2521,8 +2521,8 @@ component_on_set(ecs_entity_t entity, ecs_component_t, const void *new_value, vo
 
 template <typename T, bool Add>
 static void component_hook(ecs_entity_t entity, ecs_component_t, void *value) {
-    auto callback = Add ? component_hook_state<T>::hooks.on_add
-                        : component_hook_state<T>::hooks.on_remove;
+    auto callback =
+        Add ? component_hook_state<T>::hooks.on_add : component_hook_state<T>::hooks.on_remove;
     if (callback != nullptr)
         callback(entity, *static_cast<T *>(value));
 }
@@ -2542,34 +2542,39 @@ template <typename T> consteval size_t sisizeof() {
 template <typename T, bool Destroy> static void value_lifetime(void *ptr, uint32_t count) {
     T *values = static_cast<T *>(ptr);
     for (uint32_t i = 0; i < count; i++) {
-        if constexpr (Destroy) std::destroy_at(&values[i]);
-        else std::construct_at(&values[i]);
+        if constexpr (Destroy)
+            std::destroy_at(&values[i]);
+        else
+            std::construct_at(&values[i]);
     }
 }
 
 template <typename T, bool Move, bool Construct>
-static void value_transfer(
-    void *dst,
-    std::conditional_t<Move, void *, const void *> src,
-    uint32_t count
-) {
+static void
+value_transfer(void *dst, std::conditional_t<Move, void *, const void *> src, uint32_t count) {
     T *out = static_cast<T *>(dst);
     using input = std::conditional_t<Move, T, const T>;
     input *in = static_cast<input *>(src);
     for (uint32_t i = 0; i < count; i++) {
         if constexpr (Construct) {
-            if constexpr (Move) std::construct_at(&out[i], std::move(in[i]));
-            else std::construct_at(&out[i], in[i]);
-        } else if constexpr (Move ? std::is_move_assignable_v<T>
-                                  : std::is_copy_assignable_v<T>) {
-            if constexpr (Move) out[i] = std::move(in[i]);
-            else out[i] = in[i];
+            if constexpr (Move)
+                std::construct_at(&out[i], std::move(in[i]));
+            else
+                std::construct_at(&out[i], in[i]);
+        } else if constexpr (Move ? std::is_move_assignable_v<T> : std::is_copy_assignable_v<T>) {
+            if constexpr (Move)
+                out[i] = std::move(in[i]);
+            else
+                out[i] = in[i];
         } else {
             std::destroy_at(&out[i]);
-            if constexpr (Move) std::construct_at(&out[i], std::move(in[i]));
-            else std::construct_at(&out[i], in[i]);
+            if constexpr (Move)
+                std::construct_at(&out[i], std::move(in[i]));
+            else
+                std::construct_at(&out[i], in[i]);
         }
-        if constexpr (Move) std::destroy_at(&in[i]);
+        if constexpr (Move)
+            std::destroy_at(&in[i]);
     }
 }
 
@@ -2601,10 +2606,7 @@ static ecs_component_t ecs_cpp_component_id(
         ecs_component_t *id = c_component_traits<type>::id_storage();
         if (*id != 0)
             return *id;
-        return ecs_component_register(
-            id,
-            c_component_traits<type>::desc_storage()
-        );
+        return ecs_component_register(id, c_component_traits<type>::desc_storage());
     }
 
     ecs_component_t &cid = typed_id<T, id_kind::component>;
@@ -2679,21 +2681,15 @@ static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = n
 } // namespace detail
 
 /** Lightweight typed handle for a registered component id. */
-template <typename T>
-class component_ref {
-public:
-    explicit constexpr component_ref(ecs_component_t id) noexcept
-        : _id(id) {}
+template <typename T> class component_ref {
+  public:
+    explicit constexpr component_ref(ecs_component_t id) noexcept : _id(id) {}
 
     /** Return the raw C component id. */
-    [[nodiscard]] constexpr ecs_component_t id() const noexcept {
-        return _id;
-    }
+    [[nodiscard]] constexpr ecs_component_t id() const noexcept { return _id; }
 
     /** Preserve interoperability with APIs taking ecs_component_t. */
-    constexpr operator ecs_component_t() const noexcept {
-        return _id;
-    }
+    constexpr operator ecs_component_t() const noexcept { return _id; }
 
     /**
      * Declare components automatically added with T.
@@ -2703,16 +2699,12 @@ public:
     template <typename... Required>
         requires(sizeof...(Required) > 0)
     component_ref with() const {
-        ::ecs_with_many(
-            _id,
-            detail::ecs_cpp_component_id<Required>()...,
-            0
-        );
+        ::ecs_with_many(_id, detail::ecs_cpp_component_id<Required>()..., 0);
 
         return *this;
     }
 
-private:
+  private:
     ecs_component_t _id;
 };
 
@@ -3050,48 +3042,48 @@ template <typename T, typename... Args> struct module_import_context {
 
 namespace ecs {
 
-    template <typename T> struct function_traits;
+template <typename T> struct function_traits;
 
-    // function pointer
-    template <typename R, typename... Args> struct function_traits<R (*)(Args...)> {
-        using return_type = R;
-        using args_tuple = std::tuple<Args...>;
-    };
+// function pointer
+template <typename R, typename... Args> struct function_traits<R (*)(Args...)> {
+    using return_type = R;
+    using args_tuple = std::tuple<Args...>;
+};
 
-    // function reference
-    template <typename R, typename... Args> struct function_traits<R (&)(Args...)> {
-        using return_type = R;
-        using args_tuple = std::tuple<Args...>;
-    };
+// function reference
+template <typename R, typename... Args> struct function_traits<R (&)(Args...)> {
+    using return_type = R;
+    using args_tuple = std::tuple<Args...>;
+};
 
-    // member function pointer const
-    template <typename C, typename R, typename... Args>
-    struct function_traits<R (C::*)(Args...) const> {
-        using return_type = R;
-        using args_tuple = std::tuple<Args...>;
-    };
+// member function pointer const
+template <typename C, typename R, typename... Args>
+struct function_traits<R (C::*)(Args...) const> {
+    using return_type = R;
+    using args_tuple = std::tuple<Args...>;
+};
 
-    // member function pointer non-const
-    template <typename C, typename R, typename... Args> struct function_traits<R (C::*)(Args...)> {
-        using return_type = R;
-        using args_tuple = std::tuple<Args...>;
-    };
+// member function pointer non-const
+template <typename C, typename R, typename... Args> struct function_traits<R (C::*)(Args...)> {
+    using return_type = R;
+    using args_tuple = std::tuple<Args...>;
+};
 
-    // lambda / functor
-    template <typename F>
-    struct function_traits : function_traits<decltype(&std::remove_reference_t<F>::operator())> {};
+// lambda / functor
+template <typename F>
+struct function_traits : function_traits<decltype(&std::remove_reference_t<F>::operator())> {};
 
-    template <typename Tuple, typename Fn, std::size_t... I>
-    constexpr void for_each_type_impl(Fn &&fn, std::index_sequence<I...>) {
-        (fn.template operator()<std::tuple_element_t<I, Tuple>>(), ...);
-    }
-
-    template <typename Tuple, typename Fn> constexpr void for_each_type(Fn &&fn) {
-        constexpr std::size_t N = std::tuple_size_v<Tuple>;
-        for_each_type_impl<Tuple>(std::forward<Fn>(fn), std::make_index_sequence<N>{});
-    }
-
+template <typename Tuple, typename Fn, std::size_t... I>
+constexpr void for_each_type_impl(Fn &&fn, std::index_sequence<I...>) {
+    (fn.template operator()<std::tuple_element_t<I, Tuple>>(), ...);
 }
+
+template <typename Tuple, typename Fn> constexpr void for_each_type(Fn &&fn) {
+    constexpr std::size_t N = std::tuple_size_v<Tuple>;
+    for_each_type_impl<Tuple>(std::forward<Fn>(fn), std::make_index_sequence<N>{});
+}
+
+} // namespace ecs
 
 #pragma once
 #pragma once
@@ -3466,9 +3458,7 @@ inline void run_rows(F &func, Cursors &cursors, uint32_t count) {
     } else {
         for (uint32_t row = 0; row < count; row++) {
             std::apply(
-                [&](auto &...cursor) {
-                    std::invoke(func, cursor_get_at(cursor, row)...);
-                },
+                [&](auto &...cursor) { std::invoke(func, cursor_get_at(cursor, row)...); },
                 cursors
             );
         }
@@ -4008,9 +3998,7 @@ class phase {
     mutable ecs_phase_t _id = 0;
 
   public:
-    explicit phase(const char *name = "unnamed") {
-        desc.name = name;
-    }
+    explicit phase(const char *name = "unnamed") { desc.name = name; }
 
     phase &after(ecs_phase_t p) {
         desc.after = p;
@@ -4029,9 +4017,7 @@ class phase {
         return _id;
     }
 
-    operator ecs_phase_t() const {
-        return id();
-    }
+    operator ecs_phase_t() const { return id(); }
 };
 
 } // namespace ecs
@@ -4164,8 +4150,8 @@ inline void disable_system(ecs_system_id_t id) { ecs_system_disable(id); }
 
 #include <cstring>
 #include <string>
-#include <type_traits>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 namespace ecs {
@@ -4195,8 +4181,7 @@ inline void fini() { ecs_fini(); }
 
 namespace detail {
 
-template <typename Callback>
-static void at_fini_callback(void *data) {
+template <typename Callback> static void at_fini_callback(void *data) {
     Callback *callback = static_cast<Callback *>(data);
     (*callback)();
     delete callback;
@@ -4204,8 +4189,7 @@ static void at_fini_callback(void *data) {
 
 } // namespace detail
 
-template <typename F>
-inline void at_fini(F &&func) {
+template <typename F> inline void at_fini(F &&func) {
     using callback = std::remove_cvref_t<F>;
 
     static_assert(
@@ -4233,30 +4217,21 @@ inline void run_phase(ecs_phase_t phase) { ecs_run_phase(phase); }
 
 /** Register or return the component id associated with `T`. */
 template <typename T> inline component_ref<T> component() {
-    return component_ref<T>(
-        detail::ecs_cpp_component_id<T>()
-    );
+    return component_ref<T>(detail::ecs_cpp_component_id<T>());
 }
 
 /** Register a component and install its lifecycle hooks before first use. */
 template <typename T>
     requires(!detail::c_declared_component<T>)
 inline component_ref<T> component(const component_hooks<T> &hooks) {
-    return component_ref<T>(
-        detail::ecs_cpp_component_id<T>(&hooks)
-    );
+    return component_ref<T>(detail::ecs_cpp_component_id<T>(&hooks));
 }
 
 /** Register a native C++ component with lifecycle and inheritance options. */
 template <typename T>
     requires(!detail::c_declared_component<T>)
 inline component_ref<T> component(const component_options<T> &options) {
-    return component_ref<T>(
-        detail::ecs_cpp_component_id<T>(
-            &options.hooks,
-            options.inheritance
-        )
-    );
+    return component_ref<T>(detail::ecs_cpp_component_id<T>(&options.hooks, options.inheritance));
 }
 
 /** Declare that adding `Component` implicitly adds `Required` first. */

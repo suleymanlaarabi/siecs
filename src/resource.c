@@ -1,5 +1,5 @@
-#include "siecs.h"
 #include "sicore.h"
+#include "siecs.h"
 #include "utils.h"
 #include "world_internal.h"
 #include <stdlib.h>
@@ -91,9 +91,7 @@ const char *ecs_resource_name(ecs_resource_t resource) {
     return ecs_resource_record(resource)->name;
 }
 
-bool ecs_resource_is_registered_rid(ecs_resource_t id) {
-    return ecs_resource_registered(id);
-}
+bool ecs_resource_is_registered_rid(ecs_resource_t id) { return ecs_resource_registered(id); }
 
 static inline void ecs_resource_store(ecs_resource_t id, void *data, bool move) {
     ecs_assert_not_null(data);
@@ -108,7 +106,8 @@ static inline void ecs_resource_store(ecs_resource_t id, void *data, bool move) 
         record->data = calloc(1, record->size ? record->size : 1);
         ecs_assert_not_null(record->data);
     }
-    if (!record->size) return;
+    if (!record->size)
+        return;
     ecs_type_move_t move_op = construct ? record->ops.move_ctor : record->ops.move;
     if (move && move_op) {
         move_op(record->data, data, 1);
@@ -116,9 +115,10 @@ static inline void ecs_resource_store(ecs_resource_t id, void *data, bool move) 
         ecs_type_copy_t copy_op = construct ? record->ops.copy_ctor : record->ops.copy;
         if (copy_op) {
             copy_op(record->data, data, 1);
-            if (move && record->ops.dtor) record->ops.dtor(data, 1);
-        }
-        else memcpy(record->data, data, record->size);
+            if (move && record->ops.dtor)
+                record->ops.dtor(data, 1);
+        } else
+            memcpy(record->data, data, record->size);
     }
 }
 
@@ -126,9 +126,7 @@ void ecs_set_resource_rid(ecs_resource_t id, const void *data) {
     ecs_resource_store(id, (void *)data, false);
 }
 
-void ecs_move_resource_rid(ecs_resource_t id, void *data) {
-    ecs_resource_store(id, data, true);
-}
+void ecs_move_resource_rid(ecs_resource_t id, void *data) { ecs_resource_store(id, data, true); }
 
 void *ecs_resource_rid(ecs_resource_t id) {
     ecs_resource_assert_registered(id);

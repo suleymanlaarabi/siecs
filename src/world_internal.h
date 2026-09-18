@@ -2,18 +2,18 @@
 #define SIECS_WORLD_INTERNAL_H
 #include "command_buffer.h"
 #include "datastructure/arena.h"
+#include "module.h"
+#include "relation.h"
 #include "siecs.h"
 #include "sireflect.h"
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
-#include "module.h"
 #include "storage/observer_index.h"
 #include "storage/query_index.h"
 #include "storage/system_index.h"
 #include "storage/table_index.h"
-#include "relation.h"
-#include "worker_pool.h"
 #include "utils.h"
+#include "worker_pool.h"
 
 typedef struct ecs_world_s ecs_world_t;
 
@@ -59,7 +59,8 @@ static inline void ecs_emit(
         uint32_t n = list->size;
         for (uint32_t i = 0; i < n; i++) {
             ecs_observer_id_t oid = *sicore_vec_get(list, i, ecs_observer_id_t);
-            ecs_observer_t *obs = sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
+            ecs_observer_t *obs =
+                sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
             if (!obs->enabled) {
                 continue;
             }
@@ -77,7 +78,8 @@ static inline void ecs_emit(
     uint64_t key = ecs_observer_target_key(ecs_entity_id(entity), event);
     uint32_t at = ecs_observer_target_lower_bound(key);
     const uint64_t *keys = observer_index.target_keys.data;
-    if (at == observer_index.target_keys.size || keys[at] != key) return;
+    if (at == observer_index.target_keys.size || keys[at] != key)
+        return;
 
     uint16_t table_id = (uint16_t)(table - table_index.tables);
     const ecs_observer_id_t *ids = observer_index.target_observers.data;
@@ -86,10 +88,12 @@ static inline void ecs_emit(
         ecs_observer_id_t oid = ids[at++];
         ecs_observer_t *observer =
             sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
-        if (!observer->enabled) continue;
+        if (!observer->enabled)
+            continue;
         if (observer->query != ECS_OBSERVER_NO_QUERY) {
             ecs_query_cache_t *cache = ecs_query_cache(observer->query);
-            if (ecs_query_table_position(cache, table_id) == UINT16_MAX) continue;
+            if (ecs_query_table_position(cache, table_id) == UINT16_MAX)
+                continue;
         }
         ecs_observer_event_t observer_event = {
             .entity = entity,
@@ -104,8 +108,7 @@ static inline void ecs_emit(
 
 static inline bool ecs_is_deferred(void) {
     ecs_execution_context_t *context = ecs_execution_context_current();
-    return context->defer_depth != 0 || context->flushing_commands ||
-           context->scheduler_parallel;
+    return context->defer_depth != 0 || context->flushing_commands || context->scheduler_parallel;
 }
 
 static inline void ecs_assert_not_scheduler_parallel(const char *operation) {

@@ -2,8 +2,8 @@
 #define SIECS_INHERITANCE_H
 
 #include "siecs.h"
-#include "type.h"
 #include "table.h"
+#include "type.h"
 #include <stdint.h>
 
 typedef struct {
@@ -14,10 +14,7 @@ typedef struct {
 /*
  * Instantiate base's owned ChildOf subtree below entity as an IsA snapshot.
  */
-void ecs_inheritance_instantiate_children(
-    ecs_entity_t entity,
-    ecs_entity_t base
-);
+void ecs_inheritance_instantiate_children(ecs_entity_t entity, ecs_entity_t base);
 
 /* Collect components that must become owned when a type inherits from base. */
 void ecs_inheritance_plan_build(

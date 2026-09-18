@@ -35,11 +35,7 @@ static inline void ecs_table_move_column(
     }
 }
 
-static inline void ecs_table_ctor_column(
-    const ecs_table_t *table,
-    uint16_t col,
-    uint32_t row
-) {
+static inline void ecs_table_ctor_column(const ecs_table_t *table, uint16_t col, uint32_t row) {
     const ecs_column_t *column = &table->cls[col];
     void *dst = ecs_table_component_at_column(table, col, row);
     if (column->flags & EcsColumnZeroCtor) {
@@ -52,11 +48,7 @@ static inline void ecs_table_ctor_column(
     record->ops.ctor(dst, 1);
 }
 
-static inline void ecs_table_dtor_column(
-    const ecs_table_t *table,
-    uint16_t col,
-    uint32_t row
-) {
+static inline void ecs_table_dtor_column(const ecs_table_t *table, uint16_t col, uint32_t row) {
     const ecs_column_t *column = &table->cls[col];
     if (column->flags & EcsColumnNoDtor) {
         return;

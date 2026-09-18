@@ -45,8 +45,7 @@ ecs_component_t ecs_component_register_relation_internal(
     bool by_target
 );
 
-#define ecs_relation_record(id)                                                                    \
-    sicore_vec_get(&relation_index.records, id, ecs_relation_record_t)
+#define ecs_relation_record(id) sicore_vec_get(&relation_index.records, id, ecs_relation_record_t)
 
 ecs_entity_t
 ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relation, uint32_t row);

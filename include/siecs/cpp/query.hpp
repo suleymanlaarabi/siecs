@@ -195,9 +195,7 @@ inline void run_rows(F &func, Cursors &cursors, uint32_t count) {
     } else {
         for (uint32_t row = 0; row < count; row++) {
             std::apply(
-                [&](auto &...cursor) {
-                    std::invoke(func, cursor_get_at(cursor, row)...);
-                },
+                [&](auto &...cursor) { std::invoke(func, cursor_get_at(cursor, row)...); },
                 cursors
             );
         }

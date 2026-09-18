@@ -43,9 +43,7 @@ void ecs_table_index_fini();
 
 #define ecs_table_index_at(index) (&table_index.tables[index])
 
-uint16_t ecs_table_index_get_or_create(
-    ecs_type_t type
-);
+uint16_t ecs_table_index_get_or_create(ecs_type_t type);
 ecs_pair_tables_t ecs_table_index_pair_tables(uint16_t key, uint64_t value);
 ecs_pair_tables_t ecs_table_index_base_tables(ecs_entity_t base);
 

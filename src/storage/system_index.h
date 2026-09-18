@@ -45,9 +45,8 @@ void ecs_system_index_fini(void);
 ecs_phase_t ecs_phase_register(const ecs_phase_desc_t *desc);
 ecs_phase_info_t *ecs_system_index_get_phase(ecs_phase_t phase);
 
-ecs_system_id_t ecs_system_index_create(const ecs_system_desc_t *desc,
-                                        ecs_query_id_t qid,
-                                        bool iterates_query);
+ecs_system_id_t
+ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query_id_t qid, bool iterates_query);
 ecs_system_t *ecs_system_index_get(ecs_system_id_t system);
 void ecs_system_index_build_plan(void);
 

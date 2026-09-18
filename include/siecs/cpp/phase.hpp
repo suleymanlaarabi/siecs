@@ -9,9 +9,7 @@ class phase {
     mutable ecs_phase_t _id = 0;
 
   public:
-    explicit phase(const char *name = "unnamed") {
-        desc.name = name;
-    }
+    explicit phase(const char *name = "unnamed") { desc.name = name; }
 
     phase &after(ecs_phase_t p) {
         desc.after = p;
@@ -30,9 +28,7 @@ class phase {
         return _id;
     }
 
-    operator ecs_phase_t() const {
-        return id();
-    }
+    operator ecs_phase_t() const { return id(); }
 };
 
 } // namespace ecs

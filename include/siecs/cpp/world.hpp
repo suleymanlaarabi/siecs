@@ -11,8 +11,8 @@
 #include "siecs/cpp/type.hpp"
 #include <cstring>
 #include <string>
-#include <type_traits>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 namespace ecs {
@@ -42,8 +42,7 @@ inline void fini() { ecs_fini(); }
 
 namespace detail {
 
-template <typename Callback>
-static void at_fini_callback(void *data) {
+template <typename Callback> static void at_fini_callback(void *data) {
     Callback *callback = static_cast<Callback *>(data);
     (*callback)();
     delete callback;
@@ -51,8 +50,7 @@ static void at_fini_callback(void *data) {
 
 } // namespace detail
 
-template <typename F>
-inline void at_fini(F &&func) {
+template <typename F> inline void at_fini(F &&func) {
     using callback = std::remove_cvref_t<F>;
 
     static_assert(
@@ -80,30 +78,21 @@ inline void run_phase(ecs_phase_t phase) { ecs_run_phase(phase); }
 
 /** Register or return the component id associated with `T`. */
 template <typename T> inline component_ref<T> component() {
-    return component_ref<T>(
-        detail::ecs_cpp_component_id<T>()
-    );
+    return component_ref<T>(detail::ecs_cpp_component_id<T>());
 }
 
 /** Register a component and install its lifecycle hooks before first use. */
 template <typename T>
     requires(!detail::c_declared_component<T>)
 inline component_ref<T> component(const component_hooks<T> &hooks) {
-    return component_ref<T>(
-        detail::ecs_cpp_component_id<T>(&hooks)
-    );
+    return component_ref<T>(detail::ecs_cpp_component_id<T>(&hooks));
 }
 
 /** Register a native C++ component with lifecycle and inheritance options. */
 template <typename T>
     requires(!detail::c_declared_component<T>)
 inline component_ref<T> component(const component_options<T> &options) {
-    return component_ref<T>(
-        detail::ecs_cpp_component_id<T>(
-            &options.hooks,
-            options.inheritance
-        )
-    );
+    return component_ref<T>(detail::ecs_cpp_component_id<T>(&options.hooks, options.inheritance));
 }
 
 /** Declare that adding `Component` implicitly adds `Required` first. */

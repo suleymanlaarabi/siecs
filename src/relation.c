@@ -11,11 +11,8 @@
 
 ecs_relation_index_t relation_index;
 
-static void ecs_relation_default_set_now(
-    ecs_entity_t entity,
-    ecs_relation_id_t relation,
-    ecs_entity_t target
-);
+static void
+ecs_relation_default_set_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target);
 static void ecs_relation_default_remove_now(ecs_entity_t entity, ecs_relation_id_t relation);
 static bool ecs_relation_default_has(ecs_entity_t entity, ecs_relation_id_t relation);
 static ecs_entity_t ecs_relation_default_target(ecs_entity_t entity, ecs_relation_id_t relation);
@@ -81,18 +78,13 @@ static ecs_relation_id_t ecs_relation_register_with_ops(
         *id = (ecs_relation_id_t)relation_index.records.size;
     }
 
-    sicore_vec_ensure(
-        &relation_index.records,
-        (uint32_t)*id + 1,
-        sizeof(ecs_relation_record_t)
-    );
-    ecs_component_t component = virtual_relation
-                                    ? 0
-                                    : ecs_component_register_relation_internal(
-                                          name,
-                                          *id,
-                                          desc->storage == EcsRelationByTarget
-                                      );
+    sicore_vec_ensure(&relation_index.records, (uint32_t)*id + 1, sizeof(ecs_relation_record_t));
+    ecs_component_t component = virtual_relation ? 0
+                                                 : ecs_component_register_relation_internal(
+                                                       name,
+                                                       *id,
+                                                       desc->storage == EcsRelationByTarget
+                                                   );
     *sicore_vec_get_mut(&relation_index.records, *id, ecs_relation_record_t) =
         (ecs_relation_record_t){
             .component = component,
@@ -159,7 +151,10 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
 ecs_entity_t ecs_table_target_id(const ecs_table_t *table, ecs_relation_id_t relation) {
 #ifndef NDEBUG
     const ecs_relation_record_t *record = ecs_relation_record(relation);
-    ecs_assert(record->info.desc.storage == EcsRelationByTarget, "ecs_table_target requires ByTarget\n");
+    ecs_assert(
+        record->info.desc.storage == EcsRelationByTarget,
+        "ecs_table_target requires ByTarget\n"
+    );
 #endif
     return ecs_type_pair_get(&table->type, relation);
 }
@@ -259,8 +254,8 @@ static void ecs_relation_update_children_depth(
 ) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     RelationSource *source = ecs_has_cid_owned(parent, record->component + 1)
-        ? ecs_get_cid(parent, record->component + 1)
-        : NULL;
+                                 ? ecs_get_cid(parent, record->component + 1)
+                                 : NULL;
     uint32_t count = source ? source->entities.size : 0;
     for (uint32_t i = 0; i < count; i++) {
         source = ecs_get_cid(parent, record->component + 1);
@@ -296,11 +291,8 @@ static void ecs_relation_set_depth(
     ecs_relation_update_children_depth(entity, relation, depth);
 }
 
-static void ecs_relation_default_set_now(
-    ecs_entity_t entity,
-    ecs_relation_id_t relation,
-    ecs_entity_t target
-) {
+static void
+ecs_relation_default_set_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     ecs_entity_t old_target = ecs_relation_default_target(entity, relation);
     ecs_entity_record_t *entity_record = NULL;
@@ -333,11 +325,8 @@ static void ecs_relation_default_set_now(
     }
 }
 
-static void ecs_relation_isa_set_now(
-    ecs_entity_t entity,
-    ecs_relation_id_t relation,
-    ecs_entity_t target
-) {
+static void
+ecs_relation_isa_set_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
     (void)relation;
     ecs_is_a_now(entity, target);
 }
@@ -477,8 +466,7 @@ ecs_entity_t ecs_target_id(ecs_entity_t entity, ecs_relation_id_t relation) {
     return ecs_relation_record_ops(record)->target(entity, relation);
 }
 
-ecs_relation_sources_t
-ecs_relation_sources(ecs_entity_t target, ecs_relation_id_t relation) {
+ecs_relation_sources_t ecs_relation_sources(ecs_entity_t target, ecs_relation_id_t relation) {
     ecs_assert_entity_alive(target);
 
     if (relation == 0 || relation >= relation_index.records.size) {
@@ -533,8 +521,7 @@ void ecs_relation_virtual_target_on_remove(ecs_entity_t target) {
 
         for (uint32_t entity_id = 1; entity_id < entity_index.entities.size; entity_id++) {
             ecs_entity_t source = ecs_entity_from_index(entity_id);
-            if (!source || source == target ||
-                ecs_target_id(source, relation) != target) {
+            if (!source || source == target || ecs_target_id(source, relation) != target) {
                 continue;
             }
 

@@ -19,23 +19,22 @@
 
 /* Headers of public dependencies */
 #include <sicore.h>
-#include <sireflect.h>
 #include <sijson.h>
+#include <sireflect.h>
 
 /* Convenience macro for exporting symbols */
 #ifndef siecs_STATIC
 #if defined(siecs_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
-  #define SIECS_API __declspec(dllexport)
+#define SIECS_API __declspec(dllexport)
 #elif defined(siecs_EXPORTS)
-  #define SIECS_API __attribute__((__visibility__("default")))
+#define SIECS_API __attribute__((__visibility__("default")))
 #elif defined(_MSC_VER)
-  #define SIECS_API __declspec(dllimport)
+#define SIECS_API __declspec(dllimport)
 #else
-  #define SIECS_API
+#define SIECS_API
 #endif
 #else
-  #define SIECS_API
+#define SIECS_API
 #endif
 
 #endif
-

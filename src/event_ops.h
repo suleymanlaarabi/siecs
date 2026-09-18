@@ -1,8 +1,8 @@
 #ifndef SIECS_EVENT_OPS_H
 #define SIECS_EVENT_OPS_H
 
-#include "storage/component_index.h"
 #include "relation.h"
+#include "storage/component_index.h"
 #include "table.h"
 #include "world_internal.h"
 
@@ -16,20 +16,20 @@ typedef struct {
 static inline bool ecs_type_diff_next(ecs_type_diff_t *diff, uint16_t *index) {
     while (diff->candidate_i < diff->candidate.component_count) {
         ecs_component_t id = diff->candidate.ids[diff->candidate_i];
-        while (diff->known_i < diff->known.component_count &&
-               diff->known.ids[diff->known_i] < id) diff->known_i++;
-        if (diff->known_i < diff->known.component_count &&
-            diff->known.ids[diff->known_i] == id) { diff->candidate_i++; continue; }
+        while (diff->known_i < diff->known.component_count && diff->known.ids[diff->known_i] < id)
+            diff->known_i++;
+        if (diff->known_i < diff->known.component_count && diff->known.ids[diff->known_i] == id) {
+            diff->candidate_i++;
+            continue;
+        }
         *index = diff->candidate_i++;
         return true;
     }
     return false;
 }
 
-static inline void ecs_apply_component_default_relations(
-    ecs_entity_t entity,
-    ecs_component_t component
-) {
+static inline void
+ecs_apply_component_default_relations(ecs_entity_t entity, ecs_component_t component) {
     const ecs_component_record_t *record = ecs_component_index_get(component);
     for (uint16_t i = 0; i < record->default_relation_count; i++) {
         const ecs_component_required_relation_t *required = &record->default_relations[i];
@@ -40,21 +40,20 @@ static inline void ecs_apply_component_default_relations(
 }
 
 static inline bool ecs_emit_component_event(
-    ecs_table_t *table, ecs_entity_t entity, uint32_t row, uint16_t column, bool add
+    ecs_table_t *table,
+    ecs_entity_t entity,
+    uint32_t row,
+    uint16_t column,
+    bool add
 ) {
     ecs_component_t id = table->type.ids[column];
     void *data = ecs_table_component_at_column(table, column, row);
     const ecs_component_record_t *record = ecs_component_index_get(id);
     ecs_component_on_add_t hook = add ? record->on_add : record->on_remove;
     bool has_default_relations = record->default_relation_count != 0;
-    if (hook) hook(entity, id, data);
-    ecs_emit(
-        table,
-        entity,
-        add ? EcsOnAdd : EcsOnRemove,
-        id,
-        data
-    );
+    if (hook)
+        hook(entity, id, data);
+    ecs_emit(table, entity, add ? EcsOnAdd : EcsOnRemove, id, data);
     return has_default_relations;
 }
 

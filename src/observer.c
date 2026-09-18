@@ -41,13 +41,13 @@ static ecs_observer_id_t ecs_observer_alloc(void) {
     return observer_index.observers.size - 1;
 }
 
-static void ecs_observer_target_insert(
-    uint32_t entity_id, ecs_event_t event, ecs_observer_id_t observer
-) {
+static void
+ecs_observer_target_insert(uint32_t entity_id, ecs_event_t event, ecs_observer_id_t observer) {
     uint64_t key = ecs_observer_target_key(entity_id, event);
     uint32_t at = ecs_observer_target_lower_bound(key);
     uint64_t *keys = observer_index.target_keys.data;
-    while (at < observer_index.target_keys.size && keys[at] == key) at++;
+    while (at < observer_index.target_keys.size && keys[at] == key)
+        at++;
 
     uint32_t old_size = observer_index.target_keys.size;
     sicore_vec_push_empty(&observer_index.target_keys, sizeof(uint64_t));
@@ -62,9 +62,8 @@ static void ecs_observer_target_insert(
     ids[at] = observer;
 }
 
-static void ecs_observer_target_remove(
-    uint32_t entity_id, ecs_event_t event, ecs_observer_id_t observer
-) {
+static void
+ecs_observer_target_remove(uint32_t entity_id, ecs_event_t event, ecs_observer_id_t observer) {
     uint64_t key = ecs_observer_target_key(entity_id, event);
     uint32_t at = ecs_observer_target_lower_bound(key);
     uint64_t *keys = observer_index.target_keys.data;
@@ -98,23 +97,25 @@ ecs_event_t ecs_event_register(ecs_event_t *id) {
         *id = ecs_event();
         return *id;
     }
-    if (observer_index.event_count <= *id) observer_index.event_count = *id + 1;
+    if (observer_index.event_count <= *id)
+        observer_index.event_count = *id + 1;
     return *id;
 }
 
 ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
     ecs_assert_not_scheduler_parallel("observer registration");
     ecs_assert(desc->callback != NULL, "Observer callback cannot be NULL");
-    if (desc->entity != 0) ecs_assert_entity_alive(desc->entity);
+    if (desc->entity != 0)
+        ecs_assert_entity_alive(desc->entity);
 
     ecs_observer_id_t oid = ecs_observer_alloc();
-    ecs_observer_t *observer =
-        sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
+    ecs_observer_t *observer = sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
     *observer = (ecs_observer_t){
         .callback = desc->callback,
         .user_data = desc->user_data,
         .next_module = UINT32_MAX,
-        .target_entity = desc->entity != 0 ? ecs_entity_id(desc->entity) : ECS_OBSERVER_GLOBAL_ENTITY,
+        .target_entity =
+            desc->entity != 0 ? ecs_entity_id(desc->entity) : ECS_OBSERVER_GLOBAL_ENTITY,
         .event = desc->on,
         .query = ECS_OBSERVER_NO_QUERY,
         .module = 0,
@@ -159,7 +160,8 @@ void ecs_observer_fini(ecs_observer_id_t id) {
         }
     }
     ecs_module_forget_observer(id);
-    if (query != ECS_OBSERVER_NO_QUERY) ecs_query_fini(query);
+    if (query != ECS_OBSERVER_NO_QUERY)
+        ecs_query_fini(query);
 
     ecs_observer_id_t next_free = observer_index.first_free;
     *observer = (ecs_observer_t){ 0 };
@@ -176,7 +178,8 @@ void ecs_observer_fini_entity(ecs_entity_t entity) {
     uint32_t at = ecs_observer_target_lower_bound(first_key);
     while (at < observer_index.target_keys.size &&
            ((const uint64_t *)observer_index.target_keys.data)[at] < after_key) {
-        ecs_observer_id_t id = ((const ecs_observer_id_t *)observer_index.target_observers.data)[at];
+        ecs_observer_id_t id =
+            ((const ecs_observer_id_t *)observer_index.target_observers.data)[at];
         ecs_observer_fini(id);
     }
 }

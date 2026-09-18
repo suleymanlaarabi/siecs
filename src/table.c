@@ -121,11 +121,7 @@ void *ecs_table_get_component(ecs_table_t *table, ecs_component_t component_id, 
     );
 }
 
-void ecs_table_add_observer(
-    ecs_table_t *table,
-    ecs_event_t event,
-    ecs_observer_id_t observer_id
-) {
+void ecs_table_add_observer(ecs_table_t *table, ecs_event_t event, ecs_observer_id_t observer_id) {
     sicore_vec_ensure(&table->observers_by_event, event + 1, sizeof(sicore_vec_t));
     sicore_vec_t *list = sicore_vec_get_mut(&table->observers_by_event, event, sicore_vec_t);
     if (list->capacity == 0) {
@@ -140,7 +136,8 @@ void ecs_table_remove_observer(
     ecs_event_t event,
     ecs_observer_id_t observer_id
 ) {
-    if (table->observers_by_event.size <= event) return;
+    if (table->observers_by_event.size <= event)
+        return;
     sicore_vec_t *list = sicore_vec_get_mut(&table->observers_by_event, event, sicore_vec_t);
     ecs_observer_id_t *ids = list->data;
     for (uint32_t i = 0; i < list->size; i++) {

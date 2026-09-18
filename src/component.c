@@ -33,17 +33,11 @@ static inline void ecs_dense_relation_remove_source(
     uint32_t last = source->entities.size - 1;
 
     if (index != last) {
-        ecs_entity_t moved =
-            *sicore_vec_get(&source->entities, last, ecs_entity_t);
+        ecs_entity_t moved = *sicore_vec_get(&source->entities, last, ecs_entity_t);
 
-        *sicore_vec_get_mut(
-            &source->entities,
-            index,
-            ecs_entity_t
-        ) = moved;
+        *sicore_vec_get_mut(&source->entities, index, ecs_entity_t) = moved;
 
-        RelationTarget *moved_data =
-            ecs_get_cid(moved, target_component);
+        RelationTarget *moved_data = ecs_get_cid(moved, target_component);
 
         moved_data->source_index = index;
     }
@@ -74,8 +68,7 @@ void RelationOnSet(
     }
 
     if (old_target_data->entity) {
-        RelationSource *source =
-            ecs_get_cid(old_target_data->entity, source_component);
+        RelationSource *source = ecs_get_cid(old_target_data->entity, source_component);
 
         ecs_dense_relation_remove_source(
             entity,
@@ -102,15 +95,10 @@ void RelationOnSet(
     ((RelationTarget *)current_value)->source_index = source_index;
 }
 
-void RelationOnRemove(
-    ecs_entity_t entity,
-    ecs_component_t component,
-    void *ptr
-) {
+void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
     const RelationTarget *target_data = ptr;
     ecs_component_t source_component = component + 1;
-    RelationSource *target_source_data =
-        ecs_get_cid(target_data->entity, source_component);
+    RelationSource *target_source_data = ecs_get_cid(target_data->entity, source_component);
 
     // Prevent recursive calls to RelationOnRemove when removing relation from child
     if (target_source_data->entities.size == UINT32_MAX) {
@@ -146,7 +134,7 @@ void RelationSourceOnRemove(ecs_entity_t entity, ecs_component_t component, void
     // Prevent recursive calls to RelationOnRemove when removing relation from child
     source_data->entities.size = UINT32_MAX;
     for (uint32_t i = 0; i < count; i++) {
-    if (relation_record->info.desc.on_delete_target == EcsDeleteSources) {
+        if (relation_record->info.desc.on_delete_target == EcsDeleteSources) {
             ecs_kill(entities[i]);
         } else {
             ecs_unrelate_id(entities[i], relation);
@@ -253,8 +241,7 @@ const ecs_component_info_t *ecs_component_info(ecs_component_t component) {
 uint32_t ecs_component_count(void) { return component_index.components.size; }
 
 ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc) {
-    sireflect_handle_t type =
-        sireflect_try_register_dynamic_struct(desc->name, desc->fields);
+    sireflect_handle_t type = sireflect_try_register_dynamic_struct(desc->name, desc->fields);
     if (type == SIREFLECT_INVALID_HANDLE) {
         return 0;
     }

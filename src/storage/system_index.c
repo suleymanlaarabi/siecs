@@ -1,8 +1,8 @@
 #include "system_index.h"
 #include "../helper.h"
-#include "query_index.h"
 #include "../utils.h"
 #include "../world_internal.h"
+#include "query_index.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -19,7 +19,8 @@ static inline ecs_system_t *ecs_system_get_unchecked(ecs_system_id_t id) {
 static uint32_t ecs_phase_order_index(ecs_phase_t phase) {
     const ecs_phase_t *order = system_index.phase_order.data;
     for (uint32_t i = 0; i < system_index.phase_order.size; i++) {
-        if (order[i] == phase) return i;
+        if (order[i] == phase)
+            return i;
     }
     return UINT32_MAX;
 }
@@ -37,10 +38,9 @@ ecs_phase_t ecs_phase_register(const ecs_phase_desc_t *desc) {
     ecs_phase_t before = desc ? desc->before : ECS_PHASE_NONE;
     ecs_assert(after == ECS_PHASE_NONE || after < id, "invalid phase dependency\n");
     ecs_assert(before == ECS_PHASE_NONE || before < id, "invalid phase dependency\n");
-    bool is_start = (after != ECS_PHASE_NONE &&
-                     ecs_phase_order_index(after) < index->start_phase_count) ||
-                    (before != ECS_PHASE_NONE &&
-                     ecs_phase_order_index(before) < index->start_phase_count);
+    bool is_start =
+        (after != ECS_PHASE_NONE && ecs_phase_order_index(after) < index->start_phase_count) ||
+        (before != ECS_PHASE_NONE && ecs_phase_order_index(before) < index->start_phase_count);
 
     if (id >= EcsPhaseCount && after == ECS_PHASE_NONE && before == ECS_PHASE_NONE) {
         after = EcsOnUpdate;
@@ -49,13 +49,17 @@ ecs_phase_t ecs_phase_register(const ecs_phase_desc_t *desc) {
 
     uint32_t end = is_start ? index->start_phase_count : index->phase_order.size;
     uint32_t insert = end;
-    if (after != ECS_PHASE_NONE) insert = ecs_phase_order_index(after) + 1;
+    if (after != ECS_PHASE_NONE)
+        insert = ecs_phase_order_index(after) + 1;
     if (before != ECS_PHASE_NONE) {
         uint32_t before_index = ecs_phase_order_index(before);
-        if (after == ECS_PHASE_NONE || before_index < insert) insert = before_index;
+        if (after == ECS_PHASE_NONE || before_index < insert)
+            insert = before_index;
     }
-    ecs_assert(insert >= (is_start ? 0 : index->start_phase_count) && insert <= end,
-               "phase dependency crosses start boundary\n");
+    ecs_assert(
+        insert >= (is_start ? 0 : index->start_phase_count) && insert <= end,
+        "phase dependency crosses start boundary\n"
+    );
 
     ecs_phase_info_t info = {
         .name = desc && desc->name ? desc->name : "unnamed",
@@ -67,7 +71,8 @@ ecs_phase_t ecs_phase_register(const ecs_phase_desc_t *desc) {
     ecs_phase_t *order = index->phase_order.data;
     memmove(order + insert + 1, order + insert, (old_count - insert) * sizeof *order);
     order[insert] = id;
-    if (is_start) index->start_phase_count++;
+    if (is_start)
+        index->start_phase_count++;
     index->plan_dirty = true;
     return id;
 }
@@ -95,13 +100,13 @@ void ecs_system_index_init(void) {
     };
     for (uint32_t i = 0; i < EcsPhaseCount; i++) {
         ecs_phase_register(&phases[i]);
-        if (i == EcsPostStart) index->start_phase_count = 3;
+        if (i == EcsPostStart)
+            index->start_phase_count = 3;
     }
 }
 
-ecs_system_id_t ecs_system_index_create(const ecs_system_desc_t *desc,
-                                        ecs_query_id_t qid,
-                                        bool iterates_query) {
+ecs_system_id_t
+ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query_id_t qid, bool iterates_query) {
     ecs_system_index_t *index = &system_index;
     ecs_system_t system = {
         .name = desc->name,
@@ -121,12 +126,18 @@ ecs_system_id_t ecs_system_index_create(const ecs_system_desc_t *desc,
     };
     for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY && desc->after[i]; i++) {
 #ifndef NDEBUG
-        ecs_assert(ecs_system_id_valid(desc->after[i]), "invalid system dependency: %u\n",
-                   desc->after[i]);
-        ecs_assert(ecs_system_get_unchecked(desc->after[i])->phase == system.phase,
-                   "system dependency must be in the same phase\n");
+        ecs_assert(
+            ecs_system_id_valid(desc->after[i]),
+            "invalid system dependency: %u\n",
+            desc->after[i]
+        );
+        ecs_assert(
+            ecs_system_get_unchecked(desc->after[i])->phase == system.phase,
+            "system dependency must be in the same phase\n"
+        );
 #endif
-        if (desc->after[i] > system.after) system.after = desc->after[i];
+        if (desc->after[i] > system.after)
+            system.after = desc->after[i];
     }
     sicore_vec_push(&index->systems, &system, sizeof system);
     ecs_system_id_t id = index->systems.size - 1;
@@ -141,9 +152,11 @@ ecs_system_t *ecs_system_index_get(ecs_system_id_t system) {
 }
 
 static bool ecs_query_tables_overlap(const ecs_query_cache_t *a, const ecs_query_cache_t *b) {
-    if (a->table_count > b->table_count) return ecs_query_tables_overlap(b, a);
+    if (a->table_count > b->table_count)
+        return ecs_query_tables_overlap(b, a);
     for (uint16_t ai = 0; ai < a->table_count; ai++)
-        if (ecs_query_table_position(b, ecs_query_table_id(a, ai)) != UINT16_MAX) return true;
+        if (ecs_query_table_position(b, ecs_query_table_id(a, ai)) != UINT16_MAX)
+            return true;
     return false;
 }
 
@@ -152,14 +165,15 @@ static inline bool ecs_query_access_writes(ecs_access_t access) {
 }
 
 static bool ecs_query_terms_conflict(
-    const ecs_access_term_t *a, uint8_t a_count,
-    const ecs_access_term_t *b, uint8_t b_count
+    const ecs_access_term_t *a,
+    uint8_t a_count,
+    const ecs_access_term_t *b,
+    uint8_t b_count
 ) {
     for (uint8_t ai = 0; ai < a_count; ai++) {
         for (uint8_t bi = 0; bi < b_count; bi++) {
-            if (a[ai].id == b[bi].id &&
-                (ecs_query_access_writes(ecs_access_term_access(a[ai])) ||
-                 ecs_query_access_writes(ecs_access_term_access(b[bi])))) {
+            if (a[ai].id == b[bi].id && (ecs_query_access_writes(ecs_access_term_access(a[ai])) ||
+                                         ecs_query_access_writes(ecs_access_term_access(b[bi])))) {
                 return true;
             }
         }
@@ -168,20 +182,30 @@ static bool ecs_query_terms_conflict(
 }
 
 static bool ecs_system_conflict(const ecs_system_t *a, const ecs_system_t *b) {
-    if (a->main_thread_only || b->main_thread_only) return true;
-    if (a->qid == UINT16_MAX || b->qid == UINT16_MAX) return false;
+    if (a->main_thread_only || b->main_thread_only)
+        return true;
+    if (a->qid == UINT16_MAX || b->qid == UINT16_MAX)
+        return false;
     const ecs_query_cache_t *a_cache =
         sicore_vec_get(&query_index.queries, a->qid, ecs_query_cache_t);
     const ecs_query_cache_t *b_cache =
         sicore_vec_get(&query_index.queries, b->qid, ecs_query_cache_t);
     const ecs_query_t *aq = a_cache->query;
     const ecs_query_t *bq = b_cache->query;
-    if (ecs_query_terms_conflict(ecs_query_resources(aq), aq->resource_count,
-                                 ecs_query_resources(bq), bq->resource_count)) {
+    if (ecs_query_terms_conflict(
+            ecs_query_resources(aq),
+            aq->resource_count,
+            ecs_query_resources(bq),
+            bq->resource_count
+        )) {
         return true;
     }
-    return ecs_query_terms_conflict(ecs_query_fields(aq), aq->field_count,
-                                    ecs_query_fields(bq), bq->field_count) &&
+    return ecs_query_terms_conflict(
+               ecs_query_fields(aq),
+               aq->field_count,
+               ecs_query_fields(bq),
+               bq->field_count
+           ) &&
            ecs_query_tables_overlap(a_cache, b_cache);
 }
 
@@ -189,15 +213,16 @@ void ecs_system_index_build_plan(void) {
     ecs_system_index_t *index = &system_index;
     sicore_vec_clear(&index->execution_order);
     for (uint32_t p = 0; p < index->phase_order.size; p++) {
-        ecs_phase_info_t *phase = ecs_system_index_get_phase(
-            *sicore_vec_get(&index->phase_order, p, ecs_phase_t));
+        ecs_phase_info_t *phase =
+            ecs_system_index_get_phase(*sicore_vec_get(&index->phase_order, p, ecs_phase_t));
         phase->plan_first = index->execution_order.size;
         uint32_t batch_first = phase->plan_first;
         const ecs_system_id_t *systems = phase->systems.data;
         for (uint32_t i = 0; i < phase->systems.size; i++) {
             ecs_system_id_t id = systems[i];
             ecs_system_t *current = ecs_system_index_get(id);
-            if (!current->enabled) continue;
+            if (!current->enabled)
+                continue;
             bool blocked = false;
             const ecs_system_id_t *order = index->execution_order.data;
             for (uint32_t j = batch_first; j < index->execution_order.size && !blocked; j++) {
@@ -220,7 +245,8 @@ void ecs_system_index_fini(void) {
     ecs_system_index_t *index = &system_index;
     ecs_system_t *systems = index->systems.data;
     for (uint32_t i = 1; i < index->systems.size; i++)
-        if (systems[i].user_data_dtor) systems[i].user_data_dtor(systems[i].user_data);
+        if (systems[i].user_data_dtor)
+            systems[i].user_data_dtor(systems[i].user_data);
     for (uint32_t i = 0; i < index->phases.size; i++) {
         ecs_phase_info_t *phase = sicore_vec_get_mut(&index->phases, i, ecs_phase_info_t);
         sicore_vec_fini(&phase->systems);
