@@ -379,6 +379,10 @@ void ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t
     ecs_assert_entity_alive(entity);
     ecs_assert_entity_alive(target);
     if (ecs_is_deferred()) {
+        if (relation == ecs_rid(IsA)) {
+            ecs_command_buffer_set_base(entity, target);
+            return;
+        }
         ecs_command_buffer_relate(entity, relation, target);
         return;
     }

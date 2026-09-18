@@ -30,10 +30,12 @@ typedef struct {
 typedef struct {
     ecs_entity_t entity;
     uint32_t relation_head;
+    uint32_t change_count;
+    uint32_t change_capacity;
     bool kill;
     bool has_base;
     ecs_entity_t base;
-    sicore_vec_t changes;
+    ecs_deferred_change_t *changes;
 } ecs_entity_command_t;
 
 typedef struct ecs_command_buffer_s {

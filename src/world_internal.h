@@ -75,6 +75,10 @@ static inline void ecs_emit(
         }
     }
 
+    if (observer_index.target_keys.size == 0) {
+        return;
+    }
+
     uint64_t key = ecs_observer_target_key(ecs_entity_id(entity), event);
     uint32_t at = ecs_observer_target_lower_bound(key);
     const uint64_t *keys = observer_index.target_keys.data;

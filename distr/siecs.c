@@ -4862,10 +4862,12 @@ typedef struct {
 typedef struct {
     ecs_entity_t entity;
     uint32_t relation_head;
+    uint32_t change_count;
+    uint32_t change_capacity;
     bool kill;
     bool has_base;
     ecs_entity_t base;
-    sicore_vec_t changes;
+    ecs_deferred_change_t *changes;
 } ecs_entity_command_t;
 
 typedef struct ecs_command_buffer_s {
@@ -5530,6 +5532,10 @@ static inline void ecs_emit(
         }
     }
 
+    if (observer_index.target_keys.size == 0) {
+        return;
+    }
+
     uint64_t key = ecs_observer_target_key(ecs_entity_id(entity), event);
     uint32_t at = ecs_observer_target_lower_bound(key);
     const uint64_t *keys = observer_index.target_keys.data;
@@ -5978,6 +5984,27 @@ void *ecs_migrate(
 #endif
 
 #define ECS_COMMAND_NONE UINT32_MAX
+#define ECS_COMMAND_TRANSITION_CHANGE_CAPACITY 4
+
+typedef struct {
+    const ecs_component_record_t *record;
+    const void *source;
+    uint16_t column;
+} ecs_command_inherited_copy_t;
+
+typedef struct {
+    ecs_type_t type;
+    ecs_inheritance_plan_t inheritance;
+    ecs_command_inherited_copy_t *inherited_copies;
+    ecs_entity_t base;
+    ecs_component_t ids[ECS_COMMAND_TRANSITION_CHANGE_CAPACITY];
+    ecs_deferred_op_t ops[ECS_COMMAND_TRANSITION_CHANGE_CAPACITY];
+    uint32_t change_count;
+    uint16_t from_table;
+    uint16_t to_table;
+    bool has_base;
+    bool valid;
+} ecs_command_transition_t;
 
 #if defined(_MSC_VER)
 #define ECS_THREAD_LOCAL __declspec(thread)
@@ -6003,9 +6030,118 @@ static inline void deferred_change_fini(ecs_deferred_change_t *change) {
     change->data = NULL;
 }
 
-static uint32_t change_lower_bound(const sicore_vec_t *changes, ecs_component_t id) {
-    const ecs_deferred_change_t *items = changes->data;
-    uint32_t first = 0, count = changes->size;
+static inline ecs_deferred_change_t *command_changes(ecs_entity_command_t *command) {
+    return command->changes;
+}
+
+static bool command_transition_matches(
+    const ecs_command_transition_t *transition,
+    const ecs_entity_command_t *command,
+    uint16_t from_table
+) {
+    if (!transition->valid || transition->from_table != from_table ||
+        transition->has_base != command->has_base || transition->base != command->base ||
+        transition->change_count != command->change_count) {
+        return false;
+    }
+    const ecs_deferred_change_t *changes = command->changes;
+    for (uint32_t i = 0; i < command->change_count; i++) {
+        if (transition->ids[i] != changes[i].id || transition->ops[i] != changes[i].op) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool
+command_shape_equals(const ecs_entity_command_t *left, const ecs_entity_command_t *right) {
+    if (left->change_count != right->change_count || left->has_base != right->has_base ||
+        left->base != right->base) {
+        return false;
+    }
+    for (uint32_t i = 0; i < left->change_count; i++) {
+        if (left->changes[i].id != right->changes[i].id ||
+            left->changes[i].op != right->changes[i].op) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void command_transition_set(
+    ecs_command_transition_t *transition,
+    const ecs_entity_command_t *command,
+    uint16_t from_table,
+    uint16_t to_table,
+    const ecs_inheritance_plan_t *inheritance
+) {
+    ecs_type_fini(&transition->type);
+    ecs_inheritance_plan_fini(&transition->inheritance);
+    free(transition->inherited_copies);
+    transition->inherited_copies = NULL;
+
+    const ecs_table_t *table = ecs_get_table(to_table);
+    transition->type =
+        ecs_type_with_ids(&table->type, table->type.ids, table->type.component_count);
+    transition->type.base = table->type.base;
+    if (inheritance->count) {
+        transition->inheritance.ids = malloc(inheritance->count * sizeof *inheritance->ids);
+        memcpy(
+            transition->inheritance.ids,
+            inheritance->ids,
+            inheritance->count * sizeof *inheritance->ids
+        );
+        transition->inheritance.count = inheritance->count;
+        transition->inherited_copies =
+            malloc(inheritance->count * sizeof *transition->inherited_copies);
+        for (uint16_t i = 0; i < inheritance->count; i++) {
+            ecs_component_t component = inheritance->ids[i];
+            transition->inherited_copies[i] = (ecs_command_inherited_copy_t){
+                .record = ecs_component_index_get(component),
+                .source = ecs_try_get_cid(command->base, component),
+                .column = ecs_table_get_column_index(table, component),
+            };
+        }
+    }
+
+    const ecs_deferred_change_t *changes = command->changes;
+    for (uint32_t i = 0; i < command->change_count; i++) {
+        transition->ids[i] = changes[i].id;
+        transition->ops[i] = changes[i].op;
+    }
+    transition->base = command->base;
+    transition->change_count = command->change_count;
+    transition->from_table = from_table;
+    transition->to_table = to_table;
+    transition->has_base = command->has_base;
+    transition->valid = true;
+}
+
+static void command_transition_fini(ecs_command_transition_t *transition) {
+    ecs_type_fini(&transition->type);
+    ecs_inheritance_plan_fini(&transition->inheritance);
+    free(transition->inherited_copies);
+}
+
+static void command_transition_copy_inherited(
+    const ecs_command_transition_t *transition,
+    ecs_table_t *table,
+    uint32_t row
+) {
+    for (uint16_t i = 0; i < transition->inheritance.count; i++) {
+        const ecs_command_inherited_copy_t *copy = &transition->inherited_copies[i];
+        void *destination = ecs_table_component_at_column(table, copy->column, row);
+        if (copy->record->ops.copy) {
+            copy->record->ops.copy(destination, copy->source, 1);
+        } else if (copy->record->info->size) {
+            memcpy(destination, copy->source, copy->record->info->size);
+        }
+    }
+}
+
+static uint32_t change_lower_bound(const ecs_entity_command_t *command, ecs_component_t id) {
+    const ecs_deferred_change_t *items = command->changes;
+    uint32_t first = 0, count = command->change_count;
     while (count) {
         uint32_t step = count / 2, middle = first + step;
         if (items[middle].id < id) {
@@ -6019,33 +6155,44 @@ static uint32_t change_lower_bound(const sicore_vec_t *changes, ecs_component_t 
 
 static inline ecs_deferred_change_t *change_get(
     ecs_entity_command_t *command,
+    ecs_arena_t *arena,
     ecs_component_t id,
     ecs_deferred_op_t op,
     bool *inserted
 ) {
-    uint32_t at = change_lower_bound(&command->changes, id);
-    ecs_deferred_change_t *items = command->changes.data;
-    *inserted = at == command->changes.size || items[at].id != id;
+    uint32_t at = change_lower_bound(command, id);
+    ecs_deferred_change_t *items = command_changes(command);
+    *inserted = at == command->change_count || items[at].id != id;
     if (!*inserted)
         return &items[at];
-    sicore_vec_push_empty(&command->changes, sizeof(ecs_deferred_change_t));
-    items = command->changes.data;
-    memmove(items + at + 1, items + at, (command->changes.size - at - 1) * sizeof *items);
+    if (command->change_count == command->change_capacity) {
+        command->change_capacity = command->change_capacity ? command->change_capacity * 2 : 2;
+        ecs_deferred_change_t *changes =
+            ecs_arena_alloc(arena, command->change_capacity * sizeof *changes);
+        if (command->change_count) {
+            memcpy(changes, command->changes, command->change_count * sizeof *changes);
+        }
+        command->changes = changes;
+        items = changes;
+    }
+    memmove(items + at + 1, items + at, (command->change_count - at) * sizeof *items);
+    command->change_count++;
     items[at] = (ecs_deferred_change_t){ .id = id, .op = op };
     return &items[at];
 }
 
 static inline void command_init(ecs_entity_command_t *command, ecs_entity_t entity) {
-    *command = (ecs_entity_command_t){ .entity = entity, .relation_head = ECS_COMMAND_NONE };
-    sicore_vec_init(&command->changes, sizeof(ecs_deferred_change_t));
+    *command = (ecs_entity_command_t){
+        .entity = entity,
+        .relation_head = ECS_COMMAND_NONE,
+    };
 }
 
 static inline void command_fini(ecs_entity_command_t *command) {
-    ecs_deferred_change_t *changes = sicore_vec_data(&command->changes, ecs_deferred_change_t);
-    for (uint32_t i = 0; i < command->changes.size; i++) {
+    ecs_deferred_change_t *changes = command_changes(command);
+    for (uint32_t i = 0; i < command->change_count; i++) {
         deferred_change_fini(&changes[i]);
     }
-    sicore_vec_fini(&command->changes);
 }
 
 void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena) {
@@ -6116,7 +6263,7 @@ command_buffer_change(ecs_entity_t entity, ecs_component_t id, void *data, ecs_d
     ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
     bool inserted;
-    ecs_deferred_change_t *change = change_get(command, id, op, &inserted);
+    ecs_deferred_change_t *change = change_get(command, buffer->arena, id, op, &inserted);
     if (!inserted && op == EcsDeferredAdd) {
         if (change->op == EcsDeferredRemove)
             change->op = op;
@@ -6157,11 +6304,11 @@ void ecs_command_buffer_kill(ecs_entity_t entity) {
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
     command->kill = true;
     command->has_base = false;
-    ecs_deferred_change_t *changes = sicore_vec_data(&command->changes, ecs_deferred_change_t);
-    for (uint32_t i = 0; i < command->changes.size; i++) {
+    ecs_deferred_change_t *changes = command_changes(command);
+    for (uint32_t i = 0; i < command->change_count; i++) {
         deferred_change_fini(&changes[i]);
     }
-    sicore_vec_clear(&command->changes);
+    command->change_count = 0;
     command->relation_head = ECS_COMMAND_NONE;
 }
 
@@ -6203,31 +6350,30 @@ static ecs_type_t command_build_type(
     const ecs_table_t *table,
     ecs_entity_command_t *command
 ) {
-    for (uint32_t i = 0; i < command->changes.size; i++) {
-        ecs_deferred_change_t *change =
-            sicore_vec_get_mut(&command->changes, i, ecs_deferred_change_t);
+    for (uint32_t i = 0; i < command->change_count; i++) {
+        ecs_deferred_change_t *change = &command_changes(command)[i];
         if (change->op == EcsDeferredRemove)
             continue;
         const ecs_component_record_t *record = ecs_component_index_get(change->id);
         for (uint32_t r = 0; r < record->required_count; r++) {
             bool inserted;
             ecs_deferred_change_t *required =
-                change_get(command, record->required[r], EcsDeferredAdd, &inserted);
+                change_get(command, buffer->arena, record->required[r], EcsDeferredAdd, &inserted);
             if (!inserted && required->op == EcsDeferredRemove)
                 required->op = EcsDeferredAdd;
         }
     }
 
-    const ecs_deferred_change_t *changes = command->changes.data;
+    const ecs_deferred_change_t *changes = command_changes(command);
     ecs_component_t *ids = ecs_arena_alloc(
         buffer->arena,
-        sizeof *ids * (table->type.component_count + command->changes.size)
+        sizeof *ids * (table->type.component_count + command->change_count)
     );
     uint16_t ti = 0, ci = 0, count = 0;
-    while (ti < table->type.component_count || ci < command->changes.size) {
+    while (ti < table->type.component_count || ci < command->change_count) {
         ecs_component_t table_id =
             ti < table->type.component_count ? table->type.ids[ti] : UINT16_MAX;
-        ecs_component_t change_id = ci < command->changes.size ? changes[ci].id : UINT16_MAX;
+        ecs_component_t change_id = ci < command->change_count ? changes[ci].id : UINT16_MAX;
         if (table_id < change_id)
             ids[count++] = table->type.ids[ti++];
         else if (change_id < table_id) {
@@ -6247,13 +6393,12 @@ static ecs_type_t command_build_type(
 }
 
 static bool command_type_unchanged(const ecs_table_t *table, const ecs_entity_command_t *command) {
-    const ecs_deferred_change_t *changes =
-        sicore_vec_data(&command->changes, ecs_deferred_change_t);
+    const ecs_deferred_change_t *changes = command_changes((ecs_entity_command_t *)command);
     if (command->has_base && command->base != table->type.base) {
         return false;
     }
 
-    for (uint32_t i = 0; i < command->changes.size; i++) {
+    for (uint32_t i = 0; i < command->change_count; i++) {
         if (changes[i].op == EcsDeferredRemove || !ecs_table_has_owned(table, changes[i].id)) {
             return false;
         }
@@ -6262,8 +6407,8 @@ static bool command_type_unchanged(const ecs_table_t *table, const ecs_entity_co
 }
 
 static void command_apply_changes(ecs_entity_command_t *command) {
-    ecs_deferred_change_t *changes = sicore_vec_data(&command->changes, ecs_deferred_change_t);
-    for (uint32_t i = 0; i < command->changes.size && ecs_is_alive(command->entity); i++) {
+    ecs_deferred_change_t *changes = command_changes(command);
+    for (uint32_t i = 0; i < command->change_count && ecs_is_alive(command->entity); i++) {
         if (changes[i].op != EcsDeferredCopy && changes[i].op != EcsDeferredMove) {
             continue;
         }
@@ -6304,10 +6449,29 @@ static void command_apply_relations(ecs_entity_command_t *command, const sicore_
     }
 }
 
+static void command_finish_base_change(ecs_entity_command_t *command, ecs_entity_t old_base) {
+    if (!ecs_is_alive(command->entity)) {
+        return;
+    }
+    if (command->base) {
+        ecs_inheritance_instantiate_children(command->entity, command->base);
+    }
+    ecs_entity_record_t *record = ecs_get_record(command->entity);
+    ecs_table_t *table = ecs_get_table(record->table_id);
+    ecs_relation_event_t event = {
+        .relation = ecs_rid(IsA),
+        .old_target = old_base,
+        .new_target = command->base,
+    };
+    ecs_emit(table, command->entity, EcsOnRelationSet, 0, &event);
+}
+
 static void command_apply(
     ecs_command_buffer_t *buffer,
     ecs_entity_command_t *command,
-    const sicore_vec_t *relations
+    const ecs_entity_command_t *next,
+    const sicore_vec_t *relations,
+    ecs_command_transition_t *transition
 ) {
     if (!ecs_is_alive(command->entity)) {
         return;
@@ -6321,60 +6485,103 @@ static void command_apply(
     ecs_entity_record_t *record = ecs_get_record(command->entity);
     uint16_t old_table_id = record->table_id;
     ecs_table_t *old_table = ecs_get_table(old_table_id);
+    ecs_entity_t old_base = old_table->type.base;
     if (command_type_unchanged(old_table, command)) {
         command_apply_changes(command);
         command_apply_relations(command, relations);
         return;
     }
 
-    ecs_type_t final_type = command_build_type(buffer, old_table, command);
     ecs_inheritance_plan_t inheritance_plan = { 0 };
     bool base_changed = command->has_base && command->base != old_table->type.base;
     if (base_changed) {
-        ecs_inheritance_plan_build(&final_type, command->base, &inheritance_plan);
-        if (inheritance_plan.count != 0) {
-            ecs_type_t materialized =
-                ecs_type_with_added_ids(&final_type, inheritance_plan.ids, inheritance_plan.count);
-            materialized.base = final_type.base;
-            ecs_type_fini(&final_type);
-            final_type = materialized;
+        if (command->base) {
+            ecs_add_cid_now(command->base, ecs_id(Abstract));
+            old_table = ecs_get_table(old_table_id);
         }
     }
 
-    if (!ecs_type_equals(&old_table->type, &final_type)) {
+    bool transition_hit = command->change_count <= ECS_COMMAND_TRANSITION_CHANGE_CAPACITY &&
+                          command_transition_matches(transition, command, old_table_id);
+    ecs_type_t final_type = { 0 };
+    const ecs_type_t *target_type;
+    const ecs_inheritance_plan_t *copy_plan;
+    uint16_t new_table_id;
+
+    if (transition_hit) {
+        target_type = &transition->type;
+        copy_plan = &transition->inheritance;
+        new_table_id = transition->to_table;
+    } else {
+        final_type = command_build_type(buffer, old_table, command);
+        if (base_changed) {
+            ecs_inheritance_plan_build(&final_type, command->base, &inheritance_plan);
+            if (inheritance_plan.count != 0) {
+                ecs_type_t materialized = ecs_type_with_added_ids(
+                    &final_type,
+                    inheritance_plan.ids,
+                    inheritance_plan.count
+                );
+                materialized.base = final_type.base;
+                ecs_type_fini(&final_type);
+                final_type = materialized;
+            }
+        }
+        target_type = &final_type;
+        copy_plan = &inheritance_plan;
+    }
+
+    bool type_changed = transition_hit ? old_table_id != new_table_id
+                                       : !ecs_type_equals(&old_table->type, target_type);
+    if (type_changed) {
         uint32_t old_row = record->table_row;
-        ecs_emit_removed_components(old_table, &final_type, command->entity, old_row);
+        ecs_emit_removed_components(old_table, target_type, command->entity, old_row);
         if (!ecs_is_alive(command->entity)) {
             ecs_type_fini(&final_type);
             ecs_inheritance_plan_fini(&inheritance_plan);
             return;
         }
 
-        uint16_t new_table_id = ecs_table_index_get_or_create(final_type);
+        if (!transition_hit) {
+            new_table_id = ecs_table_index_get_or_create(final_type);
+            final_type = (ecs_type_t){ 0 };
+            if (command->change_count <= ECS_COMMAND_TRANSITION_CHANGE_CAPACITY && next &&
+                command_shape_equals(command, next) && ecs_is_alive(next->entity) &&
+                ecs_get_record(next->entity)->table_id == old_table_id) {
+                command_transition_set(
+                    transition,
+                    command,
+                    old_table_id,
+                    new_table_id,
+                    &inheritance_plan
+                );
+            }
+        }
         record = ecs_get_record(command->entity);
         old_table = ecs_get_table(old_table_id);
         ecs_migrate(record, command->entity, old_table, new_table_id, 0);
         record = ecs_get_record(command->entity);
         ecs_table_t *new_table = ecs_get_table(record->table_id);
         if (base_changed) {
-            ecs_inheritance_plan_copy(
-                &inheritance_plan,
-                command->base,
-                new_table,
-                record->table_row
-            );
+            if (transition_hit) {
+                command_transition_copy_inherited(transition, new_table, record->table_row);
+            } else {
+                ecs_inheritance_plan_copy(copy_plan, command->base, new_table, record->table_row);
+            }
         }
         if (ecs_emit_added_components(old_table, new_table, command->entity, record->table_row)) {
             ecs_apply_added_component_default_relations(old_table, new_table, command->entity);
         }
-    } else {
-        ecs_type_fini(&final_type);
     }
 
+    ecs_type_fini(&final_type);
     ecs_inheritance_plan_fini(&inheritance_plan);
 
     command_apply_changes(command);
     command_apply_relations(command, relations);
+    if (base_changed) {
+        command_finish_base_change(command, old_base);
+    }
 }
 
 void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
@@ -6383,6 +6590,7 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
         return;
     }
 
+    ecs_command_transition_t transition = { 0 };
     while (buffer->commands.size != 0) {
         sicore_vec_t commands = buffer->commands;
         sicore_vec_t relations = buffer->relations;
@@ -6396,12 +6604,19 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
         }
 
         for (uint32_t i = 0; i < commands.size; i++) {
-            command_apply(buffer, &items[i], &relations);
+            command_apply(
+                buffer,
+                &items[i],
+                i + 1 < commands.size ? &items[i + 1] : NULL,
+                &relations,
+                &transition
+            );
             command_fini(&items[i]);
         }
         sicore_vec_fini(&commands);
         sicore_vec_fini(&relations);
     }
+    command_transition_fini(&transition);
     ecs_arena_reset(buffer->arena);
 }
 
@@ -6422,7 +6637,8 @@ void ecs_defer_end(void) {
     ecs_execution_context_t *context = ecs_execution_context_current();
     ecs_assert(context->defer_depth > 0, "ecs_defer_end called without ecs_defer_begin\n");
     context->defer_depth--;
-    if (context->defer_depth == 0 && !context->scheduler_parallel) {
+    if (context->defer_depth == 0 && !context->scheduler_parallel &&
+        context->commands.commands.size != 0) {
         ecs_command_buffer_flush();
     }
 }
@@ -8520,6 +8736,10 @@ void ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t
     ecs_assert_entity_alive(entity);
     ecs_assert_entity_alive(target);
     if (ecs_is_deferred()) {
+        if (relation == ecs_rid(IsA)) {
+            ecs_command_buffer_set_base(entity, target);
+            return;
+        }
         ecs_command_buffer_relate(entity, relation, target);
         return;
     }
