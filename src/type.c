@@ -16,7 +16,6 @@ static ecs_type_t ecs_type_alloc(const ecs_type_t *type, int components, int pai
         .ids = bytes ? malloc(bytes) : NULL,
         .component_count = component_count,
         .pair_count = pair_count,
-        .base = type->base,
     };
 }
 

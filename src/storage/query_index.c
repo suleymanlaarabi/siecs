@@ -185,7 +185,7 @@ ecs_query_bind(const ecs_query_t *q, const ecs_table_t *table, ecs_query_table_t
                 ptr = table->cls[column].data;
                 kind = EcsFieldOwned;
             } else if (
-                (access == EcsIn || access == EcsInOptional) && table->type.base &&
+                (access == EcsIn || access == EcsInOptional) && ecs_type_isa_target(&table->type) &&
                 (access == EcsInOptional || id != ecs_id(Abstract))
             ) {
                 bool shared = false;

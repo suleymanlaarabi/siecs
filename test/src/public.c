@@ -34,7 +34,7 @@ void public_metadata_and_entity_introspection(void) {
     const ecs_relation_info_t *is_a = ecs_relation_info(ecs_rid(IsA));
     test_not_null((void *)is_a);
     test_str("IsA", is_a->name);
-    test_int(EcsRelationByDepth, is_a->desc.storage);
+    test_int(EcsRelationByTarget, is_a->desc.storage);
     test_int(EcsRemoveRelation, is_a->desc.on_delete_target);
     test_true(is_a->desc.acyclic);
 

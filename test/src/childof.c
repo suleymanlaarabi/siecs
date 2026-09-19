@@ -1361,7 +1361,7 @@ void childof_relation_observer_reports_relation_without_component(void) {
 }
 
 void childof_type_layout_stays_compact(void) {
-    test_int(24, sizeof(ecs_type_t));
+    test_int(16, sizeof(ecs_type_t));
     test_int(16, sizeof(ecs_type_pair_t));
     test_int(40, sizeof(ecs_query_t));
     test_int(16, sizeof(ecs_query_relation_term_t));

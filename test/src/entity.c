@@ -169,7 +169,7 @@ void entity_is_a_moves_entity_to_type_with_base(void) {
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
     ecs_table_t *table = ecs_get_table(entity_record->table_id);
 
-    test_assert(table->type.base == base);
+    test_uint(base, ecs_type_pair_get(&table->type, ecs_rid(IsA)));
     test_true(ecs_has(entity, Renderable));
 
     ecs_fini();
@@ -340,8 +340,8 @@ void entity_is_a_different_target_creates_different_table(void) {
     ecs_entity_record_t *record_b = ecs_get_record(entity_b);
 
     test_assert(record_a->table_id != record_b->table_id);
-    test_assert(ecs_get_table(record_a->table_id)->type.base == base_a);
-    test_assert(ecs_get_table(record_b->table_id)->type.base == base_b);
+    test_uint(base_a, ecs_type_pair_get(&ecs_get_table(record_a->table_id)->type, ecs_rid(IsA)));
+    test_uint(base_b, ecs_type_pair_get(&ecs_get_table(record_b->table_id)->type, ecs_rid(IsA)));
 
     ecs_fini();
 }

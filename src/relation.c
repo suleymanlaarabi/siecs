@@ -337,13 +337,13 @@ static void ecs_relation_isa_remove_now(ecs_entity_t entity, ecs_relation_id_t r
 }
 
 static bool ecs_relation_isa_has(ecs_entity_t entity, ecs_relation_id_t relation) {
-    (void)relation;
-    return ecs_entity_base_raw(entity) != 0;
+    const ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
+    return ecs_type_pair_index(&table->type, relation) != UINT16_MAX;
 }
 
 static ecs_entity_t ecs_relation_isa_target(ecs_entity_t entity, ecs_relation_id_t relation) {
-    (void)relation;
-    return ecs_entity_base_raw(entity);
+    const ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
+    return ecs_type_pair_get(&table->type, relation);
 }
 
 const ecs_relation_ops_t ecs_relation_ops_isa = {
@@ -506,10 +506,10 @@ void ecs_relation_virtual_target_on_remove(ecs_entity_t target) {
         }
 
         ecs_delete_target_t on_delete_target = record->info.desc.on_delete_target;
-        if (relation == ecs_rid(IsA)) {
-            uint16_t table_count = ecs_table_index_base_tables(target).count;
+        if (record->info.desc.storage == EcsRelationByTarget) {
+            uint16_t table_count = ecs_table_index_pair_tables(relation, target).count;
             for (uint16_t i = 0; i < table_count; i++) {
-                ecs_pair_tables_t tables = ecs_table_index_base_tables(target);
+                ecs_pair_tables_t tables = ecs_table_index_pair_tables(relation, target);
                 ecs_table_t *table = ecs_get_table(tables.ids[i]);
                 while (table->entity_count) {
                     ecs_entity_t source = table->entities[table->entity_count - 1];

@@ -79,14 +79,15 @@ static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_en
         }
         const ecs_entity_record_t *target_record = ecs_get_record(target);
         const ecs_table_t *target_table = ecs_get_table(target_record->table_id);
-        target = target_table->type.base;
+        target = ecs_type_isa_target(&target_table->type);
     }
     return false;
 }
 #endif
 
 bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
-    ecs_entity_t base = ecs_get_table(ecs_get_record(entity)->table_id)->type.base;
+    ecs_entity_t base =
+        ecs_type_isa_target(&ecs_get_table(ecs_get_record(entity)->table_id)->type);
     if (base == target) {
         return true;
     }
@@ -98,7 +99,7 @@ bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
 
 ecs_entity_t ecs_entity_base_raw(ecs_entity_t entity) {
     ecs_assert_is_alive(entity);
-    return ecs_get_table(ecs_get_record(entity)->table_id)->type.base;
+    return ecs_type_isa_target(&ecs_get_table(ecs_get_record(entity)->table_id)->type);
 }
 
 ecs_entity_t ecs_entity_base(ecs_entity_t entity) { return ecs_target_id(entity, ecs_rid(IsA)); }
@@ -126,14 +127,28 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     ecs_entity_record_t *record = ecs_get_record(entity);
     uint16_t from_table_id = record->table_id;
     ecs_table_t *from_table = ecs_get_table(from_table_id);
-    if (from_table->type.base == target) {
+    if (ecs_type_isa_target(&from_table->type) == target) {
         return;
     }
 
     ecs_inheritance_plan_t plan;
     ecs_inheritance_plan_build(&from_table->type, target, &plan);
-    ecs_type_t new_type = ecs_type_with_added_ids(&from_table->type, plan.ids, plan.count);
-    new_type.base = target;
+    ecs_type_t materialized = ecs_type_with_added_ids(&from_table->type, plan.ids, plan.count);
+    ecs_type_t new_type;
+    if (target) {
+        new_type = ecs_type_with(
+            &materialized,
+            0,
+            (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = target }
+        );
+    } else {
+        ecs_assert(
+            ecs_type_pair_index(&materialized, ecs_rid(IsA)) != UINT16_MAX,
+            "missing IsA pair\n"
+        );
+        new_type = ecs_type_without(&materialized, UINT16_MAX, ecs_rid(IsA));
+    }
+    ecs_type_fini(&materialized);
     uint16_t to_table_id = ecs_table_index_get_or_create(new_type);
     from_table = ecs_get_table(from_table_id);
     ecs_migrate(record, entity, from_table, to_table_id, 0);

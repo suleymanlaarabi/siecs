@@ -20,7 +20,7 @@ ECS_RELATION_DEFINE(
 ECS_RELATION_DEFINE(
     IsA,
     {
-        .storage = EcsRelationByDepth,
+        .storage = EcsRelationByTarget,
         .on_delete_target = EcsRemoveRelation,
         .acyclic = true,
     }

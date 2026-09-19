@@ -168,7 +168,7 @@ ecs_component_get_from_record(const ecs_entity_record_t *record, ecs_component_t
         return ecs_table_component_at_column(table, col_idx, record->table_row);
     }
 
-    ecs_entity_t base = table->type.base;
+    ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0) {
         const ecs_entity_record_t *base_record = ecs_get_record(base);
         ecs_table_t *base_table = ecs_get_table(base_record->table_id);
@@ -178,7 +178,7 @@ ecs_component_get_from_record(const ecs_entity_record_t *record, ecs_component_t
             return ecs_table_component_at_column(base_table, col_idx, base_record->table_row);
         }
 
-        base = base_table->type.base;
+        base = ecs_type_isa_target(&base_table->type);
     }
 
     return NULL;

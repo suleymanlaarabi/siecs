@@ -14,7 +14,6 @@ typedef struct {
     uint16_t component_count;
     uint16_t pair_count;
     uint32_t hash;
-    ecs_entity_t base;
 } ecs_type_t;
 
 ecs_type_t ecs_type_with(const ecs_type_t *type, ecs_component_t component, ecs_type_pair_t pair);
@@ -30,12 +29,19 @@ static inline ecs_type_pair_t *ecs_type_pairs(const ecs_type_t *type) {
 
 static inline uint16_t ecs_type_pair_index(const ecs_type_t *type, uint16_t key) {
     const ecs_type_pair_t *pairs = ecs_type_pairs(type);
-    for (uint16_t i = 0; i < type->pair_count; i++) {
-        if (pairs[i].key >= key) {
-            return pairs[i].key == key ? i : UINT16_MAX;
+    uint16_t lo = 0;
+    uint16_t hi = type->pair_count;
+
+    while (lo < hi) {
+        uint16_t mid = (uint16_t)(lo + (hi - lo) / 2);
+        if (pairs[mid].key < key) {
+            lo = (uint16_t)(mid + 1);
+        } else {
+            hi = mid;
         }
     }
-    return UINT16_MAX;
+
+    return lo < type->pair_count && pairs[lo].key == key ? lo : UINT16_MAX;
 }
 
 static inline uint64_t ecs_type_pair_get(const ecs_type_t *type, uint16_t key) {
@@ -43,12 +49,15 @@ static inline uint64_t ecs_type_pair_get(const ecs_type_t *type, uint16_t key) {
     return index == UINT16_MAX ? 0 : ecs_type_pairs(type)[index].value;
 }
 
+static inline ecs_entity_t ecs_type_isa_target(const ecs_type_t *type) {
+    return (ecs_entity_t)ecs_type_pair_get(type, ecs_rid(IsA));
+}
+
 uint64_t ecs_type_bloom(const ecs_type_t *type);
 void ecs_type_fini(ecs_type_t *type);
 
 static inline int ecs_type_equals(const ecs_type_t *a, const ecs_type_t *b) {
-    if (a->base != b->base || a->component_count != b->component_count ||
-        a->pair_count != b->pair_count) {
+    if (a->component_count != b->component_count || a->pair_count != b->pair_count) {
         return 0;
     }
     if (a->component_count &&

@@ -207,14 +207,14 @@ bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
         return false;
     }
 
-    ecs_entity_t base = table->type.base;
+    ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
         const ecs_table_t *base_table = ecs_get_table(record->table_id);
         if (ecs_table_column_or_invalid(base_table, component_id) != UINT16_MAX) {
             return true;
         }
-        base = base_table->type.base;
+        base = ecs_type_isa_target(&base_table->type);
     }
 
     return false;
@@ -227,7 +227,7 @@ bool ecs_table_has_id(const ecs_table_t *table, ecs_component_t component_id) {
 bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
     ecs_assert_entity_valid(base);
 
-    ecs_entity_t current = table->type.base;
+    ecs_entity_t current = ecs_type_isa_target(&table->type);
     while (current != 0) {
         if (current == base) {
             return true;
@@ -235,7 +235,7 @@ bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
 
         const ecs_entity_record_t *record = ecs_get_record(current);
         const ecs_table_t *base_table = ecs_get_table(record->table_id);
-        current = base_table->type.base;
+        current = ecs_type_isa_target(&base_table->type);
     }
 
     return false;
@@ -248,7 +248,7 @@ void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bo
         return table->cls[cidx].data;
     }
 
-    ecs_entity_t base = table->type.base;
+    ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
         const ecs_table_t *base_table = ecs_get_table(record->table_id);
@@ -259,7 +259,7 @@ void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bo
             return ecs_table_component_at_column(base_table, cidx, record->table_row);
         }
 
-        base = base_table->type.base;
+        base = ecs_type_isa_target(&base_table->type);
     }
 
     *is_shared = false;

@@ -14,7 +14,7 @@ static uint16_t ecs_inheritance_base_component_capacity(ecs_entity_t base) {
         const ecs_entity_record_t *record = ecs_get_record(base);
         const ecs_table_t *table = ecs_get_table(record->table_id);
         capacity += table->type.component_count;
-        base = table->type.base;
+        base = ecs_type_isa_target(&table->type);
     }
     ecs_assert(capacity <= UINT16_MAX, "too many inherited components: %u\n", capacity);
     return (uint16_t)capacity;
@@ -83,7 +83,7 @@ void ecs_inheritance_plan_build(
                 ids[count++] = component;
             }
         }
-        base = table->type.base;
+        base = ecs_type_isa_target(&table->type);
     }
 
     if (count == 0) {

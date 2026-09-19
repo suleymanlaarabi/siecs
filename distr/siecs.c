@@ -4545,7 +4545,6 @@ typedef struct {
     uint16_t component_count;
     uint16_t pair_count;
     uint32_t hash;
-    ecs_entity_t base;
 } ecs_type_t;
 
 ecs_type_t ecs_type_with(const ecs_type_t *type, ecs_component_t component, ecs_type_pair_t pair);
@@ -4561,12 +4560,19 @@ static inline ecs_type_pair_t *ecs_type_pairs(const ecs_type_t *type) {
 
 static inline uint16_t ecs_type_pair_index(const ecs_type_t *type, uint16_t key) {
     const ecs_type_pair_t *pairs = ecs_type_pairs(type);
-    for (uint16_t i = 0; i < type->pair_count; i++) {
-        if (pairs[i].key >= key) {
-            return pairs[i].key == key ? i : UINT16_MAX;
+    uint16_t lo = 0;
+    uint16_t hi = type->pair_count;
+
+    while (lo < hi) {
+        uint16_t mid = (uint16_t)(lo + (hi - lo) / 2);
+        if (pairs[mid].key < key) {
+            lo = (uint16_t)(mid + 1);
+        } else {
+            hi = mid;
         }
     }
-    return UINT16_MAX;
+
+    return lo < type->pair_count && pairs[lo].key == key ? lo : UINT16_MAX;
 }
 
 static inline uint64_t ecs_type_pair_get(const ecs_type_t *type, uint16_t key) {
@@ -4574,12 +4580,15 @@ static inline uint64_t ecs_type_pair_get(const ecs_type_t *type, uint16_t key) {
     return index == UINT16_MAX ? 0 : ecs_type_pairs(type)[index].value;
 }
 
+static inline ecs_entity_t ecs_type_isa_target(const ecs_type_t *type) {
+    return (ecs_entity_t)ecs_type_pair_get(type, ecs_rid(IsA));
+}
+
 uint64_t ecs_type_bloom(const ecs_type_t *type);
 void ecs_type_fini(ecs_type_t *type);
 
 static inline int ecs_type_equals(const ecs_type_t *a, const ecs_type_t *b) {
-    if (a->base != b->base || a->component_count != b->component_count ||
-        a->pair_count != b->pair_count) {
+    if (a->component_count != b->component_count || a->pair_count != b->pair_count) {
         return 0;
     }
     if (a->component_count &&
@@ -4726,7 +4735,6 @@ void ecs_table_index_fini();
 
 uint16_t ecs_table_index_get_or_create(ecs_type_t type);
 ecs_pair_tables_t ecs_table_index_pair_tables(uint16_t key, uint64_t value);
-ecs_pair_tables_t ecs_table_index_base_tables(ecs_entity_t base);
 
 #endif
 
@@ -5602,7 +5610,7 @@ ECS_RELATION_DEFINE(
 ECS_RELATION_DEFINE(
     IsA,
     {
-        .storage = EcsRelationByDepth,
+        .storage = EcsRelationByTarget,
         .on_delete_target = EcsRemoveRelation,
         .acyclic = true,
     }
@@ -6086,7 +6094,6 @@ static void command_transition_set(
     const ecs_table_t *table = ecs_get_table(to_table);
     transition->type =
         ecs_type_with_ids(&table->type, table->type.ids, table->type.component_count);
-    transition->type.base = table->type.base;
     if (inheritance->count) {
         transition->inheritance.ids = malloc(inheritance->count * sizeof *inheritance->ids);
         memcpy(
@@ -6391,13 +6398,21 @@ static ecs_type_t command_build_type(
         }
     }
     ecs_type_t type = ecs_type_with_ids(&table->type, ids, count);
-    type.base = command->has_base ? command->base : table->type.base;
-    return type;
+    if (!command->has_base) {
+        return type;
+    }
+    ecs_type_t out = ecs_type_with(
+        &type,
+        0,
+        (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = command->base }
+    );
+    ecs_type_fini(&type);
+    return out;
 }
 
 static bool command_type_unchanged(const ecs_table_t *table, const ecs_entity_command_t *command) {
     const ecs_deferred_change_t *changes = command_changes((ecs_entity_command_t *)command);
-    if (command->has_base && command->base != table->type.base) {
+    if (command->has_base && command->base != ecs_type_isa_target(&table->type)) {
         return false;
     }
 
@@ -6488,7 +6503,7 @@ static void command_apply(
     ecs_entity_record_t *record = ecs_get_record(command->entity);
     uint16_t old_table_id = record->table_id;
     ecs_table_t *old_table = ecs_get_table(old_table_id);
-    ecs_entity_t old_base = old_table->type.base;
+    ecs_entity_t old_base = ecs_type_isa_target(&old_table->type);
     if (command_type_unchanged(old_table, command)) {
         command_apply_changes(command);
         command_apply_relations(command, relations);
@@ -6496,7 +6511,7 @@ static void command_apply(
     }
 
     ecs_inheritance_plan_t inheritance_plan = { 0 };
-    bool base_changed = command->has_base && command->base != old_table->type.base;
+    bool base_changed = command->has_base && command->base != ecs_type_isa_target(&old_table->type);
     if (base_changed) {
         if (command->base) {
             ecs_add_cid_now(command->base, ecs_id(Abstract));
@@ -6525,7 +6540,6 @@ static void command_apply(
                     inheritance_plan.ids,
                     inheritance_plan.count
                 );
-                materialized.base = final_type.base;
                 ecs_type_fini(&final_type);
                 final_type = materialized;
             }
@@ -7089,7 +7103,7 @@ ecs_component_get_from_record(const ecs_entity_record_t *record, ecs_component_t
         return ecs_table_component_at_column(table, col_idx, record->table_row);
     }
 
-    ecs_entity_t base = table->type.base;
+    ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0) {
         const ecs_entity_record_t *base_record = ecs_get_record(base);
         ecs_table_t *base_table = ecs_get_table(base_record->table_id);
@@ -7099,7 +7113,7 @@ ecs_component_get_from_record(const ecs_entity_record_t *record, ecs_component_t
             return ecs_table_component_at_column(base_table, col_idx, base_record->table_row);
         }
 
-        base = base_table->type.base;
+        base = ecs_type_isa_target(&base_table->type);
     }
 
     return NULL;
@@ -7369,14 +7383,15 @@ static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_en
         }
         const ecs_entity_record_t *target_record = ecs_get_record(target);
         const ecs_table_t *target_table = ecs_get_table(target_record->table_id);
-        target = target_table->type.base;
+        target = ecs_type_isa_target(&target_table->type);
     }
     return false;
 }
 #endif
 
 bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
-    ecs_entity_t base = ecs_get_table(ecs_get_record(entity)->table_id)->type.base;
+    ecs_entity_t base =
+        ecs_type_isa_target(&ecs_get_table(ecs_get_record(entity)->table_id)->type);
     if (base == target) {
         return true;
     }
@@ -7388,7 +7403,7 @@ bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
 
 ecs_entity_t ecs_entity_base_raw(ecs_entity_t entity) {
     ecs_assert_is_alive(entity);
-    return ecs_get_table(ecs_get_record(entity)->table_id)->type.base;
+    return ecs_type_isa_target(&ecs_get_table(ecs_get_record(entity)->table_id)->type);
 }
 
 ecs_entity_t ecs_entity_base(ecs_entity_t entity) { return ecs_target_id(entity, ecs_rid(IsA)); }
@@ -7416,14 +7431,28 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     ecs_entity_record_t *record = ecs_get_record(entity);
     uint16_t from_table_id = record->table_id;
     ecs_table_t *from_table = ecs_get_table(from_table_id);
-    if (from_table->type.base == target) {
+    if (ecs_type_isa_target(&from_table->type) == target) {
         return;
     }
 
     ecs_inheritance_plan_t plan;
     ecs_inheritance_plan_build(&from_table->type, target, &plan);
-    ecs_type_t new_type = ecs_type_with_added_ids(&from_table->type, plan.ids, plan.count);
-    new_type.base = target;
+    ecs_type_t materialized = ecs_type_with_added_ids(&from_table->type, plan.ids, plan.count);
+    ecs_type_t new_type;
+    if (target) {
+        new_type = ecs_type_with(
+            &materialized,
+            0,
+            (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = target }
+        );
+    } else {
+        ecs_assert(
+            ecs_type_pair_index(&materialized, ecs_rid(IsA)) != UINT16_MAX,
+            "missing IsA pair\n"
+        );
+        new_type = ecs_type_without(&materialized, UINT16_MAX, ecs_rid(IsA));
+    }
+    ecs_type_fini(&materialized);
     uint16_t to_table_id = ecs_table_index_get_or_create(new_type);
     from_table = ecs_get_table(from_table_id);
     ecs_migrate(record, entity, from_table, to_table_id, 0);
@@ -7534,7 +7563,7 @@ static uint16_t ecs_inheritance_base_component_capacity(ecs_entity_t base) {
         const ecs_entity_record_t *record = ecs_get_record(base);
         const ecs_table_t *table = ecs_get_table(record->table_id);
         capacity += table->type.component_count;
-        base = table->type.base;
+        base = ecs_type_isa_target(&table->type);
     }
     ecs_assert(capacity <= UINT16_MAX, "too many inherited components: %u\n", capacity);
     return (uint16_t)capacity;
@@ -7603,7 +7632,7 @@ void ecs_inheritance_plan_build(
                 ids[count++] = component;
             }
         }
-        base = table->type.base;
+        base = ecs_type_isa_target(&table->type);
     }
 
     if (count == 0) {
@@ -8715,13 +8744,13 @@ static void ecs_relation_isa_remove_now(ecs_entity_t entity, ecs_relation_id_t r
 }
 
 static bool ecs_relation_isa_has(ecs_entity_t entity, ecs_relation_id_t relation) {
-    (void)relation;
-    return ecs_entity_base_raw(entity) != 0;
+    const ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
+    return ecs_type_pair_index(&table->type, relation) != UINT16_MAX;
 }
 
 static ecs_entity_t ecs_relation_isa_target(ecs_entity_t entity, ecs_relation_id_t relation) {
-    (void)relation;
-    return ecs_entity_base_raw(entity);
+    const ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
+    return ecs_type_pair_get(&table->type, relation);
 }
 
 const ecs_relation_ops_t ecs_relation_ops_isa = {
@@ -8884,10 +8913,10 @@ void ecs_relation_virtual_target_on_remove(ecs_entity_t target) {
         }
 
         ecs_delete_target_t on_delete_target = record->info.desc.on_delete_target;
-        if (relation == ecs_rid(IsA)) {
-            uint16_t table_count = ecs_table_index_base_tables(target).count;
+        if (record->info.desc.storage == EcsRelationByTarget) {
+            uint16_t table_count = ecs_table_index_pair_tables(relation, target).count;
             for (uint16_t i = 0; i < table_count; i++) {
-                ecs_pair_tables_t tables = ecs_table_index_base_tables(target);
+                ecs_pair_tables_t tables = ecs_table_index_pair_tables(relation, target);
                 ecs_table_t *table = ecs_get_table(tables.ids[i]);
                 while (table->entity_count) {
                     ecs_entity_t source = table->entities[table->entity_count - 1];
@@ -10781,14 +10810,14 @@ bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
         return false;
     }
 
-    ecs_entity_t base = table->type.base;
+    ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
         const ecs_table_t *base_table = ecs_get_table(record->table_id);
         if (ecs_table_column_or_invalid(base_table, component_id) != UINT16_MAX) {
             return true;
         }
-        base = base_table->type.base;
+        base = ecs_type_isa_target(&base_table->type);
     }
 
     return false;
@@ -10801,7 +10830,7 @@ bool ecs_table_has_id(const ecs_table_t *table, ecs_component_t component_id) {
 bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
     ecs_assert_entity_valid(base);
 
-    ecs_entity_t current = table->type.base;
+    ecs_entity_t current = ecs_type_isa_target(&table->type);
     while (current != 0) {
         if (current == base) {
             return true;
@@ -10809,7 +10838,7 @@ bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
 
         const ecs_entity_record_t *record = ecs_get_record(current);
         const ecs_table_t *base_table = ecs_get_table(record->table_id);
-        current = base_table->type.base;
+        current = ecs_type_isa_target(&base_table->type);
     }
 
     return false;
@@ -10822,7 +10851,7 @@ void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bo
         return table->cls[cidx].data;
     }
 
-    ecs_entity_t base = table->type.base;
+    ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
         const ecs_table_t *base_table = ecs_get_table(record->table_id);
@@ -10833,7 +10862,7 @@ void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bo
             return ecs_table_component_at_column(base_table, cidx, record->table_row);
         }
 
-        base = base_table->type.base;
+        base = ecs_type_isa_target(&base_table->type);
     }
 
     *is_shared = false;
@@ -10905,7 +10934,6 @@ static ecs_type_t ecs_type_alloc(const ecs_type_t *type, int components, int pai
         .ids = bytes ? malloc(bytes) : NULL,
         .component_count = component_count,
         .pair_count = pair_count,
-        .base = type->base,
     };
 }
 
@@ -11747,7 +11775,7 @@ ecs_query_bind(const ecs_query_t *q, const ecs_table_t *table, ecs_query_table_t
                 ptr = table->cls[column].data;
                 kind = EcsFieldOwned;
             } else if (
-                (access == EcsIn || access == EcsInOptional) && table->type.base &&
+                (access == EcsIn || access == EcsInOptional) && ecs_type_isa_target(&table->type) &&
                 (access == EcsInOptional || id != ecs_id(Abstract))
             ) {
                 bool shared = false;
@@ -12208,7 +12236,6 @@ void ecs_system_index_fini(void) {
 #define INITIAL_PAIR_SLOT_SHIFT 3
 #define LOAD_FACTOR 0.75
 #define ECS_TABLE_SLOT_EMPTY UINT16_MAX
-#define ECS_BASE_INDEX_KEY 0
 
 ecs_table_index_t table_index;
 
@@ -12227,11 +12254,6 @@ static inline uint32_t ecs_type_hash(ecs_type_t type) {
         h ^= (uint32_t)(pairs[i].value >> 32);
         h *= 16777619u;
     }
-    h ^= (uint32_t)type.base;
-    h *= 16777619u;
-    h ^= (uint32_t)(type.base >> 32);
-    h *= 16777619u;
-
     h ^= h >> 16;
     h *= 0x85ebca6bu;
     h ^= h >> 13;
@@ -12318,10 +12340,6 @@ ecs_pair_tables_t ecs_table_index_pair_tables(uint16_t key, uint64_t value) {
     };
 }
 
-ecs_pair_tables_t ecs_table_index_base_tables(ecs_entity_t base) {
-    return ecs_table_index_pair_tables(ECS_BASE_INDEX_KEY, base);
-}
-
 static void ecs_pair_slot_add_table(ecs_pair_table_slot_t *slot, uint16_t table) {
     if (!slot->table_count) {
         slot->first_table = table;
@@ -12344,11 +12362,6 @@ static void ecs_table_index_pairs(const ecs_table_t *table, uint16_t table_id) {
     for (uint16_t i = 0; i < table->type.pair_count; i++) {
         ecs_pair_table_slot_t *slot =
             ecs_pair_slot(&table_index, pairs[i].key, pairs[i].value, true);
-        ecs_pair_slot_add_table(slot, table_id);
-    }
-    if (table->type.base) {
-        ecs_pair_table_slot_t *slot =
-            ecs_pair_slot(&table_index, ECS_BASE_INDEX_KEY, table->type.base, true);
         ecs_pair_slot_add_table(slot, table_id);
     }
 }
@@ -12421,20 +12434,20 @@ static bool ecs_table_index_inherits_component_before(
     ecs_entity_t stop_base,
     ecs_component_t component
 ) {
-    ecs_entity_t base = table->type.base;
+    ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0 && base != stop_base) {
         const ecs_entity_record_t *record = ecs_get_record(base);
         const ecs_table_t *base_table = ecs_get_table(record->table_id);
         if (ecs_table_column_or_invalid(base_table, component) != UINT16_MAX) {
             return true;
         }
-        base = base_table->type.base;
+        base = ecs_type_isa_target(&base_table->type);
     }
     return false;
 }
 
 static void ecs_table_index_register_inherited_components(ecs_table_t *table, uint16_t table_id) {
-    ecs_entity_t base = table->type.base;
+    ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
         const ecs_table_t *base_table = ecs_get_table(record->table_id);
@@ -12451,7 +12464,7 @@ static void ecs_table_index_register_inherited_components(ecs_table_t *table, ui
             sicore_vec_push_u16(&record->tables, table_id);
         }
 
-        base = base_table->type.base;
+        base = ecs_type_isa_target(&base_table->type);
     }
 }
 

@@ -113,7 +113,6 @@ static void command_transition_set(
     const ecs_table_t *table = ecs_get_table(to_table);
     transition->type =
         ecs_type_with_ids(&table->type, table->type.ids, table->type.component_count);
-    transition->type.base = table->type.base;
     if (inheritance->count) {
         transition->inheritance.ids = malloc(inheritance->count * sizeof *inheritance->ids);
         memcpy(
@@ -418,13 +417,21 @@ static ecs_type_t command_build_type(
         }
     }
     ecs_type_t type = ecs_type_with_ids(&table->type, ids, count);
-    type.base = command->has_base ? command->base : table->type.base;
-    return type;
+    if (!command->has_base) {
+        return type;
+    }
+    ecs_type_t out = ecs_type_with(
+        &type,
+        0,
+        (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = command->base }
+    );
+    ecs_type_fini(&type);
+    return out;
 }
 
 static bool command_type_unchanged(const ecs_table_t *table, const ecs_entity_command_t *command) {
     const ecs_deferred_change_t *changes = command_changes((ecs_entity_command_t *)command);
-    if (command->has_base && command->base != table->type.base) {
+    if (command->has_base && command->base != ecs_type_isa_target(&table->type)) {
         return false;
     }
 
@@ -515,7 +522,7 @@ static void command_apply(
     ecs_entity_record_t *record = ecs_get_record(command->entity);
     uint16_t old_table_id = record->table_id;
     ecs_table_t *old_table = ecs_get_table(old_table_id);
-    ecs_entity_t old_base = old_table->type.base;
+    ecs_entity_t old_base = ecs_type_isa_target(&old_table->type);
     if (command_type_unchanged(old_table, command)) {
         command_apply_changes(command);
         command_apply_relations(command, relations);
@@ -523,7 +530,7 @@ static void command_apply(
     }
 
     ecs_inheritance_plan_t inheritance_plan = { 0 };
-    bool base_changed = command->has_base && command->base != old_table->type.base;
+    bool base_changed = command->has_base && command->base != ecs_type_isa_target(&old_table->type);
     if (base_changed) {
         if (command->base) {
             ecs_add_cid_now(command->base, ecs_id(Abstract));
@@ -552,7 +559,6 @@ static void command_apply(
                     inheritance_plan.ids,
                     inheritance_plan.count
                 );
-                materialized.base = final_type.base;
                 ecs_type_fini(&final_type);
                 final_type = materialized;
             }
