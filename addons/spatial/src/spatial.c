@@ -130,6 +130,20 @@ static inline void spatial_2d_compute_static(
     global_scale->y = sy * scale->y;
 }
 
+static ecs_entity_t spatial_3d_transform_parent(ecs_entity_t entity) {
+    ecs_entity_t parent = ecs_target(entity, ChildOf);
+
+    while (parent != 0) {
+        if (ecs_has(parent, Position3d)) {
+            return parent;
+        }
+
+        parent = ecs_target(parent, ChildOf);
+    }
+
+    return 0;
+}
+
 static inline void spatial_3d_compute_static(
     ecs_entity_t entity,
     const Position3d *restrict position,
@@ -140,7 +154,7 @@ static inline void spatial_3d_compute_static(
     GlobalOrientation3d *restrict global_orientation = ecs_get(entity, GlobalOrientation3d);
     GlobalScale3d *restrict global_scale = ecs_get(entity, GlobalScale3d);
 
-    const ecs_entity_t parent = ecs_target(entity, ChildOf);
+    const ecs_entity_t parent = spatial_3d_transform_parent(entity);
 
     if (parent == 0) {
         global_position->x = position->x;
@@ -208,7 +222,10 @@ static void spatial_3d_static_propagate_children(ecs_entity_t entity) {
 
     for (uint32_t i = 0; i < children.count; i++) {
         const ecs_entity_t child = children.entities[i];
-        if (ecs_has(child, Static) && ecs_has(child, Position3d)) {
+
+        if (!ecs_has(child, Position3d)) {
+            spatial_3d_static_propagate_children(child);
+        } else if (ecs_has(child, Static)) {
             spatial_3d_static_propagate_subtree(child);
         }
     }
