@@ -1,6 +1,8 @@
+#include "siecs.h"
 #include "siecs/cpp/world.hpp"
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <iostream>
 #include <siecs_rest.h>

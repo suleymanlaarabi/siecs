@@ -1,3 +1,4 @@
+#include "command_buffer.h"
 #include "helper.h"
 #include "relation.h"
 #include "siecs.h"
@@ -135,9 +136,9 @@ void RelationSourceOnRemove(ecs_entity_t entity, ecs_component_t component, void
     source_data->entities.size = UINT32_MAX;
     for (uint32_t i = 0; i < count; i++) {
         if (relation_record->info.desc.on_delete_target == EcsDeleteSources) {
-            ecs_kill(entities[i]);
+            ecs_kill_now(entities[i]);
         } else {
-            ecs_unrelate_id(entities[i], relation);
+            ecs_unrelate_id_now(entities[i], relation);
         }
     }
 }
