@@ -912,6 +912,62 @@ BENCH_SETUP(observer_target_table_creation, {
     free(tags);
 });
 
+static ecs_entity_t make_childof_chain(uint32_t count) {
+    ecs_entity_t root = ecs_new();
+    ecs_entity_t parent = root;
+    for (uint32_t i = 0; i < count; i++) {
+        ecs_entity_t child = ecs_new();
+        ecs_relate(child, ChildOf, parent);
+        parent = child;
+    }
+    return root;
+}
+
+static ecs_entity_t make_childof_wide(uint32_t count) {
+    ecs_entity_t root = ecs_new();
+    for (uint32_t i = 0; i < count; i++) {
+        ecs_relate(ecs_new(), ChildOf, root);
+    }
+    return root;
+}
+
+#define PROPAGATE_CHAIN_BENCH(count)                                                              \
+    BENCH_SETUP(propagate_add_chain_##count, {                                                    \
+        ecs_component_t tag = ecs_component({ 0 });                                               \
+        ecs_entity_t root = make_childof_chain(count);                                            \
+        BENCH({ ecs_propagate_add_id(root, ecs_rid(ChildOf), tag); });                            \
+    })
+
+#define PROPAGATE_WIDE_BENCH(count)                                                               \
+    BENCH_SETUP(propagate_add_wide_##count, {                                                     \
+        ecs_component_t tag = ecs_component({ 0 });                                               \
+        ecs_entity_t root = make_childof_wide(count);                                             \
+        BENCH({ ecs_propagate_add_id(root, ecs_rid(ChildOf), tag); });                            \
+    })
+
+PROPAGATE_CHAIN_BENCH(10);
+PROPAGATE_CHAIN_BENCH(100);
+PROPAGATE_CHAIN_BENCH(1000);
+PROPAGATE_WIDE_BENCH(100);
+PROPAGATE_WIDE_BENCH(1000);
+PROPAGATE_WIDE_BENCH(10000);
+
+BENCH_SETUP(isa_first_instance, {
+    ecs_entity_t prefab = make_childof_wide(1000);
+    BENCH({ ecs_is_a(ecs_new(), prefab); });
+});
+
+BENCH_SETUP(isa_repeated_instance, {
+    arg(iter_count, 10000);
+    ecs_entity_t prefab = make_childof_wide(1000);
+    ecs_is_a(ecs_new(), prefab);
+    BENCH({
+        for (uint32_t i = 0; i < iter_count; i++) {
+            ecs_is_a(ecs_new(), prefab);
+        }
+    });
+});
+
 int main(int argc, char *argv[]) {
     const char *scope = argc > 1 ? argv[1] : NULL;
     if (argc > 2) {
@@ -952,6 +1008,14 @@ int main(int argc, char *argv[]) {
     run_scoped_bench(scope, observer_target_one);
     run_scoped_bench(scope, observer_target_many);
     run_scoped_bench(scope, observer_target_table_creation);
+    run_scoped_bench(scope, propagate_add_chain_10);
+    run_scoped_bench(scope, propagate_add_chain_100);
+    run_scoped_bench(scope, propagate_add_chain_1000);
+    run_scoped_bench(scope, propagate_add_wide_100);
+    run_scoped_bench(scope, propagate_add_wide_1000);
+    run_scoped_bench(scope, propagate_add_wide_10000);
+    run_scoped_bench(scope, isa_first_instance);
+    run_scoped_bench(scope, isa_repeated_instance);
 
     return 0;
 }

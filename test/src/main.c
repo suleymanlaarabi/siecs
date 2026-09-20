@@ -29,6 +29,11 @@ void entity_is_a_same_target_is_noop(void);
 void entity_is_a_different_target_creates_different_table(void);
 void entity_is_a_marks_base_abstract(void);
 void entity_deferred_is_a_marks_base_abstract(void);
+void entity_propagate_add_marks_childof_subtree(void);
+void entity_is_a_marks_childof_subtree_abstract(void);
+void entity_is_a_repeated_base_abstract_is_noop(void);
+void entity_deferred_is_a_marks_childof_subtree_abstract(void);
+void entity_default_query_excludes_abstract_childof_subtree(void);
 void entity_is_with_multiple_depth(void);
 
 // Testsuite 'component'
@@ -125,6 +130,10 @@ void childof_relation_observer_reports_relation_without_component(void);
 void childof_type_layout_stays_compact(void);
 void childof_query_slot_reuses_component_and_relation_terms(void);
 void childof_relation_only_system_and_observer(void);
+void childof_new_child_of_abstract_parent_is_abstract(void);
+void childof_new_child_of_normal_parent_is_not_abstract(void);
+void childof_isa_instantiated_children_are_not_abstract(void);
+void childof_propagate_add_rejects_cyclic_relation_in_debug(void);
 
 // Testsuite 'query'
 void query_tags_keep_presence_without_data(void);
@@ -301,6 +310,26 @@ bake_test_case entity_testcases[] = {
     {
         "deferred_is_a_marks_base_abstract",
         entity_deferred_is_a_marks_base_abstract
+    },
+    {
+        "propagate_add_marks_childof_subtree",
+        entity_propagate_add_marks_childof_subtree
+    },
+    {
+        "is_a_marks_childof_subtree_abstract",
+        entity_is_a_marks_childof_subtree_abstract
+    },
+    {
+        "is_a_repeated_base_abstract_is_noop",
+        entity_is_a_repeated_base_abstract_is_noop
+    },
+    {
+        "deferred_is_a_marks_childof_subtree_abstract",
+        entity_deferred_is_a_marks_childof_subtree_abstract
+    },
+    {
+        "default_query_excludes_abstract_childof_subtree",
+        entity_default_query_excludes_abstract_childof_subtree
     },
     {
         "is_with_multiple_depth",
@@ -660,6 +689,22 @@ bake_test_case childof_testcases[] = {
     {
         "relation_only_system_and_observer",
         childof_relation_only_system_and_observer
+    },
+    {
+        "new_child_of_abstract_parent_is_abstract",
+        childof_new_child_of_abstract_parent_is_abstract
+    },
+    {
+        "new_child_of_normal_parent_is_not_abstract",
+        childof_new_child_of_normal_parent_is_not_abstract
+    },
+    {
+        "isa_instantiated_children_are_not_abstract",
+        childof_isa_instantiated_children_are_not_abstract
+    },
+    {
+        "propagate_add_rejects_cyclic_relation_in_debug",
+        childof_propagate_add_rejects_cyclic_relation_in_debug
     }
 };
 
@@ -1056,7 +1101,7 @@ static bake_test_suite suites[] = {
         "entity",
         NULL,
         NULL,
-        16,
+        21,
         entity_testcases
     },
     {
@@ -1091,7 +1136,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        42,
+        46,
         childof_testcases
     },
     {

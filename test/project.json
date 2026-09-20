@@ -45,6 +45,11 @@
           "is_a_different_target_creates_different_table",
           "is_a_marks_base_abstract",
           "deferred_is_a_marks_base_abstract",
+          "propagate_add_marks_childof_subtree",
+          "is_a_marks_childof_subtree_abstract",
+          "is_a_repeated_base_abstract_is_noop",
+          "deferred_is_a_marks_childof_subtree_abstract",
+          "default_query_excludes_abstract_childof_subtree",
           "is_with_multiple_depth"
         ]
       },
@@ -155,7 +160,11 @@
           "relation_observer_reports_relation_without_component",
           "type_layout_stays_compact",
           "query_slot_reuses_component_and_relation_terms",
-          "relation_only_system_and_observer"
+          "relation_only_system_and_observer",
+          "new_child_of_abstract_parent_is_abstract",
+          "new_child_of_normal_parent_is_not_abstract",
+          "isa_instantiated_children_are_not_abstract",
+          "propagate_add_rejects_cyclic_relation_in_debug"
         ]
       },
       {

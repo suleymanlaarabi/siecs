@@ -1803,6 +1803,17 @@ SIECS_API ecs_entity_t ecs_entity_base(ecs_entity_t entity);
  */
 SIECS_API void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 
+/* Add a component to entity and every source reachable through an acyclic
+ * relation. The relation must maintain a source index. */
+SIECS_API void
+ecs_propagate_add_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_component_t component);
+
+#define ecs_propagate_add(entity, relation, component)                                            \
+    ecs_propagate_add_id(entity, ecs_rid(relation), ecs_id(component))
+
+/* Mark an entity and its owned ChildOf subtree abstract. */
+SIECS_API void ecs_abstract(ecs_entity_t entity);
+
 #define ecs_relate(entity, relation, target) ecs_relate_id(entity, ecs_rid(relation), target)
 #define ecs_unrelate(entity, relation) ecs_unrelate_id(entity, ecs_rid(relation))
 #define ecs_has_relation(entity, relation) ecs_has_relation_id(entity, ecs_rid(relation))
@@ -2842,7 +2853,7 @@ class entity {
 
     /** Mark this entity abstract; application mutation of abstract bases is restricted. */
     entity abstract() {
-        ecs_add(_entity, Abstract);
+        ecs_abstract(_entity);
         return *this;
     }
 

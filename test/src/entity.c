@@ -263,6 +263,102 @@ void entity_deferred_is_a_marks_base_abstract(void) {
     ecs_fini();
 }
 
+void entity_propagate_add_marks_childof_subtree(void) {
+    ecs_init();
+
+    ecs_component_t tag = ecs_component({ 0 });
+    ecs_entity_t root = ecs_new();
+    ecs_entity_t child_a = ecs_new();
+    ecs_entity_t child_b = ecs_new();
+    ecs_entity_t child_c = ecs_new();
+    ecs_relate(child_a, ChildOf, root);
+    ecs_relate(child_b, ChildOf, child_a);
+    ecs_relate(child_c, ChildOf, root);
+
+    ecs_propagate_add_id(root, ecs_rid(ChildOf), tag);
+
+    test_true(ecs_has_cid_owned(root, tag));
+    test_true(ecs_has_cid_owned(child_a, tag));
+    test_true(ecs_has_cid_owned(child_b, tag));
+    test_true(ecs_has_cid_owned(child_c, tag));
+
+    ecs_fini();
+}
+
+void entity_is_a_marks_childof_subtree_abstract(void) {
+    ecs_init();
+
+    ecs_entity_t root = ecs_new();
+    ecs_entity_t child = ecs_new();
+    ecs_entity_t grandchild = ecs_new();
+    ecs_relate(child, ChildOf, root);
+    ecs_relate(grandchild, ChildOf, child);
+
+    ecs_is_a(ecs_new(), root);
+
+    test_true(ecs_has_cid_owned(root, ecs_id(Abstract)));
+    test_true(ecs_has_cid_owned(child, ecs_id(Abstract)));
+    test_true(ecs_has_cid_owned(grandchild, ecs_id(Abstract)));
+
+    ecs_fini();
+}
+
+void entity_is_a_repeated_base_abstract_is_noop(void) {
+    ecs_init();
+
+    ecs_entity_t root = ecs_new();
+    ecs_entity_t child = ecs_new();
+    ecs_relate(child, ChildOf, root);
+    ecs_is_a(ecs_new(), root);
+    ecs_entity_record_t root_before = *ecs_get_record(root);
+    ecs_entity_record_t child_before = *ecs_get_record(child);
+
+    ecs_is_a(ecs_new(), root);
+
+    test_int(root_before.table_id, ecs_get_record(root)->table_id);
+    test_int(child_before.table_id, ecs_get_record(child)->table_id);
+    test_true(ecs_has_cid_owned(child, ecs_id(Abstract)));
+
+    ecs_fini();
+}
+
+void entity_deferred_is_a_marks_childof_subtree_abstract(void) {
+    ecs_init();
+
+    ecs_entity_t root = ecs_new();
+    ecs_entity_t child = ecs_new();
+    ecs_entity_t grandchild = ecs_new();
+    ecs_relate(child, ChildOf, root);
+    ecs_relate(grandchild, ChildOf, child);
+
+    ecs_defer_begin();
+    ecs_is_a(ecs_new(), root);
+    ecs_defer_end();
+
+    test_true(ecs_has_cid_owned(root, ecs_id(Abstract)));
+    test_true(ecs_has_cid_owned(child, ecs_id(Abstract)));
+    test_true(ecs_has_cid_owned(grandchild, ecs_id(Abstract)));
+
+    ecs_fini();
+}
+
+void entity_default_query_excludes_abstract_childof_subtree(void) {
+    ecs_init();
+
+    ecs_entity_t root = ecs_new();
+    ecs_entity_t child = ecs_new();
+    ecs_entity_t normal = ecs_new();
+    ecs_relate(child, ChildOf, root);
+    ecs_abstract(root);
+
+    ecs_query_id_t query = ecs_query({ 0 });
+    test_uint(1, ecs_query_count(query));
+    ecs_query_fini(query);
+    test_true(ecs_is_alive(normal));
+
+    ecs_fini();
+}
+
 void entity_is_a_keeps_local_component_data(void) {
     ecs_init();
 

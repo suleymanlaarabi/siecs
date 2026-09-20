@@ -1409,3 +1409,63 @@ void childof_relation_only_system_and_observer(void) {
     test_int(1, observer_calls);
     ecs_fini();
 }
+
+void childof_new_child_of_abstract_parent_is_abstract(void) {
+    ecs_init();
+
+    ecs_entity_t root = ecs_new();
+    ecs_entity_t parent = ecs_new();
+    ecs_relate(parent, ChildOf, root);
+    ecs_abstract(root);
+
+    ecs_entity_t child = ecs_new();
+    ecs_entity_t grandchild = ecs_new();
+    ecs_relate(grandchild, ChildOf, child);
+    ecs_relate(child, ChildOf, parent);
+
+    test_true(ecs_has_cid_owned(child, ecs_id(Abstract)));
+    test_true(ecs_has_cid_owned(grandchild, ecs_id(Abstract)));
+
+    ecs_fini();
+}
+
+void childof_new_child_of_normal_parent_is_not_abstract(void) {
+    ecs_init();
+
+    ecs_entity_t parent = ecs_new();
+    ecs_entity_t child = ecs_new();
+    ecs_relate(child, ChildOf, parent);
+
+    test_false(ecs_has_cid_owned(child, ecs_id(Abstract)));
+
+    ecs_fini();
+}
+
+void childof_isa_instantiated_children_are_not_abstract(void) {
+    ecs_init();
+
+    ecs_entity_t base = ecs_new();
+    ecs_entity_t base_child = ecs_new();
+    ecs_relate(base_child, ChildOf, base);
+    ecs_entity_t instance = ecs_new();
+    ecs_is_a(instance, base);
+
+    ecs_relation_sources_t sources = ecs_relation_sources(instance, ecs_rid(ChildOf));
+    test_uint(1, sources.count);
+    test_false(ecs_has_cid_owned(sources.entities[0], ecs_id(Abstract)));
+
+    ecs_fini();
+}
+
+void childof_propagate_add_rejects_cyclic_relation_in_debug(void) {
+    ecs_init();
+
+    ecs_entity_t entity = ecs_new();
+#ifndef NDEBUG
+    test_expect_abort();
+    ecs_propagate_add_id(entity, ecs_rid(DenseRel), ecs_id(Abstract));
+#else
+    ecs_propagate_add_id(entity, ecs_rid(DenseRel), ecs_id(Abstract));
+    ecs_fini();
+#endif
+}

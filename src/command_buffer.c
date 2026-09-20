@@ -530,7 +530,7 @@ static void command_apply(
     bool base_changed = command->has_base && command->base != ecs_type_isa_target(&old_table->type);
     if (base_changed) {
         if (command->base) {
-            ecs_add_cid_now(command->base, ecs_id(Abstract));
+            ecs_abstract_now(command->base);
             old_table = ecs_get_table(old_table_id);
         }
     }

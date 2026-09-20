@@ -35,6 +35,12 @@ ecs_relation_id_t ecs_relation_register_virtual(
 void ecs_relation_target_on_remove(ecs_entity_t target, ecs_component_t component, void *ptr);
 void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target);
 void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation);
+void ecs_propagate_add_id_now(
+    ecs_entity_t entity,
+    ecs_relation_id_t relation,
+    ecs_component_t component
+);
+void ecs_abstract_now(ecs_entity_t entity);
 ecs_entity_t ecs_entity_base_raw(ecs_entity_t entity);
 
 extern const ecs_relation_ops_t ecs_relation_ops_isa;

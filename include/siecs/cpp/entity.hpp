@@ -101,7 +101,7 @@ class entity {
 
     /** Mark this entity abstract; application mutation of abstract bases is restricted. */
     entity abstract() {
-        ecs_add(_entity, Abstract);
+        ecs_abstract(_entity);
         return *this;
     }
 

@@ -120,7 +120,7 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
             ecs_first(entity),
             ecs_first(target)
         );
-        ecs_add_cid_now(target, ecs_id(Abstract));
+        ecs_abstract_now(target);
     }
 
     ecs_entity_record_t *record = ecs_get_record(entity);

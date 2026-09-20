@@ -5045,6 +5045,12 @@ ecs_relation_id_t ecs_relation_register_virtual(
 void ecs_relation_target_on_remove(ecs_entity_t target, ecs_component_t component, void *ptr);
 void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target);
 void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation);
+void ecs_propagate_add_id_now(
+    ecs_entity_t entity,
+    ecs_relation_id_t relation,
+    ecs_component_t component
+);
+void ecs_abstract_now(ecs_entity_t entity);
 ecs_entity_t ecs_entity_base_raw(ecs_entity_t entity);
 
 extern const ecs_relation_ops_t ecs_relation_ops_isa;
@@ -6511,7 +6517,7 @@ static void command_apply(
     bool base_changed = command->has_base && command->base != ecs_type_isa_target(&old_table->type);
     if (base_changed) {
         if (command->base) {
-            ecs_add_cid_now(command->base, ecs_id(Abstract));
+            ecs_abstract_now(command->base);
             old_table = ecs_get_table(old_table_id);
         }
     }
@@ -7421,7 +7427,7 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
             ecs_first(entity),
             ecs_first(target)
         );
-        ecs_add_cid_now(target, ecs_id(Abstract));
+        ecs_abstract_now(target);
     }
 
     ecs_entity_record_t *record = ecs_get_record(entity);
@@ -8431,6 +8437,102 @@ static const ecs_relation_ops_t *ecs_relation_record_ops(const ecs_relation_reco
     return record->ops ? record->ops : &ecs_relation_default_ops;
 }
 
+static void ecs_propagate_add_id_internal(
+    ecs_entity_t entity,
+    ecs_relation_id_t relation,
+    ecs_component_t component,
+    bool immediate
+) {
+    const ecs_relation_record_t *record = ecs_relation_record(relation);
+    const ecs_component_t source_component = record->component + 1;
+    ecs_entity_t stack[64] = { entity };
+    uint32_t stack_count = 1;
+    sicore_vec_t spill = { 0 };
+
+    while (stack_count != 0 || spill.size != 0) {
+        ecs_entity_t current;
+        if (spill.size != 0) {
+            current = *sicore_vec_get(&spill, --spill.size, ecs_entity_t);
+        } else {
+            current = stack[--stack_count];
+        }
+
+        if (immediate) {
+            ecs_add_cid_now(current, component);
+        } else {
+            ecs_add_cid(current, component);
+        }
+
+        ecs_entity_record_t *current_record = ecs_get_record(current);
+        ecs_table_t *current_table = ecs_get_table(current_record->table_id);
+        uint16_t column = ecs_table_column_or_invalid(current_table, source_component);
+        if (column == UINT16_MAX) {
+            continue;
+        }
+
+        RelationSource *source =
+            ecs_table_component_at_column(current_table, column, current_record->table_row);
+        for (uint32_t i = 0; i < source->entities.size; i++) {
+            ecs_entity_t child = *sicore_vec_get(&source->entities, i, ecs_entity_t);
+            if (spill.size != 0 || stack_count == sizeof(stack) / sizeof(stack[0])) {
+                if (spill.capacity == 0) {
+                    sicore_vec_init_w_size(&spill, sizeof(ecs_entity_t), stack_count + 1);
+                    for (uint32_t j = 0; j < stack_count; j++) {
+                        sicore_vec_push_u64(&spill, stack[j]);
+                    }
+                    stack_count = 0;
+                }
+                sicore_vec_push_u64(&spill, child);
+            } else {
+                stack[stack_count++] = child;
+            }
+        }
+    }
+
+    sicore_vec_fini(&spill);
+}
+
+void ecs_propagate_add_id_now(
+    ecs_entity_t entity,
+    ecs_relation_id_t relation,
+    ecs_component_t component
+) {
+    ecs_propagate_add_id_internal(entity, relation, component, true);
+}
+
+void ecs_propagate_add_id(
+    ecs_entity_t entity,
+    ecs_relation_id_t relation,
+    ecs_component_t component
+) {
+    ecs_assert_entity_alive(entity);
+    const ecs_relation_info_t *info = ecs_relation_info(relation);
+    ecs_assert(info && info->desc.acyclic, "propagation requires an acyclic relation");
+    ecs_assert(
+        ecs_relation_record(relation)->component != 0,
+        "propagation requires a relation source index"
+    );
+
+    if (ecs_is_deferred()) {
+        ecs_propagate_add_id_internal(entity, relation, component, false);
+        return;
+    }
+
+    ecs_propagate_add_id_now(entity, relation, component);
+}
+
+void ecs_abstract_now(ecs_entity_t entity) {
+    if (ecs_has_cid_owned(entity, ecs_id(Abstract))) {
+        return;
+    }
+
+    ecs_propagate_add_id_now(entity, ecs_rid(ChildOf), ecs_id(Abstract));
+}
+
+void ecs_abstract(ecs_entity_t entity) {
+    ecs_propagate_add_id(entity, ecs_rid(ChildOf), ecs_id(Abstract));
+}
+
 void ecs_relation_index_init(void) {
     sicore_vec_init_w_size(&relation_index.records, sizeof(ecs_relation_record_t), 1);
     sicore_vec_ensure(&relation_index.records, 1, sizeof(ecs_relation_record_t));
@@ -8773,6 +8875,10 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
     ecs_entity_t new_target = ops->target(entity, relation);
     if (old_target == new_target) {
         return;
+    }
+
+    if (relation == ecs_rid(ChildOf) && ecs_has_cid_owned(target, ecs_id(Abstract))) {
+        ecs_abstract_now(entity);
     }
 
     ecs_emit_relation_event(entity, relation, EcsOnRelationSet, old_target, new_target);
