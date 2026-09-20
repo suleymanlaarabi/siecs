@@ -86,8 +86,7 @@ static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_en
 #endif
 
 bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
-    ecs_entity_t base =
-        ecs_type_isa_target(&ecs_get_table(ecs_get_record(entity)->table_id)->type);
+    ecs_entity_t base = ecs_type_isa_target(&ecs_get_table(ecs_get_record(entity)->table_id)->type);
     if (base == target) {
         return true;
     }

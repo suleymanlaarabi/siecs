@@ -18,11 +18,7 @@ ECS_COMPONENT_DEFINE(InheritSharedValue, .inheritance = EcsInheritShared);
 static int inherit_hook_add_calls;
 static int inherit_hook_last_value;
 
-static void inherit_hook_on_add(
-    ecs_entity_t entity,
-    ecs_component_t component,
-    void *value
-) {
+static void inherit_hook_on_add(ecs_entity_t entity, ecs_component_t component, void *value) {
     (void)entity;
     (void)component;
     inherit_hook_add_calls++;
@@ -33,7 +29,7 @@ ECS_COMPONENT_DEFINE(InheritHookValue, .on_add = inherit_hook_on_add);
 
 void entity_create(void) {
     ecs_init();
-    
+
     ecs_entity_t entity = ecs_new();
     test_assert(entity != 0);
     test_true(ecs_is_alive(entity));
@@ -137,7 +133,7 @@ void entity_explicit_name_overrides_default(void) {
 
 void entity_with(void) {
     ecs_init();
-    
+
     ECS_COMPONENT_REGISTER(Transform);
     ECS_COMPONENT_REGISTER(Renderable);
 

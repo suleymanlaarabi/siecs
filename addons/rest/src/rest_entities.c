@@ -60,10 +60,7 @@ static void rest_children_set_fini(rest_children_set_t *set) {
     set->count = 0;
 }
 
-static bool rest_children_set_contains(
-    const rest_children_set_t *set,
-    ecs_entity_t entity
-) {
+static bool rest_children_set_contains(const rest_children_set_t *set, ecs_entity_t entity) {
     size_t first = 0;
     size_t last = set->count;
     while (first < last) {
@@ -79,11 +76,8 @@ static bool rest_children_set_contains(
     return false;
 }
 
-static void rest_append_entity(
-    sijson_value_t array,
-    ecs_entity_t entity,
-    const rest_children_set_t *children
-) {
+static void
+rest_append_entity(sijson_value_t array, ecs_entity_t entity, const rest_children_set_t *children) {
     if (ecs_is_alive(entity)) {
         sijson_array_push(
             array,
@@ -126,11 +120,7 @@ sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
 
     sijson_object_set(detail, "name", sijson_make_string(ecs_entity_name(entity)));
     sijson_object_set(detail, "index", sijson_make_number(ecs_entity_id(entity)));
-    sijson_object_set(
-        detail,
-        "generation",
-        sijson_make_number(ecs_entity_generation(entity))
-    );
+    sijson_object_set(detail, "generation", sijson_make_number(ecs_entity_generation(entity)));
 
     sijson_value_t components = sijson_make_array();
     for (uint32_t id = 1; id < ecs_component_count(); id++) {

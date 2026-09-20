@@ -817,16 +817,20 @@ static void observer_bench_ignore(ecs_observer_event_t *event) { (void)event; }
 BENCH_SETUP(scheduler_plan_compile, {
     ecs_system_id_t systems[256];
     for (uint32_t i = 0; i < 256; i++) {
-        systems[i] = ecs_system({
-            .name = "SchedulerPlan",
-            .phase = EcsOnUpdate,
-            .callback = scheduler_bench_system,
-        });
+        systems[i] = ecs_system(
+            {
+                .name = "SchedulerPlan",
+                .phase = EcsOnUpdate,
+                .callback = scheduler_bench_system,
+            }
+        );
     }
     BENCH({
         for (uint32_t i = 0; i < 2000; i++) {
-            if (i & 1) ecs_system_enable(systems[i & 255]);
-            else ecs_system_disable(systems[i & 255]);
+            if (i & 1)
+                ecs_system_enable(systems[i & 255]);
+            else
+                ecs_system_disable(systems[i & 255]);
             ecs_run_phase(EcsOnUpdate);
         }
     });
@@ -839,25 +843,35 @@ BENCH_SETUP(scheduler_loaded_phase, {
         ecs_set_cid(entity, component, &i);
     }
     for (uint32_t i = 0; i < 64; i++) {
-        ecs_system({
-            .name = "SchedulerLoaded",
-            .phase = EcsOnUpdate,
-            .query = { .components = { { component, EcsIn } } },
-            .callback = scheduler_bench_system,
-        });
+        ecs_system(
+            {
+                .name = "SchedulerLoaded",
+                .phase = EcsOnUpdate,
+                .query = { .components = { { component, EcsIn } } },
+                .callback = scheduler_bench_system,
+            }
+        );
     }
-    BENCH({ for (uint32_t i = 0; i < 500; i++) ecs_run_phase(EcsOnUpdate); });
-    if (!scheduler_checksum) abort();
+    BENCH({
+        for (uint32_t i = 0; i < 500; i++)
+            ecs_run_phase(EcsOnUpdate);
+    });
+    if (!scheduler_checksum)
+        abort();
 });
 
 BENCH_SETUP(observer_target_one, {
     arg(entity_count, 100000);
     arg(iter_count, 100000);
     ecs_entity_t target = ecs_new();
-    for (uint32_t i = 1; i < entity_count; i++) ecs_new();
+    for (uint32_t i = 1; i < entity_count; i++)
+        ecs_new();
     ecs_event_t event = ecs_event();
     ecs_observer({ .on = event, .entity = target, .callback = observer_bench_ignore });
-    BENCH({ for (uint32_t i = 0; i < iter_count; i++) ecs_observer_trigger(target, event, NULL); });
+    BENCH({
+        for (uint32_t i = 0; i < iter_count; i++)
+            ecs_observer_trigger(target, event, NULL);
+    });
 });
 
 BENCH_SETUP(observer_target_many, {
@@ -871,8 +885,12 @@ BENCH_SETUP(observer_target_many, {
         ecs_entity_t entity = ecs_new();
         ecs_observer({ .on = event, .entity = entity, .callback = observer_bench_ignore });
     }
-    for (uint32_t i = observer_count; i < entity_count; i++) ecs_new();
-    BENCH({ for (uint32_t i = 0; i < iter_count; i++) ecs_observer_trigger(target, event, NULL); });
+    for (uint32_t i = observer_count; i < entity_count; i++)
+        ecs_new();
+    BENCH({
+        for (uint32_t i = 0; i < iter_count; i++)
+            ecs_observer_trigger(target, event, NULL);
+    });
 });
 
 BENCH_SETUP(observer_target_table_creation, {

@@ -21,15 +21,11 @@ static sijson_value_t ecs_rest_field_json(const sireflect_field_info_t *field) {
     return object;
 }
 
-static sijson_value_t ecs_rest_component_json(
-    ecs_component_t id,
-    const ecs_component_info_t *info
-) {
+static sijson_value_t
+ecs_rest_component_json(ecs_component_t id, const ecs_component_info_t *info) {
     sijson_value_t fields_json = sijson_make_array();
-    const sireflect_type_info_t *type =
-        sireflect_type_info(info->type);
-    const sireflect_fields_t *fields =
-        sireflect_type_fields(info->type);
+    const sireflect_type_info_t *type = sireflect_type_info(info->type);
+    const sireflect_fields_t *fields = sireflect_type_fields(info->type);
     for (size_t i = 0; i < fields->field_count; i++) {
         sijson_array_push(fields_json, ecs_rest_field_json(&fields->fields[i]));
     }
@@ -43,19 +39,13 @@ static sijson_value_t ecs_rest_component_json(
     return object;
 }
 
-static sijson_value_t ecs_rest_relation_json(
-    ecs_relation_id_t id,
-    const ecs_relation_info_t *info
-) {
+static sijson_value_t
+ecs_rest_relation_json(ecs_relation_id_t id, const ecs_relation_info_t *info) {
     sijson_value_t object = sijson_make_object();
     sijson_object_set(object, "id", sijson_make_number(id));
     sijson_object_set(object, "name", sijson_make_string(info->name ? info->name : ""));
     sijson_object_set(object, "storage", sijson_make_number(info->desc.storage));
-    sijson_object_set(
-        object,
-        "onDeleteTarget",
-        sijson_make_number(info->desc.on_delete_target)
-    );
+    sijson_object_set(object, "onDeleteTarget", sijson_make_number(info->desc.on_delete_target));
     sijson_object_set(object, "acyclic", sijson_make_bool(info->desc.acyclic));
     return object;
 }
@@ -84,14 +74,11 @@ static void ecs_rest_type_set_add(ecs_rest_type_set_t *set, sireflect_handle_t i
     set->items[id] = true;
 }
 
-static void ecs_rest_collect_component_types(
-    ecs_rest_type_set_t *set,
-    const ecs_component_info_t *info
-) {
+static void
+ecs_rest_collect_component_types(ecs_rest_type_set_t *set, const ecs_component_info_t *info) {
     ecs_rest_type_set_add(set, info->type);
 
-    const sireflect_fields_t *fields =
-        sireflect_type_fields(info->type);
+    const sireflect_fields_t *fields = sireflect_type_fields(info->type);
     for (size_t i = 0; i < fields->field_count; i++) {
         ecs_rest_type_set_add(set, fields->fields[i].type);
     }
@@ -101,10 +88,7 @@ static bool ecs_rest_type_name_is(const sireflect_type_info_t *type, const char 
     return type->name && strcmp(type->name, name) == 0;
 }
 
-static const char *ecs_rest_editor_type(
-    sireflect_handle_t id,
-    const sireflect_type_info_t *type
-) {
+static const char *ecs_rest_editor_type(sireflect_handle_t id, const sireflect_type_info_t *type) {
     if (ecs_rest_type_name_is(type, "ecs_entity_t")) {
         return "entity";
     }
@@ -126,8 +110,7 @@ static const char *ecs_rest_editor_type(
     }
 
     if (type->kind == sireflect_kind_pointer) {
-        const sireflect_type_info_t *element =
-            sireflect_type_info(type->element_type);
+        const sireflect_type_info_t *element = sireflect_type_info(type->element_type);
         if (element && element->kind == sireflect_kind_char) {
             return "string";
         }
@@ -138,16 +121,12 @@ static const char *ecs_rest_editor_type(
 }
 
 static sijson_value_t ecs_rest_enum_options_json(sireflect_handle_t id) {
-    const sireflect_enum_values_t *values =
-        sireflect_type_enum_values(id);
+    const sireflect_enum_values_t *values = sireflect_type_enum_values(id);
 
     sijson_value_t options = sijson_make_array();
 
     for (size_t i = 0; i < values->value_count; i++) {
-        sijson_array_push(
-            options,
-            sijson_make_string(values->values[i].name)
-        );
+        sijson_array_push(options, sijson_make_string(values->values[i].name));
     }
 
     return options;
@@ -161,11 +140,7 @@ static sijson_value_t ecs_rest_type_json(sireflect_handle_t id) {
     sijson_object_set(object, "name", sijson_make_string(type->name ? type->name : ""));
     sijson_object_set(object, "editor", sijson_make_string(ecs_rest_editor_type(id, type)));
     if (sireflect_type_is_enum(type)) {
-        sijson_object_set(
-            object,
-            "options",
-            ecs_rest_enum_options_json(id)
-        );
+        sijson_object_set(object, "options", ecs_rest_enum_options_json(id));
     }
     return object;
 }

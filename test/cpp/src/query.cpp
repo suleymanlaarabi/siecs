@@ -30,17 +30,15 @@ static void register_shared_query_position() {
 }
 
 static CppQueryVelocity *cpp_query_velocity(ecs::entity entity) {
-    return static_cast<CppQueryVelocity *>(ecs_get_cid(
-                entity.id(),
-        ecs::detail::ecs_cpp_component_id<CppQueryVelocity>()
-    ));
+    return static_cast<CppQueryVelocity *>(
+        ecs_get_cid(entity.id(), ecs::detail::ecs_cpp_component_id<CppQueryVelocity>())
+    );
 }
 
 static CppQueryPosition *cpp_query_position(ecs::entity entity) {
-    return static_cast<CppQueryPosition *>(ecs_get_cid(
-                entity.id(),
-        ecs::detail::ecs_cpp_component_id<CppQueryPosition>()
-    ));
+    return static_cast<CppQueryPosition *>(
+        ecs_get_cid(entity.id(), ecs::detail::ecs_cpp_component_id<CppQueryPosition>())
+    );
 }
 
 void query_required_owned_fields_advance(void) {
@@ -57,8 +55,7 @@ void query_required_owned_fields_advance(void) {
     bool saw_first = false;
     bool saw_second = false;
 
-    ecs::query().each([&](const CppQueryPosition &position,
-                          const CppQueryVelocity &velocity) {
+    ecs::query().each([&](const CppQueryPosition &position, const CppQueryVelocity &velocity) {
         calls++;
         saw_first |= position.x == 1.0f && velocity.x == 10.0f;
         saw_second |= position.x == 2.0f && velocity.x == 20.0f;

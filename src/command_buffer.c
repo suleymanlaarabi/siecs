@@ -420,11 +420,8 @@ static ecs_type_t command_build_type(
     if (!command->has_base) {
         return type;
     }
-    ecs_type_t out = ecs_type_with(
-        &type,
-        0,
-        (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = command->base }
-    );
+    ecs_type_t out =
+        ecs_type_with(&type, 0, (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = command->base });
     ecs_type_fini(&type);
     return out;
 }

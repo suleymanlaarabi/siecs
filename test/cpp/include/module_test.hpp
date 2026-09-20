@@ -57,10 +57,9 @@ inline ecs::entity create_module_entity(int position, int velocity) {
 }
 
 inline ModulePosition *get_module_position(ecs::entity entity) {
-    return static_cast<ModulePosition *>(ecs_get_cid(
-                entity.id(),
-        ecs::detail::ecs_cpp_component_id<ModulePosition>()
-    ));
+    return static_cast<ModulePosition *>(
+        ecs_get_cid(entity.id(), ecs::detail::ecs_cpp_component_id<ModulePosition>())
+    );
 }
 
 #endif

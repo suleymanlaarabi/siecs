@@ -1,7 +1,7 @@
-#include <siecs.h>
 #include "c_types_test.h"
-#include <test.h>
+#include <siecs.h>
 #include <string>
+#include <test.h>
 
 struct CppTime {
     float dt;
@@ -32,17 +32,15 @@ static int cpp_resource_system_calls;
 static int cpp_resource_query_calls;
 
 static CppPosition *cpp_resource_position(ecs::entity entity) {
-    return static_cast<CppPosition *>(ecs_get_cid(
-                entity.id(),
-        ecs::detail::ecs_cpp_component_id<CppPosition>()
-    ));
+    return static_cast<CppPosition *>(
+        ecs_get_cid(entity.id(), ecs::detail::ecs_cpp_component_id<CppPosition>())
+    );
 }
 
 static CppText *cpp_text(ecs::entity entity) {
-    return static_cast<CppText *>(ecs_get_cid(
-                entity.id(),
-        ecs::detail::ecs_cpp_component_id<CppText>()
-    ));
+    return static_cast<CppText *>(
+        ecs_get_cid(entity.id(), ecs::detail::ecs_cpp_component_id<CppText>())
+    );
 }
 
 void resource_world_api(void) {

@@ -21,22 +21,19 @@ static void cpp_c_time_on_set(const void *ptr) {
     cpp_c_time_on_set_calls++;
 }
 
-ECS_COMPONENT_DEFINE(
-    cpp_c_position,
-    .on_set = cpp_c_position_on_set
-);
+ECS_COMPONENT_DEFINE(cpp_c_position, .on_set = cpp_c_position_on_set);
 
-ECS_RESOURCE_DEFINE(
-    cpp_c_time,
-    .on_set = cpp_c_time_on_set
-);
+ECS_RESOURCE_DEFINE(cpp_c_time, .on_set = cpp_c_time_on_set);
 
 ECS_COMPONENT_DEFINE(cpp_c_method_position);
 
 ECS_RESOURCE_DEFINE(cpp_c_method_time);
 
-ECS_RELATION_DEFINE(cpp_c_parent, {
-    .storage = EcsRelationByTarget,
-    .on_delete_target = EcsRemoveRelation,
-    .acyclic = true,
-});
+ECS_RELATION_DEFINE(
+    cpp_c_parent,
+    {
+        .storage = EcsRelationByTarget,
+        .on_delete_target = EcsRemoveRelation,
+        .acyclic = true,
+    }
+);

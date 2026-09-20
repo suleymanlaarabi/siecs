@@ -24,17 +24,16 @@
 /* Convenience macro for exporting symbols */
 #ifndef sigpu_STATIC
 #if defined(sigpu_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
-  #define SIGPU_API __declspec(dllexport)
+#define SIGPU_API __declspec(dllexport)
 #elif defined(sigpu_EXPORTS)
-  #define SIGPU_API __attribute__((__visibility__("default")))
+#define SIGPU_API __attribute__((__visibility__("default")))
 #elif defined(_MSC_VER)
-  #define SIGPU_API __declspec(dllimport)
+#define SIGPU_API __declspec(dllimport)
 #else
-  #define SIGPU_API
+#define SIGPU_API
 #endif
 #else
-  #define SIGPU_API
+#define SIGPU_API
 #endif
 
 #endif
-

@@ -28,27 +28,16 @@ bool ecs_rest_relation_would_cycle(
 sijson_value_t ecs_rest_entity_ref_json(ecs_entity_t entity) {
     sijson_value_t reference = sijson_make_object();
     sijson_object_set(reference, "index", sijson_make_number(ecs_entity_id(entity)));
-    sijson_object_set(
-        reference,
-        "generation",
-        sijson_make_number(ecs_entity_generation(entity))
-    );
+    sijson_object_set(reference, "generation", sijson_make_number(ecs_entity_generation(entity)));
     sijson_object_set(reference, "name", sijson_make_string(ecs_entity_name(entity)));
     return reference;
 }
 
-sijson_value_t ecs_rest_entity_relation_json(
-    ecs_relation_id_t relation,
-    ecs_entity_t target
-) {
+sijson_value_t ecs_rest_entity_relation_json(ecs_relation_id_t relation, ecs_entity_t target) {
     const ecs_relation_info_t *info = ecs_relation_info(relation);
     sijson_value_t object = sijson_make_object();
     sijson_object_set(object, "id", sijson_make_number(relation));
-    sijson_object_set(
-        object,
-        "name",
-        sijson_make_string(info && info->name ? info->name : "")
-    );
+    sijson_object_set(object, "name", sijson_make_string(info && info->name ? info->name : ""));
     sijson_object_set(object, "target", ecs_rest_entity_ref_json(target));
     return object;
 }
@@ -64,10 +53,7 @@ sijson_value_t ecs_rest_entity_relations_json(ecs_entity_t entity) {
 
         ecs_entity_t target = ecs_target_id(entity, relation);
         if (target) {
-            sijson_array_push(
-                relations,
-                ecs_rest_entity_relation_json(relation, target)
-            );
+            sijson_array_push(relations, ecs_rest_entity_relation_json(relation, target));
         }
     }
     return relations;
@@ -99,21 +85,16 @@ sihttp_response_t ecs_rest_put_entity_relation(const sihttp_request_t *req) {
     const ecs_relation_info_t *info = ecs_relation_info(relation);
 
     sijson_value_t body = req->body ? sijson_parse(req->body) : NULL;
-    sijson_value_t target_value = body && sijson_type(body) == SIJSON_OBJECT
-        ? sijson_object_get(body, "target")
-        : NULL;
-    if (
-        !body || sijson_type(body) != SIJSON_OBJECT || sijson_object_len(body) != 1 ||
-        !target_value || sijson_type(target_value) != SIJSON_NUMBER
-    ) {
+    sijson_value_t target_value =
+        body && sijson_type(body) == SIJSON_OBJECT ? sijson_object_get(body, "target") : NULL;
+    if (!body || sijson_type(body) != SIJSON_OBJECT || sijson_object_len(body) != 1 ||
+        !target_value || sijson_type(target_value) != SIJSON_NUMBER) {
         return ecs_rest_error_response(400, "invalid json body");
     }
 
     double target_number = sijson_number(target_value);
-    if (
-        !(target_number >= 1 && target_number <= UINT32_MAX) ||
-        target_number != (double)(uint32_t)target_number
-    ) {
+    if (!(target_number >= 1 && target_number <= UINT32_MAX) ||
+        target_number != (double)(uint32_t)target_number) {
         return ecs_rest_error_response(400, "invalid json body");
     }
 
@@ -122,18 +103,12 @@ sihttp_response_t ecs_rest_put_entity_relation(const sihttp_request_t *req) {
         return ecs_rest_error_response(404, "target not found");
     }
 
-    if (
-        info->desc.acyclic &&
-        ecs_rest_relation_would_cycle(source, relation, target)
-    ) {
+    if (info->desc.acyclic && ecs_rest_relation_would_cycle(source, relation, target)) {
         return ecs_rest_error_response(409, "relation would create a cycle");
     }
 
     ecs_relate_id(source, relation, target);
-    return ecs_rest_json_response(
-        200,
-        ecs_rest_entity_relation_json(relation, target)
-    );
+    return ecs_rest_json_response(200, ecs_rest_entity_relation_json(relation, target));
 }
 
 sihttp_response_t ecs_rest_delete_entity_relation(const sihttp_request_t *req) {

@@ -19,9 +19,8 @@
 
 /* Headers of public dependencies */
 #include <siecs.h>
-#include <siecs_spatial.h>
 #include <siecs_rest.h>
+#include <siecs_spatial.h>
 #include <sigpu.h>
 
 #endif
-

@@ -7,21 +7,14 @@ SIECS_PUBLIC_API uint32_t plugin_system_count;
 SIECS_PUBLIC_API uint32_t plugin_observer_count;
 SIECS_PUBLIC_API uint32_t plugin_remove_count;
 
-static void plugin_position_remove(
-    ecs_entity_t entity,
-    ecs_component_t component,
-    void *value
-) {
+static void plugin_position_remove(ecs_entity_t entity, ecs_component_t component, void *value) {
     (void)entity;
     (void)component;
     (void)value;
     plugin_remove_count++;
 }
 
-ECS_COMPONENT_DEFINE(
-    PluginPosition,
-    .on_remove = plugin_position_remove,
-);
+ECS_COMPONENT_DEFINE(PluginPosition, .on_remove = plugin_position_remove, );
 
 static void plugin_system(ecs_iter_t *it) {
     PluginPosition *positions = ecs_field(it, 0);

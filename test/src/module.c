@@ -48,19 +48,9 @@ static void module_plugin_copy(void) {
 #ifdef _WIN32
     snprintf(source, sizeof(source), "%s/lib/siecs_test_my_module.dll", target);
 #elif defined(__APPLE__)
-    snprintf(
-        source,
-        sizeof(source),
-        "%s/lib/libsiecs_test_my_module.dylib",
-        target
-    );
+    snprintf(source, sizeof(source), "%s/lib/libsiecs_test_my_module.dylib", target);
 #else
-    snprintf(
-        source,
-        sizeof(source),
-        "%s/lib/libsiecs_test_my_module.so",
-        target
-    );
+    snprintf(source, sizeof(source), "%s/lib/libsiecs_test_my_module.so", target);
 #endif
 
     FILE *input = fopen(source, "rb");
@@ -272,18 +262,13 @@ void module_dynamic_load(void) {
     test_str("my_module", ecs_module_name(first));
     test_true(ecs_module_is_enabled(first));
 
-    ecs_platform_library_t library =
-        ecs_platform_library_open(module_plugin_path());
+    ecs_platform_library_t library = ecs_platform_library_open(module_plugin_path());
     test_not_null(library);
 
-    ecs_component_t *component =
-        ecs_platform_library_symbol(library, "_ecs_id_PluginPosition__");
-    uint32_t *import_count =
-        ecs_platform_library_symbol(library, "plugin_import_count");
-    uint32_t *system_count =
-        ecs_platform_library_symbol(library, "plugin_system_count");
-    uint32_t *observer_count =
-        ecs_platform_library_symbol(library, "plugin_observer_count");
+    ecs_component_t *component = ecs_platform_library_symbol(library, "_ecs_id_PluginPosition__");
+    uint32_t *import_count = ecs_platform_library_symbol(library, "plugin_import_count");
+    uint32_t *system_count = ecs_platform_library_symbol(library, "plugin_system_count");
+    uint32_t *observer_count = ecs_platform_library_symbol(library, "plugin_observer_count");
 
     test_not_null(component);
     test_not_null(import_count);

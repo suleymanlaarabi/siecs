@@ -41,10 +41,13 @@ void component_dynamic_component_layout_and_info(void) {
 
     test_assert(mixed != 0);
     test_assert(tag != 0);
-    test_int(mixed, ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
-                        .name = "DynamicMixedComponent",
-                        .fields = "{ u8 a; f64 b; u32 c; }",
-                    }));
+    test_int(
+        mixed,
+        ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
+            .name = "DynamicMixedComponent",
+            .fields = "{ u8 a; f64 b; u32 c; }",
+        })
+    );
 
     const ecs_component_info_t *mixed_info = ecs_component_info(mixed);
     const ecs_component_info_t *tag_info = ecs_component_info(tag);
@@ -52,22 +55,21 @@ void component_dynamic_component_layout_and_info(void) {
     test_str("DynamicMixedComponent", mixed_info->name);
     test_uint(mixed_info->size, 24);
     test_uint(tag_info->size, 0);
-    test_uint(
-        mixed_info->type,
-        sireflect_type_by_name("DynamicMixedComponent")
-    );
+    test_uint(mixed_info->type, sireflect_type_by_name("DynamicMixedComponent"));
 
-    const sireflect_fields_t *fields =
-        sireflect_type_fields(mixed_info->type);
+    const sireflect_fields_t *fields = sireflect_type_fields(mixed_info->type);
     test_uint(fields->field_count, 3);
     test_uint(fields->fields[0].offset, 0);
     test_uint(fields->fields[1].offset, 8);
     test_uint(fields->fields[2].offset, 16);
     test_null(ecs_component_info(0));
-    test_int(0, ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
-                    .name = "BadDynamicComponent",
-                    .fields = "{ Missing value; }",
-                }));
+    test_int(
+        0,
+        ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
+            .name = "BadDynamicComponent",
+            .fields = "{ Missing value; }",
+        })
+    );
 
     ecs_fini();
 }
@@ -173,11 +175,7 @@ static void on_component_add_observer(ecs_observer_event_t *event) {
     add_observer_calls++;
 }
 
-static void hook_component_on_add(
-        ecs_entity_t entity,
-    ecs_component_t component,
-    void *ptr
-) {
+static void hook_component_on_add(ecs_entity_t entity, ecs_component_t component, void *ptr) {
     (void)entity;
 
     const HookComponent *value = ptr;
@@ -188,7 +186,7 @@ static void hook_component_on_add(
 }
 
 static void hook_component_on_set(
-        ecs_entity_t entity,
+    ecs_entity_t entity,
     ecs_component_t component,
     const void *new_value,
     void *current_value
@@ -205,11 +203,7 @@ static void hook_component_on_set(
     hook_last_set_new = next_value->value;
 }
 
-static void hook_component_on_remove(
-        ecs_entity_t entity,
-    ecs_component_t component,
-    void *ptr
-) {
+static void hook_component_on_remove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
     (void)entity;
 
     const HookComponent *value = ptr;
@@ -230,7 +224,7 @@ ECS_COMPONENT_DEFINE(RequiredA);
 ECS_COMPONENT_DEFINE(RequiredB);
 
 static void register_many_tag_and_data_components(
-        ecs_component_t tags[15],
+    ecs_component_t tags[15],
     ecs_component_t data[15],
     char tag_names[15][32],
     char data_names[15][32]
@@ -244,8 +238,7 @@ static void register_many_tag_and_data_components(
     }
 }
 
-static void
-set_many_data(ecs_entity_t entity, ecs_component_t data[15], int base) {
+static void set_many_data(ecs_entity_t entity, ecs_component_t data[15], int base) {
     for (uint32_t i = 0; i < 15; i++) {
         int value = base + (int)i;
         ecs_set_cid(entity, data[i], &value);
@@ -258,12 +251,8 @@ static void add_many_tags(ecs_entity_t entity, ecs_component_t tags[15]) {
     }
 }
 
-static void expect_many_data(
-        ecs_entity_t entity,
-    ecs_component_t data[15],
-    int base,
-    uint32_t skip
-) {
+static void
+expect_many_data(ecs_entity_t entity, ecs_component_t data[15], int base, uint32_t skip) {
     for (uint32_t i = 0; i < 15; i++) {
         if (i == skip) {
             continue;
@@ -379,10 +368,8 @@ void component_lifecycle_ops_are_used_for_storage_moves(void) {
         .copy = lifecycle_copy,
         .move_ctor = lifecycle_move_ctor,
     };
-    ecs_component_t a =
-        ecs_component({ .name = "LifecycleA", .size = sizeof(int), .ops = ops });
-    ecs_component_t b =
-        ecs_component({ .name = "LifecycleB", .size = sizeof(int), .ops = ops });
+    ecs_component_t a = ecs_component({ .name = "LifecycleA", .size = sizeof(int), .ops = ops });
+    ecs_component_t b = ecs_component({ .name = "LifecycleB", .size = sizeof(int), .ops = ops });
 
     ecs_entity_t entity = ecs_new();
     int value = 10;
@@ -695,16 +682,9 @@ void component_many_tags_swap_remove_preserves_moved_entity_data(void) {
 
 static ecs_type_t component_type_with_position_and_base(ecs_entity_t base) {
     ecs_type_t empty = { 0 };
-    ecs_type_t with_position = ecs_type_with(
-        &empty,
-        ecs_id(Position),
-        (ecs_type_pair_t){ 0 }
-    );
-    ecs_type_t with_base = ecs_type_with(
-        &with_position,
-        0,
-        (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = base }
-    );
+    ecs_type_t with_position = ecs_type_with(&empty, ecs_id(Position), (ecs_type_pair_t){ 0 });
+    ecs_type_t with_base =
+        ecs_type_with(&with_position, 0, (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = base });
     ecs_type_fini(&with_position);
     return with_base;
 }
@@ -716,10 +696,8 @@ void component_same_local_type_with_different_base_creates_different_tables(void
     ecs_entity_t base_a = ecs_new();
     ecs_entity_t base_b = ecs_new();
 
-    uint16_t table_a =
-        ecs_table_index_get_or_create(component_type_with_position_and_base(base_a));
-    uint16_t table_b =
-        ecs_table_index_get_or_create(component_type_with_position_and_base(base_b));
+    uint16_t table_a = ecs_table_index_get_or_create(component_type_with_position_and_base(base_a));
+    uint16_t table_b = ecs_table_index_get_or_create(component_type_with_position_and_base(base_b));
 
     test_assert(table_a != table_b);
     test_uint(base_a, ecs_type_pair_get(&table_index.tables[table_a].type, ecs_rid(IsA)));
@@ -734,16 +712,9 @@ void component_type_add_remove_preserves_base(void) {
 
     ecs_entity_t base = ecs_new();
     ecs_type_t empty = { 0 };
-    ecs_type_t with_base = ecs_type_with(
-        &empty,
-        0,
-        (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = base }
-    );
-    ecs_type_t added = ecs_type_with(
-        &with_base,
-        ecs_id(Position),
-        (ecs_type_pair_t){ 0 }
-    );
+    ecs_type_t with_base =
+        ecs_type_with(&empty, 0, (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = base });
+    ecs_type_t added = ecs_type_with(&with_base, ecs_id(Position), (ecs_type_pair_t){ 0 });
     ecs_type_t removed = ecs_type_without(&added, 0, 0);
 
     test_uint(base, ecs_type_pair_get(&added, ecs_rid(IsA)));
@@ -761,21 +732,14 @@ void component_type_pairs_are_sorted_replaced_and_removed_atomically(void) {
 
     ecs_entity_t base = ecs_new();
     ecs_type_t empty = { 0 };
-    ecs_type_t with_base = ecs_type_with(
-        &empty,
-        0,
-        (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = base }
-    );
+    ecs_type_t with_base =
+        ecs_type_with(&empty, 0, (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = base });
     ecs_type_t first = ecs_type_with(
         &with_base,
         ecs_id(Position),
         (ecs_type_pair_t){ .key = 9, .value = UINT64_C(0x123456789abcdef0) }
     );
-    ecs_type_t second = ecs_type_with(
-        &first,
-        0,
-        (ecs_type_pair_t){ .key = 3, .value = 42 }
-    );
+    ecs_type_t second = ecs_type_with(&first, 0, (ecs_type_pair_t){ .key = 3, .value = 42 });
     ecs_type_t replaced = ecs_type_with(
         &second,
         0,
@@ -816,16 +780,12 @@ void component_table_index_indexes_generic_pairs(void) {
         (ecs_type_pair_t){ .key = 7, .value = UINT64_C(0x123456789abcdef0) }
     );
     ecs_type_t same = ecs_type_with_ids(&first, first.ids, first.component_count);
-    ecs_type_t second = ecs_type_with(
-        &first,
-        ecs_id(Position),
-        (ecs_type_pair_t){ .key = 9, .value = 42 }
-    );
+    ecs_type_t second =
+        ecs_type_with(&first, ecs_id(Position), (ecs_type_pair_t){ .key = 9, .value = 42 });
     uint16_t table = ecs_table_index_get_or_create(first);
     uint16_t same_table = ecs_table_index_get_or_create(same);
     uint16_t second_table = ecs_table_index_get_or_create(second);
-    ecs_pair_tables_t shared =
-        ecs_table_index_pair_tables(7, UINT64_C(0x123456789abcdef0));
+    ecs_pair_tables_t shared = ecs_table_index_pair_tables(7, UINT64_C(0x123456789abcdef0));
     ecs_pair_tables_t unique = ecs_table_index_pair_tables(9, 42);
 
     test_int(table, same_table);
@@ -878,8 +838,8 @@ void component_try_get_handles_missing_and_inherited(void) {
 void component_table_type_tracks_data_columns(void) {
     ecs_init();
 
-    ecs_component_t tag_a = ecs_component({0});
-    ecs_component_t tag_b = ecs_component({0});
+    ecs_component_t tag_a = ecs_component({ 0 });
+    ecs_component_t tag_b = ecs_component({ 0 });
     ecs_component_t data_a = ecs_component({ .size = sizeof(uint32_t) });
     ecs_component_t data_b = ecs_component({ .size = sizeof(uint64_t) });
     ecs_entity_t entity = ecs_new();
@@ -945,7 +905,7 @@ void component_table_index_resize_preserves_type_hashes(void) {
 
     ecs_component_t components[ComponentCount];
     for (uint16_t i = 0; i < ComponentCount; i++) {
-        components[i] = ecs_component({0});
+        components[i] = ecs_component({ 0 });
     }
 
     uint16_t *table_ids = malloc(sizeof(uint16_t) * TypeCount);

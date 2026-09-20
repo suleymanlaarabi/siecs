@@ -11,26 +11,18 @@ extern "C" {
 
 /* Configuration for the SIECS REST explorer module. */
 ECS_MODULE_DECLARE(sirest, {
-  const char *host;
-  int port;
-  int backlog;
-  int max_requests_per_poll;
-  size_t max_scene_bytes;
-  bool in_process;
+    const char *host;
+    int port;
+    int backlog;
+    int max_requests_per_poll;
+    size_t max_scene_bytes;
+    bool in_process;
 });
 
-sihttp_response_t sirest_dispatch(
-    sihttp_method_t method,
-    const char *path,
-    const char *body
-);
+sihttp_response_t sirest_dispatch(sihttp_method_t method, const char *path, const char *body);
 
-sihttp_response_t sirest_dispatch_bytes(
-    sihttp_method_t method,
-    const char *path,
-    const void *data,
-    size_t size
-);
+sihttp_response_t
+sirest_dispatch_bytes(sihttp_method_t method, const char *path, const void *data, size_t size);
 
 sihttp_response_t ecs_rest_binary_response(void *data, size_t size);
 

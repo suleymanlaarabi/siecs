@@ -15,8 +15,7 @@ int main() {
 
     ecs::component<Velocity>().with<Position>();
 
-    ecs::entity entity = ecs::entity::create()
-                             .set(Velocity{ 3.0f, 4.0f });
+    ecs::entity entity = ecs::entity::create().set(Velocity{ 3.0f, 4.0f });
 
     ecs::system("Move").each([](Position &pos, const Velocity &vel) {
         pos.x += vel.x;
@@ -25,9 +24,8 @@ int main() {
 
     ecs::progress();
 
-    const Position *position = static_cast<const Position *>(
-        ecs_get_cid(entity.id(), ecs::component<Position>())
-    );
+    const Position *position =
+        static_cast<const Position *>(ecs_get_cid(entity.id(), ecs::component<Position>()));
 
     assert(position != nullptr);
     assert(position->x == 3.0f);

@@ -33,17 +33,19 @@ static void observer_count_event(ecs_observer_event_t *event) {
     (*calls)++;
 }
 
-static void observer_ignore_event(ecs_observer_event_t *event) {
-    (void)event;
-}
+static void observer_ignore_event(ecs_observer_event_t *event) { (void)event; }
 
 void observer_target_exact_entity(void) {
     ecs_init();
     ecs_entity_t target = ecs_new(), other = ecs_new();
     ecs_event_t event = ecs_event();
     uint32_t calls = 0;
-    ecs_observer({ .on = event, .entity = target, .callback = observer_count_event,
-        .user_data = (uintptr_t)&calls });
+    ecs_observer(
+        { .on = event,
+          .entity = target,
+          .callback = observer_count_event,
+          .user_data = (uintptr_t)&calls }
+    );
     ecs_observer_trigger(other, event, NULL);
     test_uint(0, calls);
     ecs_observer_trigger(target, event, NULL);
@@ -55,8 +57,8 @@ void observer_target_no_query(void) {
     ecs_init();
     ecs_entity_t target = ecs_new();
     uint32_t active = query_index.active_ids.size;
-    ecs_observer_id_t id = ecs_observer({ .on = ecs_event(), .entity = target,
-        .callback = observer_count_event });
+    ecs_observer_id_t id =
+        ecs_observer({ .on = ecs_event(), .entity = target, .callback = observer_count_event });
     ecs_observer_t *observer = sicore_vec_get_mut(&observer_index.observers, id, ecs_observer_t);
     test_uint(ECS_OBSERVER_NO_QUERY, observer->query);
     test_uint(active, query_index.active_ids.size);
@@ -69,9 +71,13 @@ void observer_target_filtered(void) {
     ecs_entity_t target = ecs_new();
     ecs_event_t event = ecs_event();
     uint32_t calls = 0;
-    ecs_observer({ .on = event, .entity = target,
-        .query = { .components = { ecs_filter(ObserverPosition) } },
-        .callback = observer_count_event, .user_data = (uintptr_t)&calls });
+    ecs_observer(
+        { .on = event,
+          .entity = target,
+          .query = { .components = { ecs_filter(ObserverPosition) } },
+          .callback = observer_count_event,
+          .user_data = (uintptr_t)&calls }
+    );
     ecs_observer_trigger(target, event, NULL);
     test_uint(0, calls);
     ecs_set(target, ObserverPosition, { 1, 2 });
@@ -88,12 +94,19 @@ void observer_target_destroy(void) {
     ecs_entity_t target = ecs_new();
     ecs_event_t event = ecs_event();
     uint32_t calls = 0;
-    ecs_observer_id_t id = ecs_observer({ .on = event, .entity = target,
-        .callback = observer_count_event, .user_data = (uintptr_t)&calls });
+    ecs_observer_id_t id = ecs_observer(
+        { .on = event,
+          .entity = target,
+          .callback = observer_count_event,
+          .user_data = (uintptr_t)&calls }
+    );
     ecs_observer_fini(id);
     ecs_observer_trigger(target, event, NULL);
     test_uint(0, calls);
-    test_uint(id, ecs_observer({ .on = event, .entity = target, .callback = observer_count_event }));
+    test_uint(
+        id,
+        ecs_observer({ .on = event, .entity = target, .callback = observer_count_event })
+    );
     ecs_fini();
 }
 
@@ -107,8 +120,10 @@ void observer_target_entity_kill(void) {
     ecs_kill(target);
     test_uint(1, observer_index.target_keys.size);
     test_uint(1, observer_index.target_observers.size);
-    test_uint(ecs_observer_target_key(ecs_entity_id(other), event_a),
-        *(uint64_t *)observer_index.target_keys.data);
+    test_uint(
+        ecs_observer_target_key(ecs_entity_id(other), event_a),
+        *(uint64_t *)observer_index.target_keys.data
+    );
     ecs_fini();
 }
 
@@ -117,8 +132,12 @@ void observer_target_index_reuse(void) {
     ecs_entity_t target = ecs_new();
     ecs_event_t event = ecs_event();
     uint32_t calls = 0;
-    ecs_observer({ .on = event, .entity = target, .callback = observer_count_event,
-        .user_data = (uintptr_t)&calls });
+    ecs_observer(
+        { .on = event,
+          .entity = target,
+          .callback = observer_count_event,
+          .user_data = (uintptr_t)&calls }
+    );
     uint32_t index = ecs_entity_id(target);
     ecs_kill(target);
     ecs_entity_t reused = ecs_new();
@@ -134,8 +153,12 @@ void observer_target_on_remove(void) {
     ecs_entity_t target = ecs_new();
     ecs_set(target, ObserverValue, { 1 });
     uint32_t calls = 0;
-    ecs_observer({ .on = EcsOnRemove, .entity = target, .callback = observer_count_event,
-        .user_data = (uintptr_t)&calls });
+    ecs_observer(
+        { .on = EcsOnRemove,
+          .entity = target,
+          .callback = observer_count_event,
+          .user_data = (uintptr_t)&calls }
+    );
     ecs_kill(target);
     test_uint(1, calls);
     test_uint(0, observer_index.target_keys.size);
@@ -147,13 +170,17 @@ void observer_target_many(void) {
     ecs_init();
     ecs_event_t event = ecs_event();
     ecs_entity_t entities[entity_count];
-    for (uint32_t i = 0; i < entity_count; i++) entities[i] = ecs_new();
+    for (uint32_t i = 0; i < entity_count; i++)
+        entities[i] = ecs_new();
     for (uint32_t i = 0; i < observer_count; i++) {
-        ecs_observer({ .on = event, .entity = entities[i / 256], .callback = observer_ignore_event });
+        ecs_observer(
+            { .on = event, .entity = entities[i / 256], .callback = observer_ignore_event }
+        );
     }
     uint32_t calls = 0;
-    ecs_observer_id_t global = ecs_observer({ .on = event, .callback = observer_count_event,
-        .user_data = (uintptr_t)&calls });
+    ecs_observer_id_t global = ecs_observer(
+        { .on = event, .callback = observer_count_event, .user_data = (uintptr_t)&calls }
+    );
     test_uint(observer_count, global);
     ecs_observer_trigger(entities[0], event, NULL);
     test_uint(1, calls);
@@ -168,12 +195,18 @@ void observer_global_registration_does_not_duplicate_queries(void) {
     ecs_query_id_t q = ecs_query({ .components = { ecs_in(ObserverValue) } });
     ecs_event_t event = ecs_event();
     uint32_t filtered = 0, first_global = 0, second_global = 0;
-    ecs_observer({ .on = event, .query = { .components = { ecs_filter(ObserverValue) } },
-        .callback = observer_count_event, .user_data = (uintptr_t)&filtered });
-    ecs_observer({ .on = event, .callback = observer_count_event,
-        .user_data = (uintptr_t)&first_global });
-    ecs_observer({ .on = event, .callback = observer_count_event,
-        .user_data = (uintptr_t)&second_global });
+    ecs_observer(
+        { .on = event,
+          .query = { .components = { ecs_filter(ObserverValue) } },
+          .callback = observer_count_event,
+          .user_data = (uintptr_t)&filtered }
+    );
+    ecs_observer(
+        { .on = event, .callback = observer_count_event, .user_data = (uintptr_t)&first_global }
+    );
+    ecs_observer(
+        { .on = event, .callback = observer_count_event, .user_data = (uintptr_t)&second_global }
+    );
     test_uint(1, ecs_query_count(q));
     ecs_observer_trigger(entity, event, NULL);
     test_uint(1, filtered);
@@ -383,12 +416,14 @@ void observer_on_set_reports_component(void) {
     ECS_COMPONENT_REGISTER(ObserverPosition);
     ecs_entity_t entity = ecs_new();
     ObserverComponentState state = { 0 };
-    ecs_observer({
-        .on = EcsOnSet,
-        .query.components = { ecs_filter(ObserverPosition) },
-        .callback = observer_capture_component,
-        .user_data = (uintptr_t)&state,
-    });
+    ecs_observer(
+        {
+            .on = EcsOnSet,
+            .query.components = { ecs_filter(ObserverPosition) },
+            .callback = observer_capture_component,
+            .user_data = (uintptr_t)&state,
+        }
+    );
 
     ecs_set(entity, ObserverPosition, { 10, 20 });
 
@@ -402,12 +437,14 @@ void observer_on_add_reports_component(void) {
     ECS_COMPONENT_REGISTER(ObserverPosition);
     ecs_entity_t entity = ecs_new();
     ObserverComponentState state = { 0 };
-    ecs_observer({
-        .on = EcsOnAdd,
-        .query.components = { ecs_filter(ObserverPosition) },
-        .callback = observer_capture_component,
-        .user_data = (uintptr_t)&state,
-    });
+    ecs_observer(
+        {
+            .on = EcsOnAdd,
+            .query.components = { ecs_filter(ObserverPosition) },
+            .callback = observer_capture_component,
+            .user_data = (uintptr_t)&state,
+        }
+    );
 
     ecs_add(entity, ObserverPosition);
 
@@ -422,12 +459,14 @@ void observer_on_remove_reports_component(void) {
     ecs_entity_t entity = ecs_new();
     ecs_add(entity, ObserverPosition);
     ObserverComponentState state = { 0 };
-    ecs_observer({
-        .on = EcsOnRemove,
-        .query.components = { ecs_filter(ObserverPosition) },
-        .callback = observer_capture_component,
-        .user_data = (uintptr_t)&state,
-    });
+    ecs_observer(
+        {
+            .on = EcsOnRemove,
+            .query.components = { ecs_filter(ObserverPosition) },
+            .callback = observer_capture_component,
+            .user_data = (uintptr_t)&state,
+        }
+    );
 
     ecs_remove(entity, ObserverPosition);
 
@@ -442,11 +481,13 @@ void observer_custom_event_reports_zero_component(void) {
     ecs_event_t event = ecs_event();
     int data = 42;
     ObserverComponentState state = { 0 };
-    ecs_observer({
-        .on = event,
-        .callback = observer_capture_component,
-        .user_data = (uintptr_t)&state,
-    });
+    ecs_observer(
+        {
+            .on = event,
+            .callback = observer_capture_component,
+            .user_data = (uintptr_t)&state,
+        }
+    );
 
     ecs_observer_trigger(entity, event, &data);
 
@@ -460,12 +501,14 @@ void observer_deferred_on_set_reports_component_at_flush(void) {
     ECS_COMPONENT_REGISTER(ObserverPosition);
     ecs_entity_t entity = ecs_new();
     ObserverComponentState state = { 0 };
-    ecs_observer({
-        .on = EcsOnSet,
-        .query.components = { ecs_filter(ObserverPosition) },
-        .callback = observer_capture_component,
-        .user_data = (uintptr_t)&state,
-    });
+    ecs_observer(
+        {
+            .on = EcsOnSet,
+            .query.components = { ecs_filter(ObserverPosition) },
+            .callback = observer_capture_component,
+            .user_data = (uintptr_t)&state,
+        }
+    );
 
     ecs_defer_begin();
     ecs_set(entity, ObserverPosition, { 10, 20 });

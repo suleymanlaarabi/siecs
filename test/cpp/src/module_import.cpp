@@ -1,5 +1,5 @@
-#include "module_test.hpp"
 #include "c_module_test.h"
+#include "module_test.hpp"
 #include <test.h>
 
 void module_import_import_without_props(void) {
@@ -21,8 +21,8 @@ void module_import_import_with_props(void) {
     reset_module_state();
 
     ecs_test_scope _ecs_scope;
-    auto module = ecs::import<cpp_physics_with_props>(
-        cpp_physics_with_props::props_t{ .gravity = 42 });
+    auto module =
+        ecs::import<cpp_physics_with_props>(cpp_physics_with_props::props_t{ .gravity = 42 });
     create_module_entity(0, 1);
 
     ecs::progress();
@@ -37,10 +37,10 @@ void module_import_double_import(void) {
     reset_module_state();
 
     ecs_test_scope _ecs_scope;
-    auto first = ecs::import<cpp_physics_with_props>(
-        cpp_physics_with_props::props_t{ .gravity = 10 });
-    auto second = ecs::import<cpp_physics_with_props>(
-        cpp_physics_with_props::props_t{ .gravity = 99 });
+    auto first =
+        ecs::import<cpp_physics_with_props>(cpp_physics_with_props::props_t{ .gravity = 10 });
+    auto second =
+        ecs::import<cpp_physics_with_props>(cpp_physics_with_props::props_t{ .gravity = 99 });
 
     test_int(first.id(), second.id());
     test_int(1, module_import_calls);

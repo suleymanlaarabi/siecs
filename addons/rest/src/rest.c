@@ -106,10 +106,13 @@ void sirest_import(const sirest_props_t *props) {
     ECS_RESOURCE_REGISTER(SiecsRestState);
 
     sihttp_server_t *server = rest_server_create(&config);
-    ecs_set_resource(SiecsRestState, {
-        .server = server,
-        .max_scene_bytes = config.max_scene_bytes,
-    });
+    ecs_set_resource(
+        SiecsRestState,
+        {
+            .server = server,
+            .max_scene_bytes = config.max_scene_bytes,
+        }
+    );
     if (!config.in_process) {
         ecs_system(
             {
@@ -142,26 +145,22 @@ static void rest_register_routes(sihttp_server_t *server) {
     sihttp_get(server, "/health", rest_health);
     sihttp_post(server, "/entities/:index/components/:component", ecs_rest_post_entity_component);
     sihttp_put(server, "/entities/:index/components/:component", ecs_rest_put_entity_component);
-    sihttp_delete(server, "/entities/:index/components/:component", ecs_rest_delete_entity_component);
+    sihttp_delete(
+        server,
+        "/entities/:index/components/:component",
+        ecs_rest_delete_entity_component
+    );
     sihttp_get(server, "/entities/:index", ecs_rest_get_entity);
 }
 
-sihttp_response_t sirest_dispatch(
-    sihttp_method_t method,
-    const char *path,
-    const char *body
-) {
+sihttp_response_t sirest_dispatch(sihttp_method_t method, const char *path, const char *body) {
     SiecsRestState *state = ecs_try_get_resource(SiecsRestState);
 
     return sihttp_server_dispatch(state->server, method, path, body);
 }
 
-sihttp_response_t sirest_dispatch_bytes(
-    sihttp_method_t method,
-    const char *path,
-    const void *data,
-    size_t size
-) {
+sihttp_response_t
+sirest_dispatch_bytes(sihttp_method_t method, const char *path, const void *data, size_t size) {
     SiecsRestState *state = ecs_try_get_resource(SiecsRestState);
     return sihttp_server_dispatch_bytes(state->server, method, path, data, size);
 }

@@ -26,17 +26,16 @@
 /* Convenience macro for exporting symbols */
 #ifndef siecs_rest_STATIC
 #if defined(siecs_rest_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
-  #define SIECS_REST_API __declspec(dllexport)
+#define SIECS_REST_API __declspec(dllexport)
 #elif defined(siecs_rest_EXPORTS)
-  #define SIECS_REST_API __attribute__((__visibility__("default")))
+#define SIECS_REST_API __attribute__((__visibility__("default")))
 #elif defined(_MSC_VER)
-  #define SIECS_REST_API __declspec(dllimport)
+#define SIECS_REST_API __declspec(dllimport)
 #else
-  #define SIECS_REST_API
+#define SIECS_REST_API
 #endif
 #else
-  #define SIECS_REST_API
+#define SIECS_REST_API
 #endif
 
 #endif
-

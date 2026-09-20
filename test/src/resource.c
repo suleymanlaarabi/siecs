@@ -34,11 +34,8 @@ static void resource_teardown_on_remove(const void *ptr) {
     test_assert(value->value == 42);
 }
 
-static void resource_component_on_remove(
-    ecs_entity_t entity,
-    ecs_component_t component,
-    void *ptr
-) {
+static void
+resource_component_on_remove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
     (void)entity;
     (void)component;
     const ResourceTeardown *resource = ecs_get_resource_read(ResourceTeardown);
@@ -206,12 +203,10 @@ void resource_try_get_missing(void) {
 void resource_zero_sized_presence_uses_storage_pointer(void) {
     ecs_init();
 
-    ecs_resource_t id = ecs_resource_init(
-        &(ecs_resource_desc_t){
-            .name = "ZeroSizedResource",
-            .size = 0,
-        }
-    );
+    ecs_resource_t id = ecs_resource_init(&(ecs_resource_desc_t){
+        .name = "ZeroSizedResource",
+        .size = 0,
+    });
 
     int marker = 0;
 

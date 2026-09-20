@@ -1,5 +1,5 @@
-#include <siecs_test.h>
 #include "world_internal.h"
+#include <siecs_test.h>
 
 ECS_COMPONENT_DECLARE(QueryPosition, { int value; });
 ECS_COMPONENT_DECLARE(QueryVelocity, { int value; });
@@ -33,8 +33,10 @@ void query_tags_keep_presence_without_data(void) {
                 owned_rows += it.count;
             }
             if (it.entities[0] == inherited) {
-                test_int(access == EcsInOutOptional ? EcsFieldNone : EcsFieldShared,
-                         ecs_field_kind(&it, 0));
+                test_int(
+                    access == EcsInOutOptional ? EcsFieldNone : EcsFieldShared,
+                    ecs_field_kind(&it, 0)
+                );
                 shared_rows += it.count;
             }
         }
@@ -56,14 +58,19 @@ void query_full_descriptor_and_empty_candidates(void) {
         ecs_set_cid(entity, component, &value);
     }
     for (uint8_t i = 0; i < ECS_QUERY_RESOURCE_CAPACITY; i++) {
-        ecs_resource_t resource = ecs_resource_init(&(ecs_resource_desc_t){
-            .name = "QueryCapacityResource", .size = sizeof(int) });
+        ecs_resource_t resource =
+            ecs_resource_init(&(ecs_resource_desc_t){ .name = "QueryCapacityResource",
+                                                      .size = sizeof(int) });
         desc.resources[i] = (ecs_resource_term_t){ resource, EcsInOut };
     }
     for (uint8_t i = 0; i < ECS_QUERY_RELATION_CAPACITY; i++) {
-        ecs_relation_id_t relation = ecs_relation_init(NULL, &(ecs_relation_desc_t){
-            .storage = EcsRelationDense, .on_delete_target = EcsRemoveRelation });
-        desc.relations[i] = (ecs_query_relation_term_t){ .id = relation, .kind = EcsRelationRequired };
+        ecs_relation_id_t relation = ecs_relation_init(
+            NULL,
+            &(ecs_relation_desc_t){ .storage = EcsRelationDense,
+                                    .on_delete_target = EcsRemoveRelation }
+        );
+        desc.relations[i] =
+            (ecs_query_relation_term_t){ .id = relation, .kind = EcsRelationRequired };
         ecs_relate_id(entity, relation, target);
     }
     ecs_query_id_t q = ecs_query_init(&desc);
@@ -76,7 +83,8 @@ void query_full_descriptor_and_empty_candidates(void) {
     }
     test_false(ecs_iter_next(&it));
     ecs_query_fini(q);
-    for (uint8_t i = 0; i < ECS_QUERY_TERM_CAPACITY; i++) desc.components[i].access = EcsFilter;
+    for (uint8_t i = 0; i < ECS_QUERY_TERM_CAPACITY; i++)
+        desc.components[i].access = EcsFilter;
     q = ecs_query_init(&desc);
     test_uint(1, ecs_query_count(q));
     it = ecs_query_iter(q);
@@ -103,23 +111,31 @@ static int query_group_order(const ecs_table_t *a, const ecs_table_t *b, uint64_
 
 void query_sorted_growth_preserves_fields_and_equal_order(void) {
     query_test_world();
-    ecs_relation_id_t relation = ecs_relation_init(NULL, &(ecs_relation_desc_t){
-        .storage = EcsRelationByTarget, .on_delete_target = EcsRemoveRelation });
+    ecs_relation_id_t relation = ecs_relation_init(
+        NULL,
+        &(ecs_relation_desc_t){ .storage = EcsRelationByTarget,
+                                .on_delete_target = EcsRemoveRelation }
+    );
     ecs_entity_t targets[40], entities[40];
-    for (uint32_t i = 0; i < 40; i++) targets[i] = ecs_new();
-    ecs_query_id_t early = ecs_query({
-        .components = { ecs_inout(QueryVelocity) },
-        .order_by = { query_group_order, relation },
-    });
+    for (uint32_t i = 0; i < 40; i++)
+        targets[i] = ecs_new();
+    ecs_query_id_t early = ecs_query(
+        {
+            .components = { ecs_inout(QueryVelocity) },
+            .order_by = { query_group_order, relation },
+        }
+    );
     for (uint32_t i = 0; i < 40; i++) {
         entities[i] = ecs_new();
         ecs_relate_id(entities[i], relation, targets[39 - i]);
         ecs_set(entities[i], QueryVelocity, { (int)i });
     }
-    ecs_query_id_t late = ecs_query({
-        .components = { ecs_inout(QueryVelocity) },
-        .order_by = { query_group_order, relation },
-    });
+    ecs_query_id_t late = ecs_query(
+        {
+            .components = { ecs_inout(QueryVelocity) },
+            .order_by = { query_group_order, relation },
+        }
+    );
     for (uint32_t i = 0; i < 40; i++) {
         for (uint32_t j = 0; j < 9; j++) {
             ecs_entity_t e = ecs_new();
@@ -136,11 +152,13 @@ void query_sorted_growth_preserves_fields_and_equal_order(void) {
         uint32_t value = values[0].value;
         uint32_t group = ecs_target_shared_id(&a, relation) % 4;
         test_assert(group >= previous_group);
-        if (seen && group == previous_group) test_assert(value > previous_value);
+        if (seen && group == previous_group)
+            test_assert(value > previous_value);
         test_uint(entities[value], a.entities[0]);
         test_assert(values == ecs_field(&b, 0));
         test_uint(10, a.count);
-        for (uint32_t i = 0; i < a.count; i++) test_int(value, values[i].value);
+        for (uint32_t i = 0; i < a.count; i++)
+            test_int(value, values[i].value);
         previous_group = group;
         previous_value = value;
         seen++;
@@ -159,13 +177,12 @@ void query_sorted_growth_preserves_fields_and_equal_order(void) {
 
 static void query_test_world(void) {
     ecs_init();
-    
+
     ECS_COMPONENT_REGISTER(QueryPosition);
     ECS_COMPONENT_REGISTER(QueryVelocity);
     ECS_COMPONENT_REGISTER(QueryMass);
     ECS_COMPONENT_REGISTER(QueryDisabled);
     ECS_RESOURCE_REGISTER(QueryResource);
-
 }
 
 static ecs_entity_t query_test_entity(int p, int v, int m) {
@@ -212,10 +229,12 @@ void query_terms_field_order(void) {
 void query_resources_do_not_affect_matching_or_fields(void) {
     query_test_world();
     ecs_entity_t entity = query_test_entity(10, 20, 30);
-    ecs_query_id_t query = ecs_query({
-        .components = { ecs_in(QueryPosition), ecs_in(QueryVelocity) },
-        .resources = { ecs_in(QueryResource) },
-    });
+    ecs_query_id_t query = ecs_query(
+        {
+            .components = { ecs_in(QueryPosition), ecs_in(QueryVelocity) },
+            .resources = { ecs_in(QueryResource) },
+        }
+    );
     ecs_iter_t it = ecs_query_iter(query);
     test_true(ecs_iter_next(&it));
     test_int(1, it.count);
@@ -234,9 +253,11 @@ void query_resources_do_not_affect_matching_or_fields(void) {
 void query_resource_only_matches_all_tables(void) {
     query_test_world();
     query_test_entity(10, 20, 30);
-    ecs_query_id_t query = ecs_query({
-        .resources = { ecs_in(QueryResource) },
-    });
+    ecs_query_id_t query = ecs_query(
+        {
+            .resources = { ecs_in(QueryResource) },
+        }
+    );
     test_uint(1, ecs_query_count(query));
     ecs_iter_t it = ecs_query_iter(query);
     test_true(ecs_iter_next(&it));
@@ -254,8 +275,7 @@ void query_count_matches_current_query_entities(void) {
     ecs_entity_t excluded = query_test_entity(70, 80, 90);
     ecs_add(excluded, Disabled);
 
-    ecs_query_id_t query =
-        ecs_query({ .components = { ecs_in(QueryPosition) } });
+    ecs_query_id_t query = ecs_query({ .components = { ecs_in(QueryPosition) } });
 
     test_uint(2, ecs_query_count(query));
 

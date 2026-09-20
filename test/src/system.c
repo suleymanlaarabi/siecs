@@ -89,16 +89,9 @@ static void parallel_context_system(ecs_iter_t *it) {
 
     test_assert(ecs_execution_context_current()->scheduler_parallel);
 
-    atomic_fetch_add_explicit(
-        &parallel_context_entered,
-        1,
-        memory_order_release
-    );
+    atomic_fetch_add_explicit(&parallel_context_entered, 1, memory_order_release);
 
-    while (atomic_load_explicit(
-               &parallel_context_entered,
-               memory_order_acquire
-           ) < 2) {
+    while (atomic_load_explicit(&parallel_context_entered, memory_order_acquire) < 2) {
     }
 }
 
@@ -293,18 +286,22 @@ void system_parallel_independent_callbacks(void) {
     ecs_set(first, SystemBatchA, { 1 });
     ecs_set(second, SystemBatchB, { 2 });
 
-    ecs_system({
-        .name = "ParallelA",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_in(SystemBatchA) } },
-        .callback = parallel_system_a,
-    });
-    ecs_system({
-        .name = "ParallelB",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_in(SystemBatchB) } },
-        .callback = parallel_system_b,
-    });
+    ecs_system(
+        {
+            .name = "ParallelA",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_in(SystemBatchA) } },
+            .callback = parallel_system_a,
+        }
+    );
+    ecs_system(
+        {
+            .name = "ParallelB",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_in(SystemBatchB) } },
+            .callback = parallel_system_b,
+        }
+    );
 
     ecs_progress();
 
@@ -327,19 +324,23 @@ void system_parallel_worker_context_is_deferred(void) {
     ecs_set(first, SystemBatchA, { 1 });
     ecs_set(second, SystemBatchB, { 2 });
 
-    ecs_system({
-        .name = "ParallelContextA",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_in(SystemBatchA) } },
-        .callback = parallel_context_system,
-    });
+    ecs_system(
+        {
+            .name = "ParallelContextA",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_in(SystemBatchA) } },
+            .callback = parallel_context_system,
+        }
+    );
 
-    ecs_system({
-        .name = "ParallelContextB",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_in(SystemBatchB) } },
-        .callback = parallel_context_system,
-    });
+    ecs_system(
+        {
+            .name = "ParallelContextB",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_in(SystemBatchB) } },
+            .callback = parallel_context_system,
+        }
+    );
 
     ecs_progress();
 
@@ -361,34 +362,42 @@ void system_parallel_query_table_conflicts(void) {
     ecs_add(with_c, SystemBatchC);
     ecs_entity_t without_c = ecs_new();
 
-    ecs_system({
-        .name = "WriteC",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_inout(SystemBatchC) } },
-        .callback = parallel_system_a,
-    });
-    ecs_system({
-        .name = "WriteNotC",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_not(SystemBatchC) } },
-        .callback = parallel_system_b,
-    });
+    ecs_system(
+        {
+            .name = "WriteC",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_inout(SystemBatchC) } },
+            .callback = parallel_system_a,
+        }
+    );
+    ecs_system(
+        {
+            .name = "WriteNotC",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_not(SystemBatchC) } },
+            .callback = parallel_system_b,
+        }
+    );
     ecs_progress();
     test_uint(2, atomic_load(&parallel_entered));
     test_assert(atomic_load(&parallel_stacks[0]) != atomic_load(&parallel_stacks[1]));
 
-    ecs_system({
-        .name = "WriteSameTableA",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_inout(SystemBatchC) } },
-        .callback = same_table_writer_system,
-    });
-    ecs_system({
-        .name = "WriteSameTableB",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_inout(SystemBatchC) } },
-        .callback = same_table_writer_system,
-    });
+    ecs_system(
+        {
+            .name = "WriteSameTableA",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_inout(SystemBatchC) } },
+            .callback = same_table_writer_system,
+        }
+    );
+    ecs_system(
+        {
+            .name = "WriteSameTableB",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_inout(SystemBatchC) } },
+            .callback = same_table_writer_system,
+        }
+    );
     ecs_progress();
     test_uint(0, atomic_load(&same_table_overlap));
     ecs_fini();
@@ -399,18 +408,22 @@ void system_parallel_query_table_conflicts(void) {
 void system_batches_invalidate_after_table_creation(void) {
     ecs_with_features({ .worker_threads = 1 });
     ECS_COMPONENT_REGISTER(SystemBatchC);
-    ecs_system({
-        .name = "LateTableA",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_inout(SystemBatchC) } },
-        .callback = same_table_writer_system,
-    });
-    ecs_system({
-        .name = "LateTableB",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_inout(SystemBatchC) } },
-        .callback = same_table_writer_system,
-    });
+    ecs_system(
+        {
+            .name = "LateTableA",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_inout(SystemBatchC) } },
+            .callback = same_table_writer_system,
+        }
+    );
+    ecs_system(
+        {
+            .name = "LateTableB",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_inout(SystemBatchC) } },
+            .callback = same_table_writer_system,
+        }
+    );
 
     ecs_progress();
     ecs_phase_info_t *phase = ecs_system_index_get_phase(EcsOnUpdate);
@@ -433,9 +446,12 @@ void system_indexed_queries_detect_late_overlap(void) {
         ecs_set(e, SystemPosition, { (int)i });
     }
     for (uint32_t i = 0; i < 2; i++) {
-        ecs_system({ .name = "IndexedWriter", .phase = EcsOnUpdate,
-            .query = { .components = { ecs_inout(SystemPosition), { groups[i], EcsFilter } } },
-            .callback = count_system });
+        ecs_system(
+            { .name = "IndexedWriter",
+              .phase = EcsOnUpdate,
+              .query = { .components = { ecs_inout(SystemPosition), { groups[i], EcsFilter } } },
+              .callback = count_system }
+        );
     }
     ecs_system_index_build_plan();
     ecs_phase_info_t *phase = ecs_system_index_get_phase(EcsOnUpdate);
@@ -452,12 +468,14 @@ void system_indexed_queries_detect_late_overlap(void) {
 void system_main_thread_only(void) {
     atomic_store(&main_thread_only_marker, 0);
     ecs_with_features({ .worker_threads = 1 });
-    ecs_system({
-        .name = "MainThreadOnly",
-        .phase = EcsOnUpdate,
-        .main_thread_only = true,
-        .callback = main_thread_only_system,
-    });
+    ecs_system(
+        {
+            .name = "MainThreadOnly",
+            .phase = EcsOnUpdate,
+            .main_thread_only = true,
+            .callback = main_thread_only_system,
+        }
+    );
 
     uintptr_t main_marker = (uintptr_t)&system_thread_marker;
     ecs_progress();
@@ -469,17 +487,21 @@ void system_parallel_after_is_a_barrier(void) {
     atomic_store(&after_stage, 0);
     ecs_with_features({ .worker_threads = 1 });
 
-    ecs_system_id_t first = ecs_system({
-        .name = "First",
-        .phase = EcsOnUpdate,
-        .callback = after_first_system,
-    });
-    ecs_system({
-        .name = "Second",
-        .phase = EcsOnUpdate,
-        .callback = after_second_system,
-        .after = { first },
-    });
+    ecs_system_id_t first = ecs_system(
+        {
+            .name = "First",
+            .phase = EcsOnUpdate,
+            .callback = after_first_system,
+        }
+    );
+    ecs_system(
+        {
+            .name = "Second",
+            .phase = EcsOnUpdate,
+            .callback = after_second_system,
+            .after = { first },
+        }
+    );
 
     ecs_progress();
     test_uint(2, atomic_load(&after_stage));
@@ -492,18 +514,22 @@ void system_resource_access_conflicts(void) {
     atomic_store(&parallel_stacks[1], 0);
 
     ecs_with_features({ .worker_threads = 1 });
-    ecs_system({
-        .name = "ReadResourceA",
-        .phase = EcsOnUpdate,
-        .query = { .resources = { ecs_in(DeltaTime) } },
-        .callback = parallel_system_a,
-    });
-    ecs_system({
-        .name = "ReadResourceB",
-        .phase = EcsOnUpdate,
-        .query = { .resources = { ecs_in(DeltaTime) } },
-        .callback = parallel_system_b,
-    });
+    ecs_system(
+        {
+            .name = "ReadResourceA",
+            .phase = EcsOnUpdate,
+            .query = { .resources = { ecs_in(DeltaTime) } },
+            .callback = parallel_system_a,
+        }
+    );
+    ecs_system(
+        {
+            .name = "ReadResourceB",
+            .phase = EcsOnUpdate,
+            .query = { .resources = { ecs_in(DeltaTime) } },
+            .callback = parallel_system_b,
+        }
+    );
 
     ecs_progress();
     test_uint(2, atomic_load(&parallel_entered));
@@ -512,18 +538,22 @@ void system_resource_access_conflicts(void) {
 
     atomic_store(&resource_stage, 0);
     ecs_with_features({ .worker_threads = 1 });
-    ecs_system({
-        .name = "WriteResource",
-        .phase = EcsOnUpdate,
-        .query = { .resources = { ecs_out(DeltaTime) } },
-        .callback = resource_writer_system,
-    });
-    ecs_system({
-        .name = "ReadResourceAfterWrite",
-        .phase = EcsOnUpdate,
-        .query = { .resources = { ecs_in(DeltaTime) } },
-        .callback = resource_reader_system,
-    });
+    ecs_system(
+        {
+            .name = "WriteResource",
+            .phase = EcsOnUpdate,
+            .query = { .resources = { ecs_out(DeltaTime) } },
+            .callback = resource_writer_system,
+        }
+    );
+    ecs_system(
+        {
+            .name = "ReadResourceAfterWrite",
+            .phase = EcsOnUpdate,
+            .query = { .resources = { ecs_in(DeltaTime) } },
+            .callback = resource_reader_system,
+        }
+    );
 
     ecs_progress();
     test_uint(2, atomic_load(&resource_stage));
@@ -537,19 +567,23 @@ void system_parallel_structural_changes_flush_at_barrier(void) {
     ECS_COMPONENT_REGISTER(SystemTag);
     system_entity = create_system_entity(1);
 
-    ecs_system_id_t writer = ecs_system({
-        .name = "AddTagAtBarrier",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_in(SystemPosition) } },
-        .callback = add_tag_to_global_entity,
-    });
-    ecs_system({
-        .name = "ReadTagAfterBarrier",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_in(SystemTag) } },
-        .callback = count_tag_system,
-        .after = { writer },
-    });
+    ecs_system_id_t writer = ecs_system(
+        {
+            .name = "AddTagAtBarrier",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_in(SystemPosition) } },
+            .callback = add_tag_to_global_entity,
+        }
+    );
+    ecs_system(
+        {
+            .name = "ReadTagAfterBarrier",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_in(SystemTag) } },
+            .callback = count_tag_system,
+            .after = { writer },
+        }
+    );
 
     ecs_progress();
     test_uint(1, system_seen);
@@ -560,11 +594,13 @@ void system_parallel_structural_changes_flush_at_barrier(void) {
 void system_manual_run_is_synchronous_with_workers(void) {
     atomic_store(&manual_system_calls, 0);
     ecs_with_features({ .worker_threads = 1 });
-    ecs_system_id_t system = ecs_system({
-        .name = "Manual",
-        .phase = EcsOnUpdate,
-        .callback = manual_system,
-    });
+    ecs_system_id_t system = ecs_system(
+        {
+            .name = "Manual",
+            .phase = EcsOnUpdate,
+            .callback = manual_system,
+        }
+    );
 
     ecs_run_system(system);
     test_uint(1, atomic_load(&manual_system_calls));
@@ -589,18 +625,22 @@ void system_worker_auto_and_reinit(void) {
     ecs_entity_t second = ecs_new();
     ecs_set(first, SystemBatchA, { 1 });
     ecs_set(second, SystemBatchB, { 2 });
-    ecs_system({
-        .name = "StressA",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_in(SystemBatchA) } },
-        .callback = stress_system,
-    });
-    ecs_system({
-        .name = "StressB",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_in(SystemBatchB) } },
-        .callback = stress_system,
-    });
+    ecs_system(
+        {
+            .name = "StressA",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_in(SystemBatchA) } },
+            .callback = stress_system,
+        }
+    );
+    ecs_system(
+        {
+            .name = "StressB",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_in(SystemBatchB) } },
+            .callback = stress_system,
+        }
+    );
     for (int frame = 0; frame < 500; frame++) {
         ecs_progress();
     }
@@ -1135,33 +1175,32 @@ void system_interval_throttles_progress(void) {
     reset_system_test_state();
     ecs_init();
 
-    ecs_system({
-        .name = "Interval",
-        .phase = EcsOnUpdate,
-        .callback = interval_system,
-        .interval = 0.5,
-    });
+    ecs_system(
+        {
+            .name = "Interval",
+            .phase = EcsOnUpdate,
+            .callback = interval_system,
+            .interval = 0.5,
+        }
+    );
 
     ecs_progress();
     test_uint(0, system_calls);
 
-    ecs_world.last_time =
-        ecs_platform_time_now_sec() - 2.0;
+    ecs_world.last_time = ecs_platform_time_now_sec() - 2.0;
 
     ecs_progress();
 
     test_uint(1, system_calls);
     test_assert(system_delta_time >= 1.9f);
 
-    ecs_world.last_time =
-        ecs_platform_time_now_sec() - 0.001;
+    ecs_world.last_time = ecs_platform_time_now_sec() - 0.001;
 
     ecs_progress();
 
     test_uint(1, system_calls);
 
-    ecs_world.last_time =
-        ecs_platform_time_now_sec() - 0.6;
+    ecs_world.last_time = ecs_platform_time_now_sec() - 0.6;
 
     ecs_progress();
 
@@ -1175,18 +1214,19 @@ void system_interval_manual_execution_is_forced(void) {
     reset_system_test_state();
     ecs_init();
 
-    ecs_system_id_t system = ecs_system({
-        .name = "IntervalManual",
-        .phase = EcsOnUpdate,
-        .callback = interval_system,
-        .interval = 0.5,
-    });
+    ecs_system_id_t system = ecs_system(
+        {
+            .name = "IntervalManual",
+            .phase = EcsOnUpdate,
+            .callback = interval_system,
+            .interval = 0.5,
+        }
+    );
 
     ecs_progress();
     test_uint(0, system_calls);
 
-    ecs_world.last_time =
-        ecs_platform_time_now_sec() - 0.1;
+    ecs_world.last_time = ecs_platform_time_now_sec() - 0.1;
 
     ecs_progress();
     test_uint(0, system_calls);
@@ -1197,8 +1237,7 @@ void system_interval_manual_execution_is_forced(void) {
     ecs_run_phase(EcsOnUpdate);
     test_uint(2, system_calls);
 
-    ecs_world.last_time =
-        ecs_platform_time_now_sec() - 0.45;
+    ecs_world.last_time = ecs_platform_time_now_sec() - 0.45;
 
     ecs_progress();
 
@@ -1211,17 +1250,18 @@ void system_interval_resets_on_enable_transition(void) {
     reset_system_test_state();
     ecs_init();
 
-    ecs_system_id_t system = ecs_system({
-        .name = "IntervalEnable",
-        .phase = EcsOnUpdate,
-        .callback = interval_system,
-        .interval = 0.5,
-    });
+    ecs_system_id_t system = ecs_system(
+        {
+            .name = "IntervalEnable",
+            .phase = EcsOnUpdate,
+            .callback = interval_system,
+            .interval = 0.5,
+        }
+    );
 
     ecs_progress();
 
-    ecs_world.last_time =
-        ecs_platform_time_now_sec() - 0.3;
+    ecs_world.last_time = ecs_platform_time_now_sec() - 0.3;
 
     ecs_progress();
     test_uint(0, system_calls);
@@ -1229,14 +1269,12 @@ void system_interval_resets_on_enable_transition(void) {
     ecs_system_disable(system);
     ecs_system_enable(system);
 
-    ecs_world.last_time =
-        ecs_platform_time_now_sec() - 0.25;
+    ecs_world.last_time = ecs_platform_time_now_sec() - 0.25;
 
     ecs_progress();
     test_uint(0, system_calls);
 
-    ecs_world.last_time =
-        ecs_platform_time_now_sec() - 0.3;
+    ecs_world.last_time = ecs_platform_time_now_sec() - 0.3;
 
     ecs_progress();
     test_uint(1, system_calls);
@@ -1248,12 +1286,14 @@ void system_interval_does_not_gate_start_phase(void) {
     reset_system_test_state();
     ecs_init();
 
-    ecs_system({
-        .name = "IntervalStart",
-        .phase = EcsStart,
-        .callback = interval_system,
-        .interval = 60.0,
-    });
+    ecs_system(
+        {
+            .name = "IntervalStart",
+            .phase = EcsStart,
+            .callback = interval_system,
+            .interval = 60.0,
+        }
+    );
 
     ecs_progress();
     ecs_progress();
@@ -1285,32 +1325,40 @@ void system_custom_phase(void) {
     custom_phase_count = 0;
     ecs_init();
 
-    ecs_phase_t physics_phase = ecs_phase({
-        .name = "Physics",
-        .after = EcsOnUpdate,
-        .before = EcsPostUpdate,
-    });
+    ecs_phase_t physics_phase = ecs_phase(
+        {
+            .name = "Physics",
+            .after = EcsOnUpdate,
+            .before = EcsPostUpdate,
+        }
+    );
 
     test_assert(physics_phase >= 11);
     test_str("Physics", ecs_phase_name(physics_phase));
 
-    ecs_system({
-        .name = "Sys1_OnUpdate",
-        .phase = EcsOnUpdate,
-        .callback = custom_phase_sys1,
-    });
+    ecs_system(
+        {
+            .name = "Sys1_OnUpdate",
+            .phase = EcsOnUpdate,
+            .callback = custom_phase_sys1,
+        }
+    );
 
-    ecs_system({
-        .name = "Sys2_Physics",
-        .phase = physics_phase,
-        .callback = custom_phase_sys2,
-    });
+    ecs_system(
+        {
+            .name = "Sys2_Physics",
+            .phase = physics_phase,
+            .callback = custom_phase_sys2,
+        }
+    );
 
-    ecs_system({
-        .name = "Sys3_PostUpdate",
-        .phase = EcsPostUpdate,
-        .callback = custom_phase_sys3,
-    });
+    ecs_system(
+        {
+            .name = "Sys3_PostUpdate",
+            .phase = EcsPostUpdate,
+            .callback = custom_phase_sys3,
+        }
+    );
 
     ecs_progress();
 

@@ -14,48 +14,69 @@ ECS_COMPONENT_DEFINE(DefaultRenderable);
 ECS_COMPONENT_DEFINE(DefaultSprite);
 
 ECS_RELATION_DECLARE(TestLayer);
-ECS_RELATION_DEFINE(TestLayer, {
-    .storage = EcsRelationDense,
-    .on_delete_target = EcsRemoveRelation,
-});
+ECS_RELATION_DEFINE(
+    TestLayer,
+    {
+        .storage = EcsRelationDense,
+        .on_delete_target = EcsRemoveRelation,
+    }
+);
 
 ECS_RELATION_DECLARE(DenseRel);
-ECS_RELATION_DEFINE(DenseRel, {
-    .storage = EcsRelationDense,
-    .on_delete_target = EcsRemoveRelation,
-});
+ECS_RELATION_DEFINE(
+    DenseRel,
+    {
+        .storage = EcsRelationDense,
+        .on_delete_target = EcsRemoveRelation,
+    }
+);
 
 ECS_RELATION_DECLARE(DenseDelete);
-ECS_RELATION_DEFINE(DenseDelete, {
-    .storage = EcsRelationDense,
-    .on_delete_target = EcsDeleteSources,
-});
+ECS_RELATION_DEFINE(
+    DenseDelete,
+    {
+        .storage = EcsRelationDense,
+        .on_delete_target = EcsDeleteSources,
+    }
+);
 
 ECS_RELATION_DECLARE(DepthRel);
-ECS_RELATION_DEFINE(DepthRel, {
-    .storage = EcsRelationByDepth,
-    .on_delete_target = EcsRemoveRelation,
-    .acyclic = true,
-});
+ECS_RELATION_DEFINE(
+    DepthRel,
+    {
+        .storage = EcsRelationByDepth,
+        .on_delete_target = EcsRemoveRelation,
+        .acyclic = true,
+    }
+);
 
 ECS_RELATION_DECLARE(GroupOf);
-ECS_RELATION_DEFINE(GroupOf, {
-    .storage = EcsRelationByTarget,
-    .on_delete_target = EcsRemoveRelation,
-});
+ECS_RELATION_DEFINE(
+    GroupOf,
+    {
+        .storage = EcsRelationByTarget,
+        .on_delete_target = EcsRemoveRelation,
+    }
+);
 
 ECS_RELATION_DECLARE(OwnedBy);
-ECS_RELATION_DEFINE(OwnedBy, {
-    .storage = EcsRelationByTarget,
-    .on_delete_target = EcsDeleteSources,
-});
+ECS_RELATION_DEFINE(
+    OwnedBy,
+    {
+        .storage = EcsRelationByTarget,
+        .on_delete_target = EcsDeleteSources,
+    }
+);
 
 ECS_RELATION_DECLARE(LocatedIn);
-ECS_RELATION_DEFINE(LocatedIn, {
-    .storage = EcsRelationByTarget,
-    .on_delete_target = EcsRemoveRelation,
-    .acyclic = true,
-});
+ECS_RELATION_DEFINE(
+    LocatedIn,
+    {
+        .storage = EcsRelationByTarget,
+        .on_delete_target = EcsRemoveRelation,
+        .acyclic = true,
+    }
+);
 
 static void register_value(void) { ECS_COMPONENT_REGISTER(RelValue); }
 
@@ -327,13 +348,11 @@ void childof_dense_unrelate_keeps_source_indices(void) {
     ecs_relate(c, DenseRel, target);
     ecs_relate(d, DenseRel, target);
 
-    ecs_component_t target_component =
-        ecs_relation_record(ecs_rid(DenseRel))->component;
+    ecs_component_t target_component = ecs_relation_record(ecs_rid(DenseRel))->component;
 
     ecs_component_t source_component = target_component + 1;
 
-    RelationSource *sources =
-        ecs_get_cid(target, source_component);
+    RelationSource *sources = ecs_get_cid(target, source_component);
 
     test_uint(4, sources->entities.size);
 
@@ -346,8 +365,7 @@ void childof_dense_unrelate_keeps_source_indices(void) {
     test_uint(d, *sicore_vec_get(&sources->entities, 1, ecs_entity_t));
     test_uint(c, *sicore_vec_get(&sources->entities, 2, ecs_entity_t));
 
-    RelationTarget *d_target =
-        ecs_get_cid(d, target_component);
+    RelationTarget *d_target = ecs_get_cid(d, target_component);
 
     test_uint(1, d_target->source_index);
 
@@ -359,8 +377,7 @@ void childof_dense_unrelate_keeps_source_indices(void) {
     test_uint(a, *sicore_vec_get(&sources->entities, 0, ecs_entity_t));
     test_uint(c, *sicore_vec_get(&sources->entities, 1, ecs_entity_t));
 
-    RelationTarget *c_target =
-        ecs_get_cid(c, target_component);
+    RelationTarget *c_target = ecs_get_cid(c, target_component);
 
     test_uint(1, c_target->source_index);
 
@@ -460,10 +477,12 @@ void childof_bydepth_depth_and_cascade(void) {
     ecs_relate(child, ChildOf, root);
     ecs_relate(grandchild, ChildOf, child);
 
-    ecs_query_id_t q = ecs_query({
-        .components = { ecs_in(RelValue) },
-        .order_by = ecs_order_by_depth(ChildOf),
-    });
+    ecs_query_id_t q = ecs_query(
+        {
+            .components = { ecs_in(RelValue) },
+            .order_by = ecs_order_by_depth(ChildOf),
+        }
+    );
     int expected = 0;
     ecs_iter_t it = ecs_query_iter(q);
     while (ecs_iter_next(&it)) {
@@ -537,10 +556,12 @@ void childof_cascade_cache_accepts_new_depth(void) {
     register_value();
     ecs_entity_t root = ecs_new();
     ecs_set(root, RelValue, { 0 });
-    ecs_query_id_t q = ecs_query({
-        .components = { ecs_in(RelValue) },
-        .order_by = ecs_order_by_depth(ChildOf),
-    });
+    ecs_query_id_t q = ecs_query(
+        {
+            .components = { ecs_in(RelValue) },
+            .order_by = ecs_order_by_depth(ChildOf),
+        }
+    );
 
     ecs_entity_t child = ecs_new();
     ecs_entity_t grandchild = ecs_new();
@@ -575,10 +596,12 @@ void childof_bytarget_exact_query_and_retarget(void) {
     ecs_relate(x, GroupOf, a);
     ecs_relate(y, GroupOf, a);
 
-    ecs_query_id_t q = ecs_query({
-        .components = { ecs_in(RelValue) },
-        .relations = { ecs_to(GroupOf, a) },
-    });
+    ecs_query_id_t q = ecs_query(
+        {
+            .components = { ecs_in(RelValue) },
+            .relations = { ecs_to(GroupOf, a) },
+        }
+    );
     test_int(2, ecs_query_count(q));
     ecs_query_fini(q);
 
@@ -600,7 +623,7 @@ void childof_bytarget_exact_query_spans_tables(void) {
     ecs_init();
     ECS_RELATION_REGISTER(GroupOf);
     ecs_entity_t target = ecs_new();
-    ecs_component_t component = ecs_component({0});
+    ecs_component_t component = ecs_component({ 0 });
     for (uint16_t i = 0; i < 5; i++) {
         ecs_entity_t source = ecs_new();
         ecs_add_cid(source, component);
@@ -617,11 +640,7 @@ void childof_bytarget_exact_query_spans_tables(void) {
     ecs_fini();
 }
 
-static int childof_order_by_target_desc(
-    const ecs_table_t *a,
-    const ecs_table_t *b,
-    uint64_t data
-) {
+static int childof_order_by_target_desc(const ecs_table_t *a, const ecs_table_t *b, uint64_t data) {
     ecs_entity_t target_a = ecs_table_target_id(a, (ecs_relation_id_t)data);
     ecs_entity_t target_b = ecs_table_target_id(b, (ecs_relation_id_t)data);
     return target_a < target_b ? 1 : target_a > target_b ? -1 : 0;
@@ -634,10 +653,12 @@ void childof_bytarget_order_by_target(void) {
 
     ecs_entity_t first = ecs_new();
     ecs_entity_t second = ecs_new();
-    ecs_query_id_t q = ecs_query({
-        .components = { ecs_in(RelValue) },
-        .order_by = ecs_order_by_target(GroupOf),
-    });
+    ecs_query_id_t q = ecs_query(
+        {
+            .components = { ecs_in(RelValue) },
+            .order_by = ecs_order_by_target(GroupOf),
+        }
+    );
 
     ecs_entity_t second_source = ecs_new();
     ecs_entity_t first_source = ecs_new();
@@ -730,9 +751,11 @@ void childof_multiple_bytarget_relations_share_one_type(void) {
     test_int(2, table->type.pair_count);
     test_uint(group, ecs_target(source, GroupOf));
     test_uint(location, ecs_target(source, LocatedIn));
-    ecs_query_id_t query = ecs_query({
-        .relations = { ecs_to(GroupOf, group), ecs_to(LocatedIn, location) },
-    });
+    ecs_query_id_t query = ecs_query(
+        {
+            .relations = { ecs_to(GroupOf, group), ecs_to(LocatedIn, location) },
+        }
+    );
     test_int(1, ecs_query_count(query));
     ecs_query_fini(query);
     ecs_fini();
@@ -771,10 +794,12 @@ void childof_up_finds_nearest_ancestor(void) {
     ecs_relate(middle, LocatedIn, root);
     ecs_relate(leaf, LocatedIn, middle);
 
-    ecs_query_id_t q = ecs_query({
-        .components = { ecs_up(RelValue, LocatedIn) },
-        .relations = { ecs_to(LocatedIn, middle) },
-    });
+    ecs_query_id_t q = ecs_query(
+        {
+            .components = { ecs_up(RelValue, LocatedIn) },
+            .relations = { ecs_to(LocatedIn, middle) },
+        }
+    );
     ecs_iter_t it = ecs_query_iter(q);
     test_true(ecs_iter_next(&it));
     RelValue *value = ecs_field(&it, 0);
@@ -791,10 +816,12 @@ void childof_up_optional_returns_null(void) {
     ecs_entity_t target = ecs_new();
     ecs_entity_t source = ecs_new();
     ecs_relate(source, LocatedIn, target);
-    ecs_query_id_t q = ecs_query({
-        .components = { ecs_up_optional(RelValue, LocatedIn) },
-        .relations = { ecs_rel(LocatedIn) },
-    });
+    ecs_query_id_t q = ecs_query(
+        {
+            .components = { ecs_up_optional(RelValue, LocatedIn) },
+            .relations = { ecs_rel(LocatedIn) },
+        }
+    );
     ecs_iter_t it = ecs_query_iter(q);
     test_true(ecs_iter_next(&it));
     test_null(ecs_field(&it, 0));
@@ -863,18 +890,13 @@ static void relation_observer_capture_source(ecs_observer_event_t *event) {
 }
 
 static RelationSource *childof_owned_sources(ecs_entity_t parent) {
-    const ecs_component_t source_component =
-        ecs_relation_record(ecs_rid(ChildOf))->component + 1;
+    const ecs_component_t source_component = ecs_relation_record(ecs_rid(ChildOf))->component + 1;
 
-    return ecs_has_cid_owned(parent, source_component)
-        ? ecs_get_cid(parent, source_component)
-        : NULL;
+    return ecs_has_cid_owned(parent, source_component) ? ecs_get_cid(parent, source_component)
+                                                       : NULL;
 }
 
-static ecs_entity_t childof_instance_child(
-    ecs_entity_t parent,
-    ecs_entity_t base
-) {
+static ecs_entity_t childof_instance_child(ecs_entity_t parent, ecs_entity_t base) {
     RelationSource *sources = childof_owned_sources(parent);
 
     if (!sources) {
@@ -882,12 +904,7 @@ static ecs_entity_t childof_instance_child(
     }
 
     for (uint32_t i = 0; i < sources->entities.size; i++) {
-        const ecs_entity_t child =
-            *sicore_vec_get(
-                &sources->entities,
-                i,
-                ecs_entity_t
-            );
+        const ecs_entity_t child = *sicore_vec_get(&sources->entities, i, ecs_entity_t);
 
         if (ecs_entity_base(child) == base) {
             return child;
@@ -995,15 +1012,12 @@ void childof_isa_clones_child_tree(void) {
     ecs_entity_t instance = ecs_new();
     ecs_relate_id(instance, ecs_rid(IsA), base_root);
 
-    RelationSource *instance_sources =
-        childof_owned_sources(instance);
+    RelationSource *instance_sources = childof_owned_sources(instance);
     test_assert(instance_sources != NULL);
     test_uint(2, instance_sources->entities.size);
 
-    ecs_entity_t child_a =
-        childof_instance_child(instance, base_child_a);
-    ecs_entity_t child_b =
-        childof_instance_child(instance, base_child_b);
+    ecs_entity_t child_a = childof_instance_child(instance, base_child_a);
+    ecs_entity_t child_b = childof_instance_child(instance, base_child_b);
 
     test_assert(child_a != 0);
     test_assert(child_b != 0);
@@ -1014,46 +1028,22 @@ void childof_isa_clones_child_tree(void) {
     test_uint(base_child_a, ecs_entity_base(child_a));
     test_uint(base_child_b, ecs_entity_base(child_b));
 
-    ecs_entity_t grandchild =
-        childof_instance_child(child_a, base_grandchild);
+    ecs_entity_t grandchild = childof_instance_child(child_a, base_grandchild);
 
     test_assert(grandchild != 0);
     test_uint(child_a, ecs_target(grandchild, ChildOf));
     test_uint(base_grandchild, ecs_entity_base(grandchild));
 
-    RelationSource *base_root_sources =
-        childof_owned_sources(base_root);
+    RelationSource *base_root_sources = childof_owned_sources(base_root);
     test_assert(base_root_sources != NULL);
     test_uint(2, base_root_sources->entities.size);
-    test_uint(
-        base_child_a,
-        *sicore_vec_get(
-            &base_root_sources->entities,
-            0,
-            ecs_entity_t
-        )
-    );
-    test_uint(
-        base_child_b,
-        *sicore_vec_get(
-            &base_root_sources->entities,
-            1,
-            ecs_entity_t
-        )
-    );
+    test_uint(base_child_a, *sicore_vec_get(&base_root_sources->entities, 0, ecs_entity_t));
+    test_uint(base_child_b, *sicore_vec_get(&base_root_sources->entities, 1, ecs_entity_t));
 
-    RelationSource *base_child_sources =
-        childof_owned_sources(base_child_a);
+    RelationSource *base_child_sources = childof_owned_sources(base_child_a);
     test_assert(base_child_sources != NULL);
     test_uint(1, base_child_sources->entities.size);
-    test_uint(
-        base_grandchild,
-        *sicore_vec_get(
-            &base_child_sources->entities,
-            0,
-            ecs_entity_t
-        )
-    );
+    test_uint(base_grandchild, *sicore_vec_get(&base_child_sources->entities, 0, ecs_entity_t));
 
     ecs_fini();
 }
@@ -1072,35 +1062,20 @@ void childof_isa_clone_snapshot_and_same_target_noop(void) {
     test_assert(sources != NULL);
     test_uint(1, sources->entities.size);
 
-    const ecs_entity_t first_clone =
-        *sicore_vec_get(
-            &sources->entities,
-            0,
-            ecs_entity_t
-        );
+    const ecs_entity_t first_clone = *sicore_vec_get(&sources->entities, 0, ecs_entity_t);
 
     ecs_is_a(instance, first_base);
 
     sources = childof_owned_sources(instance);
     test_uint(1, sources->entities.size);
-    test_uint(
-        first_clone,
-        *sicore_vec_get(
-            &sources->entities,
-            0,
-            ecs_entity_t
-        )
-    );
+    test_uint(first_clone, *sicore_vec_get(&sources->entities, 0, ecs_entity_t));
 
     ecs_entity_t late_child = ecs_new();
     ecs_relate(late_child, ChildOf, first_base);
 
     sources = childof_owned_sources(instance);
     test_uint(1, sources->entities.size);
-    test_uint(
-        0,
-        childof_instance_child(instance, late_child)
-    );
+    test_uint(0, childof_instance_child(instance, late_child));
 
     ecs_entity_t second_base = ecs_new();
     ecs_entity_t second_base_child = ecs_new();
@@ -1113,8 +1088,7 @@ void childof_isa_clone_snapshot_and_same_target_noop(void) {
     test_true(ecs_is_alive(first_clone));
     test_uint(instance, ecs_target(first_clone, ChildOf));
 
-    const ecs_entity_t second_clone =
-        childof_instance_child(instance, second_base_child);
+    const ecs_entity_t second_clone = childof_instance_child(instance, second_base_child);
     test_assert(second_clone != 0);
     test_uint(instance, ecs_target(second_clone, ChildOf));
 
@@ -1148,43 +1122,25 @@ void childof_isa_clones_child_tree_deferred(void) {
     ecs_relate_id(instance, ecs_rid(IsA), base_root);
     ecs_defer_end();
 
-    ecs_entity_t child =
-        childof_instance_child(instance, base_child);
+    ecs_entity_t child = childof_instance_child(instance, base_child);
     test_assert(child != 0);
     test_uint(instance, ecs_target(child, ChildOf));
     test_uint(base_child, ecs_entity_base(child));
 
-    ecs_entity_t grandchild =
-        childof_instance_child(child, base_grandchild);
+    ecs_entity_t grandchild = childof_instance_child(child, base_grandchild);
     test_assert(grandchild != 0);
     test_uint(child, ecs_target(grandchild, ChildOf));
     test_uint(base_grandchild, ecs_entity_base(grandchild));
 
-    RelationSource *base_sources =
-        childof_owned_sources(base_root);
+    RelationSource *base_sources = childof_owned_sources(base_root);
     test_assert(base_sources != NULL);
     test_uint(1, base_sources->entities.size);
-    test_uint(
-        base_child,
-        *sicore_vec_get(
-            &base_sources->entities,
-            0,
-            ecs_entity_t
-        )
-    );
+    test_uint(base_child, *sicore_vec_get(&base_sources->entities, 0, ecs_entity_t));
 
-    RelationSource *base_child_sources =
-        childof_owned_sources(base_child);
+    RelationSource *base_child_sources = childof_owned_sources(base_child);
     test_assert(base_child_sources != NULL);
     test_uint(1, base_child_sources->entities.size);
-    test_uint(
-        base_grandchild,
-        *sicore_vec_get(
-            &base_child_sources->entities,
-            0,
-            ecs_entity_t
-        )
-    );
+    test_uint(base_grandchild, *sicore_vec_get(&base_child_sources->entities, 0, ecs_entity_t));
 
     ecs_fini();
 }
@@ -1196,14 +1152,18 @@ void childof_generic_isa_relation_event(void) {
     ecs_entity_t entity = ecs_new();
 
     relation_observer_state = (RelationObserverState){};
-    ecs_observer({
-        .on = EcsOnRelationSet,
-        .callback = relation_transition_observer_callback,
-    });
-    ecs_observer({
-        .on = EcsOnRelationRemove,
-        .callback = relation_transition_observer_callback,
-    });
+    ecs_observer(
+        {
+            .on = EcsOnRelationSet,
+            .callback = relation_transition_observer_callback,
+        }
+    );
+    ecs_observer(
+        {
+            .on = EcsOnRelationRemove,
+            .callback = relation_transition_observer_callback,
+        }
+    );
 
     ecs_relate_id(entity, ecs_rid(IsA), first);
     test_int(1, relation_observer_state.set_calls);
@@ -1241,19 +1201,25 @@ void childof_relation_observer_events(void) {
 
     relation_observer_state = (RelationObserverState){};
     relation_observer_group_filter_calls = 0;
-    ecs_observer({
-        .on = EcsOnRelationSet,
-        .callback = relation_transition_observer_callback,
-    });
-    ecs_observer({
-        .on = EcsOnRelationRemove,
-        .callback = relation_transition_observer_callback,
-    });
-    ecs_observer({
-        .on = EcsOnRelationSet,
-        .query.relations = { ecs_rel(GroupOf) },
-        .callback = relation_observer_group_filter_callback,
-    });
+    ecs_observer(
+        {
+            .on = EcsOnRelationSet,
+            .callback = relation_transition_observer_callback,
+        }
+    );
+    ecs_observer(
+        {
+            .on = EcsOnRelationRemove,
+            .callback = relation_transition_observer_callback,
+        }
+    );
+    ecs_observer(
+        {
+            .on = EcsOnRelationSet,
+            .query.relations = { ecs_rel(GroupOf) },
+            .callback = relation_observer_group_filter_callback,
+        }
+    );
 
     ecs_relate(dense_source, DenseRel, a);
     test_int(1, relation_observer_state.set_calls);
@@ -1348,10 +1314,12 @@ void childof_relation_observer_reports_relation_without_component(void) {
     ecs_entity_t target = ecs_new();
     relation_observer_component = UINT16_MAX;
     relation_observer_relation = 0;
-    ecs_observer({
-        .on = EcsOnRelationSet,
-        .callback = relation_observer_capture_source,
-    });
+    ecs_observer(
+        {
+            .on = EcsOnRelationSet,
+            .callback = relation_observer_capture_source,
+        }
+    );
 
     ecs_relate(source, DenseRel, target);
 
@@ -1382,10 +1350,12 @@ void childof_query_slot_reuses_component_and_relation_terms(void) {
     test_uint(1, ecs_query_count(components));
     ecs_query_fini(components);
 
-    ecs_query_id_t relation = ecs_query({
-        .components = { ecs_in(RelValue) },
-        .relations = { ecs_to(GroupOf, group) },
-    });
+    ecs_query_id_t relation = ecs_query(
+        {
+            .components = { ecs_in(RelValue) },
+            .relations = { ecs_to(GroupOf, group) },
+        }
+    );
     test_uint(components, relation);
     test_uint(1, ecs_query_count(relation));
     ecs_query_fini(relation);
@@ -1415,21 +1385,25 @@ void childof_relation_only_system_and_observer(void) {
     ecs_relate(member, GroupOf, group);
 
     relation_system_rows = 0;
-    ecs_system_id_t system = ecs_system({
-        .query.relations = { ecs_to(GroupOf, group) },
-        .callback = relation_system_callback,
-    });
+    ecs_system_id_t system = ecs_system(
+        {
+            .query.relations = { ecs_to(GroupOf, group) },
+            .callback = relation_system_callback,
+        }
+    );
     ecs_run_system(system);
     test_int(1, relation_system_rows);
 
     uint32_t observer_calls = 0;
     ecs_event_t event = ecs_event();
-    ecs_observer({
-        .on = event,
-        .query.relations = { ecs_to(GroupOf, group) },
-        .callback = relation_observer_callback,
-        .user_data = (uintptr_t)&observer_calls,
-    });
+    ecs_observer(
+        {
+            .on = event,
+            .query.relations = { ecs_to(GroupOf, group) },
+            .callback = relation_observer_callback,
+            .user_data = (uintptr_t)&observer_calls,
+        }
+    );
     ecs_observer_trigger(member, event, NULL);
     ecs_observer_trigger(plain, event, NULL);
     test_int(1, observer_calls);

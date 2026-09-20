@@ -23,17 +23,16 @@
 /* Convenience macro for exporting symbols */
 #ifndef siecs_test_my_module_STATIC
 #if defined(siecs_test_my_module_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
-  #define SIECS_TEST_MY_MODULE_API __declspec(dllexport)
+#define SIECS_TEST_MY_MODULE_API __declspec(dllexport)
 #elif defined(siecs_test_my_module_EXPORTS)
-  #define SIECS_TEST_MY_MODULE_API __attribute__((__visibility__("default")))
+#define SIECS_TEST_MY_MODULE_API __attribute__((__visibility__("default")))
 #elif defined(_MSC_VER)
-  #define SIECS_TEST_MY_MODULE_API __declspec(dllimport)
+#define SIECS_TEST_MY_MODULE_API __declspec(dllimport)
 #else
-  #define SIECS_TEST_MY_MODULE_API
+#define SIECS_TEST_MY_MODULE_API
 #endif
 #else
-  #define SIECS_TEST_MY_MODULE_API
+#define SIECS_TEST_MY_MODULE_API
 #endif
 
 #endif
-

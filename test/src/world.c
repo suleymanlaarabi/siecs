@@ -28,20 +28,26 @@ void world_at_fini_runs_all_in_reverse_registration_order(void) {
 
     ecs_init();
 
-    ecs_at_fini({
-        .callback = record_fini,
-        .data = &first,
-    });
+    ecs_at_fini(
+        {
+            .callback = record_fini,
+            .data = &first,
+        }
+    );
 
-    ecs_at_fini({
-        .callback = record_fini,
-        .data = &second,
-    });
+    ecs_at_fini(
+        {
+            .callback = record_fini,
+            .data = &second,
+        }
+    );
 
-    ecs_at_fini({
-        .callback = record_fini,
-        .data = &third,
-    });
+    ecs_at_fini(
+        {
+            .callback = record_fini,
+            .data = &third,
+        }
+    );
 
     ecs_fini();
 
@@ -56,10 +62,12 @@ void world_at_fini_is_cleared_on_restart(void) {
 
     ecs_init();
 
-    ecs_at_fini({
-        .callback = increment_fini,
-        .data = &calls,
-    });
+    ecs_at_fini(
+        {
+            .callback = increment_fini,
+            .data = &calls,
+        }
+    );
 
     ecs_fini();
 

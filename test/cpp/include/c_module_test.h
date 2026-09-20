@@ -3,9 +3,7 @@
 
 #include <siecs.h>
 
-ECS_MODULE_DECLARE(cpp_c_module, {
-    int gravity;
-});
+ECS_MODULE_DECLARE(cpp_c_module, { int gravity; });
 
 #ifdef __cplusplus
 extern "C" {

@@ -32,12 +32,14 @@ int siecs_wasm_smoke(void) {
     ecs_entity_t entity = ecs_new();
     ecs_set(entity, WasmPosition, { .value = 7 });
 
-    ecs_system({
-        .name = "WasmSmoke",
-        .phase = EcsOnUpdate,
-        .query = { .components = { ecs_inout(WasmPosition) } },
-        .callback = wasm_system,
-    });
+    ecs_system(
+        {
+            .name = "WasmSmoke",
+            .phase = EcsOnUpdate,
+            .query = { .components = { ecs_inout(WasmPosition) } },
+            .callback = wasm_system,
+        }
+    );
 
     if (!ecs_progress()) {
         ecs_fini();
@@ -46,8 +48,7 @@ int siecs_wasm_smoke(void) {
 
     WasmPosition *position = ecs_get(entity, WasmPosition);
     const DeltaTime *delta_time = ecs_get_resource_read(DeltaTime);
-    bool valid = position && position->value == 12 && delta_time &&
-                 ecs_is_alive(entity);
+    bool valid = position && position->value == 12 && delta_time && ecs_is_alive(entity);
     ecs_fini();
     return valid ? 0 : 3;
 }

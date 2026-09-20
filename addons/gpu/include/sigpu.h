@@ -18,34 +18,64 @@ ECS_COMPONENT_DECLARE_CPP(
     Color,
     ECS_CPP_FIELDS(uint8_t r; uint8_t g; uint8_t b; uint8_t a;),
     ECS_CPP_METHODS(
-        constexpr Color() : r(0), g(0), b(0), a(255) {}
-        constexpr Color(uint8_t r_value, uint8_t g_value, uint8_t b_value, uint8_t a_value = 255)
-            : r(r_value), g(g_value), b(b_value), a(a_value) {}
+        constexpr Color() : r(0),
+        g(0),
+        b(0),
+        a(255) {} constexpr Color(
+            uint8_t r_value,
+            uint8_t g_value,
+            uint8_t b_value,
+            uint8_t a_value = 255
+        ) : r(r_value),
+        g(g_value),
+        b(b_value),
+        a(a_value) {} static constexpr Color yellow() {
+            return { 255, 255, 0, 255 };
+        } static constexpr Color green() {
+            return { 0, 255, 0, 255 };
+        } static constexpr Color red() {
+            return { 255, 0, 0, 255 };
+        } static constexpr Color blue() {
+            return { 0, 0, 255, 255 };
+        } static constexpr Color lblue() {
+            return { 100, 100, 255, 255 };
+        } static constexpr Color brown() {
+            return { 139, 69, 19, 255 };
+        } static constexpr Color gray() { return { 128, 128, 128, 255 }; }
     )
 );
 ECS_COMPONENT_DECLARE_CPP(
     Cuboid,
     ECS_CPP_FIELDS(float width; float height; float depth;),
     ECS_CPP_METHODS(
-        constexpr Cuboid() : width(1.0f), height(1.0f), depth(1.0f) {}
-        constexpr Cuboid(float width_value, float height_value, float depth_value)
-            : width(width_value), height(height_value), depth(depth_value) {}
+        constexpr Cuboid() : width(1.0f),
+        height(1.0f),
+        depth(1.0f) {} constexpr Cuboid(
+            float width_value,
+            float height_value,
+            float depth_value
+        ) : width(width_value),
+        height(height_value),
+        depth(depth_value) {} static constexpr Cuboid splat(float value) {
+            return { value, value, value };
+        }
     )
 );
 ECS_COMPONENT_DECLARE_CPP(
     Bloom,
     ECS_CPP_FIELDS(float intensity;),
-    ECS_CPP_METHODS(Bloom() : intensity(0.0f) {} explicit Bloom(float value) : intensity(value) {})
+    ECS_CPP_METHODS(Bloom() : intensity(0.0f) {} explicit Bloom(float value) : intensity(value){})
 );
 ECS_COMPONENT_DECLARE_CPP(
     Camera,
     ECS_CPP_FIELDS(float fov;),
-    ECS_CPP_METHODS(Camera() : fov(60.0f) {} explicit Camera(float value) : fov(value) {})
+    ECS_CPP_METHODS(Camera() : fov(60.0f) {} explicit Camera(float value) : fov(value){})
 );
 ECS_COMPONENT_DECLARE_CPP(
     PointerEvents,
     ECS_CPP_FIELDS(uint32_t mask;),
-    ECS_CPP_METHODS(PointerEvents() : mask(0) {} explicit PointerEvents(uint32_t value) : mask(value) {})
+    ECS_CPP_METHODS(PointerEvents() : mask(0) {
+    } explicit PointerEvents(uint32_t value) : mask(value){})
 );
 
 ECS_RESOURCE_DECLARE(WindowConfig, {
@@ -81,8 +111,9 @@ ECS_RESOURCE_DECLARE(BloomSettings, {
     float intensity;
 });
 
-ECS_RESOURCE_DECLARE(Keyboard, { bool keys[13]; });
-typedef uint8_t EngineKey;
+#ifndef __cplusplus
+typedef uint8_t Key;
+#endif
 enum {
     KeyA,
     KeyD,
@@ -99,6 +130,30 @@ enum {
     KeyI,
     KeyCount
 };
+#ifdef __cplusplus
+enum class Key : uint8_t {
+    A = KeyA,
+    D = KeyD,
+    W = KeyW,
+    S = KeyS,
+    Q = KeyQ,
+    Z = KeyZ,
+    E = KeyE,
+    Left = KeyLeft,
+    Right = KeyRight,
+    Up = KeyUp,
+    Down = KeyDown,
+    Space = KeySpace,
+    I = KeyI,
+    Count = KeyCount,
+};
+#endif
+
+ECS_RESOURCE_DECLARE_CPP(
+    Keyboard,
+    ECS_CPP_FIELDS(bool keys[KeyCount];),
+    ECS_CPP_METHODS(bool down(Key key) const { return keys[static_cast<uint8_t>(key)]; })
+);
 
 ECS_RESOURCE_DECLARE(Pointer, {
     float x;

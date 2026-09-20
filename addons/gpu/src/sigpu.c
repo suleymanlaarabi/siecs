@@ -129,8 +129,8 @@ bool sigpu_begin_frame(void) {
 bool sigpu_pointer_ray(float window_x, float window_y, sigpu_ray_t *out) {
     int logical_width, logical_height;
     if (!out || !g_sigpu.window || !g_sigpu.frame_width || !g_sigpu.frame_height ||
-        !SDL_GetWindowSize(g_sigpu.window, &logical_width, &logical_height) ||
-        logical_width <= 0 || logical_height <= 0) {
+        !SDL_GetWindowSize(g_sigpu.window, &logical_width, &logical_height) || logical_width <= 0 ||
+        logical_height <= 0) {
         return false;
     }
 
@@ -140,19 +140,27 @@ bool sigpu_pointer_ray(float window_x, float window_y, sigpu_ray_t *out) {
     const float pixel_y = window_y * (float)g_sigpu.frame_height / (float)logical_height;
     const float ndc_x = pixel_x * 2.0f / (float)g_sigpu.frame_width - 1.0f;
     const float ndc_y = 1.0f - pixel_y * 2.0f / (float)g_sigpu.frame_height;
-    const sigpu_vec3_t forward = sigpu_vec3_normalize(
-        sigpu_vec3_sub(g_sigpu.camera.target, g_sigpu.camera.position));
-    const sigpu_vec3_t right = sigpu_vec3_normalize(
-        sigpu_vec3_cross((sigpu_vec3_t){ 0.0f, 1.0f, 0.0f }, forward));
+    const sigpu_vec3_t forward =
+        sigpu_vec3_normalize(sigpu_vec3_sub(g_sigpu.camera.target, g_sigpu.camera.position));
+    const sigpu_vec3_t right =
+        sigpu_vec3_normalize(sigpu_vec3_cross((sigpu_vec3_t){ 0.0f, 1.0f, 0.0f }, forward));
     const sigpu_vec3_t up = sigpu_vec3_cross(forward, right);
     const float tangent = tanf(g_sigpu.camera.fov * SIGPU_PI / 360.0f);
     const float aspect = (float)g_sigpu.frame_width / (float)g_sigpu.frame_height;
-    const sigpu_vec3_t direction = sigpu_vec3_normalize(sigpu_vec3_add(forward,
-        sigpu_vec3_add(sigpu_vec3_scale(right, ndc_x * tangent * aspect),
-                       sigpu_vec3_scale(up, ndc_y * tangent))));
+    const sigpu_vec3_t direction = sigpu_vec3_normalize(sigpu_vec3_add(
+        forward,
+        sigpu_vec3_add(
+            sigpu_vec3_scale(right, ndc_x * tangent * aspect),
+            sigpu_vec3_scale(up, ndc_y * tangent)
+        )
+    ));
     *out = (sigpu_ray_t){
-        g_sigpu.camera.position.x, g_sigpu.camera.position.y, g_sigpu.camera.position.z,
-        direction.x, direction.y, direction.z,
+        g_sigpu.camera.position.x,
+        g_sigpu.camera.position.y,
+        g_sigpu.camera.position.z,
+        direction.x,
+        direction.y,
+        direction.z,
     };
     return true;
 }
