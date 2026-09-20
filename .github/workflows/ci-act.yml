@@ -40,6 +40,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang-18
 
+      - name: Install SDL3
+        run: |
+          git clone --depth 1 --branch release-3.2.8 https://github.com/libsdl-org/SDL.git
+          cmake -S SDL -B SDL/build -DCMAKE_BUILD_TYPE=Release -DSDL_TEST_LIBRARY=OFF -DSDL_UNIX_CONSOLE_BUILD=ON
+          cmake --build SDL/build --parallel 2
+          sudo cmake --install SDL/build
+          sudo ldconfig
+
       - name: Install bake
         run: |
           git clone https://github.com/suleymanlaarabi/bake
