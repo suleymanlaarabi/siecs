@@ -5325,7 +5325,7 @@ void ecs_query_index_fini(void);
 ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc);
 void ecs_query_index_activate(ecs_query_id_t id, const uint16_t *tables, uint16_t count);
 void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id);
-void ecs_query_index_refresh_table_fields(const ecs_table_t *table, uint16_t table_id);
+void ecs_query_index_refresh_table_fields(const ecs_table_t *table);
 bool ecs_query_resolve_up_fields(
     ecs_query_cache_t *cache,
     const ecs_table_t *table,
@@ -10781,7 +10781,7 @@ static inline void ecs_table_grow(ecs_table_t *table) {
         column->data = new_data;
     }
     table->entity_capacity = new_capacity;
-    ecs_query_index_refresh_table_fields(table, (uint16_t)(table - table_index.tables));
+    ecs_query_index_refresh_table_fields(table);
 }
 
 uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
@@ -12070,15 +12070,28 @@ void ecs_query_index_add_table(const ecs_table_t *table, uint16_t id) {
         }
     }
 }
-void ecs_query_index_refresh_table_fields(const ecs_table_t *table, uint16_t id) {
+
+static bool ecs_query_table_inherits_from(const ecs_table_t *table, const ecs_table_t *base) {
+    for (ecs_entity_t entity = ecs_type_isa_target(&table->type); entity != 0;) {
+        table = ecs_get_table(ecs_get_record(entity)->table_id);
+        if (table == base)
+            return true;
+        entity = ecs_type_isa_target(&table->type);
+    }
+    return false;
+}
+
+void ecs_query_index_refresh_table_fields(const ecs_table_t *table) {
     const ecs_query_id_t *ids = query_index.active_ids.data;
     for (uint32_t i = 0; i < query_index.active_ids.size; i++) {
         ecs_query_cache_t *cache = ecs_query_cache(ids[i]);
         if (!cache->query->field_count)
             continue;
-        uint16_t at = ecs_query_table_position(cache, id);
-        if (at != UINT16_MAX)
-            ecs_query_bind(cache->query, table, ecs_query_table_at(cache, at));
+        for (uint16_t at = 0; at < cache->table_count; at++) {
+            const ecs_table_t *entry_table = ecs_get_table(ecs_query_table_id(cache, at));
+            if (entry_table == table || ecs_query_table_inherits_from(entry_table, table))
+                ecs_query_bind(cache->query, entry_table, ecs_query_table_at(cache, at));
+        }
     }
 }
 
