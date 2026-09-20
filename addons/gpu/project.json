@@ -1,0 +1,16 @@
+{
+    "id": "sigpu",
+    "type": "package",
+    "value": {
+        "author": "John Doe",
+        "description": "On demand country music for air travel",
+        "use": ["siecs", "siecs_spatial"],
+        "clangd": true
+    },
+    "lang.c": {
+      "c-standard": "c17",
+      "lib": ["SDL3", "m"],
+      "include": ["include"],
+      "export-symbols": true
+    }
+}

@@ -14,14 +14,27 @@
  * dependencies will automatically show up in this file. Include bake_config.h
  * in your main project file. Do not edit! */
 
-#ifndef SIECS_EXAMPLE_CPP_BAKE_CONFIG_H
-#define SIECS_EXAMPLE_CPP_BAKE_CONFIG_H
+#ifndef SIGPU_BAKE_CONFIG_H
+#define SIGPU_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
 #include <siecs.h>
 #include <siecs_spatial.h>
-#include <siecs_rest.h>
-#include <sigpu.h>
+
+/* Convenience macro for exporting symbols */
+#ifndef sigpu_STATIC
+#if defined(sigpu_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
+  #define SIGPU_API __declspec(dllexport)
+#elif defined(sigpu_EXPORTS)
+  #define SIGPU_API __attribute__((__visibility__("default")))
+#elif defined(_MSC_VER)
+  #define SIGPU_API __declspec(dllimport)
+#else
+  #define SIGPU_API
+#endif
+#else
+  #define SIGPU_API
+#endif
 
 #endif
 
