@@ -70,6 +70,18 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Install SDL3 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          git clone --depth 1 --branch release-3.2.8 https://github.com/libsdl-org/SDL.git
+          cmake -S SDL -B SDL/build -DCMAKE_BUILD_TYPE=Release -DSDL_TEST_LIBRARY=OFF
+          sudo cmake --install SDL/build
+          sudo ldconfig
+
+      - name: Install SDL3 (macOS)
+        if: runner.os == 'macOS'
+        run: brew install sdl3
+
       - name: Install bake
         run: |
           git clone https://github.com/suleymanlaarabi/bake
