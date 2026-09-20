@@ -75,12 +75,17 @@ jobs:
         run: |
           git clone --depth 1 --branch release-3.2.8 https://github.com/libsdl-org/SDL.git
           cmake -S SDL -B SDL/build -DCMAKE_BUILD_TYPE=Release -DSDL_TEST_LIBRARY=OFF
+          cmake --build SDL/build --parallel 2
           sudo cmake --install SDL/build
           sudo ldconfig
 
       - name: Install SDL3 (macOS)
         if: runner.os == 'macOS'
-        run: brew install sdl3
+        run: |
+          brew install sdl3
+          SDL3_PREFIX="$(brew --prefix sdl3)"
+          echo "CPATH=$SDL3_PREFIX/include${CPATH:+:$CPATH}" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=$SDL3_PREFIX/lib${LIBRARY_PATH:+:$LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Install bake
         run: |
