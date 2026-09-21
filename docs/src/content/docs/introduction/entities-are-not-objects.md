@@ -1,0 +1,519 @@
+---
+title: An entity is not an object
+description: Understand entity identity, generations, liveness, names, reuse, and why physical component storage is not entity identity.
+---
+
+An entity is an identity.
+
+That definition is deliberately narrow. An entity is not a class instance, not a bag of component bytes, not a pointer to an archetype row, and not a container that owns all of its behavior.
+
+In SIECS, an entity handle lets the world, components, relations, queries, observers, tools, and application code refer to the same logical thing while its storage changes over time.
+
+## Identity is separate from state
+
+Consider a spaceship with:
+
+```text
+Position
+Velocity
+Health
+PlayerControlled
+```
+
+It is tempting to imagine an entity as:
+
+```cpp
+struct Entity {
+    Position position;
+    Velocity velocity;
+    Health health;
+    bool player_controlled;
+};
+```
+
+That is not the SIECS model.
+
+The entity handle identifies the spaceship. Its components are stored by the world according to the entity's archetype.
+
+Conceptually:
+
+```text
+entity E42
+   ├── Position  -> table column
+   ├── Velocity  -> table column
+   ├── Health    -> table column
+   └── PlayerControlled -> structural tag
+```
+
+The handle connects those facts to the same identity. It does not physically contain them.
+
+## SIECS entity handles
+
+The public SIECS entity type is:
+
+```c
+typedef uint64_t ecs_entity_t;
+```
+
+SIECS exposes helpers that split the handle into an entity index and a generation:
+
+```c
+ecs_entity_id(entity)
+ecs_entity_generation(entity)
+```
+
+The exact bit representation is an implementation detail that application code should rarely need, but the *meaning* of the two parts matters.
+
+### Index
+
+The index identifies a slot in the world entity index.
+
+### Generation
+
+The generation distinguishes different lifetimes that reused the same index.
+
+Together they let SIECS detect a common stale-reference bug.
+
+## Why generations exist
+
+Imagine an entity gets index 27:
+
+```text
+E1 = index 27, generation 0
+```
+
+The entity is destroyed. Later, normal allocation reuses index 27:
+
+```text
+E2 = index 27, generation 1
+```
+
+Without a generation, an old handle to E1 could accidentally start referring to E2.
+
+With a generation, the two identities differ:
+
+```text
+(27, 0) != (27, 1)
+```
+
+The generation therefore protects **lifetime identity**, not physical location.
+
+This is why an `ecs_entity_t` should be stored when you need to remember an entity, instead of storing a pointer into one of its components.
+
+## Liveness
+
+An entity handle is meaningful only while that exact generation is alive.
+
+SIECS exposes:
+
+```c
+ecs_is_alive(entity)
+```
+
+and the C++ wrapper exposes the corresponding entity operation.
+
+A long-lived system that stores entity handles should decide what a dead reference means.
+
+For example:
+
+```text
+camera target destroyed
+    -> clear target
+    -> choose a replacement
+    -> disable tracking
+```
+
+Generation tracking prevents accidental aliasing, but it cannot decide application policy.
+
+## Entity reuse is normal
+
+`ecs_new()` can reuse indices from destroyed entities.
+
+That is useful because worlds can create and destroy large numbers of transient entities without monotonically exhausting an index space.
+
+The visible consequence is that numeric entity ids are **not creation serial numbers**.
+
+Do not assume:
+
+```text
+larger index = newer entity
+```
+
+when normal allocation and reuse are active.
+
+If an application specifically needs monotonic allocation, SIECS provides:
+
+```c
+ecs_new_no_reuse()
+```
+
+and:
+
+```cpp
+ecs::entity::create_no_reuse()
+```
+
+These allocate a new highest index instead of consuming a freed one.
+
+That is a SIECS-specific tool. It should be used because an application actually needs monotonic indices, not as a substitute for understanding generations.
+
+## Identity is not storage location
+
+An entity record can point to a current table and row.
+
+That location is not stable.
+
+Suppose E42 starts with:
+
+```text
+{Position}
+```
+
+and occupies:
+
+```text
+Table A, row 8
+```
+
+Adding `Velocity` changes its archetype:
+
+```text
+{Position, Velocity}
+```
+
+SIECS moves the entity to the table for the new structure:
+
+```text
+Table B, row 3
+```
+
+The logical identity remains E42.
+
+The storage tuple:
+
+```text
+(table, row)
+```
+
+is merely the current physical location.
+
+This distinction is essential for understanding structural changes.
+
+## Rows can move even when an entity does not change archetype
+
+SIECS keeps table rows packed.
+
+When an entity is removed from a non-last row, the last entity in the table may move into the removed row.
+
+Example:
+
+```text
+before:
+row 0 -> A
+row 1 -> B
+row 2 -> C
+row 3 -> D
+
+remove B
+
+possible result:
+row 0 -> A
+row 1 -> D
+row 2 -> C
+```
+
+D did not change components. Its row changed because the table compacted itself.
+
+Therefore a row number is not a persistent entity identifier.
+
+## Component pointers are views, not identity
+
+During iteration, SIECS exposes pointers to component columns.
+
+Those pointers are ideal for fast local processing:
+
+```c
+Position *position = ecs_field(&it, 0);
+```
+
+They are not suitable as permanent references to entities.
+
+A component pointer can become invalid when:
+
+- the entity migrates to another table;
+- the table grows and reallocates a column;
+- the row is removed or compacted;
+- the entity is destroyed;
+- a deferred mutation is flushed and changes storage.
+
+A robust rule is:
+
+> Store an entity handle for long-lived identity. Acquire component pointers for the scope in which the storage contract says they are valid.
+
+## Entity type is not a runtime class
+
+In object-oriented terminology, one might ask:
+
+```text
+What type is this entity?
+```
+
+An ECS entity does not need one exclusive runtime class.
+
+Its meaningful structure is the component set:
+
+```text
+{Position, Velocity, Health, Enemy}
+```
+
+Another entity can be:
+
+```text
+{Position, Velocity, Health, PlayerControlled}
+```
+
+A movement system sees both because both satisfy `Position + Velocity`.
+
+A damage system may see both because both have `Health`.
+
+Their domain roles can still be represented by tags, components, modules, or relations, but those roles do not have to define one global inheritance tree.
+
+## Entity names are metadata, not identity
+
+SIECS supports entity names and lookup.
+
+A named entity can be created or looked up through the corresponding API, and `ecs_entity_name()` returns an explicit name or a generated representation.
+
+Names are useful for:
+
+- tools;
+- debugging;
+- configuration;
+- readable references;
+- REST inspection.
+
+But names are not the same as entity identity.
+
+A system should not replace `ecs_entity_t` references with string lookups in hot loops unless the application deliberately wants name-based indirection.
+
+Think of a name as **human-facing metadata attached to an identity**.
+
+## Entity identity and domain identity
+
+Sometimes the domain has its own persistent key:
+
+```text
+network player id
+save-game GUID
+asset id
+server database id
+```
+
+Do not automatically assume that an `ecs_entity_t` should become that permanent external identifier.
+
+An ECS entity is an identity **inside the active SIECS world**.
+
+External systems may need their own stable ids mapped to current entities.
+
+This separation is useful when:
+
+- worlds are reloaded;
+- entities are reconstructed from save data;
+- network state maps remote ids to local entities;
+- entities are intentionally destroyed and recreated.
+
+## Empty entities
+
+A newly created SIECS entity has no user components.
+
+Conceptually it belongs to the empty archetype:
+
+```text
+{}
+```
+
+This can be useful as a pure identity before structure is attached.
+
+For example:
+
+```text
+create entity
+assign name
+attach components
+establish relations
+```
+
+The entity does not need a monolithic constructor that materializes every piece of state at once.
+
+However, a large number of permanently empty entities rarely contributes useful ECS work. If an identity never receives queryable structure, consider whether it needs to be an ECS entity at all.
+
+## Destruction is an identity transition
+
+Destroying an entity is not the same as removing one component.
+
+Destruction:
+
+- removes the entity from its current table;
+- removes its owned component state;
+- runs relevant lifecycle behavior;
+- updates relations/observers according to SIECS semantics;
+- makes that exact handle no longer alive;
+- makes the index eligible for normal reuse.
+
+After destruction, the old handle remains a historical value but not a live entity.
+
+Do not use a dead handle with APIs that require a live entity.
+
+## Entities do not own all behavior
+
+An object model often organizes behavior like:
+
+```cpp
+player.update();
+player.render();
+player.take_damage(10);
+```
+
+An ECS can instead organize behavior around data:
+
+```text
+MovementSystem -> Position + Velocity
+RenderSystem   -> Position + Renderable
+Damage         -> Health
+```
+
+This means the entity handle stays small and generic.
+
+New behavior can be introduced without adding methods to a central entity class.
+
+## Avoid “god entity” wrappers
+
+A C++ wrapper can make ECS calls convenient, but it should not recreate an object model that hides every query and storage operation behind entity methods.
+
+For example, code like:
+
+```cpp
+entity.update_everything();
+```
+
+throws away useful information about which data is accessed.
+
+A lightweight entity API is useful for targeted operations:
+
+```cpp
+entity.set(Position{...});
+entity.add<Selected>();
+entity.kill();
+```
+
+while repeated behavior belongs in queries and systems.
+
+## References between entities
+
+When one logical entity needs to refer to another, the key question is whether the relationship is simply data or should become ECS structure.
+
+A component can contain an entity handle:
+
+```cpp
+struct Target {
+    ecs_entity_t entity;
+};
+```
+
+That can be appropriate for a local field.
+
+SIECS relations can be better when the edge itself needs:
+
+- querying;
+- traversal;
+- ordering by depth or target;
+- deletion semantics;
+- specialized storage.
+
+The important point for this chapter is that both approaches refer to **entity identity**, not a component memory address.
+
+## Entity identity across deferred operations
+
+SIECS can defer mutations into a command buffer.
+
+When code records a structural change during a system, the entity handle is still the logical subject of the command even though the table migration happens later.
+
+This is another reason identity must be independent from storage location.
+
+A command can conceptually say:
+
+```text
+add Dead to E42
+```
+
+without needing to know which row E42 will occupy when the command buffer is flushed.
+
+## A relational analogy
+
+A useful analogy is to think of the entity as a key and components as columns spread across structure-specific tables.
+
+The analogy is not exact, but it helps separate concepts:
+
+```text
+entity handle = logical key
+archetype     = schema
+row           = current storage record
+component     = typed attribute
+query         = structural selection
+```
+
+The key can remain logically stable while the record moves between schemas.
+
+That is much closer to the ECS model than imagining every entity as an object with a permanent memory address.
+
+## Design consequences
+
+When code needs to remember “this thing,” store the entity handle.
+
+When code needs to process “all things shaped like this,” use a query.
+
+When code needs component bytes for the current operation, acquire a component pointer/reference and respect its validity scope.
+
+When code needs a persistent external identity, use a domain identifier and map it to the current entity.
+
+When code needs graph structure, consider relations rather than raw component pointers.
+
+## Common mistakes
+
+### Treating the numeric entity id as a permanent serial number
+
+Normal allocation may reuse indices. Generation is part of identity.
+
+### Storing a component pointer for later frames
+
+Structural changes or table growth can invalidate it.
+
+### Using table row indices as IDs
+
+Packed rows can move when entities are removed.
+
+### Assuming an entity has one runtime class
+
+Its behavior can be defined by many overlapping component combinations.
+
+### Performing name lookup every frame instead of retaining identity
+
+Names are useful metadata, but entity handles are the direct runtime identity.
+
+### Treating `create_no_reuse()` as required for correctness
+
+Generation-safe handles already solve stale index reuse. Monotonic allocation is a specific tool for use cases that need it.
+
+## The rule to remember
+
+```text
+entity = identity
+component = data/fact
+archetype = structure
+row = current storage location
+system = behavior over matching structure
+```
+
+If those five concepts stay separate, many ECS lifetime and pointer rules become straightforward.
+
+Next: **[Composition](/introduction/composition/)**.

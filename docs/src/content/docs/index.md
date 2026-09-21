@@ -18,7 +18,8 @@ relations, reflection, and optional tooling.
 
 Read the manuals in this order if you are new to ECS:
 
-1. [ECS theory](./theory/) explains entities, components, tables and queries.
+1. [Introduction to ECS](./introduction/) explains the ECS model, data-oriented design,
+   entities, composition, archetypes, storage, structural changes and iteration.
 2. [Entities](./entities/) and [components](./components/) explain data and
    lifetime.
 3. [Queries](./queries/) explain matching and iteration.

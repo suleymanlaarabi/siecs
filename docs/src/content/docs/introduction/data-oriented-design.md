@@ -1,0 +1,704 @@
+---
+title: Data-oriented design
+description: Design ECS data around transformations, access patterns, working sets, cardinality, lifetimes, and the memory hierarchy.
+---
+
+Data-oriented design begins with a simple observation:
+
+> Software ultimately transforms data, and the physical organization of that data affects both performance and clarity.
+
+This does not mean every program should become a collection of flat arrays. It means that **data access is part of the architecture**, not an implementation detail to consider only after the object model is finished.
+
+ECS and data-oriented design are closely related because an ECS asks systems to declare the data they operate on. Archetype storage can then organize entities so repeated transformations operate on compact batches.
+
+## Start with transformations, not nouns
+
+Suppose a movement update is:
+
+```text
+Position += Velocity * delta_time
+```
+
+The relevant data is:
+
+```text
+Position       many values, read/write
+Velocity       many values, read
+DeltaTime      one value, read
+```
+
+The operation does not need:
+
+- entity names;
+- inventory data;
+- animation state;
+- health;
+- editor metadata;
+- network replication state.
+
+A noun-first design may begin with a large `Character` class because a character is an obvious thing in the domain.
+
+A transformation-first design asks whether movement really needs the rest of a character.
+
+That question often produces smaller, reusable data boundaries.
+
+## Data-oriented design is not “structure of arrays everywhere”
+
+A structure-of-arrays layout can be useful:
+
+```text
+Position.x: [x0][x1][x2][x3]
+Position.y: [y0][y1][y2][y3]
+```
+
+but SIECS does not split every field this way. It stores a contiguous column of component values:
+
+```text
+Position: [{x0,y0}][{x1,y1}][{x2,y2}][{x3,y3}]
+```
+
+At the table level, the layout is still columnar by component:
+
+```text
+Position column
+Velocity column
+Health column
+```
+
+This is a useful compromise: components remain coherent C/C++ types while unrelated component families are separated physically.
+
+The best layout depends on how data is consumed. “SoA good, AoS bad” is not a design rule.
+
+## Array of structs versus component columns
+
+Consider:
+
+```cpp
+struct Actor {
+    Position position;
+    Velocity velocity;
+    Health health;
+    Inventory inventory;
+    RenderData render;
+    AIState ai;
+};
+
+Actor actors[100000];
+```
+
+A movement loop uses only two fields from every `Actor`.
+
+Conceptually the memory stream looks like:
+
+```text
+[P V H Inventory Render AI]
+[P V H Inventory Render AI]
+[P V H Inventory Render AI]
+...
+```
+
+A component-column design can look like:
+
+```text
+Position: [P][P][P][P]...
+Velocity: [V][V][V][V]...
+Health:   [H][H][H][H]...
+```
+
+Movement touches only Position and Velocity.
+
+This can reduce the amount of unrelated memory participating in the hot working set.
+
+The benefit depends on actual component sizes and access patterns. If every system always consumes the whole `Actor`, the large object may already have a good layout.
+
+## Working sets
+
+A **working set** is the data actively needed during an operation or short execution window.
+
+For an ECS system, think about:
+
+```text
+number of matching entities
+× size of accessed components
++ secondary referenced data
++ system state/resources
+```
+
+The component model influences this directly.
+
+A 256-byte component that contributes only one frequently read float can inflate the working set. Splitting that hot value from cold metadata may help.
+
+Conversely, splitting a 16-byte coherent value into four separate components can add complexity without reducing useful traffic.
+
+The goal is not minimum component size. The goal is a useful working set.
+
+## Hot and cold data
+
+**Hot data** is accessed frequently, often in performance-sensitive loops.
+
+Examples:
+
+- position;
+- velocity;
+- transform matrices used every render frame;
+- compact physics state.
+
+**Cold data** is accessed rarely.
+
+Examples:
+
+- editor descriptions;
+- debug labels;
+- rarely used configuration;
+- expensive metadata used only on state transitions.
+
+Mixing large amounts of cold data into a hot component can waste cache and bandwidth.
+
+A common design improvement is to split by access temperature:
+
+```text
+Transform         hot
+TransformMetadata cold
+```
+
+But do not split mechanically. If the metadata is always consumed with the transform, the separation buys nothing.
+
+## Access together, store together — but at the right level
+
+A practical rule is:
+
+> Data that is created together, destroyed together, and usually accessed together often belongs in the same component.
+
+For example:
+
+```cpp
+struct Position {
+    float x;
+    float y;
+};
+```
+
+is usually more useful than:
+
+```text
+PositionX
+PositionY
+```
+
+because x and y normally share lifetime and access.
+
+Likewise:
+
+```cpp
+struct Health {
+    int current;
+    int maximum;
+};
+```
+
+is often coherent.
+
+The component is the smallest storage/query unit. Every split changes the structural vocabulary of the world, so component granularity should be intentional.
+
+## Cardinality: how many values exist?
+
+One of the most useful data-oriented questions is:
+
+> How many instances of this value exist, and what owns them?
+
+Common answers are:
+
+### One value per entity
+
+Use a component when the state naturally belongs to many independent entities.
+
+```text
+Position
+Velocity
+Health
+```
+
+### One value per world
+
+Use a resource when there should be one shared value rather than thousands of copies.
+
+Examples:
+
+```text
+Time
+InputState
+SimulationConfig
+RendererContext
+```
+
+SIECS resources have their own storage and scheduler access metadata. They are not archetype components and do not determine query matching.
+
+### One value per edge
+
+A relationship between two entities may be better represented by a SIECS relation rather than a component containing an arbitrary pointer or id.
+
+Examples:
+
+```text
+ChildOf(parent)
+BelongsTo(team)
+Targets(enemy)
+```
+
+Relations have their own storage modes and traversal behavior.
+
+### Many values owned by one entity
+
+Inventory items, path nodes, text buffers, or variable-length samples may need containers, child entities, relations, or an external subsystem.
+
+ECS does not require every nested collection to become one component per element.
+
+## Lifetime is part of the data model
+
+Data that has different lifetime often deserves different ownership.
+
+Ask:
+
+- Is it created when the entity is created?
+- Does it appear later?
+- Can it disappear independently?
+- Does it survive entity destruction?
+- Is it frame-local?
+- Is it temporary communication between systems?
+
+If two values always share lifetime, splitting them may be unnecessary.
+
+If one value changes structural presence independently, making it its own component may be useful.
+
+This is why component boundaries are partly about *lifetime*, not only semantics.
+
+## Frequency of value changes versus structural changes
+
+Data-oriented design must distinguish two kinds of change in an archetype ECS.
+
+### Value mutation
+
+```text
+Health.current = 80
+Position.x += 1
+```
+
+The entity remains in the same table.
+
+### Structural mutation
+
+```text
+add Frozen
+remove Velocity
+add Health
+```
+
+The entity's archetype changes and it may migrate to another table.
+
+A boolean that changes constantly may therefore be cheaper as data:
+
+```cpp
+struct State {
+    bool visible;
+};
+```
+
+than as a tag:
+
+```text
+Visible
+```
+
+if the only purpose of the tag is to represent a rapidly flipping value.
+
+The tag can still be better when structural filtering is valuable enough to justify the migration.
+
+This is a tradeoff, not a universal rule.
+
+## Branches versus structure
+
+Suppose 90% of entities are active and 10% are sleeping.
+
+Two possible models are:
+
+```text
+State { sleeping: bool }
+```
+
+with a branch inside the loop, or separate archetypes using a `Sleeping` tag.
+
+The structural version can keep sleeping entities out of the active query entirely. The value version avoids migration when sleep state changes.
+
+The right representation depends on:
+
+- how often sleep state changes;
+- how expensive the skipped work is;
+- how many systems care about the distinction;
+- whether active and sleeping entities otherwise share the same structure;
+- how much archetype fragmentation the tag creates.
+
+Data-oriented design is often about making this cost model explicit.
+
+## Stable structure is valuable structure
+
+Archetype storage benefits when entities spend significant time in stable shapes.
+
+For example:
+
+```text
+Projectile
+    Position
+    Velocity
+    Damage
+    Lifetime
+```
+
+may remain structurally stable until destruction.
+
+That is ideal for repeated movement and collision queries.
+
+By contrast, using components as temporary function arguments:
+
+```text
+add NeedsUpdate
+run one system
+remove NeedsUpdate
+```
+
+for thousands of entities every frame may create unnecessary structural churn.
+
+Sometimes an event, command queue, resource, explicit query, or value field better represents ephemeral work.
+
+## Pointer chasing
+
+Contiguous ECS columns only improve locality for the bytes stored in those columns.
+
+This component is compact:
+
+```cpp
+struct RenderRef {
+    Mesh *mesh;
+    Material *material;
+};
+```
+
+but a rendering loop that dereferences each pointer can still jump across memory.
+
+The access pattern is now:
+
+```text
+contiguous RenderRef column
+        ↓
+scattered Mesh objects
+        ↓
+scattered Material objects
+```
+
+The ECS cannot make pointed-to data contiguous automatically.
+
+For hot referenced data, consider:
+
+- handles into packed arrays;
+- interning shared values;
+- grouping resources by access pattern;
+- sorting or batching by target;
+- SIECS relation storage where the relationship itself is the important index.
+
+The exact solution depends on the subsystem.
+
+## Indirection is sometimes the correct design
+
+Data-oriented design is not an anti-pointer ideology.
+
+Large resources such as meshes, textures, scripts, navigation graphs, or asset metadata often should not be copied into every entity table.
+
+An entity may store a compact handle to an external system.
+
+The useful question is:
+
+> Is the indirection on the hot path, and does its cost buy useful sharing or ownership semantics?
+
+A deliberate handle can be better than duplicating megabytes of data for the sake of “contiguity.”
+
+## Component size
+
+Large components have several effects:
+
+- more bytes must move when an entity migrates archetypes;
+- a table consumes more memory per row;
+- fewer rows fit into a fixed cache capacity;
+- queries reading that component move more data;
+- initialization and lifecycle work may be more expensive.
+
+This does not mean large components are forbidden.
+
+A large component is justified when its fields are naturally accessed and moved together.
+
+If only a small portion is hot, split hot and cold data deliberately.
+
+## Component count and granularity
+
+Very small components can create the opposite problem.
+
+Potential costs include:
+
+- more query terms;
+- more archetype combinations;
+- more structural operations;
+- more registration and metadata;
+- harder-to-read system signatures;
+- accidental coupling between many tiny components that are always present together.
+
+Use component boundaries to express meaningful storage and behavior boundaries, not to maximize component count.
+
+## Data ownership should be obvious
+
+For every important value, be able to answer:
+
+```text
+Who owns it?
+Who can mutate it?
+How many copies exist?
+What destroys it?
+How is it found?
+```
+
+ECS can make data widely visible through queries, which makes ownership conventions more important rather than less.
+
+Possible ownership patterns include:
+
+- one system is the authoritative writer;
+- several systems write in ordered phases;
+- a component is immutable after creation;
+- a resource owns an external subsystem;
+- an observer reacts to structural lifecycle events.
+
+The scheduler can enforce some access ordering, but semantic ownership still belongs to the application design.
+
+## Read/write intent is useful design information
+
+SIECS query terms distinguish read and write access.
+
+That is not just an optimization annotation.
+
+Compare:
+
+```text
+Update(entity)
+```
+
+with:
+
+```text
+Position: read/write
+Velocity: read
+Time: read resource
+```
+
+The second description exposes the transformation.
+
+It helps with:
+
+- understanding side effects;
+- scheduling;
+- code review;
+- finding unnecessary writes;
+- reasoning about parallelism;
+- identifying hot data.
+
+## AoS and SoA are a spectrum
+
+Real systems often combine layouts.
+
+SIECS archetype tables are effectively:
+
+```text
+Table = struct of component arrays
+Component = often a small struct of fields
+```
+
+For example:
+
+```text
+Table
+  Position[]   // each Position is {x, y}
+  Velocity[]   // each Velocity is {x, y}
+```
+
+This is neither a single giant AoS object nor a fully scalar SoA layout.
+
+That layered approach is often practical because systems commonly consume whole component values while still benefiting from separation between component families.
+
+## Data transformation example
+
+Consider an object-oriented update:
+
+```cpp
+for (GameObject *object : objects) {
+    object->update(dt);
+}
+```
+
+This is concise, but the loop itself does not say what memory will be touched.
+
+One object may update physics. Another may animate. Another may do nothing. The call can dispatch to unrelated code paths.
+
+An ECS decomposition might become:
+
+```text
+IntegrateMotion:
+    Position RW
+    Velocity R
+
+RegenerateHealth:
+    Health RW
+    RegenRate R
+
+Animate:
+    AnimationState RW
+    AnimationClip R
+```
+
+Each pass has a narrower, more predictable working set.
+
+The application now performs several specialized loops instead of one heterogeneous update loop.
+
+This is one of the central patterns of data-oriented ECS architecture.
+
+## Fewer heterogeneous branches, more homogeneous passes
+
+The transformation from:
+
+```text
+one loop over many object types
+```
+
+to:
+
+```text
+many loops over homogeneous data requirements
+```
+
+has tradeoffs.
+
+Benefits can include:
+
+- predictable code paths;
+- better locality;
+- reusable behavior;
+- easier profiling by system;
+- explicit dependencies.
+
+Costs can include:
+
+- more passes over the world;
+- scheduling complexity;
+- intermediate state;
+- the need to think about system order;
+- cross-system communication design.
+
+Again, ECS is a trade, not a free optimization.
+
+## Design from the dominant workload
+
+Do not optimize every piece of state equally.
+
+Find the operations that dominate:
+
+- frame time;
+- memory use;
+- structural churn;
+- entity count;
+- latency-sensitive paths.
+
+Then ask what layout those operations want.
+
+An editor-only feature used once per second should not necessarily dictate the representation of a component used on 500,000 entities every frame.
+
+Likewise, a hot simulation representation can expose a derived view for tools rather than compromising the hot layout.
+
+## A SIECS design worksheet
+
+For each proposed component, write down:
+
+```text
+Name:
+Purpose:
+Approximate size:
+Expected entity count:
+Created when:
+Removed when:
+Read by:
+Written by:
+Read frequency:
+Write frequency:
+Structural presence changes how often:
+Usually accessed with:
+Contains pointers/handles to:
+```
+
+For each system:
+
+```text
+Required components:
+Optional components:
+Excluded components:
+Read components:
+Written components:
+Resources:
+Expected matches:
+Runs how often:
+Performs structural mutation:
+```
+
+This exercise exposes poor boundaries before benchmarking is necessary.
+
+## Common mistakes
+
+### Translating each class into one component
+
+This preserves the old object boundaries and often prevents systems from reusing data across categories.
+
+### Creating one component per field
+
+This maximizes structural granularity without proving there is an access or lifetime benefit.
+
+### Using tags for every boolean
+
+Tags are structural. Frequently changing booleans can create migration and archetype fragmentation.
+
+### Storing world state on every entity
+
+Use resources for unique world-level state instead of copying the same value everywhere.
+
+### Assuming contiguous components make pointed-to data contiguous
+
+The component array can be linear while the referenced heap objects are scattered.
+
+### Optimizing theoretical cache lines before measuring
+
+Data-oriented reasoning gives hypotheses. A profiler validates them.
+
+## The principle to keep
+
+Data-oriented design is not a particular syntax or one memory layout.
+
+It is the discipline of making **data shape, access pattern, lifetime, and cardinality** explicit parts of software design.
+
+SIECS gives that discipline a runtime model:
+
+```text
+transformation
+    ↓
+query requirements
+    ↓
+component boundaries
+    ↓
+archetype structure
+    ↓
+table layout
+    ↓
+iteration pattern
+```
+
+Next: **[An entity is not an object](/introduction/entities-are-not-objects/)**.

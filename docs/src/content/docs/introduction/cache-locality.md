@@ -1,0 +1,516 @@
+---
+title: Cache locality
+description: Understand cache lines, spatial and temporal locality, bandwidth, pointer chasing, vectorization, and what archetype storage can and cannot guarantee.
+---
+
+“ECS is cache friendly” is often repeated without enough explanation.
+
+The useful question is not whether ECS is *generally* cache friendly. The useful question is:
+
+> What memory does this operation touch, in what order, and how much useful work is performed for each byte brought close to the CPU?
+
+Archetype storage can create excellent access patterns for repeated component processing, but it can also be defeated by poor component design, pointer chasing, random secondary lookups, structural churn, and table fragmentation.
+
+## The memory hierarchy matters
+
+A CPU can execute arithmetic much faster than main memory can satisfy arbitrary reads.
+
+Modern systems therefore have a hierarchy of progressively larger and slower storage:
+
+```text
+registers
+L1 cache
+L2 cache
+L3 / shared cache
+main memory
+```
+
+Exact sizes and latencies depend on the processor. The general principle is stable: nearby cached data is cheaper to access than unrelated data fetched from memory.
+
+Performance-sensitive code therefore benefits when memory access is:
+
+- predictable;
+- sequential;
+- compact;
+- reused soon;
+- low in unnecessary indirection.
+
+## Cache lines
+
+Processors normally transfer memory in blocks called cache lines rather than fetching exactly one field at a time.
+
+If an operation needs a small field inside a large object, fetching that field can also pull nearby bytes into cache.
+
+Example object layout:
+
+```text
+[Position][Velocity][Health][Inventory][AI][Debug...]
+```
+
+A movement loop may only use Position and Velocity, but cache lines can contain pieces of the unrelated fields as well.
+
+With SIECS component columns:
+
+```text
+Position: [P][P][P][P]...
+Velocity: [V][V][V][V]...
+Health:   [H][H][H][H]...
+```
+
+movement can stream only the relevant columns.
+
+This can improve the ratio of **useful bytes to fetched bytes**.
+
+## Spatial locality
+
+Spatial locality means code tends to access memory near locations it recently accessed.
+
+Sequential arrays have strong spatial locality:
+
+```text
+P0 -> P1 -> P2 -> P3 -> P4
+```
+
+A packed SIECS column naturally supports this access pattern.
+
+A scattered object graph may instead look like:
+
+```text
+object 0 -> heap block A
+object 1 -> heap block Q
+object 2 -> heap block F
+object 3 -> heap block Z
+```
+
+Even if the logical loop is sequential, physical memory access may jump between distant allocations.
+
+## Temporal locality
+
+Temporal locality means data is reused shortly after it was accessed.
+
+For ECS scheduling, this can appear when systems run close together:
+
+```text
+IntegratePosition writes Position
+TransformBuild reads Position soon after
+RenderPrep reads Transform soon after that
+```
+
+If the working set is small enough, data produced by one stage may still be in cache for the next.
+
+System ordering therefore affects more than correctness. It can affect whether useful data remains hot.
+
+Do not reorder systems solely for speculative cache behavior when dependencies or clarity suffer, but locality is a legitimate scheduling consideration.
+
+## Working-set size
+
+The working set for a query depends on the components it actually reads and writes.
+
+Suppose 100,000 entities have:
+
+```text
+Position: 8 bytes
+Velocity: 8 bytes
+Health: 8 bytes
+AnimationState: 64 bytes
+DebugInfo: 128 bytes
+```
+
+A movement query that touches only Position and Velocity has a much smaller useful stream than a loop that walks one combined 216-byte object per entity.
+
+This is one of the central data-oriented benefits of component columns.
+
+## Bandwidth matters as much as latency
+
+Not all memory problems are random-access latency problems.
+
+A large linear loop can become limited by memory bandwidth: the maximum rate at which data can be moved through the memory hierarchy.
+
+Reducing component size or avoiding unused columns can improve performance even when access is perfectly sequential because fewer bytes have to be transferred.
+
+This is why “contiguous” is not enough. **Compact and relevant** also matter.
+
+## Archetype tables improve first-order locality
+
+SIECS groups entities with identical structure.
+
+For a query over:
+
+```text
+Position + Velocity
+```
+
+it can process matching tables where those components exist in contiguous columns.
+
+This gives the hot loop:
+
+- homogeneous component types;
+- fixed stride;
+- packed active rows;
+- no per-row component membership test;
+- a predictable next address.
+
+Those properties are favorable for hardware prefetchers and compiler optimization.
+
+## Hardware prefetching
+
+Modern CPUs attempt to predict sequential access and fetch data before the instruction actually needs it.
+
+A loop like:
+
+```text
+read p[i]
+read v[i]
+read p[i+1]
+read v[i+1]
+```
+
+is much easier to predict than a chain like:
+
+```text
+load entity
+load pointer
+follow pointer
+load another pointer
+follow pointer
+```
+
+Predictable streams do not eliminate memory cost, but they allow the hardware to overlap some latency with useful work.
+
+## Pointer chasing
+
+A contiguous component column can still contain pointers:
+
+```cpp
+struct RenderData {
+    Mesh *mesh;
+    Material *material;
+};
+```
+
+The `RenderData` values are contiguous, but dereferencing them may access scattered allocations.
+
+The actual memory pattern becomes:
+
+```text
+RenderData[] contiguous
+    ↓
+Mesh objects scattered
+    ↓
+Material objects scattered
+```
+
+If the dereferenced data dominates the system, the locality of the ECS column may contribute only a small part of total performance.
+
+## Handles can be better than raw pointers
+
+A compact handle can index into a packed subsystem-owned array:
+
+```text
+MeshHandle -> mesh pool
+MaterialHandle -> material pool
+```
+
+This adds an index operation but can provide better control over storage and lifetime than arbitrary heap pointers.
+
+Whether that is worthwhile depends on the subsystem.
+
+ECS does not require one universal ownership strategy for external assets.
+
+## Random cross-entity access
+
+A system can start with a perfect linear query and then perform a random lookup for every row:
+
+```text
+for projectile:
+    lookup owner entity
+    lookup owner's stats
+```
+
+If owners are distributed across many tables, the secondary accesses can dominate cache behavior.
+
+Possible design alternatives include:
+
+- copy a small derived value onto the projectile when it is created;
+- group projectiles by owner/target;
+- use relations with storage suited to the query;
+- process owners first and build a compact lookup table;
+- accept the random access if the population is small.
+
+Data-oriented design evaluates the *whole* memory path, not only the outer ECS loop.
+
+## Component size and cache density
+
+Suppose a cache can hold a fixed number of bytes.
+
+A smaller hot component lets more entity values fit into that cache at once.
+
+This can increase reuse and reduce eviction.
+
+That is one reason to separate large cold fields from small hot fields when they have different access patterns.
+
+However, over-splitting has costs. Component granularity should be driven by real access patterns, not by minimizing `sizeof(T)` at all costs.
+
+## False assumptions about tags
+
+A tag has no data payload, so it does not consume a normal component column.
+
+But toggling the tag can migrate the entity to another archetype.
+
+A design may save per-row bytes while increasing structural work.
+
+Memory density and mutation cost are separate axes.
+
+## Archetype fragmentation and locality
+
+A query visiting one large table has a long sequential run.
+
+A query visiting many tiny tables repeatedly has to:
+
+- advance outer iteration;
+- load new field pointers;
+- transition to different allocations;
+- potentially touch more metadata.
+
+The component data inside each table is still contiguous, but the overall stream is more fragmented.
+
+This is one reason many volatile structural combinations can reduce the practical benefit of archetype storage.
+
+## Table capacity and unused memory
+
+Like dynamic arrays, tables can have capacity greater than current count.
+
+Unused capacity is a normal tradeoff for amortized growth.
+
+When a world has many tiny tables, unused capacity and table metadata can become more noticeable relative to actual entity payload.
+
+Again, this is a reason to measure materialized archetypes rather than fear all structural diversity.
+
+## Vectorization
+
+Compilers can sometimes transform a scalar loop into instructions that process multiple values at once.
+
+A loop such as:
+
+```c
+for (uint32_t i = 0; i < count; i++) {
+    positions[i].x += velocities[i].x;
+    positions[i].y += velocities[i].y;
+}
+```
+
+has a shape that can be easier to vectorize than a virtual method call per heterogeneous object.
+
+Useful properties include:
+
+- known contiguous arrays;
+- simple control flow;
+- fixed-size elements;
+- large enough iteration counts.
+
+But vectorization can be blocked by:
+
+- aliasing uncertainty;
+- complex branches;
+- function calls;
+- unsupported data layout;
+- small batches;
+- compiler decisions.
+
+Never claim that an ECS “uses SIMD” merely because it has archetypes. Inspect compiler output or benchmark the relevant loop.
+
+## Branch prediction
+
+Homogeneous systems can also reduce branch diversity.
+
+Compare:
+
+```text
+for every GameObject:
+    if type A ...
+    else if type B ...
+    else if type C ...
+```
+
+with separate passes:
+
+```text
+MoveSystem -> movers
+DamageSystem -> damageable entities
+RenderSystem -> renderable entities
+```
+
+The ECS design moves some behavioral selection into query matching.
+
+Inner loops can therefore contain fewer type-dispatch branches.
+
+This is not guaranteed—systems can still contain branches—but the architecture encourages homogeneous passes.
+
+## Indirection in entity lookup
+
+Directly asking for a component by entity requires SIECS to resolve the entity record, find its table/row, and locate the component column.
+
+That indirection is appropriate for targeted access.
+
+Doing it for every element of a large bulk operation can be more expensive than resolving fields once per table batch.
+
+This is why queries are the primary hot-path mechanism while entity lookup remains valuable for known identities.
+
+## Temporal locality between systems
+
+A component written by one system and immediately consumed by another may stay hot.
+
+But a long chain of unrelated systems can evict it before reuse.
+
+When scheduling is flexible, grouping transformations that operate on the same hot data can help.
+
+Example:
+
+```text
+Integrate Position
+Build Transform
+Update Bounds
+```
+
+may have better temporal behavior than interleaving many unrelated passes between them.
+
+Correctness and clear dependencies come first. Measure before introducing fragile scheduling tricks.
+
+## Shared data and resources
+
+A resource can have excellent temporal locality because one value is repeatedly reused across many rows.
+
+For example, `Time.dt` can remain hot while a movement system processes thousands of entities.
+
+Likewise, shared inherited component values can be reused across a batch.
+
+This is a different locality pattern from per-row columns but can also be efficient.
+
+## Cache locality is not always the bottleneck
+
+A system may be dominated by:
+
+- expensive math;
+- system calls;
+- GPU synchronization;
+- lock contention;
+- hash lookups;
+- decompression;
+- pathfinding;
+- I/O;
+- rendering driver overhead.
+
+Optimizing component layout in such a system may have negligible impact.
+
+Profile first.
+
+## Benchmark the entire operation
+
+A fair ECS performance test should include the costs that matter for the application.
+
+For stable simulation loops:
+
+```text
+query iteration
++ component processing
+```
+
+For dynamic gameplay:
+
+```text
+iteration
++ adds/removes
++ command-buffer flush
++ hooks/observers
+```
+
+For tools:
+
+```text
+query creation
++ reflection
++ serialization
++ traversal
+```
+
+A microbenchmark can isolate one mechanism, but its conclusion should remain scoped to that mechanism.
+
+## Hardware-specific claims need hardware-specific evidence
+
+Statements about cache misses, SIMD width, bandwidth, or branch behavior depend on:
+
+- CPU architecture;
+- cache topology;
+- compiler;
+- optimization flags;
+- operating system;
+- data size;
+- alignment;
+- workload.
+
+Documentation should explain principles without inventing universal numeric speedups.
+
+## Practical profiling questions
+
+When a hot SIECS system is slow, ask:
+
+1. How many entities match?
+2. How many tables match?
+3. What is the average batch size?
+4. Which components are actually touched?
+5. How large are those components?
+6. Does the loop dereference pointers or perform random entity lookups?
+7. Does it branch heavily by row?
+8. Is structural mutation happening in or around the pass?
+9. Are tables fragmented by volatile tags?
+10. Is the bottleneck actually memory rather than compute or external work?
+
+These questions are more useful than “is ECS cache friendly?”
+
+## Common mistakes
+
+### Equating ECS with guaranteed cache hits
+
+ECS creates favorable storage patterns; actual cache behavior depends on the workload.
+
+### Looking only at the contiguous outer component
+
+Pointers and secondary entity lookups can dominate.
+
+### Assuming smaller components are always better
+
+Over-splitting can increase structure and query complexity.
+
+### Ignoring table fragmentation
+
+Many tiny contiguous arrays can still create a fragmented global traversal.
+
+### Claiming vectorization without checking generated code
+
+A vectorization-friendly loop is not proof of SIMD execution.
+
+### Optimizing memory layout when the system is compute-bound
+
+Use profiling data.
+
+## The rule to remember
+
+The useful chain is:
+
+```text
+explicit data requirements
+    ↓
+compact component boundaries
+    ↓
+matching entities grouped by structure
+    ↓
+contiguous table columns
+    ↓
+predictable batch iteration
+    ↓
+possible cache/prefetch/vectorization benefits
+```
+
+Each arrow is an opportunity, not a guarantee.
+
+Next: **[ECS vs OOP](/introduction/ecs-vs-oop/)**.
