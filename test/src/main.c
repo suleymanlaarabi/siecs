@@ -216,6 +216,7 @@ void observer_deferred_on_set_reports_component_at_flush(void);
 void observer_target_exact_entity(void);
 void observer_target_no_query(void);
 void observer_target_filtered(void);
+void observer_target_is_a_instances_use_concrete_query(void);
 void observer_target_destroy(void);
 void observer_target_entity_kill(void);
 void observer_target_index_reuse(void);
@@ -1020,6 +1021,10 @@ bake_test_case observer_testcases[] = {
         observer_target_filtered
     },
     {
+        "target_is_a_instances_use_concrete_query",
+        observer_target_is_a_instances_use_concrete_query
+    },
+    {
         "target_destroy",
         observer_target_destroy
     },
@@ -1157,7 +1162,7 @@ static bake_test_suite suites[] = {
         "observer",
         NULL,
         NULL,
-        20,
+        21,
         observer_testcases
     },
     {

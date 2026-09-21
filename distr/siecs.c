@@ -5521,6 +5521,45 @@ typedef struct {
     sicore_vec_get_mut(&entity_index.entities, ecs_first(entity), ecs_entity_record_t)
 #define ecs_get_table(tid) ecs_table_index_at(tid)
 
+static inline void ecs_emit_target_observers(
+    ecs_table_t *table,
+    ecs_entity_t entity,
+    ecs_entity_t observer_target,
+    ecs_event_t event,
+    ecs_component_t component,
+    const void *trigger_data
+) {
+    uint64_t key = ecs_observer_target_key(ecs_entity_id(observer_target), event);
+    uint32_t at = ecs_observer_target_lower_bound(key);
+    const uint64_t *keys = observer_index.target_keys.data;
+    if (at == observer_index.target_keys.size || keys[at] != key)
+        return;
+
+    uint16_t table_id = (uint16_t)(table - table_index.tables);
+    const ecs_observer_id_t *ids = observer_index.target_observers.data;
+    uint32_t count = observer_index.target_keys.size;
+    while (at < count && keys[at] == key) {
+        ecs_observer_id_t oid = ids[at++];
+        ecs_observer_t *observer =
+            sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
+        if (!observer->enabled)
+            continue;
+        if (observer->query != ECS_OBSERVER_NO_QUERY) {
+            ecs_query_cache_t *cache = ecs_query_cache(observer->query);
+            if (ecs_query_table_position(cache, table_id) == UINT16_MAX)
+                continue;
+        }
+        ecs_observer_event_t observer_event = {
+            .entity = entity,
+            .event = event,
+            .component = component,
+            .user_data = observer->user_data,
+            .trigger_data = trigger_data,
+        };
+        observer->callback(&observer_event);
+    }
+}
+
 static inline void ecs_emit(
     ecs_table_t *table,
     ecs_entity_t entity,
@@ -5553,34 +5592,8 @@ static inline void ecs_emit(
         return;
     }
 
-    uint64_t key = ecs_observer_target_key(ecs_entity_id(entity), event);
-    uint32_t at = ecs_observer_target_lower_bound(key);
-    const uint64_t *keys = observer_index.target_keys.data;
-    if (at == observer_index.target_keys.size || keys[at] != key)
-        return;
-
-    uint16_t table_id = (uint16_t)(table - table_index.tables);
-    const ecs_observer_id_t *ids = observer_index.target_observers.data;
-    uint32_t count = observer_index.target_keys.size;
-    while (at < count && keys[at] == key) {
-        ecs_observer_id_t oid = ids[at++];
-        ecs_observer_t *observer =
-            sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
-        if (!observer->enabled)
-            continue;
-        if (observer->query != ECS_OBSERVER_NO_QUERY) {
-            ecs_query_cache_t *cache = ecs_query_cache(observer->query);
-            if (ecs_query_table_position(cache, table_id) == UINT16_MAX)
-                continue;
-        }
-        ecs_observer_event_t observer_event = {
-            .entity = entity,
-            .event = event,
-            .component = component,
-            .user_data = observer->user_data,
-            .trigger_data = trigger_data,
-        };
-        observer->callback(&observer_event);
+    for (ecs_entity_t target = entity; target; target = ecs_entity_base_raw(target)) {
+        ecs_emit_target_observers(table, entity, target, event, component, trigger_data);
     }
 }
 

@@ -58,6 +58,7 @@ void query_system_reads_shared_fields_with_interleaved_resource(void);
 // Testsuite 'observer'
 void observer_custom_event(void);
 void observer_entity_custom_event(void);
+void observer_entity_custom_event_matches_is_a_instances(void);
 void observer_const_arg(void);
 void observer_multi_arg_terms(void);
 void observer_does_not_match_missing_component(void);
@@ -256,6 +257,10 @@ bake_test_case observer_testcases[] = {
         observer_entity_custom_event
     },
     {
+        "entity_custom_event_matches_is_a_instances",
+        observer_entity_custom_event_matches_is_a_instances
+    },
+    {
         "const_arg",
         observer_const_arg
     },
@@ -357,7 +362,7 @@ static bake_test_suite suites[] = {
         "observer",
         NULL,
         NULL,
-        10,
+        11,
         observer_testcases
     },
     {

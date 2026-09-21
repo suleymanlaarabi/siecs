@@ -18,7 +18,8 @@
 #define SIECS_CPP_TEST_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
-#include <bake_test.h>
 #include <siecs.h>
+#include <bake_test.h>
 
 #endif
+

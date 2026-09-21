@@ -257,6 +257,7 @@
           "target_exact_entity",
           "target_no_query",
           "target_filtered",
+          "target_is_a_instances_use_concrete_query",
           "target_destroy",
           "target_entity_kill",
           "target_index_reuse",

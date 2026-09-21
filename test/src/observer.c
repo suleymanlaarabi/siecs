@@ -22,6 +22,11 @@ typedef struct {
     ecs_component_t component;
 } ObserverComponentState;
 
+typedef struct {
+    uint32_t calls;
+    ecs_entity_t entity;
+} ObserverTargetState;
+
 static void observer_capture_component(ecs_observer_event_t *event) {
     ObserverComponentState *state = (ObserverComponentState *)event->user_data;
     state->calls++;
@@ -31,6 +36,12 @@ static void observer_capture_component(ecs_observer_event_t *event) {
 static void observer_count_event(ecs_observer_event_t *event) {
     uint32_t *calls = (uint32_t *)event->user_data;
     (*calls)++;
+}
+
+static void observer_capture_target(ecs_observer_event_t *event) {
+    ObserverTargetState *state = (ObserverTargetState *)event->user_data;
+    state->calls++;
+    state->entity = event->entity;
 }
 
 static void observer_ignore_event(ecs_observer_event_t *event) { (void)event; }
@@ -86,6 +97,36 @@ void observer_target_filtered(void) {
     ecs_add_cid(target, ecs_component({ 0 }));
     ecs_observer_trigger(target, event, NULL);
     test_uint(2, calls);
+    ecs_fini();
+}
+
+void observer_target_is_a_instances_use_concrete_query(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(ObserverPosition);
+    ecs_entity_t base = ecs_new();
+    ecs_entity_t matching = ecs_new();
+    ecs_entity_t missing = ecs_new();
+    ecs_event_t event = ecs_event();
+    ObserverTargetState state = { 0 };
+
+    ecs_is_a(matching, base);
+    ecs_is_a(missing, base);
+    ecs_set(matching, ObserverPosition, { 1, 2 });
+
+    ecs_observer(
+        { .on = event,
+          .entity = base,
+          .query = { .components = { ecs_filter(ObserverPosition) } },
+          .callback = observer_capture_target,
+          .user_data = (uintptr_t)&state }
+    );
+
+    ecs_observer_trigger(missing, event, NULL);
+    test_uint(0, state.calls);
+
+    ecs_observer_trigger(matching, event, NULL);
+    test_uint(1, state.calls);
+    test_assert(state.entity == matching);
     ecs_fini();
 }
 

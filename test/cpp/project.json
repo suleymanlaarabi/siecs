@@ -78,6 +78,7 @@
         "testcases": [
           "custom_event",
           "entity_custom_event",
+          "entity_custom_event_matches_is_a_instances",
           "const_arg",
           "multi_arg_terms",
           "does_not_match_missing_component",

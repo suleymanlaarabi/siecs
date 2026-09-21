@@ -2167,6 +2167,9 @@ ecs_with_relation_id(ecs_component_t component, ecs_relation_id_t relation, ecs_
  *
  * callback is required. query describes which entities can receive the event.
  * user_data is copied into ecs_observer_event_t for the callback.
+ * A targeted observer (entity != 0) also receives events emitted by direct or
+ * indirect IsA instances. The callback event entity remains the concrete
+ * entity that emitted the event.
  */
 typedef struct {
     ecs_event_t on;
@@ -2203,6 +2206,7 @@ SIECS_API ecs_event_t ecs_event_register(ecs_event_t *id);
 
 /* Create an observer. desc->callback must not be NULL. */
 SIECS_API ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc);
+
 SIECS_API void ecs_observer_fini(ecs_observer_id_t id);
 
 /* Enable or disable an observer; disabled observers remain registered. */

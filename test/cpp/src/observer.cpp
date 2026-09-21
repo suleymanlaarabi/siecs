@@ -20,6 +20,7 @@ struct CppObserverRelation {};
 
 static int cpp_observer_calls;
 static int cpp_observer_read_value;
+static ecs_entity_t cpp_observer_last_entity;
 
 struct CppRelationObserverState {
     int set_calls;
@@ -77,6 +78,37 @@ void observer_entity_custom_event(void) {
     target.set(CppObserverPosition{ .value = 1 });
     ecs::trigger<CppObserverEvent>(target);
     test_int(8, cpp_observer_calls);
+}
+
+void observer_entity_custom_event_matches_is_a_instances(void) {
+    cpp_observer_calls = 0;
+    cpp_observer_last_entity = 0;
+    ecs_test_scope _ecs_scope;
+
+    auto prefab = ecs::entity::create();
+    auto instance = ecs::entity::create().is_a(prefab);
+    auto indirect_instance = ecs::entity::create().is_a(instance);
+    auto unrelated = ecs::entity::create();
+
+    prefab.observe<CppObserverEvent>([](ecs::entity entity) {
+        cpp_observer_calls++;
+        cpp_observer_last_entity = entity.id();
+    });
+
+    ecs::trigger<CppObserverEvent>(unrelated);
+    test_int(0, cpp_observer_calls);
+
+    ecs::trigger<CppObserverEvent>(prefab);
+    test_int(1, cpp_observer_calls);
+    test_assert(cpp_observer_last_entity == prefab.id());
+
+    ecs::trigger<CppObserverEvent>(instance);
+    test_int(2, cpp_observer_calls);
+    test_assert(cpp_observer_last_entity == instance.id());
+
+    ecs::trigger<CppObserverEvent>(indirect_instance);
+    test_int(3, cpp_observer_calls);
+    test_assert(cpp_observer_last_entity == indirect_instance.id());
 }
 
 void observer_const_arg(void) {
