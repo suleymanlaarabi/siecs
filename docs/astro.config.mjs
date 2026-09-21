@@ -35,19 +35,13 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'SIECS',
-      description: 'Technical documentation for the SIECS archetype library for C and C++.',
-      defaultLocale: 'root',
-      locales: {
-        root: {
-          label: 'English',
-          lang: 'en',
-        },
-        fr: {
-          label: 'Français',
-          lang: 'fr',
-        },
+      logo: {
+        src: './src/assets/logo.png',
+        alt: 'SIECS',
+        replacesTitle: true,
       },
-      favicon: '/favicon.svg',
+      description: 'Technical documentation for the SIECS archetype library for C and C++.',
+      favicon: '/logo.png',
       customCss: ['./src/styles/custom.css'],
       lastUpdated: true,
       social: [
@@ -102,15 +96,13 @@ export default defineConfig({
         },
       ],
       sidebar: [
-        { label: 'Overview', translations: { fr: 'Vue d’ensemble' }, link: '/' },
+        { label: 'Overview', link: '/' },
         {
           label: 'Getting Started',
-          translations: { fr: 'Démarrage' },
           items: ['getting-started', 'building', 'cookbook'],
         },
         {
           label: 'Introduction to ECS',
-          translations: { fr: 'Introduction aux ECS' },
           items: [
             'introduction',
             'introduction/why-ecs',
@@ -128,7 +120,6 @@ export default defineConfig({
         },
         {
           label: 'Fundamentals',
-          translations: { fr: 'Fondamentaux' },
           items: [
             'archetype-ecs',
             'entities',
@@ -140,7 +131,6 @@ export default defineConfig({
         },
         {
           label: 'Manuals',
-          translations: { fr: 'Manuels' },
           items: [
             'observers',
             'relations',
@@ -151,12 +141,10 @@ export default defineConfig({
         },
         {
           label: 'Addons',
-          translations: { fr: 'Extensions' },
           items: ['rest'],
         },
         {
           label: 'Reference',
-          translations: { fr: 'Référence' },
           items: ['reference/api'],
         },
       ],

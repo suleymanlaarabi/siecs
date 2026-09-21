@@ -1,7 +1,9 @@
 ---
-title: SIECS Documentation
+title: Documentation
 description: Learn SIECS through a compact quickstart, concept manuals, and the public C17 and C++20 API reference.
 ---
+
+![SIECS documentation banner](../../assets/banner.png)
 
 SIECS is an archetype ECS for C17 and C++20. It combines a compact C runtime
 with a typed C++ wrapper, contiguous component storage, cached queries, systems,
