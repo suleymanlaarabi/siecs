@@ -15,6 +15,7 @@ static sipicking_vec3_t scale(sipicking_vec3_t v, float s) {
 }
 
 static sipicking_vec3_t rotate(sipicking_quat_t q, sipicking_vec3_t v) {
+
     const sipicking_vec3_t u = { q.x, q.y, q.z };
     const sipicking_vec3_t uv = { u.y * v.z - u.z * v.y,
                                   u.z * v.x - u.x * v.z,

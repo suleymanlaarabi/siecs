@@ -238,6 +238,44 @@ SIECS_PUBLIC_API const uint32_t *sigpu_pointer_event_abi(void);
 
 #ifdef __cplusplus
 }
+
+/** Typed C++ tags for the pointer events emitted by the sigpu interaction system. */
+struct PointerEnter {
+    static constexpr uint32_t mask = SiPointerEnterMask;
+    static ecs_event_t event_id() noexcept { return sigpu_pointer_event_id(SiPointerEnter); }
+};
+struct PointerLeave {
+    static constexpr uint32_t mask = SiPointerLeaveMask;
+    static ecs_event_t event_id() noexcept { return sigpu_pointer_event_id(SiPointerLeave); }
+};
+struct PointerMove {
+    static constexpr uint32_t mask = SiPointerMoveMask;
+    static ecs_event_t event_id() noexcept { return sigpu_pointer_event_id(SiPointerMove); }
+};
+struct PointerDown {
+    static constexpr uint32_t mask = SiPointerDownMask;
+    static ecs_event_t event_id() noexcept { return sigpu_pointer_event_id(SiPointerDown); }
+};
+struct PointerUp {
+    static constexpr uint32_t mask = SiPointerUpMask;
+    static ecs_event_t event_id() noexcept { return sigpu_pointer_event_id(SiPointerUp); }
+};
+struct PointerCancel {
+    static constexpr uint32_t mask = SiPointerCancelMask;
+    static ecs_event_t event_id() noexcept { return sigpu_pointer_event_id(SiPointerCancel); }
+};
+struct Click {
+    static constexpr uint32_t mask = SiClickMask;
+    static ecs_event_t event_id() noexcept { return sigpu_pointer_event_id(SiClick); }
+};
+struct Press {
+    static constexpr uint32_t mask = SiPressMask;
+    static ecs_event_t event_id() noexcept { return sigpu_pointer_event_id(SiPress); }
+};
+struct PointerWheel {
+    static constexpr uint32_t mask = SiWheelMask;
+    static ecs_event_t event_id() noexcept { return sigpu_pointer_event_id(SiPointerWheel); }
+};
 #endif
 
 #endif
