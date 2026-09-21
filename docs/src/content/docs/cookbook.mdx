@@ -1,170 +1,287 @@
 ---
 title: Cookbook
-description: Practical patterns for worlds, game loops, relationships, optional queries, events, and disabled entities.
+description: Short SIECS patterns for common application tasks.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-## Minimal World
+## Minimal world
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
 ecs_init();
-ecs_entity_t entity = ecs_new();
+ecs_entity_t e = ecs_new();
 ecs_fini();
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::init();
-auto entity = ecs::entity::create();
-ecs::fini();
-```
-</TabItem>
-</Tabs>
 
-## Game Loop with Time
+## Create a moving entity
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-ECS_RESOURCE(Time, { float dt; });
-ECS_COMPONENT(Position, { float x; });
-ECS_COMPONENT(Velocity, { float x; });
-
-static void Move(ecs_iter_t *it) {
-    const Time *time = ecs_get_resource_read(Time);
-    Position *p = ecs_field(it, 0);
-    const Velocity *v = ecs_field(it, 1);
-    for (uint32_t i = 0; i < it->count; i++) p[i].x += v[i].x * time->dt;
-}
+ecs_entity_t e = ecs_new();
+ecs_set(e, Position, {0, 0});
+ecs_set(e, Velocity, {1, 0});
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-struct Time { float dt; };
-struct Position { float x; };
-struct Velocity { float x; };
 
-ecs::set_resource(Time{ .dt = 0.016f });
-ecs::system("Move").each([](ecs::res<const Time> time,
-                              Position &p, const Velocity &v) {
-    p.x += v.x * time->dt;
+## Iterate Position + Velocity
+
+```c
+ecs_query_id_t q = ecs_query({
+    .components = {
+        ecs_inout(Position),
+        ecs_in(Velocity),
+    },
+});
+
+ecs_iter_t it = ecs_query_iter(q);
+while (ecs_iter_next(&it)) {
+    Position *p = ecs_field(&it, 0);
+    const Velocity *v = ecs_field(&it, 1);
+
+    for (uint32_t i = 0; i < it.count; i++) {
+        p[i].x += v[i].x;
+        p[i].y += v[i].y;
+    }
+}
+
+ecs_query_fini(q);
+```
+
+## Optional component
+
+```c
+ecs_query_id_t q = ecs_query({
+    .components = {
+        ecs_inout(Position),
+        ecs_in_optional(Velocity),
+    },
 });
 ```
-</TabItem>
-</Tabs>
 
-## Parent and Child
+The optional field is `NULL` for a batch whose table lacks the component.
 
-<Tabs syncKey="language">
-<TabItem label="C">
+## Exclude a tag
+
+```c
+.components = {
+    ecs_in(Position),
+    ecs_not(Frozen),
+}
+```
+
+## Parent and child
+
 ```c
 ecs_entity_t parent = ecs_new();
 ecs_entity_t child = ecs_new();
+
 ecs_relate(child, ChildOf, parent);
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-auto parent = ecs::entity::create();
-auto child = ecs::entity::create().child_of(parent);
-```
-</TabItem>
-</Tabs>
 
-`ChildOf` cascades deletion: killing the parent also kills its children.
+## Query one relation target
 
-## Optional Component Query
+For a `ByTarget` relation:
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-ecs_query_id_t q = ecs_query({
-    .components = { ecs_inout(Position), ecs_in_optional(Velocity) },
+.relations = {
+    ecs_to(GroupOf, group),
+}
+```
+
+## Shared inherited configuration
+
+Register a component with shared inheritance, set it on an abstract base, then
+create instances with `ecs_is_a()`.
+
+Read-only queries can receive the base value as `EcsFieldShared`.
+
+## Override inherited data
+
+```c
+ecs_set(instance, Material, local_material);
+```
+
+The instance now has local storage for that component.
+
+## Defer structural mutation
+
+```c
+ecs_defer_begin();
+
+ecs_add(e, Enemy);
+ecs_remove(e, Sleeping);
+ecs_relate(e, ChildOf, parent);
+
+ecs_defer_end();
+```
+
+## Disable an entity
+
+```c
+ecs_add(e, Disabled);
+```
+
+Enable it:
+
+```c
+ecs_remove(e, Disabled);
+```
+
+## System with resource dependency
+
+```c
+ecs_system({
+    .name = "Move",
+    .phase = EcsOnUpdate,
+    .query = {
+        .components = {
+            ecs_inout(Position),
+            ecs_in(Velocity),
+        },
+        .resources = {
+            { .id = ecs_id(Time), .access = EcsIn },
+        },
+    },
+    .callback = Move,
 });
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-auto query = ecs::query()
-    .require<Position>()
-    .optional<Velocity>();
-```
-</TabItem>
-</Tabs>
 
-The callback can receive an optional field:
+## Run every half second
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-ecs_query_each(it, i,
-    ecs_inout(Position),
-    ecs_in_optional(Velocity)) {
-    Position *position = ecs_field(&it, 0);
-    const Velocity *velocity = ecs_field(&it, 1);
-    if (velocity) position[i].x += velocity[i].x;
-}
+ecs_system({
+    .name = "Spawner",
+    .phase = EcsOnUpdate,
+    .interval = 0.5,
+    .callback = Spawn,
+});
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::query().require<Position>().each(
-    [](Position &position, ecs::optional<const Velocity> velocity) {
-        if (velocity) position.x += velocity->x;
-    }
-);
-```
-</TabItem>
-</Tabs>
 
-## React to a Component Set
+## React to a set
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-#include <stdio.h>
-
-static void OnPositionSet(ecs_observer_event_t *event) {
-    const Position *incoming = event->trigger_data;
-    printf("position.x = %f\n", incoming->x);
-}
-
 ecs_observer({
     .on = EcsOnSet,
     .query.components = { ecs_in(Position) },
     .callback = OnPositionSet,
 });
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-#include <iostream>
 
-ecs::observe<ecs::OnSet>().each([](const Position &position) {
-    std::cout << position.x << '\n';
+## Custom event
+
+```c
+ecs_event_t Hit = ecs_event();
+
+ecs_observer({
+    .on = Hit,
+    .callback = OnHit,
+});
+
+HitPayload payload = { .damage = 10 };
+ecs_observer_trigger(target, Hit, &payload);
+```
+
+## Save and reload scene
+
+```c
+ecs_save("level.siecs");
+ecs_load("level.siecs");
+```
+
+## Query disabled entities
+
+```c
+ecs_query_id_t q = ecs_query({
+    .components = {
+        ecs_in(Position),
+        ecs_filter(Disabled),
+    },
 });
 ```
-</TabItem>
-</Tabs>
 
-## Pause Entities with Disabled
+Mentioning `Disabled` explicitly allows that population to match.
 
-<Tabs syncKey="language">
-<TabItem label="C">
+## Query descendants of a base
+
 ```c
-ecs_add(entity, Disabled);
-ecs_remove(entity, Disabled);
+ecs_query_id_t q = ecs_query({
+    .components = {
+        ecs_in(Health),
+    },
+    .is_a = enemy_base,
+});
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-entity.disable();
-entity.enable();
-```
-</TabItem>
-</Tabs>
 
-Normal queries skip disabled entities. Add `ecs_filter(Disabled)` to match them
-explicitly.
+## Read an ancestor component
+
+For an acyclic ByTarget hierarchy relation:
+
+```c
+.components = {
+    ecs_in(LocalTransform),
+    ecs_up(WorldSettings, ChildOf),
+}
+```
+
+## Order by hierarchy depth
+
+```c
+.order_by = ecs_order_by_depth(ChildOf)
+```
+
+Use when parents/lower depths must be processed before descendants.
+
+## Main-thread render system
+
+```c
+ecs_system({
+    .name = "Render",
+    .phase = EcsOnRender,
+    .main_thread_only = true,
+    .callback = Render,
+});
+```
+
+## Explicit system dependency
+
+```c
+ecs_system_id_t build = ecs_system({
+    .name = "Build",
+    .phase = EcsPostUpdate,
+    .callback = Build,
+});
+
+ecs_system({
+    .name = "Consume",
+    .phase = EcsPostUpdate,
+    .after = { build },
+    .callback = Consume,
+});
+```
+
+## No-defer task
+
+Use only for a task without entity query iteration:
+
+```c
+ecs_system({
+    .name = "ImmediateTask",
+    .phase = EcsPostUpdate,
+    .no_defer = true,
+    .callback = ImmediateTask,
+});
+```
+
+## Monotonic entity allocation
+
+```c
+ecs_entity_t tool_entity = ecs_new_no_reuse();
+```
+
+Use when runtime numeric allocation order is needed; do not treat the index as a
+persistent cross-session id.
+
+## Validate a scene before loading
+
+```c
+if (ecs_scene_validate(data, size)) {
+    ecs_load_memory(data, size);
+}
+```

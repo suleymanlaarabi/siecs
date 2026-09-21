@@ -1,50 +1,35 @@
 ---
 title: Resources
-description: Store and access values held once per world, including use from systems, hooks, and the id-based API.
+description: Store values once per world and declare their access in systems.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Resources are typed values stored once per world. Use them for state that is
-unique to the world, not attached to each entity: frame time, input state,
-renderer handles, asset registries, shared config, or global simulation
-settings.
+Resources are typed values stored once per world.
 
-Resources have their own `ecs_resource_t` ids. They do not consume component
-ids, they are not added to an entity, they are not query terms, and they do not
-consume an `ecs_field()` slot.
+They are the SIECS mechanism for state that is global to the current world:
 
-SIECS provides the builtin `DeltaTime` resource. It is always registered and
-contains the current frame delta in seconds:
+- frame timing;
+- input state;
+- renderer/device handles;
+- configuration;
+- asset registries;
+- networking state;
+- application services represented as data.
 
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-const DeltaTime *delta_time = ecs_get_resource_read(DeltaTime);
-float seconds = delta_time->value;
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-const auto &delta_time = ecs::resource<const DeltaTime>();
-float seconds = delta_time.value;
-```
-</TabItem>
-</Tabs>
+Resources use a separate `ecs_resource_t` id space. They do not become entity
+components and do not affect archetypes.
 
-## Declare a Resource
-
-Resources are declared once and stored per world:
+## Declare a resource
 
 <Tabs syncKey="language">
 <TabItem label="C">
 
 ```c
-ECS_RESOURCE_DECLARE(Time, {
+ECS_RESOURCE(Time, {
     float dt;
     float elapsed;
 });
 
-ECS_RESOURCE_DEFINE(Time);
 ECS_RESOURCE_REGISTER(Time);
 ```
 
@@ -52,314 +37,217 @@ ECS_RESOURCE_REGISTER(Time);
 <TabItem label="C++">
 
 ```cpp
-#include "resources.h" // contains ECS_RESOURCE_DECLARE(Time, ...)
+struct Time {
+    float dt;
+    float elapsed;
+};
 
 auto time = ecs::resource_handle<Time>();
-time.set(Time{ .dt = 0.016f });
 ```
 
 </TabItem>
 </Tabs>
 
-The resource macros intentionally mirror component macros, but resources are
-registered in a dedicated resource registry. When a resource is declared in C,
-the C++ helpers reuse its C id, descriptor, lifecycle operations, and hooks.
+Shared C declarations can be used from both C and C++. C++ native types can use
+the typed resource wrapper directly.
 
-Use `ECS_RESOURCE_DECLARE_CPP` when the shared resource also needs C++-only
-methods:
+## Set and read
 
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ECS_RESOURCE_DECLARE(Time, {
-    float dt;
-});
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ECS_RESOURCE_DECLARE_CPP(Time,
-    ECS_CPP_FIELDS(
-        float dt;
-    ),
-    ECS_CPP_METHODS(
-        bool valid() const { return dt > 0.0f; }
-    )
-);
-```
-</TabItem>
-</Tabs>
-
-The declaration remains valid in C, where the method block is ignored. C++
-methods must not add instance data, so the C and C++ resource layouts stay
-identical.
-
-## Set and Read
-
-`ecs_set_resource()` creates or replaces the resource value:
-
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
 ecs_set_resource(Time, {
     .dt = 0.016f,
     .elapsed = 0.0f,
 });
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::set_resource(Time{ .dt = 0.016f, .elapsed = 0.0f });
-```
-</TabItem>
-</Tabs>
 
-Use `ecs_get_resource()` when the resource must exist:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
 Time *time = ecs_get_resource(Time);
-time->elapsed += time->dt;
+const Time *read_time = ecs_get_resource_read(Time);
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-auto &time = ecs::resource<Time>();
-time.elapsed += time.dt;
-```
-</TabItem>
-</Tabs>
 
-Use `ecs_get_resource_read()` when the caller only needs read access:
+Nullable access:
 
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-const Time *time = ecs_get_resource_read(Time);
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-const auto &time = ecs::resource<const Time>();
-```
-</TabItem>
-</Tabs>
-
-If absence is valid, use the nullable helpers:
-
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
 Time *time = ecs_try_get_resource(Time);
-if (time != NULL) {
-    time->elapsed += time->dt;
-}
-
 const Time *read_time = ecs_try_get_resource_read(Time);
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-if (auto *time = ecs::try_resource<Time>()) {
-    time->elapsed += time->dt;
-}
 
-const auto *read_time = ecs::try_resource<const Time>();
-```
-</TabItem>
-</Tabs>
+The non-`try` getters require the resource to exist.
 
-`ecs_get_resource()` and `ecs_get_resource_read()` assert when the resource does not
-exist. The `try` variants return `NULL`.
+## Presence and removal
 
-## Presence and Removal
-
-Check whether a resource exists with `ecs_has_resource()`:
-
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-if (!ecs_has_resource(Time)) {
-    ecs_set_resource(Time, {
-        .dt = 0.0f,
-        .elapsed = 0.0f,
-    });
+if (ecs_has_resource(Time)) {
+    ecs_remove_resource(Time);
 }
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-if (!ecs::has_resource<Time>()) {
-    ecs::set_resource(Time{ .dt = 0.0f, .elapsed = 0.0f });
-}
-```
-</TabItem>
-</Tabs>
-
-Remove it with `ecs_remove_resource()`:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_remove_resource(Time);
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::remove_resource<Time>();
-```
-</TabItem>
-</Tabs>
 
 Removing a missing resource is a no-op.
 
-## Use Resources in C Systems
+## Resource hooks
 
-In C, systems receive an `ecs_iter_t *`. Read resources from the active world
-before the entity loop:
+A resource descriptor can define `on_set` and `on_remove`.
 
-<Tabs syncKey="language">
-<TabItem label="C">
+Hooks are appropriate for small lifecycle reactions tied to the resource value.
+
+`on_remove` also runs during world teardown for resources that remain present.
+
+## Resources in systems
+
+Resource terms do not match entities and do not consume `ecs_field()` slots.
+
+They declare scheduler access:
+
 ```c
-static void move_system(ecs_iter_t *it) {
-    const Time *time = ecs_get_resource_read(Time);
-    Position *positions = ecs_field(it, 0);
-    const Velocity *velocities = ecs_field(it, 1);
-
-    for (uint32_t i = 0; i < it->count; i++) {
-        positions[i].x += velocities[i].x * time->dt;
-        positions[i].y += velocities[i].y * time->dt;
-    }
-}
-
 ecs_system({
     .name = "Move",
     .phase = EcsOnUpdate,
     .query = {
-        .components = { ecs_inout(Position), ecs_in(Velocity) },
+        .components = {
+            ecs_inout(Position),
+            ecs_in(Velocity),
+        },
+        .resources = {
+            { .id = ecs_id(Time), .access = EcsIn },
+        },
     },
-    .callback = move_system,
+    .callback = Move,
 });
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::system("Move").each([](
-    ecs::res<const Time> time,
-    Position &position,
-    const Velocity &velocity
-) {
-    position.x += velocity.x * time->dt;
-    position.y += velocity.y * time->dt;
-});
-```
-</TabItem>
-</Tabs>
 
-The resource is declared in `query.resources` as access metadata. It is never a
-component, field, or archetype criterion. The system above matches entities with
-`Position` and `Velocity`; it does not require entities to have `Time`.
+The scheduler can use this access to prevent a resource writer from running in
+parallel with conflicting readers/writers.
+
+In C++, typed system callbacks can request `ecs::res<T>` / `ecs::res<const T>`.
+
+## Builtin DeltaTime
+
+SIECS registers `DeltaTime`.
+
+It contains the current frame delta. This is useful for systems that want the
+world's frame time as data.
+
+For an interval system, `it->delta_time` can represent accumulated time since
+the system's previous automatic execution, while the `DeltaTime` resource still
+represents the current frame.
 
 ## ID-based API
 
-Typed helpers are wrappers around the id-based API:
+Generic code can use:
 
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-void ecs_set_resource_rid(ecs_resource_t id, const void *data);
-void *ecs_resource_rid(ecs_resource_t id);
-void *ecs_try_resource_rid(ecs_resource_t id);
-bool ecs_has_resource_rid(const ecs_resource_t id);
-void ecs_remove_resource_rid(ecs_resource_t id);
+- `ecs_resource_init`;
+- `ecs_resource_find`;
+- `ecs_resource_name`;
+- `ecs_resource_rid`;
+- `ecs_try_resource_rid`;
+- `ecs_has_resource_rid`;
+- `ecs_remove_resource_rid`.
+
+Resource lookup is direct by resource id and does not involve archetype
+matching.
+
+## Resource design
+
+Use a resource when there should be exactly one value for the world.
+
+Use a component when the value belongs independently to entities.
+
+Avoid turning a resource into a large mutable service object that hides all
+dependencies. Systems are easier to schedule and test when resource access is
+explicit and narrowly scoped.
+
+## Resource registration and type operations
+
+`ecs_resource_desc_t` contains:
+
+- name;
+- size;
+- type lifecycle operations;
+- `on_set`;
+- `on_remove`.
+
+C++ resource wrappers register appropriate lifecycle operations for native
+types.
+
+Like components, a resource that owns memory/handles must have correct lifetime
+semantics.
+
+Unlike components, there is only one storage slot per registered resource type
+in the world.
+
+## Resource initialization patterns
+
+### Configuration
+
+Set once during startup/module import and read from many systems.
+
+```text
+GameConfig
+RendererConfig
+PhysicsSettings
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-Time time_value{ .dt = 0.016f };
-auto time = ecs::resource_handle<Time>();
-time.set(time_value);
-time.get().dt += 0.001f;
+
+### Frame state
+
+Update once per frame and read from many systems.
+
+```text
+Input
+DeltaTime
+FrameInfo
 ```
-</TabItem>
-</Tabs>
 
-This is useful for generic module code:
+### Mutable service state
 
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_resource_t time_id = ecs_id(Time);
+A resource can hold mutable runtime state such as an asset registry.
 
-if (ecs_has_resource_rid(time_id)) {
-    const Time *time = ecs_resource_rid(time_id);
-    /* use time */
-}
+If many systems write it, the scheduler will serialize those systems according
+to declared access.
+
+Consider splitting unrelated service state into separate resources to expose
+more parallelism and clearer dependencies.
+
+## Resource lifetime
+
+A registered resource type can be present or absent.
+
+`set` creates/replaces the current value.
+
+`remove` destroys/removes the current value but the resource type remains
+registered.
+
+During `ecs_fini()`, present resources are finalized according to runtime
+registration/lifecycle ordering.
+
+Do not retain a resource pointer after removal or world finalization.
+
+## Resources and modules
+
+A module may register/set resources needed by its systems.
+
+Disabling the module disables captured systems/observers but does not
+automatically remove every resource value.
+
+This is intentional: resource lifetime is separate from module execution state.
+
+If a module owns a resource that should disappear on disable, implement that
+policy explicitly.
+
+## Scheduler examples
+
+Two read-only resource consumers can run together:
+
+```text
+System A: Time [in]
+System B: Time [in]
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-#include <cstdio>
 
-auto time = ecs::resource_handle<const Time>();
+A writer conflicts:
 
-if (time.has()) {
-    if (time.get().dt >= 0.0f) {
-        std::printf("valid time\n");
-    }
-}
+```text
+System C: Time [inout]
 ```
-</TabItem>
-</Tabs>
 
-## Hooks
+If a resource is accessed through an undeclared global pointer instead, the
+scheduler cannot infer that conflict.
 
-Resources have dedicated resource hooks:
-
-- `on_set` runs when `ecs_set_resource()` writes a value.
-- `on_remove` runs when `ecs_remove_resource()` removes the value.
-- `on_remove` also runs during `ecs_fini()` for resources still present in the
-  world.
-
-Hooks receive only the resource value pointer. The callback does not receive a
-world argument.
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-static void on_time_set(const void *data) {
-    const Time *time = data;
-    if (time->dt < 0.0f) {
-        /* reject or record invalid data */
-    }
-}
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-#include <cstdlib>
-
-static void on_time_set(const Time &time) {
-    if (time.dt < 0.0f) {
-        std::abort();
-    }
-}
-
-ecs::resource_hooks<Time> hooks{ .on_set = on_time_set };
-auto time = ecs::resource_handle<Time>(hooks);
-time.set(Time{ .dt = 0.016f });
-```
-</TabItem>
-</Tabs>
-
-## Performance notes
-
-Resource lookup is a direct index by `ecs_resource_t`, so access is O(1). The
-value is stored once in the world and is independent from table iteration.
-
-For hot C systems, resolve the resource once before the loop over `it->count`,
-then reuse the pointer for every entity in the batch.
-
-In typed C++, `ecs::res<const T>` declares `EcsIn` and `ecs::res<T>` declares
-`EcsInOut` in `query.resources`. Neither form creates a component term.
+This is why explicit resource terms are useful even though the callback can
+technically call the resource getter directly.

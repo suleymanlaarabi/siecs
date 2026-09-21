@@ -1,188 +1,39 @@
 ---
-title: Observers and Events
-description: React to component lifecycle changes, relation transitions, and custom events in C and C++.
+title: Observers
+description: Component events, relation transitions, custom events, filters, targeted observers and execution rules.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Observers run callbacks when an event is emitted for an entity matching the
-observer query. They are indexed by event and matching table, so a relation
-filter can be used without scanning unrelated entities.
+## Introduction
 
-## Built-in events
+Observers run in response to events.
 
-| Event | Trigger | `trigger_data` |
-| --- | --- | --- |
-| `EcsOnAdd` | A component is added. | Pointer to the added component storage. |
-| `EcsOnRemove` | A component is removed. | Pointer to the component storage before removal. |
-| `EcsOnSet` | A component is set or replaced. | Pointer to the new value passed to `ecs_set()` or `ecs_set_cid()`. |
-| `EcsOnRelationSet` | A relation is added or retargeted. | Pointer to `ecs_relation_event_t`, after the transition. |
-| `EcsOnRelationRemove` | A relation is removed. | Pointer to `ecs_relation_event_t`, before the transition. |
+They are useful when work should happen because something changed, rather than
+because every frame passed.
 
-`EcsOnRelationSet` is emitted for an addition and for a retarget. Calling
-`ecs_relate()` with the current target is a no-op and emits no relation event.
-Deferred relation changes emit when the command buffer is flushed; multiple
-deferred changes to one relation are coalesced to the final target.
+SIECS has built-in events for component and relation operations and supports
+custom event ids.
 
-## Observe a component
+Observers can also include a query filter so only matching entities receive the
+callback.
+
+## Example
 
 <Tabs syncKey="language">
 <TabItem label="C">
 
 ```c
-static void on_position_set(ecs_observer_event_t *event) {
-    const Position *value = event->trigger_data;
-    /* value is the new value; storage has not been overwritten yet. */
-    log_position(event->entity, value);
+static void OnPositionSet(ecs_observer_event_t *event) {
+    const Position *p = event->trigger_data;
+    printf("entity %llu -> %f, %f\n",
+        (unsigned long long)event->entity,
+        p->x, p->y);
 }
 
-ecs_observer({
-    .on = EcsOnSet,
-    .query = { .components = { ecs_in(Position) } },
-    .callback = on_position_set,
-});
-```
-
-</TabItem>
-<TabItem label="C++">
-
-```cpp
-ecs::observe<ecs::OnSet>().each([](const Position &position) {
-    log_position(position);
-});
-```
-
-</TabItem>
-</Tabs>
-
-Observer queries follow normal component and relation matching rules. Entities
-with `Disabled` or `Abstract` are excluded by default; mention the component
-explicitly when an observer must include them.
-
-<Tabs syncKey="language">
-<TabItem label="C">
-
-```c
-ecs_observer({
-    .on = EcsOnSet,
-    .query = {
-        .components = { ecs_in(Position), ecs_filter(Disabled) },
-    },
-    .callback = on_disabled_position_set,
-});
-```
-
-</TabItem>
-<TabItem label="C++">
-
-```cpp
-ecs::observe<ecs::OnSet>()
-    .require<Disabled>()
-    .each([](const Position &, const Disabled &) {});
-```
-
-</TabItem>
-</Tabs>
-
-Observers are enabled by default. `ecs_observer_disable()` and
-`ecs_observer_enable()` toggle an observer without unregistering it.
-
-## Observe relation transitions
-
-The relation payload contains the relation id and both sides of the transition:
-`relation`, `old_target`, and `new_target`. The event type is
-`ecs_relation_event_t` in both language APIs.
-
-The values are:
-
-| Operation | `old_target` | `new_target` |
-| --- | --- | --- |
-| Add | `0` | New target. |
-| Retarget | Previous target. | New target. |
-| Remove | Previous target. | `0`. |
-
-Use a relation query to observe one relation type:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-
-```c
-static void on_group_changed(ecs_observer_event_t *event) {
-    const ecs_relation_event_t *change = event->trigger_data;
-
-    if (event->event == EcsOnRelationSet) {
-        log_relation(event->entity, change->old_target, change->new_target);
-    } else {
-        log_relation(event->entity, change->old_target, 0);
-    }
-}
-
-ecs_observer({
-    .on = EcsOnRelationSet,
-    .query.relations = { ecs_rel(GroupOf) },
-    .callback = on_group_changed,
-});
-
-ecs_observer({
-    .on = EcsOnRelationRemove,
-    .query.relations = { ecs_rel(GroupOf) },
-    .callback = on_group_changed,
-});
-```
-
-</TabItem>
-<TabItem label="C++">
-
-```cpp
-struct GroupOf {};
-
-auto on_set = ecs::observe<ecs::OnRelationSet>();
-on_set.with_relation<GroupOf>();
-on_set.each([](ecs::observer_event event) {
-    const auto *change = event.trigger_data<ecs_relation_event_t>();
-    log_relation(change->old_target, change->new_target);
-});
-
-auto on_remove = ecs::observe<ecs::OnRelationRemove>();
-on_remove.with_relation<GroupOf>();
-on_remove.each([](ecs::observer_event event) {
-    const auto *change = event.trigger_data<ecs_relation_event_t>();
-    log_relation(change->old_target, 0);
-});
-```
-
-</TabItem>
-</Tabs>
-
-Set observers match the entity's new relation table. Remove observers match
-the old relation table, like `EcsOnRemove` matches the component before it is
-removed. This means an exact `ecs_to()` filter can identify the old target for a
-remove event and the new target for a set event.
-
-The C++ wrapper provides `ecs::OnRelationSet` and `ecs::OnRelationRemove`.
-Relation data is read through `ecs::observer_event::trigger_data<T>()`, as
-shown in the C++ tab above.
-
-`ecs::observer_event` and all `trigger_data` pointers are borrowed and valid
-only during the callback.
-
-## Callback context and event payloads
-
-The C callback receives an `ecs_observer_event_t` with `entity`, `event`,
-`user_data`, and `trigger_data`. The C++ callback receives the corresponding
-`ecs::observer_event` object. Both payloads are borrowed for the duration of
-the callback:
-
-Pass a small callback context through `user_data`:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-
-```c
 ecs_observer({
     .on = EcsOnSet,
     .query.components = { ecs_in(Position) },
-    .callback = on_position_set,
-    .user_data = (uintptr_t)counter_ptr,
+    .callback = OnPositionSet,
 });
 ```
 
@@ -190,60 +41,555 @@ ecs_observer({
 <TabItem label="C++">
 
 ```cpp
-uint32_t counter = 0;
-
 ecs::observe<ecs::OnSet>()
-    .user_data(&counter)
-    .each([](ecs::observer_event event, const Position &) {
-        ++*event.user_data<uint32_t>();
+    .each([](ecs::entity e, const Position &p) {
+        std::printf("%llu -> %f, %f\n",
+            (unsigned long long)e.id(), p.x, p.y);
     });
 ```
 
 </TabItem>
 </Tabs>
 
-In C++, use `user_data()` on `ecs::observer_event`. Component callbacks may
-also receive an `ecs::observer_event` argument when they need the entity,
-event id, or callback context.
+## The Basics
 
-## Custom events
+### Usage
 
-Create a custom event id with `ecs_event()` and trigger it explicitly:
+An observer descriptor contains:
 
-<Tabs syncKey="language">
-<TabItem label="C">
+- one event id;
+- an optional target entity;
+- a query filter;
+- a callback;
+- user data.
+
+The query determines which entity tables are eligible for the event.
+
+An observer without an entity-specific filter can listen globally.
+
+A targeted observer uses `.entity` to focus on one entity and, for supported
+inheritance behavior, its direct or indirect `IsA` instances.
+
+### Limitations
+
+Observers are synchronous reactions to ECS events.
+
+They should not be treated as an unlimited replacement for systems.
+
+Important constraints:
+
+- callbacks execute as part of the operation/event flow;
+- event payload pointers are borrowed and temporary;
+- excessive observer chains can make control flow hard to follow;
+- observer work still consumes the cost of every emitted matching event;
+- structural changes inside callbacks may be deferred depending on execution
+  context.
+
+SIECS observers do not currently implement every Flecs observer feature such as
+multi-event descriptors, monitors, yield-existing or general query-variable
+binding.
+
+### Good Use Cases for Observers
+
+Observers fit well for:
+
+- initialize derived data when a component is added;
+- validate/log explicit component writes;
+- update an external index on relation changes;
+- mark caches dirty;
+- create tool notifications;
+- react to a custom application event.
+
+### Bad Use Cases for Observers
+
+Avoid observers for:
+
+- large per-frame transforms over many entities;
+- work that naturally batches over contiguous data;
+- long event chains where ordering becomes a hidden dependency graph;
+- gameplay logic that is easier to reason about as scheduled systems.
+
+A system is usually better when the same category of entity work happens every
+frame.
+
+### Observers vs. Hooks
+
+Component hooks belong to one component type and are part of that component's
+lifecycle behavior.
+
+Observers are world registrations that react to events and can include query
+filters.
+
+Use a hook when the behavior is intrinsic to the component's storage/lifecycle.
+
+Use an observer when a subsystem wants to react externally to an event.
+
+## OnAdd Events
+
+`EcsOnAdd` fires after a component has been added.
 
 ```c
-ecs_event_t Damaged = ecs_event();
+ecs_observer({
+    .on = EcsOnAdd,
+    .query.components = { ecs_in(Position) },
+    .callback = OnAddPosition,
+});
+```
+
+The component's storage exists by the time the event is observed.
+
+For data components, the value may still be in its initial/constructed state if
+no explicit set has happened yet.
+
+## OnSet Events
+
+`EcsOnSet` fires when a component value is explicitly set or replaced through
+the ECS set path.
+
+```c
+ecs_set(e, Position, {10, 20});
+```
+
+can produce an `EcsOnSet` event for matching observers.
+
+The observer payload is the set value for the duration of the callback.
+
+Do not retain `trigger_data` after the callback returns.
+
+### OnSet and Inheritance
+
+Inherited values require distinguishing between:
+
+- the base owning/shared value;
+- an instance receiving effective data;
+- an instance creating an override.
+
+An explicit set on an instance creates/writes local state according to normal
+component semantics and observer matching is evaluated for the concrete entity.
+
+Observers should not assume that every effective inherited read corresponds to a
+set event on the instance.
+
+### Setting an inherited component
+
+If a shared inherited component is only visible through a base, a write should
+first establish local writable ownership/override as required by SIECS
+inheritance semantics.
+
+This prevents an instance write from silently changing the base for all
+instances.
+
+## OnRemove Events
+
+`EcsOnRemove` fires when a component is removed.
+
+The removed value is available during the callback, before its storage is fully
+discarded.
+
+This makes the event suitable for releasing associated external objects,
+removing registrations or recording final state.
+
+Do not store the component pointer beyond the callback.
+
+## Relation events
+
+SIECS has dedicated relation transition events:
+
+- `EcsOnRelationSet`;
+- `EcsOnRelationRemove`.
+
+`EcsOnRelationSet` covers a new relation and retargeting an existing relation.
+
+Calling `ecs_relate()` with the relation already pointing to the same target is a
+no-op and does not produce a meaningful target transition.
+
+Relation event data contains old/new target information.
+
+Deferred relation changes emit when the command buffer is flushed. Multiple
+deferred changes to the same relation can collapse to the final structural
+result.
+
+## Filter terms
+
+Observer queries can use component filters and relation constraints.
+
+Example: only react to position writes on entities that are enemies:
+
+```c
+ecs_observer({
+    .on = EcsOnSet,
+    .query.components = {
+        ecs_in(Position),
+        ecs_filter(Enemy),
+    },
+    .callback = OnEnemyPositionSet,
+});
+```
+
+The event component should be part of the matching model when the observer needs
+component-specific semantics.
+
+`Disabled` and `Abstract` are excluded by default unless mentioned explicitly.
+
+## Targeted observers
+
+A descriptor can set `.entity`.
+
+This limits observation to that entity, with SIECS's inheritance propagation
+rules allowing targeted observation of concrete `IsA` instances where
+documented by the API.
+
+Targeted observers are useful for watching one prototype/base or one important
+runtime entity without scanning all world events manually.
+
+## Custom Events
+
+Allocate/register a custom event id and trigger it:
+
+```c
+ecs_event_t DamageEvent = ecs_event();
 
 ecs_observer({
-    .on = Damaged,
-    .query = { .components = { ecs_in(Health) } },
-    .callback = on_damaged,
+    .on = DamageEvent,
+    .query.components = { ecs_in(Health) },
+    .callback = OnDamage,
 });
 
-Damage damage = { .amount = 10 };
-ecs_observer_trigger(entity, Damaged, &damage);
+DamagePayload payload = { .amount = 10 };
+ecs_observer_trigger(entity, DamageEvent, &payload);
 ```
 
-</TabItem>
-<TabItem label="C++">
+The payload type is defined by the application.
 
-```cpp
-struct Damaged {};
-struct Damage { int amount; };
+Every observer that handles the event must agree on the payload contract.
 
-ecs::observe<Damaged>().each([](Health &health) {
-    health.value -= 1;
-});
+### Typed event ids
 
-Damage damage{ .amount = 10 };
-ecs::trigger<Damaged>(entity, &damage);
+SIECS also supports process-wide typed event id registration through
+`ecs_event_register()` so C/C++ code can share stable event storage.
+
+### Entity Observers
+
+A custom event is triggered for a concrete live entity. The observer query is
+matched against that entity's current table.
+
+The event does not by itself alter ECS state.
+
+## Observer Execution
+
+Observers are enabled by default.
+
+```c
+ecs_observer_disable(observer);
+ecs_observer_enable(observer);
 ```
 
-</TabItem>
-</Tabs>
+Disabling preserves the registration and id.
 
-Custom events use the entity's current table when they are triggered. Their
-`trigger_data` is the pointer supplied to `ecs_observer_trigger()` or
-`ecs::trigger()`.
+Modules use this when disabling all observers captured during module import.
+
+### Observer disabling
+
+Disabled observers receive no callbacks but remain allocated.
+
+Use `ecs_observer_fini()` to destroy an observer registration completely.
+
+### Observer Ordering
+
+Do not depend on unspecified ordering between independent observers unless the
+API explicitly guarantees it.
+
+If application correctness requires a sequence of multi-step work, a scheduled
+system pipeline is usually a better fit.
+
+### Event order between entities
+
+Events caused by structural operations on multiple entities should not be used
+as a global sorting mechanism.
+
+Packed-table mutation, deferred command flushing and recursive relation cleanup
+can produce an order that is an implementation detail.
+
+### Hooks and Events
+
+A component may have both hooks and observers.
+
+Hooks belong to the component lifecycle. Observer events expose world-level
+reactions.
+
+Keep both small and avoid building circular mutation chains where a hook triggers
+an event observer that writes the same component repeatedly.
+
+### Recursive hierarchy cleanup
+
+When a hierarchy is deleted, child cleanup can emit removal events while the
+tree is being destroyed.
+
+Observer code should treat entity handles defensively and check liveness before
+performing work on related entities whose lifetime may also be ending.
+
+## Observer descriptor anatomy
+
+`ecs_observer_desc_t` contains:
+
+```text
+on
+entity
+query
+callback
+user_data
+```
+
+`on` is one event id.
+
+`entity` optionally targets observation.
+
+`query` filters the concrete entity that receives/emits the event.
+
+`callback` receives `ecs_observer_event_t`.
+
+`user_data` carries registration-specific application state.
+
+Because one observer descriptor has one event id, use separate observer
+registrations when the same callback needs to handle multiple event kinds.
+
+## Component event payloads
+
+### Add payload
+
+The add event is about structural presence.
+
+The component storage has been introduced.
+
+If application semantics require a fully user-initialized value, `OnSet` is
+usually the more precise signal than `OnAdd`.
+
+### Set payload
+
+The set payload represents the value supplied to the set operation.
+
+Component hooks may also participate in the write.
+
+Observer code should not assume the payload pointer is the forever-stable table
+address of the component.
+
+Use the payload during the callback; reacquire normal component storage later if
+needed.
+
+### Remove payload
+
+Removal callbacks happen while the removed value is still available for
+cleanup/inspection.
+
+After the event completes and removal proceeds, the old pointer must be treated
+as invalid.
+
+## Relation event payload
+
+Relation observers receive transition information rather than component bytes.
+
+Important cases:
+
+### Add relation
+
+```text
+old target = none
+new target = X
+```
+
+### Retarget
+
+```text
+old target = X
+new target = Y
+```
+
+### Remove
+
+```text
+old target = X
+new target = none
+```
+
+A same-target `ecs_relate(source, R, X)` does not represent a meaningful
+transition and should not be used to manufacture redundant events.
+
+## Deferred event timing
+
+Inside a defer scope:
+
+```c
+ecs_defer_begin();
+ecs_set(entity, Position, {1, 2});
+/* observer may not have run yet */
+ecs_defer_end();
+/* command flush has applied events */
+```
+
+This is essential to safe system iteration.
+
+Do not write logic that assumes every observer callback has executed at the
+exact source line of a deferred mutation request.
+
+If code must observe the final world after deferred operations, do it after the
+flush/scheduler sync boundary.
+
+## Event coalescing and final state
+
+When multiple deferred structural commands target the same entity/relation, the
+command buffer can reduce them to the final intended result.
+
+Application observer logic should focus on meaningful state transitions, not use
+deferred commands as a guaranteed journal of every intermediate API call.
+
+If every intermediate command must be audited, build a dedicated application
+event/log stream rather than depending on structural command internals.
+
+## Query matching during events
+
+Observer filters are evaluated against the relevant entity/table state for the
+event semantics.
+
+This matters around add/remove:
+
+- adding a component changes which filters are satisfied;
+- removing it changes which filters are satisfied;
+- relation retarget can change target-filtered matches.
+
+Write filters around the state the observer is intended to react to.
+
+Test edge cases when combining required/excluded terms with add/remove events.
+
+## Observers and Disabled/Abstract
+
+Default query exclusions also affect observers.
+
+A global observer using ordinary component filters will not accidentally process
+disabled/template entities unless those tags are explicitly included in its
+query logic.
+
+Tooling/cleanup observers that need those populations should mention the tags
+explicitly.
+
+## Targeted inheritance observation
+
+When `.entity` targets a base, SIECS can forward relevant events from concrete
+direct/indirect `IsA` instances according to observer semantics.
+
+The callback entity remains the concrete entity that emitted the event.
+
+This lets a subsystem observe a template family without manually registering one
+observer per instance.
+
+Do not confuse this with shared inherited component storage: event target
+propagation and field ownership are distinct concepts.
+
+## Observer lifecycle
+
+### Creation
+
+`ecs_observer_init()` validates the descriptor and returns an observer id.
+
+### Enable/disable
+
+Toggling preserves the registration/query metadata.
+
+### Finalization
+
+`ecs_observer_fini()` releases the observer registration.
+
+Do not use an observer id after finalization.
+
+Module disable uses enable/disable, not finalization, so re-enabling the module
+restores the captured observer.
+
+## Custom event contracts
+
+A custom event id has no built-in payload schema.
+
+Define one clearly:
+
+```c
+typedef struct {
+    ecs_entity_t attacker;
+    float amount;
+} DamageEvent;
+```
+
+All triggers/observers for that id must agree.
+
+A custom event payload can be `NULL` if the event is only a signal.
+
+If asynchronous persistence is needed, copy the payload into application-owned
+storage. The observer trigger data pointer is borrowed.
+
+## Event-driven versus state-driven logic
+
+Observers answer:
+
+```text
+"Something happened; react now."
+```
+
+Systems answer:
+
+```text
+"What is the current world state; transform all matching data."
+```
+
+Use observers for transition side effects.
+
+Use systems for state evolution.
+
+Example:
+
+- observer marks `NavDirty` when obstacle data changes;
+- system rebuilds all dirty navigation chunks in a controlled phase.
+
+This combines event responsiveness with batch-friendly expensive work.
+
+## Observer performance
+
+Observer cost is approximately tied to event frequency and filter work.
+
+A low-frequency expensive initialization observer may be fine.
+
+A tiny observer that fires millions of times during bulk loading can still
+become expensive due to call/event overhead.
+
+For bulk initialization:
+
+- defer/batch structural work;
+- keep hooks/observers small;
+- consider a post-load system for derived bulk processing.
+
+## Observer ordering guidance
+
+If observer A must always run before B for correctness, separate synchronous
+callbacks may be the wrong abstraction.
+
+Prefer:
+
+1. observer records/marks state;
+2. scheduled system A processes it;
+3. system B depends on A with phase/`.after`.
+
+This makes order visible to the scheduler and documentation.
+
+## Recursive mutation safety
+
+An observer can trigger ECS mutations that produce more events.
+
+Design against accidental recursion:
+
+```text
+OnSet(Position)
+    -> set Position again
+        -> OnSet(Position)
+            -> ...
+```
+
+Use guards, compare old/new data, defer a different operation, or restructure the
+logic as a system.
+
+The same caution applies to relation observers that retarget the same relation.

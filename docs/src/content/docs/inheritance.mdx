@@ -1,356 +1,367 @@
 ---
-title: Inheritance
-description: Build reusable prototypes with abstract entities, IsA links, component overrides, and inherited queries.
+title: Inheritance and Abstract Bases
+description: IsA bases, component inheritance, sharing, overriding, variants and template hierarchies in SIECS.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Inheritance lets an entity use another entity as a base for reusable component
-defaults. Components are owned by inheriting entities by default; components
-that should remain shared can opt into shared inheritance.
+## Introduction
 
-An entity can inherit from one base. That base must be marked with the built-in
-`Abstract` component.
+SIECS inheritance is built on the `IsA` relation.
 
-## Create a Base
+A base entity contains reusable component data. An instance connects to the base:
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-ecs_entity_t base = ecs_new();
-ecs_set(base, Health, { 100 });
-ecs_set(base, Speed, { 4.0f });
-ecs_add(base, Abstract);
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-struct Health { int value; };
-struct Speed { float value; };
-
-auto base = ecs::entity::create();
-base.set(Health{ 100 });
-base.set(Speed{ 4.0f });
-base.abstract();
-```
-</TabItem>
-</Tabs>
-
-Create the base with `ecs_new()`, add the default component values, then add
-`Abstract`.
-
-Once an entity has `Abstract`, normal component add, set, and remove operations
-on that entity are rejected. Put component data on the base before marking it
-abstract.
-
-Use a normal entity instead of an abstract one when you need to keep mutating its
-components directly.
-
-## Create an Instance
-
-Create another entity and link it to the abstract base with `ecs_is_a()`:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_entity_t instance = ecs_new();
 ecs_is_a(instance, base);
 ```
-</TabItem>
-<TabItem label="C++">
+
 ```cpp
-auto instance = ecs::entity::create().is_a(base);
+instance.is_a(base);
 ```
-</TabItem>
-</Tabs>
 
-`ecs_is_a(instance, base)` moves `instance` to an archetype table whose
-type records `base` as its inheritance target. Local component data already on
-the instance is kept.
+The base is treated as abstract so normal simulation queries focus on concrete
+instances.
 
-An entity has one base at a time. Calling `ecs_is_a()` again with the same base
-is a no-op. Calling it with another abstract base replaces the inheritance
-target in the entity type and moves the entity to the matching archetype table.
+Inheritance is intended for reusable defaults and templates, not for recreating
+deep object-oriented class hierarchies.
 
-The target must be alive, abstract, and different from the instance. Cycles are
-rejected, so an entity cannot inherit from itself or from one of its descendants.
+## Abstract bases
 
-## Inherit Components
-
-Components use owned inheritance by default. If the base owns `Health`, linking
-an instance copies the effective value into the instance:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_entity_t base = ecs_new();
-ecs_set(base, Health, { 100 });
-ecs_add(base, Abstract);
-
-ecs_entity_t instance = ecs_new();
-ecs_is_a(instance, base);
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-struct Health { int value; };
-
-auto base = ecs::entity::create();
-base.set(Health{ 100 });
-base.abstract();
-
-auto instance = ecs::entity::create().is_a(base);
-```
-</TabItem>
-</Tabs>
-
-In this example, `instance` owns its copied `Health`. Later writes to the
-instance do not affect the base, and the base value is not synchronized back to
-the instance.
-
-Use `EcsInheritShared` when a component should remain stored on the base:
+Create a base:
 
 ```c
-ECS_COMPONENT_DEFINE(Material,
-    .inheritance = EcsInheritShared
-);
+ecs_entity_t enemy = ecs_new();
+ecs_set(enemy, Health, {100});
+ecs_set(enemy, Speed, {2.5f});
+ecs_abstract(enemy);
 ```
 
-For a native C++ component, use the component registration options:
+An entity used as an inheritance base is not meant to participate as a normal
+runtime instance.
 
-```cpp
-ecs::component<Material>({
-    .inheritance = EcsInheritShared,
-});
+`Abstract` entities are excluded from ordinary queries unless explicitly
+requested.
+
+## Component Inheritance
+
+Every component chooses one inheritance policy at registration.
+
+### Owned inheritance
+
+`EcsInheritOwned` materializes the effective base value as owned data on the
+instance.
+
+Conceptually:
+
+```text
+Base Health = 100
+instance IsA Base
+instance owns Health = copy of 100
 ```
 
-## Override Components
+Later changes to the base do not automatically synchronize that copied value.
 
-Add or set a component on the instance to override the inherited value:
+Owned inheritance is appropriate for values that are defaults at
+instantiation/inheritance time.
 
-<Tabs syncKey="language">
-<TabItem label="C">
+### Shared inheritance
+
+`EcsInheritShared` keeps the value on the base.
+
+Instances resolve it as a shared read-only field until they create an override.
+
+Conceptually:
+
+```text
+Base Material = Steel
+Instance A -> shared Steel
+Instance B -> shared Steel
+```
+
+Changing the base changes what non-overridden instances read.
+
+This is useful for data shared by many instances.
+
+## Component Overriding
+
+An instance can set a component locally:
+
 ```c
-ecs_set(instance, Health, { 75 });
+ecs_set(instance, Health, {500});
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-instance.set(Health{ 75 });
-```
-</TabItem>
-</Tabs>
 
-After this, `instance` owns its own `Health`. Queries read the instance value
-instead of the base value, and writes affect only the instance:
+If the component was inherited, the instance now has an owned override for the
+effective value.
 
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-const Health *base_health = ecs_get(base, Health);
-const Health *instance_health = ecs_get(instance, Health);
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-const auto &base_health = base.get<Health>();
-const auto &instance_health = instance.get<Health>();
-```
-</TabItem>
-</Tabs>
+Queries can distinguish owned vs shared fields with `ecs_field_kind()`.
 
-Local components are independent from inherited components. Adding
-`ecs_set(instance, Mana, { 20 })` does not change the base, and changing
-the base does not rewrite components already owned by instances.
+Writable query access requires writable owned storage. Shared inherited values
+must not be mutated through an instance field pointer.
 
 ## Inheritance Checks
 
-Use `ecs_is()` to test inheritance:
+Test ancestry:
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-if (ecs_is(instance, base)) {
-    /* instance inherits from base */
+if (ecs_is(entity, base)) {
+    /* entity is base or derives through IsA */
 }
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-if (instance.is(base)) {
-    std::puts("inherits");
-}
-```
-</TabItem>
-</Tabs>
 
-`ecs_is()` checks whether the entity inherits from the target, including
-transitive inheritance through intermediate bases.
+Get the direct base:
+
+```c
+ecs_entity_t base = ecs_entity_base(entity);
+```
+
+These operations let tools or gameplay code inspect inheritance without
+manually walking raw relation storage.
 
 ## Query Matching
 
-Queries can match inherited components for read-only terms. A query with
-`ecs_in(Health)` matches an instance that inherits `Health` from its base:
+Queries can match effective inherited data.
 
-<Tabs syncKey="language">
-<TabItem label="C">
+A read-only component term may resolve to shared data from a base.
+
 ```c
 ecs_query_id_t q = ecs_query({
-    .components = { ecs_in(Health) },
-});
-
-ecs_iter_t it = ecs_query_iter(q);
-while (ecs_iter_next(&it)) {
-    const Health *health = ecs_field(&it, 0);
-
-    for (uint32_t i = 0; i < it.count; i++) {
-        if (ecs_field_is_shared(&it, 0)) {
-            /* health points to the base value, shared by the whole batch */
-            printf("%d\n", health->value);
-        } else {
-            /* health points to the entity-owned component array */
-            printf("%d\n", health[i].value);
-        }
-    }
-}
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-#include <cstdio>
-
-ecs::query().require<Health>().each([](const Health &health) {
-    printf("%d\n", health.value);
+    .components = { ecs_in(Material) },
 });
 ```
-</TabItem>
-</Tabs>
 
-When a component is configured as shared and inherited, `ecs_field_kind(&it,
-index)` returns `EcsFieldShared`. The pointer returned by `ecs_field()` points to
-the component stored on the base, not to an array with one element per entity.
-
-When a field is owned by the matched entities, `ecs_field_kind(&it, index)` is
-`EcsFieldOwned`. The pointer is a normal component array indexed with `i`.
-
-The inheritance rules for query fields are:
-
-| Term | Inherited component behavior |
-| --- | --- |
-| `ecs_in(T)` | Matches owned or inherited `T`; shared inherited fields are `EcsFieldShared`. |
-| `ecs_out(T)` and `ecs_inout(T)` | Match owned `T`, including components materialized through owned inheritance. |
-| `ecs_in_optional(T)` | May return an inherited shared field when `T` exists on a base. |
-| `ecs_inout_optional(T)` | Ignores shared inherited fields and returns `NULL` unless `T` is owned. |
+For each batch, use `ecs_field_kind()` to determine whether the field is owned or
+shared.
 
 ## Writable Queries
 
-Writable terms do not match shared inherited data. A query with
-`ecs_inout(Health)` matches entities that own `Health`, including instances
-where `Health` was materialized through the default owned inheritance:
+Writable terms require local storage.
 
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_query_id_t q = ecs_query({
-    .components = { ecs_inout(Health) },
-});
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::query().each([](Health &health) {
-    health.value += 1;
-});
-```
-</TabItem>
-</Tabs>
+If a shared inherited component should be modified independently, create an
+override before running the writable operation.
 
-An instance configured with a shared `Health` inheritance is skipped by this
-query. An explicit `ecs_set()` also creates an instance-owned override and the
-query writes to that value.
-
-Optional writable terms also ignore inherited shared values:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_query_id_t q = ecs_query({
-    .components = { ecs_inout_optional(Health) },
-});
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::query().each([](ecs::optional<Health> health) {
-    if (health) health->value += 1;
-});
-```
-</TabItem>
-</Tabs>
-
-For an entity that only inherits shared `Health`, this field is `EcsFieldNone`
-and `ecs_field()` returns `NULL`.
+This rule prevents a single instance from unintentionally modifying a value that
+other instances share from the same base.
 
 ## Restrict a Query to a Base
 
-Queries can be restricted to entities that inherit from a base with
-`ecs_query_desc_t.is_a`:
+Use the query descriptor's `is_a` field:
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-ecs_query_id_t q = ecs_query({
-    .is_a = base,
-    .components = { ecs_in(Position) },
+ecs_query_id_t enemies = ecs_query({
+    .components = { ecs_in(Health) },
+    .is_a = enemy_base,
 });
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::query()
-    .is_a(base.id())
-    .require<Position>()
-    .each([](const Position &position) {
-    });
-```
-</TabItem>
-</Tabs>
 
-This matches entities that inherit from `base` and also satisfy the component
-terms. The base relationship is transitive: if `Knight` inherits from `Player`
-and `Player` inherits from `Character`, a query with `.is_a = Character` matches
-`Knight`.
+This matches descendants of the selected base.
+
+The ancestry test is transitive.
+
+## Variants
+
+A useful template pattern is:
+
+```text
+EnemyBase
+  Health = 100
+  Speed = 2.5
+
+FastEnemyBase IsA EnemyBase
+  Speed = 5
+
+Boss IsA EnemyBase
+  Health = 1000
+```
+
+Keep variant chains shallow enough that the effective data model stays obvious.
+
+When a variant only differs by a small value, a normal component value can be
+simpler than creating another inheritance level.
+
+## Base hierarchies
+
+A base may own a `ChildOf` subtree.
+
+`ecs_abstract(base)` propagates abstract state through that owned subtree, which
+lets applications build template hierarchies that stay out of normal queries.
+
+When instantiating a similar runtime hierarchy, application/module code can use
+the base structure as a model while creating concrete entities according to its
+needs.
+
+SIECS does not expose every Flecs prefab feature such as prefab child slots or a
+dedicated Prefab tag API. Use `Abstract`, `IsA`, component inheritance and
+`ChildOf` explicitly.
 
 ## Common Pattern
 
-Use inheritance for shared defaults, then override only the values that differ:
-
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
+ECS_COMPONENT_DEFINE(Health,
+    .inheritance = EcsInheritOwned
+);
+
+ECS_COMPONENT_DEFINE(Material,
+    .inheritance = EcsInheritShared
+);
+
 ecs_entity_t enemy = ecs_new();
-ecs_set(enemy, Health, { 100 });
-ecs_set(enemy, Speed, { 2.5f });
-ecs_add(enemy, Abstract);
+ecs_set(enemy, Health, {100});
+ecs_set(enemy, Material, {.kind = Steel});
+ecs_abstract(enemy);
 
 ecs_entity_t boss = ecs_new();
 ecs_is_a(boss, enemy);
-ecs_set(boss, Health, { 500 });
+ecs_set(boss, Health, {500});
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-struct Health { int value; };
-struct Speed { float value; };
 
-auto enemy = ecs::entity::create();
-enemy.set(Health{ 100 });
-enemy.set(Speed{ 2.5f });
-enemy.abstract();
+`boss` owns its `Health` override while it can continue to share `Material`.
 
-auto boss = ecs::entity::create().is_a(enemy);
-boss.set(Health{ 500 });
+## Design guidance
+
+Inheritance is most effective for:
+
+- template defaults;
+- shared immutable/configuration-like data;
+- grouping instances by a conceptual base;
+- tooling/template entities.
+
+Prefer ordinary composition when behavior can be expressed by components without
+ancestry.
+
+Prefer resources for world-global values.
+
+Prefer relations for domain edges that are not "instance of this reusable base".
+
+## Establishing IsA
+
+`ecs_is_a(entity, base)` changes structural inheritance state.
+
+The runtime builds an inheritance plan for components that must become locally
+owned according to their registration policy.
+
+For owned-inheritance components, effective base values are materialized on the
+instance.
+
+For shared components, the base remains the storage source.
+
+Because this can create/move component storage, establishing/changing a base is
+a structural operation.
+
+## Changing bases
+
+Retargeting `IsA` changes which effective data the instance sees.
+
+Code that changes bases should consider:
+
+- which owned components must be materialized;
+- which shared values change source;
+- whether existing local overrides remain;
+- query cache/table transitions;
+- observer implications.
+
+Do not use base retargeting every frame as a substitute for a small state field
+unless the structural behavior is actually desired.
+
+## Shared field batching
+
+A query can return a shared inherited field for a batch.
+
+The batch groups entities for which the effective field source is compatible
+with the iterator representation.
+
+Use `ecs_field_kind()` rather than assuming all batches in one query own their
+data.
+
+The same query can encounter owned and shared batches.
+
+## Overrides and queries
+
+Consider:
+
+```text
+Base:
+    Material = Steel (shared)
+
+Instance A:
+    IsA Base
+
+Instance B:
+    IsA Base
+    Material = Gold (override)
 ```
-</TabItem>
-</Tabs>
 
-`boss` inherits `Speed` from `enemy`, but owns its own `Health`.
+A read query for `Material` can match both.
+
+For A, the field is shared from Base.
+
+For B, the field is owned.
+
+A writable query should operate on B's local storage but must not mutate A's
+shared base storage as though it belonged to A.
+
+## Inheritance versus ChildOf
+
+`IsA` means reusable base/effective component inheritance.
+
+`ChildOf` means hierarchy/ownership.
+
+An entity can participate in both:
+
+```text
+Soldier42 IsA SoldierBase
+Soldier42 ChildOf Squad7
+```
+
+Do not use `IsA` merely to express containment.
+
+Do not use `ChildOf` to imply component inheritance.
+
+Keeping these meanings separate makes queries and lifetime behavior clear.
+
+## Abstract base mutation
+
+Because base values can be shared by many instances, changing a shared
+component on a base can affect many readers at once.
+
+Treat base mutation like changing shared configuration.
+
+If an instance needs independent state, override locally.
+
+For high-frequency per-instance changes, use owned components rather than a
+shared base value.
+
+## Inheritance performance
+
+Inheritance can save memory for shared data but introduces source resolution.
+
+The useful tradeoff is:
+
+```text
+less duplicated data
+versus
+additional shared/inherited matching/access logic
+```
+
+Owned inheritance copies data up front and then behaves like ordinary local
+storage.
+
+Shared inheritance is most attractive when:
+
+- many instances share the same value;
+- reads are frequent;
+- writes are rare and usually happen on the base;
+- overrides are relatively uncommon.
+
+## Template design checklist
+
+A base should represent a coherent reusable default.
+
+Avoid chains where every small variation creates another base level.
+
+Prefer:
+
+- one stable base;
+- a few meaningful variants;
+- local component overrides for instance-specific differences.
+
+Use ordinary tags/components to represent orthogonal capabilities instead of
+forcing them into a single inheritance tree.

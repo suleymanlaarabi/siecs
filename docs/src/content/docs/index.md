@@ -1,47 +1,42 @@
 ---
-title: Documentation
-description: Learn SIECS through a compact quickstart, concept manuals, and the public C17 and C++20 API reference.
+title: SIECS
+description: Documentation for the SIECS archetype ECS for C17 and C++20.
 ---
 
-![SIECS documentation banner](../../assets/banner.png)
+SIECS is an archetype Entity Component System for C17 with a typed C++20 API.
 
-SIECS is an archetype ECS for C17 and C++20. It combines a compact C runtime
-with a typed C++ wrapper, contiguous component storage, cached queries, systems,
-relations, reflection, and optional tooling.
+The documentation is organized as a manual rather than a collection of short
+API snippets.
 
-## Getting started
+## Start here
 
-- [Quickstart](./getting-started/) — learn the model through one compact tour.
-- [Building and integrating](./building/) — choose the standalone distribution
-  or Bake.
-- [Cookbook](./cookbook/) — short, focused patterns for common ECS tasks.
+1. [Quickstart](./quickstart/) — tour of the public model and API.
+2. [Introduction to ECS](./introduction/) — ECS theory, data-oriented design,
+   archetypes, tables, structural changes, iteration and cache locality.
+3. [Entities and Components](./entities-components/) — identity, lifetime,
+   components, tags, hooks, reflection, requirements and inheritance policy.
+4. [Queries](./queries/) — matching, caching, fields, relations, traversal and
+   ordering.
+5. [Systems](./systems/) — phases, dependencies, workers, deferred mutation and
+   intervals.
 
 ## Manuals
 
-Read the manuals in this order if you are new to ECS:
-
-1. [Introduction to ECS](./introduction/) explains the ECS model, data-oriented design,
-   entities, composition, archetypes, storage, structural changes and iteration.
-2. [Entities](./entities/) and [components](./components/) explain data and
-   lifetime.
-3. [Queries](./queries/) explain matching and iteration.
-4. [Systems](./systems/) explain scheduling and frame logic.
-
-Then continue with the advanced manuals:
-
-- [Archetype storage](./archetype-ecs/)
-- [Resources](./resources/)
 - [Observers](./observers/)
-- [Relations](./relations/)
-- [Inheritance](./inheritance/)
+- [Relationships](./relationships/)
+- [Hierarchies](./hierarchies/)
+- [Inheritance and Abstract Bases](./inheritance/)
+- [Component and Relation Traits](./component-traits/)
+- [Resources](./resources/)
 - [Modules](./modules/)
-- [Designing with SIECS](./ecs-design/)
-- [REST explorer](./rest/)
+- [Designing with SIECS](./design-with-siecs/)
+- [Manual](./manual/)
 
-## API reference
+## Tools and integration
 
-- [C and C++ API](./reference/api/)
-- [API stability](./reference/stability/)
-
-All examples use the public `<siecs.h>` facade. The C runtime uses C17 and the
-typed wrapper uses C++20.
+- [Building SIECS](./building/)
+- [SIECS Remote API](./remote-api/)
+- [Scenes and Serialization](./scenes/)
+- [Cookbook](./cookbook/)
+- [FAQ](./faq/)
+- [API Reference](./reference/api/)

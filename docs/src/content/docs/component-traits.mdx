@@ -1,0 +1,184 @@
+---
+title: Component and Relation Traits
+description: "The SIECS equivalents of component traits: inheritance policy, requirements, relation storage, acyclic constraints and cleanup."
+---
+
+SIECS does not use a single generic trait system like Flecs. The same kinds of
+constraints are expressed through component descriptors, requirement APIs,
+built-in tags and relation descriptors.
+
+This page groups those features by purpose.
+
+## Acyclic relations
+
+Set `.acyclic = true` on a relation descriptor when cycles are invalid.
+
+Acyclic relations can support algorithms such as upward traversal and hierarchy
+depth that require a directed acyclic graph.
+
+Do not enable the flag for a graph that can legitimately contain cycles.
+
+## Cleanup traits
+
+Target cleanup is configured by `ecs_delete_target_t`.
+
+### Remove relation
+
+`EcsRemoveRelation` removes relation edges from sources when a target dies.
+
+Use it for references that should become empty when their target disappears.
+
+### Delete sources
+
+`EcsDeleteSources` deletes source entities that depend on the target.
+
+Use it for ownership/lifetime relationships.
+
+The built-in `ChildOf` relationship uses ownership-like cleanup semantics.
+
+## Disabled
+
+`Disabled` is a built-in tag that excludes an entity from default queries,
+systems and observers.
+
+It is a whole-entity structural state, not a generic per-component toggle trait.
+
+## Abstract
+
+`Abstract` marks template/base entities that should not participate in normal
+queries.
+
+`ecs_abstract()` can propagate the abstract state through an owned hierarchy.
+
+## Inheritance policy
+
+Component descriptors choose:
+
+- `EcsInheritOwned`;
+- `EcsInheritShared`.
+
+This fills the role of controlling whether an inherited value is copied into the
+instance or resolved from the base.
+
+## Requirements / With
+
+`ecs_with()` declares component requirements.
+
+```c
+ecs_with(Renderable, Transform, Bounds);
+```
+
+Adding `Renderable` causes the required components to be structurally added.
+
+This is the SIECS equivalent of expressing a simple "with" invariant.
+
+## Mutation policy
+
+Debug builds can use component mutation metadata such as `EcsSetOnly` where
+supported by the descriptor/macros.
+
+This is a development-time contract around how a component is expected to be
+mutated; it is not an archetype trait.
+
+## Relation storage policy
+
+A relation chooses one of:
+
+- `EcsRelationDense`;
+- `EcsRelationByDepth`;
+- `EcsRelationByTarget`.
+
+This is a core structural/performance trait of a SIECS relation.
+
+Choose it based on the dominant query/traversal pattern.
+
+## What SIECS does not expose
+
+There are no direct SIECS equivalents for a number of Flecs traits such as
+`Sparse`, `DontFragment`, `Symmetric`, `Transitive`, `Reflexive`, `OneOf`,
+`PairIsTag` or generic `CanToggle`.
+
+Do not copy those concepts into SIECS documentation as if the runtime implements
+them.
+
+Model the application explicitly with SIECS components, relation descriptors,
+queries and systems instead.
+
+## Inheritance as a component property
+
+Inheritance policy is attached to component registration rather than to each
+individual `IsA` edge.
+
+This makes behavior predictable:
+
+```text
+Material -> always shared inheritance
+Health   -> always owned inheritance
+```
+
+Every base/instance relationship follows the same policy for that component.
+
+If two use cases need fundamentally different inheritance semantics, they may be
+different component concepts.
+
+## With/requirement ordering
+
+When a component requires others, required components are added as part of
+establishing a valid final structure.
+
+Hooks/lifecycle effects therefore need to tolerate being invoked during a
+larger structural operation rather than assuming the user wrote one isolated
+`ecs_add` call.
+
+Requirements should remain acyclic and small.
+
+## Acyclic validation
+
+Acyclic relation registration gives SIECS permission to reject edges that would
+create cycles.
+
+Cycle prevention is not just a debug nicety for depth/traversal relations:
+algorithms that resolve "nearest ancestor" need a terminating graph.
+
+If the application graph can form cycles, use a non-acyclic relation and do not
+use APIs that require acyclic semantics.
+
+## Cleanup and ownership modeling
+
+The target deletion policy is one of the most important relation traits.
+
+Choose weak-link cleanup when sources have independent lifetime.
+
+Choose source deletion when the target owns the source.
+
+This makes lifetime behavior declarative and lets recursive cleanup happen in
+the ECS instead of being manually duplicated by every caller.
+
+## Storage trait tradeoffs
+
+`Dense`, `ByDepth` and `ByTarget` are not cosmetic flags.
+
+They change:
+
+- metadata maintained during mutation;
+- which query terms are valid;
+- table/index organization;
+- target/depth lookup cost;
+- fragmentation characteristics.
+
+Document a custom relation's chosen storage alongside its semantic meaning so
+future systems use it correctly.
+
+## Built-in structural tags as traits
+
+`Disabled` and `Abstract` are ordinary structural tags with special default
+query semantics.
+
+They provide two common global traits:
+
+- paused/excluded runtime entity;
+- template/base entity.
+
+Because they are structural, toggling them can migrate entities.
+
+Do not use them as per-frame numeric state.

@@ -1,0 +1,218 @@
+---
+title: Manual
+description: SIECS design goals, API conventions, modules and deferred operations.
+---
+
+## Introduction
+
+SIECS is a compact archetype ECS runtime for C17 with a typed C++20 interface.
+
+The runtime focuses on table-based iteration, explicit component/resource access,
+relations, inheritance, scheduling and tooling-friendly reflection.
+
+## Design Goals
+
+### 1. Performance
+
+Hot paths should operate on contiguous table columns and cached table matches.
+
+Performance work should include both iteration and structural mutation.
+
+SIECS favors explicit storage/query models over hidden per-entity dynamic
+dispatch.
+
+### 2. Portability
+
+The core runtime is C17.
+
+The C++ wrapper is C++20 and uses the C runtime rather than requiring a separate
+implementation.
+
+The standalone distribution is intended to be easy to compile into ordinary
+applications.
+
+### 3. Reusability
+
+Components, systems and modules should be reusable without forcing an
+application-wide class hierarchy.
+
+Modules provide import boundaries. Resources provide world-level dependencies.
+Relations model graph edges.
+
+### 4. Usability
+
+Typed C/C++ helpers cover common operations while id-based APIs remain available
+for tools and generic code.
+
+The documentation should explain semantics and cost, not only list function
+names.
+
+### 5. Extensibility
+
+The runtime exposes modules, custom relations, custom observer events,
+reflection metadata, REST tooling and add-on packages.
+
+### 6. Small explicit runtime
+
+SIECS intentionally does not implement every feature found in larger ECS
+frameworks.
+
+When a Flecs feature has no SIECS equivalent—query language, universal pair ids,
+generic trait graph, configurable cache kinds—it should not be documented as if
+it exists.
+
+## API design
+
+### Naming conventions
+
+C runtime operations use the `ecs_` prefix.
+
+Typed C++ functionality lives in the `ecs` namespace.
+
+Typed macro declarations keep C and C++ ids aligned when a shared declaration is
+used.
+
+### Idempotence
+
+Operations that describe a desired state should avoid creating duplicate
+registrations or duplicate structural effects where possible.
+
+Module import is idempotent per active world.
+
+Removing a missing component/resource is a no-op.
+
+Relating an entity to the target it already has does not create a meaningful
+retarget.
+
+### Error handling
+
+Programming-contract violations are generally asserted in debug builds.
+
+Examples include invalid query combinations, invalid relation storage use and
+unsafe registration during scheduler-parallel execution.
+
+Application code should not treat assertions as recoverable user-input errors.
+
+### Memory ownership
+
+Entity/component field pointers are borrowed from table storage.
+
+Observer payloads are borrowed for the callback.
+
+Scene buffers returned by save APIs have explicit ownership/free operations.
+
+Names/reflection metadata follow their documented registration ownership rules.
+
+When in doubt, keep stable ids/handles and reacquire pointers.
+
+### Macros
+
+The C API uses macros for typed declarations and compound-literal convenience.
+
+Examples:
+
+```c
+ECS_COMPONENT(...)
+ECS_TAG(...)
+ECS_RESOURCE(...)
+ECS_RELATION(...)
+ecs_query({...})
+ecs_system({...})
+ecs_observer({...})
+```
+
+The underlying descriptor functions remain available for generic/runtime code.
+
+## Modules
+
+Modules group registrations and can toggle captured systems/observers.
+
+Module import order does not replace scheduler dependency declarations.
+
+## Deferred operations
+
+`ecs_defer_begin()` / `ecs_defer_end()` buffer ECS mutation.
+
+Systems that iterate entities use deferred structural mutation by default.
+
+The outermost defer end flushes commands.
+
+Deferred operations are central to safe table iteration because structural
+changes can move rows and invalidate current field pointers.
+
+## World model
+
+SIECS uses one active world.
+
+This simplifies typed id storage and the public API but means applications should
+not assume multiple independent live worlds can be manipulated through the same
+global typed registrations simultaneously.
+
+Tests should initialize/finalize cleanly and avoid leaking handles/ids between
+world lifetimes.
+
+## Registration timing
+
+Register components, relations, systems, observers and long-lived queries during
+initialization/module import.
+
+Some registration operations are forbidden while scheduler-parallel work is
+active because they modify global indexes/plans.
+
+Dynamic gameplay should normally create entities/data, not continuously redefine
+the ECS schema.
+
+## Stable handles versus unstable addresses
+
+The entity handle is designed to survive table migration while the entity is
+alive.
+
+Component addresses are not.
+
+This distinction is foundational:
+
+```text
+store entity handle long-term
+reacquire component pointer short-term
+```
+
+The same applies to query iterator field arrays.
+
+## Debug versus release contracts
+
+Some component mutation metadata and assertions exist primarily in debug builds.
+
+Do not design correctness around a debug-only field being present at runtime.
+
+Use debug contracts to catch misuse and use normal ECS structure/access rules for
+release correctness.
+
+## C/C++ interoperability
+
+Shared macro declarations are intended to keep one component/resource/relation
+identity across language boundaries.
+
+A C++ wrapper does not change storage layout owned by the C runtime.
+
+When sharing a type between C and C++, keep instance data layout compatible and
+put C++-only methods behind the supported declaration helpers without adding
+hidden instance fields.
+
+## Error boundaries
+
+SIECS APIs distinguish programmer-contract errors from ordinary absence.
+
+Examples of ordinary absence:
+
+- `ecs_lookup()` returns `0`;
+- `try_get` returns null;
+- `try_resource` returns null.
+
+Examples of contract violations:
+
+- using an invalid storage mode with a query term;
+- registration at an unsafe scheduler time;
+- invalid defer-scope balancing.
+
+Use the nullable/query APIs when absence is expected instead of catching a debug
+assertion as control flow.

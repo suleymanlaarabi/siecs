@@ -1,39 +1,51 @@
 ---
-title: Systems and Scheduling
-description: Create systems, run query callbacks, order execution phases, and handle structural changes safely.
+title: Systems
+description: System iteration, phases, dependencies, deferred operations, threading, intervals and scheduling in SIECS.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Systems are named callbacks attached to a query. In C, callbacks receive an
-iterator; in C++, callback parameters infer typed query terms. Systems are the
-usual way to run game or application logic over matching entities.
+Systems are persistent query callbacks that SIECS can schedule and run for you.
 
-## Create a System
+A system contains:
 
-A system callback receives an `ecs_iter_t *`. Each call gives a batch of matching
-entities for the system query.
+- a name;
+- an entity query;
+- resource access metadata;
+- a callback;
+- a phase;
+- optional `.after` dependencies;
+- enabled/disabled state;
+- threading constraints;
+- deferred-operation policy;
+- an optional execution interval.
+
+## System Iteration
+
+A system query is persistent. When the system runs, SIECS creates an iterator
+for the query and invokes the callback for every non-empty matching batch.
 
 <Tabs syncKey="language">
 <TabItem label="C">
 
 ```c
-static void move_system(ecs_iter_t *it) {
-    Position *positions = ecs_field(it, 0);
-    Velocity *velocities = ecs_field(it, 1);
+static void Move(ecs_iter_t *it) {
+    Position *p = ecs_field(it, 0);
+    const Velocity *v = ecs_field(it, 1);
 
     for (uint32_t i = 0; i < it->count; i++) {
-        positions[i].x += velocities[i].x;
-        positions[i].y += velocities[i].y;
+        p[i].x += v[i].x;
+        p[i].y += v[i].y;
     }
 }
 
-ecs_system_id_t Move = ecs_system({
+ecs_system({
     .name = "Move",
     .phase = EcsOnUpdate,
-    .query = {
-        .components = { ecs_inout(Position), ecs_in(Velocity) },
+    .query.components = {
+        ecs_inout(Position),
+        ecs_in(Velocity),
     },
-    .callback = move_system,
+    .callback = Move,
 });
 ```
 
@@ -43,316 +55,641 @@ ecs_system_id_t Move = ecs_system({
 ```cpp
 ecs::system("Move")
     .phase(EcsOnUpdate)
-    .each([](Position &position, const Velocity &velocity) {
-        position.x += velocity.x;
-        position.y += velocity.y;
+    .each([](Position &p, const Velocity &v) {
+        p.x += v.x;
+        p.y += v.y;
     });
 ```
 
 </TabItem>
 </Tabs>
 
-`callback` is required for normal C systems. `name` is optional, but recommended
-because it makes debugging and traces easier to read.
+The callback may run multiple times in one system execution because one query can
+match multiple tables.
 
-The query follows the same rules as queries created with `ecs_query()`: `ecs_in`,
-`ecs_out`, and `ecs_inout` terms are returned through `ecs_field()`,
-`ecs_filter` terms must exist but are not returned, and `ecs_not` terms must not
-exist. Entities with the built-in `Disabled` component are skipped by default
-because system queries inherit the implicit `ecs_not(Disabled)` query rule.
+That is expected. A system callback is a **batch callback**, not necessarily a
+once-per-frame callback.
 
-To run a system only on disabled entities, mention `Disabled` explicitly:
+If a system has no entity-matching terms, SIECS can invoke it with an empty
+iterator so it behaves like a task.
 
-<Tabs syncKey="language">
-<TabItem label="C">
+## Using delta_time
+
+`ecs_iter_t.delta_time` contains the time delta for the system execution.
+
+For a normal every-frame system, this is the frame delta.
+
 ```c
+static void Move(ecs_iter_t *it) {
+    Position *p = ecs_field(it, 0);
+    const Velocity *v = ecs_field(it, 1);
+
+    for (uint32_t i = 0; i < it->count; i++) {
+        p[i].x += v[i].x * it->delta_time;
+        p[i].y += v[i].y * it->delta_time;
+    }
+}
+```
+
+For an interval system, `delta_time` is the accumulated time since that system's
+previous automatic execution.
+
+SIECS also exposes the built-in `DeltaTime` resource containing the current
+frame delta. These are not always identical for interval systems.
+
+## Tasks
+
+A system without an entity query can be used for work that runs once per system
+execution instead of once per matching entity.
+
+Examples:
+
+- poll a platform API;
+- update a global resource;
+- begin or end a render pass;
+- pump networking;
+- flush an external queue.
+
+A resource-only system is especially useful because its resource access can be
+used by the scheduler when building dependencies.
+
+```c
+static void UpdateClock(ecs_iter_t *it) {
+    Clock *clock = ecs_get_resource(Clock);
+    clock->elapsed += it->delta_time;
+}
+
 ecs_system({
-    .name = "PausedDebug",
-    .phase = EcsOnUpdate,
-    .query = { .components = { ecs_in(Position), ecs_filter(Disabled) } },
-    .callback = paused_debug_system,
+    .name = "UpdateClock",
+    .phase = EcsPreUpdate,
+    .query.resources = {
+        { .id = ecs_id(Clock), .access = EcsInOut },
+    },
+    .callback = UpdateClock,
 });
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-#include <cstdio>
 
-ecs::system("PausedDebug")
-    .each([](const Position &position, const Disabled &) {
-        std::printf("%f\n", position.x);
-    });
-```
-</TabItem>
-</Tabs>
+## Phases and scheduling
 
-## Use Resources
+SIECS phases provide broad ordering.
 
-Resources are unique values stored on the world. In C systems, read them from
-the active world before the entity loop:
+The built-in phase sequence includes startup phases followed by recurring load,
+update and render phases.
 
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-static void move_system(ecs_iter_t *it) {
-    const Time *time = ecs_get_resource_read(Time);
-    Position *positions = ecs_field(it, 0);
-    const Velocity *velocities = ecs_field(it, 1);
-
-    for (uint32_t i = 0; i < it->count; i++) {
-        positions[i].x += velocities[i].x * time->dt;
-    }
-}
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::system("Move").each([](
-    ecs::res<const Time> time,
-    Position &position,
-    const Velocity &velocity
-) {
-    position.x += velocity.x * time->dt;
-});
-```
-</TabItem>
-</Tabs>
-
-In C++, callbacks can request `ecs::res<T>` or `ecs::res<const T>`. Resource
-parameters do not become query terms and do not consume an `ecs_field()` index.
-SIECS resolves them before iterating the query tables:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-static void move_with_time(ecs_iter_t *it) {
-    const Time *time = ecs_get_resource_read(Time);
-    Position *position = ecs_field(it, 0);
-    const Velocity *velocity = ecs_field(it, 1);
-    for (uint32_t i = 0; i < it->count; i++) {
-        position[i].x += velocity[i].x * time->dt;
-    }
-}
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::system("Move").each([](
-    ecs::res<const Time> time,
-    Position &position,
-    const Velocity &velocity
-) {
-    position.x += velocity.x * time->dt;
-});
-```
-</TabItem>
-</Tabs>
-
-## Run Systems
-
-Use `ecs_progress()` to run all enabled systems:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_progress();
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::progress();
-```
-</TabItem>
-</Tabs>
-
-`ecs_progress()` runs phases in this order:
+Typical recurring phases are:
 
 | Phase | Typical use |
 | --- | --- |
-| `EcsPreStart` | Setup work before start systems. Runs only on the first `ecs_progress()`. |
-| `EcsStart` | One-time startup logic. Runs only on the first `ecs_progress()`. |
-| `EcsPostStart` | Work that must run after start systems. Runs only on the first `ecs_progress()`. |
-| `EcsOnLoad` | One-frame load or bootstrap work. |
-| `EcsPostLoad` | Work that must run after load systems. |
-| `EcsPreUpdate` | Prepare state before simulation. |
-| `EcsOnUpdate` | Main simulation logic. |
-| `EcsPostUpdate` | Cleanup or derived state after simulation. |
-| `EcsPreRender` | Prepare render data. |
-| `EcsOnRender` | Render-facing systems. |
-| `EcsPostRender` | Cleanup after render-facing systems. |
+| `EcsOnLoad` | Load or frame-input preparation. |
+| `EcsPostLoad` | Work after load/input. |
+| `EcsPreUpdate` | Prepare simulation state. |
+| `EcsOnUpdate` | Main simulation. |
+| `EcsPostUpdate` | Derived state and post-simulation work. |
+| `EcsPreRender` | Prepare render-visible data. |
+| `EcsOnRender` | Rendering-facing systems. |
+| `EcsPostRender` | Render cleanup. |
 
-You can also run one phase or one system manually:
+Startup phases run only during the first progress cycle.
 
-<Tabs syncKey="language">
-<TabItem label="C">
+### Builtin phase pipeline
+
+`ecs_progress()` runs enabled systems according to the phase plan.
+
 ```c
-ecs_run_phase(EcsOnUpdate);
-ecs_run_system(Move);
+while (ecs_progress()) {
+    /* application-controlled outer loop, if needed */
+}
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::run_phase(EcsOnUpdate);
-ecs::run_system(Move);
-```
-</TabItem>
-</Tabs>
 
-The one-time start rule applies only to `ecs_progress()`. Calling
-`ecs_run_phase(EcsStart)` manually runs that phase normally.
+`ecs_run()` runs all enabled systems directly.
 
-`ecs_run_system()` ignores phase order and runs only the selected enabled
-system. This is useful for tests or explicit one-off work.
+`ecs_run_phase(phase)` runs one phase immediately.
 
-## Order Systems in a Phase
+`ecs_run_system(system)` runs one enabled system immediately.
 
-Systems in different phases are ordered by the phase list above. Inside one
-phase, use `after` when a system depends on another system having run first:
+Forced phase/system execution ignores a system's interval gate without
+advancing the interval accumulator as an automatic execution would.
 
-<Tabs syncKey="language">
-<TabItem label="C">
+### Custom phases
+
+Register a custom phase with `ecs_phase_init()` or `ecs_phase(...)`.
+
+A phase descriptor can place the new phase relative to existing phases.
+
+Custom phases are useful when a subsystem needs a stable scheduling boundary
+that should be visible to modules and tooling.
+
+Do not create a new phase for every system. Fine-grained ordering inside a phase
+is better expressed with system dependencies.
+
+### System dependencies
+
+Systems in the same phase can use `.after` dependencies.
+
 ```c
-ecs_system_id_t Integrate = ecs_system({
-    .name = "Integrate",
-    .phase = EcsOnUpdate,
-    .query = { .components = { ecs_inout(Position), ecs_in(Velocity) } },
-    .callback = integrate_system,
+ecs_system_id_t input = ecs_system({
+    .name = "Input",
+    .phase = EcsPreUpdate,
+    .callback = Input,
 });
 
 ecs_system({
-    .name = "SyncTransform",
-    .phase = EcsOnUpdate,
-    .query = { .components = { ecs_in(Position), ecs_inout(Transform) } },
-    .callback = sync_transform_system,
-    .after = { Integrate },
+    .name = "Gameplay",
+    .phase = EcsPreUpdate,
+    .after = { input },
+    .callback = Gameplay,
 });
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs_system_id_t integrate = ecs::system("Integrate")
-    .phase(EcsOnUpdate)
-    .each([](Position &position, const Velocity &velocity) {
-        position.x += velocity.x;
-    });
 
-ecs::system("SyncTransform")
-    .phase(EcsOnUpdate)
-    .after(integrate)
-    .each([](const Position &, Transform &transform) {
-        transform.x = 0.0f;
-    });
-```
-</TabItem>
-</Tabs>
+The dependency states that `Gameplay` must observe work from `Input` before it
+runs in that phase.
 
-`after()` accepts up to `ECS_SYSTEM_AFTER_CAPACITY` system ids. System id `0` is
-reserved, so an omitted or zero-filled dependency list means no dependency.
+SIECS also analyzes component/resource read-write access to build parallel-safe
+batches.
 
-Dependencies must point to systems in the same phase. Dependency cycles and
-cross-phase dependencies are debug assertion failures.
+Explicit `.after` is for semantic ordering that cannot be inferred only from
+data hazards.
 
-## Enable or Disable a System
+### Disabling systems
 
-Systems are enabled by default. Create a disabled system with `.disabled = true`
-or toggle it later:
+Systems can start disabled:
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-ecs_system_id_t Damage = ecs_system({
+ecs_system_id_t damage = ecs_system({
     .name = "Damage",
     .phase = EcsOnUpdate,
-    .query = { .components = { ecs_inout(Health) } },
-    .callback = damage_system,
     .disabled = true,
+    .callback = Damage,
 });
-
-ecs_system_enable(Damage);
-ecs_system_disable(Damage);
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs_system_id_t damage = ecs::system("Damage")
-    .disabled()
-    .each([](Health &health) { health.value -= 1; });
-ecs::enable_system(damage);
-ecs::disable_system(damage);
-```
-</TabItem>
-</Tabs>
 
-Disabled systems are skipped by `ecs_progress()`, `ecs_run_phase()`, and
-`ecs_run_system()`.
+Enable or disable later:
 
-This is separate from the `Disabled` component on entities. A disabled system
-does not run at all; an entity with `Disabled` is simply excluded from normal
-system queries.
-
-## Mutation During Systems
-
-System callbacks receive direct pointers to component arrays for the current
-batch. Updating those component values in place is expected:
-
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-    Health *health = ecs_field(it, 0);
+ecs_system_enable(damage);
+ecs_system_disable(damage);
+```
+
+Disabled systems remain registered. Their query and metadata still exist, but
+the scheduler does not execute them.
+
+Modules use the same mechanism when a module is disabled.
+
+## Deferred operations
+
+Structural mutation changes tables. Performing it immediately while a system is
+iterating table memory can invalidate the current batch.
+
+SIECS therefore runs ordinary query-iterating systems inside a defer scope.
+
+Conceptually:
+
+```text
+begin system
+    begin defer
+    iterate matching tables
+        callback records structural commands
+    end defer
+    flush commands
+end system
+```
+
+This lets code request operations such as add/remove/relate while iteration is
+active without immediately moving the row being processed.
+
+### Explicit defer scopes
+
+Application code can use the same mechanism:
+
+```c
+ecs_defer_begin();
+
+ecs_add(e, Enemy);
+ecs_remove(e, Sleeping);
+ecs_relate(e, ChildOf, parent);
+
+ecs_defer_end();
+```
+
+The outermost `ecs_defer_end()` flushes the command buffer.
+
+Defer scopes can nest. Only the outermost end performs the flush.
+
+### Command coalescing
+
+Deferred operations target the final structural state rather than forcing every
+API call to become an immediate migration.
+
+This is especially valuable for entity initialization and systems that perform
+several structural changes to the same entity.
+
+The command buffer can combine compatible operations and migrate once to the
+final table.
+
+### Sync points
+
+A scheduler boundary that requires one system's structural changes to be visible
+to another must include a command flush before the dependent system observes
+the world.
+
+Phase/dependency planning provides these synchronization points.
+
+This matters with worker threads: a system may finish its callback but its
+structural commands are not semantically visible to later dependent work until
+the scheduler reaches the appropriate synchronization point.
+
+### Immediate systems
+
+`ecs_system_desc_t.no_defer` disables the automatic defer scope.
+
+This mode is intentionally restricted: a `no_defer` system cannot iterate an
+entity query.
+
+Use it for task-like systems that must perform immediate ECS operations and do
+not hold query batch pointers.
+
+It should not be used simply to make mutations "happen sooner" inside an entity
+loop.
+
+## Threading
+
+World features can enable persistent worker threads:
+
+```c
+ecs_init_w_features(&(ecs_world_feat_desc_t){
+    .worker_threads = ECS_WORKERS_AUTO,
+});
+```
+
+The scheduler uses query component/resource access to determine which systems
+can run concurrently.
+
+Two systems that only read the same data can be independent.
+
+A writer conflicts with readers/writers of the same accessed component/resource.
+
+Correct access declarations are therefore part of correctness, not only
+documentation.
+
+### Main-thread-only systems
+
+Some work must stay on the calling thread:
+
+- graphics APIs with thread affinity;
+- platform event handling;
+- UI toolkits;
+- external libraries with main-thread restrictions.
+
+Mark those systems:
+
+```c
+ecs_system({
+    .name = "Render",
+    .phase = EcsOnRender,
+    .main_thread_only = true,
+    .callback = Render,
+});
+```
+
+### Parallel mutation
+
+While the parallel scheduler is running, structural changes are deferred into
+execution-context command buffers.
+
+Do not pass raw field pointers from one worker/system to another.
+
+Use entity handles and ECS synchronization boundaries to communicate structural
+results.
+
+## Timers
+
+### Interval
+
+A system can specify an automatic interval:
+
+```c
+ecs_system({
+    .name = "Spawn",
+    .phase = EcsOnUpdate,
+    .interval = 0.5,
+    .callback = Spawn,
+});
+```
+
+A positive interval waits until enough frame time has accumulated, then runs the
+system once and restarts its accumulator.
+
+SIECS does not perform catch-up execution by repeatedly invoking the system for
+every missed interval.
+
+This prevents a long frame from creating an unbounded burst of timer callbacks.
+
+### Rate and tick sources
+
+SIECS does not currently expose Flecs-style rate filters or nested tick-source
+graphs. Use `interval`, explicit resources or application systems when more
+complex timing relationships are needed.
+
+## System design guidelines
+
+Prefer systems that:
+
+- have a focused data transformation;
+- declare the smallest accurate read/write set;
+- iterate contiguous component fields;
+- use resources for world-level state;
+- leave structural mutation deferred;
+- use phases for broad ordering;
+- use `.after` only for real semantic dependencies.
+
+Avoid using systems as arbitrary object-method containers. The main value of a
+system is that its data dependencies and iteration domain are explicit.
+
+## Scheduler dependency analysis
+
+SIECS builds execution plans from system metadata.
+
+The most important dependency inputs are:
+
+- phase;
+- explicit `.after` system ids;
+- component access modes;
+- resource access modes;
+- `main_thread_only`.
+
+### Read/read
+
+Two systems that only read the same component/resource do not create a data
+hazard through that item.
+
+They may be placed in the same parallel batch if no other dependency prevents
+it.
+
+### Read/write
+
+A writer must not overlap a reader of the same data.
+
+The scheduler creates an ordering/synchronization boundary.
+
+### Write/write
+
+Two writers to the same component/resource conflict.
+
+Ordering is required even if application code believes they "probably touch
+different entities", because the declared access is system-wide.
+
+If two systems truly operate on disjoint structural populations, the scheduler
+still reasons conservatively from declared access/query overlap and its internal
+table analysis.
+
+### Query table overlap
+
+SIECS can compare cached query table sets when deciding whether two systems'
+entity data could overlap.
+
+This provides more information than component ids alone.
+
+For example, two systems that write `Position` but match disjoint table sets may
+be schedulable differently from two writers that share tables.
+
+Application code should still declare truthful access and not rely on incidental
+current table populations for correctness.
+
+## Phase plan construction
+
+The scheduler has a phase graph/order and builds a plan of systems for each
+phase.
+
+Registering/enabling/disabling systems can require plan rebuild/refresh.
+
+Avoid creating and destroying scheduling metadata continuously during the hot
+frame loop unless the feature genuinely needs dynamic scheduling.
+
+Modules can toggle groups of systems; that is expected but still not free.
+
+## Startup phases
+
+SIECS has startup-oriented phases before recurring simulation phases.
+
+Startup phases are one-shot.
+
+They are useful for work that depends on the world being initialized but should
+not run every frame.
+
+An interval value does not turn a startup phase into a recurring timer; startup
+phase semantics take precedence.
+
+## Forced execution semantics
+
+`ecs_run_system(system)` and `ecs_run_phase(phase)` are explicit calls.
+
+They are useful for:
+
+- tests;
+- editor commands;
+- controlled simulation steps;
+- manually advancing one subsystem.
+
+Forced execution ignores the automatic interval gate.
+
+It does not pretend the elapsed interval timer fired naturally, so use it as an
+explicit command rather than as a way to manipulate timer accumulation.
+
+## System user data
+
+`ecs_system_desc_t` can carry `user_data` and a destructor.
+
+Use user data for system-local configuration/state that is truly private to the
+callback registration.
+
+Prefer a resource when the state should be visible as an explicit world
+dependency.
+
+Prefer a component when the state is per entity.
+
+The user-data destructor lets registration-owned allocations be released at
+system/world teardown.
+
+## Entity query versus resource-only system
+
+A system can have:
+
+- entity terms;
+- resource terms;
+- both;
+- neither.
+
+### Entity terms only
+
+Runs per matching table batch.
+
+### Entity + resource terms
+
+Runs per matching table batch and declares global dependency access.
+
+### Resource only
+
+Behaves like a task but participates in resource dependency scheduling.
+
+### Neither
+
+A pure scheduled task. Ordering comes from phase/explicit dependencies and
+threading flags.
+
+Choose the narrowest accurate descriptor.
+
+## Deferred mutation examples
+
+### Add a component inside a system
+
+```c
+static void Promote(ecs_iter_t *it) {
+    const Experience *xp = ecs_field(it, 0);
+
     for (uint32_t i = 0; i < it->count; i++) {
-        health[i].value -= 1;
+        if (xp[i].value >= 100) {
+            ecs_add(it->entities[i], Veteran);
+        }
     }
+}
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::system("Damage").each([](Health &health) {
-    health.value -= 1;
-});
-```
-</TabItem>
-</Tabs>
 
-Adding or removing components can move entities between tables and invalidate
-the current batch pointers. Keep structural changes outside iteration unless the
-API explicitly documents that the operation is safe for iteration.
+Normal system execution records the structural adds and applies them safely
+after the relevant iteration/sync boundary.
 
-## Descriptor Reference
+### Kill entities
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-typedef struct {
-    const char *name;
-    ecs_query_desc_t query;
-    void (*callback)(ecs_iter_t *);
-    uintptr_t user_data;
-    void (*user_data_dtor)(uintptr_t user_data);
-    ecs_phase_t phase;
-    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
-    bool disabled;
-} ecs_system_desc_t;
+if (health[i].value <= 0) {
+    ecs_kill(it->entities[i]);
+}
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-auto move = ecs::system("Move")
-    .require<Position>()
-    .phase(EcsOnUpdate)
-    .after(integrate)
-    .disabled()
-    .each([](Position &position) {
-        position.x += 1.0f;
-    });
-```
-</TabItem>
-</Tabs>
 
-| Field | Meaning |
-| --- | --- |
-| `name` | Optional debug name. |
-| `query` | Components matched by the system. |
-| `callback` | Function called for each non-empty matching batch. |
-| `phase` | Phase used by `ecs_progress()` and `ecs_run_phase()`. |
-| `after` | Same-phase systems that must run before this one. |
-| `disabled` | When true, the system is created but not run. |
+Do not continue using field pointers for that entity as if the row disappeared
+immediately. The deferred model means the command is pending until flush.
+
+Write system code around final intended state, not immediate row movement.
+
+## Deferral and observers
+
+When deferred commands flush, component/relation hooks and observers execute
+according to the applied transitions.
+
+This means event timing can be later than the API call that recorded the command.
+
+If logic needs immediate synchronous behavior, reconsider whether it belongs
+inside an iterating system or whether a task/no-defer path is more appropriate.
+
+## Worker execution context
+
+Each worker needs safe command/defer context for mutations generated by its
+systems.
+
+Do not share mutable callback-local scratch buffers between systems/workers
+without synchronization.
+
+For per-system scratch state, use:
+
+- stack/local allocations;
+- immutable shared state;
+- properly synchronized user data;
+- resources with declared scheduler access.
+
+## Target FPS
+
+`ecs_world_feat_desc_t.target_fps` allows SIECS to pace `ecs_progress()` toward a
+target frame rate.
+
+This is a convenience for simple loops.
+
+Applications with their own platform/render loop can leave frame pacing outside
+the ECS and still run phases/systems manually.
+
+Frame pacing is not a simulation fixed-step solution by itself.
+
+For deterministic fixed-step simulation, maintain an accumulator in application
+or resource state and run the desired simulation phase/system explicitly at the
+fixed step.
+
+## Interval details
+
+A positive system interval accumulates frame time.
+
+When the threshold is reached, the system runs once.
+
+SIECS intentionally does not run the callback N times to "catch up" all elapsed
+intervals.
+
+This design bounds per-frame timer work.
+
+If exact catch-up simulation is required, implement explicit accumulator logic
+rather than relying on a convenience interval.
+
+## Scheduling design examples
+
+### Input → gameplay
+
+```text
+EcsPreUpdate
+    PollInput (main thread)
+    ↓ after
+    BuildCommands
+EcsOnUpdate
+    Gameplay systems
+```
+
+### Simulation → render extraction
+
+```text
+EcsOnUpdate
+    simulation
+EcsPostUpdate
+    derived transforms
+EcsPreRender
+    build render data
+EcsOnRender
+    submit render work (main thread)
+```
+
+### Background-independent tasks
+
+Systems with disjoint query/resource writes can run in parallel when workers are
+enabled.
+
+The goal is not maximum theoretical parallelism at any cost; it is correct
+parallelism derived from explicit data access.
+
+## Common system mistakes
+
+### Hidden resource access
+
+A system reads/writes a global C variable without declaring it as a resource.
+
+The scheduler cannot see the dependency.
+
+Move schedulable shared state into a resource or force appropriate explicit
+ordering/thread affinity.
+
+### Wrong access mode
+
+Declaring `EcsIn` and then mutating the component breaks dependency analysis.
+
+### Depending on registration order
+
+System registration order is not a robust substitute for `.after` or phase
+ordering.
+
+### Too many phases
+
+A phase boundary can reduce scheduler flexibility and add synchronization.
+
+Use phases for meaningful stages, not every function.
+
+### Too much work in observers/hooks
+
+If high-volume work can batch naturally, put it in a system.
+
+### Immediate structural changes in table iteration
+
+Use default defer behavior. `no_defer` intentionally cannot be combined with
+entity query iteration.

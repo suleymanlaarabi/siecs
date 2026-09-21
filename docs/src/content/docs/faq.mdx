@@ -1,0 +1,277 @@
+---
+title: FAQ
+description: Frequently asked questions about SIECS architecture, entities, queries, systems and tooling.
+---
+
+## What is an ECS?
+
+An Entity Component System separates identity, data and repeated behavior.
+
+Entities identify things. Components store data. Queries select structural
+groups. Systems transform matching data.
+
+SIECS uses archetype tables so entities with the same structural type are stored
+together.
+
+## Why is SIECS written in C?
+
+The runtime uses C17 for a small portable ABI and straightforward integration.
+
+C++20 users get a typed wrapper on top of the same runtime.
+
+## Can I use C++ types inside components?
+
+Yes, through the C++ typed API when the type has correct lifecycle operations.
+
+Remember that archetype migration can move component storage, so ownership and
+move/copy/destruction semantics must be valid.
+
+## What is an archetype?
+
+An archetype is an exact component/structural type.
+
+Entities with the same owned structure share a table.
+
+Queries generally match subsets of archetype structure.
+
+## Why are queries fast?
+
+Persistent queries cache matching tables.
+
+Iteration can then jump directly to contiguous component columns instead of
+testing every entity individually.
+
+Actual performance still depends on table count, field access, system work and
+structural churn.
+
+## Why can queries get slower?
+
+Common causes:
+
+- too many matching tables;
+- archetype fragmentation from many tags;
+- recreating queries repeatedly;
+- expensive callback work;
+- random entity/component lookups inside the row loop;
+- structural mutation during hot processing.
+
+Profile the full workload before changing the model.
+
+## Why is my system callback called multiple times?
+
+A query can match multiple tables.
+
+The callback is invoked once for each non-empty batch, not necessarily once per
+frame.
+
+Put once-per-system work outside the entity-row loop or use a task/resource-only
+system.
+
+## Why are entity ids large?
+
+`ecs_entity_t` contains both an entity index and generation.
+
+A recycled index receives a new generation so stale handles do not silently
+refer to a new entity lifetime.
+
+Use `ecs_entity_id()` when a tool specifically needs the index.
+
+## What is the difference between add and set?
+
+`add` ensures structural presence.
+
+`set` ensures structural presence and writes a concrete value.
+
+Tags normally use `add`.
+
+## Can SIECS serialize components?
+
+SIECS supports native scene save/load and reflection-backed tooling/JSON paths.
+
+Scene compatibility depends on registered component/relation layout expected by
+the loading binary.
+
+## Can I add or remove components inside a system?
+
+Yes, normal query-iterating systems defer structural ECS mutation.
+
+The command buffer flushes at a safe synchronization point.
+
+Do not keep field pointers and expect them to remain valid after a structural
+flush.
+
+## What are resources?
+
+Resources are one-per-world typed values.
+
+They replace the need to model global singleton state as a fake entity
+component.
+
+## Are relations just components containing entity handles?
+
+No.
+
+A raw entity-handle component can store a reference, but a SIECS relation also
+has storage strategy, query integration, target cleanup, acyclic constraints and
+relation events.
+
+## How do I choose a relation storage mode?
+
+Use:
+
+- Dense for per-source target iteration;
+- ByDepth for hierarchy depth;
+- ByTarget for exact-target queries/grouping and upward traversal.
+
+Choose based on dominant access.
+
+## Can I use SIECS without systems?
+
+Yes.
+
+Queries and direct entity/component APIs can be used manually.
+
+Systems add scheduling, persistent query ownership, access dependency analysis,
+deferred mutation and optional worker execution.
+
+## Can I use my own scheduler?
+
+You can run queries manually and call systems/phases explicitly as supported by
+the public API.
+
+If you bypass the built-in scheduler, you are responsible for ordering,
+thread-safety and defer/synchronization semantics.
+
+## Why does name lookup not find my entity?
+
+Only explicitly named live entities are in the name index.
+
+Names are not hierarchical `ChildOf` paths.
+
+Check that the entity is alive and that the exact registered world-level name is
+used.
+
+## Why does the REST explorer not show a component value?
+
+The component needs reflection metadata for the server to understand its fields.
+
+Unreflected components can still exist and be queried, but the explorer cannot
+construct an editable JSON/schema representation for unknown layouts.
+
+## Why is a shared inherited field read-only?
+
+A shared field belongs to the base.
+
+Writing it through one instance would change data observed by other instances.
+
+Create an owned override when the instance needs an independent writable value.
+
+## Why should I avoid storing component pointers?
+
+Table growth, packed-row removal and archetype migration can move storage.
+
+Store entity handles and reacquire pointers near use.
+
+## Why does adding a tag cost more than changing a bool?
+
+A tag changes the entity's structural type.
+
+That can migrate the entity to a different table and update query caches/indexes.
+
+Changing a boolean field keeps the entity in the same table.
+
+Use a tag when query-level structural selection is worth that mutation cost.
+
+## Why did my component pointer become invalid?
+
+Common causes are:
+
+- entity added/removed a component;
+- table grew/reallocated;
+- another row was removed and packed compaction moved data;
+- deferred structural commands flushed;
+- entity was killed.
+
+Keep the entity handle, reacquire the component pointer.
+
+## Why does my optional query return NULL for the entire batch?
+
+A batch corresponds to one table shape.
+
+If the optional owned component is absent from that table, it is absent for all
+rows in the batch.
+
+This is a property of archetype storage, not an error.
+
+## Why does my relation target query fail/assert?
+
+Check the relation storage mode.
+
+`ecs_to` expects target-oriented storage.
+
+`ecs_depth` expects depth-oriented storage.
+
+`ecs_up` requires a compatible acyclic target-oriented relation.
+
+Relation descriptors are part of the query contract.
+
+## Why did changing a relation invalidate iteration?
+
+Relations can be structural and can change table/index placement.
+
+Treat relate/unrelate/retarget like other structural mutations and defer inside
+systems.
+
+## Why does a writable query not give me inherited shared data?
+
+Shared data belongs to the base.
+
+Writable access would let one instance mutate state observed by other instances.
+
+Create an override/local owned component first.
+
+## Should I use inheritance for everything shared?
+
+No.
+
+Use a resource for one-per-world data.
+
+Use a relation for an edge.
+
+Use shared inheritance for data shared by a base family.
+
+Use normal components for per-instance state.
+
+## How do I pause one entity?
+
+Add `Disabled`.
+
+Default queries/systems/observers skip it.
+
+Removing `Disabled` enables ordinary matching again.
+
+## How do I pause a whole feature?
+
+Disable the relevant system(s) or module.
+
+Disabling entities and disabling execution are different operations.
+
+## Does SIECS preserve entity ids in saved scenes?
+
+No.
+
+Native scenes remap entity references to fresh runtime handles when loaded.
+
+Do not use runtime entity handles as permanent asset/network ids.
+
+## Can I load the same scene multiple times?
+
+Yes. Each load instantiates fresh independent entities.
+
+## Why not copy Flecs query syntax/API exactly?
+
+SIECS implements a smaller query model with separate component/resource/relation
+descriptors and explicit storage modes.
+
+The documentation follows the same conceptual questions where they apply but
+must use SIECS's actual public API.

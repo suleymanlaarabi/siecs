@@ -1,0 +1,130 @@
+---
+title: Scenes and Serialization
+description: Save, validate and instantiate native SIECS binary scenes.
+---
+
+SIECS can save the current world to a native binary scene and instantiate that
+scene later.
+
+## Save to memory
+
+```c
+void *data = NULL;
+size_t size = 0;
+
+if (ecs_save_memory(&data, &size)) {
+    /* use data */
+    ecs_scene_free(data);
+}
+```
+
+The caller owns the returned scene buffer and releases it with
+`ecs_scene_free()`.
+
+## Validate without loading
+
+```c
+bool ok = ecs_scene_validate(data, size);
+```
+
+Validation checks the complete scene without creating entities or modifying the
+world.
+
+Use it before accepting scene data from storage/tooling paths.
+
+## Load from memory
+
+```c
+bool ok = ecs_load_memory(data, size);
+```
+
+Loading instantiates entities into the current world.
+
+It does not preserve runtime entity handles from the saved world.
+
+Entity references stored in supported reflected data/relations are encoded in a
+scene-local form and remapped to fresh runtime entities during load.
+
+## File helpers
+
+```c
+ecs_save("scene.siecs");
+ecs_load("scene.siecs");
+```
+
+The memory API remains useful for archives, networking layers or REST tooling.
+
+## Registration requirements
+
+The loading world must have compatible components, relations and modules
+registered.
+
+The scene format is intentionally tied to the schema/layout expected by the
+binary that loads it.
+
+Do not treat it as a forever-stable cross-version interchange format unless the
+application provides its own migration/versioning layer.
+
+## Repeated loading
+
+Loading the same scene multiple times creates independent fresh entity
+instances.
+
+This makes scenes useful as reusable runtime templates/assets.
+
+## Strings and lifecycle
+
+Reflected fields with owned dynamic data must follow the component lifecycle and
+serialization rules of the registered type.
+
+When a component owns resources outside plain reflected storage, provide
+appropriate type operations and application-level serialization strategy.
+
+## REST integration
+
+The REST addon uses the same native scene bytes for scene download/upload.
+
+This avoids maintaining a second world serialization model solely for tooling.
+
+## Entity reference remapping
+
+Runtime entity handles contain world-specific indexes/generations.
+
+Saving those raw values directly would be incorrect because the destination
+world can allocate different handles.
+
+The scene format therefore represents supported references using scene-local
+identity and remaps them during instantiation.
+
+This applies to ECS relations and reflected entity-reference fields supported by
+the serializer.
+
+## Append semantics
+
+Loading does not clear the world first.
+
+Existing entities remain and the scene creates additional entities.
+
+If the application needs "replace current level" semantics:
+
+1. destroy/unload the current level entities;
+2. load/instantiate the new scene.
+
+Keep that policy outside the low-level scene loader.
+
+## Validation versus compatibility
+
+A binary can be structurally valid but still be incompatible with a differently
+registered schema/version.
+
+Applications shipping long-lived scene assets should version their content and
+test compatibility as part of release migration.
+
+## Native scenes versus editor JSON
+
+Use JSON/reflection for human/tool-oriented editable values.
+
+Use native scenes for compact runtime instantiation of compatible SIECS world
+state.
+
+They solve different problems and do not need identical stability guarantees.

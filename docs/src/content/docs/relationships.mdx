@@ -1,0 +1,638 @@
+---
+title: Relationships
+description: Relation definitions, storage modes, queries, target cleanup, built-ins and performance in SIECS.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Definitions
+
+A relation connects a **source entity** to a **target entity**.
+
+SIECS relations are registered in a dedicated relation namespace.
+
+A relation has a storage policy and deletion policy.
+
+Key terms:
+
+| Term | Meaning |
+| --- | --- |
+| Source | Entity that owns the relation edge. |
+| Target | Entity referenced by the edge. |
+| Relation id | `ecs_relation_id_t` identifying the edge kind. |
+| Dense | Per-source target stored alongside source rows. |
+| ByDepth | Dense relation with maintained depth information. |
+| ByTarget | Sources are grouped/indexed by target. |
+
+Unlike Flecs, SIECS relations are not general ids encoded as universal pairs.
+The relation type and target are represented through SIECS's relation-specific
+API and table metadata.
+
+## Examples
+
+Create a parent/child edge:
+
+```c
+ecs_relate(child, ChildOf, parent);
+```
+
+Read the current target:
+
+```c
+ecs_entity_t parent = ecs_target(child, ChildOf);
+```
+
+Remove the edge:
+
+```c
+ecs_unrelate(child, ChildOf);
+```
+
+Custom relation:
+
+```c
+ECS_RELATION(GroupOf, {
+    .storage = EcsRelationByTarget,
+    .on_delete_target = EcsRemoveRelation,
+    .acyclic = false,
+});
+
+ECS_RELATION_REGISTER(GroupOf);
+
+ecs_relate(member, GroupOf, group);
+```
+
+## Introduction
+
+Relations model data that is naturally an edge rather than a value local to one
+entity.
+
+Examples:
+
+- parent of an entity;
+- group membership;
+- owner;
+- selected target;
+- abstract base;
+- scene/layer membership.
+
+A raw `ecs_entity_t` component can also store a reference, but a registered
+relation gives the ECS additional structural knowledge:
+
+- query filtering by relation;
+- target grouping or depth indexing;
+- deletion policy;
+- acyclic validation;
+- observer relation events;
+- built-in inheritance/hierarchy behavior.
+
+## Relationship queries
+
+### Test if entity has a relation
+
+```c
+if (ecs_has_relation(entity, GroupOf)) {
+    /* entity has a GroupOf target */
+}
+```
+
+The id-based form accepts an `ecs_relation_id_t`.
+
+### Get target for entity
+
+```c
+ecs_entity_t group = ecs_target(entity, GroupOf);
+```
+
+The target is `0` when the relation is not present.
+
+### Find sources for a target
+
+For relations configured for target-oriented storage/indexing, SIECS can expose
+source collections efficiently through relation-source APIs.
+
+Use this when the common question is "which entities point to this target?"
+
+Choosing `ByTarget` at relation registration is important for this access
+pattern.
+
+### Find all entities with a relation
+
+Use a query relation term:
+
+```c
+ecs_query_id_t q = ecs_query({
+    .relations = { ecs_rel(GroupOf) },
+});
+```
+
+This matches sources that currently have the relation.
+
+### Find all entities with a specific target
+
+For `ByTarget`:
+
+```c
+ecs_query_id_t q = ecs_query({
+    .relations = { ecs_to(GroupOf, group) },
+});
+```
+
+Matching tables are grouped around the target, so iteration can retrieve the
+shared target without a per-row lookup.
+
+### Iterate relation targets
+
+For `Dense` or `ByDepth` relation storage:
+
+```c
+ecs_iter_t it = ecs_query_iter(q);
+while (ecs_iter_next(&it)) {
+    const ecs_relation_target_t *targets = ecs_targets(&it, GroupOf);
+
+    for (uint32_t i = 0; i < it.count; i++) {
+        ecs_entity_t target = targets[i].entity;
+    }
+}
+```
+
+For `ByTarget`:
+
+```c
+ecs_entity_t target = ecs_target_shared(&it, GroupOf);
+```
+
+### Optional and excluded relations
+
+Optional relation:
+
+```c
+ecs_rel_opt(GroupOf)
+```
+
+Excluded relation:
+
+```c
+ecs_not_rel(GroupOf)
+```
+
+These are relation filters and do not create component field slots.
+
+## Relation storage modes
+
+### Dense
+
+`EcsRelationDense` stores a target per source row.
+
+Use it when:
+
+- sources can point to many different targets in the same archetype population;
+- iteration commonly needs each row's target;
+- exact-target filtering is not the dominant operation.
+
+### ByDepth
+
+`EcsRelationByDepth` is intended for acyclic hierarchical relations where depth
+is useful.
+
+It supports:
+
+- per-source target access;
+- maintained depth;
+- `ecs_depth(Relation, depth)` query filters;
+- `ecs_order_by_depth(Relation)` table ordering.
+
+This is a natural choice for hierarchy-like relations.
+
+### ByTarget
+
+`EcsRelationByTarget` groups sources around target values.
+
+Use it when:
+
+- exact-target queries are common;
+- many entities share one target;
+- upward traversal through the relation is important;
+- grouping by target improves the main workload.
+
+It is required by exact-target query terms and SIECS upward component access.
+
+## Inspecting relationships
+
+Relation metadata is available through `ecs_relation_info()`.
+
+This includes the registered name and descriptor, including storage, target
+deletion policy and acyclic setting.
+
+Tooling should use metadata instead of assuming every relation behaves like
+`ChildOf`.
+
+## Target deletion
+
+A relation descriptor chooses what happens when its target is deleted.
+
+### Remove relation
+
+`EcsRemoveRelation` removes the edge from surviving sources.
+
+This is appropriate for weak association-like relations.
+
+### Delete sources
+
+`EcsDeleteSources` deletes source entities that point at the deleted target.
+
+This is appropriate for ownership relations where the source should not outlive
+the target.
+
+`ChildOf` uses ownership-style behavior for hierarchy cleanup.
+
+Choose target deletion policy as part of domain modeling. Retrofitting it after
+large amounts of application code depend on different semantics is error-prone.
+
+## Acyclic relations
+
+A relation can be marked acyclic.
+
+SIECS can then reject cycles and use assumptions needed by hierarchy depth and
+upward traversal.
+
+Use acyclic only when the relation is truly a directed acyclic relationship.
+
+Examples:
+
+- parent;
+- dependency owner;
+- prototype ancestry.
+
+Do not mark peer graphs or arbitrary links acyclic merely for performance.
+
+## Builtin relationships
+
+### The IsA relationship
+
+`IsA` connects an instance to a base.
+
+```c
+ecs_is_a(instance, base);
+```
+
+The base is automatically treated as abstract for the inheritance model.
+
+Components are materialized or shared according to each component's inheritance
+policy.
+
+#### Component sharing
+
+`EcsInheritShared` components remain on the base and are visible as shared
+read-only fields.
+
+`EcsInheritOwned` components are materialized as owned values on the inheriting
+entity.
+
+See [Inheritance](../inheritance/).
+
+### The ChildOf relationship
+
+`ChildOf` forms ownership hierarchies.
+
+```c
+ecs_relate(child, ChildOf, parent);
+```
+
+Deleting the parent cleans up the owned subtree.
+
+Hierarchy traversal and depth ordering are documented in
+[Hierarchies](../hierarchies/).
+
+#### Namespacing
+
+SIECS names are world-level names rather than Flecs-style hierarchy-scoped path
+names. `ChildOf` does not automatically create a hierarchical lookup namespace.
+
+Use hierarchy edges for ownership/spatial structure and the name API for global
+diagnostic/tool lookup.
+
+## Relationship performance
+
+### Introduction
+
+Relation performance depends heavily on storage mode and query pattern.
+
+No one relation representation is ideal for all questions.
+
+Ask whether the workload most often needs:
+
+- target for each source;
+- all sources for one target;
+- hierarchy depth;
+- upward traversal;
+- deletion ownership.
+
+Choose the storage mode around the dominant access pattern.
+
+### Storing relationships
+
+Dense/ByDepth storage adds per-source relation target data.
+
+ByTarget storage introduces target-oriented grouping/indexing and can affect
+archetype/table structure.
+
+That is why relation changes are structural operations and can migrate entities.
+
+### Fragmentation
+
+A target-grouped relation can create more structural groups when many distinct
+targets are active.
+
+This is beneficial when queries repeatedly ask for one target, but costly when
+the world has enormous target cardinality and most groups contain few entities.
+
+Measure the actual number and population of relation tables.
+
+### Table Creation
+
+New structural combinations create tables.
+
+Adding a relation can therefore create a table that differs by relation state
+even when ordinary components are unchanged.
+
+Query caches are updated when such tables become available.
+
+### Indexing
+
+ByTarget/ByDepth storage exists to maintain useful indexes at mutation time so
+queries can avoid rebuilding those relationships every frame.
+
+The tradeoff is additional bookkeeping when relations are created, retargeted
+or removed.
+
+### Target-filtered Queries
+
+An exact-target query is efficient when the relation uses `ByTarget`, because
+matching can operate on target-grouped table metadata.
+
+Do not choose a Dense relation and then expect the same exact-target query cost.
+
+## Deferred relation changes
+
+Relation operations participate in deferred command handling.
+
+```c
+ecs_defer_begin();
+
+ecs_relate(entity, GroupOf, first_group);
+ecs_relate(entity, GroupOf, final_group);
+
+ecs_defer_end();
+```
+
+The flush applies the final structural result. Observers receive relation events
+at flush time according to the resulting transitions.
+
+This makes relation updates safe inside ordinary deferred system execution.
+
+## Relation registration
+
+A custom relation is declared/defined similarly to other typed SIECS concepts.
+
+```c
+ECS_RELATION(GroupOf, {
+    .storage = EcsRelationByTarget,
+    .on_delete_target = EcsRemoveRelation,
+    .acyclic = false,
+});
+```
+
+Register it in the active world:
+
+```c
+ECS_RELATION_REGISTER(GroupOf);
+```
+
+Generic code can call `ecs_relation_init()` with a name and descriptor.
+
+Relation ids live in their own namespace. A relation id is not a component id.
+
+## One target per relation/source
+
+The core SIECS relation model associates a source's relation with a target.
+
+Calling `ecs_relate(source, R, target2)` when `R` already points to `target1`
+retargets the relation.
+
+This differs from a universal multi-pair model where one source might have many
+independent `(R, target)` ids simultaneously.
+
+When an application needs many-to-many edges, represent them with explicit edge
+entities/components or another data structure depending on query requirements.
+
+Document this clearly so Flecs users do not assume pair multiplicity semantics.
+
+## Relation operations
+
+### Relate
+
+```c
+ecs_relate(entity, GroupOf, group);
+```
+
+### Unrelate
+
+```c
+ecs_unrelate(entity, GroupOf);
+```
+
+### Has relation
+
+```c
+bool has = ecs_has_relation(entity, GroupOf);
+```
+
+### Has exact target
+
+Use the target-specific relation API where needed, or compare:
+
+```c
+ecs_target(entity, GroupOf) == group
+```
+
+### Retarget
+
+Calling `ecs_relate()` with a different target updates structural relation state.
+
+Retargeting can migrate the entity because target-oriented/depth storage may
+change its table/index placement.
+
+## Relation source indexes
+
+SIECS maintains relation-specific indexes appropriate to the selected storage
+mode.
+
+These indexes are why querying sources by target/depth can be efficient without
+building application-owned maps every frame.
+
+The tradeoff is mutation maintenance cost.
+
+If relation membership changes extremely frequently but target queries are rare,
+a plain component handle may sometimes be a better model.
+
+## Dense relation iteration
+
+With Dense storage, per-row target data aligns with the current entity batch.
+
+Conceptually:
+
+```text
+entities[]      e0      e1      e2
+GroupOf target  gA      gB      gA
+```
+
+`ecs_targets()` exposes relation target records for the batch.
+
+This is cache-friendly when systems process source + target id together.
+
+Target entity component lookup is still a separate operation unless the query
+uses another supported traversal mechanism.
+
+## ByDepth relation semantics
+
+ByDepth augments the relation with depth metadata.
+
+The runtime must update depths when hierarchy links change.
+
+That means reparenting a large subtree can be more expensive than merely
+changing one raw parent handle, because derived depth state may need maintenance.
+
+The benefit is cheap depth filters/order during repeated hierarchy processing.
+
+Choose ByDepth when that repeated processing matters.
+
+## ByTarget relation semantics
+
+ByTarget makes target identity part of how sources are grouped/indexed.
+
+Conceptually:
+
+```text
+Table/group for target A:
+    source e0
+    source e4
+    source e9
+
+Table/group for target B:
+    source e2
+    source e7
+```
+
+Then:
+
+```c
+ecs_to(GroupOf, targetA)
+```
+
+can begin from the target-associated structural/indexed state rather than scan
+every source relation value.
+
+The downside is potential fragmentation with many targets.
+
+## Upward traversal
+
+For acyclic ByTarget relations, `ecs_up()` can read a component by traversing
+toward relation targets/ancestors.
+
+This enables patterns such as:
+
+```text
+child -> parent -> root
+```
+
+and resolve the nearest ancestor that provides configuration/transform data.
+
+Because the data belongs to another entity, the resolved field is shared and
+read-only.
+
+Use `ecs_up_optional()` when no ancestor providing the component is acceptable.
+
+## Component-implied relations
+
+SIECS exposes a helper that can associate a component with a default relation
+target.
+
+When the component is added and the source does not already have that relation,
+the relation is introduced.
+
+This can encode invariants such as:
+
+```text
+UIElement -> ChildOf UIRoot
+```
+
+or module-specific default ownership.
+
+Do not use it where callers need to freely choose different relation semantics
+for every add; explicit relation operations are clearer.
+
+## Target deletion examples
+
+### Weak membership
+
+```text
+Member GroupOf Group
+Group deleted
+Member survives, GroupOf removed
+```
+
+Use `EcsRemoveRelation`.
+
+### Owned object
+
+```text
+Widget ChildOf Panel
+Panel deleted
+Widget deleted
+```
+
+Use ownership/source deletion semantics.
+
+Choose the rule that matches domain lifetime, not whichever seems faster.
+
+## Relation observers
+
+`EcsOnRelationSet` and `EcsOnRelationRemove` allow systems/tools to react to
+edges.
+
+Relation observers receive old/new target data.
+
+This is useful for maintaining external indexes that are not already provided by
+the ECS, but do not duplicate SIECS's own target/depth indexes unnecessarily.
+
+## Relations and archetypes
+
+A relation can participate in structural type/table selection.
+
+Therefore changing a relation can be a structural change even if no ordinary
+component was added or removed.
+
+This affects:
+
+- pointer validity;
+- query caches;
+- table count;
+- mutation cost.
+
+Treat frequent relation retargeting as part of the performance budget.
+
+## Relation design checklist
+
+1. Is this truly an entity-to-entity edge?
+2. Is there one target or many?
+3. Does source lifetime depend on target lifetime?
+4. Can cycles occur?
+5. Is the hot query by source, target or depth?
+6. Will ancestor traversal be used?
+7. How many distinct targets exist simultaneously?
+8. How frequently does the target change?
+9. Would a plain entity-handle component be simpler?
+10. Does the relation need observer/tool visibility?
+
+A relation is valuable when the ECS can exploit the edge structurally. If not,
+ordinary component data may be sufficient.

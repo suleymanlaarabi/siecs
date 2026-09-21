@@ -1,0 +1,177 @@
+---
+title: SIECS Remote API
+description: REST explorer routes for inspecting entities, schemas and native scenes.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+The REST addon exposes a small HTTP API for editor/explorer tooling.
+
+It is optional and must be linked/imported separately from the core runtime.
+
+## Explorer Quickstart
+
+```c
+#include <siecs.h>
+#include <siecs_rest.h>
+
+int main(void) {
+    ecs_init();
+
+    ECS_MODULE_IMPORT(SiecsRest, {
+        .port = 4040,
+    });
+
+    while (ecs_progress()) {
+    }
+
+    ecs_fini();
+}
+```
+
+The server is serviced while the module is enabled and the world progresses.
+
+## Usage
+
+The API is intended for trusted development tooling.
+
+Do not expose it directly to an untrusted network without authentication and
+network controls.
+
+### JSON serialization
+
+Reflected component metadata is used to expose schemas and editable values.
+
+Components without reflection remain valid ECS components but cannot be
+automatically represented as structured editor values.
+
+### Native scene transfer
+
+Scene endpoints transfer the SIECS native binary scene representation rather
+than a universal JSON world dump.
+
+## Reference
+
+### GET /health
+
+Returns a simple health response so tools can determine whether the server is
+reachable.
+
+### GET /schema
+
+Returns reflected component schemas and editor type information.
+
+A client can use this to build generic component forms.
+
+### GET /entities
+
+Returns root/unparented entities in list-friendly form.
+
+The list representation includes entity name, index and generation.
+
+### POST /entities
+
+Creates an entity and returns its list representation.
+
+### GET /entities/:index
+
+Returns detailed information for the current live entity at the given index,
+including reflected component values and relationship details exposed by the
+addon.
+
+Because entity indexes can be reused, clients should also track generation when
+they retain a selected entity identity.
+
+### GET /entities/:index/children
+
+Returns direct hierarchy children for the entity.
+
+### PUT /entities/:index/components/:component
+
+Replaces the complete reflected component value from JSON.
+
+The REST API uses component-level replacement rather than arbitrary field patch
+semantics.
+
+### GET /scene
+
+Returns the current world scene as `application/octet-stream`.
+
+### POST /scene
+
+Loads a native scene into the current world.
+
+Loading has append/instantiate semantics rather than automatically clearing the
+world first.
+
+The loading process remaps scene-local entity references to fresh runtime
+handles.
+
+## Options and limits
+
+The REST module has configuration such as port and scene upload size.
+
+Keep editor upload limits finite and reject incompatible/invalid scenes.
+
+## Differences from Flecs Remote API
+
+SIECS does not expose the full Flecs REST endpoint surface.
+
+There is no documented SIECS equivalent for generic REST query language
+execution, pipeline stats endpoints, script endpoints or Flecs command-capture
+APIs.
+
+Only document routes actually implemented by the SIECS REST addon.
+
+## Entity identity in clients
+
+Remote clients should treat `(index, generation)` as the runtime identity pair.
+
+An index alone can be recycled after deletion.
+
+If a UI keeps an entity selected for a long time, compare the generation from a
+fresh response before assuming the selected index is still the same entity.
+
+## Schema-driven editors
+
+A generic editor flow is:
+
+1. `GET /schema`;
+2. cache component/type field metadata;
+3. list entities;
+4. fetch one entity detail;
+5. render controls from reflected field types;
+6. submit a complete component value.
+
+The server intentionally does not guess layouts for unreflected components.
+
+## Hierarchy exploration
+
+The entity list/detail/children routes let an editor build an entity tree without
+downloading the entire world graph on every click.
+
+Use child requests lazily for large worlds.
+
+## Scene upload safety
+
+Validate:
+
+- content type;
+- configured byte limit;
+- scene binary integrity;
+- schema compatibility;
+
+before accepting data as a successful load.
+
+The REST addon is a development tool, not an internet-facing hardened game API.
+
+## Production security
+
+If remote tooling is enabled in a deployed environment, put it behind:
+
+- authentication;
+- network ACL/firewall;
+- TLS termination;
+- request size limits;
+- explicit route policy.
+
+Do not expose mutation/scene upload endpoints to arbitrary clients.

@@ -432,7 +432,7 @@ to:
 how is this entity connected to others?
 ```
 
-The [Relations](/relations/) manual covers the actual API and storage modes.
+The [Relations](/relationships/) manual covers the actual API and storage modes.
 
 ## Composition and inheritance are different tools
 

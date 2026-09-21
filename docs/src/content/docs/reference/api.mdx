@@ -1,362 +1,535 @@
 ---
 title: API Reference
-description: Navigate the public C17 API and typed C++20 wrapper without duplicating the concept manuals.
+description: Public SIECS C17 and C++20 API map covering world lifecycle, entities, components, queries, systems, relations, resources and reflection.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-This page is an API map, not a second tutorial. Read the [Quickstart](../../getting-started/)
-and the concept manuals for explanations; use this page to find the public
-operation, its C spelling, and its C++ counterpart.
-
-All examples use the public distribution header. The runtime is C17; the typed
-wrapper is C++20.
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-#include <siecs.h>
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-#include <siecs.h>
-```
-</TabItem>
-</Tabs>
+This page is a compact API map. The manuals explain behavior, invariants and
+performance tradeoffs.
 
 ## World lifecycle
 
-There is one active world per process. Initialize it before registering types or
-creating handles, and finalize it after systems and tools stop using them.
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_init();
-ecs_progress();
-ecs_run_phase(EcsOnUpdate);
-ecs_quit();
-ecs_fini();
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::init();
-ecs::progress();
-ecs::run_phase(EcsOnUpdate);
-ecs::quit();
-ecs::fini();
-```
-</TabItem>
-</Tabs>
-
-| Concern | C API | C++ API |
+| Purpose | C | C++ |
 | --- | --- | --- |
-| Optional frame cap | `ecs_init_w_features()` | `ecs::init({ .target_fps = 60 })` |
-| Run all enabled systems | `ecs_progress()` | `ecs::progress()` |
-| Run one phase | `ecs_run_phase()` | `ecs::run_phase()` |
-| Stop a loop | `ecs_quit()` | `ecs::quit()` |
-
-The world owns entities, component registries, resources, queries, systems,
-observers and modules. Handles are non-owning and must not outlive the world.
-
-## Entities and components
-
-Entities are identities; components are typed data attached to them. The common
-operations are:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_entity_t player = ecs_new();
-ecs_set(player, Position, { .x = 1.0f, .y = 2.0f });
-
-if (ecs_has(player, Position)) {
-    Position *position = ecs_get(player, Position);
-    position->x += 1.0f;
-}
-
-ecs_remove(player, Position);
-ecs_kill(player);
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-auto player = ecs::entity::create()
-    .set(Position{ .x = 1.0f, .y = 2.0f });
-
-if (player.has<Position>()) {
-    auto &position = player.get<Position>();
-    position.x += 1.0f;
-}
-
-player.remove<Position>();
-player.kill();
-```
-</TabItem>
-</Tabs>
-
-| Operation | C | C++ |
-| --- | --- | --- |
-| Create | `ecs_new()`, `ecs_new_no_reuse()` | `entity::create()`, `create_no_reuse()` |
-| Test liveness | `ecs_is_alive()` | `entity::is_alive()` |
-| Add/remove | `ecs_add()`, `ecs_remove()` | `entity::add<T>()`, `remove<T>()` |
-| Test presence | `ecs_has()` | `entity::has<T>()` |
-| Read, required | `ecs_get()` | `entity::get<T>()` |
-| Read, nullable | `ecs_try_get()` | `entity::try_get<T>()` |
-| Write | `ecs_set()` | `entity::set()` |
-| Destroy | `ecs_kill()` | `entity::kill()` |
-| Disable | `ecs_add(entity, Disabled)` | `entity::disable()` |
-
-Register typed declarations once per world with `ECS_COMPONENT_REGISTER()` in C;
-native C++ types register on first typed use. Generic code can use the `_cid`
-functions (`ecs_get_cid`, `ecs_set_cid`, `ecs_add_cid`, `ecs_remove_cid`) and
-`ecs::component<T>()`.
-
-## Queries and iteration
-
-Queries match archetype tables and expose each matching table as a batch. Keep a
-query id or `query_handle` for repeated work.
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_query_id_t moving = ecs_query({
-    .components = { ecs_inout(Position), ecs_in(Velocity) },
-});
-
-ecs_iter_t it = ecs_query_iter(moving);
-while (ecs_iter_next(&it)) {
-    Position *positions = ecs_field(&it, 0);
-    const Velocity *velocities = ecs_field(&it, 1);
-    for (uint32_t i = 0; i < it.count; i++) {
-        positions[i].x += velocities[i].x;
-    }
-}
-ecs_query_fini(moving);
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-auto moving = ecs::query()
-    .require<Position>()
-    .require<Velocity>()
-    .build_handle();
-
-moving.each([](Position &position, const Velocity &velocity) {
-    position.x += velocity.x;
-});
-```
-</TabItem>
-</Tabs>
-
-| Match or access | C | C++ |
-| --- | --- | --- |
-| Required read | `ecs_in(T)` | `require<T>()` |
-| Required write | `ecs_out(T)`, `ecs_inout(T)` | non-const callback parameter |
-| Optional read/write | `ecs_in_optional(T)`, `ecs_inout_optional(T)` | `optional<T>()` |
-| Include/exclude without a field | `ecs_filter(T)`, `ecs_not(T)` | `require<T>()`, `exclude<T>()` |
-| Relation presence | `ecs_rel(R)`, `ecs_rel_opt(R)` | `with_relation<R>()` |
-| Exact target | `ecs_to(R, target)` | `to<R>(target)` |
-| Relation depth | `ecs_depth(R, depth)` | `depth<R>(depth)` |
-| Inherited read | `ecs_up(T, R)` | `up<T, R>()` |
-
-Fields are numbered by declaration order; filters and relation terms do not
-consume a component field index. `ecs_field_kind()` distinguishes owned,
-shared, and absent optional fields. Field pointers are borrowed and must not be
-kept across a structural mutation.
-
-Use `ecs_query_each()` for one-off C scans. A C query id is released by
-`ecs_query_fini()`; a C++ `query_handle` releases its id automatically.
-
-## Systems and scheduling
-
-A system is a persistent query callback attached to a phase. `ecs_progress()`
-runs enabled systems in phase order; `.after` or `.after()` orders systems in
-the same phase.
-
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-static void move_system(ecs_iter_t *it) {
-    Position *position = ecs_field(it, 0);
-    const Velocity *velocity = ecs_field(it, 1);
-    for (uint32_t i = 0; i < it->count; i++) {
-        position[i].x += velocity[i].x;
-    }
-}
-
-ecs_system({
-    .name = "Move",
-    .phase = EcsOnUpdate,
-    .query = { .components = { ecs_inout(Position), ecs_in(Velocity) } },
-    .callback = move_system,
-});
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-auto move = ecs::system("Move")
-    .phase(EcsOnUpdate)
-    .each([](Position &position, const Velocity &velocity) {
-        position.x += velocity.x;
-    });
-```
-</TabItem>
-</Tabs>
-
-| Operation | C | C++ |
-| --- | --- | --- |
-| Run all phases | `ecs_progress()` | `ecs::progress()` |
+| Initialize | `ecs_init()` | `ecs::init()` |
+| Initialize with features | `ecs_init_w_features()` | `ecs::init(features)` |
+| Progress scheduler | `ecs_progress()` | `ecs::progress()` |
+| Run all systems | `ecs_run()` | wrapper/public C interop |
 | Run one phase | `ecs_run_phase()` | `ecs::run_phase()` |
 | Run one system | `ecs_run_system()` | `ecs::run_system()` |
-| Enable/disable | `ecs_system_enable()`, `ecs_system_disable()` | `ecs::enable_system()`, `disable_system()` |
-| Phase | `ecs_phase_t` | `EcsOnUpdate`, `EcsPostUpdate`, etc. |
+| Request quit | `ecs_quit()` | `ecs::quit()` |
+| Finalize | `ecs_fini()` | `ecs::fini()` |
 
-Structural mutations during iteration may migrate an entity and invalidate the
-current batch pointers. Use deferred mutation when the operation must happen
-after the current command scope.
+`ecs_world_feat_desc_t` includes target FPS and worker-thread configuration.
+
+## Entities
+
+| Purpose | C | C++ |
+| --- | --- | --- |
+| Create | `ecs_new()` | `ecs::entity::create()` |
+| Create without reuse | `ecs_new_no_reuse()` | `create_no_reuse()` |
+| Test alive | `ecs_is_alive()` | `entity::is_alive()` |
+| Resolve current handle by index | `ecs_entity_from_index()` | C interop |
+| Name | `ecs_entity_name()` | entity name helpers |
+| Lookup | `ecs_lookup()` | `entity::lookup()` |
+| Kill | `ecs_kill()` | `entity::kill()` |
+| Mark abstract | `ecs_abstract()` | `entity::abstract()` |
+| Get base | `ecs_entity_base()` | entity inheritance helpers |
+| Test IsA | `ecs_is()` | typed/entity wrapper |
+
+Entity handle helpers:
+
+```c
+ecs_entity_id(entity)
+ecs_entity_generation(entity)
+```
+
+## Components
+
+Typed C operations:
+
+```c
+ECS_COMPONENT_DECLARE(...)
+ECS_COMPONENT_DEFINE(...)
+ECS_COMPONENT_REGISTER(...)
+ECS_COMPONENT(...)
+ECS_TAG(...)
+```
+
+Core operations:
+
+```c
+ecs_add(entity, Component)
+ecs_remove(entity, Component)
+ecs_has(entity, Component)
+ecs_get(entity, Component)
+ecs_try_get(entity, Component)
+ecs_set(entity, Component, {...})
+```
+
+Generic id-based operations:
+
+```c
+ecs_add_cid()
+ecs_remove_cid()
+ecs_has_cid()
+ecs_get_cid()
+ecs_try_get_cid()
+ecs_set_cid()
+ecs_move_cid()
+ecs_modified_cid()
+```
+
+Registration/introspection:
+
+```c
+ecs_component_init()
+ecs_component_dynamic_init()
+ecs_component_info()
+ecs_component_count()
+ecs_component_name()
+ecs_tag_init()
+```
+
+Requirements:
+
+```c
+ecs_with(...)
+ecs_with_many(...)
+```
 
 ## Resources
 
-Resources are one typed value per world. They are not entity components and do
-not become query fields.
+Typed declaration:
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-ecs_set_resource(Time, { .dt = 1.0f / 60.0f });
-const Time *time = ecs_get_resource_read(Time);
+ECS_RESOURCE_DECLARE(...)
+ECS_RESOURCE_DEFINE(...)
+ECS_RESOURCE_REGISTER(...)
+ECS_RESOURCE(...)
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::set_resource(Time{ .dt = 1.0f / 60.0f });
-const Time &time = ecs::resource<const Time>();
-```
-</TabItem>
-</Tabs>
 
-Use `ecs_try_get_resource()` or `ecs::try_resource<T>()` when absence is valid.
-The id-based C functions use the separate `ecs_resource_t` registry:
-`ecs_resource_init`, `ecs_resource_find`, `ecs_resource_rid`,
-`ecs_try_resource_rid`, `ecs_has_resource_rid`, and `ecs_remove_resource_rid`.
+Operations:
 
-## Relations and inheritance
-
-Relations connect a source entity to a target. `ChildOf` provides hierarchy;
-`IsA` provides inheritance from an abstract base.
-
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-ecs_relate(child, ChildOf, parent);
-ecs_entity_t current_parent = ecs_target(child, ChildOf);
-
-ecs_add(base, Abstract);
-ecs_is_a(instance, base);
+ecs_set_resource(...)
+ecs_get_resource(...)
+ecs_get_resource_read(...)
+ecs_try_get_resource(...)
+ecs_try_get_resource_read(...)
+ecs_has_resource(...)
+ecs_remove_resource(...)
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-child.child_of(parent);
-auto current_parent = child.target<ecs::ChildOf>();
 
-base.abstract();
-instance.is_a(base);
+Id API:
+
+```c
+ecs_resource_init()
+ecs_resource_find()
+ecs_resource_name()
+ecs_resource_rid()
+ecs_try_resource_rid()
+ecs_has_resource_rid()
+ecs_remove_resource_rid()
 ```
-</TabItem>
-</Tabs>
 
-Register custom relations with `ECS_RELATION_DECLARE/DEFINE/REGISTER` or
-`ecs::relation<T>()`. Storage mode controls which query terms are valid:
-`ecs_to` for `ByTarget`, `ecs_depth` for `ByDepth`, and `ecs_rel` for presence.
+## Relations
+
+Declaration/registration:
+
+```c
+ECS_RELATION_DECLARE(...)
+ECS_RELATION_DEFINE(...)
+ECS_RELATION_REGISTER(...)
+ECS_RELATION(...)
+```
+
+Registration/introspection:
+
+```c
+ecs_relation_init()
+ecs_relation_info()
+ecs_relation_count()
+```
+
+Entity relation operations:
+
+```c
+ecs_relate()
+ecs_unrelate()
+ecs_has_relation()
+ecs_target()
+ecs_is_a()
+```
+
+Id forms are available for generic relation ids.
+
+Storage modes:
+
+```c
+EcsRelationDense
+EcsRelationByDepth
+EcsRelationByTarget
+```
+
+Target deletion:
+
+```c
+EcsRemoveRelation
+EcsDeleteSources
+```
+
+## Queries
+
+Create/finalize:
+
+```c
+ecs_query_id_t q = ecs_query({...});
+ecs_query_fini(q);
+```
+
+Component access terms:
+
+```c
+ecs_in(T)
+ecs_out(T)
+ecs_inout(T)
+ecs_in_optional(T)
+ecs_inout_optional(T)
+ecs_filter(T)
+ecs_not(T)
+ecs_up(T, Relation)
+ecs_up_optional(T, Relation)
+```
+
+Relation terms:
+
+```c
+ecs_rel(Relation)
+ecs_rel_opt(Relation)
+ecs_not_rel(Relation)
+ecs_to(Relation, entity)
+ecs_depth(Relation, value)
+```
+
+Ordering:
+
+```c
+ecs_order_by_target(Relation)
+ecs_order_by_depth(Relation)
+```
+
+Iteration:
+
+```c
+ecs_iter_t it = ecs_query_iter(q);
+
+while (ecs_iter_next(&it)) {
+    void *field = ecs_field(&it, index);
+}
+```
+
+Utilities:
+
+```c
+ecs_query_count()
+ecs_field_kind()
+ecs_targets()
+ecs_target_shared()
+```
+
+## Systems and phases
+
+Create:
+
+```c
+ecs_system_id_t id = ecs_system({...});
+```
+
+System control:
+
+```c
+ecs_system_name()
+ecs_system_enable()
+ecs_system_disable()
+ecs_run_system()
+```
+
+Phases:
+
+```c
+ecs_phase(...)
+ecs_phase_init()
+ecs_phase_name()
+ecs_run_phase()
+```
+
+`ecs_system_desc_t` includes:
+
+```text
+name
+query
+callback
+user_data
+user_data_dtor
+phase
+after[]
+disabled
+main_thread_only
+no_defer
+interval
+```
+
+## Deferred operations
+
+```c
+ecs_defer_begin();
+...
+ecs_defer_end();
+```
+
+The outermost end flushes the active command buffer.
 
 ## Observers and events
 
-Observers react to `EcsOnAdd`, `EcsOnRemove`, `EcsOnSet`, relation transitions,
-or a custom event. Their payload pointers are borrowed for the callback.
+Built-in events:
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-static void on_position_set(ecs_observer_event_t *event) {
-    const Position *position = event->trigger_data;
-    log_position(event->entity, position);
-}
-
-ecs_observer({
-    .on = EcsOnSet,
-    .query = { .components = { ecs_in(Position) } },
-    .callback = on_position_set,
-});
+EcsOnAdd
+EcsOnRemove
+EcsOnSet
+EcsOnRelationSet
+EcsOnRelationRemove
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-ecs::observe<ecs::OnSet>().each([](const Position &position) {
-    log_position(position);
-});
-```
-</TabItem>
-</Tabs>
 
-Use `ecs_observer_trigger()` or `ecs::trigger<T>()` for custom events. Relation
-events carry `old_target` and `new_target` in `ecs_relation_event_t`.
+Create:
+
+```c
+ecs_observer_id_t id = ecs_observer({...});
+```
+
+Control:
+
+```c
+ecs_observer_enable()
+ecs_observer_disable()
+ecs_observer_fini()
+```
+
+Custom events:
+
+```c
+ecs_event()
+ecs_event_register()
+ecs_observer_trigger()
+```
 
 ## Modules
 
-Modules group registrations and can enable or disable their captured systems and
-observers. Imports are idempotent in the active world; the first properties
-value wins.
+Macros:
 
-<Tabs syncKey="language">
-<TabItem label="C">
 ```c
-ECS_MODULE_DECLARE(physics, { float gravity; });
-ECS_MODULE_DEFINE(physics);
-
-void physics_import(const physics_props_t *props) {
-    (void)props;
-    ecs_system({ .name = "Move", .callback = move_system });
-}
-
-ecs_module_id_t Physics = ECS_MODULE_IMPORT(physics, { .gravity = 9.81f });
-ecs_module_disable(Physics);
+ECS_MODULE_DECLARE(...)
+ECS_MODULE_DEFINE(...)
+ECS_MODULE_IMPORT(...)
 ```
-</TabItem>
-<TabItem label="C++">
-```cpp
-struct Physics {
-    float gravity;
 
-    static void import() {
-        ecs::system("Move").each([](Position &position) {
-            position.x += 1.0f;
-        });
-    }
-};
+Runtime API:
 
-auto physics = ecs::import<Physics>(9.81f);
-physics.disable();
+```c
+ecs_module_init()
+ecs_module_load()
+ecs_module_find()
+ecs_module_name()
+ecs_module_enable()
+ecs_module_disable()
+ecs_module_is_enabled()
 ```
-</TabItem>
-</Tabs>
 
-## Public type families
+## Scenes
 
-| Family | Public C types | Public C++ types |
-| --- | --- | --- |
-| Entity | `ecs_entity_t` | `ecs::entity` |
-| Component | `ecs_component_t`, `ecs_component_desc_t` | `ecs::component<T>`, `ecs::component_hooks<T>` |
-| Resource | `ecs_resource_t`, `ecs_resource_desc_t` | `ecs::resource_handle<T>`, `ecs::res<T>` |
-| Query | `ecs_query_id_t`, `ecs_query_desc_t`, `ecs_iter_t` | `ecs::query`, `ecs::query_handle` |
-| System | `ecs_system_id_t`, `ecs_system_desc_t`, `ecs_phase_t` | `ecs::system` |
-| Observer | `ecs_observer_id_t`, `ecs_observer_desc_t`, `ecs_observer_event_t` | `ecs::observer<T>`, `ecs::observer_event` |
-| Module | `ecs_module_id_t`, `ecs_module_desc_t` | `ecs::module_ref<T>` |
-| Relation | `ecs_relation_id_t`, `ecs_relation_desc_t` | `ecs::relation<T>` |
+```c
+ecs_save_memory()
+ecs_scene_free()
+ecs_scene_validate()
+ecs_load_memory()
+ecs_save()
+ecs_load()
+```
 
-For lifecycle preconditions, ownership rules, field semantics, deletion policy,
-and version guarantees, see [API stability](../stability/) and the relevant
-manual. The public headers remain the final authority for overloads and exact
-descriptor layout.
+Runtime entity handles are remapped on load.
+
+## Public C type families
+
+| Family | Type |
+| --- | --- |
+| Entity | `ecs_entity_t` |
+| Component | `ecs_component_t` |
+| Relation | `ecs_relation_id_t` |
+| Resource | `ecs_resource_t` |
+| Query | `ecs_query_id_t`, `ecs_query_desc_t`, `ecs_iter_t` |
+| System | `ecs_system_id_t`, `ecs_system_desc_t`, `ecs_phase_t` |
+| Observer | `ecs_observer_id_t`, `ecs_observer_desc_t` |
+| Module | `ecs_module_id_t`, `ecs_module_desc_t` |
+
+## Component metadata
+
+`ecs_component_info(component)` exposes immutable registered metadata such as:
+
+- name;
+- size;
+- reflection handle/descriptor;
+- inheritance policy;
+- debug mutation metadata where enabled.
+
+Use this for tools/introspection rather than reading internal component indexes.
+
+## Relation metadata
+
+`ecs_relation_info(relation)` exposes:
+
+- registered name;
+- storage mode;
+- target deletion policy;
+- acyclic flag.
+
+Generic relation tools should branch on this metadata before offering
+target/depth traversal operations.
+
+## Query descriptor capacities
+
+Public constants:
+
+```c
+ECS_QUERY_TERM_CAPACITY
+ECS_QUERY_RESOURCE_CAPACITY
+ECS_QUERY_RELATION_CAPACITY
+ECS_SYSTEM_AFTER_CAPACITY
+```
+
+Descriptor arrays are zero terminated within these fixed capacities.
+
+## Access enum
+
+```c
+EcsIn
+EcsOut
+EcsInOut
+EcsInOptional
+EcsInOutOptional
+EcsFilter
+EcsNot
+EcsInUp
+EcsInUpOptional
+```
+
+## Relation query kinds
+
+```c
+EcsRelationRequired
+EcsRelationOptional
+EcsRelationExcluded
+EcsRelationTarget
+EcsRelationDepth
+```
+
+Use typed macros instead of constructing encoded access values manually whenever
+the type/relation is known at compile time.
+
+## Field kinds
+
+```c
+EcsFieldNone
+EcsFieldOwned
+EcsFieldShared
+```
+
+Field ownership is batch-specific.
+
+## Built-in structural components
+
+```text
+Disabled
+Abstract
+Name
+```
+
+They are registered during world bootstrap and used by entity/query semantics.
+
+## Built-in relations
+
+```text
+IsA
+ChildOf
+```
+
+## World configuration
+
+`ecs_world_feat_desc_t`:
+
+```text
+target_fps
+worker_threads
+```
+
+`ECS_WORKERS_AUTO` requests an automatic worker count based on logical CPUs
+minus the calling thread.
+
+## System descriptor
+
+`ecs_system_desc_t` fields:
+
+```text
+name
+query
+callback
+user_data
+user_data_dtor
+phase
+after[]
+disabled
+main_thread_only
+no_defer
+interval
+```
+
+## Observer descriptor
+
+`ecs_observer_desc_t` fields:
+
+```text
+on
+entity
+query
+callback
+user_data
+```
+
+## Relation descriptor
+
+`ecs_relation_desc_t` fields:
+
+```text
+storage
+on_delete_target
+acyclic
+```
+
+## Component descriptor
+
+`ecs_component_desc_t` includes:
+
+```text
+name
+size
+type operations
+on_set
+on_remove
+on_add
+reflection descriptor
+inheritance
+debug mutation policy
+```
+
+The public header is the final source of truth for exact field names/types when
+writing generic descriptor construction code.

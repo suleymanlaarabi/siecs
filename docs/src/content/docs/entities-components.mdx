@@ -1,0 +1,889 @@
+---
+title: Entities and Components
+description: Entity identity, lifetime, names, components, tags, registration, hooks, reflection, requirements and disabling.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Introduction
+
+Entities and components are the main building blocks of SIECS applications.
+
+An entity provides identity. Components provide data and structural capabilities.
+A component does not belong to a class hierarchy: it can be independently added
+to or removed from any compatible live entity.
+
+This manual describes entity lifetime and component behavior. Archetype storage
+and structural migration are covered in the [Introduction to ECS](../introduction/).
+
+## Entities
+
+An entity is represented by `ecs_entity_t`, a 64-bit handle.
+
+```c
+typedef uint64_t ecs_entity_t;
+```
+
+The handle contains an entity index and generation. The index locates the
+entity's record in the world; the generation distinguishes the current lifetime
+from an older lifetime that reused the same index.
+
+An entity does not contain component values inside the handle. Component data
+lives in the entity's current archetype table.
+
+### Creation
+
+Create an empty entity with:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_entity_t e = ecs_new();
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto e = ecs::entity::create();
+```
+
+</TabItem>
+</Tabs>
+
+A new entity is alive and starts in the empty table. It has no user components.
+
+`ecs_new()` may reuse an index that belonged to a destroyed entity. Reuse is
+safe because the generation in the returned handle changes.
+
+When numeric allocation order matters, SIECS also exposes a no-reuse allocator:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_entity_t e = ecs_new_no_reuse();
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto e = ecs::entity::create_no_reuse();
+```
+
+</TabItem>
+</Tabs>
+
+`ecs_new_no_reuse()` always allocates a new highest entity index. This is useful
+for workflows that want monotonically increasing runtime indexes. It does not
+promise globally contiguous indexes because other entity creation can still
+occur between calls.
+
+### Deletion
+
+Destroy an entity with:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_kill(e);
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+e.kill();
+```
+
+</TabItem>
+</Tabs>
+
+Destroying an entity removes it from its current table, runs component removal
+and lifecycle operations, removes relation state owned by the entity, applies
+target cleanup rules, invalidates the generation and makes the numeric index
+available for normal reuse.
+
+Do not call component access operations with the old handle after deletion.
+
+### Liveliness Checking
+
+Use `ecs_is_alive()` to check whether a handle still identifies its current
+entity lifetime:
+
+```c
+if (ecs_is_alive(e)) {
+    /* e may be used */
+}
+```
+
+```cpp
+if (e.is_alive()) {
+    /* e may be used */
+}
+```
+
+SIECS also exposes `ecs_entity_from_index(index)`, which resolves the currently
+live handle for an entity index or returns `0` when no live entity owns that
+index.
+
+This is useful when external tooling stores an index but wants to recover the
+current generation-aware handle.
+
+### Generation safety
+
+Suppose an entity index is reused:
+
+```text
+entity A -> index 42, generation 3
+destroy A
+entity B -> index 42, generation 4
+```
+
+The two handles are different even though they refer to the same numeric index.
+
+This prevents a stale reference to A from silently becoming a reference to B.
+Store full `ecs_entity_t` handles in runtime data whenever possible rather than
+storing only the index.
+
+### Names
+
+SIECS supports names through the built-in `Name` component and a world name
+index.
+
+C++ can create or return a named entity directly:
+
+```cpp
+auto player = ecs::entity::create("Player");
+auto same = ecs::entity::lookup("Player");
+```
+
+`create("Player")` first performs a lookup and returns the existing live entity
+when that name already exists.
+
+Generic lookup is available in C:
+
+```c
+ecs_entity_t player = ecs_lookup("Player");
+```
+
+`ecs_lookup()` returns `0` when no live entity has the requested registered
+name.
+
+Use `ecs_entity_name(entity)` to obtain the explicit name when one exists. For
+unnamed entities the function returns a generated representation based on the
+index and generation, which is useful for diagnostics.
+
+Names are world-level lookup names. SIECS does not use hierarchical path lookup
+semantics; hierarchy is represented independently with `ChildOf`.
+
+### Disabling
+
+`Disabled` is a built-in tag.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_add(e, Disabled);
+ecs_remove(e, Disabled);
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+e.disable();
+e.enable();
+```
+
+</TabItem>
+</Tabs>
+
+Queries, systems and observers exclude entities that own `Disabled` by default.
+A query that explicitly mentions `Disabled` can match disabled entities.
+
+Disabling is structural: adding or removing the tag changes the entity's
+archetype.
+
+### Abstract entities
+
+`Abstract` is another built-in tag used by SIECS inheritance.
+
+```c
+ecs_abstract(base);
+```
+
+```cpp
+base.abstract();
+```
+
+Abstract entities are excluded from ordinary queries by default. Marking an
+entity abstract also propagates the abstract state through its owned `ChildOf`
+subtree.
+
+Abstract entities are intended to act as reusable bases rather than ordinary
+simulation instances.
+
+## Components
+
+A component is a registered data type that can be attached to entities.
+
+SIECS separates component ids from relation ids and resource ids. Components
+participate in archetype identity and, when they have data, own table columns.
+
+### Operations
+
+The common operations are add, set, get, test and remove.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_add(e, Position);
+ecs_set(e, Position, { .x = 10, .y = 20 });
+
+if (ecs_has(e, Position)) {
+    Position *p = ecs_get(e, Position);
+    p->x += 1;
+}
+
+ecs_remove(e, Position);
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+e.add<Position>();
+e.set(Position{10, 20});
+
+if (e.has<Position>()) {
+    e.get<Position>().x += 1;
+}
+
+e.remove<Position>();
+```
+
+</TabItem>
+</Tabs>
+
+`set` adds the component when necessary and then writes the supplied value.
+
+`get` requires the component to be available. Use the nullable `try_get`
+operation when absence is valid.
+
+```c
+Position *p = ecs_try_get(e, Position);
+if (p) {
+    p->x += 1;
+}
+```
+
+A structural operation such as add or remove can move the entity to another
+table. Do not retain pointers returned by `get` across structural mutation that
+could relocate the entity or grow the current table.
+
+### Add versus set
+
+Use `add` when the component's initial stored value is not important or is
+established by construction/hooks.
+
+Use `set` when a concrete value should be written.
+
+For a tag, `add` is the natural operation because the component has no payload.
+
+For a data component, `set` is usually the clearest operation during entity
+initialization.
+
+### Batched C++ operations
+
+The C++ entity API can apply multiple component operations in one call:
+
+```cpp
+e.set(
+    Position{0, 0},
+    Velocity{1, 0}
+).add<Renderable, Enemy>();
+```
+
+SIECS can defer the combined operation and compute a final structural
+destination instead of forcing user code to manually stage each transition.
+
+### Tags
+
+A tag is registered as a zero-sized component.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ECS_TAG(Enemy);
+ECS_COMPONENT_REGISTER(Enemy);
+ecs_add(e, Enemy);
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+struct Enemy {};
+e.add<Enemy>();
+```
+
+</TabItem>
+</Tabs>
+
+Tags have no data column, but they still change table identity.
+
+Use tags for queryable structural state. Do not assume they are free boolean
+fields when they change frequently: toggling a tag migrates the entity between
+archetypes.
+
+### Hooks
+
+Component descriptors can define hooks for add, set and remove.
+
+The important ordering rules are:
+
+- `on_add` runs when the component is introduced;
+- `on_set` runs for explicit value replacement;
+- `on_remove` runs while the old stored value is still available;
+- type lifecycle operations run as required when storage is moved or destroyed.
+
+An `on_set` hook receives both the incoming value and the currently stored
+value, so it can validate, compare or normalize before the write is finalized.
+
+Hooks are component behavior, not system behavior. They should remain small and
+predictable because structural operations can trigger them in bulk.
+
+### Registration
+
+C components are normally declared with a macro and registered once per world:
+
+```c
+ECS_COMPONENT_DECLARE(Position, {
+    float x;
+    float y;
+});
+ECS_COMPONENT_DEFINE(Position);
+
+void register_types(void) {
+    ECS_COMPONENT_REGISTER(Position);
+}
+```
+
+The convenience `ECS_COMPONENT(...)` form declares and defines the type in one
+place.
+
+In C++, native structs can be registered lazily on first typed use:
+
+```cpp
+struct Position {
+    float x;
+    float y;
+};
+
+auto id = ecs::component<Position>();
+```
+
+C declarations included by C++ reuse the same underlying component id rather
+than creating a duplicate C++ type registration.
+
+### Runtime Type Registration
+
+Generic tooling can register a component from a descriptor:
+
+```c
+ecs_component_t position = ecs_component({
+    .name = "Position",
+    .size = sizeof(Position),
+});
+```
+
+After registration, generic code uses the id-based operations:
+
+```c
+ecs_set_cid(e, position, &(Position){10, 20});
+Position *p = ecs_get_cid(e, position);
+```
+
+SIECS also supports dynamically described reflected components through
+`ecs_component_dynamic_init()`. This is useful for tools or data-driven systems
+that construct component schemas at runtime.
+
+### Reflection
+
+Component macros can provide reflection metadata through SIECS's reflection
+layer.
+
+Reflected components can be described to editor tooling, serialized where
+supported and edited through the REST explorer.
+
+A component does not need reflection to be stored or queried. Reflection is
+metadata for tools and serialization.
+
+### Component requirements
+
+SIECS can declare that adding one component automatically requires other
+components.
+
+```c
+ecs_with(Renderable, Transform, Bounds);
+```
+
+Then:
+
+```c
+ecs_add(e, Renderable);
+```
+
+ensures the required components are also structurally present.
+
+Requirements should encode actual structural invariants. They are not a
+substitute for every application dependency: unnecessary requirements increase
+the number of structural changes performed during setup.
+
+### Inheritance policy
+
+Every component has an inheritance policy:
+
+- `EcsInheritOwned`: the effective base value is materialized as owned data on
+  the inheriting entity;
+- `EcsInheritShared`: the value remains on the base and is resolved as shared
+  read-only data until explicitly overridden.
+
+The policy is fixed at component registration.
+
+Shared inherited data is especially useful for configuration-like values that
+many instances can read without copying.
+
+### Resources instead of singletons
+
+SIECS has a dedicated resource registry rather than modeling world singleton
+state as a component on a singleton entity.
+
+Use a resource for data that exists once per world:
+
+```c
+ECS_RESOURCE(Time, { float dt; });
+ECS_RESOURCE_REGISTER(Time);
+ecs_set_resource(Time, { .dt = 0.016f });
+```
+
+Resources do not affect entity archetypes and do not consume query field slots.
+Systems can still declare resource access for scheduler dependency analysis.
+
+### Disabling components
+
+SIECS does not expose a generic per-component enable/disable bit equivalent to
+Flecs `CanToggle`. To make a capability absent from matching, remove the
+component or model the state with a separate tag/data field depending on how
+frequently it changes.
+
+For whole-entity exclusion from default matching, use the built-in `Disabled`
+tag.
+
+## Pointer lifetime
+
+Component pointers are borrowed views into table storage.
+
+They can be invalidated by adding or removing components, killing an entity,
+growing a table, deferred command flushes or packed-row compaction.
+
+The safest rule is to obtain component pointers close to where they are used
+and not persist them across structural operations.
+
+## See also
+
+- [Queries](../queries/) for component access modes during iteration.
+- [Inheritance](../inheritance/) for owned and shared inherited values.
+- [Resources](../resources/) for one-per-world data.
+- [Introduction: Structural changes](../introduction/structural-changes/) for
+  migration cost and pointer invalidation.
+
+## Entity allocation details
+
+### Reuse versus monotonic allocation
+
+Normal allocation is optimized for recycling dead entity indexes. Reuse keeps
+the entity index storage compact over long-running worlds that create and
+destroy many transient objects.
+
+`ecs_new_no_reuse()` intentionally chooses a different property: it never
+consumes a freed index and always returns a newly allocated highest index.
+
+Use normal allocation unless external tooling or deterministic runtime ordering
+specifically benefits from monotonic indexes.
+
+Neither mode changes the generation safety rules. Entity identity is always the
+full handle, not only its index.
+
+### Entity records and table location
+
+The world keeps an entity record for each live entity index. The record maps the
+identity to the entity's current table and row.
+
+Conceptually:
+
+```text
+entity handle
+    ↓
+entity index record
+    ↓
+table id + row
+    ↓
+component columns
+```
+
+This is why direct component access does not need to scan tables to find an
+entity.
+
+When a structural operation moves an entity, SIECS updates the record to the new
+table/row.
+
+When packed-row compaction moves another entity into a removed row, that moved
+entity's record is updated as well.
+
+### Empty entities
+
+An entity with no user components still has a valid identity.
+
+It resides in the empty structural table and is alive until killed.
+
+Empty entities normally do not match component queries because they have none of
+the required component terms.
+
+They are useful as:
+
+- future identities created before data is known;
+- relation targets;
+- parents/owners;
+- abstract organizational nodes;
+- handles for external objects.
+
+If an entity exists only to store world-global state, prefer a resource instead.
+
+## Name behavior
+
+### Setting names through the Name component
+
+Names are ordinary ECS-visible metadata backed by the built-in `Name` component
+and additional lookup bookkeeping.
+
+The component hook maintains the world name index when a name is set, changed or
+removed.
+
+That means name updates are not merely writing a string field: they must keep
+the lookup index coherent.
+
+### Name uniqueness
+
+Applications should treat explicit registered names as unique world lookup keys.
+
+Creating/looking up by a name is designed to resolve one live entity.
+
+If a domain needs many siblings with the same display label, store the display
+label separately from the world lookup name.
+
+### Generated names
+
+`ecs_entity_name()` can return a generated textual representation for unnamed
+entities.
+
+Generated text is for diagnostics. It is not a persistent serialization key and
+should not replace full entity handles in runtime data.
+
+## Component storage semantics
+
+### Data components
+
+A data-bearing component contributes:
+
+- a component id to the table type;
+- a column allocation in tables that own the component;
+- lifecycle operations when rows are created, moved or removed.
+
+The table column stores values densely by row.
+
+For an archetype containing `Position`, `Velocity` and `Health`, the physical
+layout is conceptually:
+
+```text
+entities[] : e0 e1 e2 e3 ...
+Position[] : p0 p1 p2 p3 ...
+Velocity[] : v0 v1 v2 v3 ...
+Health[]   : h0 h1 h2 h3 ...
+```
+
+The query iterator exposes those arrays directly.
+
+### Zero-sized tags
+
+A tag contributes to the structural type but does not need a payload column.
+
+This is useful because a query can select an entire tag-defined population
+without reading any tag memory.
+
+The cost is structural: entities with and without the tag occupy different
+tables.
+
+### Component ids
+
+`ecs_component_t` is a compact id in the active world's component namespace.
+
+Do not persist component ids as stable cross-version file identifiers unless the
+application controls registration order/schema compatibility.
+
+For tools that need names or metadata, use component introspection APIs rather
+than assuming numeric ids remain semantically identical across unrelated
+binaries.
+
+## Component lifecycle operations
+
+### Construction
+
+When storage for a data component is created, SIECS uses the component's
+registered type operations to establish a valid value.
+
+For trivial C structs this can be zero/simple storage behavior.
+
+For C++ types the wrapper registers appropriate operations so archetype movement
+can preserve object lifetime rules.
+
+### Copy and move
+
+Archetype migration often needs to move existing component values from a source
+table row to a destination table row.
+
+A type with ownership must provide semantics that are valid for those moves.
+
+The runtime distinguishes copy/move construction and assignment operations in
+its type operation table.
+
+### Destruction
+
+Removing a component or destroying an entity releases the component value using
+the registered destructor behavior.
+
+Do not manually free ownership that the component destructor also owns.
+
+### Hooks versus type operations
+
+Type operations keep storage/object lifetime valid.
+
+Hooks express ECS-level reactions such as "component added", "value set" or
+"component removed".
+
+A destructor is not a replacement for `on_remove`, and `on_remove` is not a
+replacement for a destructor.
+
+## Component hooks in detail
+
+### on_add
+
+`on_add` runs when the component becomes structurally present.
+
+The destination storage exists.
+
+Use it for light initialization or bookkeeping that specifically belongs to the
+ECS add transition.
+
+Do not perform large world scans from an add hook.
+
+### on_set
+
+`on_set` is tied to explicit set/replace operations.
+
+The callback receives the incoming value and access to the current stored value
+before the final set is committed.
+
+This allows:
+
+- normalization;
+- validation;
+- comparison with previous value;
+- update of an external index;
+- rejection through application assertions/contracts.
+
+If application code mutates a component directly through a pointer, that is not
+the same as calling the explicit set API. Use `ecs_modified_cid()` when generic
+code needs to signal that an externally modified value should be treated as
+modified according to the API contract.
+
+### on_remove
+
+`on_remove` runs while the outgoing value is still available.
+
+Typical uses:
+
+- unregister an object from an external subsystem;
+- release a handle that is not owned by the type destructor;
+- update debug/tool indexes;
+- record final statistics.
+
+Keep removal hooks safe during recursive deletion and world teardown.
+
+## Runtime component descriptors
+
+`ecs_component_desc_t` carries more than a name and size.
+
+It can contain:
+
+- type lifecycle operations;
+- add/set/remove hooks;
+- reflection descriptor;
+- inheritance policy;
+- debug mutation policy.
+
+Generic engines/tooling can therefore construct component types without using a
+compile-time macro.
+
+The typed macros are convenience layers over the same registration model.
+
+## Dynamic reflected components
+
+`ecs_component_dynamic_init()` accepts a dynamic reflection description.
+
+This supports editor/data-driven workflows where a component schema is known at
+runtime rather than as a C struct in source code.
+
+Dynamic components still become real component ids and participate in ordinary
+archetype/query operations.
+
+Code that does not know the compile-time type accesses them through ids,
+reflection and raw pointers.
+
+## Requirements in detail
+
+A requirement is structural dependency metadata:
+
+```text
+Renderable requires Transform
+Renderable requires Bounds
+```
+
+When `Renderable` is added, SIECS ensures the required components are present.
+
+Requirements can chain, so adding one component may cause multiple required
+components to appear.
+
+Requirement cycles are invalid because there is no finite acyclic dependency
+order.
+
+Use requirements for invariants such as:
+
+```text
+MeshRenderer -> Transform
+RigidBody     -> Transform
+Camera        -> Transform
+```
+
+Do not use them for soft runtime dependencies such as "AI sometimes wants an
+AudioListener". Those are better expressed through queries/resources/application
+logic.
+
+## Default relations for components
+
+SIECS can associate a relation/target requirement with a component through the
+public relation-component helper.
+
+This lets adding a component also establish a structural relation when the
+source does not already have one for that relation.
+
+It is useful when a component conceptually implies membership/ownership in a
+default group.
+
+Because relation changes are structural, use this feature for genuine invariants
+rather than convenience shortcuts that would create unnecessary migrations.
+
+## Disabled and Abstract default filtering
+
+Ordinary queries implicitly exclude `Disabled` and `Abstract`.
+
+This behavior keeps paused entities and template/base entities out of normal
+simulation without every system repeating the same exclusion terms.
+
+If a query explicitly mentions one of those tags, the implicit exclusion for
+that tag is not applied and the query can intentionally match that population.
+
+Tooling queries often do this.
+
+## Direct mutation and modification signaling
+
+`ecs_get()` returns mutable storage for a component that exists.
+
+Changing it in place is the fastest common path for ordinary component values.
+
+Hooks/events tied specifically to `set` do not automatically fire merely because
+memory changed through a raw pointer.
+
+When a generic subsystem needs explicit modification signaling, use the
+appropriate modified API.
+
+This distinction keeps hot loops from paying event overhead for every field
+write while still allowing tools/framework code to opt into explicit
+notifications.
+
+## Components and inheritance
+
+Owned/shared inheritance changes where an effective component value physically
+lives.
+
+An owned inherited component becomes local table data.
+
+A shared inherited component can resolve to base storage.
+
+The same query term can therefore produce `EcsFieldOwned` for one batch and
+`EcsFieldShared` for another read-only batch.
+
+Code that uses inheritance should check field kind when storage ownership
+matters.
+
+## Structural cost of component operations
+
+### Add
+
+Adding a new structural component usually requires:
+
+1. determine final destination type;
+2. find/create destination table;
+3. append a destination row;
+4. move/copy common components;
+5. initialize the new component;
+6. run relevant hooks/events;
+7. remove/compact the old row;
+8. update entity records.
+
+### Remove
+
+Removal is the inverse:
+
+1. determine destination type without the component;
+2. run remove semantics while data is valid;
+3. move surviving columns;
+4. compact source row;
+5. update records.
+
+This is why repeated add/remove in an inner per-frame loop can dominate runtime
+even when query iteration itself is very fast.
+
+## Component design checklist
+
+Before creating a component, ask:
+
+1. Is this data per entity or per world?
+2. Which systems read it?
+3. Which systems write it?
+4. Does it change structurally or only by value?
+5. Is the value meaningful independently from another component?
+6. Does it own resources requiring lifecycle operations?
+7. Should it be inherited owned or shared?
+8. Does tooling need reflection?
+9. Is a tag actually better than a data field?
+10. Will adding/removing it frequently create unnecessary archetype churn?
+
+Good ECS component design is primarily about access patterns and lifetime, not
+about mapping every OOP class field one-to-one.

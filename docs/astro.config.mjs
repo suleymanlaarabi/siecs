@@ -99,7 +99,7 @@ export default defineConfig({
         { label: 'Overview', link: '/' },
         {
           label: 'Getting Started',
-          items: ['getting-started', 'building', 'cookbook'],
+          items: ['quickstart', 'building', 'cookbook'],
         },
         {
           label: 'Introduction to ECS',
@@ -122,9 +122,8 @@ export default defineConfig({
           label: 'Fundamentals',
           items: [
             'archetype-ecs',
-            'entities',
-            'components',
-            'resources',
+            'entities-components',
+            'component-traits',
             'queries',
             'systems',
           ],
@@ -133,19 +132,21 @@ export default defineConfig({
           label: 'Manuals',
           items: [
             'observers',
-            'relations',
+            'relationships',
+            'hierarchies',
             'inheritance',
             'modules',
-            'ecs-design',
+            'design-with-siecs',
+            'manual',
           ],
         },
         {
           label: 'Addons',
-          items: ['rest'],
+          items: ['remote-api', 'scenes'],
         },
         {
-          label: 'Reference',
-          items: ['reference/api'],
+          label: 'Reference and FAQ',
+          items: ['reference/api', 'faq'],
         },
       ],
     }),

@@ -1,127 +1,65 @@
 ---
-title: Archetype Storage
-description: Understand table storage, contiguous component columns, query matching, structural changes, and sparse-set tradeoffs.
+title: SIECS Archetype Storage
+description: Implementation-facing notes about SIECS tables, packed rows, columns, transitions and query caches.
 ---
-import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-An archetype entity component system groups entities by their exact set of
-components. Every distinct component set identifies a table, and every
-component stored by that table has a contiguous column.
+For the general ECS/archetype explanation, read
+[Introduction: Archetypes](../introduction/archetypes/).
 
-SIECS uses this model to turn an ECS query into iteration over matching tables
-instead of repeated lookups across unrelated component stores.
+This page summarizes the SIECS-specific runtime model.
 
-## Archetypes represent component sets
+## Tables
 
-Consider three entities:
+Each structural type maps to a table.
 
-| Entity | Components | Archetype |
-| --- | --- | --- |
-| Player | `Position`, `Velocity`, `Health` | Moving actor |
-| Enemy | `Position`, `Velocity`, `Health` | Moving actor |
-| Tree | `Position`, `Health` | Static actor |
+A table stores:
 
-The player and enemy share one table because they have the same component set.
-The tree belongs to another table because it does not have `Velocity`.
+- an entity handle array;
+- data columns for data-bearing components;
+- structural type metadata;
+- transition edges;
+- query/cache metadata used by the runtime.
 
-An entity handle identifies a row in one of these tables. The handle is stable
-while its storage location may change.
+Tags affect table identity without requiring a payload column.
 
-## Tables store contiguous columns
+## Columns
 
-Conceptually, the moving-actor table is laid out as separate arrays:
+Data-bearing components are stored column-wise.
 
-```text
-entities:  [player, enemy, ...]
-Position:  [p0,     p1,    ...]
-Velocity:  [v0,     v1,    ...]
-Health:    [h0,     h1,    ...]
-```
+A query can therefore expose a contiguous `Position*`, `Velocity*`, or other
+field for the current batch.
 
-A query for `Position` and `Velocity` can process those columns sequentially.
-It does not need to visit unrelated entities or perform one component lookup
-for every row.
+## Packed rows
 
-Tags are zero-sized components. They participate in the archetype identity and
-query matching without adding a data column.
+Rows are kept packed.
 
-## Queries match tables first
+When a non-final row is removed, the final row can be moved into the vacant
+slot. Entity records are updated so handle-to-row lookup remains correct.
 
-A persistent SIECS query records the table identifiers that satisfy its terms.
-Iteration then returns one matching table batch at a time:
+Do not treat table row numbers as stable entity identifiers.
 
-<Tabs syncKey="language">
-<TabItem label="C">
-```c
-ecs_query_id_t moving = ecs_query({
-    .components = {
-        ecs_inout(Position),
-        ecs_in(Velocity),
-        ecs_filter(Visible),
-    },
-});
-```
-</TabItem>
-<TabItem label="C++">
-```cpp
-auto moving = ecs::system("Move")
-    .require<Position, Velocity>()
-    .require<Visible>()
-    .each([](Position &position, const Velocity &velocity) {
-        position.x += velocity.x;
-    });
-```
-</TabItem>
-</Tabs>
+## Growth
 
-`Position` and `Velocity` produce fields. `Visible` only constrains matching, so
-it does not consume a field index.
+When table capacity grows, entity arrays and data columns may reallocate.
 
-When a compatible table is created later, the query index can associate that
-table with the persistent query. This keeps repeated iteration focused on
-matching storage.
+SIECS refreshes query field metadata when table storage moves.
 
-## Structural changes move entities
+User component pointers remain borrowed and should not be retained across
+operations that can grow/migrate storage.
 
-Changing an existing component value writes into the current column. Changing
-the component set is different:
+## Structural transitions
 
-1. SIECS finds or creates the destination archetype table.
-2. Shared component values move to the destination row.
-3. Added component storage is initialized.
-4. Removed component storage is discarded according to its lifecycle.
-5. The entity handle is updated to its new row.
+Adding/removing components or structural relation state computes a destination
+type/table and migrates the entity.
 
-Operations such as `ecs_add()`, `ecs_remove()`, and setting a previously absent
-component are structural changes. They are valid operations, but they should
-not dominate a hot iteration loop.
+Transition metadata is cached so repeated structural edges do not need to
+reconstruct the entire lookup path from scratch.
 
-## Archetypes and Sparse Sets
+## Query cache
 
-Both models can implement a capable ECS, but they optimize different work:
+Persistent query ids store matching table information.
 
-| Concern | Archetype storage | Sparse-set storage |
-| --- | --- | --- |
-| Grouping | Exact component sets | Usually one store per component |
-| Query iteration | Matching tables and contiguous columns | Drive one component store and test membership in others |
-| Adding/removing components | May migrate a row between tables | Usually updates independent component stores |
-| Stable component sets | Strong fit | Also supported |
-| Frequent structural churn | More migration work | Often less coupled |
-| Batch processing | Natural table batches | Depends on store alignment and query strategy |
+When a new table is created, active query caches are updated.
 
-This is a design tradeoff, not a universal ranking. Archetypes are a strong fit
-when many entities keep stable component sets and systems repeatedly process
-large matching batches. A sparse-set design can be attractive when independent
-component insertion and removal dominates the workload.
-
-## What This Means in SIECS
-
-- Keep persistent queries for repeated work.
-- Resolve query fields once per batch.
-- Update existing component values in place.
-- Apply structural changes outside tight loops when practical.
-- Use filter terms for components that affect matching but are not read.
-- Model stable state with tags without expecting tag toggles to be free.
-
-For the conceptual model, read [Introduction to ECS](../introduction/). Continue with
-[queries](../queries/) for query terms and hot-path rules.
+This is the central reason repeated query/system iteration can start from
+prematched tables rather than scanning every entity.

@@ -1,0 +1,276 @@
+---
+title: Hierarchies
+description: Parent/child modeling, recursive cleanup, depth ordering and hierarchy storage in SIECS.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Introduction
+
+A hierarchy is a relation graph in which entities have parent/child ownership.
+
+SIECS provides the built-in `ChildOf` relation for this purpose.
+
+```c
+ecs_relate(child, ChildOf, parent);
+```
+
+```cpp
+child.child_of(parent);
+```
+
+A hierarchy is useful for:
+
+- scene graphs;
+- UI trees;
+- ownership;
+- transform propagation;
+- lifetime grouping;
+- editor tree views.
+
+## Get parent and children
+
+Get the parent:
+
+```c
+ecs_entity_t parent = ecs_target(child, ChildOf);
+```
+
+or in C++:
+
+```cpp
+auto parent = child.target<ecs::ChildOf>();
+```
+
+To iterate children of one parent, use the target-oriented relation query
+supported by the relation's storage mode.
+
+The exact implementation should prefer the built-in relation/query helpers
+rather than scanning every entity in the world and comparing parent handles.
+
+## Recursive cleanup
+
+`ChildOf` is an ownership relation.
+
+Killing a parent removes its owned subtree.
+
+Conceptually:
+
+```text
+Root
+├── A
+│   ├── A1
+│   └── A2
+└── B
+```
+
+Destroying `Root` destroys A, A1, A2 and B according to the built-in cleanup
+semantics.
+
+Do not keep raw component pointers or assume child handles remain alive during a
+recursive deletion callback.
+
+If observer code reacts to removal, re-check liveness before using related
+entities.
+
+## Depth-first processing
+
+Hierarchy transforms are often evaluated parent before child.
+
+SIECS can maintain depth information for hierarchy-style relations and order
+matching table batches by relation depth.
+
+```c
+ecs_query_id_t q = ecs_query({
+    .components = { ecs_inout(WorldTransform) },
+    .relations = { ecs_rel(ChildOf) },
+    .order_by = ecs_order_by_depth(ChildOf),
+});
+```
+
+This gives a useful table-level parent-to-descendant progression when the
+relation's depth semantics support it.
+
+Within one depth/table batch, row order is not a hierarchy ordering guarantee.
+
+## Breadth/depth layers
+
+A `ByDepth` relation can be filtered by depth:
+
+```c
+.relations = { ecs_depth(ChildOf, 2) }
+```
+
+This is useful for layer-oriented processing or tools that want one hierarchy
+level.
+
+SIECS does not expose a generic Flecs-style breadth-first traversal iterator API.
+Use depth filters/order or explicit child/source APIs for the needed traversal.
+
+## Names
+
+Entity names are independent from the hierarchy.
+
+A child named `"Button"` is looked up through the world name index rather than a
+parent-scoped path syntax.
+
+This avoids coupling entity identity names to hierarchy structure, but it means
+applications that need duplicate local names should store an additional local
+label/path component instead of relying on global lookup.
+
+## Abstract subtrees
+
+`ecs_abstract(entity)` marks an entity and its owned `ChildOf` subtree abstract.
+
+This is useful for base/template hierarchies that should not appear in ordinary
+simulation queries.
+
+Concrete instances can inherit from abstract bases while the template subtree
+remains excluded from default matching.
+
+## Hierarchy storage
+
+### Overview
+
+The performance needs of a hierarchy usually include:
+
+- parent lookup from a child;
+- child/source lookup from a parent;
+- depth;
+- parent-before-child processing;
+- deletion ownership.
+
+SIECS relation storage modes let the runtime choose indexes around those needs.
+
+### ChildOf storage details
+
+The built-in `ChildOf` relation uses SIECS relation machinery rather than being a
+plain component containing an entity handle.
+
+This lets the runtime integrate cleanup, query matching and depth/target
+operations.
+
+### Parent lookup
+
+For a child, direct target lookup is O(1)-style indexed ECS relation access
+rather than a query over all parents.
+
+### Child lookup
+
+Finding children benefits from target-oriented indexes.
+
+If an application creates a custom hierarchy relation and frequently queries
+children by parent, choose a compatible target-oriented storage mode.
+
+### Query performance
+
+A hierarchy query still operates on archetype/relation tables.
+
+Performance depends on:
+
+- number of hierarchy tables;
+- distinct parent targets when target-grouped;
+- depth distribution;
+- ordinary component fragmentation.
+
+A hierarchy with many one-off structural variants can be more expensive to
+iterate than one where siblings share ordinary component structure.
+
+### Optimizing relationship traversal
+
+For hot traversal:
+
+- keep parent/child structure stable when possible;
+- choose relation storage for the dominant lookup direction;
+- use depth ordering instead of repeatedly recomputing depth externally;
+- avoid random `ecs_get` calls in the inner loop when fields can be queried;
+- separate frequently changing non-structural state from hierarchy edges;
+- measure target cardinality and table count.
+
+## Reparenting
+
+Changing a child's parent is a relation retarget.
+
+That can affect:
+
+- relation storage/indexing;
+- hierarchy depth;
+- ordered query position;
+- target cleanup relationships;
+- observer events.
+
+Reparenting is therefore a structural operation.
+
+Inside systems, let normal deferral buffer the reparent operation rather than
+forcing it while hierarchy/table data is being iterated.
+
+## Root entities
+
+An entity with no `ChildOf` target is a hierarchy root for this relation.
+
+Tools such as the REST explorer can list roots and then request children to
+construct a tree.
+
+A root can still have another custom ownership relation; "root" is specific to
+the hierarchy relation being discussed.
+
+## Multiple hierarchy-like relations
+
+Applications can register additional acyclic relations for different graphs:
+
+```text
+SceneParent
+UIParent
+BoneParent
+DependencyParent
+```
+
+Do not overload `ChildOf` when the lifetime/cleanup semantics are different.
+
+Each relation can select its own storage and target deletion policy.
+
+## Transform propagation pattern
+
+A common pattern stores local transform on each node and computes world transform
+in parent-before-child order.
+
+The hot loop wants:
+
+- local transform owned by the child;
+- parent/world data from an ancestor;
+- depth-ordered execution.
+
+SIECS relation depth ordering and upward reads can support this model when the
+chosen relation storage satisfies their requirements.
+
+Keep transform propagation as a system so the work batches over tables instead
+of recursively calling one function per entity if performance matters.
+
+## Deep hierarchy cost
+
+Depth itself is not automatically expensive for ordinary component queries.
+
+Costs appear when operations must walk or update ancestry:
+
+- upward lookup;
+- reparent depth maintenance;
+- recursive deletion;
+- explicit tree traversal.
+
+A very deep chain and a wide shallow tree have different costs.
+
+Measure the operations the application actually performs.
+
+## Hierarchy mutation checklist
+
+When a hierarchy changes frequently, ask:
+
+1. Does the relation need maintained depth?
+2. Are exact-parent child queries common?
+3. Is recursive ownership desired?
+4. Is reparenting in the hot frame loop?
+5. Can transform/configuration propagation be expressed as a depth-ordered
+   system?
+6. Does every node need an entity, or can some data remain inside a component?
+
+Use ECS hierarchy structure where identity/query/lifetime benefits justify the
+edge bookkeeping.

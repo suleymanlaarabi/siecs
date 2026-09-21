@@ -1,78 +1,153 @@
 ---
-title: Building and integrating
-description: Choose the simplest way to integrate the SIECS runtime into a C17 or C++20 application.
+title: Building SIECS
+description: Integrate the standalone distribution or Bake package and build the documentation/tests.
 ---
 
-SIECS is distributed as a single public header and a single C translation unit.
-Choose the standalone distribution unless your application already uses Bake.
+## Dependencies
 
-## Standalone distribution
+The standalone distribution packages the core runtime for normal use.
 
-Copy these files into your application:
+At the API level, applications include `siecs.h` and compile/link `siecs.c`.
+
+Threading/platform libraries may be required by the target platform.
+
+## Build with distribution files
+
+Copy:
 
 ```text
-siecs.h
-siecs.c
+distr/siecs.h
+distr/siecs.c
 ```
 
-The files are generated under `distr/` and include the SIECS runtime and its
-public C dependencies. Your application only includes `<siecs.h>`.
+into the application or vendor directory.
 
-### C
+### Command line examples
 
-Compile both your application and the runtime as C17:
+C:
 
 ```sh
-cc -std=c17 -I. main.c siecs.c -pthread -o my_app
+cc -std=c17 -I. main.c siecs.c -pthread -o app
 ```
 
-### C++
-
-Compile the runtime as C17. Do not pass `siecs.c` to the C++ compiler:
+C++:
 
 ```sh
 cc -std=c17 -I. -c siecs.c -o siecs.o
-c++ -std=c++20 -I. main.cpp siecs.o -pthread -o my_app
+c++ -std=c++20 -I. main.cpp siecs.o -pthread -o app
 ```
 
-The C++ API is header-only, but it still links against the C runtime object.
+Compile `siecs.c` as C, even for a C++ application.
+
+### Shared library
+
+A project can compile the C runtime into a shared library using the platform's
+normal visibility/export settings.
+
+Keep the public header version and runtime binary version aligned.
 
 ## Bake
 
-Bake projects consume SIECS with the `use` declaration:
+SIECS is developed with Bake project metadata and can be consumed by Bake-based
+projects.
 
-```json
-{
-  "id": "my_app",
-  "type": "application",
-  "value": {
-    "use": ["siecs"]
-  },
-  "lang.c": {
-    "c-standard": "c17"
-  },
-  "bundle": {
-    "repositories": {
-      "siecs": "https://github.com/suleymanlaarabi/siecs"
-    }
-  }
-}
+A typical application declares SIECS in its package dependencies and uses the
+required C17/C++20 standard.
+
+Optional add-ons such as REST or GPU/spatial packages are separate package
+dependencies.
+
+## Building the documentation
+
+The documentation site is under `docs/` and uses Astro Starlight.
+
+From the docs directory, install the JavaScript dependencies and run the normal
+site development/build scripts defined by the project.
+
+Before publishing documentation changes, verify:
+
+- navigation routes;
+- internal links;
+- C/C++ tabs;
+- code fences;
+- production build.
+
+## Running the test suite
+
+Use the repository's normal test build workflow.
+
+Documentation examples should be cross-checked against public headers and tests,
+especially for descriptor fields and typed C++ wrapper names.
+
+## WebAssembly
+
+The repository includes WASM smoke/build tooling.
+
+When targeting Emscripten, keep the same C/C++ language split and verify that
+threading/features selected for the world are supported by the chosen browser
+build configuration.
+
+## Addons
+
+Addons are not automatically part of every minimal application.
+
+Document addon setup separately so core SIECS users do not assume that REST,
+GPU, spatial or other optional packages are linked by default.
+
+## Updating distribution files
+
+The repository's `distr/` files are generated artifacts.
+
+When developing SIECS itself, update them through the repository's distribution
+generation workflow rather than manually editing only the amalgamated copy.
+
+For application users, treat `distr/siecs.h` and `distr/siecs.c` as the
+consumable snapshot.
+
+## Compiler standards
+
+Core runtime:
+
+```text
+C17
 ```
 
-For a C++ application, set `"language": "cpp"` and
-`"cpp-standard": "c++20"`.
+Typed wrapper:
 
-## Platform notes
+```text
+C++20
+```
 
-The command lines above show the Linux/POSIX form used by the examples. Keep
-the language standards unchanged on other platforms and add the thread/system
-libraries required by that platform's compiler and C runtime.
+Do not compile the C implementation unit as C++ just because the application is
+C++.
 
-## Choosing a path
+This keeps the runtime ABI/language assumptions consistent.
 
-| Situation | Recommended path |
-| --- | --- |
-| Small application or library | Standalone `siecs.h` + `siecs.c` |
-| Existing Bake application | Bake package |
-| C++ application | C17 runtime + C++20 wrapper |
-| Tooling and editor integration | Add the optional REST package |
+## CI recommendations
+
+A documentation/API change should ideally verify:
+
+- C build;
+- C++ build;
+- tests;
+- WASM smoke tests when relevant;
+- docs production build;
+- standalone distribution build.
+
+Code examples in manuals should use only public API.
+
+## Optional threading
+
+If workers are disabled, SIECS still provides the same system/query semantics on
+the calling thread.
+
+Applications that cannot use threads on a target platform can configure the
+world accordingly rather than rewriting their systems.
+
+## Addon compatibility
+
+An addon can require external platform/GPU/network dependencies beyond the core
+distribution.
+
+Keep addon build instructions with the addon and do not imply those dependencies
+are required for the core ECS.

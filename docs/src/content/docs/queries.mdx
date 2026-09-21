@@ -1,21 +1,57 @@
 ---
 title: Queries
-description: Match component and relation tables, then iterate cached batches in C or C++.
+description: Query creation, caching, matching, iteration, access modes, relations, inheritance and ordering in SIECS.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-Queries match archetype tables. A matching query returns the entities in each
-table as a batch; component fields are exposed through `ecs_field()` in C or as
-typed callback arguments in C++.
+## Introduction
 
-## Create a query
+Queries find entities that match structural conditions.
+
+SIECS is an archetype ECS, so a query primarily matches **tables**, not
+individual entity records. Once a table matches, all rows in that table satisfy
+the table-level component conditions and can be iterated as a batch.
+
+Queries are used directly by applications and internally by systems and
+observers.
+
+SIECS queries support required component fields, read/write access metadata,
+optional fields, filter-only and exclusion terms, relation filters, inherited
+upward reads, `IsA` restriction, table ordering and persistent table-match
+caches.
+
+SIECS does not implement Flecs Query Language, query variables, arbitrary
+boolean expression trees or configurable cache kinds. Those features are
+therefore intentionally absent from this manual.
+
+## Definitions
+
+| Name | Meaning in SIECS |
+| --- | --- |
+| Entity | Generation-aware `ecs_entity_t` identity. |
+| Component | Registered per-entity data or tag. |
+| Relation | Registered source-to-target edge in the relation namespace. |
+| Resource | One-per-world typed value, used as access metadata by systems. |
+| Archetype | Exact structural type represented by one table. |
+| Term | One condition/access item in a query descriptor. |
+| Field | Component data exposed by an iterator. |
+| Iterator | Batch cursor returned by `ecs_query_iter()`. |
+| Owned field | Component data stored in the current table. |
+| Shared field | Read-only data resolved outside the current table. |
+
+## Examples
+
+A simple moving-entity query:
 
 <Tabs syncKey="language">
 <TabItem label="C">
 
 ```c
-ecs_query_id_t moving = ecs_query({
-    .components = { ecs_inout(Position), ecs_in(Velocity) },
+ecs_query_id_t q = ecs_query({
+    .components = {
+        ecs_inout(Position),
+        ecs_in(Velocity),
+    },
 });
 ```
 
@@ -23,7 +59,7 @@ ecs_query_id_t moving = ecs_query({
 <TabItem label="C++">
 
 ```cpp
-auto moving = ecs::query()
+auto q = ecs::query()
     .require<Position>()
     .require<Velocity>()
     .build_handle();
@@ -32,283 +68,881 @@ auto moving = ecs::query()
 </TabItem>
 </Tabs>
 
-The C descriptor contains up to `ECS_QUERY_TERM_CAPACITY` component terms and
-up to `ECS_QUERY_RELATION_CAPACITY` relation terms. Terms are zero-terminated
-inside their fixed-size descriptor arrays. A query may contain component terms,
-relation terms, an `is_a` target, or an order comparator.
-
-The C++ builder creates a temporary query for `each()` and `first()`. Use
-`build_handle()` when a query must be kept and iterated repeatedly.
-
-## Component terms
-
-| Term | Meaning |
-| --- | --- |
-| `ecs_in(T)` | `T` must exist and is returned by `ecs_field()` for reading. |
-| `ecs_out(T)` | `T` must exist locally and is returned for writing. |
-| `ecs_inout(T)` | `T` must exist locally and is returned for reading and writing. |
-| `ecs_in_optional(T)` | `T` is returned when present; the field is `NULL` for tables without it. |
-| `ecs_inout_optional(T)` | Local `T` is optional and writable when present. |
-| `ecs_filter(T)` | `T` must exist but does not create a field. |
-| `ecs_not(T)` | `T` must not exist and does not create a field. |
-| `ecs_up(T, Relation)` | Read the nearest inherited `T` through an acyclic `ByTarget` relation. |
-| `ecs_up_optional(T, Relation)` | Same lookup, but the inherited field may be absent. |
-
-Only `in`, `out`, `inout`, and their optional variants create field indexes.
-Fields are numbered in declaration order; `ecs_filter` and `ecs_not` do not
-consume an index. `ecs_up` fields are also returned by `ecs_field()` and may be
-shared with an ancestor.
-
-Queries, systems, and observers exclude `Disabled` and `Abstract` by default.
-Mention either component explicitly when it must be included:
-
-<Tabs syncKey="language">
-<TabItem label="C">
+An optional component query:
 
 ```c
-ecs_query_id_t disabled = ecs_query({
-    .components = { ecs_in(Position), ecs_filter(Disabled) },
+ecs_query_id_t q = ecs_query({
+    .components = {
+        ecs_inout(Position),
+        ecs_in_optional(Velocity),
+    },
 });
 ```
 
-</TabItem>
-<TabItem label="C++">
-
-```cpp
-auto disabled = ecs::query()
-    .require<Position>()
-    .require<Disabled>()
-    .build_handle();
-```
-
-</TabItem>
-</Tabs>
-
-## Relation terms
-
-Relations are separate from components. Register a relation, then use relation
-terms to match its presence, target, or depth:
-
-<Tabs syncKey="language">
-<TabItem label="C">
+An exclusion query:
 
 ```c
-ecs_query_id_t members = ecs_query({
-    .components = { ecs_in(Position) },
-    .relations = { ecs_to(GroupOf, group) },
+ecs_query_id_t q = ecs_query({
+    .components = {
+        ecs_in(Position),
+        ecs_not(Frozen),
+    },
 });
 ```
 
-</TabItem>
-<TabItem label="C++">
+## Performance and Caching
+
+### Caching: what is it?
+
+An archetype query can cache matching tables because a table has a stable
+structural type.
+
+Suppose the world has these tables:
+
+```text
+T0 {}
+T1 {Position}
+T2 {Position, Velocity}
+T3 {Position, Velocity, Enemy}
+T4 {Health, Enemy}
+```
+
+A query requiring `Position` and `Velocity` matches `T2` and `T3`.
+
+A persistent SIECS query stores this table relationship in its query cache.
+Iteration then walks cached table ids and returns the current rows from those
+tables.
+
+Entities may continuously move in and out of `T2` and `T3`; the query does not
+need to rebuild an entity list for every frame.
+
+### Query cache maintenance
+
+When a new archetype table appears, SIECS checks active query caches and adds
+the table to those that match.
+
+When table storage moves because capacity grows, cached field metadata is
+refreshed so later iteration points at the new column addresses.
+
+This makes table creation and query registration slightly more expensive in
+exchange for cheap repeated iteration.
+
+### Tradeoffs
+
+Persistent queries are appropriate when the same structural condition is
+evaluated repeatedly: systems, repeated game-loop scans, tools and observers.
+
+Temporary query helpers are convenient for one-off setup or tests.
+
+The tradeoff is not a user-selectable cached-vs-uncached mode as in Flecs.
+SIECS query ids are backed by query cache structures. The meaningful lifetime
+choice is whether application code creates a short-lived query or keeps the id
+or C++ handle for repeated use.
+
+### Table count matters
+
+Query cost is affected by both matching entity count and matching table count.
+
+```text
+100000 rows in 2 tables
+```
+
+usually has less outer-loop overhead than:
+
+```text
+100000 rows in 2000 tables
+```
+
+even though the same number of entities is processed.
+
+Many independent structural tags can fragment a world into many archetypes.
+Use structural distinctions when they improve matching, not as a default
+replacement for every boolean value.
+
+## Creating queries
+
+### C descriptor
+
+A C query is created from `ecs_query_desc_t`:
+
+```c
+ecs_query_id_t q = ecs_query({
+    .components = {
+        ecs_inout(Position),
+        ecs_in(Velocity),
+    },
+});
+```
+
+The descriptor has fixed-capacity, zero-terminated arrays for components,
+resources and relations.
+
+A created query id must be finalized:
+
+```c
+ecs_query_fini(q);
+```
+
+### C++ builder
+
+C++ provides a builder and an owning persistent handle:
 
 ```cpp
-auto members = ecs::query()
+auto q = ecs::query()
     .require<Position>()
-    .to<GroupOf>(group)
+    .require<Velocity>()
     .build_handle();
 ```
 
-</TabItem>
-</Tabs>
+`query_handle` is move-only and releases the underlying query id when destroyed.
 
-| Term | Meaning |
-| --- | --- |
-| `ecs_rel(Relation)` / `with_relation<Relation>()` | The source has the relation. |
-| `ecs_rel_opt(Relation)` | The relation is optional and does not exclude sources without it. |
-| `ecs_not_rel(Relation)` | The source must not have the relation. |
-| `ecs_to(Relation, target)` / `to<Relation>(target)` | A `ByTarget` relation must point exactly to `target`. |
-| `ecs_depth(Relation, depth)` / `depth<Relation>(depth)` | A `ByDepth` relation must have this depth. |
+## Iteration
 
-`ecs_to` and `ecs_depth` validate that the relation uses the matching storage
-mode. Relation terms are filters; they do not create component fields.
-
-For a `Dense` or `ByDepth` relation, `ecs_targets()` returns contiguous
-`ecs_relation_target_t` records for the current batch. For a `ByTarget`
-relation, `ecs_target_shared()` returns the target shared by the batch:
-
-<Tabs syncKey="language">
-<TabItem label="C">
+### C iteration
 
 ```c
+ecs_iter_t it = ecs_query_iter(q);
+
 while (ecs_iter_next(&it)) {
-    const ecs_relation_target_t *targets = ecs_targets(&it, GroupOf);
-    for (uint32_t row = 0; row < it.count; row++) {
-        ecs_entity_t target = targets[row].entity;
-        /* use it.entities[row] and target */
+    Position *position = ecs_field(&it, 0);
+    const Velocity *velocity = ecs_field(&it, 1);
+
+    for (uint32_t i = 0; i < it.count; i++) {
+        position[i].x += velocity[i].x;
+        position[i].y += velocity[i].y;
     }
 }
 ```
 
-</TabItem>
-<TabItem label="C++">
+The outer loop advances through matching table batches. The inner loop advances
+through rows of the current table.
 
-```cpp
-auto members = ecs::query().to<GroupOf>(group).build_handle();
-members.each([](ecs::entity member) {
-    auto target = member.target<GroupOf>();
+`it.entities` points to the entity handle array for the current batch.
+
+### Field numbering
+
+Fields are numbered by **field-producing component term order**.
+
+These produce fields: `EcsIn`, `EcsOut`, `EcsInOut`, optional variants and
+`EcsInUp` variants.
+
+These affect matching but do not produce fields: `EcsFilter`, `EcsNot`,
+relation terms and resource terms.
+
+### Optional fields
+
+An optional component term does not require the component to exist.
+
+```c
+.components = {
+    ecs_inout(Position),
+    ecs_in_optional(Velocity),
+}
+```
+
+For each batch, the `Velocity` field pointer is either a valid pointer for the
+entire batch or `NULL` for the entire batch.
+
+### Field kind
+
+Use `ecs_field_kind()` to determine whether a field is `EcsFieldOwned`,
+`EcsFieldShared` or `EcsFieldNone`.
+
+Shared fields usually come from inherited data and must be treated as read-only
+for that batch.
+
+## Reference
+
+### Components
+
+Required read term:
+
+```c
+ecs_in(Position)
+```
+
+Required output/write term:
+
+```c
+ecs_out(Position)
+```
+
+Required read/write term:
+
+```c
+ecs_inout(Position)
+```
+
+Filter without a returned field:
+
+```c
+ecs_filter(Enemy)
+```
+
+Excluded component:
+
+```c
+ecs_not(Disabled)
+```
+
+### Access modifiers
+
+Access metadata serves two purposes: it describes how iteration code may use a
+field and systems use it for scheduler dependency analysis.
+
+`EcsIn` means read-only. `EcsOut` means write. `EcsInOut` means read/write.
+Optional versions preserve the same access intent when the component exists.
+
+Correct access declarations allow independent systems to run in parallel while
+preventing unsafe overlap between writers and readers.
+
+### Not Operator
+
+SIECS supports component exclusion directly with `EcsNot` / `ecs_not()`.
+
+```c
+ecs_query({
+    .components = {
+        ecs_in(Position),
+        ecs_not(Frozen),
+    },
 });
 ```
 
-</TabItem>
-</Tabs>
+Relation exclusion uses `ecs_not_rel(Relation)`.
 
-## Hierarchies and ordering
+SIECS does not expose general nested boolean query operators such as arbitrary
+OR scopes. Model such cases as separate queries, structural tags or application
+logic.
 
-Use `is_a` to restrict matches to entities that inherit from a base entity. The
-match is transitive through the inheritance chain:
+### Optional Operator
 
-<Tabs syncKey="language">
-<TabItem label="C">
+Optional terms return data when available without affecting whether the table
+matches.
 
 ```c
-ecs_query_id_t enemies = ecs_query({
+ecs_in_optional(Velocity)
+ecs_inout_optional(Health)
+```
+
+Avoid making every component optional merely to reduce query count. A callback
+full of optional branches can be harder to optimize than several focused
+queries.
+
+### Relation terms
+
+Required relation presence:
+
+```c
+ecs_rel(GroupOf)
+```
+
+Optional presence:
+
+```c
+ecs_rel_opt(GroupOf)
+```
+
+Excluded relation:
+
+```c
+ecs_not_rel(GroupOf)
+```
+
+Exact target:
+
+```c
+ecs_to(GroupOf, group)
+```
+
+Depth:
+
+```c
+ecs_depth(ChildOf, 3)
+```
+
+`ecs_to()` requires a `ByTarget` relation. `ecs_depth()` requires a `ByDepth`
+relation.
+
+### Inspecting relation targets while iterating
+
+For `Dense` and `ByDepth` relations:
+
+```c
+const ecs_relation_target_t *targets = ecs_targets(&it, GroupOf);
+```
+
+For `ByTarget`, all rows in a target-grouped table share the target:
+
+```c
+ecs_entity_t group = ecs_target_shared(&it, GroupOf);
+```
+
+### Relationship Traversal
+
+SIECS supports upward component lookup through an acyclic `ByTarget` relation:
+
+```c
+ecs_up(Transform, ChildOf)
+```
+
+or optional:
+
+```c
+ecs_up_optional(Transform, ChildOf)
+```
+
+This is intentionally narrower than Flecs's general traversal/query-variable
+system.
+
+### Source
+
+SIECS query component terms normally use the currently iterated entity as their
+source.
+
+Cross-entity data is modeled through upward relation reads, explicit relation
+target inspection, resources or direct entity access outside the hot field loop.
+
+### Component Inheritance
+
+A query can restrict matches to entities inheriting from a specific base:
+
+```c
+ecs_query_id_t q = ecs_query({
     .components = { ecs_in(Position) },
     .is_a = enemy_base,
 });
 ```
 
-</TabItem>
-<TabItem label="C++">
+Read-only queries can see shared inherited components.
 
-```cpp
-auto enemies = ecs::query()
-    .is_a(enemy_base)
-    .require<Position>();
-```
+Writable terms require local writable storage. If an entity only has a shared
+inherited value, create an owned override before writing.
 
-</TabItem>
-</Tabs>
+### Sorting
 
-`ecs_order_by_depth(Relation)` orders matching tables by relation depth. It is
-valid only for an acyclic `ByDepth` relation. `ecs_order_by_target(Relation)`
-orders `ByTarget` tables by their target handle. Both orderings are stable for
-tables with equal keys; neither ordering defines an order between entities in
-the same table:
+SIECS exposes table ordering rather than arbitrary per-row component sorting.
 
-<Tabs syncKey="language">
-<TabItem label="C">
+Order by relation target:
 
 ```c
-ecs_query_id_t hierarchy = ecs_query({
-    .components = { ecs_in(Position) },
-    .relations = { ecs_rel(ChildOf) },
-    .order_by = ecs_order_by_depth(ChildOf),
-});
+.order_by = ecs_order_by_target(GroupOf)
 ```
 
-</TabItem>
-<TabItem label="C++">
-
-```cpp
-auto hierarchy = ecs::query()
-    .with_relation<ChildOf>()
-    .order_by_depth<ChildOf>()
-    .build_handle();
-```
-
-</TabItem>
-</Tabs>
-
-## Iterate
-
-<Tabs syncKey="language">
-<TabItem label="C">
+Order by hierarchy depth:
 
 ```c
-ecs_iter_t it = ecs_query_iter(moving);
-while (ecs_iter_next(&it)) {
-    Position *positions = ecs_field(&it, 0);
-    Velocity *velocities = ecs_field(&it, 1);
-
-    for (uint32_t i = 0; i < it.count; i++) {
-        positions[i].x += velocities[i].x;
-    }
-}
+.order_by = ecs_order_by_depth(ChildOf)
 ```
 
-</TabItem>
-<TabItem label="C++">
+The order applies to matching table batches. It does not define row order inside
+a table.
 
-```cpp
-moving.each([](Position &position, const Velocity &velocity) {
-    position.x += velocity.x;
-});
-```
+### Temporary queries
 
-</TabItem>
-</Tabs>
-
-`ecs_iter_next()` advances to the next non-empty table batch. `it.count` is the
-number of entities in that batch. `ecs_query_count()` returns the current
-number of matching entities without creating an iterator.
-
-`ecs_field_kind()` distinguishes `EcsFieldOwned`, `EcsFieldShared`, and
-`EcsFieldNone` for optional fields. A shared field is inherited or otherwise
-stored outside the current table; its pointer must be treated as read-only.
-
-Optional fields are batch-wide: the pointer is either a valid array for every
-entity in the batch or `NULL` for the entire batch.
-
-## Temporary and persistent queries
-
-`ecs_query_each()` is useful for setup, tests, tools, and short one-off scans:
-
-<Tabs syncKey="language">
-<TabItem label="C">
+`ecs_query_each` is useful for short C scans:
 
 ```c
 ecs_query_each(it, i, ecs_in(Position)) {
-    Position *positions = ecs_field(&it, 0);
-    positions[i].x += 1.0f;
+    const Position *p = ecs_field(&it, 0);
+    use(p[i]);
 }
 ```
 
-</TabItem>
-<TabItem label="C++">
+For repeated frame work, keep a persistent query or use a system.
 
-```cpp
-auto moving = ecs::query().require<Position>().build_handle();
-moving.each([](Position &position) {
-    position.x += 1.0f;
-});
+### Structural mutation during iteration
+
+Field pointers refer directly to table storage.
+
+Adding or removing components from an iterated entity can move rows, compact
+the table and invalidate pointers.
+
+The safest patterns are to modify ordinary values in place, defer structural
+changes, collect entity handles for later mutation or use systems whose normal
+execution participates in SIECS deferred command handling.
+
+### Query count
+
+`ecs_query_count(query)` returns the current number of matching entities.
+
+It is useful for diagnostics, sizing output buffers and tool displays. Avoid
+calling it repeatedly inside an inner entity loop.
+
+## Performance checklist
+
+For hot queries:
+
+- keep persistent queries instead of recreating them each frame;
+- prefer focused required terms;
+- declare read/write intent accurately;
+- avoid unnecessary archetype fragmentation;
+- keep structural mutation out of the inner row loop;
+- use table batches directly rather than per-entity random lookup;
+- treat shared inherited fields as read-only;
+- measure the real workload, including migration and scheduler cost.
+
+## Query descriptor anatomy
+
+`ecs_query_desc_t` contains four major pieces:
+
+```text
+components[]
+resources[]
+relations[]
+order_by
+is_a
 ```
 
-</TabItem>
-</Tabs>
+The component, resource and relation arrays are zero-terminated fixed-capacity
+descriptor arrays.
 
-The macro creates and destroys a temporary C query. An id returned by
-`ecs_query()` or `ecs_query_init()` must be released with `ecs_query_fini()`;
-in C++, `each()` and `first()` use temporary queries while `query_handle` is a
-move-only RAII owner for repeated iteration:
+This keeps query creation allocation-light and makes descriptor construction
+straightforward in C.
 
-The C++ example above uses the same persistent query pattern through its
-move-only `query_handle`.
+### Component term capacity
 
-Do not retain component or field pointers across an operation that can migrate
-an entity between tables. Query ids remain valid as tables are created and
-grown; the query cache refreshes its field pointers when table storage moves.
+The component term array has `ECS_QUERY_TERM_CAPACITY` slots.
 
-## Resource access
+A term stores a component id and encoded access mode.
 
-Resources can be declared as scheduler metadata in their own namespace:
+Typed macros such as `ecs_in(Position)` build these terms for compile-time
+component declarations.
+
+For dynamic component ids, fill `ecs_component_term_t` directly.
+
+### Resource term capacity
+
+Resources are separate metadata:
 
 ```c
-ecs_query({
-    .components = {
-        ecs_inout(Position),
-        ecs_in(Velocity),
-    },
-    .resources = {
-        ecs_in(Time),
-        ecs_inout(Gravity),
-    },
+.resources = {
+    { .id = ecs_id(Time), .access = EcsIn },
+}
+```
+
+Resource terms never determine whether an entity table matches.
+
+They exist primarily so systems can describe global read/write dependencies.
+
+Direct query iteration may carry resource metadata, but resources are accessed
+through the resource API rather than `ecs_field()`.
+
+### Relation term capacity
+
+Relation filters have their own array because relations are not component ids.
+
+Each term records:
+
+- relation id;
+- optional target/depth value;
+- relation query kind.
+
+This lets SIECS validate storage-mode-specific operations at query creation.
+
+## Table matching
+
+At query creation/table creation time, SIECS determines whether a table satisfies
+the descriptor.
+
+Conceptually, component matching checks:
+
+```text
+required terms ⊆ table effective components
+excluded terms ∩ table effective components = ∅
+```
+
+Optional terms do not affect acceptance.
+
+Relation terms add relation-specific structural conditions.
+
+The query also applies default exclusion rules for `Disabled` and `Abstract`
+unless explicitly mentioned.
+
+### Bloom prefilter
+
+The runtime can use compact metadata such as bloom masks to quickly reject tables
+that cannot possibly contain required components before doing more exact
+matching.
+
+This is an implementation detail, but it explains why component ids/structural
+types are organized for efficient table-level tests.
+
+Application code should not depend on the exact bloom representation.
+
+### Exact versus effective component presence
+
+With inheritance, a table can expose a component effectively even when the value
+is shared from a base rather than owned as a local column.
+
+Query matching therefore distinguishes:
+
+- structural/local ownership;
+- effective readable availability;
+- writable local availability.
+
+A read-only query may match shared inherited data.
+
+A writable query cannot treat a shared base value as writable instance storage.
+
+## C++ query API
+
+The C++ query builder wraps the same descriptor model.
+
+Typical operations include:
+
+```cpp
+ecs::query()
+    .require<Position>()
+    .optional<Velocity>()
+    .exclude<Frozen>()
+    .with_relation<GroupOf>()
+    .to<GroupOf>(group)
+    .is_a(base)
+    .build_handle();
+```
+
+Typed callback signatures communicate component access:
+
+```cpp
+q.each([](Position &p, const Velocity &v) {
+    p.x += v.x;
 });
 ```
 
-`ECS_QUERY_TERM_CAPACITY` limits component terms and
-`ECS_QUERY_RESOURCE_CAPACITY` limits resource accesses. `EcsIn` is a scheduler
-read; `EcsOut` and `EcsInOut` are scheduler writes. Resource presence is never a
-query condition: resources do not affect matching and produce no fields.
-Optional, filter, not, and up modes are reserved for components. A
-resources-only query has a cache but zero entity batches.
+Const references express read intent. Mutable references express writable
+intent.
+
+Optional wrappers express optional fields.
+
+The C++ API does not create a different query engine; it builds the C descriptor
+and owns the query id.
+
+## Iteration internals
+
+### Batch lifetime
+
+After `ecs_iter_next()` succeeds, the iterator contains a view of one current
+batch.
+
+That view is valid until the next iterator advance or until structural mutation
+invalidates the underlying table storage.
+
+Treat:
+
+- `it.entities`;
+- field pointers;
+- relation target arrays;
+
+as borrowed batch views.
+
+### Non-empty iteration
+
+`ecs_iter_next()` skips empty batches for normal iteration.
+
+A persistent query may still know that an empty table structurally matches so it
+can immediately iterate it if entities later enter that table.
+
+### Entity handles
+
+`it.entities[i]` is the generation-aware handle for row `i`.
+
+Use it when a callback needs identity, relation operations or deferred
+structural commands.
+
+Do not infer identity from row index.
+
+### Owned arrays
+
+For an owned field:
+
+```c
+Position *p = ecs_field(&it, field);
+```
+
+`p[i]` corresponds to `it.entities[i]`.
+
+This row alignment across columns is the core table invariant.
+
+### Shared fields
+
+A shared field is not an array with one independent element per row.
+
+It can point to a value provided by a base/ancestor that applies to all entities
+in the batch.
+
+Use field-kind information and treat the shared pointer as read-only.
+
+Do not index a shared value as if every row owned a different object unless the
+API specifically documents that representation.
+
+## Access modes in more detail
+
+### EcsIn
+
+Required readable data.
+
+It can be owned or shared according to inheritance semantics.
+
+A system declaring only `EcsIn` does not conflict with another reader of the
+same data.
+
+### EcsOut
+
+Required local writable data.
+
+Use when old contents are not semantically needed by the callback.
+
+The scheduler treats it as a write.
+
+### EcsInOut
+
+Required local read/write data.
+
+This is the common mutable component term.
+
+### EcsInOptional
+
+Optional read.
+
+The table may or may not provide the field.
+
+When present, inherited/shared reads are possible according to component/query
+semantics.
+
+### EcsInOutOptional
+
+Optional local writable field.
+
+The query can match tables where it is absent, but when present it is writable
+local storage.
+
+### EcsFilter
+
+Required presence without field materialization.
+
+Useful for tags or components that select a population but whose value is not
+read.
+
+It avoids spending a field slot/pointer on data the callback does not use.
+
+### EcsNot
+
+Required absence.
+
+Exclusion is evaluated at table matching time.
+
+### EcsInUp / EcsInUpOptional
+
+Read through an acyclic target-grouped relation to the nearest ancestor/source
+with the component.
+
+This is useful for hierarchy-like configuration/transform reads.
+
+Because the resolved data belongs to another entity, it is read-only.
+
+## Relation query semantics by storage
+
+### Dense
+
+A Dense relation can be required/optional/excluded.
+
+The target for each source row is available as an array through
+`ecs_targets_id()`.
+
+Exact-target matching is not the primary optimized operation for Dense storage.
+
+### ByDepth
+
+ByDepth includes per-source target information plus depth.
+
+Queries can filter depth and order table batches by depth.
+
+Use it for parent/child-like relations where layer information is part of the
+workload.
+
+### ByTarget
+
+ByTarget organizes matching around target identity.
+
+It enables efficient:
+
+- exact target filters;
+- shared target retrieval for a batch;
+- upward access through compatible acyclic relations.
+
+The structural grouping can increase table count when target cardinality is
+large.
+
+## Query ordering
+
+### Custom comparator
+
+`ecs_query_order_t` can hold a comparator callback and user data.
+
+The callback compares tables, not arbitrary entity rows.
+
+It must not mutate the world.
+
+Use custom table ordering when built-in target/depth ordering does not cover a
+table-level scheduling need.
+
+### Stable assumptions
+
+Even if table ordering is stable for equal keys in an implementation path, do
+not treat row order as persistent identity.
+
+Packed rows change when entities enter/leave a table.
+
+If deterministic entity ordering is a simulation requirement, create explicit
+ordering data/structures.
+
+## Persistent versus temporary lifetime
+
+Creating a query has work:
+
+- compile/validate terms;
+- find current matching tables;
+- allocate/cache query state;
+- register for future table updates.
+
+Destroying it releases that state.
+
+For work performed every frame, repeated create/destroy throws away the main
+benefit of persistent cache setup.
+
+Systems already own persistent queries, so prefer a system when work belongs to
+the scheduler.
+
+Temporary query helpers remain ideal for setup tools, tests and rare commands.
+
+## Query creation during parallel scheduling
+
+Registering queries while the scheduler is executing parallel work is restricted.
+
+Registration changes global query indexes and table-cache relationships.
+
+Create long-lived queries during initialization/module import rather than
+dynamically from worker callbacks.
+
+## Default filters
+
+SIECS normal query behavior excludes:
+
+- `Disabled`;
+- `Abstract`.
+
+This means an ordinary query:
+
+```c
+ecs_in(Position)
+```
+
+does not process paused entities or template bases.
+
+To query disabled entities, explicitly include/filter `Disabled`.
+
+To inspect abstract/template entities, explicitly include/filter `Abstract`.
+
+This design reduces repetition in normal simulation systems.
+
+## Query patterns
+
+### Hot update
+
+```c
+Position + Velocity
+```
+
+Use required fields, persistent query/system, value mutation only.
+
+### Marker-filtered update
+
+```c
+Position + Velocity + Enemy(filter)
+```
+
+Use `EcsFilter` for the marker if its data is not needed.
+
+### Optional enhancement
+
+```c
+Position + optional Acceleration
+```
+
+Good when both cases share most of the same loop.
+
+If the branches are large/different, two queries may be better.
+
+### Parent/ancestor read
+
+```c
+local Transform + up WorldSettings through ChildOf
+```
+
+Use upward read only when the relation's storage/acyclic rules support it.
+
+### Target-group iteration
+
+```c
+Position + GroupOf(target = selected_group)
+```
+
+Choose ByTarget storage and exact-target term.
+
+## Common query mistakes
+
+### Recreating a system query every frame
+
+This repeatedly pays registration/cache creation cost.
+
+Keep a handle or create a system.
+
+### Using filter data as a field
+
+If a component only determines membership, use `EcsFilter`.
+
+### Writing shared inherited data
+
+A shared field belongs to a base/ancestor.
+
+Create an override.
+
+### Mutating structure while holding pointers
+
+Structural change can move/compact rows.
+
+Defer it or mutate after the current batch.
+
+### Modeling every boolean as a tag
+
+This can generate many structural combinations.
+
+Use a field when the state is volatile and not a major query partition.
+
+### Random lookups inside a contiguous loop
+
+Repeated `ecs_get(other_entity, ...)` can destroy locality.
+
+When possible, express the needed data as query fields, relation grouping or
+resources.
+
+## Query debugging checklist
+
+When a query unexpectedly matches nothing:
+
+1. confirm component ids are registered;
+2. confirm entity is alive;
+3. check whether it owns/is effectively exposing required components;
+4. check `Disabled`/`Abstract`;
+5. validate relation storage mode against `ecs_to`/`ecs_depth`/`ecs_up`;
+6. check the `is_a` restriction;
+7. check exclusions;
+8. inspect whether expected structural changes have flushed from a defer scope.
+
+When a query matches too much:
+
+1. add missing filter/tag terms;
+2. verify relation target restriction;
+3. check optional terms were not intended to be required;
+4. remember inheritance can make read-only components effectively available.

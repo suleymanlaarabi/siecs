@@ -1,0 +1,382 @@
+---
+title: Designing with SIECS
+description: Practical guidance for entities, components, queries, systems, phases, modules and relationships.
+---
+
+This manual focuses on application design rather than API syntax.
+
+## Entities
+
+### Entity Initialization
+
+Prefer creating an entity close to its final initial structure.
+
+Instead of repeatedly migrating an entity over a long setup sequence, group
+initial adds/sets where the API allows it or use a defer scope.
+
+Initialize stable structural state once. Keep rapidly changing state in component
+values unless queries truly need it to be structural.
+
+### Entity Lifecycle
+
+Make ownership explicit.
+
+Use `ChildOf` when child lifetime should be tied to a parent.
+
+Use relation target deletion policies for custom ownership semantics.
+
+Do not retain stale handles indefinitely without checking liveness when the
+referenced entity can be destroyed by another subsystem.
+
+### Entity Names
+
+Names are useful for:
+
+- tools;
+- debug output;
+- lookup of important singleton-like runtime entities;
+- editor presentation.
+
+Do not make the hot simulation depend on repeated string lookup. Resolve a name
+to an entity handle and use the handle.
+
+## Components
+
+### Component Size
+
+Component size should follow access patterns, not arbitrary rules.
+
+Split data when independent systems repeatedly touch different subsets.
+
+Keep fields together when they are almost always accessed and updated together.
+
+Very large components can reduce cache density; excessively tiny components can
+create more structural combinations and registration complexity.
+
+Measure the real loop.
+
+### Complex component data
+
+Components can own non-trivial data when their lifecycle operations are
+registered correctly.
+
+C++ wrappers can provide type operations for constructors, destructors, copy and
+move behavior.
+
+Remember that archetype migration moves component storage. Types that own
+resources must have correct move/copy/destruction semantics.
+
+Do not store raw pointers into table columns inside long-lived components.
+
+### Shared configuration
+
+Use `EcsInheritShared` for values intentionally shared from an inheritance base.
+
+Use resources for world-global values.
+
+Do not use one giant "context" component/resource to bypass explicit
+dependencies.
+
+## Queries
+
+### Use the right query
+
+Keep persistent queries for repeated work.
+
+Use temporary queries for genuinely ad-hoc operations.
+
+Prefer several focused queries over one highly branchy query with many optional
+fields when the workloads are materially different.
+
+### Use access annotations
+
+Accurate `EcsIn`, `EcsOut` and `EcsInOut` declarations help both humans and the
+scheduler.
+
+If a callback mutates a field, do not declare it read-only.
+
+If a system only filters on a component and never needs its pointer, use
+`EcsFilter`.
+
+### Structural filters
+
+Tags and relation filters are powerful because matching happens at table level.
+
+They also increase structural distinctions.
+
+Use them when the distinction matters to repeated queries.
+
+For a value that changes every frame and is only checked by one system, a normal
+field can be cheaper and simpler than migrating entities between tagged
+archetypes.
+
+## Systems
+
+### System Scope
+
+A system should express a coherent transformation.
+
+Good:
+
+```text
+Position += Velocity * dt
+```
+
+Less useful:
+
+```text
+UpdateEverything()
+```
+
+Large catch-all systems hide dependencies, reduce scheduler parallelism and make
+testing harder.
+
+### System Scheduling
+
+Use phases for broad stages.
+
+Use component/resource access for data hazards.
+
+Use `.after` for semantic ordering that is not inferable from the access sets.
+
+Mark thread-affine systems `main_thread_only`.
+
+Avoid depending on incidental registration order.
+
+## Phases
+
+### Selecting a phase
+
+Put work in the earliest phase where its inputs are valid and the latest phase
+before its outputs are required.
+
+Typical examples:
+
+- input collection -> `EcsOnLoad` / `EcsPreUpdate`;
+- simulation -> `EcsOnUpdate`;
+- post-physics/derived state -> `EcsPostUpdate`;
+- render preparation -> `EcsPreRender`;
+- rendering -> `EcsOnRender`;
+- cleanup/presentation finalization -> `EcsPostRender`.
+
+### Custom phases
+
+Create a custom phase when a whole subsystem needs a stable public scheduling
+boundary.
+
+Do not create custom phases merely to order two systems; `.after` is usually
+simpler.
+
+## Modules
+
+### Defining Modules
+
+Modules should expose a clear data/API contract and register their systems,
+observers and types in one import operation.
+
+### Module Dependencies and Ordering
+
+Import dependencies from inside the module when possible so applications do not
+need a fragile manual import list.
+
+Execution ordering remains a scheduler concern.
+
+### Modules and Feature Swapping
+
+Keep data stable and swap behavior by enabling/disabling modules or systems.
+
+This is especially useful for editor-only systems, alternative render backends
+or optional simulation features.
+
+### Module Overhead
+
+Modules do not add entity iteration overhead.
+
+Avoid designing modules as ownership containers for every entity. They are
+registration units.
+
+## Relationships
+
+Choose a relation instead of a raw entity-handle component when the ECS needs to
+understand the edge for:
+
+- target queries;
+- cleanup;
+- hierarchy depth;
+- upward traversal;
+- relation observers.
+
+Choose storage mode from the dominant lookup pattern.
+
+If every source points to a mostly unique target and exact-target queries are
+rare, target-grouped storage may create unnecessary fragmentation.
+
+If thousands of sources share a target and are repeatedly queried by target,
+`ByTarget` can be a strong fit.
+
+## Structural mutation
+
+Archetype migration is normal, but it is not free.
+
+Batch setup changes.
+
+Defer mutation inside systems.
+
+Avoid toggling many independent structural flags every frame.
+
+If structural churn dominates, reconsider whether the changing state should be
+a normal component value.
+
+## Benchmarking
+
+Benchmark the application workload, not only a synthetic iteration loop.
+
+Include:
+
+- query iteration;
+- entity creation/destruction;
+- add/remove migration;
+- relation changes;
+- observers/hooks;
+- scheduler synchronization;
+- worker overhead;
+- table fragmentation.
+
+A design that wins a pure read loop can lose when the real application spends
+most of its time changing structure.
+
+## Choosing structural state
+
+A structural distinction is valuable when multiple queries repeatedly select it.
+
+For example, `Renderable` as a tag is useful when rendering systems should skip
+non-renderable entities without checking a value per row.
+
+A rapidly changing `IsFlashing` flag that only one system checks may be better
+as a boolean field.
+
+The difference is not stylistic. A tag changes archetype membership; a boolean
+value stays in the same table.
+
+## Designing relations
+
+Before registering a custom relation, write down its expected operations.
+
+Example:
+
+```text
+GroupOf:
+- many members per group
+- query all members of one group every frame
+- group deletion should leave members alive
+- cycles are irrelevant
+```
+
+That points toward target-oriented storage and remove-edge cleanup.
+
+Another example:
+
+```text
+BoneParent:
+- one parent per bone
+- depth ordering every frame
+- cycles invalid
+- parent deletion should own descendants
+```
+
+That points toward depth/acyclic ownership semantics.
+
+Relation descriptor choices should follow these workload statements.
+
+## Designing for worker scheduling
+
+Parallel scheduling works best when data ownership is explicit.
+
+If several systems mutate one giant resource, they serialize on that resource.
+
+If the resource actually contains unrelated state:
+
+```text
+InputState
+PhysicsConfig
+AudioState
+RenderSettings
+```
+
+splitting it can expose independent scheduler dependencies.
+
+Do not split only for theoretical parallelism; keep concepts coherent. But do
+not hide all global state in one mutable context either.
+
+## Designing observer usage
+
+Use observers to convert transitions into explicit state.
+
+Example:
+
+```text
+Transform set
+    ↓ observer
+add TransformDirty
+    ↓
+PostUpdate system recomputes world transforms in batches
+```
+
+This is often easier to profile and order than doing the entire expensive
+recompute inside every `OnSet` callback.
+
+## Designing inheritance
+
+Use shared inheritance for data that is mostly immutable across a family.
+
+Use owned inheritance for defaults that become instance state.
+
+A useful rule:
+
+```text
+shared: "what kind of thing is this?"
+owned:  "what is happening to this individual?"
+```
+
+Not universally, but it is a good starting question.
+
+## Designing for tools
+
+If a component should be visible/editable in the REST explorer, register
+reflection.
+
+If an entity should be findable by name, give it a stable explicit name.
+
+If a relation should appear in hierarchy tooling, use a semantic relation rather
+than burying the target in an opaque byte blob.
+
+Toolability is easiest when runtime concepts are explicit in ECS metadata.
+
+## Designing scene data
+
+Native SIECS scenes are runtime-schema-dependent.
+
+If game assets need long-term compatibility across many application versions,
+consider a higher-level asset format that is migrated/validated by application
+code before instantiating ECS data.
+
+Use native scenes where fast faithful instantiation of a known compatible schema
+is the goal.
+
+## Review checklist
+
+For each new subsystem, document:
+
+- entities it creates;
+- components it owns;
+- components it reads/writes;
+- resources it reads/writes;
+- relations and their storage policy;
+- systems and phases;
+- explicit `.after` requirements;
+- observer hooks/events;
+- structural operations performed per frame;
+- serialization/tool requirements.
+
+If those dependencies are difficult to write down, the subsystem is probably
+hiding too much state.

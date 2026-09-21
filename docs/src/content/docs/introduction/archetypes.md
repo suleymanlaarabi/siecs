@@ -404,7 +404,7 @@ Some relation representations affect table grouping and query matching in ways t
 
 Do not assume that every relation edge is simply “one more component id” using the exact same storage rules.
 
-The [Relations](/relations/) manual should be used for relation-specific structure.
+The [Relations](/relationships/) manual should be used for relation-specific structure.
 
 ## Archetypes are not domain classes
 

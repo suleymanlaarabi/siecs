@@ -547,7 +547,7 @@ This introduction established the mental model. The rest of the SIECS documentat
 Continue with:
 
 - [Archetype Storage](/archetype-ecs/) for SIECS storage details;
-- [Entities](/entities/) for creation, liveness, names, and destruction;
-- [Components](/components/) for registration, tags, values, hooks, and reflection;
+- [Entities](/entities-components/) for creation, liveness, names, and destruction;
+- [Components](/entities-components/) for registration, tags, values, hooks, and reflection;
 - [Queries](/queries/) for exact terms and iteration APIs;
 - [Systems and Scheduling](/systems/) for phases, dependencies, resources, and execution.
