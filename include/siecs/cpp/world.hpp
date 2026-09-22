@@ -171,7 +171,7 @@ template <typename T, typename... Args> static void import_module_callback(const
 
 template <typename T>
     requires detail::c_declared_module<T>
-[[nodiscard]] module_ref<T> import(const typename T::props_t &props) {
+module_ref<T> import(const typename T::props_t &props) {
     ecs_module_desc_t desc = {
         .name = T::name(),
         .id = T::id_storage(),
