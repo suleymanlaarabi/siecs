@@ -42,7 +42,7 @@ export default defineConfig({
         replacesTitle: true,
       },
       description: 'Technical documentation for the SIECS archetype library for C and C++.',
-      favicon: '/favicon.svg',
+      favicon: '/logo_nb.png',
       customCss: ['./src/styles/custom.css'],
       lastUpdated: true,
       social: [
@@ -53,6 +53,14 @@ export default defineConfig({
         },
       ],
       head: [
+        {
+          tag: 'link',
+          attrs: {
+            rel: 'icon',
+            href: '/logo_bn.png',
+            media: '(prefers-color-scheme: dark)',
+          },
+        },
         {
           tag: 'meta',
           attrs: {

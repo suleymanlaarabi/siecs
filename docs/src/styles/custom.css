@@ -76,6 +76,11 @@ main {
 	border: 1px solid var(--sl-color-hairline-light);
 }
 
+/* The home page keeps an accessible title for semantics, but does not show it. */
+.hero:has(h1[data-page-title] > .sr-only) {
+	padding-block: 0;
+}
+
 /* Keep the navigation quiet and make the current page a subtle state. */
 [data-theme='dark'] .sidebar-content a[aria-current='page'],
 [data-theme='dark'] .sidebar-content a[aria-current='page']:hover {

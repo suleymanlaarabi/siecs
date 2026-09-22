@@ -1,7 +1,11 @@
 ---
 title: SIECS
 description: Documentation for the SIECS archetype ECS for C17 and C++20.
+hero:
+  title: '<span class="sr-only">SIECS</span>'
 ---
+
+![SIECS documentation banner](/banner.png)
 
 SIECS is an archetype Entity Component System for C17 with a typed C++20 API.
 

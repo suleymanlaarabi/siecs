@@ -1,12 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <style>
-    .background { fill: #000; }
-    .foreground { fill: #fff; }
+    .light { display: inline; }
+    .dark { display: none; }
     @media (prefers-color-scheme: light) {
-      .background { fill: #fff; }
-      .foreground { fill: #000; }
+      .light { display: inline; }
+    }
+    @media (prefers-color-scheme: dark) {
+      .light { display: none; }
+      .dark { display: inline; }
     }
   </style>
-  <rect class="background" width="64" height="64" rx="12"/>
-  <path class="foreground" d="M17 19h31v8H25v7h19v8H25v7h23v8H17z"/>
+  <image class="light" href="/logo_nb.png" width="64" height="64" preserveAspectRatio="xMidYMid meet"/>
+  <image class="dark" href="/logo_bn.png" width="64" height="64" preserveAspectRatio="xMidYMid meet"/>
 </svg>
