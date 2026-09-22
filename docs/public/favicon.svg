@@ -1,4 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="12" fill="#000"/>
-  <path d="M17 19h31v8H25v7h19v8H25v7h23v8H17z" fill="#fff"/>
+  <style>
+    .background { fill: #000; }
+    .foreground { fill: #fff; }
+    @media (prefers-color-scheme: light) {
+      .background { fill: #fff; }
+      .foreground { fill: #000; }
+    }
+  </style>
+  <rect class="background" width="64" height="64" rx="12"/>
+  <path class="foreground" d="M17 19h31v8H25v7h19v8H25v7h23v8H17z"/>
 </svg>

@@ -17,11 +17,25 @@ and structural migration are covered in the [Introduction to ECS](../introductio
 
 ## Entities
 
-An entity is represented by `ecs_entity_t`, a 64-bit handle.
+An entity is represented by `ecs_entity_t` in C and `ecs::entity` in C++, both
+of which are lightweight handles to the active world.
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 typedef uint64_t ecs_entity_t;
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::entity entity;
+```
+
+</TabItem>
+</Tabs>
 
 The handle contains an entity index and generation. The index locates the
 entity's record in the world; the generation distinguishes the current lifetime
@@ -113,17 +127,22 @@ Do not call component access operations with the old handle after deletion.
 Use `ecs_is_alive()` to check whether a handle still identifies its current
 entity lifetime:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 if (ecs_is_alive(e)) {
     /* e may be used */
 }
 ```
-
+</TabItem>
+<TabItem label="C++">
 ```cpp
 if (e.is_alive()) {
     /* e may be used */
 }
 ```
+</TabItem>
+</Tabs>
 
 SIECS also exposes `ecs_entity_from_index(index)`, which resolves the currently
 live handle for an entity index or returns `0` when no live entity owns that
@@ -153,21 +172,29 @@ storing only the index.
 SIECS supports names through the built-in `Name` component and a world name
 index.
 
-C++ can create or return a named entity directly:
+Both APIs can look up names; C++ also offers creation that reuses an existing
+named entity:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_entity_t player = ecs_lookup("Player");
+```
+
+</TabItem>
+<TabItem label="C++">
 
 ```cpp
 auto player = ecs::entity::create("Player");
 auto same = ecs::entity::lookup("Player");
 ```
 
+</TabItem>
+</Tabs>
+
 `create("Player")` first performs a lookup and returns the existing live entity
 when that name already exists.
-
-Generic lookup is available in C:
-
-```c
-ecs_entity_t player = ecs_lookup("Player");
-```
 
 `ecs_lookup()` returns `0` when no live entity has the requested registered
 name.
@@ -212,13 +239,18 @@ archetype.
 
 `Abstract` is another built-in tag used by SIECS inheritance.
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_abstract(base);
 ```
-
+</TabItem>
+<TabItem label="C++">
 ```cpp
 base.abstract();
 ```
+</TabItem>
+</Tabs>
 
 Abstract entities are excluded from ordinary queries by default. Marking an
 entity abstract also propagates the abstract state through its owned `ChildOf`
@@ -261,7 +293,7 @@ e.add<Position>();
 e.set(Position{10, 20});
 
 if (e.has<Position>()) {
-    e.get<Position>().x += 1;
+    e.get_mut<Position>().x += 1;
 }
 
 e.remove<Position>();
@@ -275,12 +307,27 @@ e.remove<Position>();
 `get` requires the component to be available. Use the nullable `try_get`
 operation when absence is valid.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 Position *p = ecs_try_get(e, Position);
 if (p) {
     p->x += 1;
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+if (Position *p = e.try_get_mut<Position>()) {
+    p->x += 1;
+}
+```
+
+</TabItem>
+</Tabs>
 
 A structural operation such as add or remove can move the entity to another
 table. Do not retain pointers returned by `get` across structural mutation that
@@ -298,9 +345,25 @@ For a tag, `add` is the natural operation because the component has no payload.
 For a data component, `set` is usually the clearest operation during entity
 initialization.
 
-### Batched C++ operations
+### Batched operations
 
-The C++ entity API can apply multiple component operations in one call:
+The C API uses a deferred scope; the C++ entity API exposes the same operation
+as one typed call:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_defer_begin();
+ecs_set(e, Position, { .x = 0, .y = 0 });
+ecs_set(e, Velocity, { .x = 1, .y = 0 });
+ecs_add(e, Renderable);
+ecs_add(e, Enemy);
+ecs_defer_end();
+```
+
+</TabItem>
+<TabItem label="C++">
 
 ```cpp
 e.set(
@@ -308,6 +371,9 @@ e.set(
     Velocity{1, 0}
 ).add<Renderable, Enemy>();
 ```
+
+</TabItem>
+</Tabs>
 
 SIECS can defer the combined operation and compute a final structural
 destination instead of forcing user code to manually stage each transition.
@@ -361,7 +427,11 @@ predictable because structural operations can trigger them in bulk.
 
 ### Registration
 
-C components are normally declared with a macro and registered once per world:
+C components are normally declared with a macro and registered once per world.
+Native C++ structures register lazily through the typed API:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ECS_COMPONENT_DECLARE(Position, {
@@ -375,10 +445,8 @@ void register_types(void) {
 }
 ```
 
-The convenience `ECS_COMPONENT(...)` form declares and defines the type in one
-place.
-
-In C++, native structs can be registered lazily on first typed use:
+</TabItem>
+<TabItem label="C++">
 
 ```cpp
 struct Position {
@@ -389,12 +457,22 @@ struct Position {
 auto id = ecs::component<Position>();
 ```
 
+</TabItem>
+</Tabs>
+
+The convenience `ECS_COMPONENT(...)` form declares and defines the type in one
+place.
+
 C declarations included by C++ reuse the same underlying component id rather
 than creating a duplicate C++ type registration.
 
 ### Runtime Type Registration
 
-Generic tooling can register a component from a descriptor:
+Generic tooling can register a component from a descriptor in C. C++ native
+types use the typed registration API instead:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_component_t position = ecs_component({
@@ -403,12 +481,41 @@ ecs_component_t position = ecs_component({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+struct Position {
+    float x;
+    float y;
+};
+
+auto position = ecs::component<Position>();
+```
+
+</TabItem>
+</Tabs>
+
 After registration, generic code uses the id-based operations:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_set_cid(e, position, &(Position){10, 20});
 Position *p = ecs_get_cid(e, position);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+e.set(Position{10, 20});
+Position &p = e.get_mut<Position>();
+```
+
+</TabItem>
+</Tabs>
 
 SIECS also supports dynamically described reflected components through
 `ecs_component_dynamic_init()`. This is useful for tools or data-driven systems
@@ -430,15 +537,41 @@ metadata for tools and serialization.
 SIECS can declare that adding one component automatically requires other
 components.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_with(Renderable, Transform, Bounds);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::component<Renderable>().with<Transform, Bounds>();
+```
+
+</TabItem>
+</Tabs>
+
 Then:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_add(e, Renderable);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+e.add<Renderable>();
+```
+
+</TabItem>
+</Tabs>
 
 ensures the required components are also structurally present.
 
@@ -467,11 +600,25 @@ state as a component on a singleton entity.
 
 Use a resource for data that exists once per world:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ECS_RESOURCE(Time, { float dt; });
 ECS_RESOURCE_REGISTER(Time);
 ecs_set_resource(Time, { .dt = 0.016f });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+struct Time { float dt; };
+ecs::resource_handle<Time>().set(Time{ .dt = 0.016f });
+```
+
+</TabItem>
+</Tabs>
 
 Resources do not affect entity archetypes and do not consume query field slots.
 Systems can still declare resource access for scheduler dependency analysis.

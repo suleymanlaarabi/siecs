@@ -2,6 +2,7 @@
 title: Composition
 description: Build entity capabilities from components, tags, resources, and relations without creating rigid inheritance trees or accidental archetype explosions.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 Composition is the part of ECS that changes how a program describes what an entity **is capable of participating in**.
 
@@ -130,11 +131,24 @@ If `Frozen` changes once every several seconds, using a tag may be excellent: mo
 
 If the flag changes every frame on most entities, structural migration may cost more than a stable value:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct { bool frozen; } MotionState;
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct MotionState {
     bool frozen;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 The value version keeps one archetype but adds a branch or value test.
 
@@ -206,6 +220,22 @@ Composition works poorly when components are too coarse.
 
 Example:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct {
+    Position position;
+    Velocity velocity;
+    Health health;
+    AI ai;
+    RenderData render;
+} EnemyState;
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct EnemyState {
     Position position;
@@ -215,6 +245,9 @@ struct EnemyState {
     RenderData render;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 A generic movement system cannot easily reuse `Position + Velocity` for non-enemies if those values are locked inside `EnemyState`.
 
@@ -267,11 +300,25 @@ Use fields or enums when systems usually process the same entities but branch on
 
 Example:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef enum { Idle, Walk, Run } AnimationMode;
+typedef struct { AnimationMode mode; } AnimationState;
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct AnimationState {
     enum Mode { Idle, Walk, Run } mode;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 Turning `Idle`, `Walk`, and `Run` into three tags may create migrations every animation transition without giving useful structural filtering.
 
@@ -410,11 +457,24 @@ Targets(enemy)
 
 A naive component model might store an entity id field:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct { ecs_entity_t entity; } Parent;
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct Parent {
-    ecs_entity_t entity;
+    ecs::entity entity;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 That is sometimes sufficient.
 
@@ -482,10 +542,24 @@ This improves separation between subsystems.
 
 In object code, behavior participation is often hidden in control flow:
 
-```cpp
-if (object->is_renderable()) { ... }
-if (object->can_move()) { ... }
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+if (object_is_renderable(object)) { /* ... */ }
+if (object_can_move(object)) { /* ... */ }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+if (object->is_renderable()) { /* ... */ }
+if (object->can_move()) { /* ... */ }
+```
+
+</TabItem>
+</Tabs>
 
 In ECS, participation can be encoded in structure:
 

@@ -59,16 +59,20 @@ ecs_query_id_t q = ecs_query({
 <TabItem label="C++">
 
 ```cpp
-auto q = ecs::query()
-    .require<Position>()
-    .require<Velocity>()
-    .build_handle();
+auto q = ecs::query().build_handle();
+q.each([](Position &position, const Velocity &velocity) {
+    position.x += velocity.x;
+    position.y += velocity.y;
+});
 ```
 
 </TabItem>
 </Tabs>
 
 An optional component query:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_query_id_t q = ecs_query({
@@ -79,7 +83,26 @@ ecs_query_id_t q = ecs_query({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto q = ecs::query().build_handle();
+q.each([](Position &position, ecs::optional<const Velocity> velocity) {
+    if (velocity) {
+        position.x += velocity->x;
+        position.y += velocity->y;
+    }
+});
+```
+
+</TabItem>
+</Tabs>
+
 An exclusion query:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_query_id_t q = ecs_query({
@@ -89,6 +112,22 @@ ecs_query_id_t q = ecs_query({
     },
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto q = ecs::query()
+    .exclude<Frozen>()
+    .build_handle();
+
+q.each([](const Position &position) {
+    // Frozen entities do not reach this callback.
+});
+```
+
+</TabItem>
+</Tabs>
 
 ## Performance and Caching
 
@@ -161,9 +200,10 @@ replacement for every boolean value.
 
 ## Creating queries
 
-### C descriptor
+### Persistent query
 
-A C query is created from `ecs_query_desc_t`:
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_query_id_t q = ecs_query({
@@ -172,33 +212,35 @@ ecs_query_id_t q = ecs_query({
         ecs_in(Velocity),
     },
 });
-```
 
-The descriptor has fixed-capacity, zero-terminated arrays for components,
-resources and relations.
-
-A created query id must be finalized:
-
-```c
+/* use q */
 ecs_query_fini(q);
 ```
 
-### C++ builder
-
-C++ provides a builder and an owning persistent handle:
+</TabItem>
+<TabItem label="C++">
 
 ```cpp
-auto q = ecs::query()
-    .require<Position>()
-    .require<Velocity>()
-    .build_handle();
+auto q = ecs::query().build_handle();
+q.each([](Position &position, const Velocity &velocity) {
+    position.x += velocity.x;
+    position.y += velocity.y;
+});
 ```
 
-`query_handle` is move-only and releases the underlying query id when destroyed.
+</TabItem>
+</Tabs>
+
+The C descriptor uses fixed-capacity, zero-terminated arrays for components,
+resources and relations. The C++ `query_handle` is move-only, infers returned
+component access from the callback and releases its query id on destruction.
 
 ## Iteration
 
-### C iteration
+### Iteration
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_iter_t it = ecs_query_iter(q);
@@ -213,6 +255,19 @@ while (ecs_iter_next(&it)) {
     }
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+q.each([](Position &position, const Velocity &velocity) {
+    position.x += velocity.x;
+    position.y += velocity.y;
+});
+```
+
+</TabItem>
+</Tabs>
 
 The outer loop advances through matching table batches. The inner loop advances
 through rows of the current table.
@@ -233,12 +288,29 @@ relation terms and resource terms.
 
 An optional component term does not require the component to exist.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 .components = {
     ecs_inout(Position),
     ecs_in_optional(Velocity),
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+q.each([](Position &position, ecs::optional<const Velocity> velocity) {
+    if (velocity) {
+        position.x += velocity->x;
+    }
+});
+```
+
+</TabItem>
+</Tabs>
 
 For each batch, the `Velocity` field pointer is either a valid pointer for the
 entire batch or `NULL` for the entire batch.
@@ -255,35 +327,31 @@ for that batch.
 
 ### Components
 
-Required read term:
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
-ecs_in(Position)
+ecs_in(Position)       /* const field */
+ecs_out(Position)      /* writable field; old value is not required */
+ecs_inout(Position)    /* readable and writable field */
+ecs_filter(Enemy)      /* required, without a returned field */
+ecs_not(Disabled)      /* excluded component */
 ```
 
-Required output/write term:
+</TabItem>
+<TabItem label="C++">
 
-```c
-ecs_out(Position)
+```cpp
+ecs::query()
+    .require<Enemy>()
+    .exclude<Disabled>()
+    .each([](Position &position) {
+        // Position& is read/write; use const Position& for read-only access.
+    });
 ```
 
-Required read/write term:
-
-```c
-ecs_inout(Position)
-```
-
-Filter without a returned field:
-
-```c
-ecs_filter(Enemy)
-```
-
-Excluded component:
-
-```c
-ecs_not(Disabled)
-```
+</TabItem>
+</Tabs>
 
 ### Access modifiers
 
@@ -300,6 +368,9 @@ preventing unsafe overlap between writers and readers.
 
 SIECS supports component exclusion directly with `EcsNot` / `ecs_not()`.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_query({
     .components = {
@@ -308,6 +379,20 @@ ecs_query({
     },
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query()
+    .exclude<Frozen>()
+    .each([](const Position &position) {
+        // Frozen entities are excluded.
+    });
+```
+
+</TabItem>
+</Tabs>
 
 Relation exclusion uses `ecs_not_rel(Relation)`.
 
@@ -320,10 +405,28 @@ logic.
 Optional terms return data when available without affecting whether the table
 matches.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_in_optional(Velocity)
 ecs_inout_optional(Health)
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().each([](
+    ecs::optional<const Velocity> velocity,
+    ecs::optional<Health> health
+) {
+    // Test each optional before dereferencing it.
+});
+```
+
+</TabItem>
+</Tabs>
 
 Avoid making every component optional merely to reduce query count. A callback
 full of optional branches can be harder to optimize than several focused
@@ -331,35 +434,34 @@ queries.
 
 ### Relation terms
 
-Required relation presence:
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
-ecs_rel(GroupOf)
+ecs_rel(GroupOf)          /* required relation */
+ecs_rel_opt(GroupOf)      /* optional relation */
+ecs_not_rel(GroupOf)      /* excluded relation */
+ecs_to(GroupOf, group)    /* exact target */
+ecs_depth(ChildOf, 3)     /* exact depth */
 ```
 
-Optional presence:
+</TabItem>
+<TabItem label="C++">
 
-```c
-ecs_rel_opt(GroupOf)
+```cpp
+ecs::query().with_relation<GroupOf>();
+ecs::query().to<GroupOf>(group);
+ecs::query().depth<ChildOf>(3);
+
+// Optional/excluded relation checks use the typed entity handle.
+ecs::query().each([](ecs::entity entity) {
+    bool has_group = entity.has_relation<GroupOf>();
+    (void)has_group;
+});
 ```
 
-Excluded relation:
-
-```c
-ecs_not_rel(GroupOf)
-```
-
-Exact target:
-
-```c
-ecs_to(GroupOf, group)
-```
-
-Depth:
-
-```c
-ecs_depth(ChildOf, 3)
-```
+</TabItem>
+</Tabs>
 
 `ecs_to()` requires a `ByTarget` relation. `ecs_depth()` requires a `ByDepth`
 relation.
@@ -368,29 +470,95 @@ relation.
 
 For `Dense` and `ByDepth` relations:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 const ecs_relation_target_t *targets = ecs_targets(&it, GroupOf);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+q.each([](ecs::entity source) {
+    ecs::entity target = source.target<GroupOf>();
+    (void)target;
+});
+```
+
+</TabItem>
+</Tabs>
+
 For `ByTarget`, all rows in a target-grouped table share the target:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_entity_t group = ecs_target_shared(&it, GroupOf);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+q.each([](ecs::entity source) {
+    ecs::entity group = source.target<GroupOf>();
+    (void)group;
+});
+```
+
+</TabItem>
+</Tabs>
+
 ### Relationship Traversal
 
 SIECS supports upward component lookup through an acyclic `ByTarget` relation:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_up(Transform, ChildOf)
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query()
+    .up<Transform, ChildOf>()
+    .each([](const Transform &transform) {});
+```
+
+</TabItem>
+</Tabs>
+
 or optional:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_up_optional(Transform, ChildOf)
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query()
+    .up<Transform, ChildOf>()
+    .each([](ecs::optional<const Transform> transform) {
+        if (transform) {
+            // use inherited transform
+        }
+    });
+```
+
+</TabItem>
+</Tabs>
 
 This is intentionally narrower than Flecs's general traversal/query-variable
 system.
@@ -407,12 +575,29 @@ target inspection, resources or direct entity access outside the hot field loop.
 
 A query can restrict matches to entities inheriting from a specific base:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_query_id_t q = ecs_query({
     .components = { ecs_in(Position) },
     .is_a = enemy_base,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto q = ecs::query()
+    .is_a(enemy_base)
+    .build_handle();
+
+q.each([](const Position &position) {});
+```
+
+</TabItem>
+</Tabs>
 
 Read-only queries can see shared inherited components.
 
@@ -425,15 +610,41 @@ SIECS exposes table ordering rather than arbitrary per-row component sorting.
 
 Order by relation target:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 .order_by = ecs_order_by_target(GroupOf)
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().order_by_target<GroupOf>();
+```
+
+</TabItem>
+</Tabs>
+
 Order by hierarchy depth:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 .order_by = ecs_order_by_depth(ChildOf)
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().order_by_depth<ChildOf>();
+```
+
+</TabItem>
+</Tabs>
 
 The order applies to matching table batches. It does not define row order inside
 a table.
@@ -442,12 +653,27 @@ a table.
 
 `ecs_query_each` is useful for short C scans:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_query_each(it, i, ecs_in(Position)) {
     const Position *p = ecs_field(&it, 0);
     use(p[i]);
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().each([](const Position &position) {
+    use(position);
+});
+```
+
+</TabItem>
+</Tabs>
 
 For repeated frame work, keep a persistent query or use a system.
 
@@ -515,11 +741,27 @@ For dynamic component ids, fill `ecs_component_term_t` directly.
 
 Resources are separate metadata:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 .resources = {
     { .id = ecs_id(Time), .access = EcsIn },
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("ReadTime")
+    .each([](ecs::res<const Time> time) {
+        use(*time);
+    });
+```
+
+</TabItem>
+</Tabs>
 
 Resource terms never determine whether an entity table matches.
 
@@ -591,6 +833,27 @@ The C++ query builder wraps the same descriptor model.
 
 Typical operations include:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_query_id_t q = ecs_query({
+    .components = {
+        ecs_filter(Position),
+        ecs_inout_optional(Velocity),
+        ecs_not(Frozen),
+    },
+    .relations = {
+        ecs_rel(GroupOf),
+        ecs_to(GroupOf, group),
+    },
+    .is_a = base,
+});
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 ecs::query()
     .require<Position>()
@@ -602,13 +865,31 @@ ecs::query()
     .build_handle();
 ```
 
+</TabItem>
+</Tabs>
+
 Typed callback signatures communicate component access:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+Position *p = ecs_field(&it, 0);
+const Velocity *v = ecs_field(&it, 1);
+p[i].x += v[i].x;
+```
+
+</TabItem>
+<TabItem label="C++">
 
 ```cpp
 q.each([](Position &p, const Velocity &v) {
     p.x += v.x;
 });
 ```
+
+</TabItem>
+</Tabs>
 
 Const references express read intent. Mutable references express writable
 intent.
@@ -656,9 +937,24 @@ Do not infer identity from row index.
 
 For an owned field:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 Position *p = ecs_field(&it, field);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+q.each([](Position &position) {
+    position.x += 1;
+});
+```
+
+</TabItem>
+</Tabs>
 
 `p[i]` corresponds to `it.entities[i]`.
 
@@ -834,9 +1130,22 @@ SIECS normal query behavior excludes:
 
 This means an ordinary query:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_in(Position)
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().each([](const Position &position) {});
+```
+
+</TabItem>
+</Tabs>
 
 does not process paused entities or template bases.
 
@@ -850,7 +1159,7 @@ This design reduces repetition in normal simulation systems.
 
 ### Hot update
 
-```c
+```text
 Position + Velocity
 ```
 
@@ -858,7 +1167,7 @@ Use required fields, persistent query/system, value mutation only.
 
 ### Marker-filtered update
 
-```c
+```text
 Position + Velocity + Enemy(filter)
 ```
 
@@ -866,7 +1175,7 @@ Use `EcsFilter` for the marker if its data is not needed.
 
 ### Optional enhancement
 
-```c
+```text
 Position + optional Acceleration
 ```
 
@@ -876,7 +1185,7 @@ If the branches are large/different, two queries may be better.
 
 ### Parent/ancestor read
 
-```c
+```text
 local Transform + up WorldSettings through ChildOf
 ```
 
@@ -884,7 +1193,7 @@ Use upward read only when the relation's storage/acyclic rules support it.
 
 ### Target-group iteration
 
-```c
+```text
 Position + GroupOf(target = selected_group)
 ```
 

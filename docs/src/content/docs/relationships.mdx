@@ -31,23 +31,65 @@ API and table metadata.
 
 Create a parent/child edge:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_relate(child, ChildOf, parent);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+child.child_of(parent);
+```
+
+</TabItem>
+</Tabs>
+
 Read the current target:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_entity_t parent = ecs_target(child, ChildOf);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::entity parent = child.target<ChildOf>();
+```
+
+</TabItem>
+</Tabs>
+
 Remove the edge:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_unrelate(child, ChildOf);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+child.unrelate<ChildOf>();
+```
+
+</TabItem>
+</Tabs>
+
 Custom relation:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ECS_RELATION(GroupOf, {
@@ -60,6 +102,24 @@ ECS_RELATION_REGISTER(GroupOf);
 
 ecs_relate(member, GroupOf, group);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+struct GroupOf {};
+
+ecs::relation<GroupOf>({
+    .storage = EcsRelationByTarget,
+    .on_delete_target = EcsRemoveRelation,
+    .acyclic = false,
+});
+
+member.relate<GroupOf>(group);
+```
+
+</TabItem>
+</Tabs>
 
 ## Introduction
 
@@ -89,19 +149,47 @@ relation gives the ECS additional structural knowledge:
 
 ### Test if entity has a relation
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 if (ecs_has_relation(entity, GroupOf)) {
     /* entity has a GroupOf target */
 }
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+if (entity.has_relation<GroupOf>()) {
+    // entity has a GroupOf target
+}
+```
+
+</TabItem>
+</Tabs>
+
 The id-based form accepts an `ecs_relation_id_t`.
 
 ### Get target for entity
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_entity_t group = ecs_target(entity, GroupOf);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::entity group = entity.target<GroupOf>();
+```
+
+</TabItem>
+</Tabs>
 
 The target is `0` when the relation is not present.
 
@@ -119,11 +207,26 @@ pattern.
 
 Use a query relation term:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_query_id_t q = ecs_query({
     .relations = { ecs_rel(GroupOf) },
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto q = ecs::query()
+    .with_relation<GroupOf>()
+    .build_handle();
+```
+
+</TabItem>
+</Tabs>
 
 This matches sources that currently have the relation.
 
@@ -131,11 +234,26 @@ This matches sources that currently have the relation.
 
 For `ByTarget`:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_query_id_t q = ecs_query({
     .relations = { ecs_to(GroupOf, group) },
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto q = ecs::query()
+    .to<GroupOf>(group)
+    .build_handle();
+```
+
+</TabItem>
+</Tabs>
 
 Matching tables are grouped around the target, so iteration can retrieve the
 shared target without a per-row lookup.
@@ -143,6 +261,9 @@ shared target without a per-row lookup.
 ### Iterate relation targets
 
 For `Dense` or `ByDepth` relation storage:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_iter_t it = ecs_query_iter(q);
@@ -155,27 +276,94 @@ while (ecs_iter_next(&it)) {
 }
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+q.each([](ecs::entity source) {
+    ecs::entity target = source.target<GroupOf>();
+    (void)target;
+});
+```
+
+</TabItem>
+</Tabs>
+
 For `ByTarget`:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_entity_t target = ecs_target_shared(&it, GroupOf);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+q.each([](ecs::entity source) {
+    ecs::entity target = source.target<GroupOf>();
+    (void)target;
+});
+```
+
+</TabItem>
+</Tabs>
+
 ### Optional and excluded relations
 
 Optional relation:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_rel_opt(GroupOf)
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().each([](ecs::entity entity) {
+    if (entity.has_relation<GroupOf>()) {
+        // handle the optional relation
+    }
+});
+```
+
+</TabItem>
+</Tabs>
+
 Excluded relation:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_not_rel(GroupOf)
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().each([](ecs::entity entity) {
+    if (!entity.has_relation<GroupOf>()) {
+        // handle entities without GroupOf
+    }
+});
+```
+
+</TabItem>
+</Tabs>
+
 These are relation filters and do not create component field slots.
+The typed C++ builder currently has required-target methods only; its examples
+therefore test relation presence on the typed entity handle. Prefer the C
+relation terms for a large query where optional/excluded relation filtering must
+remain part of table matching.
 
 ## Relation storage modes
 
@@ -271,9 +459,22 @@ Do not mark peer graphs or arbitrary links acyclic merely for performance.
 
 `IsA` connects an instance to a base.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_is_a(instance, base);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+instance.is_a(base);
+```
+
+</TabItem>
+</Tabs>
 
 The base is automatically treated as abstract for the inheritance model.
 
@@ -294,9 +495,22 @@ See [Inheritance](../inheritance/).
 
 `ChildOf` forms ownership hierarchies.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_relate(child, ChildOf, parent);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+child.child_of(parent);
+```
+
+</TabItem>
+</Tabs>
 
 Deleting the parent cleans up the owned subtree.
 
@@ -376,6 +590,9 @@ Do not choose a Dense relation and then expect the same exact-target query cost.
 
 Relation operations participate in deferred command handling.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_defer_begin();
 
@@ -384,6 +601,18 @@ ecs_relate(entity, GroupOf, final_group);
 
 ecs_defer_end();
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+// Inside a typed system callback, structural operations are deferred by SIECS.
+entity.relate<GroupOf>(first_group);
+entity.relate<GroupOf>(final_group);
+```
+
+</TabItem>
+</Tabs>
 
 The flush applies the final structural result. Observers receive relation events
 at flush time according to the resulting transitions.
@@ -394,6 +623,9 @@ This makes relation updates safe inside ordinary deferred system execution.
 
 A custom relation is declared/defined similarly to other typed SIECS concepts.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ECS_RELATION(GroupOf, {
     .storage = EcsRelationByTarget,
@@ -402,11 +634,40 @@ ECS_RELATION(GroupOf, {
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+struct GroupOf {};
+
+ecs::relation<GroupOf>({
+    .storage = EcsRelationByTarget,
+    .on_delete_target = EcsRemoveRelation,
+    .acyclic = false,
+});
+```
+
+</TabItem>
+</Tabs>
+
 Register it in the active world:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ECS_RELATION_REGISTER(GroupOf);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::relation<GroupOf>();
+```
+
+</TabItem>
+</Tabs>
 
 Generic code can call `ecs_relation_init()` with a name and descriptor.
 
@@ -431,29 +692,81 @@ Document this clearly so Flecs users do not assume pair multiplicity semantics.
 
 ### Relate
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_relate(entity, GroupOf, group);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+entity.relate<GroupOf>(group);
+```
+
+</TabItem>
+</Tabs>
+
 ### Unrelate
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_unrelate(entity, GroupOf);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+entity.unrelate<GroupOf>();
+```
+
+</TabItem>
+</Tabs>
+
 ### Has relation
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 bool has = ecs_has_relation(entity, GroupOf);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+bool has = entity.has_relation<GroupOf>();
+```
+
+</TabItem>
+</Tabs>
+
 ### Has exact target
 
 Use the target-specific relation API where needed, or compare:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_target(entity, GroupOf) == group
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+entity.target<GroupOf>().id() == group.id()
+```
+
+</TabItem>
+</Tabs>
 
 ### Retarget
 
@@ -525,9 +838,22 @@ Table/group for target B:
 
 Then:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_to(GroupOf, targetA)
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().to<GroupOf>(targetA);
+```
+
+</TabItem>
+</Tabs>
 
 can begin from the target-associated structural/indexed state rather than scan
 every source relation value.

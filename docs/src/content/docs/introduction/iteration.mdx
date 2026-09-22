@@ -2,6 +2,7 @@
 title: Iteration
 description: How SIECS queries select archetype tables, expose fields, cache matches, and turn ECS structure into batch processing.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 Iteration is the hot path that archetype storage is designed to serve.
 
@@ -44,7 +45,11 @@ Advance through matching tables.
 
 Process rows in one table.
 
-In C, the shape is visible:
+The C API exposes both loops, while the typed C++ callback handles row
+iteration:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_iter_t it = ecs_query_iter(query);
@@ -60,11 +65,8 @@ while (ecs_iter_next(&it)) {
 }
 ```
 
-The outer loop handles structure. The inner loop handles data.
-
-## C++ can hide the outer loop
-
-The C++ API can present per-entity callbacks:
+</TabItem>
+<TabItem label="C++">
 
 ```cpp
 query.each([](Position &position, const Velocity &velocity) {
@@ -72,6 +74,11 @@ query.each([](Position &position, const Velocity &velocity) {
     position.y += velocity.y;
 });
 ```
+
+</TabItem>
+</Tabs>
+
+The outer loop handles structure. The inner loop handles data.
 
 This is a higher-level interface over the same table-oriented storage model.
 

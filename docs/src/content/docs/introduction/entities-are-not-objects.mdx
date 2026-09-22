@@ -2,6 +2,7 @@
 title: An entity is not an object
 description: Understand entity identity, generations, liveness, names, reuse, and why physical component storage is not entity identity.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 An entity is an identity.
 
@@ -22,6 +23,21 @@ PlayerControlled
 
 It is tempting to imagine an entity as:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct {
+    Position position;
+    Velocity velocity;
+    Health health;
+    bool player_controlled;
+} Entity;
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct Entity {
     Position position;
@@ -30,6 +46,9 @@ struct Entity {
     bool player_controlled;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 That is not the SIECS model.
 
@@ -51,16 +70,43 @@ The handle connects those facts to the same identity. It does not physically con
 
 The public SIECS entity type is:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 typedef uint64_t ecs_entity_t;
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::entity entity;
+```
+
+</TabItem>
+</Tabs>
+
 SIECS exposes helpers that split the handle into an entity index and a generation:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_entity_id(entity)
 ecs_entity_generation(entity)
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs_entity_id(entity.id())
+ecs_entity_generation(entity.id())
+```
+
+</TabItem>
+</Tabs>
 
 The exact bit representation is an implementation detail that application code should rarely need, but the *meaning* of the two parts matters.
 
@@ -106,11 +152,24 @@ An entity handle is meaningful only while that exact generation is alive.
 
 SIECS exposes:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_is_alive(entity)
 ```
 
-and the C++ wrapper exposes the corresponding entity operation.
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+entity.is_alive()
+```
+
+</TabItem>
+</Tabs>
+
+The C++ equivalent is the typed `entity.is_alive()` operation shown above.
 
 A long-lived system that stores entity handles should decide what a dead reference means.
 
@@ -143,15 +202,22 @@ when normal allocation and reuse are active.
 
 If an application specifically needs monotonic allocation, SIECS provides:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_new_no_reuse()
 ```
 
-and:
+</TabItem>
+<TabItem label="C++">
 
 ```cpp
 ecs::entity::create_no_reuse()
 ```
+
+</TabItem>
+</Tabs>
 
 These allocate a new highest index instead of consuming a freed one.
 
@@ -232,9 +298,24 @@ During iteration, SIECS exposes pointers to component columns.
 
 Those pointers are ideal for fast local processing:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 Position *position = ecs_field(&it, 0);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+query.each([](Position &position) {
+    // position is borrowed for this callback.
+});
+```
+
+</TabItem>
+</Tabs>
 
 They are not suitable as permanent references to entities.
 
@@ -368,11 +449,26 @@ Do not use a dead handle with APIs that require a live entity.
 
 An object model often organizes behavior like:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+player_update(&player);
+player_render(&player);
+player_take_damage(&player, 10);
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 player.update();
 player.render();
 player.take_damage(10);
 ```
+
+</TabItem>
+</Tabs>
 
 An ECS can instead organize behavior around data:
 
@@ -392,19 +488,47 @@ A C++ wrapper can make ECS calls convenient, but it should not recreate an objec
 
 For example, code like:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+entity_update_everything(entity);
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 entity.update_everything();
 ```
+
+</TabItem>
+</Tabs>
 
 throws away useful information about which data is accessed.
 
 A lightweight entity API is useful for targeted operations:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_set(entity, Position, { .x = 0, .y = 0 });
+ecs_add(entity, Selected);
+ecs_kill(entity);
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
-entity.set(Position{...});
+entity.set(Position{ .x = 0, .y = 0 });
 entity.add<Selected>();
 entity.kill();
 ```
+
+</TabItem>
+</Tabs>
 
 while repeated behavior belongs in queries and systems.
 
@@ -414,11 +538,26 @@ When one logical entity needs to refer to another, the key question is whether t
 
 A component can contain an entity handle:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct {
+    ecs_entity_t entity;
+} Target;
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct Target {
-    ecs_entity_t entity;
+    ecs::entity entity;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 That can be appropriate for a local field.
 

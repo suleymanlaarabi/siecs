@@ -6,13 +6,31 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 ## Minimal world
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_init();
 ecs_entity_t e = ecs_new();
 ecs_fini();
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::init();
+auto e = ecs::entity::create();
+ecs::fini();
+```
+
+</TabItem>
+</Tabs>
+
 ## Create a moving entity
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_entity_t e = ecs_new();
@@ -20,7 +38,21 @@ ecs_set(e, Position, {0, 0});
 ecs_set(e, Velocity, {1, 0});
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto e = ecs::entity::create()
+    .set(Position{0, 0}, Velocity{1, 0});
+```
+
+</TabItem>
+</Tabs>
+
 ## Iterate Position + Velocity
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_query_id_t q = ecs_query({
@@ -44,7 +76,24 @@ while (ecs_iter_next(&it)) {
 ecs_query_fini(q);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto q = ecs::query().build_handle();
+q.each([](Position &p, const Velocity &v) {
+    p.x += v.x;
+    p.y += v.y;
+});
+```
+
+</TabItem>
+</Tabs>
+
 ## Optional component
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_query_id_t q = ecs_query({
@@ -55,9 +104,26 @@ ecs_query_id_t q = ecs_query({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().each([](Position &p, ecs::optional<const Velocity> v) {
+    if (v) {
+        p.x += v->x;
+    }
+});
+```
+
+</TabItem>
+</Tabs>
+
 The optional field is `NULL` for a batch whose table lacks the component.
 
 ## Exclude a tag
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 .components = {
@@ -66,7 +132,20 @@ The optional field is `NULL` for a batch whose table lacks the component.
 }
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().exclude<Frozen>();
+```
+
+</TabItem>
+</Tabs>
+
 ## Parent and child
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_entity_t parent = ecs_new();
@@ -75,15 +154,39 @@ ecs_entity_t child = ecs_new();
 ecs_relate(child, ChildOf, parent);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto parent = ecs::entity::create();
+auto child = ecs::entity::create().child_of(parent);
+```
+
+</TabItem>
+</Tabs>
+
 ## Query one relation target
 
 For a `ByTarget` relation:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 .relations = {
     ecs_to(GroupOf, group),
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().to<GroupOf>(group);
+```
+
+</TabItem>
+</Tabs>
 
 ## Shared inherited configuration
 
@@ -94,13 +197,29 @@ Read-only queries can receive the base value as `EcsFieldShared`.
 
 ## Override inherited data
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_set(instance, Material, local_material);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+instance.set(local_material);
+```
+
+</TabItem>
+</Tabs>
+
 The instance now has local storage for that component.
 
 ## Defer structural mutation
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_defer_begin();
@@ -112,19 +231,62 @@ ecs_relate(e, ChildOf, parent);
 ecs_defer_end();
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+// In a typed system callback, SIECS defers structural changes automatically.
+ecs::system("Wake")
+    .each([parent](ecs::entity entity) {
+        entity.add<Enemy>().remove<Sleeping>().child_of(parent);
+    });
+```
+
+</TabItem>
+</Tabs>
+
 ## Disable an entity
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_add(e, Disabled);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+e.disable();
+```
+
+</TabItem>
+</Tabs>
+
 Enable it:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_remove(e, Disabled);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+e.enable();
+```
+
+</TabItem>
+</Tabs>
+
 ## System with resource dependency
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_system({
@@ -143,7 +305,25 @@ ecs_system({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("Move")
+    .phase(EcsOnUpdate)
+    .each([](Position &p, const Velocity &v, ecs::res<const Time> time) {
+        p.x += v.x * time->dt;
+        p.y += v.y * time->dt;
+    });
+```
+
+</TabItem>
+</Tabs>
+
 ## Run every half second
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_system({
@@ -154,7 +334,23 @@ ecs_system({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("Spawner")
+    .phase(EcsOnUpdate)
+    .interval(0.5)
+    .each([] {});
+```
+
+</TabItem>
+</Tabs>
+
 ## React to a set
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_observer({
@@ -164,7 +360,21 @@ ecs_observer({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::observe<ecs::OnSet>()
+    .each([](const Position &) {});
+```
+
+</TabItem>
+</Tabs>
+
 ## Custom event
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_event_t Hit = ecs_event();
@@ -178,14 +388,51 @@ HitPayload payload = { .damage = 10 };
 ecs_observer_trigger(target, Hit, &payload);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+struct Hit {};
+
+ecs::observe<Hit>()
+    .each([](ecs::observer_event event) {
+        const HitPayload *payload = event.trigger_data<HitPayload>();
+        (void)payload;
+    });
+
+HitPayload payload{ .damage = 10 };
+ecs::trigger<Hit>(target, &payload);
+```
+
+</TabItem>
+</Tabs>
+
 ## Save and reload scene
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_save("level.siecs");
 ecs_load("level.siecs");
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+// Scene serialization currently uses the C-compatible scene API in C++ too.
+ecs_save("level.siecs");
+ecs_load("level.siecs");
+```
+
+</TabItem>
+</Tabs>
+
 ## Query disabled entities
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_query_id_t q = ecs_query({
@@ -196,9 +443,22 @@ ecs_query_id_t q = ecs_query({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().require<Disabled>();
+```
+
+</TabItem>
+</Tabs>
+
 Mentioning `Disabled` explicitly allows that population to match.
 
 ## Query descendants of a base
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_query_id_t q = ecs_query({
@@ -209,9 +469,25 @@ ecs_query_id_t q = ecs_query({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto q = ecs::query()
+    .require<Health>()
+    .is_a(enemy_base)
+    .build_handle();
+```
+
+</TabItem>
+</Tabs>
+
 ## Read an ancestor component
 
 For an acyclic ByTarget hierarchy relation:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 .components = {
@@ -220,15 +496,43 @@ For an acyclic ByTarget hierarchy relation:
 }
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query()
+    .require<LocalTransform>()
+    .up<WorldSettings, ChildOf>();
+```
+
+</TabItem>
+</Tabs>
+
 ## Order by hierarchy depth
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 .order_by = ecs_order_by_depth(ChildOf)
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().order_by_depth<ChildOf>();
+```
+
+</TabItem>
+</Tabs>
+
 Use when parents/lower depths must be processed before descendants.
 
 ## Main-thread render system
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_system({
@@ -239,7 +543,23 @@ ecs_system({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("Render")
+    .phase(EcsOnRender)
+    .immediate()
+    .each([] {});
+```
+
+</TabItem>
+</Tabs>
+
 ## Explicit system dependency
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_system_id_t build = ecs_system({
@@ -256,9 +576,29 @@ ecs_system({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto build = ecs::system("Build")
+    .phase(EcsPostUpdate)
+    .each([] {});
+
+ecs::system("Consume")
+    .phase(EcsPostUpdate)
+    .after(build)
+    .each([] {});
+```
+
+</TabItem>
+</Tabs>
+
 ## No-defer task
 
 Use only for a task without entity query iteration:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_system({
@@ -269,19 +609,63 @@ ecs_system({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+// The typed builder has no no-defer mode; task callbacks use normal scheduling.
+ecs::system("ImmediateTask")
+    .phase(EcsPostUpdate)
+    .each([] {});
+```
+
+</TabItem>
+</Tabs>
+
 ## Monotonic entity allocation
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_entity_t tool_entity = ecs_new_no_reuse();
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto tool_entity = ecs::entity::create_no_reuse();
+```
+
+</TabItem>
+</Tabs>
 
 Use when runtime numeric allocation order is needed; do not treat the index as a
 persistent cross-session id.
 
 ## Validate a scene before loading
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 if (ecs_scene_validate(data, size)) {
     ecs_load_memory(data, size);
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+if (!ecs_scene_validate(data, size)) {
+    throw std::runtime_error("invalid scene data");
+}
+if (!ecs_load_memory(data, size)) {
+    throw std::runtime_error("scene loading failed");
+}
+```
+
+</TabItem>
+</Tabs>

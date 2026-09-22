@@ -2,6 +2,7 @@
 title: Why ECS?
 description: Why entity component systems exist, what architectural pressures they address, and the costs and tradeoffs of adopting one.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 An Entity Component System is useful when an application has **many identifiable things**, those things share **overlapping pieces of state**, and the application repeatedly performs the same operations over subsets selected by that state.
 
@@ -88,7 +89,7 @@ In SIECS, the entity handle includes an index and generation. Identity can stay 
 
 Components contain state or represent facts.
 
-```c
+```text
 Position
 Velocity
 Health
@@ -403,6 +404,23 @@ The benefit is not “arrays versus no arrays.” It is the combination of **com
 
 Another common model is one large object with flags:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct {
+    bool has_velocity;
+    bool has_health;
+    bool is_selected;
+    Position position;
+    Velocity velocity;
+    Health health;
+} GameObject;
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct GameObject {
     bool has_velocity;
@@ -414,6 +432,9 @@ struct GameObject {
     // ...
 };
 ```
+
+</TabItem>
+</Tabs>
 
 This can be perfectly adequate at small scale.
 

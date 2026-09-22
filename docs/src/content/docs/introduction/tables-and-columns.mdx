@@ -2,6 +2,7 @@
 title: Tables and columns
 description: How SIECS maps archetypes to packed table rows and contiguous component columns, and what that means for iteration and pointer validity.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 An archetype describes structure. A table is the storage for that structure.
 
@@ -175,11 +176,26 @@ without testing tombstones or skipping free slots.
 
 The inner loop stays simple:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 for (uint32_t i = 0; i < it.count; i++) {
     // process contiguous row i
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+query.each([](Position &position) {
+    // process one packed row
+});
+```
+
+</TabItem>
+</Tabs>
 
 This simplicity is valuable for both CPU execution and compiler optimization.
 
@@ -320,9 +336,24 @@ An entity can exist before user data is attached.
 
 When a SIECS iterator exposes:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 Position *positions = ecs_field(&it, 0);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+query.each([](Position &position) {
+    // position refers to the current packed row.
+});
+```
+
+</TabItem>
+</Tabs>
 
 that field normally points at the matching table's Position column for the current batch.
 
@@ -372,11 +403,26 @@ The relation manual explains those specialized layouts.
 
 A simple contiguous loop:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 for (uint32_t i = 0; i < count; i++) {
     positions[i].x += velocities[i].x;
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+for (std::size_t i = 0; i < count; ++i) {
+    positions[i].x += velocities[i].x;
+}
+```
+
+</TabItem>
+</Tabs>
 
 has properties that compilers can optimize well:
 

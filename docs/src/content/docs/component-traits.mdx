@@ -2,6 +2,7 @@
 title: Component and Relation Traits
 description: "The SIECS equivalents of component traits: inheritance policy, requirements, relation storage, acyclic constraints and cleanup."
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 SIECS does not use a single generic trait system like Flecs. The same kinds of
 constraints are expressed through component descriptors, requirement APIs,
@@ -64,9 +65,22 @@ instance or resolved from the base.
 
 `ecs_with()` declares component requirements.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_with(Renderable, Transform, Bounds);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::component<Renderable>().with<Transform, Bounds>();
+```
+
+</TabItem>
+</Tabs>
 
 Adding `Renderable` causes the required components to be structurally added.
 

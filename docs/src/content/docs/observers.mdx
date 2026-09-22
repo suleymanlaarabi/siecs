@@ -128,6 +128,9 @@ Use an observer when a subsystem wants to react externally to an event.
 
 `EcsOnAdd` fires after a component has been added.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_observer({
     .on = EcsOnAdd,
@@ -135,6 +138,20 @@ ecs_observer({
     .callback = OnAddPosition,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::observe<ecs::OnAdd>()
+    .each([](ecs::entity entity, const Position &position) {
+        (void)entity;
+        (void)position;
+    });
+```
+
+</TabItem>
+</Tabs>
 
 The component's storage exists by the time the event is observed.
 
@@ -146,9 +163,22 @@ no explicit set has happened yet.
 `EcsOnSet` fires when a component value is explicitly set or replaced through
 the ECS set path.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_set(e, Position, {10, 20});
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+e.set(Position{10, 20});
+```
+
+</TabItem>
+</Tabs>
 
 can produce an `EcsOnSet` event for matching observers.
 
@@ -215,6 +245,9 @@ Observer queries can use component filters and relation constraints.
 
 Example: only react to position writes on entities that are enemies:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_observer({
     .on = EcsOnSet,
@@ -225,6 +258,21 @@ ecs_observer({
     .callback = OnEnemyPositionSet,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::observe<ecs::OnSet>()
+    .require<Enemy>()
+    .each([](ecs::entity entity, const Position &position) {
+        (void)entity;
+        (void)position;
+    });
+```
+
+</TabItem>
+</Tabs>
 
 The event component should be part of the matching model when the observer needs
 component-specific semantics.
@@ -246,6 +294,9 @@ runtime entity without scanning all world events manually.
 
 Allocate/register a custom event id and trigger it:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_event_t DamageEvent = ecs_event();
 
@@ -258,6 +309,26 @@ ecs_observer({
 DamagePayload payload = { .amount = 10 };
 ecs_observer_trigger(entity, DamageEvent, &payload);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+struct DamageEvent {};
+
+ecs::observe<DamageEvent>()
+    .require<Health>()
+    .each([](ecs::observer_event event) {
+        const auto *payload = event.trigger_data<DamagePayload>();
+        (void)payload;
+    });
+
+DamagePayload payload{ .amount = 10 };
+ecs::trigger<DamageEvent>(entity, &payload);
+```
+
+</TabItem>
+</Tabs>
 
 The payload type is defined by the application.
 
@@ -279,10 +350,25 @@ The event does not by itself alter ECS state.
 
 Observers are enabled by default.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_observer_disable(observer);
 ecs_observer_enable(observer);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+// Typed observer builders return the public observer id used by control calls.
+ecs_observer_disable(observer);
+ecs_observer_enable(observer);
+```
+
+</TabItem>
+</Tabs>
 
 Disabling preserves the registration and id.
 
@@ -418,6 +504,9 @@ transition and should not be used to manufacture redundant events.
 
 Inside a defer scope:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_defer_begin();
 ecs_set(entity, Position, {1, 2});
@@ -425,6 +514,20 @@ ecs_set(entity, Position, {1, 2});
 ecs_defer_end();
 /* command flush has applied events */
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+// System callbacks defer structural operations until their synchronization point.
+ecs::system("SetPosition")
+    .each([](ecs::entity entity) {
+        entity.set(Position{1, 2});
+    });
+```
+
+</TabItem>
+</Tabs>
 
 This is essential to safe system iteration.
 
@@ -509,12 +612,28 @@ A custom event id has no built-in payload schema.
 
 Define one clearly:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 typedef struct {
     ecs_entity_t attacker;
     float amount;
 } DamageEvent;
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+struct DamagePayload {
+    ecs::entity attacker;
+    float amount;
+};
+```
+
+</TabItem>
+</Tabs>
 
 All triggers/observers for that id must agree.
 

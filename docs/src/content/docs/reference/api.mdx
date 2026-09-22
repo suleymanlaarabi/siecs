@@ -14,7 +14,7 @@ performance tradeoffs.
 | Initialize | `ecs_init()` | `ecs::init()` |
 | Initialize with features | `ecs_init_w_features()` | `ecs::init(features)` |
 | Progress scheduler | `ecs_progress()` | `ecs::progress()` |
-| Run all systems | `ecs_run()` | wrapper/public C interop |
+| Run all systems | `ecs_run()` | `ecs::run()` |
 | Run one phase | `ecs_run_phase()` | `ecs::run_phase()` |
 | Run one system | `ecs_run_system()` | `ecs::run_system()` |
 | Request quit | `ecs_quit()` | `ecs::quit()` |
@@ -27,199 +27,143 @@ performance tradeoffs.
 | Purpose | C | C++ |
 | --- | --- | --- |
 | Create | `ecs_new()` | `ecs::entity::create()` |
-| Create without reuse | `ecs_new_no_reuse()` | `create_no_reuse()` |
+| Create without reuse | `ecs_new_no_reuse()` | `ecs::entity::create_no_reuse()` |
 | Test alive | `ecs_is_alive()` | `entity::is_alive()` |
-| Resolve current handle by index | `ecs_entity_from_index()` | C interop |
-| Name | `ecs_entity_name()` | entity name helpers |
+| Resolve current handle by index | `ecs_entity_from_index()` | `ecs::entity::from(ecs_entity_from_index(index))` |
+| Name | `ecs_entity_name()` | `ecs_entity_name(entity.id())` (shared introspection API) |
 | Lookup | `ecs_lookup()` | `entity::lookup()` |
 | Kill | `ecs_kill()` | `entity::kill()` |
 | Mark abstract | `ecs_abstract()` | `entity::abstract()` |
-| Get base | `ecs_entity_base()` | entity inheritance helpers |
-| Test IsA | `ecs_is()` | typed/entity wrapper |
+| Get base | `ecs_entity_base()` | `entity.target<ecs::IsA>()` |
+| Test IsA | `ecs_is()` | `entity.is(base)` |
 
-Entity handle helpers:
-
-```c
-ecs_entity_id(entity)
-ecs_entity_generation(entity)
-```
+Entity handle helpers are `ecs_entity_id(entity)` and
+`ecs_entity_generation(entity)` in C. In C++, pass the raw value returned by
+`entity.id()` to the same bit-level helpers.
 
 ## Components
 
-Typed C operations:
+| Component declaration | C | C++ |
+| --- | --- | --- |
+| Declare/define | `ECS_COMPONENT_DECLARE`, `ECS_COMPONENT_DEFINE`, `ECS_COMPONENT` | Native `struct` |
+| Register | `ECS_COMPONENT_REGISTER(T)` | `ecs::component<T>()` |
+| Tag | `ECS_TAG(T)` | Empty native `struct T {}` |
 
-```c
-ECS_COMPONENT_DECLARE(...)
-ECS_COMPONENT_DEFINE(...)
-ECS_COMPONENT_REGISTER(...)
-ECS_COMPONENT(...)
-ECS_TAG(...)
-```
+| Core operation | C | C++ |
+| --- | --- | --- |
+| Add/remove | `ecs_add`, `ecs_remove` | `entity.add<T>()`, `entity.remove<T>()` |
+| Test | `ecs_has` | `entity.has<T>()` |
+| Required access | `ecs_get` | `entity.get<T>()`, `entity.get_mut<T>()` |
+| Nullable access | `ecs_try_get` | `entity.try_get<T>()`, `entity.try_get_mut<T>()` |
+| Set | `ecs_set` | `entity.set(T{...})` |
 
-Core operations:
+Generic runtime-id operations are `ecs_add_cid`, `ecs_remove_cid`,
+`ecs_has_cid`, `ecs_get_cid`, `ecs_try_get_cid`, `ecs_set_cid`,
+`ecs_move_cid` and `ecs_modified_cid`. They are the shared low-level API; the
+C++ facade uses typed entity methods when the component type is known.
 
-```c
-ecs_add(entity, Component)
-ecs_remove(entity, Component)
-ecs_has(entity, Component)
-ecs_get(entity, Component)
-ecs_try_get(entity, Component)
-ecs_set(entity, Component, {...})
-```
+Registration/introspection uses `ecs_component_init`,
+`ecs_component_dynamic_init`, `ecs_component_info`, `ecs_component_count`,
+`ecs_component_name` and `ecs_tag_init`. Native C++ registration uses
+`ecs::component<T>()`; generic tooling uses the shared runtime-id functions.
 
-Generic id-based operations:
-
-```c
-ecs_add_cid()
-ecs_remove_cid()
-ecs_has_cid()
-ecs_get_cid()
-ecs_try_get_cid()
-ecs_set_cid()
-ecs_move_cid()
-ecs_modified_cid()
-```
-
-Registration/introspection:
-
-```c
-ecs_component_init()
-ecs_component_dynamic_init()
-ecs_component_info()
-ecs_component_count()
-ecs_component_name()
-ecs_tag_init()
-```
-
-Requirements:
-
-```c
-ecs_with(...)
-ecs_with_many(...)
-```
+Requirements use `ecs_with` / `ecs_with_many` in C and
+`ecs::component<T>().with<Required...>()` in C++.
 
 ## Resources
 
-Typed declaration:
+| Resource declaration | C | C++ |
+| --- | --- | --- |
+| Declare/define | `ECS_RESOURCE_DECLARE`, `ECS_RESOURCE_DEFINE`, `ECS_RESOURCE` | Native `struct` |
+| Register | `ECS_RESOURCE_REGISTER(T)` | `ecs::resource_handle<T>()` |
 
-```c
-ECS_RESOURCE_DECLARE(...)
-ECS_RESOURCE_DEFINE(...)
-ECS_RESOURCE_REGISTER(...)
-ECS_RESOURCE(...)
-```
+| Resource operation | C | C++ |
+| --- | --- | --- |
+| Set | `ecs_set_resource` | `ecs::set_resource(T{...})` or `resource_handle<T>().set(...)` |
+| Get | `ecs_get_resource`, `ecs_get_resource_read` | `ecs::resource<T>()` |
+| Try get | `ecs_try_get_resource`, `ecs_try_get_resource_read` | `ecs::try_resource<T>()` |
+| Test/remove | `ecs_has_resource`, `ecs_remove_resource` | `ecs::has_resource<T>()`, `ecs::remove_resource<T>()` |
 
-Operations:
-
-```c
-ecs_set_resource(...)
-ecs_get_resource(...)
-ecs_get_resource_read(...)
-ecs_try_get_resource(...)
-ecs_try_get_resource_read(...)
-ecs_has_resource(...)
-ecs_remove_resource(...)
-```
-
-Id API:
-
-```c
-ecs_resource_init()
-ecs_resource_find()
-ecs_resource_name()
-ecs_resource_rid()
-ecs_try_resource_rid()
-ecs_has_resource_rid()
-ecs_remove_resource_rid()
-```
+The generic resource-id API consists of `ecs_resource_init`,
+`ecs_resource_find`, `ecs_resource_name`, `ecs_resource_rid`,
+`ecs_try_resource_rid`, `ecs_has_resource_rid` and `ecs_remove_resource_rid`.
 
 ## Relations
 
-Declaration/registration:
+| Relation declaration | C | C++ |
+| --- | --- | --- |
+| Declare/define | `ECS_RELATION_DECLARE`, `ECS_RELATION_DEFINE`, `ECS_RELATION` | Native empty `struct` |
+| Register | `ECS_RELATION_REGISTER(R)` | `ecs::relation<R>(descriptor)` |
 
-```c
-ECS_RELATION_DECLARE(...)
-ECS_RELATION_DEFINE(...)
-ECS_RELATION_REGISTER(...)
-ECS_RELATION(...)
-```
+Registration/introspection uses `ecs_relation_init`, `ecs_relation_info` and
+`ecs_relation_count`; C++ relation registration is `ecs::relation<R>()`.
 
-Registration/introspection:
-
-```c
-ecs_relation_init()
-ecs_relation_info()
-ecs_relation_count()
-```
-
-Entity relation operations:
-
-```c
-ecs_relate()
-ecs_unrelate()
-ecs_has_relation()
-ecs_target()
-ecs_is_a()
-```
+| Entity relation operation | C | C++ |
+| --- | --- | --- |
+| Add/retarget | `ecs_relate` | `entity.relate<R>(target)` |
+| Remove | `ecs_unrelate` | `entity.unrelate<R>()` |
+| Test | `ecs_has_relation` | `entity.has_relation<R>()` |
+| Target | `ecs_target` | `entity.target<R>()` |
+| Inherit | `ecs_is_a` | `entity.is_a(base)` |
 
 Id forms are available for generic relation ids.
 
-Storage modes:
+Storage modes are `EcsRelationDense`, `EcsRelationByDepth` and
+`EcsRelationByTarget` in both APIs.
 
-```c
-EcsRelationDense
-EcsRelationByDepth
-EcsRelationByTarget
-```
-
-Target deletion:
-
-```c
-EcsRemoveRelation
-EcsDeleteSources
-```
+Target-deletion policies are `EcsRemoveRelation` and `EcsDeleteSources` in both
+APIs.
 
 ## Queries
 
 Create/finalize:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
-ecs_query_id_t q = ecs_query({...});
+ecs_query_id_t q = ecs_query({
+    .components = { ecs_in(Position) },
+});
 ecs_query_fini(q);
 ```
 
-Component access terms:
+</TabItem>
+<TabItem label="C++">
 
-```c
-ecs_in(T)
-ecs_out(T)
-ecs_inout(T)
-ecs_in_optional(T)
-ecs_inout_optional(T)
-ecs_filter(T)
-ecs_not(T)
-ecs_up(T, Relation)
-ecs_up_optional(T, Relation)
+```cpp
+auto query = ecs::query{}.build_handle();
+// query_handle finalizes its query when it leaves scope.
 ```
 
-Relation terms:
+</TabItem>
+</Tabs>
 
-```c
-ecs_rel(Relation)
-ecs_rel_opt(Relation)
-ecs_not_rel(Relation)
-ecs_to(Relation, entity)
-ecs_depth(Relation, value)
-```
+| Component query intent | C | C++ |
+| --- | --- | --- |
+| Read | `ecs_in(T)` | Callback `const T&` |
+| Read/write | `ecs_inout(T)` | Callback `T&` |
+| Optional read/write | `ecs_in_optional`, `ecs_inout_optional` | `ecs::optional<const T>`, `ecs::optional<T>` |
+| Filter/exclude | `ecs_filter`, `ecs_not` | `.require<T>()`, `.exclude<T>()` |
+| Upward read | `ecs_up`, `ecs_up_optional` | `.up<T, Relation>()` plus callback type |
 
-Ordering:
+`ecs_out(T)` has no distinct typed callback spelling; a mutable `T&` is
+declared read/write by the C++ facade.
 
-```c
-ecs_order_by_target(Relation)
-ecs_order_by_depth(Relation)
-```
+| Relation query intent | C | C++ |
+| --- | --- | --- |
+| Required | `ecs_rel(R)` | `.with_relation<R>()` |
+| Exact target | `ecs_to(R, entity)` | `.to<R>(entity)` |
+| Depth | `ecs_depth(R, value)` | `.depth<R>(value)` |
+| Optional/excluded | `ecs_rel_opt`, `ecs_not_rel` | Test `entity.has_relation<R>()` in a typed callback |
+
+Ordering uses `ecs_order_by_target(R)` / `ecs_order_by_depth(R)` in C and
+`.order_by_target<R>()` / `.order_by_depth<R>()` in C++.
 
 Iteration:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_iter_t it = ecs_query_iter(q);
@@ -229,40 +173,59 @@ while (ecs_iter_next(&it)) {
 }
 ```
 
-Utilities:
+</TabItem>
+<TabItem label="C++">
 
-```c
-ecs_query_count()
-ecs_field_kind()
-ecs_targets()
-ecs_target_shared()
+```cpp
+query.each([](Position &position, const Velocity &velocity) {
+    position.x += velocity.x;
+});
 ```
+
+</TabItem>
+</Tabs>
+
+Iterator-level utilities are `ecs_query_count`, `ecs_field_kind`, `ecs_targets`
+and `ecs_target_shared`. The typed C++ facade normally exposes fields through
+callback arguments and relation targets through `ecs::entity::target<R>()`.
 
 ## Systems and phases
 
 Create:
 
-```c
-ecs_system_id_t id = ecs_system({...});
-```
-
-System control:
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
-ecs_system_name()
-ecs_system_enable()
-ecs_system_disable()
-ecs_run_system()
+ecs_system_id_t id = ecs_system({
+    .name = "Move",
+    .phase = EcsOnUpdate,
+    .callback = Move,
+});
 ```
 
-Phases:
+</TabItem>
+<TabItem label="C++">
 
-```c
-ecs_phase(...)
-ecs_phase_init()
-ecs_phase_name()
-ecs_run_phase()
+```cpp
+auto id = ecs::system("Move")
+    .phase(EcsOnUpdate)
+    .each([](Position &position, const Velocity &velocity) {
+        position.x += velocity.x;
+    });
 ```
+
+</TabItem>
+</Tabs>
+
+System control uses `ecs_system_name`, `ecs_system_enable`,
+`ecs_system_disable` and `ecs_run_system` in C. C++ provides
+`ecs::enable_system`, `ecs::disable_system` and `ecs::run_system`; names remain
+available through the shared introspection function.
+
+Phases use `ecs_phase` / `ecs_phase_init` in C and the `ecs::phase` builder in
+C++. Both APIs use `ecs_phase_name`; C++ runs a phase with
+`ecs::run_phase(phase)`.
 
 `ecs_system_desc_t` includes:
 
@@ -282,11 +245,27 @@ interval
 
 ## Deferred operations
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_defer_begin();
-...
+/* structural operations */
 ecs_defer_end();
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("DeferredWork")
+    .each([](ecs::entity entity) {
+        entity.add<Selected>();
+    });
+```
+
+</TabItem>
+</Tabs>
 
 The outermost end flushes the active command buffer.
 
@@ -294,68 +273,63 @@ The outermost end flushes the active command buffer.
 
 Built-in events:
 
-```c
-EcsOnAdd
-EcsOnRemove
-EcsOnSet
-EcsOnRelationSet
-EcsOnRelationRemove
-```
+`EcsOnAdd`, `EcsOnRemove`, `EcsOnSet`, `EcsOnRelationSet` and
+`EcsOnRelationRemove` are the C event constants. Their typed C++ tags are
+`ecs::OnAdd`, `ecs::OnRemove`, `ecs::OnSet`, `ecs::OnRelationSet` and
+`ecs::OnRelationRemove`.
 
 Create:
 
-```c
-ecs_observer_id_t id = ecs_observer({...});
-```
-
-Control:
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
-ecs_observer_enable()
-ecs_observer_disable()
-ecs_observer_fini()
+ecs_observer_id_t id = ecs_observer({
+    .on = EcsOnSet,
+    .query.components = { ecs_in(Position) },
+    .callback = OnPositionSet,
+});
 ```
 
-Custom events:
+</TabItem>
+<TabItem label="C++">
 
-```c
-ecs_event()
-ecs_event_register()
-ecs_observer_trigger()
+```cpp
+auto id = ecs::observe<ecs::OnSet>()
+    .each([](const Position &position) {});
 ```
+
+</TabItem>
+</Tabs>
+
+Observer control uses `ecs_observer_enable`, `ecs_observer_disable` and
+`ecs_observer_fini`. Typed builders return the same public observer id consumed
+by these shared control functions.
+
+| Custom event operation | C | C++ |
+| --- | --- | --- |
+| Allocate/register | `ecs_event`, `ecs_event_register` | `ecs::event<Event>()` |
+| Observe | `ecs_observer` | `ecs::observe<Event>()` |
+| Trigger | `ecs_observer_trigger` | `ecs::trigger<Event>(entity, data)` |
 
 ## Modules
 
-Macros:
+| Module operation | C | C++ |
+| --- | --- | --- |
+| Declare/define | `ECS_MODULE_DECLARE`, `ECS_MODULE_DEFINE` | Native module type with static `import` |
+| Import | `ECS_MODULE_IMPORT` | `ecs::import<Module>(args...)` |
 
-```c
-ECS_MODULE_DECLARE(...)
-ECS_MODULE_DEFINE(...)
-ECS_MODULE_IMPORT(...)
-```
-
-Runtime API:
-
-```c
-ecs_module_init()
-ecs_module_load()
-ecs_module_find()
-ecs_module_name()
-ecs_module_enable()
-ecs_module_disable()
-ecs_module_is_enabled()
-```
+The shared runtime module API consists of `ecs_module_init`, `ecs_module_load`,
+`ecs_module_find`, `ecs_module_name`, `ecs_module_enable`,
+`ecs_module_disable` and `ecs_module_is_enabled`. C++ uses `ecs::module_ref<T>`
+for typed enable/disable/status operations.
 
 ## Scenes
 
-```c
-ecs_save_memory()
-ecs_scene_free()
-ecs_scene_validate()
-ecs_load_memory()
-ecs_save()
-ecs_load()
-```
+Scene serialization currently uses the shared C-compatible API in both
+languages: `ecs_save_memory`, `ecs_scene_free`, `ecs_scene_validate`,
+`ecs_load_memory`, `ecs_save` and `ecs_load`. The C++ facade does not currently
+provide a separate typed scene owner.
 
 Runtime entity handles are remapped on load.
 
@@ -400,7 +374,7 @@ target/depth traversal operations.
 
 Public constants:
 
-```c
+```text
 ECS_QUERY_TERM_CAPACITY
 ECS_QUERY_RESOURCE_CAPACITY
 ECS_QUERY_RELATION_CAPACITY
@@ -411,7 +385,7 @@ Descriptor arrays are zero terminated within these fixed capacities.
 
 ## Access enum
 
-```c
+```text
 EcsIn
 EcsOut
 EcsInOut
@@ -425,7 +399,7 @@ EcsInUpOptional
 
 ## Relation query kinds
 
-```c
+```text
 EcsRelationRequired
 EcsRelationOptional
 EcsRelationExcluded
@@ -438,7 +412,7 @@ the type/relation is known at compile time.
 
 ## Field kinds
 
-```c
+```text
 EcsFieldNone
 EcsFieldOwned
 EcsFieldShared

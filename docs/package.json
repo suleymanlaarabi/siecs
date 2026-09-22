@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build && node scripts/check-seo.mjs",
+    "build": "node scripts/check-code-tabs.mjs && astro build && node scripts/check-seo.mjs",
+    "check:code-tabs": "node scripts/check-code-tabs.mjs",
     "check:seo": "node scripts/check-seo.mjs",
     "preview": "astro preview"
   },

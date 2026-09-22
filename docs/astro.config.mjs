@@ -36,12 +36,13 @@ export default defineConfig({
     starlight({
       title: 'SIECS',
       logo: {
-        src: './src/assets/logo.png',
+        dark: './src/assets/logo_bn.png',
+        light: './src/assets/logo_nb.png',
         alt: 'SIECS',
         replacesTitle: true,
       },
       description: 'Technical documentation for the SIECS archetype library for C and C++.',
-      favicon: '/logo.png',
+      favicon: '/favicon.svg',
       customCss: ['./src/styles/custom.css'],
       lastUpdated: true,
       social: [

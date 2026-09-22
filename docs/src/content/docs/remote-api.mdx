@@ -10,6 +10,9 @@ It is optional and must be linked/imported separately from the core runtime.
 
 ## Explorer Quickstart
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 #include <siecs.h>
 #include <siecs_rest.h>
@@ -27,6 +30,31 @@ int main(void) {
     ecs_fini();
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+#include <siecs/cpp.hpp>
+#include <siecs_rest.h>
+
+int main() {
+    ecs::init();
+
+    auto rest = ecs::import<SiecsRest>(SiecsRest::props_t{
+        .port = 4040,
+    });
+    (void)rest;
+
+    while (ecs::progress()) {
+    }
+
+    ecs::fini();
+}
+```
+
+</TabItem>
+</Tabs>
 
 The server is serviced while the module is enabled and the world progresses.
 

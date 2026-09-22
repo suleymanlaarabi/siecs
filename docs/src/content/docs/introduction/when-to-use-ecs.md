@@ -260,7 +260,7 @@ The issue is not component count alone. It is whether the structure expresses us
 
 If every entity has:
 
-```cpp
+```text
 struct Everything {
     // hundreds of fields
 };

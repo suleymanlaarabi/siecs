@@ -63,7 +63,7 @@ int main(void) {
 <TabItem label="C++">
 
 ```cpp
-#include <siecs.h>
+#include <siecs/cpp.hpp>
 
 int main() {
     ecs::init();
@@ -83,6 +83,9 @@ ids, component ids and resource ids belong to that active world.
 `ecs_init_w_features()` configures world features such as frame limiting and
 worker threads:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_init_w_features(&(ecs_world_feat_desc_t){
     .target_fps = 60,
@@ -90,17 +93,35 @@ ecs_init_w_features(&(ecs_world_feat_desc_t){
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::init({
+    .target_fps = 60,
+    .worker_threads = ECS_WORKERS_AUTO,
+});
+```
+
+</TabItem>
+</Tabs>
+
 ### Entity
 
 An entity is an identity. It does not imply a class or object layout.
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_entity_t e = ecs_new();
 ```
-
+</TabItem>
+<TabItem label="C++">
 ```cpp
 auto e = ecs::entity::create();
 ```
+</TabItem>
+</Tabs>
 
 An entity starts alive with no user components. `ecs_kill()` destroys it.
 
@@ -196,13 +217,18 @@ structural change because it moves the entity to another archetype.
 
 Relations connect a source entity to a target entity.
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_relate(child, ChildOf, parent);
 ```
-
+</TabItem>
+<TabItem label="C++">
 ```cpp
 child.child_of(parent);
 ```
+</TabItem>
+</Tabs>
 
 SIECS relations use a separate relation registry and support three storage
 modes:
@@ -217,9 +243,22 @@ The storage mode determines which query operations are efficient and valid.
 
 `ChildOf` is the built-in hierarchy relation.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_relate(child, ChildOf, parent);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+child.child_of(parent);
+```
+
+</TabItem>
+</Tabs>
 
 Killing a parent recursively cleans up its owned `ChildOf` subtree. Hierarchy
 queries can order matching tables by depth when the relation uses
@@ -247,6 +286,9 @@ types are created by adding, removing and relating data.
 
 A resource is one typed value for the whole world.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ECS_RESOURCE(Time, {
     float dt;
@@ -255,12 +297,29 @@ ECS_RESOURCE_REGISTER(Time);
 ecs_set_resource(Time, { .dt = 1.0f / 60.0f });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+struct Time {
+    float dt;
+};
+
+ecs::resource_handle<Time>().set(Time{ 1.0f / 60.0f });
+```
+
+</TabItem>
+</Tabs>
+
 Resources are not components and are not stored on entities. Systems can declare
 resource access so the scheduler can reason about dependencies.
 
 ### Query
 
 A query matches archetype tables.
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_query_id_t q = ecs_query({
@@ -271,7 +330,20 @@ ecs_query_id_t q = ecs_query({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto q = ecs::query().build_handle();
+```
+
+</TabItem>
+</Tabs>
+
 Iterating a query yields non-empty table batches:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_iter_t it = ecs_query_iter(q);
@@ -287,12 +359,28 @@ while (ecs_iter_next(&it)) {
 ecs_query_fini(q);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+q.each([](Position &p, const Velocity &v) {
+    p.x += v.x;
+    p.y += v.y;
+});
+```
+
+</TabItem>
+</Tabs>
+
 Persistent queries cache matching tables. They do not rebuild a list of matching
 entities on every iteration.
 
 ### System
 
 A system is a persistent query plus a callback and scheduling metadata.
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 static void Move(ecs_iter_t *it) {
@@ -315,6 +403,21 @@ ecs_system({
     .callback = Move,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("Move")
+    .phase(EcsOnUpdate)
+    .each([](Position &p, const Velocity &v) {
+        p.x += v.x;
+        p.y += v.y;
+    });
+```
+
+</TabItem>
+</Tabs>
 
 `ecs_progress()` executes enabled systems in phase order.
 
@@ -343,6 +446,9 @@ one phase can also use `.after` dependencies.
 
 Observers react to events instead of running each frame.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 static void OnPositionSet(ecs_observer_event_t *event) {
     const Position *value = event->trigger_data;
@@ -355,6 +461,20 @@ ecs_observer({
     .callback = OnPositionSet,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::observer<ecs::OnSet>{}
+    .each([](ecs::observer_event event, const Position &value) {
+        (void)event;
+        (void)value;
+    });
+```
+
+</TabItem>
+</Tabs>
 
 Built-in observer events cover component add, remove and set, and relation
 changes. Applications can also register custom events.
@@ -419,9 +539,10 @@ int main(void) {
     ecs_progress();
 
     const Position *p = ecs_get(e, Position);
+    const bool moved = p != NULL && p->x > 0;
 
     ecs_fini();
-    return p != NULL ? 0 : 1;
+    return moved ? 0 : 1;
 }
 ```
 
@@ -429,7 +550,7 @@ int main(void) {
 <TabItem label="C++">
 
 ```cpp
-#include <siecs.h>
+#include <siecs/cpp.hpp>
 
 struct Position { float x, y; };
 struct Velocity { float x, y; };
@@ -449,7 +570,9 @@ int main() {
         .set(Velocity{1, 0});
 
     ecs::progress();
+    const bool moved = e.get<Position>().x > 0;
     ecs::fini();
+    return moved ? 0 : 1;
 }
 ```
 
@@ -488,19 +611,47 @@ mutation, deferred commands and query performance—much easier to predict.
 
 This is a value change:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_get(e, Position)->x += 1;
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+e.get_mut<Position>().x += 1;
+```
+
+</TabItem>
+</Tabs>
+
 The entity stays in the same table.
 
 These are structural changes:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_add(e, Enemy);
 ecs_remove(e, Velocity);
 ecs_relate(e, ChildOf, parent);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+e.add<Enemy>();
+e.remove<Velocity>();
+e.child_of(parent);
+```
+
+</TabItem>
+</Tabs>
 
 They can change table placement.
 

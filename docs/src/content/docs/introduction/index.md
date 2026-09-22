@@ -74,7 +74,7 @@ Components answer:
 
 For example:
 
-```c
+```text
 Position { x, y }
 Velocity { x, y }
 Health   { current, max }

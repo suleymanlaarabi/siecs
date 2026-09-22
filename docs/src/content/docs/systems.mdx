@@ -79,6 +79,9 @@ iterator so it behaves like a task.
 
 For a normal every-frame system, this is the frame delta.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 static void Move(ecs_iter_t *it) {
     Position *p = ecs_field(it, 0);
@@ -90,6 +93,21 @@ static void Move(ecs_iter_t *it) {
     }
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("Move")
+    .phase(EcsOnUpdate)
+    .each([](Position &p, const Velocity &v, ecs::res<const DeltaTime> dt) {
+        p.x += v.x * dt->value;
+        p.y += v.y * dt->value;
+    });
+```
+
+</TabItem>
+</Tabs>
 
 For an interval system, `delta_time` is the accumulated time since that system's
 previous automatic execution.
@@ -113,6 +131,9 @@ Examples:
 A resource-only system is especially useful because its resource access can be
 used by the scheduler when building dependencies.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 static void UpdateClock(ecs_iter_t *it) {
     Clock *clock = ecs_get_resource(Clock);
@@ -128,6 +149,20 @@ ecs_system({
     .callback = UpdateClock,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("UpdateClock")
+    .phase(EcsPreUpdate)
+    .each([](ecs::res<Clock> clock, ecs::res<const DeltaTime> dt) {
+        clock->elapsed += dt->value;
+    });
+```
+
+</TabItem>
+</Tabs>
 
 ## Phases and scheduling
 
@@ -155,11 +190,26 @@ Startup phases run only during the first progress cycle.
 
 `ecs_progress()` runs enabled systems according to the phase plan.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 while (ecs_progress()) {
     /* application-controlled outer loop, if needed */
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+while (ecs::progress()) {
+    // application-controlled outer loop, if needed
+}
+```
+
+</TabItem>
+</Tabs>
 
 `ecs_run()` runs all enabled systems directly.
 
@@ -186,6 +236,9 @@ is better expressed with system dependencies.
 
 Systems in the same phase can use `.after` dependencies.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_system_id_t input = ecs_system({
     .name = "Input",
@@ -201,6 +254,23 @@ ecs_system({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto input = ecs::system("Input")
+    .phase(EcsPreUpdate)
+    .each([] {});
+
+ecs::system("Gameplay")
+    .phase(EcsPreUpdate)
+    .after(input)
+    .each([] {});
+```
+
+</TabItem>
+</Tabs>
+
 The dependency states that `Gameplay` must observe work from `Input` before it
 runs in that phase.
 
@@ -214,6 +284,9 @@ data hazards.
 
 Systems can start disabled:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_system_id_t damage = ecs_system({
     .name = "Damage",
@@ -223,12 +296,39 @@ ecs_system_id_t damage = ecs_system({
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto damage = ecs::system("Damage")
+    .phase(EcsOnUpdate)
+    .disabled()
+    .each([] {});
+```
+
+</TabItem>
+</Tabs>
+
 Enable or disable later:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_system_enable(damage);
 ecs_system_disable(damage);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::enable_system(damage);
+ecs::disable_system(damage);
+```
+
+</TabItem>
+</Tabs>
 
 Disabled systems remain registered. Their query and metadata still exist, but
 the scheduler does not execute them.
@@ -261,6 +361,9 @@ active without immediately moving the row being processed.
 
 Application code can use the same mechanism:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_defer_begin();
 
@@ -270,6 +373,20 @@ ecs_relate(e, ChildOf, parent);
 
 ecs_defer_end();
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+// Structural changes made inside ecs::system callbacks are deferred automatically.
+ecs::system("Wake")
+    .each([parent](ecs::entity entity) {
+        entity.add<Enemy>().remove<Sleeping>().child_of(parent);
+    });
+```
+
+</TabItem>
+</Tabs>
 
 The outermost `ecs_defer_end()` flushes the command buffer.
 
@@ -315,11 +432,24 @@ loop.
 
 World features can enable persistent worker threads:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_init_w_features(&(ecs_world_feat_desc_t){
     .worker_threads = ECS_WORKERS_AUTO,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::init({ .worker_threads = ECS_WORKERS_AUTO });
+```
+
+</TabItem>
+</Tabs>
 
 The scheduler uses query component/resource access to determine which systems
 can run concurrently.
@@ -342,6 +472,9 @@ Some work must stay on the calling thread:
 
 Mark those systems:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_system({
     .name = "Render",
@@ -350,6 +483,19 @@ ecs_system({
     .callback = Render,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("Render")
+    .phase(EcsOnRender)
+    .immediate()
+    .each([] {});
+```
+
+</TabItem>
+</Tabs>
 
 ### Parallel mutation
 
@@ -367,6 +513,9 @@ results.
 
 A system can specify an automatic interval:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_system({
     .name = "Spawn",
@@ -375,6 +524,19 @@ ecs_system({
     .callback = Spawn,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("Spawn")
+    .phase(EcsOnUpdate)
+    .interval(0.5)
+    .each([] {});
+```
+
+</TabItem>
+</Tabs>
 
 A positive interval waits until enough frame time has accumulated, then runs the
 system once and restarts its accumulator.
@@ -542,6 +704,9 @@ Choose the narrowest accurate descriptor.
 
 ### Add a component inside a system
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 static void Promote(ecs_iter_t *it) {
     const Experience *xp = ecs_field(it, 0);
@@ -554,16 +719,46 @@ static void Promote(ecs_iter_t *it) {
 }
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("Promote")
+    .each([](ecs::entity entity, const Experience &xp) {
+        if (xp.value >= 100) {
+            entity.add<Veteran>();
+        }
+    });
+```
+
+</TabItem>
+</Tabs>
+
 Normal system execution records the structural adds and applies them safely
 after the relevant iteration/sync boundary.
 
 ### Kill entities
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 if (health[i].value <= 0) {
     ecs_kill(it->entities[i]);
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+if (health.value <= 0) {
+    entity.kill();
+}
+```
+
+</TabItem>
+</Tabs>
 
 Do not continue using field pointers for that entity as if the row disappeared
 immediately. The deferred model means the command is pending until flush.

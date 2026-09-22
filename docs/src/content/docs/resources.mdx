@@ -53,6 +53,9 @@ the typed resource wrapper directly.
 
 ## Set and read
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_set_resource(Time, {
     .dt = 0.016f,
@@ -63,22 +66,67 @@ Time *time = ecs_get_resource(Time);
 const Time *read_time = ecs_get_resource_read(Time);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto time = ecs::resource_handle<Time>();
+time.set(Time{ .dt = 0.016f, .elapsed = 0.0f });
+
+Time &writable_time = time.get();
+const Time &read_time = time.get();
+```
+
+</TabItem>
+</Tabs>
+
 Nullable access:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 Time *time = ecs_try_get_resource(Time);
 const Time *read_time = ecs_try_get_resource_read(Time);
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto time = ecs::resource_handle<Time>();
+Time *writable_time = time.try_get();
+const Time *read_time = time.try_get();
+```
+
+</TabItem>
+</Tabs>
+
 The non-`try` getters require the resource to exist.
 
 ## Presence and removal
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 if (ecs_has_resource(Time)) {
     ecs_remove_resource(Time);
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto time = ecs::resource_handle<Time>();
+if (time.has()) {
+    time.remove();
+}
+```
+
+</TabItem>
+</Tabs>
 
 Removing a missing resource is a no-op.
 
@@ -96,6 +144,9 @@ Resource terms do not match entities and do not consume `ecs_field()` slots.
 
 They declare scheduler access:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_system({
     .name = "Move",
@@ -112,6 +163,21 @@ ecs_system({
     .callback = Move,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("Move")
+    .phase(EcsOnUpdate)
+    .each([](Position &position, const Velocity &velocity, ecs::res<const Time> time) {
+        position.x += velocity.x * time->dt;
+        position.y += velocity.y * time->dt;
+    });
+```
+
+</TabItem>
+</Tabs>
 
 The scheduler can use this access to prevent a resource writer from running in
 parallel with conflicting readers/writers.

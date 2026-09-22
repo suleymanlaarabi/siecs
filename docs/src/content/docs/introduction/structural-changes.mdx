@@ -2,6 +2,7 @@
 title: Structural changes
 description: Understand archetype migration, deferred commands, lifecycle work, pointer invalidation, and how to model structural state transitions in SIECS.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 A structural change changes the shape of ECS storage.
 
@@ -149,9 +150,24 @@ The value-versus-structure decision should reflect change frequency.
 
 Suppose a query is processing:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 Position *positions = ecs_field(&it, 0);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+query.each([](Position &position) {
+    // position is borrowed from the current table row.
+});
+```
+
+</TabItem>
+</Tabs>
 
 If code immediately adds a component to one of those entities and the mutation is applied in place, that entity can move to another table and source rows can compact.
 
@@ -163,11 +179,28 @@ This is why structural mutation during iteration requires a defined policy.
 
 SIECS provides an explicit command buffer using:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_defer_begin();
 /* mutations */
 ecs_defer_end();
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("StructuralWork")
+    .each([](ecs::entity entity) {
+        // Structural entity operations are deferred during system iteration.
+        entity.add<Selected>();
+    });
+```
+
+</TabItem>
+</Tabs>
 
 The outermost `ecs_defer_end()` flushes queued commands.
 
@@ -364,9 +397,22 @@ Therefore structural mutations are part of program semantics and execution flow.
 
 Suppose a damage system processes all characters and checks a health mode:
 
-```cpp
-Health.state = Invulnerable;
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+health->state = Invulnerable;
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+health.state = Invulnerable;
+```
+
+</TabItem>
+</Tabs>
 
 If every health-related system still needs to visit the entity, creating a structural `Invulnerable` tag may not improve selection enough to justify migration.
 

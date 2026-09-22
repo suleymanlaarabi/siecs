@@ -10,13 +10,18 @@ SIECS inheritance is built on the `IsA` relation.
 
 A base entity contains reusable component data. An instance connects to the base:
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_is_a(instance, base);
 ```
-
+</TabItem>
+<TabItem label="C++">
 ```cpp
 instance.is_a(base);
 ```
+</TabItem>
+</Tabs>
 
 The base is treated as abstract so normal simulation queries focus on concrete
 instances.
@@ -28,12 +33,27 @@ deep object-oriented class hierarchies.
 
 Create a base:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_entity_t enemy = ecs_new();
 ecs_set(enemy, Health, {100});
 ecs_set(enemy, Speed, {2.5f});
 ecs_abstract(enemy);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto enemy = ecs::entity::create()
+    .set(Health{100}, Speed{2.5f})
+    .abstract();
+```
+
+</TabItem>
+</Tabs>
 
 An entity used as an inheritance base is not meant to participate as a normal
 runtime instance.
@@ -85,9 +105,22 @@ This is useful for data shared by many instances.
 
 An instance can set a component locally:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_set(instance, Health, {500});
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+instance.set(Health{500});
+```
+
+</TabItem>
+</Tabs>
 
 If the component was inherited, the instance now has an owned override for the
 effective value.
@@ -101,17 +134,45 @@ must not be mutated through an instance field pointer.
 
 Test ancestry:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 if (ecs_is(entity, base)) {
     /* entity is base or derives through IsA */
 }
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+if (entity.is(base)) {
+    // entity is base or derives through IsA
+}
+```
+
+</TabItem>
+</Tabs>
+
 Get the direct base:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_entity_t base = ecs_entity_base(entity);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::entity base = entity.target<ecs::IsA>();
+```
+
+</TabItem>
+</Tabs>
 
 These operations let tools or gameplay code inspect inheritance without
 manually walking raw relation storage.
@@ -122,11 +183,25 @@ Queries can match effective inherited data.
 
 A read-only component term may resolve to shared data from a base.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_query_id_t q = ecs_query({
     .components = { ecs_in(Material) },
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto q = ecs::query().build_handle();
+q.each([](const Material &material) {});
+```
+
+</TabItem>
+</Tabs>
 
 For each batch, use `ecs_field_kind()` to determine whether the field is owned or
 shared.
@@ -145,12 +220,28 @@ other instances share from the same base.
 
 Use the query descriptor's `is_a` field:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_query_id_t enemies = ecs_query({
     .components = { ecs_in(Health) },
     .is_a = enemy_base,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto enemies = ecs::query()
+    .is_a(enemy_base)
+    .build_handle();
+enemies.each([](const Health &health) {});
+```
+
+</TabItem>
+</Tabs>
 
 This matches descendants of the selected base.
 
@@ -194,6 +285,9 @@ dedicated Prefab tag API. Use `Abstract`, `IsA`, component inheritance and
 
 ## Common Pattern
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ECS_COMPONENT_DEFINE(Health,
     .inheritance = EcsInheritOwned
@@ -212,6 +306,29 @@ ecs_entity_t boss = ecs_new();
 ecs_is_a(boss, enemy);
 ecs_set(boss, Health, {500});
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::component<Health>(ecs::component_options<Health>{
+    .inheritance = EcsInheritOwned,
+});
+ecs::component<Material>(ecs::component_options<Material>{
+    .inheritance = EcsInheritShared,
+});
+
+auto enemy = ecs::entity::create()
+    .set(Health{100}, Material{ .kind = Steel })
+    .abstract();
+
+auto boss = ecs::entity::create()
+    .is_a(enemy)
+    .set(Health{500});
+```
+
+</TabItem>
+</Tabs>
 
 `boss` owns its `Health` override while it can continue to share `Material`.
 

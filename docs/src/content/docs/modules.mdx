@@ -12,13 +12,31 @@ disabling a module does not erase component data.
 
 ## Declaring modules
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ECS_MODULE_DECLARE(physics, {
     float gravity;
 });
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+struct Physics {
+    static void import(float gravity);
+};
+```
+
+</TabItem>
+</Tabs>
+
 Define in one implementation unit:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ECS_MODULE_DEFINE(physics);
@@ -37,13 +55,45 @@ void physics_import(const physics_props_t *props) {
 }
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+void Physics::import(float gravity) {
+    (void)gravity;
+
+    ecs::component<Position>();
+    ecs::component<Velocity>();
+
+    ecs::system("Move")
+        .phase(EcsOnUpdate)
+        .each([](Position &, const Velocity &) {});
+}
+```
+
+</TabItem>
+</Tabs>
+
 Import:
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 ecs_module_id_t Physics = ECS_MODULE_IMPORT(physics, {
     .gravity = 9.81f,
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto physics = ecs::import<Physics>(9.81f);
+```
+
+</TabItem>
+</Tabs>
 
 ## Modules in C++
 
@@ -75,10 +125,24 @@ registrations resume being captured by the parent import.
 
 ## Enable and disable
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_module_disable(Physics);
 ecs_module_enable(Physics);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+physics.disable();
+physics.enable();
+```
+
+</TabItem>
+</Tabs>
 
 Disabling a module disables captured systems and observers.
 

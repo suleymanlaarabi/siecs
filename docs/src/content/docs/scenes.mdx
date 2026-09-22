@@ -2,11 +2,19 @@
 title: Scenes and Serialization
 description: Save, validate and instantiate native SIECS binary scenes.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 SIECS can save the current world to a native binary scene and instantiate that
 scene later.
 
+The typed C++ facade does not currently wrap scene serialization. C++ programs
+therefore call the native scene API directly, with normal C++ ownership and
+null-pointer syntax; this is a documented gap, not a second C++ API.
+
 ## Save to memory
+
+<Tabs syncKey="language">
+<TabItem label="C">
 
 ```c
 void *data = NULL;
@@ -18,14 +26,45 @@ if (ecs_save_memory(&data, &size)) {
 }
 ```
 
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+void *data = nullptr;
+std::size_t size = 0;
+
+if (ecs_save_memory(&data, &size)) {
+    // use data
+    ecs_scene_free(data);
+}
+```
+
+</TabItem>
+</Tabs>
+
 The caller owns the returned scene buffer and releases it with
 `ecs_scene_free()`.
 
 ## Validate without loading
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 bool ok = ecs_scene_validate(data, size);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+if (!ecs_scene_validate(data, size)) {
+    throw std::runtime_error("invalid scene data");
+}
+```
+
+</TabItem>
+</Tabs>
 
 Validation checks the complete scene without creating entities or modifying the
 world.
@@ -34,9 +73,24 @@ Use it before accepting scene data from storage/tooling paths.
 
 ## Load from memory
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 bool ok = ecs_load_memory(data, size);
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+if (!ecs_load_memory(data, size)) {
+    throw std::runtime_error("scene loading failed");
+}
+```
+
+</TabItem>
+</Tabs>
 
 Loading instantiates entities into the current world.
 
@@ -47,10 +101,28 @@ scene-local form and remapped to fresh runtime entities during load.
 
 ## File helpers
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_save("scene.siecs");
 ecs_load("scene.siecs");
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+if (!ecs_save("scene.siecs")) {
+    throw std::runtime_error("scene saving failed");
+}
+if (!ecs_load("scene.siecs")) {
+    throw std::runtime_error("scene loading failed");
+}
+```
+
+</TabItem>
+</Tabs>
 
 The memory API remains useful for archives, networking layers or REST tooling.
 

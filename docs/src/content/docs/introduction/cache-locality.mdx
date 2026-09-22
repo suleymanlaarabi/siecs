@@ -2,6 +2,7 @@
 title: Cache locality
 description: Understand cache lines, spatial and temporal locality, bandwidth, pointer chasing, vectorization, and what archetype storage can and cannot guarantee.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 “ECS is cache friendly” is often repeated without enough explanation.
 
@@ -181,12 +182,28 @@ Predictable streams do not eliminate memory cost, but they allow the hardware to
 
 A contiguous component column can still contain pointers:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct {
+    Mesh *mesh;
+    Material *material;
+} RenderData;
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct RenderData {
     Mesh *mesh;
     Material *material;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 The `RenderData` values are contiguous, but dereferencing them may access scattered allocations.
 
@@ -292,12 +309,28 @@ Compilers can sometimes transform a scalar loop into instructions that process m
 
 A loop such as:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 for (uint32_t i = 0; i < count; i++) {
     positions[i].x += velocities[i].x;
     positions[i].y += velocities[i].y;
 }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+for (std::size_t i = 0; i < count; ++i) {
+    positions[i].x += velocities[i].x;
+    positions[i].y += velocities[i].y;
+}
+```
+
+</TabItem>
+</Tabs>
 
 has a shape that can be easier to vectorize than a virtual method call per heterogeneous object.
 

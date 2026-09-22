@@ -10,13 +10,18 @@ A hierarchy is a relation graph in which entities have parent/child ownership.
 
 SIECS provides the built-in `ChildOf` relation for this purpose.
 
+<Tabs syncKey="language">
+<TabItem label="C">
 ```c
 ecs_relate(child, ChildOf, parent);
 ```
-
+</TabItem>
+<TabItem label="C++">
 ```cpp
 child.child_of(parent);
 ```
+</TabItem>
+</Tabs>
 
 A hierarchy is useful for:
 
@@ -31,15 +36,22 @@ A hierarchy is useful for:
 
 Get the parent:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_entity_t parent = ecs_target(child, ChildOf);
 ```
 
-or in C++:
+</TabItem>
+<TabItem label="C++">
 
 ```cpp
 auto parent = child.target<ecs::ChildOf>();
 ```
+
+</TabItem>
+</Tabs>
 
 To iterate children of one parent, use the target-oriented relation query
 supported by the relation's storage mode.
@@ -79,6 +91,9 @@ Hierarchy transforms are often evaluated parent before child.
 SIECS can maintain depth information for hierarchy-style relations and order
 matching table batches by relation depth.
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 ecs_query_id_t q = ecs_query({
     .components = { ecs_inout(WorldTransform) },
@@ -86,6 +101,20 @@ ecs_query_id_t q = ecs_query({
     .order_by = ecs_order_by_depth(ChildOf),
 });
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto q = ecs::query()
+    .with_relation<ecs::ChildOf>()
+    .order_by_depth<ecs::ChildOf>()
+    .build_handle();
+q.each([](WorldTransform &transform) {});
+```
+
+</TabItem>
+</Tabs>
 
 This gives a useful table-level parent-to-descendant progression when the
 relation's depth semantics support it.
@@ -96,9 +125,22 @@ Within one depth/table batch, row order is not a hierarchy ordering guarantee.
 
 A `ByDepth` relation can be filtered by depth:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
 ```c
 .relations = { ecs_depth(ChildOf, 2) }
 ```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::query().depth<ecs::ChildOf>(2);
+```
+
+</TabItem>
+</Tabs>
 
 This is useful for layer-oriented processing or tools that want one hierarchy
 level.

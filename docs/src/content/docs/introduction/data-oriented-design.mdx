@@ -2,6 +2,7 @@
 title: Data-oriented design
 description: Design ECS data around transformations, access patterns, working sets, cardinality, lifetimes, and the memory hierarchy.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 Data-oriented design begins with a simple observation:
 
@@ -73,6 +74,25 @@ The best layout depends on how data is consumed. “SoA good, AoS bad” is not 
 
 Consider:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct {
+    Position position;
+    Velocity velocity;
+    Health health;
+    Inventory inventory;
+    RenderData render;
+    AIState ai;
+} Actor;
+
+Actor actors[100000];
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct Actor {
     Position position;
@@ -85,6 +105,9 @@ struct Actor {
 
 Actor actors[100000];
 ```
+
+</TabItem>
+</Tabs>
 
 A movement loop uses only two fields from every `Actor`.
 
@@ -171,12 +194,25 @@ A practical rule is:
 
 For example:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct { float x; float y; } Position;
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct Position {
     float x;
     float y;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 is usually more useful than:
 
@@ -189,12 +225,25 @@ because x and y normally share lifetime and access.
 
 Likewise:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct { int current; int maximum; } Health;
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct Health {
     int current;
     int maximum;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 is often coherent.
 
@@ -297,11 +346,24 @@ The entity's archetype changes and it may migrate to another table.
 
 A boolean that changes constantly may therefore be cheaper as data:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct { bool visible; } State;
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct State {
     bool visible;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 than as a tag:
 
@@ -375,12 +437,25 @@ Contiguous ECS columns only improve locality for the bytes stored in those colum
 
 This component is compact:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct { Mesh *mesh; Material *material; } RenderRef;
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct RenderRef {
     Mesh *mesh;
     Material *material;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 but a rendering loop that dereferences each pointer can still jump across memory.
 
@@ -533,11 +608,26 @@ That layered approach is often practical because systems commonly consume whole 
 
 Consider an object-oriented update:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+for (size_t i = 0; i < object_count; i++) {
+    game_object_update(objects[i], dt);
+}
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 for (GameObject *object : objects) {
     object->update(dt);
 }
 ```
+
+</TabItem>
+</Tabs>
 
 This is concise, but the loop itself does not say what memory will be touched.
 

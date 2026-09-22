@@ -2,6 +2,7 @@
 title: ECS vs OOP
 description: Compare object-centered and ECS-centered decomposition, including identity, behavior dispatch, encapsulation, polymorphism, ownership, and hybrid architectures.
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 “ECS versus OOP” is often framed as a programming-language argument. It is not.
 
@@ -14,6 +15,26 @@ The useful comparison is between **object-centered decomposition** and **data/qu
 A conventional object model groups state and behavior around one object boundary.
 
 Example:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct {
+    Position position;
+    Velocity velocity;
+    Health health;
+    Inventory inventory;
+    Animation animation;
+} Character;
+
+void character_update(Character *character, float dt);
+void character_take_damage(Character *character, int amount);
+void character_render(const Character *character, Renderer *renderer);
+```
+
+</TabItem>
+<TabItem label="C++">
 
 ```cpp
 class Character {
@@ -30,6 +51,9 @@ private:
     Animation animation;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 The class says:
 
@@ -109,11 +133,26 @@ This is a major conceptual difference.
 
 Object-oriented polymorphism often uses per-object dispatch:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+for (size_t i = 0; i < object_count; i++) {
+    object_update(objects[i]);
+}
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 for (Object *object : objects) {
     object->update();
 }
 ```
+
+</TabItem>
+</Tabs>
 
 Different runtime types select different code paths.
 
@@ -183,12 +222,25 @@ That runtime structural index is the distinguishing feature.
 
 A private field provides strong local encapsulation:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct Health Health;
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 class Health {
 private:
     int value;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 ECS components are often simple data types exposed directly to systems.
 
@@ -380,9 +432,22 @@ Small business objects may benefit more from instance-centric reasoning.
 
 A method like:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+object_update(&object);
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 object.update();
 ```
+
+</TabItem>
+</Tabs>
 
 can touch any private state or global service.
 
@@ -415,12 +480,26 @@ The relevant comparison is the actual data layout and control flow.
 
 A component type can have helper methods in C++ when that improves local behavior:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct { float x, y; } Vec2;
+float vec2_length_squared(const Vec2 *value);
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 struct Vec2 {
     float x, y;
     float length_squared() const;
 };
 ```
+
+</TabItem>
+</Tabs>
 
 That does not violate ECS principles.
 
@@ -454,6 +533,24 @@ A better process is:
 
 Original:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+typedef struct {
+    Position position;
+    Velocity velocity;
+    Health health;
+    AIState ai;
+} Enemy;
+
+void enemy_update(Enemy *enemy, float dt);
+void enemy_render(const Enemy *enemy);
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 class Enemy {
     Position position;
@@ -465,6 +562,9 @@ class Enemy {
     void render();
 };
 ```
+
+</TabItem>
+</Tabs>
 
 Potential ECS decomposition:
 
@@ -492,11 +592,26 @@ Now a friendly NPC can reuse movement, health, and rendering without inheriting 
 
 A function that operates on one coherent value can remain a method:
 
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+health_apply_damage(&health, amount);
+quaternion_normalize(&quaternion);
+asset_handle_is_valid(&asset_handle);
+```
+
+</TabItem>
+<TabItem label="C++">
+
 ```cpp
 health.apply_damage(amount);
 quaternion.normalize();
 asset_handle.is_valid();
 ```
+
+</TabItem>
+</Tabs>
 
 The ECS architecture does not require every operation to become a global system.
 
