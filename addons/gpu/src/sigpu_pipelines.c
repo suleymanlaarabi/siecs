@@ -40,18 +40,18 @@ static SDL_GPUShader *load_shader(
 }
 
 static SDL_GPUGraphicsPipeline *create_main_pipeline(bool rotated, bool shared) {
-    const char *vertex_path =
-        shared ? (rotated ? SIGPU_SHADER("cube_rotated_shared.vert.spv")
-                          : SIGPU_SHADER("cube_shared.vert.spv"))
-               : (rotated ? SIGPU_SHADER("cube_rotated.vert.spv") : SIGPU_SHADER("cube.vert.spv"));
+    const char *vertex_path = shared ? (rotated ? SIGPU_SHADER("primitive_rotated_shared.vert.spv")
+                                                : SIGPU_SHADER("primitive_shared.vert.spv"))
+                                     : (rotated ? SIGPU_SHADER("primitive_rotated.vert.spv")
+                                                : SIGPU_SHADER("primitive.vert.spv"));
     SDL_GPUShader *vertex_shader =
         load_shader(vertex_path, SDL_GPU_SHADERSTAGE_VERTEX, 0, shared ? 2 : 1);
     SDL_GPUShader *fragment_shader =
-        load_shader(SIGPU_SHADER("cube.frag.spv"), SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+        load_shader(SIGPU_SHADER("primitive.frag.spv"), SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
     SDL_GPUVertexBufferDescription buffers[2] = {
         {
             .slot = 0,
-            .pitch = sizeof(sigpu_cube_vertex_t),
+            .pitch = sizeof(sigpu_mesh_vertex_t),
             .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
         },
         {
@@ -68,13 +68,13 @@ static SDL_GPUGraphicsPipeline *create_main_pipeline(bool rotated, bool shared) 
             .location = 0,
             .buffer_slot = 0,
             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-            .offset = offsetof(sigpu_cube_vertex_t, x),
+            .offset = offsetof(sigpu_mesh_vertex_t, x),
         },
         {
             .location = 1,
             .buffer_slot = 0,
             .format = SDL_GPU_VERTEXELEMENTFORMAT_BYTE4_NORM,
-            .offset = offsetof(sigpu_cube_vertex_t, nx),
+            .offset = offsetof(sigpu_mesh_vertex_t, nx),
         },
         {
             .location = 2,
@@ -145,7 +145,7 @@ static SDL_GPUGraphicsPipeline *create_main_pipeline(bool rotated, bool shared) 
         .target_info = {
             .color_target_descriptions = color_targets,
             .num_color_targets = 2,
-            .depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
+            .depth_stencil_format = g_sigpu.depth_format,
             .has_depth_stencil_target = true,
         },
     };
@@ -167,7 +167,7 @@ static SDL_GPUGraphicsPipeline *create_shadow_pipeline(bool rotated, bool shared
     SDL_GPUVertexBufferDescription buffers[2] = {
         {
             .slot = 0,
-            .pitch = sizeof(sigpu_cube_vertex_t),
+            .pitch = sizeof(sigpu_mesh_vertex_t),
             .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX,
         },
         {
@@ -184,7 +184,7 @@ static SDL_GPUGraphicsPipeline *create_shadow_pipeline(bool rotated, bool shared
             .location = 0,
             .buffer_slot = 0,
             .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,
-            .offset = offsetof(sigpu_cube_vertex_t, x),
+            .offset = offsetof(sigpu_mesh_vertex_t, x),
         },
         {
             .location = 1,

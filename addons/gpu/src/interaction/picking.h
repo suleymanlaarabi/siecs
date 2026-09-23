@@ -27,5 +27,19 @@ bool sipicking_ray_obb(
     sipicking_vec3_t half_extents,
     sipicking_hit_t *out
 );
+bool sipicking_ray_sphere(
+    sipicking_ray_t ray,
+    sipicking_vec3_t center,
+    sipicking_quat_t orientation,
+    sipicking_vec3_t radii,
+    sipicking_hit_t *out
+);
+bool sipicking_ray_cylinder(
+    sipicking_ray_t ray,
+    sipicking_vec3_t center,
+    sipicking_quat_t orientation,
+    sipicking_vec3_t radii,
+    sipicking_hit_t *out
+);
 
 #endif

@@ -90,7 +90,8 @@ static void bind_and_draw(
     SDL_GPUGraphicsPipeline *pipeline,
     SDL_GPUBuffer *instance_buffer,
     Uint32 offset,
-    Uint32 count
+    Uint32 count,
+    Uint32 mesh_id
 ) {
     if (count == 0) {
         return;
@@ -99,7 +100,15 @@ static void bind_and_draw(
     SDL_GPUBufferBinding instance_binding = { .buffer = instance_buffer, .offset = offset };
     SDL_BindGPUGraphicsPipeline(pass, pipeline);
     SDL_BindGPUVertexBuffers(pass, 1, &instance_binding, 1);
-    SDL_DrawGPUIndexedPrimitives(pass, 36, count, 0, 0, 0);
+    const sigpu_mesh_t *mesh = &g_sigpu.meshes[mesh_id];
+    SDL_DrawGPUIndexedPrimitives(
+        pass,
+        mesh->index_count,
+        count,
+        mesh->first_index,
+        mesh->vertex_offset,
+        0
+    );
 }
 
 static void draw_shared_batches(
@@ -108,7 +117,8 @@ static void draw_shared_batches(
     SDL_GPUBuffer *buffer,
     const sigpu_shared_batch_t *batches,
     Uint32 batch_count,
-    Uint32 stride
+    Uint32 stride,
+    bool shadow
 ) {
     for (Uint32 index = 0; index < batch_count; index++) {
         const sigpu_shared_batch_t *batch = &batches[index];
@@ -118,36 +128,95 @@ static void draw_shared_batches(
             &batch->material,
             sizeof(batch->material)
         );
-        bind_and_draw(pass, pipeline, buffer, batch->first * stride, batch->count);
+        Uint32 mesh = batch->mesh;
+        if (shadow && (mesh == SIGPU_MESH_CYLINDER_HIGH || mesh == SIGPU_MESH_SPHERE_HIGH))
+            mesh--;
+        bind_and_draw(pass, pipeline, buffer, batch->first * stride, batch->count, mesh);
     }
 }
 
+static void draw_owned_batches(
+    SDL_GPURenderPass *pass,
+    SDL_GPUGraphicsPipeline *pipeline,
+    SDL_GPUBuffer *buffer,
+    const sigpu_owned_batch_t *batches,
+    Uint32 count,
+    Uint32 capacity,
+    Uint32 stride,
+    bool shadow
+) {
+    for (Uint32 i = 0; i < count; i++) {
+        const sigpu_owned_batch_t *batch = &batches[i];
+        Uint32 mesh = batch->mesh;
+        if (shadow && (mesh == SIGPU_MESH_CYLINDER_HIGH || mesh == SIGPU_MESH_SPHERE_HIGH))
+            mesh--;
+        bind_and_draw(
+            pass,
+            pipeline,
+            buffer,
+            (capacity - batch->first - batch->count) * stride,
+            batch->count,
+            mesh
+        );
+    }
+}
 static void draw_static_chunks(
     SDL_GPURenderPass *pass,
     SDL_GPUGraphicsPipeline *axis_pipeline,
     SDL_GPUGraphicsPipeline *rotated_pipeline,
     bool shadow
 ) {
-    for (Uint32 index = 0; index < g_sigpu.static_chunk_count; index++) {
-        const sigpu_static_chunk_t *chunk = &g_sigpu.static_chunks[index];
-        if (shadow ? !chunk->shadow_visible : !chunk->camera_visible) {
-            continue;
+    for (Uint32 primitive = 0; primitive < SIGPU_PRIMITIVE_COUNT; primitive++) {
+        for (Uint32 kind = 0; kind < 2; kind++) {
+            SDL_GPUGraphicsPipeline *pipeline = kind ? rotated_pipeline : axis_pipeline;
+            SDL_GPUBuffer *buffer = kind ? g_sigpu.static_rotated_buffer[primitive]
+                                         : g_sigpu.static_axis_buffer[primitive];
+            Uint32 stride = kind ? sizeof(sigpu_rotated_instance_t) : sizeof(sigpu_axis_instance_t);
+            Uint32 run_first = 0, run_count = 0, run_mesh = 0;
+            for (Uint32 i = 0; i <= g_sigpu.static_chunk_count; i++) {
+                const sigpu_static_chunk_t *chunk =
+                    i < g_sigpu.static_chunk_count ? &g_sigpu.static_chunks[i] : NULL;
+                bool visible = chunk && (shadow ? chunk->shadow_visible : chunk->camera_visible);
+                sigpu_static_range_t range = { 0 };
+                Uint32 mesh = 0;
+                if (visible) {
+                    range = kind ? chunk->rotated[primitive] : chunk->axis[primitive];
+                    sigpu_vec3_t center = chunk->primitive_center[primitive];
+                    Uint32 lod =
+                        primitive == SIGPU_PRIMITIVE_CUBE
+                            ? 0
+                            : sigpu_primitive_lod(center, chunk->primitive_radius[primitive]);
+                    if (shadow && lod > 1)
+                        lod = 1;
+                    mesh =
+                        (primitive == SIGPU_PRIMITIVE_CUBE
+                             ? SIGPU_MESH_CUBE
+                             : (primitive == SIGPU_PRIMITIVE_CYLINDER ? SIGPU_MESH_CYLINDER_LOW
+                                                                      : SIGPU_MESH_SPHERE_LOW) +
+                                   lod);
+                }
+                if (!visible || (range.count && run_count &&
+                                 (mesh != run_mesh || range.first != run_first + run_count))) {
+                    if (run_count)
+                        bind_and_draw(
+                            pass,
+                            pipeline,
+                            buffer,
+                            run_first * stride,
+                            run_count,
+                            run_mesh
+                        );
+                    run_count = 0;
+                }
+                if (visible && range.count) {
+                    if (!run_count) {
+                        run_first = range.first;
+                        run_mesh = mesh;
+                    }
+                    run_count += range.count;
+                }
+            }
         }
-
-        bind_and_draw(
-            pass,
-            axis_pipeline,
-            g_sigpu.static_axis_buffer,
-            chunk->axis_first * sizeof(sigpu_axis_instance_t),
-            chunk->axis_count
-        );
-        bind_and_draw(
-            pass,
-            rotated_pipeline,
-            g_sigpu.static_rotated_buffer,
-            chunk->rotated_first * sizeof(sigpu_rotated_instance_t),
-            chunk->rotated_count
-        );
     }
 }
 
@@ -181,7 +250,8 @@ static void draw_shadow_pass(void) {
         g_sigpu.axis_buffer,
         g_sigpu.shared_axis_batches,
         g_sigpu.shared_axis_batch_count,
-        sizeof(sigpu_shared_axis_instance_t)
+        sizeof(sigpu_shared_axis_instance_t),
+        true
     );
     draw_shared_batches(
         pass,
@@ -189,21 +259,28 @@ static void draw_shadow_pass(void) {
         g_sigpu.rotated_buffer,
         g_sigpu.shared_rotated_batches,
         g_sigpu.shared_rotated_batch_count,
-        sizeof(sigpu_shared_rotated_instance_t)
+        sizeof(sigpu_shared_rotated_instance_t),
+        true
     );
-    bind_and_draw(
+    draw_owned_batches(
         pass,
         g_sigpu.axis_shadow_pipeline,
         g_sigpu.axis_buffer,
-        (g_sigpu.axis_capacity - g_sigpu.owned_axis_count) * sizeof(sigpu_axis_instance_t),
-        g_sigpu.owned_axis_count
+        g_sigpu.owned_axis_batches,
+        g_sigpu.owned_axis_batch_count,
+        g_sigpu.axis_capacity,
+        sizeof(sigpu_axis_instance_t),
+        true
     );
-    bind_and_draw(
+    draw_owned_batches(
         pass,
         g_sigpu.rotated_shadow_pipeline,
         g_sigpu.rotated_buffer,
-        (g_sigpu.rotated_capacity - g_sigpu.owned_rotated_count) * sizeof(sigpu_rotated_instance_t),
-        g_sigpu.owned_rotated_count
+        g_sigpu.owned_rotated_batches,
+        g_sigpu.owned_rotated_batch_count,
+        g_sigpu.rotated_capacity,
+        sizeof(sigpu_rotated_instance_t),
+        true
     );
     SDL_EndGPURenderPass(pass);
 }
@@ -287,7 +364,8 @@ static void draw_main_pass(void) {
         g_sigpu.axis_buffer,
         g_sigpu.shared_axis_batches,
         g_sigpu.shared_axis_batch_count,
-        sizeof(sigpu_shared_axis_instance_t)
+        sizeof(sigpu_shared_axis_instance_t),
+        false
     );
     draw_shared_batches(
         pass,
@@ -295,21 +373,28 @@ static void draw_main_pass(void) {
         g_sigpu.rotated_buffer,
         g_sigpu.shared_rotated_batches,
         g_sigpu.shared_rotated_batch_count,
-        sizeof(sigpu_shared_rotated_instance_t)
+        sizeof(sigpu_shared_rotated_instance_t),
+        false
     );
-    bind_and_draw(
+    draw_owned_batches(
         pass,
         g_sigpu.axis_pipeline,
         g_sigpu.axis_buffer,
-        (g_sigpu.axis_capacity - g_sigpu.owned_axis_count) * sizeof(sigpu_axis_instance_t),
-        g_sigpu.owned_axis_count
+        g_sigpu.owned_axis_batches,
+        g_sigpu.owned_axis_batch_count,
+        g_sigpu.axis_capacity,
+        sizeof(sigpu_axis_instance_t),
+        false
     );
-    bind_and_draw(
+    draw_owned_batches(
         pass,
         g_sigpu.rotated_pipeline,
         g_sigpu.rotated_buffer,
-        (g_sigpu.rotated_capacity - g_sigpu.owned_rotated_count) * sizeof(sigpu_rotated_instance_t),
-        g_sigpu.owned_rotated_count
+        g_sigpu.owned_rotated_batches,
+        g_sigpu.owned_rotated_batch_count,
+        g_sigpu.rotated_capacity,
+        sizeof(sigpu_rotated_instance_t),
+        false
     );
     SDL_EndGPURenderPass(pass);
 }

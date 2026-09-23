@@ -3,13 +3,10 @@
 layout(location = 0) in vec3 in_vertex_position;
 layout(location = 1) in vec4 in_vertex_normal;
 layout(location = 2) in vec3 in_position;
-layout(location = 3) in vec3 in_size;
-layout(location = 4) in vec4 in_color;
-
-layout(location = 5) in float in_bloom;
+layout(location = 3) in vec3 in_scale;
 
 layout(location = 0) out vec3 out_world_position;
-layout(location = 1) flat out vec3 out_normal;
+layout(location = 1) out vec3 out_normal;
 layout(location = 2) flat out vec4 out_color;
 layout(location = 3) out vec4 out_light_position;
 layout(location = 4) flat out float out_bloom;
@@ -20,13 +17,20 @@ layout(std140, set = 1, binding = 0) uniform Transforms
     mat4 light_view_projection;
 } transforms;
 
+layout(std140, set = 1, binding = 1) uniform Material
+{
+    vec4 size_bloom;
+    vec4 color;
+} material;
+
 void main()
 {
-    vec3 world_position = in_vertex_position * in_size + in_position;
+    vec3 size = in_scale * material.size_bloom.xyz;
+    vec3 world_position = in_vertex_position * size + in_position;
     gl_Position = transforms.view_projection * vec4(world_position, 1.0);
     out_world_position = world_position;
-    out_normal = in_vertex_normal.xyz;
-    out_color = in_color;
+    out_normal = normalize(in_vertex_normal.xyz / max(abs(size), vec3(0.00001)));
+    out_color = material.color;
     out_light_position = transforms.light_view_projection * vec4(world_position, 1.0);
-    out_bloom = in_bloom;
+    out_bloom = material.size_bloom.w;
 }

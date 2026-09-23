@@ -12,7 +12,30 @@
 #define SIGPU_SHADOW_SIZE 2048
 #define SIGPU_HDR_FORMAT SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT
 #define SIGPU_PI 3.14159265358979323846f
+#define SIGPU_STATIC_CHUNK_SIZE 64.0f
+#define SIGPU_LOD_LOW_MAX_PIXELS 8.0f
+#define SIGPU_LOD_MEDIUM_MAX_PIXELS 32.0f
 #define SIGPU_SHADER(name) name
+typedef enum {
+    SIGPU_MESH_CUBE,
+    SIGPU_MESH_CYLINDER_LOW,
+    SIGPU_MESH_CYLINDER_MEDIUM,
+    SIGPU_MESH_CYLINDER_HIGH,
+    SIGPU_MESH_SPHERE_LOW,
+    SIGPU_MESH_SPHERE_MEDIUM,
+    SIGPU_MESH_SPHERE_HIGH,
+    SIGPU_MESH_COUNT
+} sigpu_mesh_id_t;
+typedef enum {
+    SIGPU_PRIMITIVE_CUBE,
+    SIGPU_PRIMITIVE_CYLINDER,
+    SIGPU_PRIMITIVE_SPHERE,
+    SIGPU_PRIMITIVE_COUNT
+} sigpu_primitive_t;
+typedef struct {
+    Uint32 first_index, index_count;
+    Sint32 vertex_offset;
+} sigpu_mesh_t;
 typedef struct {
     float x;
     float y;
@@ -31,7 +54,7 @@ typedef struct {
     int8_t ny;
     int8_t nz;
     int8_t nw;
-} sigpu_cube_vertex_t;
+} sigpu_mesh_vertex_t;
 
 typedef struct {
     float x;
@@ -96,25 +119,35 @@ typedef struct {
     sigpu_shared_material_t material;
     Uint32 first;
     Uint32 count;
+    uint16_t mesh;
+    uint8_t lod;
+    uint8_t rotated;
 } sigpu_shared_batch_t;
+typedef struct {
+    Uint32 first, count;
+    uint16_t mesh;
+} sigpu_owned_batch_t;
+typedef struct {
+    Uint32 first, count;
+} sigpu_static_range_t;
 
 typedef struct {
     sigpu_vec3_t center;
     float radius;
-    Uint32 axis_first;
-    Uint32 axis_count;
-    Uint32 rotated_first;
-    Uint32 rotated_count;
+    sigpu_static_range_t axis[SIGPU_PRIMITIVE_COUNT];
+    sigpu_static_range_t rotated[SIGPU_PRIMITIVE_COUNT];
+    float primitive_radius[SIGPU_PRIMITIVE_COUNT];
+    sigpu_vec3_t primitive_center[SIGPU_PRIMITIVE_COUNT];
     bool bloom;
     bool camera_visible;
     bool shadow_visible;
 } sigpu_static_chunk_t;
 
 typedef struct {
-    const sigpu_axis_instance_t *axis;
-    Uint32 axis_count;
-    const sigpu_rotated_instance_t *rotated;
-    Uint32 rotated_count;
+    const sigpu_axis_instance_t *axis[SIGPU_PRIMITIVE_COUNT];
+    Uint32 axis_count[SIGPU_PRIMITIVE_COUNT];
+    const sigpu_rotated_instance_t *rotated[SIGPU_PRIMITIVE_COUNT];
+    Uint32 rotated_count[SIGPU_PRIMITIVE_COUNT];
     const sigpu_static_chunk_t *chunks;
     Uint32 chunk_count;
 } sigpu_static_upload_t;
@@ -164,10 +197,11 @@ typedef struct {
 
     SDL_GPUBuffer *vertex_buffer;
     SDL_GPUBuffer *index_buffer;
+    sigpu_mesh_t meshes[SIGPU_MESH_COUNT];
     SDL_GPUBuffer *axis_buffer;
     SDL_GPUBuffer *rotated_buffer;
-    SDL_GPUBuffer *static_axis_buffer;
-    SDL_GPUBuffer *static_rotated_buffer;
+    SDL_GPUBuffer *static_axis_buffer[SIGPU_PRIMITIVE_COUNT];
+    SDL_GPUBuffer *static_rotated_buffer[SIGPU_PRIMITIVE_COUNT];
     SDL_GPUTransferBuffer *axis_transfer;
     SDL_GPUTransferBuffer *rotated_transfer;
 
@@ -188,6 +222,8 @@ typedef struct {
     void *rotated_mapped;
     sigpu_shared_batch_t *shared_axis_batches;
     sigpu_shared_batch_t *shared_rotated_batches;
+    sigpu_owned_batch_t *owned_axis_batches;
+    sigpu_owned_batch_t *owned_rotated_batches;
     sigpu_static_chunk_t *static_chunks;
     Uint32 shared_axis_count;
     Uint32 shared_rotated_count;
@@ -197,6 +233,8 @@ typedef struct {
     Uint32 shared_rotated_batch_count;
     Uint32 shared_axis_batch_capacity;
     Uint32 shared_rotated_batch_capacity;
+    Uint32 owned_axis_batch_count, owned_rotated_batch_count;
+    Uint32 owned_axis_batch_capacity, owned_rotated_batch_capacity;
     Uint32 axis_capacity;
     Uint32 rotated_capacity;
     Uint32 static_chunk_count;
@@ -211,6 +249,7 @@ typedef struct {
     Uint32 bloom_quarter_width;
     Uint32 bloom_quarter_height;
     SDL_GPUSampleCount sample_count;
+    SDL_GPUTextureFormat depth_format;
 
     sigpu_camera_t camera;
     sigpu_vec3_t sun_direction;
@@ -284,6 +323,14 @@ static inline sigpu_vec3_t sigpu_mat4_transform_point(sigpu_mat4_t matrix, sigpu
         matrix.m[1] * point.x + matrix.m[5] * point.y + matrix.m[9] * point.z + matrix.m[13],
         matrix.m[2] * point.x + matrix.m[6] * point.y + matrix.m[10] * point.z + matrix.m[14],
     };
+}
+
+static inline Uint32 sigpu_primitive_lod(sigpu_vec3_t center, float radius) {
+    sigpu_vec3_t view = sigpu_mat4_transform_point(g_sigpu.view, center);
+    float depth = fmaxf(view.z, g_sigpu.camera.near_plane);
+    float pixels = radius / depth * g_sigpu.frame_height /
+                   (2.0f * tanf(g_sigpu.camera.fov * SIGPU_PI / 360.0f));
+    return pixels < SIGPU_LOD_LOW_MAX_PIXELS ? 0 : pixels < SIGPU_LOD_MEDIUM_MAX_PIXELS ? 1 : 2;
 }
 
 static inline float sigpu_cube_radius(float width, float height, float depth) {

@@ -61,6 +61,26 @@ ECS_COMPONENT_DECLARE_CPP(
         }
     )
 );
+/* Centered on GlobalPosition3d. Radius is measured before GlobalScale3d;
+ * nonuniform scale produces an ellipsoid. GlobalOrientation3d rotates it. */
+ECS_COMPONENT_DECLARE_CPP(
+    Sphere,
+    ECS_CPP_FIELDS(float radius;),
+    ECS_CPP_METHODS(constexpr Sphere() : radius(0.5f) {
+    } explicit constexpr Sphere(float value) : radius(value){})
+);
+/* Centered on GlobalPosition3d. Radius applies to local X/Z and height to
+ * local Y before GlobalScale3d; nonuniform X/Z scale makes an elliptic cylinder. */
+ECS_COMPONENT_DECLARE_CPP(
+    Cylinder,
+    ECS_CPP_FIELDS(float radius; float height;),
+    ECS_CPP_METHODS(
+        constexpr Cylinder() : radius(0.5f),
+        height(1.0f) {
+        } constexpr Cylinder(float radius_value, float height_value) : radius(radius_value),
+        height(height_value){}
+    )
+);
 ECS_COMPONENT_DECLARE_CPP(
     Bloom,
     ECS_CPP_FIELDS(float intensity;),
@@ -105,6 +125,10 @@ ECS_RESOURCE_DECLARE(Shadows, {
     float distance;
 });
 ECS_RESOURCE_DECLARE(Multisampling, { int samples; });
+ECS_RESOURCE_DECLARE(CameraClip, {
+    float near_plane;
+    float far_plane;
+});
 ECS_RESOURCE_DECLARE(BloomSettings, {
     bool enabled;
     float threshold;

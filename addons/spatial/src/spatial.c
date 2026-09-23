@@ -308,13 +308,13 @@ static void spatial_3d_static_on_set(ecs_observer_event_t *event) {
 }
 
 static void spatial_2d_static_on_add(ecs_observer_event_t *event) {
-    if (event->component == ecs_id(Position2d)) {
+    if (event->component == ecs_id(Position2d) || event->component == ecs_id(Static)) {
         spatial_2d_static_propagate_subtree(event->entity);
     }
 }
 
 static void spatial_3d_static_on_add(ecs_observer_event_t *event) {
-    if (event->component == ecs_id(Position3d)) {
+    if (event->component == ecs_id(Position3d) || event->component == ecs_id(Static)) {
         spatial_3d_static_propagate_subtree(event->entity);
     }
 }
@@ -549,7 +549,8 @@ void sispatial_import(const sispatial_props_t *props) {
 
     /*
      * Static transforms are excluded from the per-frame propagation systems.
-     * Recompute them only when Position / Rotation / Scale receives OnSet.
+     * Recompute them when Position / Rotation / Scale receives OnSet, or when
+     * Static is added to an entity that already has a local transform.
      *
      * Position2d/3d is enough as a transform marker because ecs_with()
      * guarantees the other transform components.

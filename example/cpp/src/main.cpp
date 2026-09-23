@@ -1,6 +1,13 @@
+#include "siecs.h"
+#include "siecs/cpp/query.hpp"
+#include "siecs/cpp/resource.hpp"
+#include "siecs/cpp/system.hpp"
+#include "siecs_spatial.h"
 #include <siecs/cpp/entity.hpp>
 #include <siecs/cpp/world.hpp>
 #include <sigpu.h>
+
+struct A {};
 
 int main() {
     ecs::init();
@@ -11,9 +18,11 @@ int main() {
         .samples = 4,
     }));
 
+    ecs::component<A>();
+
     ecs::set_resource(Sky{ Color{ 12, 18, 34 } });
-    ecs::set_resource(Sun{ -0.45f, -1.0f, 0.35f, Color{ 255, 232, 196 }, 2.5f });
-    ecs::set_resource(AmbientLight{ Color{ 155, 180, 255 }, 0.18f });
+    ecs::set_resource(Sun{ -0.45f, -1.0f, 0.35f, Color{ 255, 232, 196 }, 1.5f });
+    ecs::set_resource(AmbientLight{ Color{ 155, 180, 255 }, 0.24f });
     ecs::set_resource(Fog{ Color{ 12, 18, 34 }, 24.0f, 65.0f });
     ecs::set_resource(Shadows{ true, 50.0f });
     ecs::set_resource(BloomSettings{ true, 0.85f, 0.7f });
@@ -25,12 +34,50 @@ int main() {
         .set(Position3d{ 0.0f, -1.2f, 0.0f }, Cuboid{ 22.0f, 0.25f, 18.0f }, Color{ 30, 41, 64 })
         .add<Static>();
 
+    ecs::entity::create("Static cylinder")
+        .set(
+            Position3d{ -7.0f, -0.075f, -2.0f },
+            Cylinder{ 0.65f, 2.0f },
+            Color{ 95, 205, 175 },
+            PointerEvents{ SiPointerEnterMask | SiClickMask }
+        )
+        .add<Static>();
+    ecs::entity::create("Static sphere")
+        .set(
+            Position3d{ 7.0f, -0.075f, -2.0f },
+            Sphere{ 1.0f },
+            Color{ 245, 155, 95 },
+            PointerEvents{ SiPointerEnterMask | SiClickMask }
+        )
+        .add<Static>();
+
     ecs::entity::create("Orange cuboid")
         .set(
             Position3d{ -3.2f, 0.0f, 0.0f },
             Rotation3d{ 0.2f, -0.45f, 0.0f },
             Cuboid{ 2.2f, 2.2f, 2.2f },
-            Color{ 255, 126, 56 }
+            Color{ 255, 126, 56 },
+            PointerEvents{ SiPointerEnterMask | SiClickMask }
+        );
+
+    ecs::entity::create("Rotated blooming cylinder")
+        .set(
+            Position3d{ -7.0f, 0.0f, 3.0f },
+            Rotation3d{ 0.4f, 0.2f, 0.1f },
+            Cylinder{ 0.6f, 1.7f },
+            Color{ 90, 235, 255 },
+            Bloom{ 0.25f },
+            PointerEvents{ SiPointerEnterMask | SiClickMask }
+        );
+    ecs::entity::create("Rotated blooming ellipsoid")
+        .set(
+            Position3d{ 7.0f, -0.15f, 3.0f },
+            Rotation3d{ 0.25f, 0.45f, 0.0f },
+            Scale3d{ 1.1f, 0.95f, 1.0f },
+            Sphere{ 0.9f },
+            Color{ 255, 90, 180 },
+            Bloom{ 0.25f },
+            PointerEvents{ SiPointerEnterMask | SiClickMask }
         );
 
     ecs::entity::create("Blue cuboid")

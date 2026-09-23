@@ -15,7 +15,7 @@ static ecs_event_t pointer_events[SiPointerEventCount] = {
     UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX,
     UINT16_MAX, UINT16_MAX, UINT16_MAX, UINT16_MAX,
 };
-static ecs_query_id_t picking_query;
+static ecs_query_id_t picking_queries[3];
 static ecs_entity_t hovered;
 static ecs_entity_t down_targets[6];
 static float down_x[6], down_y[6];
@@ -53,40 +53,53 @@ static pick_result_t pick(float x, float y) {
         .origin = { result.ray.ox, result.ray.oy, result.ray.oz },
         .direction = { result.ray.dx, result.ray.dy, result.ray.dz },
     };
-    for (ecs_iter_t it = ecs_query_iter(picking_query); ecs_iter_next(&it);) {
-        const field_t positions = FIELD(&it, 0), orientations = FIELD(&it, 1);
-        const field_t scales = FIELD(&it, 2), cuboids = FIELD(&it, 3), masks = FIELD(&it, 4);
-        for (uint32_t i = 0; i < it.count; i++) {
-            const GlobalPosition3d position = AT(GlobalPosition3d, positions, i);
-            const GlobalOrientation3d orientation = AT(GlobalOrientation3d, orientations, i);
-            const GlobalScale3d scale = AT(GlobalScale3d, scales, i);
-            const Cuboid cuboid = AT(Cuboid, cuboids, i);
-            const float width = cuboid.width * scale.x, height = cuboid.height * scale.y,
-                        depth = cuboid.depth * scale.z;
-            if (!ray_sphere(
-                    result.ray,
-                    position,
-                    0.5f * sqrtf(width * width + height * height + depth * depth)
-                ))
-                continue;
-            sipicking_hit_t hit;
-            if (!sipicking_ray_obb(
-                    ray,
-                    (sipicking_vec3_t){ position.x, position.y, position.z },
-                    (
-                        sipicking_quat_t
-                    ){ orientation.x, orientation.y, orientation.z, orientation.w },
-                    (sipicking_vec3_t){ width * 0.5f, height * 0.5f, depth * 0.5f },
-                    &hit
-                ))
-                continue;
-            const ecs_entity_t entity = it.entities[i];
-            if (!result.hit_any || hit.distance < result.hit.distance ||
-                (hit.distance == result.hit.distance && entity < result.entity)) {
-                result.entity = entity;
-                result.mask = AT(PointerEvents, masks, i).mask;
-                result.hit = hit;
-                result.hit_any = true;
+    for (uint32_t kind = 0; kind < 3; kind++) {
+        for (ecs_iter_t it = ecs_query_iter(picking_queries[kind]); ecs_iter_next(&it);) {
+            const field_t positions = FIELD(&it, 0), orientations = FIELD(&it, 1);
+            const field_t scales = FIELD(&it, 2), shapes = FIELD(&it, 3), masks = FIELD(&it, 4);
+            for (uint32_t i = 0; i < it.count; i++) {
+                GlobalPosition3d position = AT(GlobalPosition3d, positions, i);
+                GlobalOrientation3d orientation = AT(GlobalOrientation3d, orientations, i);
+                GlobalScale3d scale = AT(GlobalScale3d, scales, i);
+                sipicking_vec3_t half;
+                float radius;
+                if (kind == 0) {
+                    Cuboid c = AT(Cuboid, shapes, i);
+                    half = (sipicking_vec3_t){ c.width * scale.x * 0.5f,
+                                               c.height * scale.y * 0.5f,
+                                               c.depth * scale.z * 0.5f };
+                    radius = sqrtf(half.x * half.x + half.y * half.y + half.z * half.z);
+                } else if (kind == 1) {
+                    Cylinder c = AT(Cylinder, shapes, i);
+                    half = (sipicking_vec3_t){ c.radius * scale.x,
+                                               c.height * scale.y * 0.5f,
+                                               c.radius * scale.z };
+                    radius = hypotf(fmaxf(fabsf(half.x), fabsf(half.z)), fabsf(half.y));
+                } else {
+                    Sphere c = AT(Sphere, shapes, i);
+                    half = (sipicking_vec3_t){ c.radius * scale.x,
+                                               c.radius * scale.y,
+                                               c.radius * scale.z };
+                    radius = fmaxf(fabsf(half.x), fmaxf(fabsf(half.y), fabsf(half.z)));
+                }
+                if (!ray_sphere(result.ray, position, radius))
+                    continue;
+                sipicking_vec3_t center = { position.x, position.y, position.z };
+                sipicking_quat_t q = { orientation.x, orientation.y, orientation.z, orientation.w };
+                sipicking_hit_t hit;
+                bool found = kind == 0   ? sipicking_ray_obb(ray, center, q, half, &hit)
+                             : kind == 1 ? sipicking_ray_cylinder(ray, center, q, half, &hit)
+                                         : sipicking_ray_sphere(ray, center, q, half, &hit);
+                if (!found)
+                    continue;
+                ecs_entity_t entity = it.entities[i];
+                if (!result.hit_any || hit.distance < result.hit.distance ||
+                    (hit.distance == result.hit.distance && entity < result.entity)) {
+                    result.entity = entity;
+                    result.mask = AT(PointerEvents, masks, i).mask;
+                    result.hit = hit;
+                    result.hit_any = true;
+                }
             }
         }
     }
@@ -259,15 +272,17 @@ void sigpu_interaction_init(ecs_system_id_t after) {
     ECS_COMPONENT_REGISTER(PointerEvents);
     for (uint32_t i = 0; i < SiPointerEventCount; i++)
         ecs_event_register(&pointer_events[i]);
-    picking_query = ecs_query(
-        { .components = {
-              { .id = ecs_id(GlobalPosition3d), .access = EcsIn },
-              { .id = ecs_id(GlobalOrientation3d), .access = EcsIn },
-              { .id = ecs_id(GlobalScale3d), .access = EcsIn },
-              { .id = ecs_id(Cuboid), .access = EcsIn },
-              { .id = ecs_id(PointerEvents), .access = EcsIn },
-          } }
-    );
+    uint16_t shapes[3] = { ecs_id(Cuboid), ecs_id(Cylinder), ecs_id(Sphere) };
+    for (uint32_t kind = 0; kind < 3; kind++) {
+        picking_queries[kind] = ecs_query_init(&(ecs_query_desc_t){
+            .components = {
+                { .id = ecs_id(GlobalPosition3d), .access = EcsIn },
+                { .id = ecs_id(GlobalOrientation3d), .access = EcsIn },
+                { .id = ecs_id(GlobalScale3d), .access = EcsIn },
+                { .id = shapes[kind], .access = EcsIn },
+                { .id = ecs_id(PointerEvents), .access = EcsIn },
+            } });
+    }
     ecs_system(
         { .name = "PointerInteraction",
           .phase = EcsPreRender,

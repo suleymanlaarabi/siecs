@@ -58,8 +58,6 @@ void sigpu_camera(
     g_sigpu.camera.position = (sigpu_vec3_t){ x, y, z };
     g_sigpu.camera.target = (sigpu_vec3_t){ target_x, target_y, target_z };
     g_sigpu.camera.fov = fminf(fmaxf(fov, 1.0f), 179.0f);
-    g_sigpu.camera.near_plane = 0.1f;
-    g_sigpu.camera.far_plane = 1000.0f;
 }
 
 void sigpu_sky(sigpu_color_t color) {
@@ -110,6 +108,8 @@ bool sigpu_begin_frame(void) {
     g_sigpu.owned_rotated_count = 0;
     g_sigpu.shared_axis_batch_count = 0;
     g_sigpu.shared_rotated_batch_count = 0;
+    g_sigpu.owned_axis_batch_count = 0;
+    g_sigpu.owned_rotated_batch_count = 0;
     g_sigpu.any_bloom = false;
     g_sigpu.command_buffer = SDL_AcquireGPUCommandBuffer(g_sigpu.device);
     g_sigpu.swapchain = NULL;

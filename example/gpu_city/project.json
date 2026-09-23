@@ -1,0 +1,14 @@
+{
+  "id": "siecs.example.gpu_city",
+  "type": "application",
+  "value": {
+    "public": false,
+    "clangd": true,
+    "language": "cpp",
+    "use": ["siecs", "siecs_spatial", "sigpu"]
+  },
+  "lang.cpp": {
+    "cpp-standard": "c++20",
+    "include": ["../../include"]
+  }
+}
