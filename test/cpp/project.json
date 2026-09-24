@@ -5,7 +5,7 @@
     "language": "cpp",
     "public": false,
     "clangd": true,
-    "use": ["siecs"]
+    "use": ["siecs", "siecs_spatial"]
   },
   "lang.cpp": {
     "cpp-standard": "c++20",
@@ -97,6 +97,20 @@
           "double_import",
           "c_declared_module",
           "c_declared_module_default_props"
+        ]
+      },
+      {
+        "id": "traffic",
+        "testcases": [
+          "following_gap",
+          "red_amber_and_green",
+          "late_green_waits",
+          "exclusive_junction",
+          "turns_and_roundabout",
+          "turn_paths_are_smooth",
+          "border_respawns",
+          "400_cars_no_overlap",
+          "long_run_relation_integrity"
         ]
       },
       {

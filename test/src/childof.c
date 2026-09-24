@@ -333,6 +333,28 @@ void childof_dense_retarget_keeps_reverse_sources(void) {
     ecs_fini();
 }
 
+void childof_dense_replacement_during_flush_keeps_reverse_source(void) {
+    ecs_init();
+    ECS_RELATION_REGISTER(DenseRel);
+
+    ecs_entity_t target = ecs_new();
+    ecs_entity_t leaving = ecs_new();
+    ecs_entity_t arriving = ecs_new();
+    ecs_relate(leaving, DenseRel, target);
+
+    ecs_defer_begin();
+    ecs_unrelate(leaving, DenseRel);
+    ecs_relate(arriving, DenseRel, target);
+    ecs_defer_end();
+
+    ecs_relation_sources_t sources = ecs_relation_sources(target, ecs_rid(DenseRel));
+    test_uint(1, sources.count);
+    test_uint(arriving, sources.entities[0]);
+    test_uint(0, ecs_target(leaving, DenseRel));
+    test_uint(target, ecs_target(arriving, DenseRel));
+    ecs_fini();
+}
+
 void childof_dense_unrelate_keeps_source_indices(void) {
     ecs_init();
     ECS_RELATION_REGISTER(DenseRel);

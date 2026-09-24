@@ -75,6 +75,17 @@ void module_import_double_import(void);
 void module_import_c_declared_module(void);
 void module_import_c_declared_module_default_props(void);
 
+// Testsuite 'traffic'
+void traffic_following_gap(void);
+void traffic_red_amber_and_green(void);
+void traffic_late_green_waits(void);
+void traffic_exclusive_junction(void);
+void traffic_turns_and_roundabout(void);
+void traffic_turn_paths_are_smooth(void);
+void traffic_border_respawns(void);
+void traffic_400_cars_no_overlap(void);
+void traffic_long_run_relation_integrity(void);
+
 // Testsuite 'module_state'
 void module_state_lookup_empty(void);
 void module_state_enable(void);
@@ -317,6 +328,45 @@ bake_test_case module_import_testcases[] = {
     }
 };
 
+bake_test_case traffic_testcases[] = {
+    {
+        "following_gap",
+        traffic_following_gap
+    },
+    {
+        "red_amber_and_green",
+        traffic_red_amber_and_green
+    },
+    {
+        "late_green_waits",
+        traffic_late_green_waits
+    },
+    {
+        "exclusive_junction",
+        traffic_exclusive_junction
+    },
+    {
+        "turns_and_roundabout",
+        traffic_turns_and_roundabout
+    },
+    {
+        "turn_paths_are_smooth",
+        traffic_turn_paths_are_smooth
+    },
+    {
+        "border_respawns",
+        traffic_border_respawns
+    },
+    {
+        "400_cars_no_overlap",
+        traffic_400_cars_no_overlap
+    },
+    {
+        "long_run_relation_integrity",
+        traffic_long_run_relation_integrity
+    }
+};
+
 bake_test_case module_state_testcases[] = {
     {
         "lookup_empty",
@@ -373,6 +423,13 @@ static bake_test_suite suites[] = {
         module_import_testcases
     },
     {
+        "traffic",
+        NULL,
+        NULL,
+        9,
+        traffic_testcases
+    },
+    {
         "module_state",
         NULL,
         NULL,
@@ -382,5 +439,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.cpp.test", argc, argv, suites, 7);
+    return bake_test_run("siecs.cpp.test", argc, argv, suites, 8);
 }

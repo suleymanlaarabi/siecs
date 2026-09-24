@@ -39,9 +39,10 @@ add_vertex(mesh_builder_t *builder, float x, float y, float z, float nx, float n
 }
 
 static void add_triangle(mesh_builder_t *builder, Uint16 a, Uint16 b, Uint16 c) {
+    /* Match the cube winding used by the back-face-culling pipelines. */
     builder->indices[builder->index_count++] = a;
-    builder->indices[builder->index_count++] = b;
     builder->indices[builder->index_count++] = c;
+    builder->indices[builder->index_count++] = b;
 }
 
 static void add_cylinder(mesh_builder_t *builder, Uint32 segments) {
