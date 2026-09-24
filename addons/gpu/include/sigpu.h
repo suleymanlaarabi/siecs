@@ -260,6 +260,8 @@ SIECS_PUBLIC_API sireflect_handle_t sigpu_resource_type(const char *name);
 SIECS_PUBLIC_API ecs_event_t sigpu_pointer_event_id(uint32_t kind);
 SIECS_PUBLIC_API const uint32_t *sigpu_pointer_event_abi(void);
 
+SIECS_PUBLIC_API bool sigpu_set_fullscreen(bool enabled);
+
 #ifdef __cplusplus
 }
 

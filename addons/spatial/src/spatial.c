@@ -24,7 +24,13 @@ ECS_CTOR(GlobalScale3d, { 1.0f, 1.0f, 1.0f });
 ECS_COMPONENT_DEFINE(GlobalScale3d, .ops = { .ctor = ecs_ctor_id(GlobalScale3d) });
 
 ECS_TAG_DEFINE(Static);
+ECS_TAG_DEFINE(Static3dReady);
 ECS_MODULE_DEFINE(sispatial);
+
+static ecs_query_id_t static_3d_candidates;
+static ecs_query_id_t static_3d_ready;
+static bool static_3d_classification_dirty = true;
+static bool static_3d_transform_dirty = true;
 
 static inline GlobalOrientation3d spatial_3d_orientation_from_rotation(const Rotation3d *rotation) {
     const float half_pitch = rotation->pitch * 0.5f;
@@ -142,6 +148,90 @@ static ecs_entity_t spatial_3d_transform_parent(ecs_entity_t entity) {
     }
 
     return 0;
+}
+
+static inline void spatial_3d_compute_static(
+    ecs_entity_t entity,
+    const Position3d *restrict position,
+    const Rotation3d *restrict rotation,
+    const Scale3d *restrict scale
+);
+
+static bool spatial_3d_can_be_static(ecs_entity_t entity) {
+    bool inside_static_subtree = false;
+    bool dynamic_ancestor = false;
+    for (ecs_entity_t current = entity; current != 0;
+         current = ecs_target(current, ChildOf)) {
+        if (ecs_has(current, Static)) {
+            inside_static_subtree = true;
+            dynamic_ancestor = false;
+        } else if (inside_static_subtree && ecs_has(current, Position3d)) {
+            dynamic_ancestor = true;
+        }
+    }
+    return inside_static_subtree && !dynamic_ancestor;
+}
+
+static void spatial_3d_static_classification_event(ecs_observer_event_t *event) {
+    if (event->component == ecs_id(Static) || event->component == ecs_id(Position3d)) {
+        static_3d_classification_dirty = true;
+        static_3d_transform_dirty = true;
+    }
+}
+
+static void spatial_3d_ready_on_set(ecs_observer_event_t *event) {
+    if (event->component == ecs_id(Position3d) ||
+        event->component == ecs_id(Rotation3d) ||
+        event->component == ecs_id(Scale3d)) {
+        static_3d_transform_dirty = true;
+    }
+}
+
+static void spatial_3d_static_relation_event(ecs_observer_event_t *event) {
+    const ecs_relation_event_t *relation = event->trigger_data;
+    if (relation->relation == ecs_rid(ChildOf)) {
+        static_3d_classification_dirty = true;
+        static_3d_transform_dirty = true;
+    }
+}
+
+static void spatial_3d_classify_statics(ecs_iter_t *it) {
+    (void)it;
+    if (!static_3d_classification_dirty)
+        return;
+    static_3d_classification_dirty = false;
+    ecs_defer_begin();
+    for (ecs_iter_t candidates = ecs_query_iter(static_3d_candidates);
+         ecs_iter_next(&candidates);) {
+        for (uint32_t i = 0; i < candidates.count; i++) {
+            ecs_entity_t entity = candidates.entities[i];
+            bool ready = spatial_3d_can_be_static(entity);
+            bool was_ready = ecs_has(entity, Static3dReady);
+            if (ready && !was_ready)
+                ecs_add(entity, Static3dReady);
+            else if (!ready && was_ready)
+                ecs_remove(entity, Static3dReady);
+        }
+    }
+    ecs_defer_end();
+}
+
+static void spatial_3d_propagate_ready(ecs_iter_t *it) {
+    (void)it;
+    if (!static_3d_transform_dirty)
+        return;
+    static_3d_transform_dirty = false;
+    for (ecs_iter_t ready = ecs_query_iter(static_3d_ready); ecs_iter_next(&ready);) {
+        for (uint32_t i = 0; i < ready.count; i++) {
+            ecs_entity_t entity = ready.entities[i];
+            spatial_3d_compute_static(
+                entity,
+                ecs_get(entity, Position3d),
+                ecs_get(entity, Rotation3d),
+                ecs_get(entity, Scale3d)
+            );
+        }
+    }
 }
 
 static inline void spatial_3d_compute_static(
@@ -288,6 +378,8 @@ static void spatial_3d_static_on_set(ecs_observer_event_t *event) {
         component != ecs_id(Scale3d)) {
         return;
     }
+
+    static_3d_transform_dirty = true;
 
     const ecs_entity_t entity = event->entity;
 
@@ -438,15 +530,19 @@ static void spatial_3d_propagate(ecs_iter_t *it) {
     const uint32_t count = it->count;
 
     for (uint32_t i = 0; i < count; i++) {
-        const ecs_entity_t parent_entity = parents[i].entity;
+        const ecs_entity_t direct_parent = parents[i].entity;
 
-        if (parent_entity != cached_parent) {
-            const GlobalPosition3d *parent_position = ecs_try_get(parent_entity, GlobalPosition3d);
+        if (direct_parent != cached_parent) {
+            const ecs_entity_t parent_entity = ecs_has(direct_parent, Position3d)
+                ? direct_parent : spatial_3d_transform_parent(it->entities[i]);
+            const GlobalPosition3d *parent_position =
+                parent_entity ? ecs_try_get(parent_entity, GlobalPosition3d) : NULL;
 
             const GlobalOrientation3d *parent_global_orientation =
-                ecs_try_get(parent_entity, GlobalOrientation3d);
+                parent_entity ? ecs_try_get(parent_entity, GlobalOrientation3d) : NULL;
 
-            const GlobalScale3d *parent_scale = ecs_try_get(parent_entity, GlobalScale3d);
+            const GlobalScale3d *parent_scale =
+                parent_entity ? ecs_try_get(parent_entity, GlobalScale3d) : NULL;
 
             px = parent_position != NULL ? parent_position->x : 0.0f;
             py = parent_position != NULL ? parent_position->y : 0.0f;
@@ -464,7 +560,7 @@ static void spatial_3d_propagate(ecs_iter_t *it) {
             sy = parent_scale != NULL ? parent_scale->y : 1.0f;
             sz = parent_scale != NULL ? parent_scale->z : 1.0f;
 
-            cached_parent = parent_entity;
+            cached_parent = direct_parent;
         }
 
         const float x = position[i].x * sx;
@@ -540,12 +636,47 @@ void sispatial_import(const sispatial_props_t *props) {
         Scale3d,
         GlobalScale3d,
 
-        Static
+        Static,
+        Static3dReady
     );
 
     ecs_with(Position2d, Rotation2d, Scale2d, GlobalPosition2d, GlobalRotation2d, GlobalScale2d);
 
     ecs_with(Position3d, Rotation3d, Scale3d, GlobalPosition3d, GlobalOrientation3d, GlobalScale3d);
+
+    static_3d_classification_dirty = true;
+    static_3d_transform_dirty = true;
+    static_3d_candidates = ecs_query({ .components = { ecs_filter(Position3d) } });
+    static_3d_ready = ecs_query({
+        .components = { ecs_filter(Position3d), ecs_filter(Static3dReady) },
+        .order_by = ecs_order_by_depth(ChildOf),
+    });
+
+    ecs_observer({ .on = EcsOnAdd, .callback = spatial_3d_static_classification_event });
+    ecs_observer({ .on = EcsOnRemove, .callback = spatial_3d_static_classification_event });
+    ecs_observer({ .on = EcsOnRelationSet, .callback = spatial_3d_static_relation_event });
+    ecs_observer({ .on = EcsOnRelationRemove, .callback = spatial_3d_static_relation_event });
+
+    ecs_observer(
+        {
+            .on = EcsOnSet,
+            .query = {
+                .components = {
+                    ecs_filter(Position3d),
+                    ecs_filter(Static3dReady),
+                    ecs_in_optional(Abstract),
+                },
+            },
+            .callback = spatial_3d_ready_on_set,
+        }
+    );
+
+    ecs_system({
+        .name = "Spatial3dClassifyStatic",
+        .callback = spatial_3d_classify_statics,
+        .phase = EcsPreUpdate,
+        .main_thread_only = true,
+    });
 
     /*
      * Static transforms are excluded from the per-frame propagation systems.
@@ -664,6 +795,15 @@ void sispatial_import(const sispatial_props_t *props) {
         }
     );
 
+    const ecs_system_id_t static_3d_system = ecs_system(
+        {
+            .name = "Spatial3dStaticPropagation",
+            .callback = spatial_3d_propagate_ready,
+            .phase = EcsPostUpdate,
+            .main_thread_only = true,
+        }
+    );
+
     ecs_system(
         {
             .name = "Spatial3dPropagation",
@@ -675,12 +815,13 @@ void sispatial_import(const sispatial_props_t *props) {
                     ecs_inout(GlobalPosition3d),
                     ecs_inout(GlobalOrientation3d),
                     ecs_inout(GlobalScale3d),
-                    ecs_not(Static),
+                    ecs_not(Static3dReady),
                 },
                 .order_by = ecs_order_by_depth(ChildOf),
             },
             .callback = spatial_3d_propagate,
             .phase = EcsPostUpdate,
+            .after = { static_3d_system },
         }
     );
 

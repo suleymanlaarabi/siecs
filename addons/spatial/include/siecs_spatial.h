@@ -97,7 +97,10 @@ SIECS_API Direction3d sispatial_forward_3d(const GlobalOrientation3d *orientatio
 }
 #endif
 
+/* A 3D Static tag covers its descendants; a moving ancestor outside the subtree disables caching. */
 ECS_TAG_DECLARE(Static);
+/* Internal eligibility marker: a static 3D transform has no moving transform ancestor. */
+ECS_TAG_DECLARE(Static3dReady);
 ECS_MODULE_DECLARE(sispatial, { uint8_t _unused; });
 
 #endif

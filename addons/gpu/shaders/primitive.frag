@@ -24,7 +24,8 @@ layout(std140, set = 3, binding = 0) uniform Lighting
 
 float shadow_factor(vec3 normal, float camera_distance)
 {
-    if (lighting.fog_parameters.w < 0.5) {
+    if (lighting.fog_parameters.w < 0.5 ||
+        camera_distance >= lighting.shadow_parameters.x) {
         return 1.0;
     }
 

@@ -296,6 +296,14 @@ static void *copy_static_data(const void *source, Uint32 count, Uint32 stride) {
 void sigpu_static_upload(const sigpu_static_upload_t *upload) {
     Uint32 transfer_size = 0;
     for (Uint32 primitive = 0; primitive < SIGPU_PRIMITIVE_COUNT; primitive++) {
+        if (g_sigpu.static_axis_buffer[primitive]) {
+            SDL_ReleaseGPUBuffer(g_sigpu.device, g_sigpu.static_axis_buffer[primitive]);
+            g_sigpu.static_axis_buffer[primitive] = NULL;
+        }
+        if (g_sigpu.static_rotated_buffer[primitive]) {
+            SDL_ReleaseGPUBuffer(g_sigpu.device, g_sigpu.static_rotated_buffer[primitive]);
+            g_sigpu.static_rotated_buffer[primitive] = NULL;
+        }
         transfer_size += upload->axis_count[primitive] * sizeof(sigpu_axis_instance_t);
         transfer_size += upload->rotated_count[primitive] * sizeof(sigpu_rotated_instance_t);
         if (upload->axis_count[primitive])
@@ -354,6 +362,7 @@ void sigpu_static_upload(const sigpu_static_upload_t *upload) {
         SDL_SubmitGPUCommandBuffer(command_buffer);
         SDL_ReleaseGPUTransferBuffer(g_sigpu.device, transfer);
     }
+    SDL_free(g_sigpu.static_chunks);
     g_sigpu.static_chunks =
         copy_static_data(upload->chunks, upload->chunk_count, sizeof(sigpu_static_chunk_t));
     g_sigpu.static_chunk_count = upload->chunk_count;

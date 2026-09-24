@@ -109,6 +109,8 @@ static void bind_and_draw(
         mesh->vertex_offset,
         0
     );
+    g_sigpu.draw_calls++;
+    g_sigpu.drawn_instances += count;
 }
 
 static void draw_shared_batches(
@@ -571,9 +573,12 @@ static void draw_composite_pass(void) {
 }
 
 void sigpu_passes_draw(void) {
+    Uint64 start = g_sigpu.profile_enabled ? SDL_GetTicksNS() : 0;
     upload_instances();
     draw_shadow_pass();
     draw_main_pass();
     draw_bloom_passes();
     draw_composite_pass();
+    if (g_sigpu.profile_enabled)
+        g_sigpu.encode_ns += SDL_GetTicksNS() - start;
 }

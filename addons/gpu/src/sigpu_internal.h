@@ -239,6 +239,14 @@ typedef struct {
     Uint32 rotated_capacity;
     Uint32 static_chunk_count;
     Uint32 static_shadow_visible_count;
+    Uint32 static_camera_visible_count;
+    Uint32 draw_calls;
+    Uint32 drawn_instances;
+    Uint64 frame_start_ns;
+    Uint64 acquire_ns;
+    Uint64 collect_ns;
+    Uint64 cull_ns;
+    Uint64 encode_ns;
 
     Uint32 frame_width;
     Uint32 frame_height;
@@ -269,6 +277,7 @@ typedef struct {
     bool shadows_enabled;
     bool bloom_enabled;
     bool any_bloom;
+    bool profile_enabled;
 
     uint8_t linear_lut[256];
     sigpu_mat4_t view;

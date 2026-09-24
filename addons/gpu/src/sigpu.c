@@ -1,6 +1,47 @@
 #include "sigpu_internal.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 sigpu_state_t g_sigpu;
+
+static double profile_frames_ms[120];
+static Uint32 profile_count;
+static Uint32 profile_warmup;
+static double profile_acquire_ms, profile_collect_ms, profile_cull_ms, profile_encode_ms;
+static Uint32 profile_draw_calls, profile_drawn_instances;
+
+static int compare_double(const void *left, const void *right) {
+    double a = *(const double *)left, b = *(const double *)right;
+    return (a > b) - (a < b);
+}
+
+static void profile_frame(void) {
+    if (!g_sigpu.profile_enabled || profile_warmup++ < 60)
+        return;
+    profile_frames_ms[profile_count++] = (SDL_GetTicksNS() - g_sigpu.frame_start_ns) / 1000000.0;
+    profile_acquire_ms += g_sigpu.acquire_ns / 1000000.0;
+    profile_collect_ms += g_sigpu.collect_ns / 1000000.0;
+    profile_cull_ms += g_sigpu.cull_ns / 1000000.0;
+    profile_encode_ms += g_sigpu.encode_ns / 1000000.0;
+    profile_draw_calls += g_sigpu.draw_calls;
+    profile_drawn_instances += g_sigpu.drawn_instances;
+    if (profile_count != SDL_arraysize(profile_frames_ms))
+        return;
+    qsort(profile_frames_ms, profile_count, sizeof(profile_frames_ms[0]), compare_double);
+    fprintf(stderr,
+            "sigpu %ux%u frame p50=%.2f p95=%.2f ms acquire=%.2f collect=%.2f cull=%.2f encode=%.2f draw=%u instances=%u chunks=%u/%u\n",
+            g_sigpu.frame_width, g_sigpu.frame_height,
+            profile_frames_ms[profile_count / 2], profile_frames_ms[(profile_count * 95) / 100],
+            profile_acquire_ms / profile_count, profile_collect_ms / profile_count,
+            profile_cull_ms / profile_count, profile_encode_ms / profile_count,
+            profile_draw_calls / profile_count, profile_drawn_instances / profile_count,
+            g_sigpu.static_camera_visible_count,
+            g_sigpu.static_chunk_count);
+    profile_count = 0;
+    profile_acquire_ms = profile_collect_ms = profile_cull_ms = profile_encode_ms = 0.0;
+    profile_draw_calls = profile_drawn_instances = 0;
+}
 
 static SDL_FColor linear_color(sigpu_color_t color) {
     return (SDL_FColor){
@@ -12,6 +53,9 @@ static SDL_FColor linear_color(sigpu_color_t color) {
 }
 
 void sigpu_init(const char *title, int width, int height, int samples) {
+    const char *profile = getenv("SIGPU_PROFILE");
+    g_sigpu.profile_enabled = profile && profile[0] && profile[0] != '0';
+    profile_count = profile_warmup = 0;
     for (int index = 0; index < 256; index++) {
         float srgb = index / 255.0f;
         float linear = srgb <= 0.04045f ? srgb / 12.92f : powf((srgb + 0.055f) / 1.055f, 2.4f);
@@ -102,6 +146,9 @@ void sigpu_bloom(bool enabled, float threshold, float intensity) {
 void sigpu_msaa(int samples) { sigpu_sample_count_set(samples); }
 
 bool sigpu_begin_frame(void) {
+    g_sigpu.frame_start_ns = g_sigpu.profile_enabled ? SDL_GetTicksNS() : 0;
+    g_sigpu.acquire_ns = g_sigpu.collect_ns = g_sigpu.cull_ns = g_sigpu.encode_ns = 0;
+    g_sigpu.draw_calls = g_sigpu.drawn_instances = 0;
     g_sigpu.shared_axis_count = 0;
     g_sigpu.shared_rotated_count = 0;
     g_sigpu.owned_axis_count = 0;
@@ -113,6 +160,7 @@ bool sigpu_begin_frame(void) {
     g_sigpu.any_bloom = false;
     g_sigpu.command_buffer = SDL_AcquireGPUCommandBuffer(g_sigpu.device);
     g_sigpu.swapchain = NULL;
+    Uint64 acquire_start = g_sigpu.profile_enabled ? SDL_GetTicksNS() : 0;
     SDL_WaitAndAcquireGPUSwapchainTexture(
         g_sigpu.command_buffer,
         g_sigpu.window,
@@ -120,6 +168,8 @@ bool sigpu_begin_frame(void) {
         &g_sigpu.frame_width,
         &g_sigpu.frame_height
     );
+    if (g_sigpu.profile_enabled)
+        g_sigpu.acquire_ns = SDL_GetTicksNS() - acquire_start;
     g_sigpu.axis_mapped = SDL_MapGPUTransferBuffer(g_sigpu.device, g_sigpu.axis_transfer, true);
     g_sigpu.rotated_mapped =
         SDL_MapGPUTransferBuffer(g_sigpu.device, g_sigpu.rotated_transfer, true);
@@ -175,6 +225,7 @@ void sigpu_end_frame(void) {
     sigpu_frame_targets_prepare();
     sigpu_passes_draw();
     SDL_SubmitGPUCommandBuffer(g_sigpu.command_buffer);
+    profile_frame();
     g_sigpu.command_buffer = NULL;
     g_sigpu.swapchain = NULL;
 }
@@ -188,4 +239,8 @@ void sigpu_fini(void) {
     SDL_DestroyWindow(g_sigpu.window);
     SDL_DestroyGPUDevice(g_sigpu.device);
     SDL_Quit();
+}
+
+bool sigpu_set_fullscreen(bool enabled) {
+    return SDL_SetWindowFullscreen(g_sigpu.window, enabled);
 }

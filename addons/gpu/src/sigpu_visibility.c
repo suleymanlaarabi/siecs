@@ -145,10 +145,11 @@ bool sigpu_camera_visible(sigpu_vec3_t center, float radius, float aspect) {
         return false;
     }
 
-    float extent_y =
-        fmaxf(position.z, g_sigpu.camera.near_plane) * tanf(g_sigpu.camera.fov * SIGPU_PI / 360.0f);
-    float extent_x = extent_y * aspect;
-    return fabsf(position.x) <= extent_x + radius && fabsf(position.y) <= extent_y + radius;
+    const float slope_y = tanf(g_sigpu.camera.fov * SIGPU_PI / 360.0f);
+    const float slope_x = slope_y * aspect;
+    /* The side-plane normal has length sqrt(1 + slope²), not 1. */
+    return fabsf(position.x) <= position.z * slope_x + radius * sqrtf(1.0f + slope_x * slope_x) &&
+           fabsf(position.y) <= position.z * slope_y + radius * sqrtf(1.0f + slope_y * slope_y);
 }
 
 bool sigpu_shadow_visible(sigpu_vec3_t center, float radius) {
@@ -169,10 +170,12 @@ void sigpu_static_shadow_bounds_extend(void) {
 
 void sigpu_static_cull(float aspect) {
     g_sigpu.static_shadow_visible_count = 0;
+    g_sigpu.static_camera_visible_count = 0;
 
     for (Uint32 index = 0; index < g_sigpu.static_chunk_count; index++) {
         sigpu_static_chunk_t *chunk = &g_sigpu.static_chunks[index];
         chunk->camera_visible = sigpu_camera_visible(chunk->center, chunk->radius, aspect);
+        g_sigpu.static_camera_visible_count += chunk->camera_visible;
         chunk->shadow_visible =
             g_sigpu.shadows_enabled && sigpu_shadow_visible(chunk->center, chunk->radius);
         g_sigpu.static_shadow_visible_count += chunk->shadow_visible;

@@ -32,6 +32,21 @@ static bool static_cache_ready;
 static ecs_system_id_t static_collect_systems[SIGPU_PRIMITIVE_COUNT];
 static ecs_system_id_t static_finish_system;
 
+static void invalidate_static_cache(ecs_observer_event_t *event) {
+    if (!static_cache_ready)
+        return;
+    if (event->event == EcsOnSet && event->component != ecs_id(Position3d) &&
+        event->component != ecs_id(Rotation3d) && event->component != ecs_id(Scale3d) &&
+        event->component != ecs_id(Cuboid) && event->component != ecs_id(Cylinder) &&
+        event->component != ecs_id(Sphere) && event->component != ecs_id(Color) &&
+        event->component != ecs_id(Bloom))
+        return;
+    static_cache_ready = false;
+    for (Uint32 p = 0; p < SIGPU_PRIMITIVE_COUNT; p++)
+        ecs_system_enable(static_collect_systems[p]);
+    ecs_system_enable(static_finish_system);
+}
+
 static sigpu_color_t to_sigpu(Color color) {
     return (sigpu_color_t){ color.r, color.g, color.b, color.a };
 }
@@ -150,11 +165,13 @@ static sigpu_rotated_instance_t make_owned_rotated(
                                        c.a,
                                        bloom };
 }
+
 static bool visible(GlobalPosition3d p, float radius, float aspect) {
     sigpu_vec3_t center = { p.x, p.y, p.z };
     return sigpu_camera_visible(center, radius, aspect) ||
            (g_sigpu.shadows_enabled && sigpu_shadow_visible(center, radius));
 }
+
 static void record_shared(
     sigpu_shared_batch_t **batches,
     Uint32 *count,
@@ -192,6 +209,7 @@ static void record_owned(
     }
     (*batches)[(*count)++] = (sigpu_owned_batch_t){ first, end - first, (uint16_t)mesh };
 }
+
 static const void *
 primitive_field(ecs_iter_t *it, sigpu_primitive_t primitive, uint32_t index, ptrdiff_t stride) {
     switch (primitive) {
@@ -205,6 +223,7 @@ primitive_field(ecs_iter_t *it, sigpu_primitive_t primitive, uint32_t index, ptr
         return NULL;
     }
 }
+
 static void render_shared_primitives(
     ecs_iter_t *it,
     sigpu_primitive_t primitive,
@@ -278,6 +297,7 @@ static void render_shared_primitives(
                                               first_rotated != g_sigpu.shared_rotated_count);
     }
 }
+
 static void render_owned_primitives(
     ecs_iter_t *it,
     sigpu_primitive_t primitive,
@@ -518,7 +538,7 @@ static ecs_system_id_t register_static_cache(ecs_system_id_t camera_system) {
             {.id=shapes[p],.access=EcsIn},
             {.id=ecs_id(Color),.access=EcsIn},
             {.id=ecs_id(Bloom),.access=EcsInOptional},
-            {.id=ecs_id(Static),.access=EcsFilter},
+            {.id=ecs_id(Static3dReady),.access=EcsFilter},
         }},.callback=callbacks[p],.phase=EcsPreRender,.after={previous},.main_thread_only=true};
         previous = static_collect_systems[p] = ecs_system_init(&collect);
     }
@@ -530,6 +550,7 @@ static ecs_system_id_t register_static_cache(ecs_system_id_t camera_system) {
     return static_finish_system = ecs_system_init(&finish);
 }
 static void render_primitives(ecs_iter_t *it, sigpu_primitive_t primitive) {
+    Uint64 start = g_sigpu.profile_enabled ? SDL_GetTicksNS() : 0;
     field_GlobalPosition3d positions = FIELD(GlobalPosition3d, it, 0);
     field_GlobalOrientation3d rotations = FIELD(GlobalOrientation3d, it, 1);
     field_GlobalScale3d scales = FIELD(GlobalScale3d, it, 2);
@@ -560,12 +581,17 @@ static void render_primitives(ecs_iter_t *it, sigpu_primitive_t primitive) {
             blooms,
             aspect
         );
+    if (g_sigpu.profile_enabled)
+        g_sigpu.collect_ns += SDL_GetTicksNS() - start;
 }
 static void render_cuboids(ecs_iter_t *it) { render_primitives(it, SIGPU_PRIMITIVE_CUBE); }
 static void render_cylinders(ecs_iter_t *it) { render_primitives(it, SIGPU_PRIMITIVE_CYLINDER); }
 static void render_spheres(ecs_iter_t *it) { render_primitives(it, SIGPU_PRIMITIVE_SPHERE); }
 static void cull_static_primitives(ecs_iter_t *it) {
+    Uint64 start = g_sigpu.profile_enabled ? SDL_GetTicksNS() : 0;
     sigpu_static_cull((float)g_sigpu.frame_width / g_sigpu.frame_height);
+    if (g_sigpu.profile_enabled)
+        g_sigpu.cull_ns += SDL_GetTicksNS() - start;
 }
 static void register_render_primitives(void) {
     ecs_system_desc_t cull = { .name = "CullStaticPrimitives",
@@ -588,7 +614,7 @@ static void register_render_primitives(void) {
             {.id=shapes[p],.access=EcsIn},
             {.id=ecs_id(Color),.access=EcsIn},
             {.id=ecs_id(Bloom),.access=EcsInOptional},
-            {.id=ecs_id(Static),.access=EcsNot},
+            {.id=ecs_id(Static3dReady),.access=EcsNot},
         }},.callback=callbacks[p],.phase=EcsOnRender,.after={previous},.main_thread_only=true};
         previous = ecs_system_init(&system);
     }
@@ -676,7 +702,7 @@ static void register_shadow_bounds(ecs_system_id_t static_cache_system) {
             {.id=ecs_id(GlobalPosition3d),.access=EcsIn},
             {.id=ecs_id(GlobalScale3d),.access=EcsIn},
             {.id=shapes[p],.access=EcsIn},
-            {.id=ecs_id(Static),.access=EcsNot},
+            {.id=ecs_id(Static3dReady),.access=EcsNot},
         }},.callback=callbacks[p],.phase=EcsPreRender,.after={build_system},.main_thread_only=true};
         build_system = ecs_system_init(&build);
     }
@@ -908,6 +934,41 @@ void sigpu_import(const sigpu_props_t *props) {
     });
     sigpu_interaction_init(camera_system);
     const ecs_system_id_t static_cache_system = register_static_cache(camera_system);
+    ecs_observer(
+        {
+            .on = EcsOnSet,
+            .query = { .components = { ecs_filter(Static3dReady), ecs_in_optional(Abstract) } },
+            .callback = invalidate_static_cache,
+        }
+    );
+    ecs_observer(
+        {
+            .on = EcsOnAdd,
+            .query = { .components = { ecs_filter(Static3dReady), ecs_in_optional(Abstract) } },
+            .callback = invalidate_static_cache,
+        }
+    );
+    ecs_observer(
+        {
+            .on = EcsOnRemove,
+            .query = { .components = { ecs_filter(Static3dReady), ecs_in_optional(Abstract) } },
+            .callback = invalidate_static_cache,
+        }
+    );
+    ecs_observer(
+        {
+            .on = EcsOnRelationSet,
+            .query = { .components = { ecs_filter(Static3dReady), ecs_in_optional(Abstract) } },
+            .callback = invalidate_static_cache,
+        }
+    );
+    ecs_observer(
+        {
+            .on = EcsOnRelationRemove,
+            .query = { .components = { ecs_filter(Static3dReady), ecs_in_optional(Abstract) } },
+            .callback = invalidate_static_cache,
+        }
+    );
     register_shadow_bounds(static_cache_system);
     register_render_primitives();
     ecs_system(
