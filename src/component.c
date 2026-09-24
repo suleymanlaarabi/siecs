@@ -46,7 +46,10 @@ static inline void ecs_dense_relation_remove_source(
     sicore_vec_remove_last(&source->entities);
 
     if (source->entities.size == 0) {
-        ecs_remove_cid(target, target_component + 1);
+        // The reverse index is internal state, not an application mutation. If this
+        // removal is deferred, another source can attach before it is flushed and
+        // the queued removal will delete that new source's index.
+        ecs_remove_cid_now(target, target_component + 1);
     }
 }
 

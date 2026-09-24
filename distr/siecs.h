@@ -4189,6 +4189,12 @@ class system : protected query {
         return *this;
     }
 
+    /** Run a resource-only system without an outer deferred mutation scope. */
+    system &no_defer() {
+        _system.no_defer = true;
+        return *this;
+    }
+
     /** Add a same-phase dependency; capacity is `ECS_SYSTEM_AFTER_CAPACITY`. */
     system &after(ecs_system_id_t dependency) {
         for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY; i++) {
