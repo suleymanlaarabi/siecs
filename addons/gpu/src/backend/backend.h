@@ -1,7 +1,8 @@
 #ifndef SIGPU_INTERNAL_H
 #define SIGPU_INTERNAL_H
 
-#include "sigpu.h"
+#include "backend/api.h"
+#include <siecs.h>
 
 #include <SDL3/SDL.h>
 #include <math.h>
@@ -12,7 +13,7 @@
 #define SIGPU_SHADOW_SIZE 2048
 #define SIGPU_HDR_FORMAT SDL_GPU_TEXTUREFORMAT_R11G11B10_UFLOAT
 #define SIGPU_PI 3.14159265358979323846f
-#define SIGPU_STATIC_CHUNK_SIZE 64.0f
+#define SIGPU_STATIC_CHUNK_SIZE 128.0f
 #define SIGPU_LOD_LOW_MAX_PIXELS 8.0f
 #define SIGPU_LOD_MEDIUM_MAX_PIXELS 32.0f
 #define SIGPU_SHADER(name) name
@@ -128,12 +129,14 @@ typedef struct {
     uint16_t mesh;
 } sigpu_owned_batch_t;
 typedef struct {
-    Uint32 first, count;
+    Uint32 count;
 } sigpu_static_range_t;
 
 typedef struct {
     sigpu_vec3_t center;
     float radius;
+    SDL_GPUBuffer *axis_buffer[SIGPU_PRIMITIVE_COUNT];
+    SDL_GPUBuffer *rotated_buffer[SIGPU_PRIMITIVE_COUNT];
     sigpu_static_range_t axis[SIGPU_PRIMITIVE_COUNT];
     sigpu_static_range_t rotated[SIGPU_PRIMITIVE_COUNT];
     float primitive_radius[SIGPU_PRIMITIVE_COUNT];
@@ -148,8 +151,6 @@ typedef struct {
     Uint32 axis_count[SIGPU_PRIMITIVE_COUNT];
     const sigpu_rotated_instance_t *rotated[SIGPU_PRIMITIVE_COUNT];
     Uint32 rotated_count[SIGPU_PRIMITIVE_COUNT];
-    const sigpu_static_chunk_t *chunks;
-    Uint32 chunk_count;
 } sigpu_static_upload_t;
 
 typedef struct {
@@ -175,14 +176,30 @@ typedef struct {
     float shadow_parameters[4];
 } sigpu_lighting_uniform_t;
 
-typedef struct {
+ECS_RESOURCE_DECLARE(GpuContext, {
     SDL_Window *window;
     SDL_GPUDevice *device;
-    SDL_GPUCommandBuffer *command_buffer;
-    SDL_GPUTexture *swapchain;
     SDL_GPUTextureFormat swapchain_format;
     bool linear_swapchain;
+    SDL_GPUBuffer *vertex_buffer;
+    SDL_GPUBuffer *index_buffer;
+    sigpu_mesh_t meshes[SIGPU_MESH_COUNT];
+    SDL_GPUBuffer *axis_buffer;
+    SDL_GPUBuffer *rotated_buffer;
+    SDL_GPUTransferBuffer *axis_transfer;
+    SDL_GPUTransferBuffer *rotated_transfer;
+    Uint32 axis_capacity;
+    Uint32 rotated_capacity;
+});
 
+ECS_RESOURCE_DECLARE(FrameContext, {
+    SDL_GPUCommandBuffer *command_buffer;
+    SDL_GPUTexture *swapchain;
+    Uint32 frame_width;
+    Uint32 frame_height;
+});
+
+ECS_RESOURCE_DECLARE(GpuPipelines, {
     SDL_GPUGraphicsPipeline *axis_pipeline;
     SDL_GPUGraphicsPipeline *rotated_pipeline;
     SDL_GPUGraphicsPipeline *shared_axis_pipeline;
@@ -194,17 +211,9 @@ typedef struct {
     SDL_GPUGraphicsPipeline *bloom_down_pipeline;
     SDL_GPUGraphicsPipeline *bloom_blur_pipeline;
     SDL_GPUGraphicsPipeline *bloom_composite_pipeline;
+});
 
-    SDL_GPUBuffer *vertex_buffer;
-    SDL_GPUBuffer *index_buffer;
-    sigpu_mesh_t meshes[SIGPU_MESH_COUNT];
-    SDL_GPUBuffer *axis_buffer;
-    SDL_GPUBuffer *rotated_buffer;
-    SDL_GPUBuffer *static_axis_buffer[SIGPU_PRIMITIVE_COUNT];
-    SDL_GPUBuffer *static_rotated_buffer[SIGPU_PRIMITIVE_COUNT];
-    SDL_GPUTransferBuffer *axis_transfer;
-    SDL_GPUTransferBuffer *rotated_transfer;
-
+ECS_RESOURCE_DECLARE(GpuTargets, {
     SDL_GPUTexture *depth_texture;
     SDL_GPUTexture *msaa_texture;
     SDL_GPUTexture *bloom_msaa_texture;
@@ -217,14 +226,23 @@ typedef struct {
     SDL_GPUTexture *shadow_texture;
     SDL_GPUSampler *shadow_sampler;
     SDL_GPUSampler *bloom_sampler;
+    Uint32 target_width;
+    Uint32 target_height;
+    Uint32 bloom_half_width;
+    Uint32 bloom_half_height;
+    Uint32 bloom_quarter_width;
+    Uint32 bloom_quarter_height;
+    SDL_GPUSampleCount sample_count;
+    SDL_GPUTextureFormat depth_format;
+});
 
+ECS_RESOURCE_DECLARE(RenderQueue, {
     void *axis_mapped;
     void *rotated_mapped;
     sigpu_shared_batch_t *shared_axis_batches;
     sigpu_shared_batch_t *shared_rotated_batches;
     sigpu_owned_batch_t *owned_axis_batches;
     sigpu_owned_batch_t *owned_rotated_batches;
-    sigpu_static_chunk_t *static_chunks;
     Uint32 shared_axis_count;
     Uint32 shared_rotated_count;
     Uint32 owned_axis_count;
@@ -235,11 +253,31 @@ typedef struct {
     Uint32 shared_rotated_batch_capacity;
     Uint32 owned_axis_batch_count, owned_rotated_batch_count;
     Uint32 owned_axis_batch_capacity, owned_rotated_batch_capacity;
-    Uint32 axis_capacity;
-    Uint32 rotated_capacity;
+    bool any_bloom;
+});
+
+typedef struct {
+    ecs_entity_t entity;
+    int32_t cell_x, cell_y, cell_z;
+} sigpu_chunk_info_t;
+typedef struct {
+    ecs_entity_t entity;
+    bool prototype;
+} sigpu_dirty_root_t;
+ECS_RESOURCE_DECLARE(StaticRenderCache, {
+    sigpu_static_chunk_t *static_chunks;
+    sigpu_chunk_info_t *chunk_info;
+    Uint32 static_chunk_capacity;
+    ecs_entity_t *dirty_entities;
+    Uint32 dirty_count, dirty_capacity;
+    sigpu_dirty_root_t *dirty_roots;
+    Uint32 dirty_root_count, dirty_root_capacity;
     Uint32 static_chunk_count;
     Uint32 static_shadow_visible_count;
     Uint32 static_camera_visible_count;
+});
+
+ECS_RESOURCE_DECLARE(RenderStats, {
     Uint32 draw_calls;
     Uint32 drawn_instances;
     Uint64 frame_start_ns;
@@ -247,19 +285,33 @@ typedef struct {
     Uint64 collect_ns;
     Uint64 cull_ns;
     Uint64 encode_ns;
+    bool profile_enabled;
+});
 
-    Uint32 frame_width;
-    Uint32 frame_height;
-    Uint32 target_width;
-    Uint32 target_height;
-    Uint32 bloom_half_width;
-    Uint32 bloom_half_height;
-    Uint32 bloom_quarter_width;
-    Uint32 bloom_quarter_height;
-    SDL_GPUSampleCount sample_count;
-    SDL_GPUTextureFormat depth_format;
-
+ECS_RESOURCE_DECLARE(RenderView, {
     sigpu_camera_t camera;
+    sigpu_mat4_t view;
+    sigpu_mat4_t projection;
+    sigpu_mat4_t view_projection;
+    float frustum_planes[6][4];
+    float lod_scale;
+    float near_plane;
+    float far_plane;
+    sigpu_mat4_t light_view;
+    sigpu_mat4_t light_view_projection;
+    float light_min_x;
+    float light_max_x;
+    float light_min_y;
+    float light_max_y;
+    float light_near;
+    float light_far;
+    sigpu_vec3_t shadow_center;
+    sigpu_vec3_t shadow_up;
+    float shadow_minimum_z;
+    float shadow_maximum_z;
+});
+
+ECS_RESOURCE_DECLARE(RenderSettings, {
     sigpu_vec3_t sun_direction;
     SDL_FColor sun_color;
     SDL_FColor ambient_color;
@@ -276,27 +328,18 @@ typedef struct {
     bool fog_enabled;
     bool shadows_enabled;
     bool bloom_enabled;
-    bool any_bloom;
-    bool profile_enabled;
-
     uint8_t linear_lut[256];
-    sigpu_mat4_t view;
-    sigpu_mat4_t view_projection;
-    sigpu_mat4_t light_view;
-    sigpu_mat4_t light_view_projection;
-    float light_min_x;
-    float light_max_x;
-    float light_min_y;
-    float light_max_y;
-    float light_near;
-    float light_far;
-    sigpu_vec3_t shadow_center;
-    sigpu_vec3_t shadow_up;
-    float shadow_minimum_z;
-    float shadow_maximum_z;
-} sigpu_state_t;
+});
 
-extern sigpu_state_t g_sigpu;
+#define SIGPU_GPUCONTEXT ecs_get_resource(GpuContext)
+#define SIGPU_FRAMECONTEXT ecs_get_resource(FrameContext)
+#define SIGPU_GPUPIPELINES ecs_get_resource(GpuPipelines)
+#define SIGPU_GPUTARGETS ecs_get_resource(GpuTargets)
+#define SIGPU_RENDERQUEUE ecs_get_resource(RenderQueue)
+#define SIGPU_STATICRENDERCACHE ecs_get_resource(StaticRenderCache)
+#define SIGPU_RENDERSTATS ecs_get_resource(RenderStats)
+#define SIGPU_RENDERVIEW ecs_get_resource(RenderView)
+#define SIGPU_RENDERSETTINGS ecs_get_resource(RenderSettings)
 
 static inline sigpu_vec3_t sigpu_vec3_add(sigpu_vec3_t a, sigpu_vec3_t b) {
     return (sigpu_vec3_t){ a.x + b.x, a.y + b.y, a.z + b.z };
@@ -334,13 +377,7 @@ static inline sigpu_vec3_t sigpu_mat4_transform_point(sigpu_mat4_t matrix, sigpu
     };
 }
 
-static inline Uint32 sigpu_primitive_lod(sigpu_vec3_t center, float radius) {
-    sigpu_vec3_t view = sigpu_mat4_transform_point(g_sigpu.view, center);
-    float depth = fmaxf(view.z, g_sigpu.camera.near_plane);
-    float pixels = radius / depth * g_sigpu.frame_height /
-                   (2.0f * tanf(g_sigpu.camera.fov * SIGPU_PI / 360.0f));
-    return pixels < SIGPU_LOD_LOW_MAX_PIXELS ? 0 : pixels < SIGPU_LOD_MEDIUM_MAX_PIXELS ? 1 : 2;
-}
+Uint32 sigpu_primitive_lod(sigpu_vec3_t center, float radius);
 
 static inline float sigpu_cube_radius(float width, float height, float depth) {
     return 0.5f * sqrtf(width * width + height * height + depth * depth);
@@ -363,17 +400,29 @@ sigpu_mat4_t sigpu_mat4_orthographic_lh(
 );
 sigpu_mat4_t sigpu_mat4_look_at_lh(sigpu_vec3_t eye, sigpu_vec3_t target, sigpu_vec3_t up);
 
+SDL_GPUShader *sigpu_shader_load(
+    const char *path,
+    SDL_GPUShaderStage stage,
+    Uint32 sampler_count,
+    Uint32 uniform_count
+);
 void sigpu_pipelines_create(void);
 void sigpu_pipelines_destroy(void);
 void sigpu_main_pipelines_recreate(void);
 
+void sigpu_meshes_create(void);
+SDL_GPUSampleCount sigpu_supported_sample_count(int samples);
+void sigpu_frame_targets_release(void);
 void sigpu_resources_create(int samples);
 void sigpu_resources_destroy(void);
+void sigpu_instances_reserve(Uint32 additional);
 void sigpu_axis_instances_grow(void);
 void sigpu_rotated_instances_grow(void);
-void sigpu_static_upload(const sigpu_static_upload_t *upload);
+void sigpu_static_chunk_upload(sigpu_static_chunk_t *chunk, const sigpu_static_upload_t *upload);
+void sigpu_static_chunks_release(void);
 void sigpu_static_shadow_bounds_extend(void);
 void sigpu_static_cull(float aspect);
+void sigpu_static_shadow_cull(void);
 void sigpu_frame_targets_prepare(void);
 void sigpu_sample_count_set(int samples);
 
@@ -383,7 +432,11 @@ void sigpu_shadow_bounds_extend(sigpu_vec3_t center, float radius);
 void sigpu_shadow_bounds_end(void);
 bool sigpu_camera_visible(sigpu_vec3_t center, float radius, float aspect);
 bool sigpu_shadow_visible(sigpu_vec3_t center, float radius);
-void sigpu_passes_draw(void);
+void sigpu_upload_instances(void);
+void sigpu_shadow_pass(void);
+void sigpu_forward_pass(void);
+void sigpu_bloom_pass(void);
+void sigpu_composite_pass(void);
 
 #ifdef __cplusplus
 }

@@ -828,3 +828,36 @@ void query_fields_refresh_after_table_growth(void) {
     ecs_query_fini(query);
     ecs_fini();
 }
+
+void query_inherited_fields_refresh_after_base_table_growth(void) {
+    query_test_world();
+
+    ecs_entity_t base = ecs_new();
+    ecs_set(base, QueryPosition, { 42 });
+    ecs_add(base, Abstract);
+    ecs_entity_t child = ecs_new();
+    ecs_is_a(child, base);
+
+    ecs_query_id_t query = ecs_query({ .components = { ecs_in(QueryPosition) } });
+    for (int32_t i = 0; i < 64; i++) {
+        ecs_entity_t other = ecs_new();
+        ecs_set(other, QueryPosition, { i });
+        ecs_add(other, Abstract);
+    }
+
+    uint32_t found = 0;
+    for (ecs_iter_t it = ecs_query_iter(query); ecs_iter_next(&it);) {
+        for (uint32_t i = 0; i < it.count; i++) {
+            if (it.entities[i] != child)
+                continue;
+            test_int(EcsFieldShared, ecs_field_kind(&it, 0));
+            test_assert(ecs_field(&it, 0) == ecs_get(base, QueryPosition));
+            test_int(42, ((QueryPosition *)ecs_field(&it, 0))->value);
+            found++;
+        }
+    }
+    test_uint(1, found);
+
+    ecs_query_fini(query);
+    ecs_fini();
+}

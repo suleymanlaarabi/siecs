@@ -390,14 +390,27 @@ static bool ecs_query_table_inherits_from(const ecs_table_t *table, const ecs_ta
 }
 
 void ecs_query_index_refresh_table_fields(const ecs_table_t *table) {
+    uint16_t table_id = (uint16_t)(table - table_index.tables);
+    bool has_inheritors = false;
+    for (uint32_t i = 0; i < table->entity_count; i++) {
+        if (ecs_table_index_pair_tables(ecs_rid(IsA), table->entities[i]).count) {
+            has_inheritors = true;
+            break;
+        }
+    }
     const ecs_query_id_t *ids = query_index.active_ids.data;
     for (uint32_t i = 0; i < query_index.active_ids.size; i++) {
         ecs_query_cache_t *cache = ecs_query_cache(ids[i]);
         if (!cache->query->field_count)
             continue;
+        uint16_t direct = ecs_query_table_position(cache, table_id);
+        if (direct != UINT16_MAX)
+            ecs_query_bind(cache->query, table, ecs_query_table_at(cache, direct));
+        if (!has_inheritors)
+            continue;
         for (uint16_t at = 0; at < cache->table_count; at++) {
             const ecs_table_t *entry_table = ecs_get_table(ecs_query_table_id(cache, at));
-            if (entry_table == table || ecs_query_table_inherits_from(entry_table, table))
+            if (entry_table != table && ecs_query_table_inherits_from(entry_table, table))
                 ecs_query_bind(cache->query, entry_table, ecs_query_table_at(cache, at));
         }
     }

@@ -1,7 +1,6 @@
 #include "interaction.h"
 #include "../input/input.h"
-#include "../rendering.h"
-#include "../sigpu.h"
+#include "backend/api.h"
 #include "picking.h"
 #include <float.h>
 #include <math.h>

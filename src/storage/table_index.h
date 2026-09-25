@@ -29,7 +29,7 @@ typedef struct {
     ecs_table_t *tables;
     ecs_type_slot_t *slots;
     uint16_t table_count;
-    uint16_t table_capacity;
+    uint32_t table_capacity;
     uint8_t slot_shift; // slot_count = 1 << slot_shift
     ecs_pair_table_slot_t *pair_slots;
     uint32_t pair_slot_count;

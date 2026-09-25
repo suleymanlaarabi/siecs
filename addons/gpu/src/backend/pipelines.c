@@ -1,43 +1,7 @@
-#include "sigpu_internal.h"
-#include "sigpu_shaders.generated.h"
+#include "backend/backend.h"
 
 #include <stddef.h>
 #include <stdlib.h>
-
-static SDL_GPUShader *load_shader(
-    const char *path,
-    SDL_GPUShaderStage stage,
-    Uint32 sampler_count,
-    Uint32 uniform_count
-) {
-    const sigpu_embedded_shader_t *embedded = sigpu_embedded_shader_find(path);
-    if (!embedded) {
-        SDL_LogCritical(
-            SDL_LOG_CATEGORY_APPLICATION,
-            "sigpu: embedded shader '%s' is missing; run tools/embed_shaders.sh",
-            path
-        );
-        abort();
-    }
-    SDL_GPUShaderCreateInfo info = { .code_size = embedded->size,
-                                     .code = embedded->code,
-                                     .entrypoint = "main",
-                                     .format = SDL_GPU_SHADERFORMAT_SPIRV,
-                                     .stage = stage,
-                                     .num_samplers = sampler_count,
-                                     .num_uniform_buffers = uniform_count };
-    SDL_GPUShader *shader = SDL_CreateGPUShader(g_sigpu.device, &info);
-    if (!shader) {
-        SDL_LogCritical(
-            SDL_LOG_CATEGORY_APPLICATION,
-            "sigpu: unable to create shader '%s': %s",
-            path,
-            SDL_GetError()
-        );
-        abort();
-    }
-    return shader;
-}
 
 static SDL_GPUGraphicsPipeline *create_main_pipeline(bool rotated, bool shared) {
     const char *vertex_path = shared ? (rotated ? SIGPU_SHADER("primitive_rotated_shared.vert.spv")
@@ -45,9 +9,9 @@ static SDL_GPUGraphicsPipeline *create_main_pipeline(bool rotated, bool shared) 
                                      : (rotated ? SIGPU_SHADER("primitive_rotated.vert.spv")
                                                 : SIGPU_SHADER("primitive.vert.spv"));
     SDL_GPUShader *vertex_shader =
-        load_shader(vertex_path, SDL_GPU_SHADERSTAGE_VERTEX, 0, shared ? 2 : 1);
+        sigpu_shader_load(vertex_path, SDL_GPU_SHADERSTAGE_VERTEX, 0, shared ? 2 : 1);
     SDL_GPUShader *fragment_shader =
-        load_shader(SIGPU_SHADER("primitive.frag.spv"), SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+        sigpu_shader_load(SIGPU_SHADER("primitive.frag.spv"), SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
     SDL_GPUVertexBufferDescription buffers[2] = {
         {
             .slot = 0,
@@ -135,7 +99,7 @@ static SDL_GPUGraphicsPipeline *create_main_pipeline(bool rotated, bool shared) 
             .enable_depth_clip = true,
         },
         .multisample_state = {
-            .sample_count = g_sigpu.sample_count,
+            .sample_count = SIGPU_GPUTARGETS->sample_count,
         },
         .depth_stencil_state = {
             .compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL,
@@ -145,13 +109,14 @@ static SDL_GPUGraphicsPipeline *create_main_pipeline(bool rotated, bool shared) 
         .target_info = {
             .color_target_descriptions = color_targets,
             .num_color_targets = 2,
-            .depth_stencil_format = g_sigpu.depth_format,
+            .depth_stencil_format = SIGPU_GPUTARGETS->depth_format,
             .has_depth_stencil_target = true,
         },
     };
-    SDL_GPUGraphicsPipeline *pipeline = SDL_CreateGPUGraphicsPipeline(g_sigpu.device, &info);
-    SDL_ReleaseGPUShader(g_sigpu.device, vertex_shader);
-    SDL_ReleaseGPUShader(g_sigpu.device, fragment_shader);
+    SDL_GPUGraphicsPipeline *pipeline =
+        SDL_CreateGPUGraphicsPipeline(SIGPU_GPUCONTEXT->device, &info);
+    SDL_ReleaseGPUShader(SIGPU_GPUCONTEXT->device, vertex_shader);
+    SDL_ReleaseGPUShader(SIGPU_GPUCONTEXT->device, fragment_shader);
     return pipeline;
 }
 
@@ -161,9 +126,9 @@ static SDL_GPUGraphicsPipeline *create_shadow_pipeline(bool rotated, bool shared
                                      : (rotated ? SIGPU_SHADER("shadow_rotated.vert.spv")
                                                 : SIGPU_SHADER("shadow.vert.spv"));
     SDL_GPUShader *vertex_shader =
-        load_shader(vertex_path, SDL_GPU_SHADERSTAGE_VERTEX, 0, shared ? 2 : 1);
+        sigpu_shader_load(vertex_path, SDL_GPU_SHADERSTAGE_VERTEX, 0, shared ? 2 : 1);
     SDL_GPUShader *fragment_shader =
-        load_shader(SIGPU_SHADER("shadow.frag.spv"), SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0);
+        sigpu_shader_load(SIGPU_SHADER("shadow.frag.spv"), SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 0);
     SDL_GPUVertexBufferDescription buffers[2] = {
         {
             .slot = 0,
@@ -239,29 +204,39 @@ static SDL_GPUGraphicsPipeline *create_shadow_pipeline(bool rotated, bool shared
             .has_depth_stencil_target = true,
         },
     };
-    SDL_GPUGraphicsPipeline *pipeline = SDL_CreateGPUGraphicsPipeline(g_sigpu.device, &info);
-    SDL_ReleaseGPUShader(g_sigpu.device, vertex_shader);
-    SDL_ReleaseGPUShader(g_sigpu.device, fragment_shader);
+    SDL_GPUGraphicsPipeline *pipeline =
+        SDL_CreateGPUGraphicsPipeline(SIGPU_GPUCONTEXT->device, &info);
+    SDL_ReleaseGPUShader(SIGPU_GPUCONTEXT->device, vertex_shader);
+    SDL_ReleaseGPUShader(SIGPU_GPUCONTEXT->device, fragment_shader);
     return pipeline;
 }
 
 static void create_main_pipelines(void) {
-    if (g_sigpu.axis_pipeline) {
-        SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.axis_pipeline);
-        SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.rotated_pipeline);
-        SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.shared_axis_pipeline);
-        SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.shared_rotated_pipeline);
+    if (SIGPU_GPUPIPELINES->axis_pipeline) {
+        SDL_ReleaseGPUGraphicsPipeline(SIGPU_GPUCONTEXT->device, SIGPU_GPUPIPELINES->axis_pipeline);
+        SDL_ReleaseGPUGraphicsPipeline(
+            SIGPU_GPUCONTEXT->device,
+            SIGPU_GPUPIPELINES->rotated_pipeline
+        );
+        SDL_ReleaseGPUGraphicsPipeline(
+            SIGPU_GPUCONTEXT->device,
+            SIGPU_GPUPIPELINES->shared_axis_pipeline
+        );
+        SDL_ReleaseGPUGraphicsPipeline(
+            SIGPU_GPUCONTEXT->device,
+            SIGPU_GPUPIPELINES->shared_rotated_pipeline
+        );
     }
 
-    g_sigpu.axis_pipeline = create_main_pipeline(false, false);
-    g_sigpu.rotated_pipeline = create_main_pipeline(true, false);
-    g_sigpu.shared_axis_pipeline = create_main_pipeline(false, true);
-    g_sigpu.shared_rotated_pipeline = create_main_pipeline(true, true);
+    SIGPU_GPUPIPELINES->axis_pipeline = create_main_pipeline(false, false);
+    SIGPU_GPUPIPELINES->rotated_pipeline = create_main_pipeline(true, false);
+    SIGPU_GPUPIPELINES->shared_axis_pipeline = create_main_pipeline(false, true);
+    SIGPU_GPUPIPELINES->shared_rotated_pipeline = create_main_pipeline(true, true);
 }
 
 static void create_shadow_resources(void) {
-    g_sigpu.shadow_texture = SDL_CreateGPUTexture(
-        g_sigpu.device,
+    SIGPU_GPUTARGETS->shadow_texture = SDL_CreateGPUTexture(
+        SIGPU_GPUCONTEXT->device,
         &(SDL_GPUTextureCreateInfo){
             .type = SDL_GPU_TEXTURETYPE_2D,
             .format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
@@ -273,8 +248,8 @@ static void create_shadow_resources(void) {
             .sample_count = SDL_GPU_SAMPLECOUNT_1,
         }
     );
-    g_sigpu.shadow_sampler = SDL_CreateGPUSampler(
-        g_sigpu.device,
+    SIGPU_GPUTARGETS->shadow_sampler = SDL_CreateGPUSampler(
+        SIGPU_GPUCONTEXT->device,
         &(SDL_GPUSamplerCreateInfo){
             .min_filter = SDL_GPU_FILTER_LINEAR,
             .mag_filter = SDL_GPU_FILTER_LINEAR,
@@ -286,10 +261,10 @@ static void create_shadow_resources(void) {
             .enable_compare = true,
         }
     );
-    g_sigpu.axis_shadow_pipeline = create_shadow_pipeline(false, false);
-    g_sigpu.rotated_shadow_pipeline = create_shadow_pipeline(true, false);
-    g_sigpu.shared_axis_shadow_pipeline = create_shadow_pipeline(false, true);
-    g_sigpu.shared_rotated_shadow_pipeline = create_shadow_pipeline(true, true);
+    SIGPU_GPUPIPELINES->axis_shadow_pipeline = create_shadow_pipeline(false, false);
+    SIGPU_GPUPIPELINES->rotated_shadow_pipeline = create_shadow_pipeline(true, false);
+    SIGPU_GPUPIPELINES->shared_axis_shadow_pipeline = create_shadow_pipeline(false, true);
+    SIGPU_GPUPIPELINES->shared_rotated_shadow_pipeline = create_shadow_pipeline(true, true);
 }
 
 static SDL_GPUGraphicsPipeline *create_fullscreen_pipeline(
@@ -298,9 +273,9 @@ static SDL_GPUGraphicsPipeline *create_fullscreen_pipeline(
     SDL_GPUTextureFormat format
 ) {
     SDL_GPUShader *vertex_shader =
-        load_shader(SIGPU_SHADER("fullscreen.vert.spv"), SDL_GPU_SHADERSTAGE_VERTEX, 0, 0);
+        sigpu_shader_load(SIGPU_SHADER("fullscreen.vert.spv"), SDL_GPU_SHADERSTAGE_VERTEX, 0, 0);
     SDL_GPUShader *fragment_shader =
-        load_shader(fragment_path, SDL_GPU_SHADERSTAGE_FRAGMENT, sampler_count, 1);
+        sigpu_shader_load(fragment_path, SDL_GPU_SHADERSTAGE_FRAGMENT, sampler_count, 1);
     SDL_GPUColorTargetDescription color_target = { .format = format };
     SDL_GPUGraphicsPipelineCreateInfo info = {
         .vertex_shader = vertex_shader,
@@ -316,15 +291,16 @@ static SDL_GPUGraphicsPipeline *create_fullscreen_pipeline(
             .num_color_targets = 1,
         },
     };
-    SDL_GPUGraphicsPipeline *pipeline = SDL_CreateGPUGraphicsPipeline(g_sigpu.device, &info);
-    SDL_ReleaseGPUShader(g_sigpu.device, vertex_shader);
-    SDL_ReleaseGPUShader(g_sigpu.device, fragment_shader);
+    SDL_GPUGraphicsPipeline *pipeline =
+        SDL_CreateGPUGraphicsPipeline(SIGPU_GPUCONTEXT->device, &info);
+    SDL_ReleaseGPUShader(SIGPU_GPUCONTEXT->device, vertex_shader);
+    SDL_ReleaseGPUShader(SIGPU_GPUCONTEXT->device, fragment_shader);
     return pipeline;
 }
 
 static void create_bloom_resources(void) {
-    g_sigpu.bloom_sampler = SDL_CreateGPUSampler(
-        g_sigpu.device,
+    SIGPU_GPUTARGETS->bloom_sampler = SDL_CreateGPUSampler(
+        SIGPU_GPUCONTEXT->device,
         &(SDL_GPUSamplerCreateInfo){
             .min_filter = SDL_GPU_FILTER_LINEAR,
             .mag_filter = SDL_GPU_FILTER_LINEAR,
@@ -334,14 +310,14 @@ static void create_bloom_resources(void) {
             .address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
         }
     );
-    g_sigpu.bloom_down_pipeline =
+    SIGPU_GPUPIPELINES->bloom_down_pipeline =
         create_fullscreen_pipeline(SIGPU_SHADER("bloom_down.frag.spv"), 1, SIGPU_HDR_FORMAT);
-    g_sigpu.bloom_blur_pipeline =
+    SIGPU_GPUPIPELINES->bloom_blur_pipeline =
         create_fullscreen_pipeline(SIGPU_SHADER("bloom_blur.frag.spv"), 1, SIGPU_HDR_FORMAT);
-    g_sigpu.bloom_composite_pipeline = create_fullscreen_pipeline(
+    SIGPU_GPUPIPELINES->bloom_composite_pipeline = create_fullscreen_pipeline(
         SIGPU_SHADER("bloom_composite.frag.spv"),
         3,
-        g_sigpu.swapchain_format
+        SIGPU_GPUCONTEXT->swapchain_format
     );
 }
 
@@ -354,18 +330,45 @@ void sigpu_pipelines_create(void) {
 void sigpu_main_pipelines_recreate(void) { create_main_pipelines(); }
 
 void sigpu_pipelines_destroy(void) {
-    SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.axis_pipeline);
-    SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.rotated_pipeline);
-    SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.shared_axis_pipeline);
-    SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.shared_rotated_pipeline);
-    SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.axis_shadow_pipeline);
-    SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.rotated_shadow_pipeline);
-    SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.shared_axis_shadow_pipeline);
-    SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.shared_rotated_shadow_pipeline);
-    SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.bloom_down_pipeline);
-    SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.bloom_blur_pipeline);
-    SDL_ReleaseGPUGraphicsPipeline(g_sigpu.device, g_sigpu.bloom_composite_pipeline);
-    SDL_ReleaseGPUTexture(g_sigpu.device, g_sigpu.shadow_texture);
-    SDL_ReleaseGPUSampler(g_sigpu.device, g_sigpu.shadow_sampler);
-    SDL_ReleaseGPUSampler(g_sigpu.device, g_sigpu.bloom_sampler);
+    SDL_ReleaseGPUGraphicsPipeline(SIGPU_GPUCONTEXT->device, SIGPU_GPUPIPELINES->axis_pipeline);
+    SDL_ReleaseGPUGraphicsPipeline(SIGPU_GPUCONTEXT->device, SIGPU_GPUPIPELINES->rotated_pipeline);
+    SDL_ReleaseGPUGraphicsPipeline(
+        SIGPU_GPUCONTEXT->device,
+        SIGPU_GPUPIPELINES->shared_axis_pipeline
+    );
+    SDL_ReleaseGPUGraphicsPipeline(
+        SIGPU_GPUCONTEXT->device,
+        SIGPU_GPUPIPELINES->shared_rotated_pipeline
+    );
+    SDL_ReleaseGPUGraphicsPipeline(
+        SIGPU_GPUCONTEXT->device,
+        SIGPU_GPUPIPELINES->axis_shadow_pipeline
+    );
+    SDL_ReleaseGPUGraphicsPipeline(
+        SIGPU_GPUCONTEXT->device,
+        SIGPU_GPUPIPELINES->rotated_shadow_pipeline
+    );
+    SDL_ReleaseGPUGraphicsPipeline(
+        SIGPU_GPUCONTEXT->device,
+        SIGPU_GPUPIPELINES->shared_axis_shadow_pipeline
+    );
+    SDL_ReleaseGPUGraphicsPipeline(
+        SIGPU_GPUCONTEXT->device,
+        SIGPU_GPUPIPELINES->shared_rotated_shadow_pipeline
+    );
+    SDL_ReleaseGPUGraphicsPipeline(
+        SIGPU_GPUCONTEXT->device,
+        SIGPU_GPUPIPELINES->bloom_down_pipeline
+    );
+    SDL_ReleaseGPUGraphicsPipeline(
+        SIGPU_GPUCONTEXT->device,
+        SIGPU_GPUPIPELINES->bloom_blur_pipeline
+    );
+    SDL_ReleaseGPUGraphicsPipeline(
+        SIGPU_GPUCONTEXT->device,
+        SIGPU_GPUPIPELINES->bloom_composite_pipeline
+    );
+    SDL_ReleaseGPUTexture(SIGPU_GPUCONTEXT->device, SIGPU_GPUTARGETS->shadow_texture);
+    SDL_ReleaseGPUSampler(SIGPU_GPUCONTEXT->device, SIGPU_GPUTARGETS->shadow_sampler);
+    SDL_ReleaseGPUSampler(SIGPU_GPUCONTEXT->device, SIGPU_GPUTARGETS->bloom_sampler);
 }

@@ -273,6 +273,7 @@ uint16_t ecs_table_index_get_or_create(ecs_type_t type) {
             slot_idx = (slot_idx + 1) & slot_mask;
         }
     }
+    ecs_assert(map->table_count < UINT16_MAX, "table index exhausted\n");
     if (ECS_UNLIKELY(map->table_count >= map->table_capacity)) {
         ecs_table_index_grow_tables(map);
     }
