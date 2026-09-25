@@ -108,24 +108,7 @@ export default defineConfig({
         { label: 'Overview', link: '/' },
         {
           label: 'Getting Started',
-          items: ['quickstart', 'building', 'cookbook'],
-        },
-        {
-          label: 'Introduction to ECS',
-          items: [
-            'introduction',
-            'introduction/why-ecs',
-            'introduction/data-oriented-design',
-            'introduction/entities-are-not-objects',
-            'introduction/composition',
-            'introduction/archetypes',
-            'introduction/tables-and-columns',
-            'introduction/structural-changes',
-            'introduction/iteration',
-            'introduction/cache-locality',
-            'introduction/ecs-vs-oop',
-            'introduction/when-to-use-ecs',
-          ],
+          items: ['quickstart', 'cookbook'],
         },
         {
           label: 'Fundamentals',
