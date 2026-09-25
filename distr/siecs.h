@@ -4251,6 +4251,9 @@ inline void disable_system(ecs_system_id_t id) { ecs_system_disable(id); }
 
 namespace ecs {
 
+bool save(const std::string &path) { return ecs_save(path.c_str()); }
+bool load(const std::string &path) { return ecs_load(path.c_str()); }
+
 struct ChildOf {};
 
 /** Synchronize builtin component ids after the C world is initialized. */
