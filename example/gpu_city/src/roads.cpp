@@ -114,13 +114,15 @@ void intersection(float x, float z, int column, int row, bool roundabout) {
         geometry::cylinder(1.12f, 0.05f, { 75, 127, 68 }, x, RoadY + 0.245f, z);
         geometry::cylinder(0.43f, 0.54f, { 176, 166, 144 }, x, RoadY + 0.53f, z);
         geometry::sphere(0.32f, { 96, 157, 181 }, x, RoadY + 0.91f, z);
-    } else if ((column % 2 == 1) && (row % 2 == 1)) {
+    } else {
         const float crossing_offset = StreetWidth / 2.0f + 0.72f;
         const float light = StreetWidth / 2.0f + 0.55f;
-        crossing(x - crossing_offset, z, true);
-        crossing(x + crossing_offset, z, true);
-        crossing(x, z - crossing_offset, false);
-        crossing(x, z + crossing_offset, false);
+        if ((column % 2 == 1) && (row % 2 == 1)) {
+            crossing(x - crossing_offset, z, true);
+            crossing(x + crossing_offset, z, true);
+            crossing(x, z - crossing_offset, false);
+            crossing(x, z + crossing_offset, false);
+        }
         const auto node = traffic::junction(column, row);
         traffic_light(x - light, z - light, 3.14159265f, false, node);
         traffic_light(x + light, z - light, 1.57079633f, true, node);

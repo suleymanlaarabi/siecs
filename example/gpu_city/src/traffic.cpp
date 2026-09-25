@@ -280,7 +280,7 @@ void build_network() {
                 Junction{ uint8_t(column),
                           uint8_t(row),
                           roundabout,
-                          !roundabout && column % 2 && row % 2,
+                          !roundabout,
                           0 }
             );
         }
