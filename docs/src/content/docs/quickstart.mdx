@@ -1,47 +1,59 @@
 ---
 title: Quickstart
-description: A tour of the SIECS API and the core concepts used by applications.
+description: A visual, example-led tour of SIECS entities, archetypes, queries, systems, observers, and modules.
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
+import SiecsConceptMap from '../../components/SiecsConceptMap.astro';
 
-This quickstart introduces the concepts that appear throughout the SIECS manuals.
-It is intentionally broad: each section shows the smallest useful example and
-connects it to the rest of the runtime.
+This page gives you a working SIECS program and a map of the concepts behind it.
+Each example is short; the linked manuals cover the details.
 
-SIECS is an archetype ECS written in C17 with a typed C++20 API. Both APIs use
-the same runtime and the same active world.
+SIECS is an archetype ECS with a C17 runtime and a typed C++20 API. Both
+languages use the same active world.
 
 ## Building SIECS
 
-The standalone distribution consists of `siecs.h` and `siecs.c`.
+For a standalone project, copy `distr/siecs.h` and `distr/siecs.c` next to your
+application. The single header contains both the C API and the C++ facade.
 
 <Tabs syncKey="language">
 <TabItem label="C">
 
 ```sh
 cc -std=c17 -I. main.c siecs.c -pthread -o app
+./app
 ```
 
 </TabItem>
 <TabItem label="C++">
 
 ```sh
-cc -std=c17 -I. -c siecs.c -o siecs.o
+cc -std=c17 -I. -c siecs.c -pthread -o siecs.o
 c++ -std=c++20 -I. main.cpp siecs.o -pthread -o app
+./app
 ```
 
 </TabItem>
 </Tabs>
 
-The C++ API is header-only but links to the same C runtime. See
-[Building SIECS](../building/) for Bake integration and platform notes.
+Use `#include <siecs.h>` in either language. The C++ API is header-only, but
+both programs link the C runtime. For a project using Bake, see the
+[Bake example in the repository](https://github.com/suleymanlaarabi/siecs#bake-example).
 
 ## Concepts
 
+The diagram shows how SIECS stores data and finds the work to run. Start with an
+entity: its components and relations determine a structural type, which places
+it in an archetype table. A query caches matching tables; systems and observers
+use queries to select entities.
+
+<SiecsConceptMap />
+
 ### World
 
-The world owns ECS state. Initialize it before registering types or creating
-entities and finalize it after all ECS work has stopped.
+The world owns all ECS state: entities, tables, resources, queries, systems,
+observers, and registrations. Initialize it before creating anything and
+finalize it after ECS work stops.
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -52,7 +64,7 @@ entities and finalize it after all ECS work has stopped.
 int main(void) {
     ecs_init();
 
-    /* application */
+    /* Create entities and run systems here. */
 
     ecs_fini();
     return 0;
@@ -63,12 +75,12 @@ int main(void) {
 <TabItem label="C++">
 
 ```cpp
-#include <siecs/cpp.hpp>
+#include <siecs.h>
 
 int main() {
     ecs::init();
 
-    // application
+    // Create entities and run systems here.
 
     ecs::fini();
 }
@@ -77,125 +89,101 @@ int main() {
 </TabItem>
 </Tabs>
 
-SIECS currently exposes one active world at a time. Handles, query ids, system
-ids, component ids and resource ids belong to that active world.
-
-`ecs_init_w_features()` configures world features such as frame limiting and
-worker threads:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-
-```c
-ecs_init_w_features(&(ecs_world_feat_desc_t){
-    .target_fps = 60,
-    .worker_threads = ECS_WORKERS_AUTO,
-});
-```
-
-</TabItem>
-<TabItem label="C++">
-
-```cpp
-ecs::init({
-    .target_fps = 60,
-    .worker_threads = ECS_WORKERS_AUTO,
-});
-```
-
-</TabItem>
-</Tabs>
+SIECS has **one active world at a time**. Component IDs, resource IDs, query
+IDs, and entity handles belong to that world. `ecs_init_w_features()` /
+`ecs::init({...})` can also configure worker threads and a target frame rate.
 
 ### Entity
 
-An entity is an identity. It does not imply a class or object layout.
+An entity is a generation-aware identity, not an object containing its
+components. A new entity is alive and has no user components.
 
 <Tabs syncKey="language">
 <TabItem label="C">
+
 ```c
 ecs_entity_t e = ecs_new();
+bool alive = ecs_is_alive(e);  /* true */
+ecs_kill(e);
 ```
+
 </TabItem>
 <TabItem label="C++">
+
 ```cpp
 auto e = ecs::entity::create();
+bool alive = e.is_alive();  // true
+e.kill();
 ```
+
 </TabItem>
 </Tabs>
 
-An entity starts alive with no user components. `ecs_kill()` destroys it.
-
-SIECS entity handles are 64-bit values containing an entity index and a
-generation. The generation changes when a recycled index is reused, which lets
-the runtime reject stale handles.
+The 64-bit handle contains an index and generation. Reusing an index after
+deletion changes its generation, so an old handle does not become the new
+entity. See [Entities and Components](../entities-components/) for lifetime
+and naming.
 
 ### Id
 
-SIECS uses separate id spaces for different kinds of registered objects:
+SIECS uses **separate ID spaces** for components and tags
+(`ecs_component_t`), relations (`ecs_relation_id_t`), resources
+(`ecs_resource_t`), queries, systems, observers, and modules. An entity handle
+is not a component ID or a relation ID.
 
-- `ecs_component_t` for components and tags;
-- `ecs_relation_id_t` for relations;
-- `ecs_resource_t` for resources;
-- `ecs_query_id_t` for queries;
-- `ecs_system_id_t` for systems;
-- `ecs_observer_id_t` for observers;
-- `ecs_module_id_t` for modules.
-
-An entity handle is not interchangeable with a component or relation id.
-
-This is an important difference from ECS APIs that model most concepts through
-a single universal id namespace.
+This matters when reading the API: `ecs_id(Position)` identifies a component,
+while `ecs_rid(ChildOf)` identifies a relation. SIECS does not encode every
+concept as an entity ID or a universal pair.
 
 ### Component
 
-A component is per-entity data.
+A component stores typed data for each entity that owns it. C code declares
+and registers the type; the C++ facade registers ordinary C++ types when used.
 
 <Tabs syncKey="language">
 <TabItem label="C">
 
 ```c
-ECS_COMPONENT(Position, {
-    float x;
-    float y;
-});
+ECS_COMPONENT(Position, { float x; float y; });
 
 ECS_COMPONENT_REGISTER(Position);
-
 ecs_entity_t e = ecs_new();
 ecs_set(e, Position, { .x = 10, .y = 20 });
+
+const Position *p = ecs_get(e, Position);
+ecs_remove(e, Position);
 ```
 
 </TabItem>
 <TabItem label="C++">
 
 ```cpp
-struct Position {
-    float x;
-    float y;
-};
+struct Position { float x, y; };
 
-auto e = ecs::entity::create();
-e.set(Position{10, 20});
+auto e = ecs::entity::create().set(Position{10, 20});
+const Position &p = e.get<Position>();
+e.remove<Position>();
 ```
 
 </TabItem>
 </Tabs>
 
-Entities with the same owned component set are stored together in the same
-archetype table.
+Setting a component adds it if needed. Adding or removing a component changes
+the entity's structural type and can move it to another table. Changing the
+value of an existing component leaves it in the same table.
 
 ### Tag
 
-A tag is a component with no payload. It contributes to an entity's structure
-and can be used by queries.
+A tag is a component with no payload. It can mark entities and filter queries
+without allocating a data column.
 
 <Tabs syncKey="language">
 <TabItem label="C">
 
 ```c
 ECS_TAG(Enemy);
-ECS_COMPONENT_REGISTER(Enemy);
 
+ECS_COMPONENT_REGISTER(Enemy);
 ecs_add(e, Enemy);
 ```
 
@@ -204,50 +192,70 @@ ecs_add(e, Enemy);
 
 ```cpp
 struct Enemy {};
+
 e.add<Enemy>();
 ```
 
 </TabItem>
 </Tabs>
 
-Tags do not allocate a data column, but adding or removing one is still a
-structural change because it moves the entity to another archetype.
+A tag still contributes to the entity's structural type. See
+[Entities and Components](../entities-components/#tags).
 
 ### Relation
 
-Relations connect a source entity to a target entity.
+A relation connects one source entity to one target for a registered relation
+kind. Relations have their own registry and storage policies; they are not
+general-purpose pair IDs.
 
 <Tabs syncKey="language">
 <TabItem label="C">
+
 ```c
-ecs_relate(child, ChildOf, parent);
+ECS_RELATION(Follows, {
+    .storage = EcsRelationByTarget,
+    .on_delete_target = EcsRemoveRelation,
+    .acyclic = false,
+});
+
+ECS_RELATION_REGISTER(Follows);
+ecs_relate(follower, Follows, leader);
+ecs_entity_t target = ecs_target(follower, Follows);
 ```
+
 </TabItem>
 <TabItem label="C++">
+
 ```cpp
-child.child_of(parent);
+struct Follows {};
+
+ecs::relation<Follows>({
+    .storage = EcsRelationByTarget,
+    .on_delete_target = EcsRemoveRelation,
+    .acyclic = false,
+});
+follower.relate<Follows>(leader);
+auto target = follower.target<Follows>();
 ```
+
 </TabItem>
 </Tabs>
 
-SIECS relations use a separate relation registry and support three storage
-modes:
+SIECS supports dense, depth-indexed, and target-indexed relation storage.
+Choose according to the traversal or query you need. See
+[Relationships](../relationships/) for storage and target-deletion rules.
 
-- `EcsRelationDense` stores a target per source row;
-- `EcsRelationByDepth` additionally maintains hierarchy depth information;
-- `EcsRelationByTarget` groups sources by target for fast target-filtered queries.
+### Hierarchy
 
-The storage mode determines which query operations are efficient and valid.
-
-### Hierarchies
-
-`ChildOf` is the built-in hierarchy relation.
+`ChildOf` is SIECS's built-in parent relation. A child stores an edge to its
+parent; it does not contain a copy of its parent.
 
 <Tabs syncKey="language">
 <TabItem label="C">
 
 ```c
 ecs_relate(child, ChildOf, parent);
+ecs_entity_t current_parent = ecs_target(child, ChildOf);
 ```
 
 </TabItem>
@@ -255,44 +263,47 @@ ecs_relate(child, ChildOf, parent);
 
 ```cpp
 child.child_of(parent);
+auto current_parent = child.target<ChildOf>();
 ```
 
 </TabItem>
 </Tabs>
 
 Killing a parent recursively cleans up its owned `ChildOf` subtree. Hierarchy
-queries can order matching tables by depth when the relation uses
-`EcsRelationByDepth`.
+queries can order matching tables by depth. See [Hierarchies](../hierarchies/).
 
-### Type
+### Structural type and archetype table
 
-In an archetype ECS, an entity's structural type is the exact set of components
-and structural relations that determine its table.
-
-Conceptually:
+An entity's **structural type** is its exact set of owned components, tags,
+and structural relation state. Each distinct type maps to an archetype table.
 
 ```text
-{Position, Velocity}
-{Position, Velocity, Enemy}
-{Position, Health}
+{Position}                   → table A
+{Position, Velocity}         → table B
+{Position, Velocity, Enemy}  → table C
 ```
 
-are three different structural types and therefore three different archetypes.
+A table holds packed entity rows and a contiguous column for each data-bearing
+component. Tags affect table identity but have no data column. Adding
+`Velocity` to an entity in table A moves it to table B; updating the existing
+`Position.x` value does not move it.
 
-Applications do not normally manipulate an `ecs_type_t` directly. Structural
-types are created by adding, removing and relating data.
+Applications normally change types with component and relation operations
+rather than manipulating structural types directly. See
+[SIECS Archetype Storage](../archetype-ecs/) for table migration and pointer
+lifetime.
 
 ### Resource
 
-A resource is one typed value for the whole world.
+A resource is one typed value for the whole world. It is separate from
+per-entity components and never becomes a table column.
 
 <Tabs syncKey="language">
 <TabItem label="C">
 
 ```c
-ECS_RESOURCE(Time, {
-    float dt;
-});
+ECS_RESOURCE(Time, { float dt; });
+
 ECS_RESOURCE_REGISTER(Time);
 ecs_set_resource(Time, { .dt = 1.0f / 60.0f });
 ```
@@ -301,22 +312,21 @@ ecs_set_resource(Time, { .dt = 1.0f / 60.0f });
 <TabItem label="C++">
 
 ```cpp
-struct Time {
-    float dt;
-};
+struct Time { float dt; };
 
-ecs::resource_handle<Time>().set(Time{ 1.0f / 60.0f });
+ecs::resource_handle<Time>().set(Time{1.0f / 60.0f});
 ```
 
 </TabItem>
 </Tabs>
 
-Resources are not components and are not stored on entities. Systems can declare
-resource access so the scheduler can reason about dependencies.
+Systems can declare resource access so the scheduler can account for it. See
+[Resources](../resources/).
 
 ### Query
 
-A query matches archetype tables.
+A query selects entities by matching their archetype tables. A persistent
+query caches those table matches, then exposes each non-empty table as a batch.
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -328,29 +338,11 @@ ecs_query_id_t q = ecs_query({
         ecs_in(Velocity),
     },
 });
-```
 
-</TabItem>
-<TabItem label="C++">
-
-```cpp
-auto q = ecs::query().build_handle();
-```
-
-</TabItem>
-</Tabs>
-
-Iterating a query yields non-empty table batches:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-
-```c
 ecs_iter_t it = ecs_query_iter(q);
 while (ecs_iter_next(&it)) {
     Position *p = ecs_field(&it, 0);
     const Velocity *v = ecs_field(&it, 1);
-
     for (uint32_t i = 0; i < it.count; i++) {
         p[i].x += v[i].x;
         p[i].y += v[i].y;
@@ -363,6 +355,7 @@ ecs_query_fini(q);
 <TabItem label="C++">
 
 ```cpp
+auto q = ecs::query().build_handle();
 q.each([](Position &p, const Velocity &v) {
     p.x += v.x;
     p.y += v.y;
@@ -372,12 +365,14 @@ q.each([](Position &p, const Velocity &v) {
 </TabItem>
 </Tabs>
 
-Persistent queries cache matching tables. They do not rebuild a list of matching
-entities on every iteration.
+The C access terms declare read/write intent. The typed C++ callback declares
+the component fields it needs. Queries also support optional and excluded
+components, relation filters, and inherited reads. See [Queries](../queries/).
 
 ### System
 
-A system is a persistent query plus a callback and scheduling metadata.
+A system is a persistent query plus a callback and scheduling information.
+SIECS invokes its callback for each matching table batch.
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -388,8 +383,8 @@ static void Move(ecs_iter_t *it) {
     const Velocity *v = ecs_field(it, 1);
 
     for (uint32_t i = 0; i < it->count; i++) {
-        p[i].x += v[i].x * it->delta_time;
-        p[i].y += v[i].y * it->delta_time;
+        p[i].x += v[i].x;
+        p[i].y += v[i].y;
     }
 }
 
@@ -419,32 +414,28 @@ ecs::system("Move")
 </TabItem>
 </Tabs>
 
-`ecs_progress()` executes enabled systems in phase order.
+`ecs_progress()` / `ecs::progress()` runs enabled systems in phase order.
+Structural mutations inside a normal system are deferred so table iteration
+stays valid. See [Systems](../systems/).
 
 ### Phase
 
-Phases define broad ordering groups for systems.
-
-SIECS provides built-in phases for startup, loading, update and rendering. The
-main recurring sequence includes:
+A phase determines when scheduled systems run. The recurring sequence is:
 
 ```text
-EcsOnLoad
-EcsPostLoad
-EcsPreUpdate
-EcsOnUpdate
-EcsPostUpdate
-EcsPreRender
-EcsOnRender
-EcsPostRender
+EcsOnLoad → EcsPostLoad → EcsPreUpdate → EcsOnUpdate
+          → EcsPostUpdate → EcsPreRender → EcsOnRender → EcsPostRender
 ```
 
-Custom phases can be inserted before or after existing phases. Systems inside
-one phase can also use `.after` dependencies.
+SIECS also has one-shot startup phases. Custom phases and explicit
+system dependencies can refine the order. See
+[Phases and scheduling](../systems/#phases-and-scheduling).
 
-### Observer
+### Observer and event
 
-Observers react to events instead of running each frame.
+Observers react to events such as adding, removing, or setting a component.
+The event identifies what happened; the observer's query filters which
+entities may trigger its callback.
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -452,6 +443,7 @@ Observers react to events instead of running each frame.
 ```c
 static void OnPositionSet(ecs_observer_event_t *event) {
     const Position *value = event->trigger_data;
+    /* event->entity received this Position value. */
     (void)value;
 }
 
@@ -466,9 +458,10 @@ ecs_observer({
 <TabItem label="C++">
 
 ```cpp
-ecs::observer<ecs::OnSet>{}
-    .each([](ecs::observer_event event, const Position &value) {
-        (void)event;
+ecs::observe<ecs::OnSet>()
+    .each([](ecs::entity e, const Position &value) {
+        // e received this Position value.
+        (void)e;
         (void)value;
     });
 ```
@@ -476,26 +469,42 @@ ecs::observer<ecs::OnSet>{}
 </TabItem>
 </Tabs>
 
-Built-in observer events cover component add, remove and set, and relation
-changes. Applications can also register custom events.
+SIECS also supports relation events and custom events. Observer callbacks run
+as part of the event flow, rather than once per frame. See
+[Observers](../observers/).
 
 ### Module
 
-A module groups registrations behind one import operation.
+A module groups component, relation, system, and observer registrations behind
+one import. Importing it again does not duplicate its registrations.
 
-Modules can capture components, systems and observers created while the module
-is imported. Disabling a module disables its captured systems and observers
-without unregistering component types or deleting entity data.
+<Tabs syncKey="language">
+<TabItem label="C">
 
-## Next steps
+```c
+ecs_module_id_t physics = ECS_MODULE_IMPORT(physics, {
+    .gravity = 9.81f,
+});
+```
 
-Read [Entities and Components](../entities-components/) for entity and component
-semantics, [Queries](../queries/) for matching and iteration, and
-[Systems](../systems/) for scheduling and deferred mutation.
+</TabItem>
+<TabItem label="C++">
 
-## A complete minimal example
+```cpp
+auto physics = ecs::import<Physics>(9.81f);
+```
 
-The following combines the main ideas into one small program.
+</TabItem>
+</Tabs>
+
+Disabling a module disables systems and observers it registered without
+deleting entity data. The declarations and import callback live in
+[Modules](../modules/).
+
+## A complete minimal program
+
+This program creates an entity with `Position` and `Velocity`, runs a `Move`
+system once, and checks the result.
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -511,14 +520,13 @@ static void Move(ecs_iter_t *it) {
     const Velocity *v = ecs_field(it, 1);
 
     for (uint32_t i = 0; i < it->count; i++) {
-        p[i].x += v[i].x * it->delta_time;
-        p[i].y += v[i].y * it->delta_time;
+        p[i].x += v[i].x;
+        p[i].y += v[i].y;
     }
 }
 
 int main(void) {
     ecs_init();
-
     ECS_COMPONENT_REGISTER(Position);
     ECS_COMPONENT_REGISTER(Velocity);
 
@@ -533,13 +541,12 @@ int main(void) {
     });
 
     ecs_entity_t e = ecs_new();
-    ecs_set(e, Position, {0, 0});
-    ecs_set(e, Velocity, {1, 0});
+    ecs_set(e, Position, { .x = 0, .y = 0 });
+    ecs_set(e, Velocity, { .x = 1, .y = 0 });
 
     ecs_progress();
-
     const Position *p = ecs_get(e, Position);
-    const bool moved = p != NULL && p->x > 0;
+    bool moved = p != NULL && p->x == 1.0f;
 
     ecs_fini();
     return moved ? 0 : 1;
@@ -550,7 +557,7 @@ int main(void) {
 <TabItem label="C++">
 
 ```cpp
-#include <siecs/cpp.hpp>
+#include <siecs.h>
 
 struct Position { float x, y; };
 struct Velocity { float x, y; };
@@ -570,7 +577,8 @@ int main() {
         .set(Velocity{1, 0});
 
     ecs::progress();
-    const bool moved = e.get<Position>().x > 0;
+    bool moved = e.get<Position>().x == 1.0f;
+
     ecs::fini();
     return moved ? 0 : 1;
 }
@@ -579,102 +587,14 @@ int main() {
 </TabItem>
 </Tabs>
 
-## Archetypes in the quickstart
+Setting `Position` puts the entity in a `{Position}` table. Adding `Velocity`
+moves it to `{Position, Velocity}`. The system's query matches that table and
+iterates its contiguous component columns. This is the execution path shown
+in the concept map.
 
-After setting `Position`, the entity belongs to a table whose structural type
-contains `Position`.
+## Continue learning
 
-After adding `Velocity`, it moves to the table for
-`{Position, Velocity}`.
-
-The `Move` system's query cache matches that table, so when the system runs it
-can access the two contiguous component columns directly.
-
-This is the basic SIECS execution model:
-
-```text
-component set
-    ↓
-archetype table
-    ↓
-query cache
-    ↓
-batch iterator
-    ↓
-system callback
-```
-
-Understanding this path makes later API behavior—pointer lifetime, structural
-mutation, deferred commands and query performance—much easier to predict.
-
-## Structural versus value changes
-
-This is a value change:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-
-```c
-ecs_get(e, Position)->x += 1;
-```
-
-</TabItem>
-<TabItem label="C++">
-
-```cpp
-e.get_mut<Position>().x += 1;
-```
-
-</TabItem>
-</Tabs>
-
-The entity stays in the same table.
-
-These are structural changes:
-
-<Tabs syncKey="language">
-<TabItem label="C">
-
-```c
-ecs_add(e, Enemy);
-ecs_remove(e, Velocity);
-ecs_relate(e, ChildOf, parent);
-```
-
-</TabItem>
-<TabItem label="C++">
-
-```cpp
-e.add<Enemy>();
-e.remove<Velocity>();
-e.child_of(parent);
-```
-
-</TabItem>
-</Tabs>
-
-They can change table placement.
-
-Systems normally defer structural changes so current table iteration stays
-valid.
-
-## C and C++ use the same world
-
-The C++ layer does not maintain a second ECS.
-
-A C component declared in a shared header can be used from C++ and refers to the
-same registered component id.
-
-This makes mixed-language modules possible:
-
-- low-level runtime/module in C;
-- game/tool layer in C++;
-- same entities, tables, systems and resources.
-
-## Where to continue
-
-If you are new to ECS, read the full
-[Introduction to ECS](../introduction/) before the API manuals.
-
-If you already know archetype ECS, continue directly with
-[Entities and Components](../entities-components/) and [Queries](../queries/).
+Read [Entities and Components](../entities-components/) for entity and
+component semantics, [SIECS Archetype Storage](../archetype-ecs/) for table
+transitions, [Queries](../queries/) for matching, and
+[Systems](../systems/) for scheduling and deferred changes.

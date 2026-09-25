@@ -104,7 +104,9 @@ for (const file of await collect(root)) {
     if (fence?.language === 'cpp' && /(^|[^:]):{2}ecs_/.test(line)) {
       fail(file, number, 'C++ example calls the C ABI directly; use the typed ecs:: API');
     }
-    if (fence?.language === 'cpp' && line.includes('#include <siecs.h>')) {
+    // The standalone quickstart uses the distribution header, which embeds the C++ facade.
+    if (fence?.language === 'cpp' && line.includes('#include <siecs.h>') &&
+        !file.endsWith('quickstart.mdx')) {
       fail(file, number, 'C++ example must include <siecs/cpp.hpp>');
     }
     if (fence?.language === 'cpp') {

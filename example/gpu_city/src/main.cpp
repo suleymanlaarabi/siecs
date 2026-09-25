@@ -37,7 +37,7 @@ int main() {
         .samples = 1,
     }));
     ecs::set_resource(AmbientLight{ Color{ 180, 195, 230 }, 0.45f });
-    ecs::set_resource(Shadows{ false, 0.0f });
+    ecs::set_resource(Shadows{ true, 400.0f });
     ecs::set_resource(CameraClip{ 0.5f, 4000.0f });
     ecs::set_resource(Multisampling{ 2 });
 

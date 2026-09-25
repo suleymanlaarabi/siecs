@@ -1,0 +1,243 @@
+<figure id="siecs-concept-map" class="siecs-concept-figure">
+  <div class="siecs-concept-scroll">
+    <svg
+      class="siecs-concepts"
+      viewBox="0 0 1100 705"
+      role="img"
+      aria-labelledby="siecs-concepts-title siecs-concepts-description"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <title id="siecs-concepts-title">How SIECS concepts fit together</title>
+      <desc id="siecs-concepts-description">
+        The active world owns entities and resources. Components, tags, and
+        relations give entities a structural type, which places them in an
+        archetype table. Queries select tables. Systems run those queries in
+        phases; observers react to events through query filters. Modules group
+        registrations.
+      </desc>
+      <defs>
+        <marker id="siecs-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 1 1 L 9 5 L 1 9 Z" class="arrow-head" />
+        </marker>
+      </defs>
+
+      <rect class="canvas" x="1" y="1" width="1098" height="703" rx="22" />
+      <text class="eyebrow" x="42" y="45">SIECS / CONCEPT MAP</text>
+      <text class="lane" x="42" y="155">WORLD DATA</text>
+      <text class="lane" x="42" y="302">STORAGE &amp; SELECTION</text>
+      <text class="lane" x="42" y="447">BEHAVIOR</text>
+      <text class="lane" x="42" y="592">ORGANIZATION &amp; ORDER</text>
+
+      <g class="connections">
+        <path d="M 550 121 V 145 H 145 V 175" />
+        <path d="M 550 121 V 145 H 895 V 175" />
+        <path d="M 145 249 V 280 H 395 V 320" />
+        <path d="M 395 249 V 320" />
+        <path d="M 645 249 V 280 H 395 V 320" />
+        <path d="M 500 358 H 540" />
+        <path d="M 750 358 H 790" />
+        <path d="M 500 503 H 540" />
+        <path d="M 895 394 V 429 H 645 V 465" />
+        <path d="M 895 394 V 465" />
+        <path d="M 895 249 H 1030 V 503 H 1000" />
+        <path d="M 395 610 V 567 H 645 V 539" />
+        <path d="M 895 610 V 539" />
+      </g>
+
+      <g class="node node-world">
+        <rect x="435" y="47" width="230" height="74" rx="15" />
+        <text class="name" x="550" y="79">World</text>
+        <text class="detail" x="550" y="102">one active runtime</text>
+      </g>
+
+      <g class="node">
+        <rect x="40" y="175" width="210" height="74" rx="15" />
+        <text class="name" x="145" y="207">Entity</text>
+        <text class="detail" x="145" y="230">identity and lifetime</text>
+      </g>
+      <g class="node">
+        <rect x="290" y="175" width="210" height="74" rx="15" />
+        <text class="name" x="395" y="207">Component / tag</text>
+        <text class="detail" x="395" y="230">data or marker</text>
+      </g>
+      <g class="node">
+        <rect x="540" y="175" width="210" height="74" rx="15" />
+        <text class="name" x="645" y="207">Relation</text>
+        <text class="detail" x="645" y="230">source → target</text>
+      </g>
+      <g class="node node-blue">
+        <rect x="790" y="175" width="210" height="74" rx="15" />
+        <text class="name" x="895" y="207">Resource</text>
+        <text class="detail" x="895" y="230">one value per world</text>
+      </g>
+
+      <g class="node">
+        <rect x="290" y="320" width="210" height="74" rx="15" />
+        <text class="name" x="395" y="352">Structural type</text>
+        <text class="detail" x="395" y="375">the entity's signature</text>
+      </g>
+      <g class="node node-blue">
+        <rect x="540" y="320" width="210" height="74" rx="15" />
+        <text class="name" x="645" y="352">Archetype table</text>
+        <text class="detail" x="645" y="375">packed column storage</text>
+      </g>
+      <g class="node node-green">
+        <rect x="790" y="320" width="210" height="74" rx="15" />
+        <text class="name" x="895" y="352">Query</text>
+        <text class="detail" x="895" y="375">cached table matches</text>
+      </g>
+
+      <g class="node">
+        <rect x="290" y="465" width="210" height="74" rx="15" />
+        <text class="name" x="395" y="497">Event</text>
+        <text class="detail" x="395" y="520">a change or custom signal</text>
+      </g>
+      <g class="node node-green">
+        <rect x="540" y="465" width="210" height="74" rx="15" />
+        <text class="name" x="645" y="497">Observer</text>
+        <text class="detail" x="645" y="520">reacts when matched</text>
+      </g>
+      <g class="node node-green">
+        <rect x="790" y="465" width="210" height="74" rx="15" />
+        <text class="name" x="895" y="497">System</text>
+        <text class="detail" x="895" y="520">runs a query callback</text>
+      </g>
+
+      <g class="node node-blue">
+        <rect x="290" y="610" width="210" height="74" rx="15" />
+        <text class="name" x="395" y="642">Module</text>
+        <text class="detail" x="395" y="665">groups registrations</text>
+      </g>
+      <g class="node node-blue">
+        <rect x="790" y="610" width="210" height="74" rx="15" />
+        <text class="name" x="895" y="642">Phase</text>
+        <text class="detail" x="895" y="665">orders system execution</text>
+      </g>
+    </svg>
+  </div>
+  <div class="siecs-concept-mobile" aria-label="SIECS concept map">
+    <div class="siecs-mobile-card siecs-mobile-world">
+      <strong>World</strong><span>one active runtime</span>
+    </div>
+    <div class="siecs-mobile-flow">owns ↓</div>
+    <div class="siecs-mobile-pair">
+      <div class="siecs-mobile-card"><strong>Entity</strong><span>identity and lifetime</span></div>
+      <div class="siecs-mobile-card siecs-mobile-blue"><strong>Resource</strong><span>one value per world</span></div>
+    </div>
+    <div class="siecs-mobile-flow">entity structure ↓</div>
+    <div class="siecs-mobile-pair">
+      <div class="siecs-mobile-card"><strong>Component / tag</strong><span>data or marker</span></div>
+      <div class="siecs-mobile-card"><strong>Relation</strong><span>source → target</span></div>
+    </div>
+    <div class="siecs-mobile-flow">determines ↓</div>
+    <div class="siecs-mobile-card"><strong>Structural type</strong><span>the entity's signature</span></div>
+    <div class="siecs-mobile-flow">places entities in ↓</div>
+    <div class="siecs-mobile-card siecs-mobile-blue"><strong>Archetype table</strong><span>packed column storage</span></div>
+    <div class="siecs-mobile-flow">matched by ↓</div>
+    <div class="siecs-mobile-card siecs-mobile-green"><strong>Query</strong><span>cached table matches</span></div>
+    <div class="siecs-mobile-flow">drives ↓</div>
+    <div class="siecs-mobile-pair">
+      <div class="siecs-mobile-card siecs-mobile-green"><strong>Observer</strong><span>reacts to an event</span></div>
+      <div class="siecs-mobile-card siecs-mobile-green"><strong>System</strong><span>runs in a phase</span></div>
+    </div>
+    <div class="siecs-mobile-flow">registrations are grouped by ↓</div>
+    <div class="siecs-mobile-card siecs-mobile-blue"><strong>Module</strong><span>components, systems, observers</span></div>
+  </div>
+  <figcaption>Follow the arrows from entity structure to table storage, then to matching queries and behavior.</figcaption>
+</figure>
+
+<style is:global>
+  .siecs-concept-figure { margin: 1.5rem 0 2rem; }
+  .siecs-concept-scroll { border-radius: 1rem; }
+  .siecs-concepts {
+    display: block;
+    width: 100%;
+    height: auto;
+    color: var(--sl-color-text);
+    --diagram-canvas: #fafbfc;
+    --diagram-node: #fff;
+    --diagram-stroke: #d8dfe8;
+    --diagram-muted: #5f6c7b;
+    --diagram-line: #a4afbd;
+    --diagram-blue-bg: #eef3ff;
+    --diagram-blue-stroke: #91a9ed;
+    --diagram-green-bg: #eaf7f2;
+    --diagram-green-stroke: #6ab99a;
+    --diagram-world-bg: #eff0ff;
+    --diagram-world-stroke: #8b90d9;
+  }
+  [data-theme='dark'] .siecs-concepts {
+    --diagram-canvas: #111318;
+    --diagram-node: #1d222a;
+    --diagram-stroke: #3b4552;
+    --diagram-muted: #a8b2be;
+    --diagram-line: #788697;
+    --diagram-blue-bg: #1b2940;
+    --diagram-blue-stroke: #7190ce;
+    --diagram-green-bg: #17372e;
+    --diagram-green-stroke: #5aa88b;
+    --diagram-world-bg: #292944;
+    --diagram-world-stroke: #9295df;
+  }
+  .siecs-concepts .canvas { fill: var(--diagram-canvas); stroke: var(--diagram-stroke); }
+  .siecs-concepts .eyebrow,
+  .siecs-concepts .lane {
+    fill: var(--diagram-muted);
+    font: 700 12px/1 system-ui, sans-serif;
+    letter-spacing: .12em;
+  }
+  .siecs-concepts .eyebrow { fill: var(--diagram-world-stroke); }
+  .siecs-concepts .connections path {
+    fill: none;
+    stroke: var(--diagram-line);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    marker-end: url(#siecs-arrow);
+  }
+  .siecs-concepts .arrow-head { fill: var(--diagram-line); }
+  .siecs-concepts .node rect {
+    fill: var(--diagram-node);
+    stroke: var(--diagram-stroke);
+    stroke-width: 1.5;
+  }
+  .siecs-concepts .node-blue rect { fill: var(--diagram-blue-bg); stroke: var(--diagram-blue-stroke); }
+  .siecs-concepts .node-green rect { fill: var(--diagram-green-bg); stroke: var(--diagram-green-stroke); }
+  .siecs-concepts .node-world rect { fill: var(--diagram-world-bg); stroke: var(--diagram-world-stroke); stroke-width: 2; }
+  .siecs-concepts .name,
+  .siecs-concepts .detail { text-anchor: middle; }
+  .siecs-concepts .name { fill: var(--sl-color-text); font: 650 20px/1 system-ui, sans-serif; }
+  .siecs-concepts .detail { fill: var(--diagram-muted); font: 400 14px/1 system-ui, sans-serif; }
+  .siecs-concept-mobile { display: none; }
+  .siecs-mobile-card {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+    min-width: 0;
+    padding: .7rem .8rem;
+    border: 1px solid var(--sl-color-hairline-light);
+    border-radius: .75rem;
+    background: var(--sl-color-bg);
+    text-align: center;
+  }
+  .siecs-mobile-card strong { color: var(--sl-color-text); font-size: .94rem; }
+  .siecs-mobile-card span { color: var(--sl-color-gray-3); font-size: .76rem; line-height: 1.3; }
+  .siecs-mobile-world { background: var(--sl-color-accent-low); border-color: var(--sl-color-accent); }
+  .siecs-mobile-blue { background: color-mix(in srgb, #7899dc 13%, var(--sl-color-bg)); }
+  .siecs-mobile-green { background: color-mix(in srgb, #55b991 13%, var(--sl-color-bg)); }
+  .siecs-mobile-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
+  .siecs-mobile-flow { padding: .3rem 0; color: var(--sl-color-gray-3); font-size: .72rem; text-align: center; }
+  .siecs-concept-figure figcaption { margin-top: .5rem; color: var(--sl-color-gray-3); font-size: .85rem; text-align: center; }
+  @media (max-width: 700px) {
+    .siecs-concept-scroll { display: none; }
+    .siecs-concept-mobile {
+      display: block;
+      max-width: 32rem;
+      margin-inline: auto;
+      padding: .8rem;
+      border: 1px solid var(--sl-color-hairline-light);
+      border-radius: 1rem;
+      background: var(--sl-color-bg);
+    }
+  }
+</style>

@@ -6,8 +6,8 @@
 
 namespace gpu_city::traffic {
 
-inline constexpr int Grid = 64;
-inline constexpr int Capacity = 5000;
+inline constexpr int Grid = 32;
+inline constexpr int Capacity = 2000;
 inline constexpr float Spacing = 18.0f;
 inline constexpr float LaneOffset = 1.2f;
 inline constexpr float HalfStreet = 2.7f;

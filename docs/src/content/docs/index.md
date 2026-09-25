@@ -15,8 +15,8 @@ API snippets.
 ## Start here
 
 1. [Quickstart](./quickstart/) — tour of the public model and API.
-2. [Introduction to ECS](./introduction/) — ECS theory, data-oriented design,
-   archetypes, tables, structural changes, iteration and cache locality.
+2. [SIECS Archetype Storage](./archetype-ecs/) — tables, structural changes,
+   packed columns and cached query matches.
 3. [Entities and Components](./entities-components/) — identity, lifetime,
    components, tags, hooks, reflection, requirements and inheritance policy.
 4. [Queries](./queries/) — matching, caching, fields, relations, traversal and
@@ -38,7 +38,7 @@ API snippets.
 
 ## Tools and integration
 
-- [Building SIECS](./building/)
+- [Building SIECS](./quickstart/#building-siecs)
 - [SIECS Remote API](./remote-api/)
 - [Scenes and Serialization](./scenes/)
 - [Cookbook](./cookbook/)
