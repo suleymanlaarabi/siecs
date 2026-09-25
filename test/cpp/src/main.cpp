@@ -83,7 +83,7 @@ void traffic_exclusive_junction(void);
 void traffic_turns_and_roundabout(void);
 void traffic_turn_paths_are_smooth(void);
 void traffic_border_respawns(void);
-void traffic_400_cars_no_overlap(void);
+void traffic_800_cars_no_overlap(void);
 void traffic_long_run_relation_integrity(void);
 
 // Testsuite 'module_state'
@@ -358,8 +358,8 @@ bake_test_case traffic_testcases[] = {
         traffic_border_respawns
     },
     {
-        "400_cars_no_overlap",
-        traffic_400_cars_no_overlap
+        "800_cars_no_overlap",
+        traffic_800_cars_no_overlap
     },
     {
         "long_run_relation_integrity",

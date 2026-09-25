@@ -109,7 +109,7 @@
           "turns_and_roundabout",
           "turn_paths_are_smooth",
           "border_respawns",
-          "400_cars_no_overlap",
+          "800_cars_no_overlap",
           "long_run_relation_integrity"
         ]
       },

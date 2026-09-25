@@ -48,6 +48,12 @@ class system : protected query {
         return *this;
     }
 
+    /** Match entities with a relation of the requested type. */
+    template <typename Relation> system &with_relation() {
+        query::with_relation<Relation>();
+        return *this;
+    }
+
     /** Set the query ordering callback. */
     system &order_by(ecs_query_order_t value) {
         query::order_by(value);

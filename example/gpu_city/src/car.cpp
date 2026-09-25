@@ -22,16 +22,17 @@ void box(ecs::entity prefab, float w, float h, float d, Rgb color, float x, floa
 
 void wheel(ecs::entity prefab, float x, float z) {
     geometry::cylinder(WheelRadius, 0.16f, Tire, x, WheelRadius, z, 0.0f, false)
-                    .set(Rotation3d{ 0.0f, 0.0f, HalfPi })
-                    .child_of(prefab);
+        .set(Rotation3d{ 0.0f, 0.0f, HalfPi })
+        .child_of(prefab);
 }
 
 } // namespace
 
 ecs::entity car_prefab() {
-    auto car = ecs::entity::create()
-        .set(Car{ CarLength * CarScale, CarWidth * CarScale },
-             Scale3d{ CarScale, CarScale, CarScale });
+    auto car = ecs::entity::create().set(
+        Car{ CarLength * CarScale, CarWidth * CarScale },
+        Scale3d{ CarScale, CarScale, CarScale }
+    );
 
     box(car, BodyWidth, 0.58f, 4.08f, Paint, 0.0f, 0.67f, 0.0f);
     box(car, 1.72f, 0.12f, 1.08f, DoorPaint, 0.0f, 0.99f, -1.45f);

@@ -29,7 +29,7 @@ void report_frames(ecs_iter_t *) {
 } // namespace
 
 int main() {
-    ecs::init({ .target_fps = 60, .worker_threads = 8 });
+    ecs::init({ .target_fps = 120, .worker_threads = 0 });
     static_cast<void>(ecs::import<sigpu>(sigpu::props_t{
         .title = "SIECS GPU City",
         .width = 1280,
@@ -37,7 +37,7 @@ int main() {
         .samples = 1,
     }));
     ecs::set_resource(AmbientLight{ Color{ 180, 195, 230 }, 0.45f });
-    ecs::set_resource(Shadows{ true, 65.0f });
+    ecs::set_resource(Shadows{ false, 0.0f });
     ecs::set_resource(CameraClip{ 0.5f, 4000.0f });
     ecs::set_resource(Multisampling{ 2 });
 

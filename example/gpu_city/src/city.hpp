@@ -15,10 +15,21 @@ inline constexpr float RoadY = -1.3f;
 inline constexpr float PavementY = -1.16f;
 inline constexpr float GroundSize = (CitySize - 1) * BlockSpacing + StreetWidth + 70.0f;
 
-struct Rgb { uint8_t r, g, b; };
+struct Rgb {
+    uint8_t r, g, b;
+};
+
 enum SignalColor : uint8_t { SignalRed, SignalAmber, SignalGreen };
-struct SignalLamp { uint8_t role, axis; bool lit; };
-struct Car { float length, width; };
+
+struct SignalLamp {
+    uint8_t role, axis;
+    bool lit;
+};
+
+struct Car {
+    float length, width;
+};
+
 struct ControlsJunction {};
 
 inline constexpr Rgb Asphalt{ 43, 47, 52 };
@@ -32,14 +43,41 @@ inline constexpr Rgb Facades[] = {
 uint8_t shade(uint8_t value, float factor);
 
 namespace geometry {
-ecs::entity box(float width, float height, float depth, Rgb color, float x, float y, float z,
-                float yaw = 0, bool is_static = true);
-ecs::entity cylinder(float radius, float height, Rgb color, float x, float y, float z,
-                     float yaw = 0, bool is_static = true);
+ecs::entity
+box(float width,
+    float height,
+    float depth,
+    Rgb color,
+    float x,
+    float y,
+    float z,
+    float yaw = 0,
+    bool is_static = true);
+
+ecs::entity cylinder(
+    float radius,
+    float height,
+    Rgb color,
+    float x,
+    float y,
+    float z,
+    float yaw = 0,
+    bool is_static = true
+);
+
 ecs::entity sphere(float radius, Rgb color, float x, float y, float z);
-ecs::entity signal_sphere(float radius, Rgb color, float x, float y, float z, SignalLamp lamp,
-                          ecs::entity junction);
-}
+
+ecs::entity signal_sphere(
+    float radius,
+    Rgb color,
+    float x,
+    float y,
+    float z,
+    SignalLamp lamp,
+    ecs::entity junction
+);
+
+} // namespace geometry
 
 void make_building(float x, float z, int floors, Rgb facade, float yaw);
 void make_park(float x, float z);
