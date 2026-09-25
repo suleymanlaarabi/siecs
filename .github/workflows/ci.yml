@@ -73,7 +73,7 @@ jobs:
       - name: Install SDL3 (Linux)
         if: runner.os == 'Linux'
         run: |
-          git clone --depth 1 --branch release-3.2.8 https://github.com/libsdl-org/SDL.git
+          git clone --depth 1 --branch release-3.4.16 https://github.com/libsdl-org/SDL.git
           cmake -S SDL -B SDL/build -DCMAKE_BUILD_TYPE=Release -DSDL_TEST_LIBRARY=OFF -DSDL_UNIX_CONSOLE_BUILD=ON
           cmake --build SDL/build --parallel 2
           sudo cmake --install SDL/build
