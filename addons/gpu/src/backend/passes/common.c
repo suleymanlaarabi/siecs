@@ -1,10 +1,4 @@
 #include "backend/passes/passes.h"
-bool sigpu_no_instances(void) {
-    return SIGPU_RENDERQUEUE->shared_axis_count == 0 &&
-           SIGPU_RENDERQUEUE->shared_rotated_count == 0 &&
-           SIGPU_RENDERQUEUE->owned_axis_count == 0 && SIGPU_RENDERQUEUE->owned_rotated_count == 0;
-}
-
 void sigpu_bind_mesh(SDL_GPURenderPass *pass) {
     SDL_GPUBufferBinding vertex_binding = { .buffer = SIGPU_GPUCONTEXT->vertex_buffer };
     SDL_GPUBufferBinding index_binding = { .buffer = SIGPU_GPUCONTEXT->index_buffer };
@@ -93,11 +87,12 @@ void sigpu_draw_static_chunks(
     SDL_GPURenderPass *pass,
     SDL_GPUGraphicsPipeline *axis_pipeline,
     SDL_GPUGraphicsPipeline *rotated_pipeline,
-    bool shadow
+    bool shadow,
+    Uint32 cascade
 ) {
     for (Uint32 i = 0; i < SIGPU_STATICRENDERCACHE->static_chunk_count; i++) {
         const sigpu_static_chunk_t *chunk = &SIGPU_STATICRENDERCACHE->static_chunks[i];
-        if (!(shadow ? chunk->shadow_visible : chunk->camera_visible))
+        if (!(shadow ? (chunk->shadow_mask & (1u << cascade)) : chunk->camera_visible))
             continue;
         for (Uint32 primitive = 0; primitive < SIGPU_PRIMITIVE_COUNT; primitive++) {
             Uint32 lod = primitive == SIGPU_PRIMITIVE_CUBE ? 0

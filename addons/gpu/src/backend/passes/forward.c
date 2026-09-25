@@ -33,10 +33,21 @@ void sigpu_forward_pass(void) {
         SDL_BeginGPURenderPass(SIGPU_FRAMECONTEXT->command_buffer, color_targets, 2, &depth_target);
     sigpu_transform_uniform_t transforms = {
         .view_projection = SIGPU_RENDERVIEW->view_projection,
-        .light_view_projection = SIGPU_RENDERVIEW->light_view_projection,
     };
+    for (Uint32 i = 0; i < SIGPU_SHADOW_CASCADES; i++)
+        transforms.light_view_projection[i] = i < SIGPU_RENDERVIEW->cascade_count
+            ? SIGPU_RENDERVIEW->cascades[i].view_projection : sigpu_mat4_identity();
+    for (Uint32 i = 0; i < SIGPU_RENDERVIEW->cascade_count; i++)
+        transforms.shadow_texel_world[i] = 2.0f * SIGPU_RENDERVIEW->cascades[i].max_x / SIGPU_SHADOW_SIZE;
+    transforms.sun_direction[0] = SIGPU_RENDERSETTINGS->sun_direction.x;
+    transforms.sun_direction[1] = SIGPU_RENDERSETTINGS->sun_direction.y;
+    transforms.sun_direction[2] = SIGPU_RENDERSETTINGS->sun_direction.z;
+    sigpu_vec3_t direction = sigpu_vec3_normalize(sigpu_vec3_sub(
+        SIGPU_RENDERVIEW->camera.target, SIGPU_RENDERVIEW->camera.position
+    ));
     sigpu_lighting_uniform_t lighting = {
         .camera_position = { SIGPU_RENDERVIEW->camera.position.x, SIGPU_RENDERVIEW->camera.position.y, SIGPU_RENDERVIEW->camera.position.z, 1.0f },
+        .camera_direction = { direction.x, direction.y, direction.z, 0.0f },
         .sun_direction_intensity = {
             SIGPU_RENDERSETTINGS->sun_direction.x,
             SIGPU_RENDERSETTINGS->sun_direction.y,
@@ -60,10 +71,15 @@ void sigpu_forward_pass(void) {
         .shadow_parameters = {
             SIGPU_RENDERSETTINGS->shadow_distance,
             0.0f,
-            0.0f,
-            0.0f,
         },
     };
+    lighting.shadow_splits[3] = (float)SIGPU_RENDERVIEW->cascade_count;
+    for (Uint32 i = 0; i < SIGPU_RENDERVIEW->cascade_count; i++) {
+        const sigpu_shadow_cascade_t *cascade = &SIGPU_RENDERVIEW->cascades[i];
+        lighting.shadow_splits[i] = cascade->split_far;
+        lighting.shadow_texel_depth[i][0] = 2.0f * cascade->max_x / SIGPU_SHADOW_SIZE;
+        lighting.shadow_texel_depth[i][1] = fmaxf(cascade->far_plane - cascade->near_plane, 1.0f);
+    }
     SDL_GPUTextureSamplerBinding shadow_binding = {
         .texture = SIGPU_GPUTARGETS->shadow_texture,
         .sampler = SIGPU_GPUTARGETS->shadow_sampler,
@@ -86,7 +102,8 @@ void sigpu_forward_pass(void) {
         pass,
         SIGPU_GPUPIPELINES->axis_pipeline,
         SIGPU_GPUPIPELINES->rotated_pipeline,
-        false
+        false,
+        0
     );
     sigpu_draw_shared_batches(
         pass,

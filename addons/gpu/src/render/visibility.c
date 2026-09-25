@@ -1,6 +1,6 @@
 #include "render/render_internal.h"
 
-static void camera_corners(float aspect, float far_distance, sigpu_vec3_t corners[8]) {
+static void camera_corners(float aspect, float near_distance, float far_distance, sigpu_vec3_t corners[8]) {
     sigpu_vec3_t forward = sigpu_vec3_normalize(
         sigpu_vec3_sub(SIGPU_RENDERVIEW->camera.target, SIGPU_RENDERVIEW->camera.position)
     );
@@ -8,13 +8,13 @@ static void camera_corners(float aspect, float far_distance, sigpu_vec3_t corner
         sigpu_vec3_normalize(sigpu_vec3_cross((sigpu_vec3_t){ 0.0f, 1.0f, 0.0f }, forward));
     sigpu_vec3_t up = sigpu_vec3_cross(forward, right);
     float tangent = tanf(SIGPU_RENDERVIEW->camera.fov * SIGPU_PI / 360.0f);
-    float near_height = tangent * SIGPU_RENDERVIEW->camera.near_plane;
+    float near_height = tangent * near_distance;
     float near_width = near_height * aspect;
     float far_height = tangent * far_distance;
     float far_width = far_height * aspect;
     sigpu_vec3_t near_center = sigpu_vec3_add(
         SIGPU_RENDERVIEW->camera.position,
-        sigpu_vec3_scale(forward, SIGPU_RENDERVIEW->camera.near_plane)
+        sigpu_vec3_scale(forward, near_distance)
     );
     sigpu_vec3_t far_center =
         sigpu_vec3_add(SIGPU_RENDERVIEW->camera.position, sigpu_vec3_scale(forward, far_distance));
@@ -53,101 +53,88 @@ static void camera_corners(float aspect, float far_distance, sigpu_vec3_t corner
     );
 }
 
-void sigpu_shadow_bounds_extend(sigpu_vec3_t center, float radius) {
-    sigpu_vec3_t light_position = sigpu_mat4_transform_point(SIGPU_RENDERVIEW->light_view, center);
-
-    if (light_position.x + radius >= SIGPU_RENDERVIEW->light_min_x &&
-        light_position.x - radius <= SIGPU_RENDERVIEW->light_max_x &&
-        light_position.y + radius >= SIGPU_RENDERVIEW->light_min_y &&
-        light_position.y - radius <= SIGPU_RENDERVIEW->light_max_y) {
-        SIGPU_RENDERVIEW->shadow_minimum_z =
-            fminf(SIGPU_RENDERVIEW->shadow_minimum_z, light_position.z - radius);
-        SIGPU_RENDERVIEW->shadow_maximum_z =
-            fmaxf(SIGPU_RENDERVIEW->shadow_maximum_z, light_position.z + radius);
+void sigpu_shadow_bounds_extend(sigpu_vec3_t center, float radius, bool is_static) {
+    RenderView *view = SIGPU_RENDERVIEW;
+    for (Uint32 i = 0; i < view->cascade_count; i++) {
+        if (!is_static && i != 0)
+            break;
+        sigpu_shadow_cascade_t *cascade = &view->cascades[i];
+        sigpu_vec3_t p = sigpu_mat4_transform_point(cascade->view, center);
+        if (p.x + radius < cascade->min_x || p.x - radius > cascade->max_x ||
+            p.y + radius < cascade->min_y || p.y - radius > cascade->max_y)
+            continue;
+        cascade->minimum_z = fminf(cascade->minimum_z, p.z - radius);
+        cascade->maximum_z = fmaxf(cascade->maximum_z, p.z + radius);
     }
 }
 
 void sigpu_shadow_bounds_begin(float aspect) {
-    float shadow_distance =
-        fminf(SIGPU_RENDERVIEW->camera.far_plane, SIGPU_RENDERSETTINGS->shadow_distance);
-    sigpu_vec3_t corners[8];
-    camera_corners(aspect, shadow_distance, corners);
-    sigpu_vec3_t center = { 0.0f, 0.0f, 0.0f };
-
-    for (int index = 0; index < 8; index++) {
-        center = sigpu_vec3_add(center, sigpu_vec3_scale(corners[index], 0.125f));
-    }
-
+    RenderView *view = SIGPU_RENDERVIEW;
+    float distance = fminf(view->camera.far_plane, SIGPU_RENDERSETTINGS->shadow_distance);
+    float ends[SIGPU_SHADOW_CASCADES] = { fminf(distance, 120.0f),
+                                           fminf(distance, 300.0f), distance };
+    view->cascade_count = distance > view->camera.near_plane ? 1 : 0;
+    if (distance > 120.0f) view->cascade_count++;
+    if (distance > 300.0f) view->cascade_count++;
     sigpu_vec3_t up = fabsf(SIGPU_RENDERSETTINGS->sun_direction.y) > 0.99f
                           ? (sigpu_vec3_t){ 1.0f, 0.0f, 0.0f }
                           : (sigpu_vec3_t){ 0.0f, 1.0f, 0.0f };
-    SIGPU_RENDERVIEW->light_view = sigpu_mat4_look_at_lh(
-        center,
-        sigpu_vec3_add(center, SIGPU_RENDERSETTINGS->sun_direction),
-        up
+    sigpu_mat4_t orientation = sigpu_mat4_look_at_lh(
+        (sigpu_vec3_t){ 0.0f, 0.0f, 0.0f }, SIGPU_RENDERSETTINGS->sun_direction, up
     );
-    SIGPU_RENDERVIEW->light_min_x = INFINITY;
-    SIGPU_RENDERVIEW->light_max_x = -INFINITY;
-    SIGPU_RENDERVIEW->light_min_y = INFINITY;
-    SIGPU_RENDERVIEW->light_max_y = -INFINITY;
-    SIGPU_RENDERVIEW->shadow_minimum_z = INFINITY;
-    SIGPU_RENDERVIEW->shadow_maximum_z = -INFINITY;
-
-    for (int index = 0; index < 8; index++) {
-        sigpu_vec3_t point =
-            sigpu_mat4_transform_point(SIGPU_RENDERVIEW->light_view, corners[index]);
-        SIGPU_RENDERVIEW->light_min_x = fminf(SIGPU_RENDERVIEW->light_min_x, point.x);
-        SIGPU_RENDERVIEW->light_max_x = fmaxf(SIGPU_RENDERVIEW->light_max_x, point.x);
-        SIGPU_RENDERVIEW->light_min_y = fminf(SIGPU_RENDERVIEW->light_min_y, point.y);
-        SIGPU_RENDERVIEW->light_max_y = fmaxf(SIGPU_RENDERVIEW->light_max_y, point.y);
-        SIGPU_RENDERVIEW->shadow_minimum_z = fminf(SIGPU_RENDERVIEW->shadow_minimum_z, point.z);
-        SIGPU_RENDERVIEW->shadow_maximum_z = fmaxf(SIGPU_RENDERVIEW->shadow_maximum_z, point.z);
+    float tangent = tanf(view->camera.fov * SIGPU_PI / 360.0f);
+    for (Uint32 i = 0; i < view->cascade_count; i++) {
+        sigpu_shadow_cascade_t *cascade = &view->cascades[i];
+        float near = i ? ends[i - 1] : view->camera.near_plane;
+        float far = ends[i];
+        cascade->split_near = near;
+        cascade->split_far = far;
+        float overlap = i ? fminf(10.0f, (far - near) * 0.1f) : 0.0f;
+        sigpu_vec3_t corners[8];
+        camera_corners(aspect, fmaxf(view->camera.near_plane, near - overlap), far, corners);
+        sigpu_vec3_t center = { 0 };
+        for (int c = 0; c < 8; c++)
+            center = sigpu_vec3_add(center, sigpu_vec3_scale(corners[c], 0.125f));
+        float lateral = tangent * far * sqrtf(1.0f + aspect * aspect);
+        float longitudinal = (far - fmaxf(view->camera.near_plane, near - overlap)) * 0.5f;
+        float half_extent = sqrtf(lateral * lateral + longitudinal * longitudinal);
+        half_extent /= 1.0f - 8.0f / SIGPU_SHADOW_SIZE;
+        float texel = 2.0f * half_extent / SIGPU_SHADOW_SIZE;
+        sigpu_vec3_t light_center = sigpu_mat4_transform_point(orientation, center);
+        float dx = roundf(light_center.x / texel) * texel - light_center.x;
+        float dy = roundf(light_center.y / texel) * texel - light_center.y;
+        sigpu_vec3_t right = { orientation.m[0], orientation.m[4], orientation.m[8] };
+        sigpu_vec3_t light_up = { orientation.m[1], orientation.m[5], orientation.m[9] };
+        center = sigpu_vec3_add(center, sigpu_vec3_add(sigpu_vec3_scale(right, dx), sigpu_vec3_scale(light_up, dy)));
+        cascade->center = center;
+        cascade->up = up;
+        cascade->view = sigpu_mat4_look_at_lh(center, sigpu_vec3_add(center, SIGPU_RENDERSETTINGS->sun_direction), up);
+        cascade->min_x = cascade->min_y = -half_extent;
+        cascade->max_x = cascade->max_y = half_extent;
+        cascade->minimum_z = INFINITY;
+        cascade->maximum_z = -INFINITY;
     }
-
-    SIGPU_RENDERVIEW->light_min_x -= 1.0f;
-    SIGPU_RENDERVIEW->light_max_x += 1.0f;
-    SIGPU_RENDERVIEW->light_min_y -= 1.0f;
-    SIGPU_RENDERVIEW->light_max_y += 1.0f;
-
-    float width = SIGPU_RENDERVIEW->light_max_x - SIGPU_RENDERVIEW->light_min_x;
-    float height = SIGPU_RENDERVIEW->light_max_y - SIGPU_RENDERVIEW->light_min_y;
-    float center_x = (SIGPU_RENDERVIEW->light_min_x + SIGPU_RENDERVIEW->light_max_x) * 0.5f;
-    float center_y = (SIGPU_RENDERVIEW->light_min_y + SIGPU_RENDERVIEW->light_max_y) * 0.5f;
-    center_x = roundf(center_x / (width / SIGPU_SHADOW_SIZE)) * (width / SIGPU_SHADOW_SIZE);
-    center_y = roundf(center_y / (height / SIGPU_SHADOW_SIZE)) * (height / SIGPU_SHADOW_SIZE);
-    SIGPU_RENDERVIEW->light_min_x = center_x - width * 0.5f;
-    SIGPU_RENDERVIEW->light_max_x = center_x + width * 0.5f;
-    SIGPU_RENDERVIEW->light_min_y = center_y - height * 0.5f;
-    SIGPU_RENDERVIEW->light_max_y = center_y + height * 0.5f;
-
-    SIGPU_RENDERVIEW->shadow_center = center;
-    SIGPU_RENDERVIEW->shadow_up = up;
 }
 
 void sigpu_shadow_bounds_end(void) {
-    float depth_shift = SIGPU_RENDERVIEW->shadow_minimum_z - 5.0f;
-    sigpu_vec3_t light_eye = sigpu_vec3_add(
-        SIGPU_RENDERVIEW->shadow_center,
-        sigpu_vec3_scale(SIGPU_RENDERSETTINGS->sun_direction, depth_shift)
-    );
-    SIGPU_RENDERVIEW->light_view = sigpu_mat4_look_at_lh(
-        light_eye,
-        sigpu_vec3_add(light_eye, SIGPU_RENDERSETTINGS->sun_direction),
-        SIGPU_RENDERVIEW->shadow_up
-    );
-    SIGPU_RENDERVIEW->light_near = 1.0f;
-    SIGPU_RENDERVIEW->light_far =
-        SIGPU_RENDERVIEW->shadow_maximum_z - SIGPU_RENDERVIEW->shadow_minimum_z + 10.0f;
-    sigpu_mat4_t projection = sigpu_mat4_orthographic_lh(
-        SIGPU_RENDERVIEW->light_min_x,
-        SIGPU_RENDERVIEW->light_max_x,
-        SIGPU_RENDERVIEW->light_min_y,
-        SIGPU_RENDERVIEW->light_max_y,
-        SIGPU_RENDERVIEW->light_near,
-        SIGPU_RENDERVIEW->light_far
-    );
-    SIGPU_RENDERVIEW->light_view_projection =
-        sigpu_mat4_mul(projection, SIGPU_RENDERVIEW->light_view);
+    RenderView *view = SIGPU_RENDERVIEW;
+    for (Uint32 i = 0; i < view->cascade_count; i++) {
+        sigpu_shadow_cascade_t *cascade = &view->cascades[i];
+        if (!isfinite(cascade->minimum_z)) {
+            cascade->minimum_z = 0.0f;
+            cascade->maximum_z = 1.0f;
+        }
+        float shift = cascade->minimum_z - 5.0f;
+        sigpu_vec3_t eye = sigpu_vec3_add(cascade->center, sigpu_vec3_scale(SIGPU_RENDERSETTINGS->sun_direction, shift));
+        cascade->view = sigpu_mat4_look_at_lh(eye, sigpu_vec3_add(eye, SIGPU_RENDERSETTINGS->sun_direction), cascade->up);
+        cascade->near_plane = 1.0f;
+        cascade->far_plane = cascade->maximum_z - cascade->minimum_z + 10.0f;
+        sigpu_mat4_t projection = sigpu_mat4_orthographic_lh(
+            cascade->min_x, cascade->max_x, cascade->min_y, cascade->max_y,
+            cascade->near_plane, cascade->far_plane
+        );
+        cascade->view_projection = sigpu_mat4_mul(projection, cascade->view);
+    }
 }
 
 bool sigpu_camera_visible(sigpu_vec3_t center, float radius, float aspect) {
@@ -161,20 +148,19 @@ bool sigpu_camera_visible(sigpu_vec3_t center, float radius, float aspect) {
 }
 
 bool sigpu_shadow_visible(sigpu_vec3_t center, float radius) {
-    sigpu_vec3_t position = sigpu_mat4_transform_point(SIGPU_RENDERVIEW->light_view, center);
-    return position.x + radius >= SIGPU_RENDERVIEW->light_min_x &&
-           position.x - radius <= SIGPU_RENDERVIEW->light_max_x &&
-           position.y + radius >= SIGPU_RENDERVIEW->light_min_y &&
-           position.y - radius <= SIGPU_RENDERVIEW->light_max_y &&
-           position.z + radius >= SIGPU_RENDERVIEW->light_near &&
-           position.z - radius <= SIGPU_RENDERVIEW->light_far;
+    if (!SIGPU_RENDERVIEW->cascade_count) return false;
+    const sigpu_shadow_cascade_t *cascade = &SIGPU_RENDERVIEW->cascades[0];
+    sigpu_vec3_t p = sigpu_mat4_transform_point(cascade->view, center);
+    return p.x + radius >= cascade->min_x && p.x - radius <= cascade->max_x &&
+           p.y + radius >= cascade->min_y && p.y - radius <= cascade->max_y &&
+           p.z + radius >= cascade->near_plane && p.z - radius <= cascade->far_plane;
 }
 
 void sigpu_static_shadow_bounds_extend(void) {
     for (Uint32 index = 0; index < SIGPU_STATICRENDERCACHE->static_chunk_count; index++) {
         const sigpu_static_chunk_t *chunk = &SIGPU_STATICRENDERCACHE->static_chunks[index];
         if (chunk->radius > 0.0f)
-            sigpu_shadow_bounds_extend(chunk->center, chunk->radius);
+            sigpu_shadow_bounds_extend(chunk->center, chunk->radius, true);
     }
 }
 
@@ -204,10 +190,23 @@ camera_plane(float out[4], const sigpu_mat4_t *matrix, float x, float y, float z
 
 void sigpu_static_shadow_cull(void) {
     SIGPU_STATICRENDERCACHE->static_shadow_visible_count = 0;
+    SDL_memset(SIGPU_STATICRENDERCACHE->shadow_visible_count, 0, sizeof(SIGPU_STATICRENDERCACHE->shadow_visible_count));
     for (Uint32 i = 0; i < SIGPU_STATICRENDERCACHE->static_chunk_count; i++) {
         sigpu_static_chunk_t *chunk = &SIGPU_STATICRENDERCACHE->static_chunks[i];
-        chunk->shadow_visible =
-            chunk->radius > 0.0f && sigpu_shadow_visible(chunk->center, chunk->radius);
+        chunk->shadow_mask = 0;
+        for (Uint32 c = 0; c < SIGPU_RENDERVIEW->cascade_count; c++) {
+            const sigpu_shadow_cascade_t *cascade = &SIGPU_RENDERVIEW->cascades[c];
+            sigpu_vec3_t p = sigpu_mat4_transform_point(cascade->view, chunk->center);
+            bool visible = chunk->radius > 0.0f &&
+                p.x + chunk->radius >= cascade->min_x && p.x - chunk->radius <= cascade->max_x &&
+                p.y + chunk->radius >= cascade->min_y && p.y - chunk->radius <= cascade->max_y &&
+                p.z + chunk->radius >= cascade->near_plane && p.z - chunk->radius <= cascade->far_plane;
+            if (visible) {
+                chunk->shadow_mask |= 1u << c;
+                SIGPU_STATICRENDERCACHE->shadow_visible_count[c]++;
+            }
+        }
+        chunk->shadow_visible = chunk->shadow_mask != 0;
         SIGPU_STATICRENDERCACHE->static_shadow_visible_count += chunk->shadow_visible;
     }
 }
@@ -237,14 +236,4 @@ void sigpu_view_prepare(float aspect) {
     camera_plane(view->frustum_planes[3], &view->view, -1, 0, slope_x, 0);
     camera_plane(view->frustum_planes[4], &view->view, 0, 1, slope_y, 0);
     camera_plane(view->frustum_planes[5], &view->view, 0, -1, slope_y, 0);
-    view->light_view_projection = sigpu_mat4_identity();
-}
-
-bool sigpu_visible_camera(GlobalPosition3d p, float radius, float aspect) {
-    return sigpu_camera_visible((sigpu_vec3_t){ p.x, p.y, p.z }, radius, aspect);
-}
-
-bool sigpu_visible_with_shadows(GlobalPosition3d p, float radius, float aspect) {
-    sigpu_vec3_t center = { p.x, p.y, p.z };
-    return sigpu_camera_visible(center, radius, aspect) || sigpu_shadow_visible(center, radius);
 }

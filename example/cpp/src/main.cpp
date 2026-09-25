@@ -7,8 +7,6 @@
 #include <siecs/cpp/world.hpp>
 #include <sigpu.h>
 
-struct A {};
-
 int main() {
     ecs::init();
     static_cast<void>(ecs::import<sigpu>(sigpu::props_t{
@@ -17,8 +15,6 @@ int main() {
         .height = 720,
         .samples = 4,
     }));
-
-    ecs::component<A>();
 
     ecs::set_resource(Sky{ Color{ 12, 18, 34 } });
     ecs::set_resource(Sun{ -0.45f, -1.0f, 0.35f, Color{ 255, 232, 196 }, 1.5f });

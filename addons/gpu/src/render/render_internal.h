@@ -57,8 +57,6 @@ sigpu_rotated_instance_t make_owned_rotated(
     Color c,
     float bloom
 );
-bool sigpu_visible_camera(GlobalPosition3d p, float radius, float aspect);
-bool sigpu_visible_with_shadows(GlobalPosition3d p, float radius, float aspect);
 void record_shared(
     sigpu_shared_batch_t **batches,
     Uint32 *count,

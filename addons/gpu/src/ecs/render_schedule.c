@@ -8,6 +8,8 @@ static void begin_gpu_frame(ecs_iter_t *it) {
     SIGPU_RENDERSTATS->acquire_ns = SIGPU_RENDERSTATS->collect_ns = SIGPU_RENDERSTATS->cull_ns =
         SIGPU_RENDERSTATS->encode_ns = 0;
     SIGPU_RENDERSTATS->draw_calls = SIGPU_RENDERSTATS->drawn_instances = 0;
+    SDL_memset(SIGPU_RENDERSTATS->shadow_redraws, 0, sizeof(SIGPU_RENDERSTATS->shadow_redraws));
+    SDL_memset(SIGPU_RENDERSTATS->shadow_reuses, 0, sizeof(SIGPU_RENDERSTATS->shadow_reuses));
     SIGPU_RENDERQUEUE->shared_axis_count = 0;
     SIGPU_RENDERQUEUE->shared_rotated_count = 0;
     SIGPU_RENDERQUEUE->owned_axis_count = 0;
@@ -16,6 +18,14 @@ static void begin_gpu_frame(ecs_iter_t *it) {
     SIGPU_RENDERQUEUE->shared_rotated_batch_count = 0;
     SIGPU_RENDERQUEUE->owned_axis_batch_count = 0;
     SIGPU_RENDERQUEUE->owned_rotated_batch_count = 0;
+    SIGPU_RENDERQUEUE->shadow_shared_axis_count = 0;
+    SIGPU_RENDERQUEUE->shadow_shared_rotated_count = 0;
+    SIGPU_RENDERQUEUE->shadow_owned_axis_count = 0;
+    SIGPU_RENDERQUEUE->shadow_owned_rotated_count = 0;
+    SIGPU_RENDERQUEUE->shadow_shared_axis_batch_count = 0;
+    SIGPU_RENDERQUEUE->shadow_shared_rotated_batch_count = 0;
+    SIGPU_RENDERQUEUE->shadow_owned_axis_batch_count = 0;
+    SIGPU_RENDERQUEUE->shadow_owned_rotated_batch_count = 0;
     SIGPU_RENDERQUEUE->any_bloom = false;
 
     if (!sigpu_begin_frame())
@@ -66,10 +76,13 @@ void sigpu_render_schedule_set_shadows(bool enabled) {
     sigpu_bounds_set_enabled(enabled);
     sigpu_primitives_set_shadows(enabled);
     if (!enabled) {
+        for (Uint32 i = 0; i < SIGPU_SHADOW_CASCADES; i++)
+            SIGPU_RENDERVIEW->cascades[i].cache_valid = false;
         SIGPU_STATICRENDERCACHE->static_shadow_visible_count = 0;
         for (Uint32 i = 0; i < SIGPU_STATICRENDERCACHE->static_chunk_count; i++) {
             sigpu_static_chunk_t *chunk = &SIGPU_STATICRENDERCACHE->static_chunks[i];
             chunk->shadow_visible = false;
+            chunk->shadow_mask = 0;
             RenderChunkVisibility *visibility =
                 ecs_try_get(SIGPU_STATICRENDERCACHE->chunk_info[i].entity, RenderChunkVisibility);
             if (visibility)
@@ -167,4 +180,8 @@ void sigpu_render_schedule_fini(void) {
     SDL_free(SIGPU_RENDERQUEUE->shared_rotated_batches);
     SDL_free(SIGPU_RENDERQUEUE->owned_axis_batches);
     SDL_free(SIGPU_RENDERQUEUE->owned_rotated_batches);
+    SDL_free(SIGPU_RENDERQUEUE->shadow_shared_axis_batches);
+    SDL_free(SIGPU_RENDERQUEUE->shadow_shared_rotated_batches);
+    SDL_free(SIGPU_RENDERQUEUE->shadow_owned_axis_batches);
+    SDL_free(SIGPU_RENDERQUEUE->shadow_owned_rotated_batches);
 }

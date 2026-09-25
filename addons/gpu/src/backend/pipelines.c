@@ -200,7 +200,7 @@ static SDL_GPUGraphicsPipeline *create_shadow_pipeline(bool rotated, bool shared
             .enable_depth_write = true,
         },
         .target_info = {
-            .depth_stencil_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
+            .depth_stencil_format = SIGPU_GPUTARGETS->shadow_format,
             .has_depth_stencil_target = true,
         },
     };
@@ -235,15 +235,23 @@ static void create_main_pipelines(void) {
 }
 
 static void create_shadow_resources(void) {
+    SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    SIGPU_GPUTARGETS->shadow_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM;
+    if (SDL_GPUTextureSupportsFormat(SIGPU_GPUCONTEXT->device, SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+            SDL_GPU_TEXTURETYPE_2D_ARRAY, usage))
+        SIGPU_GPUTARGETS->shadow_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+    else if (SDL_GPUTextureSupportsFormat(SIGPU_GPUCONTEXT->device, SDL_GPU_TEXTUREFORMAT_D24_UNORM,
+            SDL_GPU_TEXTURETYPE_2D_ARRAY, usage))
+        SIGPU_GPUTARGETS->shadow_format = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
     SIGPU_GPUTARGETS->shadow_texture = SDL_CreateGPUTexture(
         SIGPU_GPUCONTEXT->device,
         &(SDL_GPUTextureCreateInfo){
-            .type = SDL_GPU_TEXTURETYPE_2D,
-            .format = SDL_GPU_TEXTUREFORMAT_D16_UNORM,
-            .usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+            .type = SDL_GPU_TEXTURETYPE_2D_ARRAY,
+            .format = SIGPU_GPUTARGETS->shadow_format,
+            .usage = usage,
             .width = SIGPU_SHADOW_SIZE,
             .height = SIGPU_SHADOW_SIZE,
-            .layer_count_or_depth = 1,
+            .layer_count_or_depth = SIGPU_SHADOW_CASCADES,
             .num_levels = 1,
             .sample_count = SDL_GPU_SAMPLECOUNT_1,
         }

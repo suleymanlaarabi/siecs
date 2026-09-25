@@ -1,7 +1,6 @@
 #ifndef SIGPU_PASSES_INTERNAL_H
 #define SIGPU_PASSES_INTERNAL_H
 #include "backend/backend.h"
-bool sigpu_no_instances(void);
 void sigpu_bind_mesh(SDL_GPURenderPass *);
 void sigpu_draw_shared_batches(
     SDL_GPURenderPass *,
@@ -26,7 +25,8 @@ void sigpu_draw_static_chunks(
     SDL_GPURenderPass *,
     SDL_GPUGraphicsPipeline *,
     SDL_GPUGraphicsPipeline *,
-    bool
+    bool,
+    Uint32
 );
 void sigpu_draw_fullscreen(
     SDL_GPUGraphicsPipeline *,

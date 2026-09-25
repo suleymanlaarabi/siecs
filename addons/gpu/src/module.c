@@ -71,7 +71,6 @@ void sigpu_import(const sigpu_props_t *props) {
     sigpu_materials_init();
     sigpu_init(window->title, window->width, window->height, config.samples);
     sigpu_camera(0.0f, 2.0f, -6.0f, 0.0f, 0.0f, 0.0f, 60.0f);
-    SIGPU_RENDERVIEW->light_view_projection = sigpu_mat4_identity();
     sigpu_input_init();
     ecs_set_resource(Sky, { .color = { 13, 13, 20, 255 } });
     ecs_set_resource(

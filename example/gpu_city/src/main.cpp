@@ -32,12 +32,12 @@ int main() {
     ecs::init({ .target_fps = 120, .worker_threads = 0 });
     static_cast<void>(ecs::import<sigpu>(sigpu::props_t{
         .title = "SIECS GPU City",
-        .width = 1280,
-        .height = 800,
+        .width = 1920,
+        .height = 1200,
         .samples = 1,
     }));
     ecs::set_resource(AmbientLight{ Color{ 180, 195, 230 }, 0.45f });
-    ecs::set_resource(Shadows{ true, 400.0f });
+    ecs::set_resource(Shadows{ std::getenv("GPU_CITY_NO_SHADOWS") == nullptr, 200.0f });
     ecs::set_resource(CameraClip{ 0.5f, 4000.0f });
     ecs::set_resource(Multisampling{ 2 });
 

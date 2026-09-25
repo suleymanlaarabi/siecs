@@ -280,6 +280,7 @@ static void rebuild_dirty_static_chunks(ecs_iter_t *it) {
     ecs_defer_begin();
     for (Uint32 i = 0; i < it->count; i++) {
         rebuild_chunk(it->entities[i], &gpu[i], &bounds[i]);
+        SIGPU_STATICRENDERCACHE->static_generation++;
         ecs_remove(it->entities[i], RenderChunkDirty);
     }
     ecs_defer_end();

@@ -1,5 +1,7 @@
 #include "render/render_internal.h"
+
 static ecs_system_id_t shadow_systems[6];
+
 static void begin_shadow_bounds(ecs_iter_t *it) {
     if (SIGPU_FRAMECONTEXT->swapchain && SIGPU_FRAMECONTEXT->frame_height)
         sigpu_shadow_bounds_begin(
@@ -7,10 +9,13 @@ static void begin_shadow_bounds(ecs_iter_t *it) {
         );
 }
 
-static void build_static_shadow_bounds(ecs_iter_t *it) { sigpu_static_shadow_bounds_extend(); }
+static void build_static_shadow_bounds(ecs_iter_t *it) {
+    if (SIGPU_FRAMECONTEXT->swapchain && SIGPU_FRAMECONTEXT->frame_height)
+        sigpu_static_shadow_bounds_extend();
+}
 
 static void build_primitive_shadow_bounds(ecs_iter_t *it, sigpu_primitive_t primitive) {
-    if (!SIGPU_FRAMECONTEXT->swapchain)
+    if (!SIGPU_FRAMECONTEXT->swapchain || !SIGPU_FRAMECONTEXT->frame_height)
         return;
     field_GlobalPosition3d positions = FIELD(GlobalPosition3d, it, 0);
     field_GlobalScale3d scales = FIELD(GlobalScale3d, it, 1);
@@ -30,10 +35,12 @@ static void build_primitive_shadow_bounds(ecs_iter_t *it, sigpu_primitive_t prim
         );
         sigpu_shadow_bounds_extend(
             (sigpu_vec3_t){ p.x, p.y, p.z },
-            primitive_radius(primitive, size)
+            primitive_radius(primitive, size),
+            false
         );
     }
 }
+
 static void build_cuboid_shadow_bounds(ecs_iter_t *it) {
     build_primitive_shadow_bounds(it, SIGPU_PRIMITIVE_CUBE);
 }
@@ -44,7 +51,10 @@ static void build_sphere_shadow_bounds(ecs_iter_t *it) {
     build_primitive_shadow_bounds(it, SIGPU_PRIMITIVE_SPHERE);
 }
 
-static void end_shadow_bounds(ecs_iter_t *it) { sigpu_shadow_bounds_end(); }
+static void end_shadow_bounds(ecs_iter_t *it) {
+    if (SIGPU_FRAMECONTEXT->swapchain && SIGPU_FRAMECONTEXT->frame_height)
+        sigpu_shadow_bounds_end();
+}
 
 void sigpu_bounds_register(ecs_system_id_t static_cache_system) {
     ecs_system_desc_t begin = {

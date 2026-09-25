@@ -8,6 +8,8 @@ static Uint32 profile_count;
 static Uint32 profile_warmup;
 static double profile_acquire_ms, profile_collect_ms, profile_cull_ms, profile_encode_ms;
 static Uint32 profile_draw_calls, profile_drawn_instances;
+static Uint32 profile_shadow_redraws[SIGPU_SHADOW_CASCADES];
+static Uint32 profile_shadow_reuses[SIGPU_SHADOW_CASCADES];
 
 static int compare_double(const void *left, const void *right) {
     double a = *(const double *)left, b = *(const double *)right;
@@ -25,13 +27,17 @@ static void profile_frame(void) {
     profile_encode_ms += SIGPU_RENDERSTATS->encode_ns / 1000000.0;
     profile_draw_calls += SIGPU_RENDERSTATS->draw_calls;
     profile_drawn_instances += SIGPU_RENDERSTATS->drawn_instances;
+    for (Uint32 i = 0; i < SIGPU_SHADOW_CASCADES; i++) {
+        profile_shadow_redraws[i] += SIGPU_RENDERSTATS->shadow_redraws[i];
+        profile_shadow_reuses[i] += SIGPU_RENDERSTATS->shadow_reuses[i];
+    }
     if (profile_count != SDL_arraysize(profile_frames_ms))
         return;
     qsort(profile_frames_ms, profile_count, sizeof(profile_frames_ms[0]), compare_double);
     fprintf(
         stderr,
         "sigpu %ux%u frame p50=%.2f p95=%.2f ms acquire=%.2f collect=%.2f cull=%.2f encode=%.2f "
-        "draw=%u instances=%u chunks=%u/%u\n",
+        "draw=%u instances=%u chunks=%u/%u shadow redraw=%u/%u/%u reuse=%u/%u/%u\n",
         SIGPU_FRAMECONTEXT->frame_width,
         SIGPU_FRAMECONTEXT->frame_height,
         profile_frames_ms[profile_count / 2],
@@ -43,11 +49,15 @@ static void profile_frame(void) {
         profile_draw_calls / profile_count,
         profile_drawn_instances / profile_count,
         SIGPU_STATICRENDERCACHE->static_camera_visible_count,
-        SIGPU_STATICRENDERCACHE->static_chunk_count
+        SIGPU_STATICRENDERCACHE->static_chunk_count,
+        profile_shadow_redraws[0], profile_shadow_redraws[1], profile_shadow_redraws[2],
+        profile_shadow_reuses[0], profile_shadow_reuses[1], profile_shadow_reuses[2]
     );
     profile_count = 0;
     profile_acquire_ms = profile_collect_ms = profile_cull_ms = profile_encode_ms = 0.0;
     profile_draw_calls = profile_drawn_instances = 0;
+    SDL_memset(profile_shadow_redraws, 0, sizeof(profile_shadow_redraws));
+    SDL_memset(profile_shadow_reuses, 0, sizeof(profile_shadow_reuses));
 }
 
 void sigpu_init(const char *title, int width, int height, int samples) {
@@ -68,12 +78,17 @@ void sigpu_init(const char *title, int width, int height, int samples) {
         SIGPU_GPUCONTEXT->window,
         SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR
     );
+    SDL_GPUPresentMode present_mode = SDL_GPU_PRESENTMODE_VSYNC;
+    if (SIGPU_RENDERSTATS->profile_enabled && SDL_WindowSupportsGPUPresentMode(
+            SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->window, SDL_GPU_PRESENTMODE_IMMEDIATE
+        ))
+        present_mode = SDL_GPU_PRESENTMODE_IMMEDIATE;
     SDL_SetGPUSwapchainParameters(
         SIGPU_GPUCONTEXT->device,
         SIGPU_GPUCONTEXT->window,
         SIGPU_GPUCONTEXT->linear_swapchain ? SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR
                                            : SDL_GPU_SWAPCHAINCOMPOSITION_SDR,
-        SDL_GPU_PRESENTMODE_VSYNC
+        present_mode
     );
     SIGPU_GPUCONTEXT->swapchain_format =
         SDL_GetGPUSwapchainTextureFormat(SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->window);
@@ -99,6 +114,12 @@ bool sigpu_begin_frame(void) {
         SIGPU_GPUCONTEXT->device,
         SIGPU_GPUCONTEXT->rotated_transfer,
         true
+    );
+    SIGPU_RENDERQUEUE->shadow_axis_mapped = SDL_MapGPUTransferBuffer(
+        SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->shadow_axis_transfer, true
+    );
+    SIGPU_RENDERQUEUE->shadow_rotated_mapped = SDL_MapGPUTransferBuffer(
+        SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->shadow_rotated_transfer, true
     );
     return true;
 }
