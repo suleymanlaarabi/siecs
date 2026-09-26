@@ -17,8 +17,11 @@
 
 namespace ecs {
 
-bool save(const std::string &path) { return ecs_save(path.c_str()); }
-bool load(const std::string &path) { return ecs_load(path.c_str()); }
+/* Save the active world to a file; returns false on failure. */
+inline bool save(const std::string &path) { return ecs_save(path.c_str()); }
+
+/* Load a world from a file; returns false on failure. */
+inline bool load(const std::string &path) { return ecs_load(path.c_str()); }
 
 struct ChildOf {};
 
