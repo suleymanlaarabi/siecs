@@ -54,10 +54,6 @@ void traffic_light(float x, float z, float yaw, bool green, ecs::entity node) {
     signal(x, PavementY + 1.14f, z, yaw, SignalRed, base, node, axis);
     signal(x, PavementY + 0.95f, z, yaw, SignalAmber, base, node, axis);
     signal(x, PavementY + 0.73f, z, yaw, SignalGreen, base, node, axis);
-    for (float y : { 1.22f, 1.05f, 0.85f }) {
-        p = local(x, PavementY, z, yaw, 0.0f, y, 0.15f);
-        geometry::box(0.26f, 0.035f, 0.1f, { 18, 20, 24 }, p.x, p.y, p.z, yaw);
-    }
 }
 void section(float x, float z, bool horizontal) {
     geometry::box(

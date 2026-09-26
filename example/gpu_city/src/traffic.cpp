@@ -99,8 +99,7 @@ float time_to_entry(const Motion &motion, float cruise) {
     const float accelerating = (cruise - speed) / Acceleration;
     const float covered = (speed + cruise) * accelerating * 0.5f;
     if (distance <= covered)
-        return (std::sqrt(speed * speed + 2 * Acceleration * distance) - speed) /
-               Acceleration;
+        return (std::sqrt(speed * speed + 2 * Acceleration * distance) - speed) / Acceleration;
     return accelerating + (distance - covered) / cruise;
 }
 
@@ -277,11 +276,7 @@ void build_network() {
                 (column == center && row == center) || (column == center - 2 && row == center) ||
                 (column == center + 2 && row == center) || (column == center && row == center + 2);
             ecs::entity::create(name).set(
-                Junction{ uint8_t(column),
-                          uint8_t(row),
-                          roundabout,
-                          !roundabout,
-                          0 }
+                Junction{ uint8_t(column), uint8_t(row), roundabout, !roundabout, 0 }
             );
         }
     }

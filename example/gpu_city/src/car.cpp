@@ -60,10 +60,6 @@ ecs::entity car_prefab() {
         box(car, 0.33f, 0.17f, 0.055f, { 177, 42, 36 }, side * 0.60f, 0.77f, 2.08f);
     }
 
-    box(car, 1.76f, 0.18f, 0.12f, { 39, 43, 47 }, 0.0f, 0.47f, -2.09f);
-    box(car, 1.76f, 0.18f, 0.12f, { 39, 43, 47 }, 0.0f, 0.47f, 2.09f);
-    box(car, 0.66f, 0.14f, 0.06f, Tire, 0.0f, 0.77f, -2.10f);
-    box(car, 0.48f, 0.11f, 0.06f, White, 0.0f, 0.67f, 2.12f);
     return car.abstract();
 }
 
