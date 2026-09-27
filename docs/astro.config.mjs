@@ -129,12 +129,9 @@ export default defineConfig({
             'inheritance',
             'modules',
             'design-with-siecs',
+            'scenes',
             'manual',
           ],
-        },
-        {
-          label: 'Addons',
-          items: ['remote-api', 'scenes', 'ui'],
         },
         {
           label: 'Reference and FAQ',

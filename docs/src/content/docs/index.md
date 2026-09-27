@@ -39,7 +39,6 @@ API snippets.
 ## Tools and integration
 
 - [Building SIECS](./quickstart/#building-siecs)
-- [SIECS Remote API](./remote-api/)
 - [Scenes and Serialization](./scenes/)
 - [Cookbook](./cookbook/)
 - [FAQ](./faq/)
