@@ -14,13 +14,13 @@
  * dependencies will automatically show up in this file. Include bake_config.h
  * in your main project file. Do not edit! */
 
-#ifndef BENCH_BAKE_CONFIG_H
-#define BENCH_BAKE_CONFIG_H
+#ifndef SIECS_EXAMPLE_UI_BAKE_CONFIG_H
+#define SIECS_EXAMPLE_UI_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
 #include <siecs.h>
-#include <siui.h>
 #include <sigpu.h>
+#include <siui.h>
 
 #endif
 

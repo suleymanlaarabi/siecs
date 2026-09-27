@@ -1,0 +1,18 @@
+{
+  "id": "siui.test",
+  "type": "application",
+  "value": { "use": ["siui", "siecs"], "public": false },
+  "lang.c": { "c-standard": "c17", "include": ["../include", "../../addons/ui/include"] },
+  "test": {
+    "testsuites": [{ "id": "layout", "testcases": [
+      "auto_empty", "auto_text", "text_grows", "max_width_wrap", "wrap_height",
+      "min_max", "padding", "four_borders", "parent_child_auto", "row_column",
+      "grow_shrink", "wrap", "justify_align_stretch", "percentages", "absolute",
+      "nested_auto", "overflow_hidden", "childof_runtime", "text_runtime", "resize",
+      "utf8", "empty_text", "order", "order_runtime", "deep_tree", "many_siblings",
+      "static_clean", "paint_only", "reparent", "font_size_runtime", "auto_parent_percent",
+      "aspect_ratio", "align_content", "space_between", "margin", "line_height",
+      "text_cleared", "overflow_runtime"
+    ]}]
+  }
+}

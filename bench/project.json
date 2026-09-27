@@ -4,11 +4,11 @@
   "value": {
     "author": "Jane Doe",
     "description": "Space travel for married couples",
-    "use": ["siecs"]
+    "use": ["siecs", "siui", "sigpu"]
   },
   "lang.c": {
     "c-standard": "c17",
-    "include": ["include", "../include"],
+    "include": ["include", "../include", "../addons/ui/include"],
     "cflags": ["-DNDEBUG"]
   },
   "bundle": {

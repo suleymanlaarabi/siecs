@@ -1,0 +1,6 @@
+{
+  "id": "siecs.example.ui",
+  "type": "application",
+  "value": { "use": ["siecs", "sigpu", "siui"], "public": false },
+  "lang.c": { "c-standard": "c17", "include": ["../../addons/ui/include"] }
+}

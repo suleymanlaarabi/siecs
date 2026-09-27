@@ -1,0 +1,9 @@
+{
+  "id": "siui.cpp.test",
+  "type": "application",
+  "value": { "language": "cpp", "use": ["siui", "siecs"], "public": false },
+  "lang.cpp": { "cpp-standard": "c++20", "include": ["../cpp/include", "../../addons/ui/include"] },
+  "test": { "testsuites": [{ "id": "builder", "testcases": [
+    "card", "child_of", "string_view_copy", "single_mutations"
+  ]}] }
+}

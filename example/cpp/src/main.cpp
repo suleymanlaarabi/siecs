@@ -9,6 +9,7 @@
 
 int main() {
     ecs::init();
+
     static_cast<void>(ecs::import<sigpu>(sigpu::props_t{
         .title = "SIECS + sigpu",
         .width = 1280,

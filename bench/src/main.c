@@ -1,4 +1,6 @@
 #include "siecs.h"
+#include <siui.h>
+#include <sigpu.h>
 #include <bench.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -968,6 +970,81 @@ BENCH_SETUP(isa_repeated_instance, {
     });
 });
 
+static void ui_report(const char *name, siui_stats_t stats) {
+    printf("[ui-stage] %s: tree=%.3f measure=%.3f arrange=%.3f paint=%.3f upload=%.3f ms draw=%u nodes=%u/%u\n",
+        name,stats.tree_sync_ns/1000000.0,stats.measure_ns/1000000.0,
+        stats.arrange_ns/1000000.0,stats.paint_collection_ns/1000000.0,
+        stats.gpu_upload_ns/1000000.0,stats.draw_calls,stats.measured_nodes,stats.arranged_nodes);
+}
+static ecs_entity_t ui_make_nodes(uint32_t count,bool text,bool paint) {
+    ecs_entity_t root=ecs_new();
+    ecs_set(root,UiNode,{.width=siui_px(1000),.direction=SIUI_COLUMN});
+    for(uint32_t i=0;i<count;i++) {
+        ecs_entity_t child=ecs_new();
+        ecs_set(child,UiNode,{.width=siui_px(40),.height=siui_px(10)});
+        if(text) siui_set_text(child,"Hello",5);
+        if(paint) ecs_set(child,UiPaint,{.background={40,80,120,255}});
+        ecs_relate(child,ChildOf,root);
+    }
+    return root;
+}
+#define UI_CLEAN_BENCH(count,suffix) BENCH_SETUP(ui_layout_clean_##suffix, {                   \
+    ECS_MODULE_IMPORT(siui,{.gpu=false});                                                     \
+    ui_make_nodes(count,false,false);                                                         \
+    siui_layout_update(1000,800);                                                             \
+    ui_report(__bench_id,siui_stats());                                                        \
+    BENCH({for(uint32_t i=0;i<10000;i++) siui_layout_update(1000,800);});                    \
+});
+UI_CLEAN_BENCH(1000,1k);
+UI_CLEAN_BENCH(10000,10k);
+UI_CLEAN_BENCH(100000,100k);
+
+BENCH_SETUP(ui_layout_dirty_leaf_10k, {
+    ECS_MODULE_IMPORT(siui,{.gpu=false});
+    ecs_entity_t root=ui_make_nodes(10000,false,false);
+    ecs_entity_t leaf=ecs_relation_sources(root,ecs_rid(ChildOf)).entities[0];
+    siui_layout_update(1000,800);
+    BENCH({for(uint32_t i=0;i<100;i++) {
+        ecs_set(leaf,UiNode,{.width=siui_px(40+(i&1)),.height=siui_px(10)});
+        siui_layout_update(1000,800);
+    }});
+    ui_report(__bench_id,siui_stats());
+});
+BENCH_SETUP(ui_layout_dirty_root_10k, {
+    ECS_MODULE_IMPORT(siui,{.gpu=false});
+    ecs_entity_t root=ui_make_nodes(10000,false,false);
+    siui_layout_update(1000,800);
+    BENCH({for(uint32_t i=0;i<100;i++) {
+        ecs_set(root,UiNode,{.width=siui_px(1000+(i&1)),.direction=SIUI_COLUMN});
+        siui_layout_update(1000,800);
+    }});
+    ui_report(__bench_id,siui_stats());
+});
+BENCH_SETUP(ui_text_measure_1k, {
+    ECS_MODULE_IMPORT(siui,{.gpu=false});
+    ecs_entity_t root=ui_make_nodes(1000,true,false);
+    siui_layout_update(1000,800);
+    const ecs_relation_sources_t sources=ecs_relation_sources(root,ecs_rid(ChildOf));
+    BENCH({for(uint32_t i=0;i<sources.count;i++) {
+        siui_set_text(sources.entities[i],"Longer text to measure",22);
+    } siui_layout_update(1000,800);});
+    ui_report(__bench_id,siui_stats());
+});
+BENCH_SETUP(ui_render_rects_10k, {
+    ECS_MODULE_IMPORT(sigpu,{.title="SIUI rectangle benchmark",.width=1280,.height=800,.samples=1});
+    ECS_MODULE_IMPORT(siui,{.gpu=true});
+    ui_make_nodes(10000,false,true);
+    ecs_progress();ui_report(__bench_id,siui_stats());
+    BENCH({for(uint32_t i=0;i<30;i++) ecs_progress();});
+});
+BENCH_SETUP(ui_render_text_1k, {
+    ECS_MODULE_IMPORT(sigpu,{.title="SIUI text benchmark",.width=1280,.height=800,.samples=1});
+    ECS_MODULE_IMPORT(siui,{.gpu=true});
+    ui_make_nodes(1000,true,false);
+    ecs_progress();ui_report(__bench_id,siui_stats());
+    BENCH({for(uint32_t i=0;i<30;i++) ecs_progress();});
+});
+
 int main(int argc, char *argv[]) {
     const char *scope = argc > 1 ? argv[1] : NULL;
     if (argc > 2) {
@@ -1016,6 +1093,16 @@ int main(int argc, char *argv[]) {
     run_scoped_bench(scope, propagate_add_wide_10000);
     run_scoped_bench(scope, isa_first_instance);
     run_scoped_bench(scope, isa_repeated_instance);
+    run_scoped_bench(scope, ui_layout_clean_1k);
+    run_scoped_bench(scope, ui_layout_clean_10k);
+    run_scoped_bench(scope, ui_layout_clean_100k);
+    run_scoped_bench(scope, ui_layout_dirty_leaf_10k);
+    run_scoped_bench(scope, ui_layout_dirty_root_10k);
+    run_scoped_bench(scope, ui_text_measure_1k);
+    if(getenv("SIUI_BENCH_GPU")) {
+        run_scoped_bench(scope, ui_render_rects_10k);
+        run_scoped_bench(scope, ui_render_text_1k);
+    }
 
     return 0;
 }

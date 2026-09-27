@@ -12,6 +12,7 @@ scheduled systems, relations, and runtime reflection.
 - Built-in support for entity hierarchies and entity relations.
 - C modules for grouping components, systems, and observers behind one import.
 - Integrated reflection framework with JSON serialization and deserialization.
+- Optional SIUI addon for retained UI layout and SDL GPU overlays.
 
 ## Project links
 

@@ -2,6 +2,8 @@
 
 static ecs_system_id_t shadow_pass_system;
 static ecs_system_id_t bloom_pass_system;
+void sigpu_overlay_run(void);
+void sigpu_overlay_reset(void);
 
 static void begin_gpu_frame(ecs_iter_t *it) {
     SIGPU_RENDERSTATS->frame_start_ns = SIGPU_RENDERSTATS->profile_enabled ? SDL_GetTicksNS() : 0;
@@ -65,6 +67,7 @@ static void composite_pass(ecs_iter_t *it) {
 }
 
 static void end_gpu_frame(ecs_iter_t *it) { sigpu_end_frame(); }
+static void overlay_pass(ecs_iter_t *it) { sigpu_overlay_run(); }
 
 void sigpu_render_schedule_set_shadows(bool enabled) {
     if (shadow_pass_system) {
@@ -155,11 +158,20 @@ void sigpu_render_schedule_register(ecs_system_id_t input_system) {
             .main_thread_only = true,
         }
     );
+    ecs_system_id_t overlay = ecs_system(
+        {
+            .name = "OverlayPass",
+            .phase = EcsPostRender,
+            .after = { composite },
+            .callback = overlay_pass,
+            .main_thread_only = true,
+        }
+    );
     ecs_system(
         {
             .name = "EndGpuFrame",
             .phase = EcsPostRender,
-            .after = { composite },
+            .after = { overlay },
             .callback = end_gpu_frame,
             .main_thread_only = true,
             .no_defer = true,
@@ -170,6 +182,7 @@ void sigpu_render_schedule_register(ecs_system_id_t input_system) {
 }
 
 void sigpu_render_schedule_reset(void) {
+    sigpu_overlay_reset();
     shadow_pass_system = bloom_pass_system = 0;
     sigpu_bounds_reset();
     sigpu_primitives_reset();

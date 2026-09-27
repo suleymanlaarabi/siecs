@@ -134,7 +134,7 @@ export default defineConfig({
         },
         {
           label: 'Addons',
-          items: ['remote-api', 'scenes'],
+          items: ['remote-api', 'scenes', 'ui'],
         },
         {
           label: 'Reference and FAQ',

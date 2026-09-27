@@ -1,0 +1,176 @@
+---
+title: SIUI
+description: Deterministic retained UI layout with SDL GPU overlay rendering.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+SIUI is an optional addon in `addons/ui`. It uses `UiNode` for layout,
+`UiPaint` for backgrounds and four independent borders, `UiText` for UTF-8
+text, and the existing `ChildOf` relation for the tree. It does not use
+`Position2d` or `Scale2d`.
+
+## Build and import
+
+Add `siui` to your Bake project's `use` array. SDL3, SDL3_ttf, `siecs`,
+and `sigpu` are dependencies. Import `sigpu` before `siui` to render the UI:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+#include <siui.h>
+#include <sigpu.h>
+
+ecs_init();
+ECS_MODULE_IMPORT(sigpu, { .title = "UI", .width = 960, .height = 640, .samples = 1 });
+ECS_MODULE_IMPORT(siui, { .gpu = true });
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+#include <siui/cpp.hpp>
+#include <sigpu.h>
+#include <siecs/cpp.hpp>
+
+ecs::init();
+ecs::import<sigpu>(sigpu::props_t{ .title = "UI", .width = 960, .height = 640, .samples = 1 });
+ecs::import<siui>(siui::props_t{ .gpu = true });
+```
+
+</TabItem>
+</Tabs>
+
+For layout tests or tooling without a GPU, import `siui` with `.gpu = false`.
+Call `siui_layout_update(viewport_width, viewport_height)` after changes and
+read `const UiComputedLayout *` through `siui_layout(entity)`. The pointer is
+borrowed and may change after a tree rebuild or world shutdown.
+
+## Nodes and sizing
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_entity_t panel = ecs_new();
+ecs_set(panel, UiNode, {
+    .width = siui_px(400),
+    .max_width = siui_px(600),
+    .padding = siui_all(16),
+    .direction = SIUI_COLUMN,
+    .gap = 8,
+});
+ecs_set(panel, UiPaint, {
+    .background = {20, 20, 20, 255},
+});
+siui_set_text(panel, "Hello", 5);
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto panel = ui::node()
+    .width(400)
+    .max_width(600)
+    .padding(16)
+    .direction(ui::column)
+    .gap(8)
+    .background({20, 20, 20, 255})
+    .text("Hello")
+    .spawn();
+```
+
+</TabItem>
+</Tabs>
+
+`width` and `height` describe the outer border box. Padding and borders are
+included. A zero initialized length is `auto`. Intrinsic content is measured
+bottom up; requested dimensions, flex allocation, and then min/max constraints
+are applied. Percentages use the parent's content box and are resolved during
+arrangement when an auto sized parent has no definite size during measurement.
+
+Flow children use row or column layout with optional wrapping. Siblings are
+laid out by `order`, then entity ID. Paint traversal uses `z_index`, then tree
+order. Absolute children do not contribute to intrinsic size. `overflow =
+SIUI_HIDDEN` clips descendants to the node's content box.
+
+Text bytes are owned by SIUI. Store a text handle in `UiText`; change content
+with `siui_set_text(entity, bytes, length)`. Open a font with
+`siui_font_open(path, size)` and set `UiText.font` if the platform's default
+font fallback is unavailable. SIUI keeps a cached `TTF_Text` for each text
+node and uses SDL_ttf's surface text engine for GPU free measurement. The GPU
+engine provides atlas textures and geometry for overlay rendering.
+
+## C++ builder
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_entity_t card = ecs_new();
+ecs_set(card, UiNode, { .max_width = siui_px(420), .padding = siui_all(16),
+                        .direction = SIUI_COLUMN, .gap = 8, .border_width = siui_all(1) });
+ecs_set(card, UiPaint, { .background = {20, 20, 20, 255},
+                         .border_top = {80, 80, 80, 255},
+                         .border_right = {80, 80, 80, 255},
+                         .border_bottom = {80, 80, 80, 255},
+                         .border_left = {80, 80, 80, 255} });
+siui_set_text(card, "Hello world", 11);
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+#include <siui/cpp.hpp>
+
+auto card = ui::node()
+    .max_width(420)
+    .padding(16)
+    .direction(ui::column)
+    .gap(8)
+    .background({20, 20, 20, 255})
+    .border(1, {80, 80, 80, 255})
+    .text("Hello world")
+    .spawn();
+```
+
+</TabItem>
+</Tabs>
+
+The builder stores the description locally and writes each present component
+once when `spawn()` is called. Use `.child_of(parent)` to set the hierarchy.
+
+## Scheduling and cache
+
+`sigpu` runs `OverlayPass` between `CompositePass` and `EndGpuFrame`. The
+overlay receives a small public GPU context, opens a render pass with `LOAD`,
+and draws SIUI batches. A rectangle, including its four borders, is one GPU
+instance. Text uses the SDL_ttf GPU atlas. Commands merge only when they are
+consecutive and share a pipeline, texture, and scissor rectangle.
+
+`UiLayoutCache` is an internal ECS resource of flat arrays. A static tree
+returns immediately from `siui_layout_update` with no measure or arrange
+work. `siui_stats()` reports tree sync, measurement, arrangement, paint
+collection, GPU upload time, and draw calls for the most recent update/frame.
+
+## Verify and benchmark
+
+```sh
+bake rebuild addons/ui -r
+bake run test/ui
+bake run test/ui_cpp
+bake run bench -- ui_layout_clean_10k
+SIUI_BENCH_GPU=1 bake run bench -- ui_render_rects_10k
+bake run example/ui
+```
+
+GPU benchmarks report CPU encoding time for 30 frames and stage timings for
+the first frame. Regenerate embedded SPIR-V after changing shaders with
+`sh addons/ui/tools/embed_shaders.sh` (requires `glslc` and `xxd`).
+
+SDL references: [GPU render passes](https://wiki.libsdl.org/SDL3/SDL_BeginGPURenderPass),
+[scissor](https://wiki.libsdl.org/SDL3/SDL_SetGPUScissor), and
+[SDL_ttf GPU draw data](https://wiki.libsdl.org/SDL3_ttf/TTF_GetGPUTextDrawData).

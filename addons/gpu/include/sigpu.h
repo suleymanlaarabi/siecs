@@ -2,6 +2,7 @@
 #define SIECS_SIGPU_H
 #include "sigpu/input.h"
 #include "sigpu/interaction.h"
+#include "sigpu/overlay.h"
 #include "sigpu/rendering.h"
 #ifdef __cplusplus
 extern "C" {

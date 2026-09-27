@@ -14,13 +14,27 @@
  * dependencies will automatically show up in this file. Include bake_config.h
  * in your main project file. Do not edit! */
 
-#ifndef BENCH_BAKE_CONFIG_H
-#define BENCH_BAKE_CONFIG_H
+#ifndef SIUI_BAKE_CONFIG_H
+#define SIUI_BAKE_CONFIG_H
 
 /* Headers of public dependencies */
 #include <siecs.h>
-#include <siui.h>
 #include <sigpu.h>
+
+/* Convenience macro for exporting symbols */
+#ifndef siui_STATIC
+#if defined(siui_EXPORTS) && (defined(_MSC_VER) || defined(__MINGW32__))
+  #define SIUI_API __declspec(dllexport)
+#elif defined(siui_EXPORTS)
+  #define SIUI_API __attribute__((__visibility__("default")))
+#elif defined(_MSC_VER)
+  #define SIUI_API __declspec(dllimport)
+#else
+  #define SIUI_API
+#endif
+#else
+  #define SIUI_API
+#endif
 
 #endif
 
