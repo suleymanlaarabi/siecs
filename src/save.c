@@ -7,6 +7,7 @@
 #include "table_migration.h"
 #include "type.h"
 #include "world_internal.h"
+#include <siecs/reflect_internal.h>
 
 #include <stdint.h>
 #include <stdio.h>
@@ -148,50 +149,65 @@ static bool ecs_scene_has_type_ops(const ecs_component_record_t *record) {
     return ops->ctor || ops->dtor || ops->copy_ctor || ops->copy || ops->move_ctor || ops->move;
 }
 
-static bool ecs_scene_is_entity_type(const sireflect_type_info_t *info) {
-    return info && info->name && strcmp(info->name, "ecs_entity_t") == 0;
+typedef struct {
+    bool needs_codec;
+    bool supported;
+    bool contains_entity;
+    bool contains_string;
+    bool analyzed;
+} ecs_scene_type_traits_t;
+
+static ecs_scene_type_traits_t *ecs_scene_traits;
+static size_t ecs_scene_traits_count;
+
+static bool ecs_scene_traits_visit(const sireflect_type_visit_t *visit, void *user) {
+    ecs_scene_type_traits_t *traits = user;
+    switch (ecs_reflect_value_kind(visit->type)) {
+    case EcsReflectValueEntity:
+        traits->needs_codec = true;
+        traits->contains_entity = true;
+        break;
+    case EcsReflectValueString:
+        traits->needs_codec = true;
+        traits->contains_string = true;
+        break;
+    case EcsReflectValuePointer:
+        traits->needs_codec = true;
+        traits->supported = false;
+        break;
+    default:
+        break;
+    }
+    return true;
 }
 
-enum {
-    ECS_SCENE_TYPE_NEEDS_CODEC = 1 << 0,
-    ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER = 1 << 1,
-};
-
-static uint8_t ecs_scene_type_flags(sireflect_handle_t type) {
+static ecs_scene_type_traits_t ecs_scene_type_traits(sireflect_handle_t type) {
     if (type == SIREFLECT_INVALID_HANDLE)
-        return 0;
-
-    const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (!info)
-        return 0;
-    if (ecs_scene_is_entity_type(info))
-        return ECS_SCENE_TYPE_NEEDS_CODEC;
-
-    if (info->kind == sireflect_kind_pointer || info->kind == sireflect_kind_ptr ||
-        info->kind == sireflect_kind_function_pointer) {
-        uint8_t flags = ECS_SCENE_TYPE_NEEDS_CODEC;
-        if (info->kind == sireflect_kind_pointer) {
-            const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-            if (!element || element->kind != sireflect_kind_char)
-                flags |= ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER;
-        } else {
-            flags |= ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER;
-        }
-        return flags;
+        return (ecs_scene_type_traits_t){ .supported = true };
+    if (type >= ecs_scene_traits_count) {
+        size_t count = ecs_scene_traits_count ? ecs_scene_traits_count : 64;
+        while (type >= count)
+            count *= 2;
+        ecs_scene_type_traits_t *items = realloc(ecs_scene_traits, count * sizeof *items);
+        if (!items)
+            abort();
+        memset(items + ecs_scene_traits_count, 0, (count - ecs_scene_traits_count) * sizeof *items);
+        ecs_scene_traits = items;
+        ecs_scene_traits_count = count;
     }
-
-    if (info->kind == sireflect_kind_array)
-        return ecs_scene_type_flags(info->element_type);
-
-    if (info->kind == sireflect_kind_struct) {
-        uint8_t flags = 0;
-        for (size_t i = 0; i < info->fields.field_count; i++) {
-            flags |= ecs_scene_type_flags(info->fields.fields[i].type);
-        }
-        return flags;
+    ecs_scene_type_traits_t *cached = &ecs_scene_traits[type];
+    if (!cached->analyzed) {
+        *cached = (ecs_scene_type_traits_t){ .supported = true, .analyzed = true };
+        if (!sireflect_walk_type(type, SIREFLECT_WALK_DEDUPLICATE, ecs_scene_traits_visit, cached))
+            cached->supported = false;
     }
+    return *cached;
+}
 
-    return false;
+void ecs_scene_type_cache_fini(void) {
+    free(ecs_scene_traits);
+    ecs_scene_traits = NULL;
+    ecs_scene_traits_count = 0;
 }
 
 static bool ecs_scene_component_use_codec(const ecs_component_record_t *record) {
@@ -200,8 +216,7 @@ static bool ecs_scene_component_use_codec(const ecs_component_record_t *record) 
     if (record->info->type == SIREFLECT_INVALID_HANDLE) {
         return ecs_scene_has_type_ops(record);
     }
-    return ecs_scene_has_type_ops(record) ||
-           (ecs_scene_type_flags(record->info->type) & ECS_SCENE_TYPE_NEEDS_CODEC);
+    return ecs_scene_has_type_ops(record) || ecs_scene_type_traits(record->info->type).needs_codec;
 }
 
 static bool ecs_scene_component_supported(const ecs_component_record_t *record) {
@@ -213,30 +228,15 @@ static bool ecs_scene_component_supported(const ecs_component_record_t *record) 
     }
 
     if (record->info->type != SIREFLECT_INVALID_HANDLE &&
-        (ecs_scene_type_flags(record->info->type) & ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER))
+        !ecs_scene_type_traits(record->info->type).supported)
         return false;
 
     return true;
 }
 
-static bool ecs_scene_save_value(
-    ecs_scene_writer_t *w,
-    sireflect_handle_t type,
-    const void *value,
-    const ecs_scene_save_ctx_t *ctx
-);
-
-static bool ecs_scene_load_value(
-    ecs_scene_reader_t *r,
-    sireflect_handle_t type,
-    void *value,
-    const ecs_scene_load_ctx_t *ctx
-);
-
 static bool ecs_scene_save_string(ecs_scene_writer_t *w, const char *value) {
     if (!value)
         return ecs_scene_write_u32(w, ECS_SCENE_NULL_INDEX);
-
     size_t length = strlen(value);
     if (length > UINT32_MAX)
         return false;
@@ -248,18 +248,15 @@ ecs_scene_load_string(ecs_scene_reader_t *r, void *value, const ecs_scene_load_c
     uint32_t length = ecs_scene_read_u32(r);
     if (!r->ok)
         return false;
-
     if (length == ECS_SCENE_NULL_INDEX) {
         char *string = NULL;
         memcpy(value, &string, sizeof string);
         return true;
     }
-
     if ((size_t)length > (size_t)(r->end - r->ptr)) {
         r->ok = false;
         return false;
     }
-
     char *string = ctx->component_owns_strings
                        ? malloc((size_t)length + 1)
                        : ecs_arena_alloc(&ecs_world.scene_strings, length + 1);
@@ -267,7 +264,6 @@ ecs_scene_load_string(ecs_scene_reader_t *r, void *value, const ecs_scene_load_c
         r->ok = false;
         return false;
     }
-
     if (!ecs_scene_reader_take(r, string, length)) {
         if (ctx->component_owns_strings)
             free(string);
@@ -278,124 +274,117 @@ ecs_scene_load_string(ecs_scene_reader_t *r, void *value, const ecs_scene_load_c
     return true;
 }
 
+typedef enum {
+    EcsSceneSave,
+    EcsSceneValidate,
+    EcsSceneLoad,
+} ecs_scene_codec_mode_t;
+
+/* One type dispatch and child traversal for all three scene codec phases. */
+static bool ecs_scene_codec_value(
+    ecs_scene_codec_mode_t mode,
+    ecs_scene_writer_t *writer,
+    ecs_scene_reader_t *reader,
+    sireflect_handle_t type,
+    void *value,
+    const ecs_scene_save_ctx_t *save_ctx,
+    const ecs_scene_load_ctx_t *load_ctx,
+    uint32_t entity_count
+) {
+    const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (!info)
+        return false;
+    switch (ecs_reflect_value_kind(type)) {
+    case EcsReflectValueEntity: {
+        if (mode == EcsSceneSave) {
+            ecs_entity_t entity = *(const ecs_entity_t *)value;
+            if (!entity)
+                return ecs_scene_write_u32(writer, ECS_SCENE_NULL_INDEX);
+            uint32_t id = ecs_entity_id(entity);
+            if (id >= save_ctx->entity_to_local_count)
+                return false;
+            uint32_t local = save_ctx->entity_to_local[id];
+            return local != ECS_SCENE_NULL_INDEX && ecs_scene_write_u32(writer, local);
+        }
+        uint32_t local = ecs_scene_read_u32(reader);
+        if (!reader->ok || (local != ECS_SCENE_NULL_INDEX && local >= entity_count))
+            return false;
+        if (mode == EcsSceneLoad)
+            *(ecs_entity_t *)value =
+                local == ECS_SCENE_NULL_INDEX ? 0 : load_ctx->local_to_entity[local];
+        return true;
+    }
+    case EcsReflectValueStruct:
+        for (size_t i = 0; i < info->fields.field_count; i++) {
+            const sireflect_field_info_t *field = &info->fields.fields[i];
+            void *child = value ? (unsigned char *)value + field->offset : NULL;
+            if (!ecs_scene_codec_value(
+                    mode,
+                    writer,
+                    reader,
+                    field->type,
+                    child,
+                    save_ctx,
+                    load_ctx,
+                    entity_count
+                ))
+                return false;
+        }
+        return true;
+    case EcsReflectValueArray: {
+        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
+        if (!element)
+            return false;
+        for (size_t i = 0; i < info->element_count; i++) {
+            void *child = value ? (unsigned char *)value + i * element->size : NULL;
+            if (!ecs_scene_codec_value(
+                    mode,
+                    writer,
+                    reader,
+                    info->element_type,
+                    child,
+                    save_ctx,
+                    load_ctx,
+                    entity_count
+                ))
+                return false;
+        }
+        return true;
+    }
+    case EcsReflectValueString:
+        if (mode == EcsSceneSave) {
+            const char *string;
+            memcpy(&string, value, sizeof string);
+            return ecs_scene_save_string(writer, string);
+        }
+        if (mode == EcsSceneLoad)
+            return ecs_scene_load_string(reader, value, load_ctx);
+        {
+            uint32_t length = ecs_scene_read_u32(reader);
+            return reader->ok &&
+                   (length == ECS_SCENE_NULL_INDEX || ecs_scene_reader_skip(reader, length));
+        }
+    case EcsReflectValuePointer:
+        return false;
+    default:
+        if (mode == EcsSceneSave)
+            return ecs_scene_write(writer, value, info->size);
+        return ecs_scene_reader_take(reader, mode == EcsSceneLoad ? value : NULL, info->size);
+    }
+}
+
 static bool ecs_scene_save_value(
     ecs_scene_writer_t *w,
     sireflect_handle_t type,
     const void *value,
     const ecs_scene_save_ctx_t *ctx
 ) {
-    const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (!info)
-        return false;
-
-    if (ecs_scene_is_entity_type(info)) {
-        ecs_entity_t entity = *(const ecs_entity_t *)value;
-        if (!entity)
-            return ecs_scene_write_u32(w, ECS_SCENE_NULL_INDEX);
-
-        uint32_t id = ecs_entity_id(entity);
-        if (id >= ctx->entity_to_local_count)
-            return false;
-        uint32_t local = ctx->entity_to_local[id];
-        if (local == ECS_SCENE_NULL_INDEX)
-            return false;
-        return ecs_scene_write_u32(w, local);
-    }
-
-    switch (info->kind) {
-    case sireflect_kind_struct:
-        for (size_t i = 0; i < info->fields.field_count; i++) {
-            const sireflect_field_info_t *field = &info->fields.fields[i];
-            if (!ecs_scene_save_value(
-                    w,
-                    field->type,
-                    (const unsigned char *)value + field->offset,
-                    ctx
-                )) {
-                return false;
-            }
-        }
-        return true;
-
-    case sireflect_kind_array: {
-        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-        if (!element)
-            return false;
-        for (size_t i = 0; i < info->element_count; i++) {
-            if (!ecs_scene_save_value(
-                    w,
-                    info->element_type,
-                    (const unsigned char *)value + i * element->size,
-                    ctx
-                )) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    case sireflect_kind_pointer: {
-        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-        if (!element || element->kind != sireflect_kind_char)
-            return false;
-        const char *string;
-        memcpy(&string, value, sizeof string);
-        return ecs_scene_save_string(w, string);
-    }
-
-    case sireflect_kind_ptr:
-    case sireflect_kind_function_pointer:
-        return false;
-
-    default:
-        return ecs_scene_write(w, value, info->size);
-    }
+    return ecs_scene_codec_value(EcsSceneSave, w, NULL, type, (void *)value, ctx, NULL, 0);
 }
 
 static bool
 ecs_scene_validate_value(ecs_scene_reader_t *r, sireflect_handle_t type, uint32_t entity_count) {
-    const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (!info)
-        return false;
-
-    if (ecs_scene_is_entity_type(info)) {
-        uint32_t local = ecs_scene_read_u32(r);
-        return r->ok && (local == ECS_SCENE_NULL_INDEX || local < entity_count);
-    }
-
-    switch (info->kind) {
-    case sireflect_kind_struct:
-        for (size_t i = 0; i < info->fields.field_count; i++) {
-            if (!ecs_scene_validate_value(r, info->fields.fields[i].type, entity_count))
-                return false;
-        }
-        return true;
-
-    case sireflect_kind_array:
-        for (size_t i = 0; i < info->element_count; i++) {
-            if (!ecs_scene_validate_value(r, info->element_type, entity_count))
-                return false;
-        }
-        return true;
-
-    case sireflect_kind_pointer: {
-        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-        if (!element || element->kind != sireflect_kind_char)
-            return false;
-
-        uint32_t length = ecs_scene_read_u32(r);
-        if (!r->ok || length == ECS_SCENE_NULL_INDEX)
-            return r->ok;
-        return ecs_scene_reader_skip(r, length);
-    }
-
-    case sireflect_kind_ptr:
-    case sireflect_kind_function_pointer:
-        return false;
-
-    default:
-        return ecs_scene_reader_skip(r, info->size);
-    }
+    return ecs_scene_codec_value(EcsSceneValidate, NULL, r, type, NULL, NULL, NULL, entity_count);
 }
 
 static bool ecs_scene_load_value(
@@ -404,70 +393,7 @@ static bool ecs_scene_load_value(
     void *value,
     const ecs_scene_load_ctx_t *ctx
 ) {
-    const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (!info)
-        return false;
-
-    if (ecs_scene_is_entity_type(info)) {
-        uint32_t local = ecs_scene_read_u32(r);
-        if (!r->ok)
-            return false;
-        if (local == ECS_SCENE_NULL_INDEX) {
-            *(ecs_entity_t *)value = 0;
-            return true;
-        }
-        if (local >= ctx->entity_count)
-            return false;
-        *(ecs_entity_t *)value = ctx->local_to_entity[local];
-        return true;
-    }
-
-    switch (info->kind) {
-    case sireflect_kind_struct:
-        for (size_t i = 0; i < info->fields.field_count; i++) {
-            const sireflect_field_info_t *field = &info->fields.fields[i];
-            if (!ecs_scene_load_value(
-                    r,
-                    field->type,
-                    (unsigned char *)value + field->offset,
-                    ctx
-                )) {
-                return false;
-            }
-        }
-        return true;
-
-    case sireflect_kind_array: {
-        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-        if (!element)
-            return false;
-        for (size_t i = 0; i < info->element_count; i++) {
-            if (!ecs_scene_load_value(
-                    r,
-                    info->element_type,
-                    (unsigned char *)value + i * element->size,
-                    ctx
-                )) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    case sireflect_kind_pointer: {
-        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-        if (!element || element->kind != sireflect_kind_char)
-            return false;
-        return ecs_scene_load_string(r, value, ctx);
-    }
-
-    case sireflect_kind_ptr:
-    case sireflect_kind_function_pointer:
-        return false;
-
-    default:
-        return ecs_scene_reader_take(r, value, info->size);
-    }
+    return ecs_scene_codec_value(EcsSceneLoad, NULL, r, type, value, NULL, ctx, ctx->entity_count);
 }
 
 static uint16_t ecs_scene_table_component_count(const ecs_table_t *table) {

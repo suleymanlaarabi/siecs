@@ -9,6 +9,8 @@
 #include "world_internal.h"
 #include <string.h>
 
+void ecs_scene_type_cache_fini(void);
+
 ecs_world_t ecs_world;
 ecs_entity_index_t entity_index;
 #ifndef NDEBUG
@@ -91,6 +93,7 @@ void ecs_fini(void) {
     ecs_execution_context_fini(&ecs_world.main_context);
     ecs_component_index_fini();
     ecs_relation_index_fini();
+    ecs_scene_type_cache_fini();
     sireflect_fini();
     sicore_map_fini(&name_map);
     ecs_module_storage_fini();

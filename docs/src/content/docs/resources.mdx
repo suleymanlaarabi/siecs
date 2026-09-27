@@ -31,6 +31,9 @@ ECS_RESOURCE(Time, {
 });
 
 ECS_RESOURCE_REGISTER(Time);
+
+const ecs_resource_info_t *info = ecs_resource_info(ecs_id(Time));
+/* info->type is the reflected type handle. */
 ```
 
 </TabItem>
@@ -50,6 +53,18 @@ auto time = ecs::resource_handle<Time>();
 
 Shared C declarations can be used from both C and C++. C++ native types can use
 the typed resource wrapper directly.
+
+The fields in `ECS_RESOURCE_DECLARE` also define the reflection descriptor.
+Register dependent structs and enums with Sireflect before registering the
+resource. Resources containing opaque external types can explicitly use
+`ECS_RESOURCE_DEFINE_UNREFLECTED` in their definition file.
+
+Reflected resources appear in `GET /schema` under `resources`, with their
+complete type graph in `types`. The REST module exposes present resources at
+`GET /resources` and `GET /resources/:id`. `PUT /resources/:id` replaces the
+complete value; `PATCH /resources/:id` accepts a recursive subset under
+`{"value": {...}}`. Arrays are replaced as complete arrays. A field marked
+`readonly=true` in Sireflect metadata cannot be changed through these routes.
 
 ## Set and read
 

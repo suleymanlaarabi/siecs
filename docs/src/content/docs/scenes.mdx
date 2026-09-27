@@ -69,6 +69,11 @@ if (!ecs_scene_validate(data, size)) {
 Validation checks the complete scene without creating entities or modifying the
 world.
 
+The binary format remains at version 1. Reflected nested structs and arrays
+are traversed through their fields and elements; C strings use length and
+bytes, and entity values use local scene indices. Arbitrary pointers and
+function pointers make a component unsupported for scene saving.
+
 Use it before accepting scene data from storage/tooling paths.
 
 ## Load from memory

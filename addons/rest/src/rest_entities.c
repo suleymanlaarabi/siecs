@@ -1,5 +1,6 @@
 #include "rest_internal.h"
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 typedef struct {
@@ -172,7 +173,7 @@ sihttp_response_t ecs_rest_get_entity(const sihttp_request_t *req) {
 
     ecs_entity_t entity = ecs_rest_request_entity(req);
     if (!entity) {
-        return sihttp_response_json_error(404, "entity not found");
+        return ecs_rest_error(404, "entity_not_found", "entity not found");
     }
     return sihttp_response_json(200, ecs_rest_entity_detail_json(entity));
 }
@@ -182,7 +183,7 @@ sihttp_response_t ecs_rest_get_entity_children(const sihttp_request_t *req) {
 
     ecs_entity_t entity = ecs_rest_request_entity(req);
     if (!entity) {
-        return sihttp_response_json_error(404, "entity not found");
+        return ecs_rest_error(404, "entity_not_found", "entity not found");
     }
     return sihttp_response_json(200, ecs_rest_entity_children_json(entity));
 }
@@ -191,5 +192,9 @@ sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req) {
     (void)req;
     sijson_clean();
     ecs_entity_t entity = ecs_new();
-    return sihttp_response_json(200, ecs_rest_entity_json(entity, false));
+    sihttp_response_t response = sihttp_response_json(200, ecs_rest_entity_json(entity, false));
+    char location[64];
+    snprintf(location, sizeof location, "/entities/%u", ecs_entity_id(entity));
+    sihttp_response_set_header(&response, "Location", location);
+    return response;
 }

@@ -141,11 +141,14 @@ void ecs_bootstrap() {
     ecs_component({ .name = "Invalid" });
 
     // Register the ecs_entity_t struct reflection.
-    sireflect_register_struct(&(sireflect_struct_desc_t){
+    sireflect_handle_t entity_type = sireflect_register_struct(&(sireflect_struct_desc_t){
         .name = "ecs_entity_t",
         .fields = "{ uint32_t id; uint32_t generation; }",
         .size = sizeof(ecs_entity_t),
         .align = _Alignof(ecs_entity_t),
+    });
+    sireflect_type_set_meta(entity_type, &(sireflect_meta_t){
+        .key = "siecs.role", .kind = SIREFLECT_META_STRING, .value.string = "entity",
     });
 
     ecs_relation_register_virtual(&ecs_rid(IsA), "IsA", &ecs_rid(IsA_desc), &ecs_relation_ops_isa);

@@ -24,7 +24,9 @@
         "testcases": [
           "metadata_and_entity_introspection",
           "scene_save_memory_roundtrip",
-          "scene_invalid_load_is_non_destructive"
+          "scene_invalid_load_is_non_destructive",
+          "scene_reflected_codec_roundtrip",
+          "scene_unsupported_pointer_is_consistent"
         ]
       },
       {
@@ -99,7 +101,8 @@
           "from_system_c",
           "hooks",
           "fini_runs_after_component_remove",
-          "fini_uses_reverse_registration_order"
+          "fini_uses_reverse_registration_order",
+          "reflection_info_and_failure"
         ]
       },
       {
@@ -117,6 +120,13 @@
       "in_process_body_limit",
       "invalid_route_parameters"
     ]
+      },
+      {
+        "id": "rest_reflection",
+        "testcases": [
+          "reflected_schema_graph_and_roles",
+          "reflected_patch_and_resources"
+        ]
       },
       {
         "id": "childof",

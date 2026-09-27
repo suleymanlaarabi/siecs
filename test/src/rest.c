@@ -186,7 +186,7 @@ static void rest_expect_json_error(
     test_true(json != NULL);
     sijson_value_t error = sijson_object_get(json, "error");
     test_true(error != NULL);
-    test_true(strcmp(sijson_string(error), message) == 0);
+    test_true(strcmp(sijson_string(sijson_object_get(error, "message")), message) == 0);
     sihttp_response_fini(&response);
 }
 

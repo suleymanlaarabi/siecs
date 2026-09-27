@@ -7,6 +7,16 @@ ECS_RESOURCE_DECLARE(ResourceTime, {
 });
 ECS_RESOURCE_DEFINE(ResourceTime);
 
+SIREFLECT_STRUCT(ResourceInner, { float gain; });
+SIREFLECT_ENUM(ResourceChoice, { RESOURCE_CHOICE_A = -3, RESOURCE_CHOICE_B = 5 });
+ECS_RESOURCE_DECLARE(ResourceReflected, {
+    ResourceInner inner;
+    ResourceChoice choice;
+    const char *label;
+    float matrix[2][2];
+});
+ECS_RESOURCE_DEFINE(ResourceReflected);
+
 ECS_COMPONENT_DECLARE(ResourcePosition, { float x; });
 ECS_COMPONENT_DEFINE(ResourcePosition);
 
@@ -27,6 +37,41 @@ static uint32_t resource_teardown_order;
 static bool resource_component_saw_resource;
 static int resource_reverse_order[4];
 static uint32_t resource_reverse_count;
+
+void resource_reflection_info_and_failure(void) {
+    ecs_init();
+    const ecs_resource_info_t *primitive = ecs_resource_info(ecs_id(DeltaTime));
+    test_not_null((void *)primitive);
+    test_true(primitive->type != SIREFLECT_INVALID_HANDLE);
+    test_not_null((void *)sireflect_field_info(primitive->type, "value"));
+    sireflect_handle_t inner = sireflect(ResourceInner);
+    sireflect_handle_t choice = sireflect(ResourceChoice);
+    ecs_resource_t id = ECS_RESOURCE_REGISTER(ResourceReflected);
+    test_true(id != 0);
+    const ecs_resource_info_t *info = ecs_resource_info(id);
+    test_not_null((void *)info);
+    test_str("ResourceReflected", info->name);
+    test_true(info->type != SIREFLECT_INVALID_HANDLE);
+    test_not_null((void *)info->reflection);
+    test_uint(sizeof(ResourceReflected), info->size);
+    test_uint(inner, sireflect_field_type(info->type, "inner"));
+    test_uint(choice, sireflect_field_type(info->type, "choice"));
+    test_true(sireflect_type_is_cstring(sireflect_field_type(info->type, "label")));
+
+    uint32_t count = ecs_resource_count();
+    ecs_resource_t failed = 0;
+    const sireflect_struct_desc_t bad = {
+        .name = "BadResource", .fields = "{ MissingType value; }",
+        .size = sizeof(int), .align = _Alignof(int),
+    };
+    test_uint(0, ecs_resource_register(&failed, &(ecs_resource_desc_t){
+        .name = "BadResource", .size = sizeof(int), .struct_desc = &bad,
+    }));
+    test_uint(0, failed);
+    test_uint(count, ecs_resource_count());
+    test_null((void *)ecs_resource_info((ecs_resource_t)count));
+    ecs_fini();
+}
 
 static void resource_teardown_on_remove(const void *ptr) {
     const ResourceTeardown *value = ptr;

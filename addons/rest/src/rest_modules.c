@@ -14,19 +14,19 @@
 sihttp_response_t ecs_rest_post_modules(const sihttp_request_t *req) {
     sijson_clean();
     if (!req || !req->body || req->body_size == 0)
-        return sihttp_response_json_error(400, "invalid module");
+        return ecs_rest_error(400, "invalid_module", "invalid module");
 
     const char *content_type = sihttp_header(req, "Content-Type");
     if (content_type && strcmp(content_type, "application/octet-stream") != 0)
-        return sihttp_response_json_error(415, "unsupported content type");
+        return ecs_rest_error(415, "unsupported_content_type", "unsupported content type");
 
 #if defined(_WIN32) || defined(__APPLE__)
-    return sihttp_response_json_error(501, "dynamic module upload requires Linux");
+    return ecs_rest_error(501, "dynamic_module_upload_requires_linux", "dynamic module upload requires Linux");
 #else
     SiecsRestState *state = ecs_try_get_resource(SiecsRestState);
     char directory[] = "/tmp/siecs-module-XXXXXX";
     if (!mkdtemp(directory))
-        return sihttp_response_json_error(500, "failed to create module directory");
+        return ecs_rest_error(500, "failed_to_create_module_directory", "failed to create module directory");
 
     char library_path[sizeof(directory) + sizeof("/module.so")];
     char module_path[sizeof(directory) + sizeof("/module")];
@@ -36,7 +36,7 @@ sihttp_response_t ecs_rest_post_modules(const sihttp_request_t *req) {
     FILE *file = fopen(library_path, "wb");
     if (!file) {
         rmdir(directory);
-        return sihttp_response_json_error(500, "failed to create module file");
+        return ecs_rest_error(500, "failed_to_create_module_file", "failed to create module file");
     }
 
     bool written = fwrite(req->body, 1, req->body_size, file) == req->body_size;
@@ -44,7 +44,7 @@ sihttp_response_t ecs_rest_post_modules(const sihttp_request_t *req) {
     if (!written || !closed) {
         unlink(library_path);
         rmdir(directory);
-        return sihttp_response_json_error(500, "failed to write module file");
+        return ecs_rest_error(500, "failed_to_write_module_file", "failed to write module file");
     }
 
     ecs_module_id_t replaced = state ? state->loaded_module : 0;
@@ -58,7 +58,7 @@ sihttp_response_t ecs_rest_post_modules(const sihttp_request_t *req) {
     if (!module) {
         if (replaced)
             ecs_module_enable(replaced);
-        return sihttp_response_json_error(422, "failed to load module");
+        return ecs_rest_error(422, "failed_to_load_module", "failed to load module");
     }
 
     state = ecs_try_get_resource(SiecsRestState);

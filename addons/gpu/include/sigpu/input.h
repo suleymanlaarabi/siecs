@@ -23,6 +23,11 @@ enum {
     KeyCount
 };
 #ifdef __cplusplus
+static_assert(KeyCount == 13, "Keyboard reflected layout must match KeyCount");
+#else
+_Static_assert(KeyCount == 13, "Keyboard reflected layout must match KeyCount");
+#endif
+#ifdef __cplusplus
 enum class Key : uint8_t {
     A = KeyA,
     D = KeyD,
@@ -43,7 +48,7 @@ enum class Key : uint8_t {
 
 ECS_RESOURCE_DECLARE_CPP(
     Keyboard,
-    ECS_CPP_FIELDS(bool keys[KeyCount];),
+    ECS_CPP_FIELDS(bool keys[13];),
     ECS_CPP_METHODS(bool down(Key key) const { return keys[static_cast<uint8_t>(key)]; })
 );
 

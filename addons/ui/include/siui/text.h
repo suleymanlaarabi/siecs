@@ -19,6 +19,8 @@ SIREFLECT_ENUM(siui_text_valign_t, { SIUI_TEXT_TOP, SIUI_TEXT_MIDDLE, SIUI_TEXT_
 #else
 #define SIUI_CPP_DEFAULT_TEXT_COLOR
 #endif
+/* The C++ default member initializer cannot appear in Sireflect's C layout.
+ * Both field views stay layout-checked by ECS_COMPONENT_DECLARE_CPP_REFLECTED. */
 // clang-format off
 ECS_COMPONENT_DECLARE_CPP_REFLECTED(
     UiText,

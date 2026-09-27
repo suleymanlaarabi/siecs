@@ -12,6 +12,8 @@
 void public_metadata_and_entity_introspection(void);
 void public_scene_save_memory_roundtrip(void);
 void public_scene_invalid_load_is_non_destructive(void);
+void public_scene_reflected_codec_roundtrip(void);
+void public_scene_unsupported_pointer_is_consistent(void);
 
 // Testsuite 'entity'
 void entity_create(void);
@@ -78,6 +80,7 @@ void resource_from_system_c(void);
 void resource_hooks(void);
 void resource_fini_runs_after_component_remove(void);
 void resource_fini_uses_reverse_registration_order(void);
+void resource_reflection_info_and_failure(void);
 
 // Testsuite 'world'
 void world_at_fini_runs_all_in_reverse_registration_order(void);
@@ -88,6 +91,10 @@ void rest_is_a_and_child_of_same_target_routes(void);
 void rest_enum_schema_and_component_roundtrip(void);
 void rest_in_process_body_limit(void);
 void rest_invalid_route_parameters(void);
+
+// Testsuite 'rest_reflection'
+void rest_reflection_reflected_schema_graph_and_roles(void);
+void rest_reflection_reflected_patch_and_resources(void);
 
 // Testsuite 'childof'
 void childof_is_a_and_child_of_same_target_queries(void);
@@ -252,6 +259,14 @@ bake_test_case public_testcases[] = {
     {
         "scene_invalid_load_is_non_destructive",
         public_scene_invalid_load_is_non_destructive
+    },
+    {
+        "scene_reflected_codec_roundtrip",
+        public_scene_reflected_codec_roundtrip
+    },
+    {
+        "scene_unsupported_pointer_is_consistent",
+        public_scene_unsupported_pointer_is_consistent
     }
 };
 
@@ -501,6 +516,10 @@ bake_test_case resource_testcases[] = {
     {
         "fini_uses_reverse_registration_order",
         resource_fini_uses_reverse_registration_order
+    },
+    {
+        "reflection_info_and_failure",
+        resource_reflection_info_and_failure
     }
 };
 
@@ -531,6 +550,17 @@ bake_test_case rest_testcases[] = {
     {
         "invalid_route_parameters",
         rest_invalid_route_parameters
+    }
+};
+
+bake_test_case rest_reflection_testcases[] = {
+    {
+        "reflected_schema_graph_and_roles",
+        rest_reflection_reflected_schema_graph_and_roles
+    },
+    {
+        "reflected_patch_and_resources",
+        rest_reflection_reflected_patch_and_resources
     }
 };
 
@@ -1119,7 +1149,7 @@ static bake_test_suite suites[] = {
         "public",
         NULL,
         NULL,
-        3,
+        5,
         public_testcases
     },
     {
@@ -1140,7 +1170,7 @@ static bake_test_suite suites[] = {
         "resource",
         NULL,
         NULL,
-        12,
+        13,
         resource_testcases
     },
     {
@@ -1156,6 +1186,13 @@ static bake_test_suite suites[] = {
         NULL,
         4,
         rest_testcases
+    },
+    {
+        "rest_reflection",
+        NULL,
+        NULL,
+        2,
+        rest_reflection_testcases
     },
     {
         "childof",
@@ -1195,5 +1232,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 11);
+    return bake_test_run("siecs.test", argc, argv, suites, 12);
 }

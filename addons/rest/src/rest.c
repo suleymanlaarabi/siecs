@@ -8,7 +8,7 @@ static void rest_state_on_remove(const void *ptr);
 static sihttp_response_t rest_health(const sihttp_request_t *req);
 static void rest_register_routes(sihttp_server_t *server);
 
-ECS_RESOURCE_DEFINE(SiecsRestState, .on_remove = rest_state_on_remove);
+ECS_RESOURCE_DEFINE_UNREFLECTED(SiecsRestState, .on_remove = rest_state_on_remove);
 ECS_MODULE_DEFINE(sirest);
 
 static void rest_fail(const sirest_props_t *props, int error_number) {
@@ -123,6 +123,10 @@ void sirest_import(const sirest_props_t *props) {
 
 static void rest_register_routes(sihttp_server_t *server) {
     sihttp_get(server, "/schema", ecs_rest_get_schema);
+    sihttp_get(server, "/resources", ecs_rest_get_resources);
+    sihttp_get(server, "/resources/:id", ecs_rest_get_resource);
+    sihttp_put(server, "/resources/:id", ecs_rest_put_resource);
+    sihttp_patch(server, "/resources/:id", ecs_rest_patch_resource);
     sihttp_get(server, "/scene", ecs_rest_get_scene);
     sihttp_post(server, "/scene", ecs_rest_post_scene);
     sihttp_post(server, "/modules", ecs_rest_post_modules);
@@ -136,6 +140,7 @@ static void rest_register_routes(sihttp_server_t *server) {
     sihttp_get(server, "/health", rest_health);
     sihttp_post(server, "/entities/:index/components/:component", ecs_rest_post_entity_component);
     sihttp_put(server, "/entities/:index/components/:component", ecs_rest_put_entity_component);
+    sihttp_patch(server, "/entities/:index/components/:component", ecs_rest_patch_entity_component);
     sihttp_delete(
         server,
         "/entities/:index/components/:component",

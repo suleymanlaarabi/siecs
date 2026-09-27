@@ -4,7 +4,7 @@ ECS_COMPONENT_DEFINE(UiNode, ECS_SET_ONLY);
 ECS_COMPONENT_DEFINE(UiPaint, ECS_SET_ONLY);
 ECS_COMPONENT_DEFINE(UiText, ECS_SET_ONLY);
 ECS_MODULE_DEFINE(siui);
-ECS_RESOURCE_DEFINE(UiLayoutCache);
+ECS_RESOURCE_DEFINE_UNREFLECTED(UiLayoutCache);
 
 static void ui_reflect_types(void) {
     /* Register field types before the component structs that refer to them. */

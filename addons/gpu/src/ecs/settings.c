@@ -116,57 +116,12 @@ ECS_RESOURCE_DEFINE(Multisampling, .on_set = set_multisampling);
 ECS_RESOURCE_DEFINE(CameraClip, .on_set = set_camera_clip);
 ECS_RESOURCE_DEFINE(BloomSettings, .on_set = set_bloom);
 
-#define RESOURCE_REFLECTION(rname, ...)                                                            \
-    static const sireflect_struct_desc_t reflection_##rname = { .name = #rname,                    \
-                                                                .fields = #__VA_ARGS__,            \
-                                                                .size = sizeof(rname),             \
-                                                                .align = _Alignof(rname) }
-RESOURCE_REFLECTION(WindowConfig, {
-    int width;
-    int height;
-    const char *title;
-});
-RESOURCE_REFLECTION(Sky, { Color color; });
-RESOURCE_REFLECTION(Sun, {
-    float x;
-    float y;
-    float z;
-    Color color;
-    float intensity;
-});
-RESOURCE_REFLECTION(AmbientLight, {
-    Color color;
-    float intensity;
-});
-RESOURCE_REFLECTION(Fog, {
-    Color color;
-    float start;
-    float end;
-});
-RESOURCE_REFLECTION(Shadows, {
-    bool enabled;
-    float distance;
-});
-RESOURCE_REFLECTION(Multisampling, { int samples; });
-RESOURCE_REFLECTION(CameraClip, {
-    float near_plane;
-    float far_plane;
-});
-RESOURCE_REFLECTION(BloomSettings, {
-    bool enabled;
-    float threshold;
-    float intensity;
-});
-#undef RESOURCE_REFLECTION
-
 typedef struct {
     const char *name;
     ecs_resource_t *id;
     ecs_resource_desc_t *desc;
-    const sireflect_struct_desc_t *reflection;
-    sireflect_handle_t type;
 } rendering_resource;
-#define RESOURCE_ENTRY(name) { #name, &ecs_id(name), &ecs_id(name##_desc), &reflection_##name, 0 }
+#define RESOURCE_ENTRY(name) { #name, &ecs_id(name), &ecs_id(name##_desc) }
 static rendering_resource rendering_resources[] = {
     RESOURCE_ENTRY(WindowConfig),  RESOURCE_ENTRY(Sky),           RESOURCE_ENTRY(Sun),
     RESOURCE_ENTRY(AmbientLight),  RESOURCE_ENTRY(Fog),           RESOURCE_ENTRY(Shadows),
@@ -179,7 +134,6 @@ void sigpu_settings_register(void) {
          index++) {
         rendering_resource *resource = &rendering_resources[index];
         ecs_resource_register(resource->id, resource->desc);
-        resource->type = sireflect_register_struct(resource->reflection);
     }
 }
 uint16_t sigpu_resource_id(const char *name) {
@@ -195,7 +149,7 @@ sireflect_handle_t sigpu_resource_type(const char *name) {
     for (size_t index = 0; index < sizeof(rendering_resources) / sizeof(*rendering_resources);
          index++) {
         if (strcmp(name, rendering_resources[index].name) == 0)
-            return rendering_resources[index].type;
+            return ecs_resource_info(*rendering_resources[index].id)->type;
     }
     return sigpu_input_resource_type(name);
 }

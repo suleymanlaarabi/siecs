@@ -564,10 +564,19 @@ void sireflect_error_set(const char *message);
 #endif
 
 typedef struct sireflect_registry_t sireflect_registry_t;
+typedef struct {
+    sireflect_metas_t view;
+} sireflect_meta_store_t;
+typedef struct {
+    sireflect_type_info_t info;
+    sireflect_meta_store_t type_meta;
+    sireflect_meta_store_t *field_meta;
+} sireflect_type_entry_t;
 
 struct sireflect_registry_t {
     sicore_vec_t types;
     sicore_map_t types_by_name;
+    sireflect_handle_t first_handle;
 };
 
 sireflect_registry_t *sireflect_registry_current(void);
@@ -601,6 +610,10 @@ sireflect_handle_t sireflect_registry_handle_by_name(const char *name);
 sireflect_type_info_t *sireflect_registry_type_at(sireflect_handle_t handle);
 
 const sireflect_type_info_t *sireflect_registry_const_type_at(sireflect_handle_t handle);
+sireflect_type_entry_t *sireflect_registry_entry_at(sireflect_handle_t handle);
+void sireflect_registry_rollback(size_t count);
+bool sireflect_registry_finish_struct(sireflect_handle_t handle,
+    sireflect_field_info_t *fields, size_t field_count, size_t size, size_t align);
 
 #endif
 
@@ -779,21 +792,22 @@ sireflect_handle_t sireflect_register_enum(const sireflect_enum_desc_t *desc) {
 }
 
 static char *sireflect_current_error = NULL;
+static bool sireflect_error_owned = false;
+static char sireflect_out_of_memory_error[] = "failed to allocate error message";
 
 static char *sireflect_error_dup(const char *message) {
     sireflect_assert(message != NULL, "error message must not be NULL");
 
     const size_t len = strlen(message);
     char *copy = malloc(len + 1);
-    sireflect_assert(copy != NULL, "failed to allocate error message");
-
-    memcpy(copy, message, len + 1);
+    if (copy != NULL) memcpy(copy, message, len + 1);
     return copy;
 }
 
 void sireflect_error_clear(void) {
-    free(sireflect_current_error);
+    if (sireflect_error_owned) free(sireflect_current_error);
     sireflect_current_error = NULL;
+    sireflect_error_owned = false;
 }
 
 void sireflect_error_set(const char *message) {
@@ -804,10 +818,232 @@ void sireflect_error_set(const char *message) {
     }
 
     sireflect_current_error = sireflect_error_dup(message);
+    if (sireflect_current_error == NULL) {
+        sireflect_current_error = sireflect_out_of_memory_error;
+    } else {
+        sireflect_error_owned = true;
+    }
 }
 
 const char *sireflect_error(void) {
     return sireflect_current_error;
+}
+
+#include <stdint.h>
+
+static sireflect_category_t category_of(sireflect_handle_t type) {
+    sireflect_type_entry_t *entry = sireflect_registry_entry_at(type);
+    if (entry == NULL) return sireflect_category_invalid;
+    switch (entry->info.kind) {
+    case sireflect_kind_bool: return sireflect_category_boolean;
+    case sireflect_kind_f32:
+    case sireflect_kind_f64: return sireflect_category_floating;
+    case sireflect_kind_enum: return sireflect_category_enum;
+    case sireflect_kind_struct: return sireflect_category_struct;
+    case sireflect_kind_array: return sireflect_category_array;
+    case sireflect_kind_function_pointer: return sireflect_category_function_pointer;
+    case sireflect_kind_ptr: return sireflect_category_pointer;
+    case sireflect_kind_pointer: {
+        sireflect_type_entry_t *pointee = sireflect_registry_entry_at(entry->info.element_type);
+        return pointee != NULL && pointee->info.kind == sireflect_kind_char
+            ? sireflect_category_cstring : sireflect_category_pointer;
+    }
+    default: return sireflect_category_integer;
+    }
+}
+
+sireflect_category_t sireflect_type_category(sireflect_handle_t type) {
+    sireflect_error_clear();
+    return category_of(type);
+}
+
+bool sireflect_type_is_numeric_handle(sireflect_handle_t type) {
+    sireflect_error_clear();
+    sireflect_category_t category = category_of(type);
+    return category == sireflect_category_integer || category == sireflect_category_floating;
+}
+
+bool sireflect_type_is_scalar(sireflect_handle_t type) {
+    sireflect_error_clear();
+    sireflect_category_t category = category_of(type);
+    return category == sireflect_category_boolean || category == sireflect_category_integer ||
+        category == sireflect_category_floating || category == sireflect_category_enum;
+}
+
+bool sireflect_type_is_cstring(sireflect_handle_t type) {
+    sireflect_error_clear();
+    return category_of(type) == sireflect_category_cstring;
+}
+
+bool sireflect_type_is_integral(sireflect_handle_t type) {
+    sireflect_error_clear();
+    return category_of(type) == sireflect_category_integer;
+}
+
+bool sireflect_type_is_floating(sireflect_handle_t type) {
+    sireflect_error_clear();
+    return category_of(type) == sireflect_category_floating;
+}
+
+bool sireflect_type_is_function_pointer(sireflect_handle_t type) {
+    sireflect_error_clear();
+    return category_of(type) == sireflect_category_function_pointer;
+}
+
+static const void *array_element(sireflect_handle_t type, const void *array, size_t index) {
+    sireflect_type_entry_t *entry = sireflect_registry_entry_at(type);
+    if (entry == NULL || entry->info.kind != sireflect_kind_array || array == NULL ||
+        index >= entry->info.element_count) return NULL;
+    sireflect_type_entry_t *element = sireflect_registry_entry_at(entry->info.element_type);
+    if (element == NULL || element->info.size == 0 ||
+        entry->info.element_count > entry->info.size / element->info.size) return NULL;
+    return (const unsigned char *)array + index * element->info.size;
+}
+
+const void *sireflect_array_element_ptr(sireflect_handle_t array_type,
+    const void *array, size_t index) {
+    sireflect_error_clear();
+    return array_element(array_type, array, index);
+}
+
+void *sireflect_array_element_mut_ptr(sireflect_handle_t array_type,
+    void *array, size_t index) {
+    sireflect_error_clear();
+    return (void *)array_element(array_type, array, index);
+}
+
+bool sireflect_enum_value_valid(sireflect_handle_t type, int64_t value) {
+    sireflect_error_clear();
+    sireflect_type_entry_t *entry = sireflect_registry_entry_at(type);
+    if (entry == NULL || entry->info.kind != sireflect_kind_enum) return false;
+    for (size_t i = 0; i < entry->info.enum_values.value_count; i++) {
+        if (entry->info.enum_values.values[i].value == value) return true;
+    }
+    return false;
+}
+
+static char *dup_string(const char *src) {
+    size_t len = strlen(src);
+    char *copy = malloc(len + 1);
+    if (copy != NULL) memcpy(copy, src, len + 1);
+    return copy;
+}
+
+static const sireflect_meta_t *find_meta(const sireflect_meta_store_t *store, const char *key) {
+    for (size_t i = 0; i < store->view.count; i++) {
+        if (strcmp(store->view.items[i]->key, key) == 0) return store->view.items[i];
+    }
+    return NULL;
+}
+
+static bool set_meta(sireflect_meta_store_t *store, const sireflect_meta_t *meta) {
+    if (meta == NULL || meta->key == NULL || meta->key[0] == '\0' ||
+        meta->kind < SIREFLECT_META_STRING || meta->kind > SIREFLECT_META_F64 ||
+        (meta->kind == SIREFLECT_META_STRING && meta->value.string == NULL)) {
+        sireflect_error_set("invalid metadata value or key");
+        return false;
+    }
+    char *key = dup_string(meta->key);
+    char *string = meta->kind == SIREFLECT_META_STRING ? dup_string(meta->value.string) : NULL;
+    if (key == NULL || (meta->kind == SIREFLECT_META_STRING && string == NULL)) {
+        free(key);
+        free(string);
+        sireflect_error_set("failed to allocate metadata");
+        return false;
+    }
+    sireflect_meta_t *existing = (sireflect_meta_t *)find_meta(store, meta->key);
+    if (existing != NULL) {
+        free((char *)existing->key);
+        if (existing->kind == SIREFLECT_META_STRING) free((char *)existing->value.string);
+        *existing = *meta;
+        existing->key = key;
+        if (meta->kind == SIREFLECT_META_STRING) existing->value.string = string;
+        return true;
+    }
+    sireflect_meta_t *item = malloc(sizeof(*item));
+    if (item == NULL) {
+        free(key);
+        free(string);
+        sireflect_error_set("failed to allocate metadata");
+        return false;
+    }
+    *item = *meta;
+    item->key = key;
+    if (meta->kind == SIREFLECT_META_STRING) item->value.string = string;
+    if (store->view.count == SIZE_MAX / sizeof(*store->view.items)) {
+        free(item);
+        free(key);
+        free(string);
+        sireflect_error_set("metadata list is too large");
+        return false;
+    }
+    const sireflect_meta_t **items = realloc((void *)store->view.items,
+        (store->view.count + 1) * sizeof(*items));
+    if (items == NULL) {
+        free(item);
+        free(key);
+        free(string);
+        sireflect_error_set("failed to allocate metadata list");
+        return false;
+    }
+    store->view.items = items;
+    items[store->view.count++] = item;
+    return true;
+}
+
+static sireflect_meta_store_t *type_store(sireflect_handle_t type) {
+    sireflect_type_entry_t *entry = sireflect_registry_entry_at(type);
+    return entry == NULL ? NULL : &entry->type_meta;
+}
+
+static sireflect_meta_store_t *field_store(sireflect_handle_t type, const char *field) {
+    sireflect_type_entry_t *entry = sireflect_registry_entry_at(type);
+    if (entry == NULL || field == NULL) return NULL;
+    for (size_t i = 0; i < entry->info.fields.field_count; i++) {
+        if (strcmp(entry->info.fields.fields[i].name, field) == 0) return &entry->field_meta[i];
+    }
+    return NULL;
+}
+
+bool sireflect_type_set_meta(sireflect_handle_t type, const sireflect_meta_t *meta) {
+    sireflect_error_clear();
+    sireflect_meta_store_t *store = type_store(type);
+    if (store == NULL) { sireflect_error_set("invalid metadata type"); return false; }
+    return set_meta(store, meta);
+}
+
+const sireflect_meta_t *sireflect_type_meta(sireflect_handle_t type, const char *key) {
+    sireflect_error_clear();
+    sireflect_meta_store_t *store = type_store(type);
+    return store == NULL || key == NULL ? NULL : find_meta(store, key);
+}
+
+const sireflect_metas_t *sireflect_type_metas(sireflect_handle_t type) {
+    sireflect_error_clear();
+    sireflect_meta_store_t *store = type_store(type);
+    return store == NULL ? NULL : &store->view;
+}
+
+bool sireflect_field_set_meta(sireflect_handle_t type, const char *field,
+    const sireflect_meta_t *meta) {
+    sireflect_error_clear();
+    sireflect_meta_store_t *store = field_store(type, field);
+    if (store == NULL) { sireflect_error_set("unknown metadata field or type"); return false; }
+    return set_meta(store, meta);
+}
+
+const sireflect_meta_t *sireflect_field_meta(sireflect_handle_t type,
+    const char *field, const char *key) {
+    sireflect_error_clear();
+    sireflect_meta_store_t *store = field_store(type, field);
+    return store == NULL || key == NULL ? NULL : find_meta(store, key);
+}
+
+const sireflect_metas_t *sireflect_field_metas(sireflect_handle_t type,
+    const char *field) {
+    sireflect_error_clear();
+    sireflect_meta_store_t *store = field_store(type, field);
+    return store == NULL ? NULL : &store->view;
 }
 
 const sireflect_field_info_t *
@@ -911,7 +1147,6 @@ bool sireflect_parse_struct_fields(
 
 #endif
 
-#include <stdint.h>
 #include <stdio.h>
 
 #define SIREFLECT_MAX_ARRAY_DIMS 16
@@ -1680,6 +1915,12 @@ static inline void sireflect_parse_declarator(
         return;
     }
 
+    if (!is_pointer && !is_function_pointer &&
+        strcmp(sireflect_registry_const_type_at(field_type)->name, parser->struct_name) == 0) {
+        sireflect_parser_fail_at(parser, name_token, "recursive field must be a pointer");
+        return;
+    }
+
     if (is_function_pointer) {
         field_type = sireflect_registry_get_or_add_function_pointer_type(field_type);
     } else if (is_pointer) {
@@ -1872,6 +2113,7 @@ bool sireflect_parse_struct_fields(
 
 static sireflect_registry_t sireflect_global_registry;
 static size_t sireflect_global_references;
+static sireflect_handle_t sireflect_next_handle = 1;
 
 bool sireflect_registry_is_initialized(void) {
     return sireflect_global_references != 0;
@@ -1924,12 +2166,12 @@ sireflect_format_array_type_name(const sireflect_type_info_t *element, size_t el
 }
 
 static sireflect_handle_t sireflect_handle_from_index(size_t index) {
-    return (sireflect_handle_t)(index + 1);
+    return sireflect_global_registry.first_handle + (sireflect_handle_t)index;
 }
 
 static size_t sireflect_index_from_handle(sireflect_handle_t handle) {
-    sireflect_assert(handle != SIREFLECT_INVALID_HANDLE, "type handle must be valid");
-    return (size_t)(handle - 1);
+    sireflect_assert(handle >= sireflect_global_registry.first_handle, "type handle must be valid");
+    return (size_t)(handle - sireflect_global_registry.first_handle);
 }
 
 sireflect_handle_t sireflect_registry_add_type(
@@ -1948,7 +2190,9 @@ sireflect_handle_t sireflect_registry_add_type(
     sireflect_assert(size != 0 || kind == sireflect_kind_struct, "non-struct type size must not be zero");
     sireflect_assert(align != 0, "type alignment must not be zero");
 
-    const sireflect_type_info_t type = {
+    sireflect_type_entry_t *entry = calloc(1, sizeof(*entry));
+    sireflect_assert(entry != NULL, "failed to allocate type entry");
+    entry->info = (sireflect_type_info_t){
         .name = sireflect_dup_cstr(name),
         .kind = kind,
         .size = size,
@@ -1966,10 +2210,14 @@ sireflect_handle_t sireflect_registry_add_type(
         .element_type = SIREFLECT_INVALID_HANDLE,
         .element_count = 0,
     };
-    sicore_vec_push(&reg->types, &type, sizeof(type));
+    if (field_count != 0) {
+        entry->field_meta = calloc(field_count, sizeof(*entry->field_meta));
+        sireflect_assert(entry->field_meta != NULL, "failed to allocate field metadata stores");
+    }
+    sicore_vec_push(&reg->types, &entry, sizeof(entry));
 
     const uint32_t index = reg->types.size - 1;
-    sicore_map_set(&reg->types_by_name, type.name, index);
+    sicore_map_set(&reg->types_by_name, entry->info.name, index);
 
     return sireflect_handle_from_index((size_t)index);
 }
@@ -2140,7 +2388,8 @@ void sireflect_init(void) {
 
     if (sireflect_global_references == 0) {
         sireflect_global_references = 1;
-        sicore_vec_init(&sireflect_global_registry.types, sizeof(sireflect_type_info_t));
+        sireflect_global_registry.first_handle = sireflect_next_handle;
+        sicore_vec_init(&sireflect_global_registry.types, sizeof(sireflect_type_entry_t *));
         sicore_map_init(&sireflect_global_registry.types_by_name);
         sireflect_register_builtin_types();
         return;
@@ -2150,25 +2399,77 @@ void sireflect_init(void) {
     sireflect_global_references++;
 }
 
+static void sireflect_meta_store_clear(sireflect_meta_store_t *store) {
+    for (size_t i = 0; i < store->view.count; i++) {
+        sireflect_meta_t *meta = (sireflect_meta_t *)store->view.items[i];
+        free((char *)meta->key);
+        if (meta->kind == SIREFLECT_META_STRING) free((char *)meta->value.string);
+        free(meta);
+    }
+    free((void *)store->view.items);
+}
+
+static void sireflect_entry_clear(sireflect_type_entry_t *entry) {
+    sireflect_type_info_t *type = &entry->info;
+
+    free((char *)type->name);
+
+    for (size_t f = 0; f < type->fields.field_count; f++) {
+        free((char *)type->fields.fields[f].name);
+    }
+
+    free(type->fields.fields);
+
+    for (size_t e = 0; e < type->enum_values.value_count; e++) {
+        free((char *)type->enum_values.values[e].name);
+    }
+    free(type->enum_values.values);
+    sireflect_meta_store_clear(&entry->type_meta);
+    for (size_t f = 0; f < type->fields.field_count; f++) {
+        sireflect_meta_store_clear(&entry->field_meta[f]);
+    }
+    free(entry->field_meta);
+    free(entry);
+}
+
+void sireflect_registry_rollback(size_t count) {
+    sireflect_registry_t *reg = &sireflect_global_registry;
+    while (reg->types.size > count) {
+        const uint32_t index = reg->types.size - 1;
+        sireflect_type_entry_t *entry = *sicore_vec_get_mut(&reg->types, index, sireflect_type_entry_t *);
+        sireflect_entry_clear(entry);
+        reg->types.size--;
+    }
+    sicore_map_fini(&reg->types_by_name);
+    sicore_map_init(&reg->types_by_name);
+    for (uint32_t i = 0; i < reg->types.size; i++) {
+        sireflect_type_entry_t *entry = *sicore_vec_get_mut(&reg->types, i, sireflect_type_entry_t *);
+        sicore_map_set(&reg->types_by_name, entry->info.name, i);
+    }
+}
+
+bool sireflect_registry_finish_struct(sireflect_handle_t handle,
+    sireflect_field_info_t *fields, size_t field_count, size_t size, size_t align) {
+    sireflect_type_entry_t *entry = sireflect_registry_entry_at(handle);
+    sireflect_meta_store_t *stores = field_count ? calloc(field_count, sizeof(*stores)) : NULL;
+    if (field_count && stores == NULL) {
+        return false;
+    }
+    entry->info.fields = (sireflect_fields_t){ .fields = fields, .field_count = field_count };
+    entry->info.size = size;
+    entry->info.align = align;
+    entry->field_meta = stores;
+    return true;
+}
+
 static void sireflect_registry_clear(void) {
     sireflect_registry_t *reg = &sireflect_global_registry;
-
     for (uint32_t i = 0; i < reg->types.size; i++) {
-        sireflect_type_info_t *type = sicore_vec_get_mut(&reg->types, i, sireflect_type_info_t);
-
-        free((char *)type->name);
-
-        for (size_t f = 0; f < type->fields.field_count; f++) {
-            free((char *)type->fields.fields[f].name);
-        }
-
-        free(type->fields.fields);
-
-        for (size_t e = 0; e < type->enum_values.value_count; e++) {
-            free((char *)type->enum_values.values[e].name);
-        }
-        free(type->enum_values.values);
+        sireflect_type_entry_t *entry = *sicore_vec_get_mut(&reg->types, i, sireflect_type_entry_t *);
+        sireflect_entry_clear(entry);
     }
+
+    sireflect_next_handle = reg->first_handle + reg->types.size;
 
     sicore_map_fini(&reg->types_by_name);
     sicore_vec_fini(&reg->types);
@@ -2215,11 +2516,51 @@ const sireflect_type_info_t *sireflect_registry_const_type_at(sireflect_handle_t
     const size_t index = sireflect_index_from_handle(handle);
     sireflect_assert(index < reg->types.size, "type handle is out of range");
 
-    return sicore_vec_get(&reg->types, index, sireflect_type_info_t);
+    const sireflect_type_entry_t *entry = *sicore_vec_get(&reg->types, index, sireflect_type_entry_t *);
+    return &entry->info;
+}
+
+sireflect_type_entry_t *sireflect_registry_entry_at(sireflect_handle_t handle) {
+    if (!sireflect_registry_is_initialized() ||
+        handle < sireflect_global_registry.first_handle ||
+        handle - sireflect_global_registry.first_handle >= sireflect_global_registry.types.size) {
+        return NULL;
+    }
+    return *sicore_vec_get_mut(&sireflect_global_registry.types,
+        (uint32_t)(handle - sireflect_global_registry.first_handle), sireflect_type_entry_t *);
 }
 
 sireflect_type_info_t *sireflect_registry_type_at(sireflect_handle_t handle) {
     return (sireflect_type_info_t *)sireflect_registry_const_type_at(handle);
+}
+
+static sireflect_handle_t sireflect_register_new_struct(
+    const char *name, const char *source, size_t size, size_t align,
+    bool validate_layout, bool fail_fast
+) {
+    sireflect_registry_t *reg = sireflect_registry_current();
+    const size_t checkpoint = reg->types.size;
+    sireflect_handle_t handle = sireflect_registry_add_type(
+        name, sireflect_kind_struct, size, align, NULL, 0, NULL, 0
+    );
+    sireflect_field_info_t *fields = NULL;
+    size_t field_count = 0;
+    size_t parsed_size = 0;
+    size_t parsed_align = 0;
+    if (!sireflect_parse_struct_fields(name, source, &fields, &field_count,
+        size, align, &parsed_size, &parsed_align, validate_layout, fail_fast)) {
+        sireflect_registry_rollback(checkpoint);
+        return SIREFLECT_INVALID_HANDLE;
+    }
+    if (!sireflect_registry_finish_struct(handle, fields, field_count,
+        validate_layout ? size : parsed_size, validate_layout ? align : parsed_align)) {
+        for (size_t i = 0; i < field_count; i++) free((char *)fields[i].name);
+        free(fields);
+        sireflect_registry_rollback(checkpoint);
+        sireflect_error_set("failed to allocate field metadata stores");
+        return SIREFLECT_INVALID_HANDLE;
+    }
+    return handle;
 }
 
 sireflect_handle_t
@@ -2246,36 +2587,8 @@ sireflect_try_register_struct(const sireflect_struct_desc_t *desc) {
         return existing;
     }
 
-    sireflect_field_info_t *parsed_fields = NULL;
-    size_t field_count = 0;
-    size_t parsed_size = 0;
-    size_t parsed_align = 0;
-
-    if (!sireflect_parse_struct_fields(
-        desc->name,
-        desc->fields,
-        &parsed_fields,
-        &field_count,
-        desc->size,
-        desc->align,
-        &parsed_size,
-        &parsed_align,
-        true,
-        false
-    )) {
-        return SIREFLECT_INVALID_HANDLE;
-    }
-
-    return sireflect_registry_add_type(
-        desc->name,
-        sireflect_kind_struct,
-        desc->size,
-        desc->align,
-        parsed_fields,
-        field_count,
-        NULL,
-        0
-    );
+    return sireflect_register_new_struct(desc->name, desc->fields,
+        desc->size, desc->align, true, false);
 }
 
 sireflect_handle_t
@@ -2310,34 +2623,8 @@ sireflect_register_struct(const sireflect_struct_desc_t *desc) {
             return existing;
         }
 
-        sireflect_field_info_t *parsed_fields = NULL;
-        size_t field_count = 0;
-        size_t parsed_size = 0;
-        size_t parsed_align = 0;
-
-        if (sireflect_parse_struct_fields(
-                desc->name,
-                desc->fields,
-                &parsed_fields,
-                &field_count,
-                desc->size,
-                desc->align,
-                &parsed_size,
-                &parsed_align,
-                true,
-                true
-            )) {
-            handle = sireflect_registry_add_type(
-                desc->name,
-                sireflect_kind_struct,
-                desc->size,
-                desc->align,
-                parsed_fields,
-                field_count,
-                NULL,
-                0
-            );
-        }
+        handle = sireflect_register_new_struct(desc->name, desc->fields,
+            desc->size, desc->align, true, true);
     }
 
     sireflect_assert(handle != SIREFLECT_INVALID_HANDLE, "failed to register struct");
@@ -2367,36 +2654,7 @@ sireflect_handle_t sireflect_try_register_dynamic_struct(
         return existing;
     }
 
-    sireflect_field_info_t *parsed_fields = NULL;
-    size_t field_count = 0;
-    size_t size = 0;
-    size_t align = 0;
-
-    if (!sireflect_parse_struct_fields(
-            name,
-            fields,
-            &parsed_fields,
-            &field_count,
-            0,
-            1,
-            &size,
-            &align,
-            false,
-            false
-        )) {
-        return SIREFLECT_INVALID_HANDLE;
-    }
-
-    return sireflect_registry_add_type(
-        name,
-        sireflect_kind_struct,
-        size,
-        align,
-        parsed_fields,
-        field_count,
-        NULL,
-        0
-    );
+    return sireflect_register_new_struct(name, fields, 0, 1, false, false);
 }
 
 const char *sireflect_kind_name(sireflect_kind_t kind) {
@@ -2622,6 +2880,191 @@ sireflect_type_pointee(sireflect_handle_t ref) {
         "type must be a typed pointer"
     );
     return type->element_type;
+}
+
+#define SIREFLECT_WALK_MAX_DEPTH 256
+
+typedef enum { walk_types, walk_const_values, walk_mut_values } walk_mode_t;
+
+typedef struct {
+    walk_mode_t mode;
+    uint32_t flags;
+    void *user;
+    sireflect_type_visitor_t type_visitor;
+    sireflect_const_value_visitor_t const_visitor;
+    sireflect_value_visitor_t mut_visitor;
+    sireflect_handle_t active[SIREFLECT_WALK_MAX_DEPTH + 1];
+    unsigned char *seen;
+    sireflect_handle_t first_handle;
+} walk_state_t;
+
+static bool emit_value(walk_state_t *state, sireflect_value_event_t event,
+    sireflect_handle_t type, const sireflect_type_info_t *info,
+    const sireflect_field_info_t *field, const void *ptr, void *mut_ptr,
+    size_t index, size_t depth) {
+    if (state->mode == walk_const_values) {
+        sireflect_const_value_visit_t visit = {
+            .event = event, .type = type, .info = info, .field = field,
+            .ptr = ptr, .index = index, .depth = depth
+        };
+        return state->const_visitor(&visit, state->user);
+    }
+    sireflect_value_visit_t visit = {
+        .event = event, .type = type, .info = info, .field = field,
+        .ptr = mut_ptr, .index = index, .depth = depth
+    };
+    return state->mut_visitor(&visit, state->user);
+}
+
+static bool walk_node(walk_state_t *state, sireflect_handle_t type,
+    sireflect_walk_relation_t relation, const sireflect_field_info_t *field,
+    sireflect_handle_t parent, const void *ptr, void *mut_ptr,
+    size_t index, size_t depth) {
+    sireflect_type_entry_t *entry = sireflect_registry_entry_at(type);
+    if (entry == NULL) {
+        sireflect_error_set("invalid type in reflection graph");
+        return false;
+    }
+    if (depth > SIREFLECT_WALK_MAX_DEPTH) {
+        sireflect_error_set("reflection walk depth limit exceeded");
+        return false;
+    }
+    const sireflect_type_info_t *info = &entry->info;
+    if (state->mode == walk_types) {
+        for (size_t i = 0; i < depth; i++) {
+            if (state->active[i] == type) return true;
+        }
+        if (state->seen != NULL) {
+            size_t slot = (size_t)(type - state->first_handle);
+            if (state->seen[slot]) return true;
+            state->seen[slot] = 1;
+        }
+        state->active[depth] = type;
+        sireflect_type_visit_t visit = {
+            .type = type, .info = info, .relation = relation,
+            .field = field, .parent_type = parent, .depth = depth
+        };
+        if (!state->type_visitor(&visit, state->user)) return false;
+    } else {
+        sireflect_value_event_t event = SIREFLECT_VALUE_LEAF;
+        if (info->kind == sireflect_kind_struct) event = SIREFLECT_VALUE_ENTER_STRUCT;
+        else if (info->kind == sireflect_kind_array) event = SIREFLECT_VALUE_ENTER_ARRAY;
+        else if (info->kind == sireflect_kind_pointer || info->kind == sireflect_kind_ptr ||
+            info->kind == sireflect_kind_function_pointer) event = SIREFLECT_VALUE_POINTER;
+        else event = SIREFLECT_VALUE_LEAF;
+        if (!emit_value(state, event, type, info, field, ptr, mut_ptr, index, depth)) return false;
+    }
+
+    if (info->kind == sireflect_kind_struct) {
+        for (size_t i = 0; i < info->fields.field_count; i++) {
+            if (depth == SIREFLECT_WALK_MAX_DEPTH) {
+                sireflect_error_set("reflection walk depth limit exceeded");
+                return false;
+            }
+            const sireflect_field_info_t *child = &info->fields.fields[i];
+            if (child->offset > info->size || child->size > info->size - child->offset) {
+                sireflect_error_set("invalid reflected field bounds");
+                return false;
+            }
+            const void *child_ptr = ptr ? (const unsigned char *)ptr + child->offset : NULL;
+            void *child_mut_ptr = mut_ptr ? (unsigned char *)mut_ptr + child->offset : NULL;
+            sireflect_type_entry_t *child_entry = sireflect_registry_entry_at(child->type);
+            if (child_entry == NULL) {
+                sireflect_error_set("invalid reflected field type");
+                return false;
+            }
+            if (state->mode != walk_types &&
+                !emit_value(state, SIREFLECT_VALUE_FIELD, child->type,
+                    &child_entry->info, child,
+                    child_ptr, child_mut_ptr, 0, depth + 1)) return false;
+            if (!walk_node(state, child->type, SIREFLECT_WALK_FIELD, child, type,
+                child_ptr, child_mut_ptr, 0, depth + 1)) return false;
+        }
+        if (state->mode != walk_types &&
+            !emit_value(state, SIREFLECT_VALUE_LEAVE_STRUCT, type, info, field,
+                ptr, mut_ptr, index, depth)) return false;
+    } else if (info->kind == sireflect_kind_array) {
+        sireflect_type_entry_t *element = sireflect_registry_entry_at(info->element_type);
+        if (element == NULL || element->info.size == 0 || info->element_count == 0 ||
+            info->element_count > info->size / element->info.size) {
+            sireflect_error_set("invalid reflected array metadata");
+            return false;
+        }
+        size_t count = state->mode == walk_types ? 1 : info->element_count;
+        for (size_t i = 0; i < count; i++) {
+            if (depth == SIREFLECT_WALK_MAX_DEPTH) {
+                sireflect_error_set("reflection walk depth limit exceeded");
+                return false;
+            }
+            size_t offset = i * element->info.size;
+            const void *child_ptr = ptr ? (const unsigned char *)ptr + offset : NULL;
+            void *child_mut_ptr = mut_ptr ? (unsigned char *)mut_ptr + offset : NULL;
+            if (state->mode != walk_types &&
+                !emit_value(state, SIREFLECT_VALUE_ARRAY_ELEMENT, info->element_type,
+                    &element->info, NULL, child_ptr, child_mut_ptr, i, depth + 1)) return false;
+            if (!walk_node(state, info->element_type, SIREFLECT_WALK_ARRAY_ELEMENT,
+                NULL, type, child_ptr, child_mut_ptr, i, depth + 1)) return false;
+        }
+        if (state->mode != walk_types &&
+            !emit_value(state, SIREFLECT_VALUE_LEAVE_ARRAY, type, info, field,
+                ptr, mut_ptr, index, depth)) return false;
+    } else if (state->mode == walk_types && info->kind == sireflect_kind_pointer &&
+        (state->flags & SIREFLECT_WALK_FOLLOW_POINTERS)) {
+        if (!walk_node(state, info->element_type, SIREFLECT_WALK_POINTER_TARGET,
+            NULL, type, NULL, NULL, 0, depth + 1)) return false;
+    } else if (state->mode == walk_types && info->kind == sireflect_kind_function_pointer) {
+        if (!walk_node(state, info->element_type, SIREFLECT_WALK_FUNCTION_RETURN,
+            NULL, type, NULL, NULL, 0, depth + 1)) return false;
+    }
+    return true;
+}
+
+bool sireflect_walk_type(sireflect_handle_t root, uint32_t flags,
+    sireflect_type_visitor_t visitor, void *user) {
+    sireflect_error_clear();
+    if (visitor == NULL || sireflect_registry_entry_at(root) == NULL ||
+        (flags & ~(SIREFLECT_WALK_FOLLOW_POINTERS | SIREFLECT_WALK_DEDUPLICATE))) {
+        sireflect_error_set("invalid type walk arguments");
+        return false;
+    }
+    walk_state_t state = { .mode = walk_types, .flags = flags,
+        .user = user, .type_visitor = visitor,
+        .first_handle = sireflect_registry_current()->first_handle };
+    if (flags & SIREFLECT_WALK_DEDUPLICATE) {
+        state.seen = calloc(sireflect_registry_current()->types.size, 1);
+        if (state.seen == NULL) {
+            sireflect_error_set("failed to allocate type walk state");
+            return false;
+        }
+    }
+    bool result = walk_node(&state, root, SIREFLECT_WALK_ROOT,
+        NULL, SIREFLECT_INVALID_HANDLE, NULL, NULL, 0, 0);
+    free(state.seen);
+    return result;
+}
+
+static bool walk_value_common(sireflect_handle_t type, const void *value,
+    void *mut_value, uint32_t flags, walk_state_t *state) {
+    sireflect_error_clear();
+    if (sireflect_registry_entry_at(type) == NULL || value == NULL || flags != 0 ||
+        (state->mode == walk_const_values ? state->const_visitor == NULL : state->mut_visitor == NULL)) {
+        sireflect_error_set("invalid value walk arguments");
+        return false;
+    }
+    return walk_node(state, type, SIREFLECT_WALK_ROOT, NULL,
+        SIREFLECT_INVALID_HANDLE, value, mut_value, 0, 0);
+}
+
+bool sireflect_walk_value(sireflect_handle_t type, void *value, uint32_t flags,
+    sireflect_value_visitor_t visitor, void *user) {
+    walk_state_t state = { .mode = walk_mut_values, .user = user, .mut_visitor = visitor };
+    return walk_value_common(type, value, value, flags, &state);
+}
+
+bool sireflect_walk_const_value(sireflect_handle_t type, const void *value, uint32_t flags,
+    sireflect_const_value_visitor_t visitor, void *user) {
+    walk_state_t state = { .mode = walk_const_values, .user = user, .const_visitor = visitor };
+    return walk_value_common(type, value, NULL, flags, &state);
 }
 
 #ifndef SIJSON_INTERNAL_H
@@ -5750,11 +6193,14 @@ void ecs_bootstrap() {
     ecs_component({ .name = "Invalid" });
 
     // Register the ecs_entity_t struct reflection.
-    sireflect_register_struct(&(sireflect_struct_desc_t){
+    sireflect_handle_t entity_type = sireflect_register_struct(&(sireflect_struct_desc_t){
         .name = "ecs_entity_t",
         .fields = "{ uint32_t id; uint32_t generation; }",
         .size = sizeof(ecs_entity_t),
         .align = _Alignof(ecs_entity_t),
+    });
+    sireflect_type_set_meta(entity_type, &(sireflect_meta_t){
+        .key = "siecs.role", .kind = SIREFLECT_META_STRING, .value.string = "entity",
     });
 
     ecs_relation_register_virtual(&ecs_rid(IsA), "IsA", &ecs_rid(IsA_desc), &ecs_relation_ops_isa);
@@ -8434,6 +8880,48 @@ void ecs_query_fini(ecs_query_id_t qid) {
     query_index.first_free = qid;
 }
 
+#ifndef SIECS_REFLECT_INTERNAL_H
+#define SIECS_REFLECT_INTERNAL_H
+
+typedef enum {
+    EcsReflectValueScalar,
+    EcsReflectValueStruct,
+    EcsReflectValueArray,
+    EcsReflectValueString,
+    EcsReflectValueEntity,
+    EcsReflectValueEnum,
+    EcsReflectValuePointer,
+} ecs_reflect_value_kind_t;
+
+SIECS_API bool ecs_reflect_type_has_role(sireflect_handle_t type, const char *role);
+
+static inline ecs_reflect_value_kind_t ecs_reflect_value_kind(sireflect_handle_t type) {
+    if (ecs_reflect_type_has_role(type, "entity"))
+        return EcsReflectValueEntity;
+    switch (sireflect_type_category(type)) {
+    case sireflect_category_struct:
+        return EcsReflectValueStruct;
+    case sireflect_category_array:
+        return EcsReflectValueArray;
+    case sireflect_category_cstring:
+        return EcsReflectValueString;
+    case sireflect_category_enum:
+        return EcsReflectValueEnum;
+    case sireflect_category_pointer:
+    case sireflect_category_function_pointer:
+        return EcsReflectValuePointer;
+    default:
+        return EcsReflectValueScalar;
+    }
+}
+
+#endif
+
+bool ecs_reflect_type_has_role(sireflect_handle_t type, const char *role) {
+    const sireflect_meta_t *meta = sireflect_type_meta(type, "siecs.role");
+    return meta && meta->kind == SIREFLECT_META_STRING && strcmp(meta->value.string, role) == 0;
+}
+
 ecs_relation_index_t relation_index;
 
 static void
@@ -9094,8 +9582,7 @@ void ecs_relation_target_on_remove(ecs_entity_t target, ecs_component_t componen
 }
 
 typedef struct {
-    const char *name;
-    uint64_t size;
+    ecs_resource_info_t *info;
     void *data;
     ecs_type_ops_t ops;
     ecs_resource_hook_t on_set;
@@ -9117,7 +9604,7 @@ static inline ecs_resource_record_t *ecs_resource_record(ecs_resource_t id) {
 }
 
 static inline bool ecs_resource_registered(ecs_resource_t id) {
-    return id != 0 && id < ecs_resources.size && ecs_resource_record(id)->name != NULL;
+    return id != 0 && id < ecs_resources.size && ecs_resource_record(id)->info != NULL;
 }
 
 static inline void ecs_resource_assert_registered(ecs_resource_t id) {
@@ -9144,30 +9631,60 @@ ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc
         return *id;
     }
     ecs_assert_not_scheduler_parallel("resource registration");
-    if (*id == 0) {
-        *id = ecs_resource_alloc_id();
+    sireflect_handle_t type = SIREFLECT_INVALID_HANDLE;
+    if (desc->struct_desc) {
+        type = sireflect_try_register_struct(desc->struct_desc);
+        if (type == SIREFLECT_INVALID_HANDLE)
+            return 0;
     }
 
-    sicore_vec_ensure(&ecs_resources, (uint32_t)*id + 1, sizeof(ecs_resource_record_t));
-    ecs_resource_record_t *record = ecs_resource_record(*id);
-    *record = (ecs_resource_record_t){
-        .name = desc->name,
+    ecs_resource_info_t *info = malloc(sizeof *info);
+    if (!info)
+        abort();
+    sireflect_struct_desc_t *reflection = NULL;
+    if (desc->struct_desc) {
+        reflection = malloc(sizeof *reflection);
+        if (!reflection)
+            abort();
+        *reflection = (sireflect_struct_desc_t){
+            .name = strdup(desc->struct_desc->name),
+            .fields = strdup(desc->struct_desc->fields),
+            .size = desc->struct_desc->size,
+            .align = desc->struct_desc->align,
+        };
+        if (!reflection->name || !reflection->fields)
+            abort();
+    }
+    *info = (ecs_resource_info_t){
+        .name = strdup(desc->name),
         .size = desc->size,
+        .type = type,
+        .reflection = reflection,
+    };
+    if (!info->name)
+        abort();
+
+    ecs_resource_t assigned = *id ? *id : ecs_resource_alloc_id();
+    sicore_vec_ensure(&ecs_resources, (uint32_t)assigned + 1, sizeof(ecs_resource_record_t));
+    ecs_resource_record_t *record = ecs_resource_record(assigned);
+    *record = (ecs_resource_record_t){
+        .info = info,
         .data = NULL,
         .ops = desc->ops,
         .on_set = desc->on_set,
         .on_remove = desc->on_remove,
         .previous = ecs_last_resource,
     };
-    ecs_last_resource = *id;
-    return *id;
+    ecs_last_resource = assigned;
+    *id = assigned;
+    return assigned;
 }
 
 ecs_resource_t ecs_resource_find(const char *name) {
     ecs_assert_not_null(name);
     ecs_resource_record_t *records = ecs_resources.data;
     for (uint32_t i = 1; i < ecs_resources.size; i++) {
-        if (records[i].name && strcmp(records[i].name, name) == 0) {
+        if (records[i].info && strcmp(records[i].info->name, name) == 0) {
             return (ecs_resource_t)i;
         }
     }
@@ -9176,8 +9693,14 @@ ecs_resource_t ecs_resource_find(const char *name) {
 
 const char *ecs_resource_name(ecs_resource_t resource) {
     ecs_resource_assert_registered(resource);
-    return ecs_resource_record(resource)->name;
+    return ecs_resource_record(resource)->info->name;
 }
+
+const ecs_resource_info_t *ecs_resource_info(ecs_resource_t resource) {
+    return ecs_resource_registered(resource) ? ecs_resource_record(resource)->info : NULL;
+}
+
+uint32_t ecs_resource_count(void) { return ecs_resources.size; }
 
 bool ecs_resource_is_registered_rid(ecs_resource_t id) { return ecs_resource_registered(id); }
 
@@ -9191,10 +9714,10 @@ static inline void ecs_resource_store(ecs_resource_t id, void *data, bool move) 
     }
     bool construct = !record->data;
     if (construct) {
-        record->data = calloc(1, record->size ? record->size : 1);
+        record->data = calloc(1, record->info->size ? record->info->size : 1);
         ecs_assert_not_null(record->data);
     }
-    if (!record->size)
+    if (!record->info->size)
         return;
     ecs_type_move_t move_op = construct ? record->ops.move_ctor : record->ops.move;
     if (move && move_op) {
@@ -9206,7 +9729,7 @@ static inline void ecs_resource_store(ecs_resource_t id, void *data, bool move) 
             if (move && record->ops.dtor)
                 record->ops.dtor(data, 1);
         } else
-            memcpy(record->data, data, record->size);
+            memcpy(record->data, data, record->info->size);
     }
 }
 
@@ -9255,6 +9778,19 @@ void ecs_resource_storage_fini(void) {
         if (ecs_resource_record(id)->data) {
             ecs_remove_resource_rid(id);
         }
+    }
+    ecs_resource_record_t *records = ecs_resources.data;
+    for (uint32_t i = 1; i < ecs_resources.size; i++) {
+        ecs_resource_info_t *info = records[i].info;
+        if (!info)
+            continue;
+        free((char *)info->name);
+        if (info->reflection) {
+            free((char *)info->reflection->name);
+            free((char *)info->reflection->fields);
+            free((void *)info->reflection);
+        }
+        free(info);
     }
     sicore_vec_fini(&ecs_resources);
 }
@@ -9394,50 +9930,65 @@ static bool ecs_scene_has_type_ops(const ecs_component_record_t *record) {
     return ops->ctor || ops->dtor || ops->copy_ctor || ops->copy || ops->move_ctor || ops->move;
 }
 
-static bool ecs_scene_is_entity_type(const sireflect_type_info_t *info) {
-    return info && info->name && strcmp(info->name, "ecs_entity_t") == 0;
+typedef struct {
+    bool needs_codec;
+    bool supported;
+    bool contains_entity;
+    bool contains_string;
+    bool analyzed;
+} ecs_scene_type_traits_t;
+
+static ecs_scene_type_traits_t *ecs_scene_traits;
+static size_t ecs_scene_traits_count;
+
+static bool ecs_scene_traits_visit(const sireflect_type_visit_t *visit, void *user) {
+    ecs_scene_type_traits_t *traits = user;
+    switch (ecs_reflect_value_kind(visit->type)) {
+    case EcsReflectValueEntity:
+        traits->needs_codec = true;
+        traits->contains_entity = true;
+        break;
+    case EcsReflectValueString:
+        traits->needs_codec = true;
+        traits->contains_string = true;
+        break;
+    case EcsReflectValuePointer:
+        traits->needs_codec = true;
+        traits->supported = false;
+        break;
+    default:
+        break;
+    }
+    return true;
 }
 
-enum {
-    ECS_SCENE_TYPE_NEEDS_CODEC = 1 << 0,
-    ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER = 1 << 1,
-};
-
-static uint8_t ecs_scene_type_flags(sireflect_handle_t type) {
+static ecs_scene_type_traits_t ecs_scene_type_traits(sireflect_handle_t type) {
     if (type == SIREFLECT_INVALID_HANDLE)
-        return 0;
-
-    const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (!info)
-        return 0;
-    if (ecs_scene_is_entity_type(info))
-        return ECS_SCENE_TYPE_NEEDS_CODEC;
-
-    if (info->kind == sireflect_kind_pointer || info->kind == sireflect_kind_ptr ||
-        info->kind == sireflect_kind_function_pointer) {
-        uint8_t flags = ECS_SCENE_TYPE_NEEDS_CODEC;
-        if (info->kind == sireflect_kind_pointer) {
-            const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-            if (!element || element->kind != sireflect_kind_char)
-                flags |= ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER;
-        } else {
-            flags |= ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER;
-        }
-        return flags;
+        return (ecs_scene_type_traits_t){ .supported = true };
+    if (type >= ecs_scene_traits_count) {
+        size_t count = ecs_scene_traits_count ? ecs_scene_traits_count : 64;
+        while (type >= count)
+            count *= 2;
+        ecs_scene_type_traits_t *items = realloc(ecs_scene_traits, count * sizeof *items);
+        if (!items)
+            abort();
+        memset(items + ecs_scene_traits_count, 0, (count - ecs_scene_traits_count) * sizeof *items);
+        ecs_scene_traits = items;
+        ecs_scene_traits_count = count;
     }
-
-    if (info->kind == sireflect_kind_array)
-        return ecs_scene_type_flags(info->element_type);
-
-    if (info->kind == sireflect_kind_struct) {
-        uint8_t flags = 0;
-        for (size_t i = 0; i < info->fields.field_count; i++) {
-            flags |= ecs_scene_type_flags(info->fields.fields[i].type);
-        }
-        return flags;
+    ecs_scene_type_traits_t *cached = &ecs_scene_traits[type];
+    if (!cached->analyzed) {
+        *cached = (ecs_scene_type_traits_t){ .supported = true, .analyzed = true };
+        if (!sireflect_walk_type(type, SIREFLECT_WALK_DEDUPLICATE, ecs_scene_traits_visit, cached))
+            cached->supported = false;
     }
+    return *cached;
+}
 
-    return false;
+void ecs_scene_type_cache_fini(void) {
+    free(ecs_scene_traits);
+    ecs_scene_traits = NULL;
+    ecs_scene_traits_count = 0;
 }
 
 static bool ecs_scene_component_use_codec(const ecs_component_record_t *record) {
@@ -9446,8 +9997,7 @@ static bool ecs_scene_component_use_codec(const ecs_component_record_t *record) 
     if (record->info->type == SIREFLECT_INVALID_HANDLE) {
         return ecs_scene_has_type_ops(record);
     }
-    return ecs_scene_has_type_ops(record) ||
-           (ecs_scene_type_flags(record->info->type) & ECS_SCENE_TYPE_NEEDS_CODEC);
+    return ecs_scene_has_type_ops(record) || ecs_scene_type_traits(record->info->type).needs_codec;
 }
 
 static bool ecs_scene_component_supported(const ecs_component_record_t *record) {
@@ -9459,30 +10009,15 @@ static bool ecs_scene_component_supported(const ecs_component_record_t *record) 
     }
 
     if (record->info->type != SIREFLECT_INVALID_HANDLE &&
-        (ecs_scene_type_flags(record->info->type) & ECS_SCENE_TYPE_HAS_UNSUPPORTED_POINTER))
+        !ecs_scene_type_traits(record->info->type).supported)
         return false;
 
     return true;
 }
 
-static bool ecs_scene_save_value(
-    ecs_scene_writer_t *w,
-    sireflect_handle_t type,
-    const void *value,
-    const ecs_scene_save_ctx_t *ctx
-);
-
-static bool ecs_scene_load_value(
-    ecs_scene_reader_t *r,
-    sireflect_handle_t type,
-    void *value,
-    const ecs_scene_load_ctx_t *ctx
-);
-
 static bool ecs_scene_save_string(ecs_scene_writer_t *w, const char *value) {
     if (!value)
         return ecs_scene_write_u32(w, ECS_SCENE_NULL_INDEX);
-
     size_t length = strlen(value);
     if (length > UINT32_MAX)
         return false;
@@ -9494,18 +10029,15 @@ ecs_scene_load_string(ecs_scene_reader_t *r, void *value, const ecs_scene_load_c
     uint32_t length = ecs_scene_read_u32(r);
     if (!r->ok)
         return false;
-
     if (length == ECS_SCENE_NULL_INDEX) {
         char *string = NULL;
         memcpy(value, &string, sizeof string);
         return true;
     }
-
     if ((size_t)length > (size_t)(r->end - r->ptr)) {
         r->ok = false;
         return false;
     }
-
     char *string = ctx->component_owns_strings
                        ? malloc((size_t)length + 1)
                        : ecs_arena_alloc(&ecs_world.scene_strings, length + 1);
@@ -9513,7 +10045,6 @@ ecs_scene_load_string(ecs_scene_reader_t *r, void *value, const ecs_scene_load_c
         r->ok = false;
         return false;
     }
-
     if (!ecs_scene_reader_take(r, string, length)) {
         if (ctx->component_owns_strings)
             free(string);
@@ -9524,124 +10055,117 @@ ecs_scene_load_string(ecs_scene_reader_t *r, void *value, const ecs_scene_load_c
     return true;
 }
 
+typedef enum {
+    EcsSceneSave,
+    EcsSceneValidate,
+    EcsSceneLoad,
+} ecs_scene_codec_mode_t;
+
+/* One type dispatch and child traversal for all three scene codec phases. */
+static bool ecs_scene_codec_value(
+    ecs_scene_codec_mode_t mode,
+    ecs_scene_writer_t *writer,
+    ecs_scene_reader_t *reader,
+    sireflect_handle_t type,
+    void *value,
+    const ecs_scene_save_ctx_t *save_ctx,
+    const ecs_scene_load_ctx_t *load_ctx,
+    uint32_t entity_count
+) {
+    const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (!info)
+        return false;
+    switch (ecs_reflect_value_kind(type)) {
+    case EcsReflectValueEntity: {
+        if (mode == EcsSceneSave) {
+            ecs_entity_t entity = *(const ecs_entity_t *)value;
+            if (!entity)
+                return ecs_scene_write_u32(writer, ECS_SCENE_NULL_INDEX);
+            uint32_t id = ecs_entity_id(entity);
+            if (id >= save_ctx->entity_to_local_count)
+                return false;
+            uint32_t local = save_ctx->entity_to_local[id];
+            return local != ECS_SCENE_NULL_INDEX && ecs_scene_write_u32(writer, local);
+        }
+        uint32_t local = ecs_scene_read_u32(reader);
+        if (!reader->ok || (local != ECS_SCENE_NULL_INDEX && local >= entity_count))
+            return false;
+        if (mode == EcsSceneLoad)
+            *(ecs_entity_t *)value =
+                local == ECS_SCENE_NULL_INDEX ? 0 : load_ctx->local_to_entity[local];
+        return true;
+    }
+    case EcsReflectValueStruct:
+        for (size_t i = 0; i < info->fields.field_count; i++) {
+            const sireflect_field_info_t *field = &info->fields.fields[i];
+            void *child = value ? (unsigned char *)value + field->offset : NULL;
+            if (!ecs_scene_codec_value(
+                    mode,
+                    writer,
+                    reader,
+                    field->type,
+                    child,
+                    save_ctx,
+                    load_ctx,
+                    entity_count
+                ))
+                return false;
+        }
+        return true;
+    case EcsReflectValueArray: {
+        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
+        if (!element)
+            return false;
+        for (size_t i = 0; i < info->element_count; i++) {
+            void *child = value ? (unsigned char *)value + i * element->size : NULL;
+            if (!ecs_scene_codec_value(
+                    mode,
+                    writer,
+                    reader,
+                    info->element_type,
+                    child,
+                    save_ctx,
+                    load_ctx,
+                    entity_count
+                ))
+                return false;
+        }
+        return true;
+    }
+    case EcsReflectValueString:
+        if (mode == EcsSceneSave) {
+            const char *string;
+            memcpy(&string, value, sizeof string);
+            return ecs_scene_save_string(writer, string);
+        }
+        if (mode == EcsSceneLoad)
+            return ecs_scene_load_string(reader, value, load_ctx);
+        {
+            uint32_t length = ecs_scene_read_u32(reader);
+            return reader->ok &&
+                   (length == ECS_SCENE_NULL_INDEX || ecs_scene_reader_skip(reader, length));
+        }
+    case EcsReflectValuePointer:
+        return false;
+    default:
+        if (mode == EcsSceneSave)
+            return ecs_scene_write(writer, value, info->size);
+        return ecs_scene_reader_take(reader, mode == EcsSceneLoad ? value : NULL, info->size);
+    }
+}
+
 static bool ecs_scene_save_value(
     ecs_scene_writer_t *w,
     sireflect_handle_t type,
     const void *value,
     const ecs_scene_save_ctx_t *ctx
 ) {
-    const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (!info)
-        return false;
-
-    if (ecs_scene_is_entity_type(info)) {
-        ecs_entity_t entity = *(const ecs_entity_t *)value;
-        if (!entity)
-            return ecs_scene_write_u32(w, ECS_SCENE_NULL_INDEX);
-
-        uint32_t id = ecs_entity_id(entity);
-        if (id >= ctx->entity_to_local_count)
-            return false;
-        uint32_t local = ctx->entity_to_local[id];
-        if (local == ECS_SCENE_NULL_INDEX)
-            return false;
-        return ecs_scene_write_u32(w, local);
-    }
-
-    switch (info->kind) {
-    case sireflect_kind_struct:
-        for (size_t i = 0; i < info->fields.field_count; i++) {
-            const sireflect_field_info_t *field = &info->fields.fields[i];
-            if (!ecs_scene_save_value(
-                    w,
-                    field->type,
-                    (const unsigned char *)value + field->offset,
-                    ctx
-                )) {
-                return false;
-            }
-        }
-        return true;
-
-    case sireflect_kind_array: {
-        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-        if (!element)
-            return false;
-        for (size_t i = 0; i < info->element_count; i++) {
-            if (!ecs_scene_save_value(
-                    w,
-                    info->element_type,
-                    (const unsigned char *)value + i * element->size,
-                    ctx
-                )) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    case sireflect_kind_pointer: {
-        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-        if (!element || element->kind != sireflect_kind_char)
-            return false;
-        const char *string;
-        memcpy(&string, value, sizeof string);
-        return ecs_scene_save_string(w, string);
-    }
-
-    case sireflect_kind_ptr:
-    case sireflect_kind_function_pointer:
-        return false;
-
-    default:
-        return ecs_scene_write(w, value, info->size);
-    }
+    return ecs_scene_codec_value(EcsSceneSave, w, NULL, type, (void *)value, ctx, NULL, 0);
 }
 
 static bool
 ecs_scene_validate_value(ecs_scene_reader_t *r, sireflect_handle_t type, uint32_t entity_count) {
-    const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (!info)
-        return false;
-
-    if (ecs_scene_is_entity_type(info)) {
-        uint32_t local = ecs_scene_read_u32(r);
-        return r->ok && (local == ECS_SCENE_NULL_INDEX || local < entity_count);
-    }
-
-    switch (info->kind) {
-    case sireflect_kind_struct:
-        for (size_t i = 0; i < info->fields.field_count; i++) {
-            if (!ecs_scene_validate_value(r, info->fields.fields[i].type, entity_count))
-                return false;
-        }
-        return true;
-
-    case sireflect_kind_array:
-        for (size_t i = 0; i < info->element_count; i++) {
-            if (!ecs_scene_validate_value(r, info->element_type, entity_count))
-                return false;
-        }
-        return true;
-
-    case sireflect_kind_pointer: {
-        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-        if (!element || element->kind != sireflect_kind_char)
-            return false;
-
-        uint32_t length = ecs_scene_read_u32(r);
-        if (!r->ok || length == ECS_SCENE_NULL_INDEX)
-            return r->ok;
-        return ecs_scene_reader_skip(r, length);
-    }
-
-    case sireflect_kind_ptr:
-    case sireflect_kind_function_pointer:
-        return false;
-
-    default:
-        return ecs_scene_reader_skip(r, info->size);
-    }
+    return ecs_scene_codec_value(EcsSceneValidate, NULL, r, type, NULL, NULL, NULL, entity_count);
 }
 
 static bool ecs_scene_load_value(
@@ -9650,70 +10174,7 @@ static bool ecs_scene_load_value(
     void *value,
     const ecs_scene_load_ctx_t *ctx
 ) {
-    const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (!info)
-        return false;
-
-    if (ecs_scene_is_entity_type(info)) {
-        uint32_t local = ecs_scene_read_u32(r);
-        if (!r->ok)
-            return false;
-        if (local == ECS_SCENE_NULL_INDEX) {
-            *(ecs_entity_t *)value = 0;
-            return true;
-        }
-        if (local >= ctx->entity_count)
-            return false;
-        *(ecs_entity_t *)value = ctx->local_to_entity[local];
-        return true;
-    }
-
-    switch (info->kind) {
-    case sireflect_kind_struct:
-        for (size_t i = 0; i < info->fields.field_count; i++) {
-            const sireflect_field_info_t *field = &info->fields.fields[i];
-            if (!ecs_scene_load_value(
-                    r,
-                    field->type,
-                    (unsigned char *)value + field->offset,
-                    ctx
-                )) {
-                return false;
-            }
-        }
-        return true;
-
-    case sireflect_kind_array: {
-        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-        if (!element)
-            return false;
-        for (size_t i = 0; i < info->element_count; i++) {
-            if (!ecs_scene_load_value(
-                    r,
-                    info->element_type,
-                    (unsigned char *)value + i * element->size,
-                    ctx
-                )) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    case sireflect_kind_pointer: {
-        const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
-        if (!element || element->kind != sireflect_kind_char)
-            return false;
-        return ecs_scene_load_string(r, value, ctx);
-    }
-
-    case sireflect_kind_ptr:
-    case sireflect_kind_function_pointer:
-        return false;
-
-    default:
-        return ecs_scene_reader_take(r, value, info->size);
-    }
+    return ecs_scene_codec_value(EcsSceneLoad, NULL, r, type, value, NULL, ctx, ctx->entity_count);
 }
 
 static uint16_t ecs_scene_table_component_count(const ecs_table_t *table) {
@@ -11426,6 +11887,8 @@ void ecs_worker_pool_flush(ecs_worker_pool_t *pool) {
     }
 }
 
+void ecs_scene_type_cache_fini(void);
+
 ecs_world_t ecs_world;
 ecs_entity_index_t entity_index;
 #ifndef NDEBUG
@@ -11508,6 +11971,7 @@ void ecs_fini(void) {
     ecs_execution_context_fini(&ecs_world.main_context);
     ecs_component_index_fini();
     ecs_relation_index_fini();
+    ecs_scene_type_cache_fini();
     sireflect_fini();
     sicore_map_fini(&name_map);
     ecs_module_storage_fini();

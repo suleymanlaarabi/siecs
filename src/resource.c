@@ -6,8 +6,7 @@
 #include <string.h>
 
 typedef struct {
-    const char *name;
-    uint64_t size;
+    ecs_resource_info_t *info;
     void *data;
     ecs_type_ops_t ops;
     ecs_resource_hook_t on_set;
@@ -29,7 +28,7 @@ static inline ecs_resource_record_t *ecs_resource_record(ecs_resource_t id) {
 }
 
 static inline bool ecs_resource_registered(ecs_resource_t id) {
-    return id != 0 && id < ecs_resources.size && ecs_resource_record(id)->name != NULL;
+    return id != 0 && id < ecs_resources.size && ecs_resource_record(id)->info != NULL;
 }
 
 static inline void ecs_resource_assert_registered(ecs_resource_t id) {
@@ -56,30 +55,60 @@ ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc
         return *id;
     }
     ecs_assert_not_scheduler_parallel("resource registration");
-    if (*id == 0) {
-        *id = ecs_resource_alloc_id();
+    sireflect_handle_t type = SIREFLECT_INVALID_HANDLE;
+    if (desc->struct_desc) {
+        type = sireflect_try_register_struct(desc->struct_desc);
+        if (type == SIREFLECT_INVALID_HANDLE)
+            return 0;
     }
 
-    sicore_vec_ensure(&ecs_resources, (uint32_t)*id + 1, sizeof(ecs_resource_record_t));
-    ecs_resource_record_t *record = ecs_resource_record(*id);
-    *record = (ecs_resource_record_t){
-        .name = desc->name,
+    ecs_resource_info_t *info = malloc(sizeof *info);
+    if (!info)
+        abort();
+    sireflect_struct_desc_t *reflection = NULL;
+    if (desc->struct_desc) {
+        reflection = malloc(sizeof *reflection);
+        if (!reflection)
+            abort();
+        *reflection = (sireflect_struct_desc_t){
+            .name = strdup(desc->struct_desc->name),
+            .fields = strdup(desc->struct_desc->fields),
+            .size = desc->struct_desc->size,
+            .align = desc->struct_desc->align,
+        };
+        if (!reflection->name || !reflection->fields)
+            abort();
+    }
+    *info = (ecs_resource_info_t){
+        .name = strdup(desc->name),
         .size = desc->size,
+        .type = type,
+        .reflection = reflection,
+    };
+    if (!info->name)
+        abort();
+
+    ecs_resource_t assigned = *id ? *id : ecs_resource_alloc_id();
+    sicore_vec_ensure(&ecs_resources, (uint32_t)assigned + 1, sizeof(ecs_resource_record_t));
+    ecs_resource_record_t *record = ecs_resource_record(assigned);
+    *record = (ecs_resource_record_t){
+        .info = info,
         .data = NULL,
         .ops = desc->ops,
         .on_set = desc->on_set,
         .on_remove = desc->on_remove,
         .previous = ecs_last_resource,
     };
-    ecs_last_resource = *id;
-    return *id;
+    ecs_last_resource = assigned;
+    *id = assigned;
+    return assigned;
 }
 
 ecs_resource_t ecs_resource_find(const char *name) {
     ecs_assert_not_null(name);
     ecs_resource_record_t *records = ecs_resources.data;
     for (uint32_t i = 1; i < ecs_resources.size; i++) {
-        if (records[i].name && strcmp(records[i].name, name) == 0) {
+        if (records[i].info && strcmp(records[i].info->name, name) == 0) {
             return (ecs_resource_t)i;
         }
     }
@@ -88,8 +117,14 @@ ecs_resource_t ecs_resource_find(const char *name) {
 
 const char *ecs_resource_name(ecs_resource_t resource) {
     ecs_resource_assert_registered(resource);
-    return ecs_resource_record(resource)->name;
+    return ecs_resource_record(resource)->info->name;
 }
+
+const ecs_resource_info_t *ecs_resource_info(ecs_resource_t resource) {
+    return ecs_resource_registered(resource) ? ecs_resource_record(resource)->info : NULL;
+}
+
+uint32_t ecs_resource_count(void) { return ecs_resources.size; }
 
 bool ecs_resource_is_registered_rid(ecs_resource_t id) { return ecs_resource_registered(id); }
 
@@ -103,10 +138,10 @@ static inline void ecs_resource_store(ecs_resource_t id, void *data, bool move) 
     }
     bool construct = !record->data;
     if (construct) {
-        record->data = calloc(1, record->size ? record->size : 1);
+        record->data = calloc(1, record->info->size ? record->info->size : 1);
         ecs_assert_not_null(record->data);
     }
-    if (!record->size)
+    if (!record->info->size)
         return;
     ecs_type_move_t move_op = construct ? record->ops.move_ctor : record->ops.move;
     if (move && move_op) {
@@ -118,7 +153,7 @@ static inline void ecs_resource_store(ecs_resource_t id, void *data, bool move) 
             if (move && record->ops.dtor)
                 record->ops.dtor(data, 1);
         } else
-            memcpy(record->data, data, record->size);
+            memcpy(record->data, data, record->info->size);
     }
 }
 
@@ -167,6 +202,19 @@ void ecs_resource_storage_fini(void) {
         if (ecs_resource_record(id)->data) {
             ecs_remove_resource_rid(id);
         }
+    }
+    ecs_resource_record_t *records = ecs_resources.data;
+    for (uint32_t i = 1; i < ecs_resources.size; i++) {
+        ecs_resource_info_t *info = records[i].info;
+        if (!info)
+            continue;
+        free((char *)info->name);
+        if (info->reflection) {
+            free((char *)info->reflection->name);
+            free((char *)info->reflection->fields);
+            free((void *)info->reflection);
+        }
+        free(info);
     }
     sicore_vec_fini(&ecs_resources);
 }

@@ -141,3 +141,88 @@ void public_scene_invalid_load_is_non_destructive(void) {
     ecs_scene_free(data);
     ecs_fini();
 }
+
+SIREFLECT_STRUCT(SceneNested, { int matrix[2][2]; });
+SIREFLECT_ENUM(SceneMode, { SCENE_MODE_A = -1, SCENE_MODE_B = 5 });
+ECS_COMPONENT_DECLARE(SceneComposite, {
+    SceneNested nested;
+    SceneMode mode;
+    const char *text;
+    ecs_entity_t target;
+});
+ECS_COMPONENT_DEFINE(SceneComposite);
+ECS_COMPONENT_DECLARE(SceneUnsupported, { int *pointer; });
+ECS_COMPONENT_DEFINE(SceneUnsupported);
+
+void public_scene_reflected_codec_roundtrip(void) {
+    void *data = NULL;
+    size_t size = 0;
+    ecs_init();
+    sireflect(SceneNested);
+    sireflect(SceneMode);
+    ECS_COMPONENT_REGISTER(SceneComposite);
+    ecs_entity_t target = ecs_new();
+    ecs_entity_t source = ecs_new();
+    ecs_set(source, SceneComposite, {
+        .nested = { .matrix = { { 1, 2 }, { 3, 4 } } },
+        .mode = SCENE_MODE_B, .text = "hello", .target = target,
+    });
+    ecs_set(target, SceneComposite, {
+        .nested = { .matrix = { { 5, 6 }, { 7, 8 } } },
+        .mode = SCENE_MODE_A, .text = NULL, .target = 0,
+    });
+    test_true(ecs_save_memory(&data, &size));
+    test_true(ecs_scene_validate(data, size));
+    unsigned char *old = malloc(size);
+    test_not_null(old);
+    memcpy(old, data, size);
+    old[8] = 0;
+    test_false(ecs_scene_validate(old, size));
+    old[8] = 2;
+    test_false(ecs_scene_validate(old, size));
+    free(old);
+    ecs_fini();
+
+    ecs_init();
+    sireflect(SceneNested);
+    sireflect(SceneMode);
+    ECS_COMPONENT_REGISTER(SceneComposite);
+    test_true(ecs_scene_validate(data, size));
+    test_true(ecs_load_memory(data, size));
+    ecs_entity_t loaded_source = 0;
+    ecs_entity_t loaded_target = 0;
+    for (uint32_t index = 1; index < 4; index++) {
+        ecs_entity_t candidate = ecs_entity_from_index(index);
+        if (!candidate || !ecs_has(candidate, SceneComposite))
+            continue;
+        const SceneComposite *value = ecs_get(candidate, SceneComposite);
+        if (value->text)
+            loaded_source = candidate;
+        else
+            loaded_target = candidate;
+    }
+    test_true(loaded_source != 0);
+    test_true(loaded_target != 0);
+    const SceneComposite *value = ecs_get(loaded_source, SceneComposite);
+    test_int(4, value->nested.matrix[1][1]);
+    test_int(SCENE_MODE_B, value->mode);
+    test_str("hello", value->text);
+    test_uint(loaded_target, value->target);
+    test_null((void *)ecs_get(loaded_target, SceneComposite)->text);
+    ecs_scene_free(data);
+    ecs_fini();
+}
+
+void public_scene_unsupported_pointer_is_consistent(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(SceneUnsupported);
+    int number = 4;
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, SceneUnsupported, { .pointer = &number });
+    void *data = NULL;
+    size_t size = 0;
+    test_false(ecs_save_memory(&data, &size));
+    test_false(ecs_save_memory(&data, &size));
+    test_null(data);
+    ecs_fini();
+}

@@ -442,6 +442,104 @@ typedef struct {
     size_t element_count;
 } sireflect_type_info_t;
 
+/* Type graph visits are preorder. A false callback result stops the walk. */
+typedef enum {
+    SIREFLECT_WALK_ROOT,
+    SIREFLECT_WALK_FIELD,
+    SIREFLECT_WALK_ARRAY_ELEMENT,
+    SIREFLECT_WALK_POINTER_TARGET,
+    SIREFLECT_WALK_FUNCTION_RETURN
+} sireflect_walk_relation_t;
+
+typedef struct {
+    sireflect_handle_t type;
+    const sireflect_type_info_t *info;
+    sireflect_walk_relation_t relation;
+    const sireflect_field_info_t *field;
+    sireflect_handle_t parent_type;
+    size_t depth;
+} sireflect_type_visit_t;
+
+typedef bool (*sireflect_type_visitor_t)(const sireflect_type_visit_t *, void *);
+
+typedef enum {
+    SIREFLECT_WALK_FOLLOW_POINTERS = 1u << 0,
+    SIREFLECT_WALK_DEDUPLICATE = 1u << 1
+} sireflect_walk_flag_t;
+
+typedef enum {
+    SIREFLECT_VALUE_ENTER_STRUCT,
+    SIREFLECT_VALUE_LEAVE_STRUCT,
+    SIREFLECT_VALUE_FIELD,
+    SIREFLECT_VALUE_ENTER_ARRAY,
+    SIREFLECT_VALUE_LEAVE_ARRAY,
+    SIREFLECT_VALUE_ARRAY_ELEMENT,
+    SIREFLECT_VALUE_LEAF,
+    SIREFLECT_VALUE_POINTER
+} sireflect_value_event_t;
+
+typedef struct {
+    sireflect_value_event_t event;
+    sireflect_handle_t type;
+    const sireflect_type_info_t *info;
+    const sireflect_field_info_t *field;
+    const void *ptr;
+    size_t index;
+    size_t depth;
+} sireflect_const_value_visit_t;
+
+typedef struct {
+    sireflect_value_event_t event;
+    sireflect_handle_t type;
+    const sireflect_type_info_t *info;
+    const sireflect_field_info_t *field;
+    void *ptr;
+    size_t index;
+    size_t depth;
+} sireflect_value_visit_t;
+
+typedef bool (*sireflect_const_value_visitor_t)(const sireflect_const_value_visit_t *, void *);
+typedef bool (*sireflect_value_visitor_t)(const sireflect_value_visit_t *, void *);
+
+typedef enum {
+    sireflect_category_invalid,
+    sireflect_category_boolean,
+    sireflect_category_integer,
+    sireflect_category_floating,
+    sireflect_category_enum,
+    sireflect_category_struct,
+    sireflect_category_array,
+    sireflect_category_cstring,
+    sireflect_category_pointer,
+    sireflect_category_function_pointer
+} sireflect_category_t;
+
+typedef enum {
+    SIREFLECT_META_STRING,
+    SIREFLECT_META_BOOL,
+    SIREFLECT_META_I64,
+    SIREFLECT_META_U64,
+    SIREFLECT_META_F64
+} sireflect_meta_kind_t;
+
+typedef struct {
+    const char *key;
+    sireflect_meta_kind_t kind;
+    union {
+        const char *string;
+        bool boolean;
+        int64_t i64;
+        uint64_t u64;
+        double f64;
+    } value;
+} sireflect_meta_t;
+
+/* Borrowed view. Its items pointer can change when metadata is added. */
+typedef struct {
+    const sireflect_meta_t *const *items;
+    size_t count;
+} sireflect_metas_t;
+
 typedef struct {
     const char *name;
     const char *fields;
@@ -464,7 +562,8 @@ typedef struct {
  * Use sireflect(name) to register the generated metadata.
  */
 #define SIREFLECT_STRUCT(type_name, ...)                                                           \
-    typedef struct __VA_ARGS__ type_name;                                                          \
+    typedef struct type_name type_name;                                                             \
+    struct type_name __VA_ARGS__;                                                                   \
     SIREFLECT_UNUSED static const sireflect_struct_desc_t sireflect_desc(type_name) = {            \
         .name = #type_name,                                                                        \
         .fields = #__VA_ARGS__,                                                                    \
@@ -608,6 +707,47 @@ SIREFLECT_API int sireflect_field_copy(
     const char *field,
     const void *value
 );
+
+/* Walks a type graph. Pointer targets are followed only with FOLLOW_POINTERS.
+ * Cycles are cut on the active path; DEDUPLICATE visits each handle once.
+ * Callback false returns false without setting an error. */
+SIREFLECT_API bool sireflect_walk_type(sireflect_handle_t root, uint32_t flags,
+    sireflect_type_visitor_t visitor, void *user);
+
+/* Walks actual values. Pointer and function pointer values are never dereferenced.
+ * FOLLOW_POINTERS is invalid for value walks. Callback false stops immediately. */
+SIREFLECT_API bool sireflect_walk_value(sireflect_handle_t type, void *value, uint32_t flags,
+    sireflect_value_visitor_t visitor, void *user);
+SIREFLECT_API bool sireflect_walk_const_value(sireflect_handle_t type, const void *value,
+    uint32_t flags, sireflect_const_value_visitor_t visitor, void *user);
+
+SIREFLECT_API sireflect_category_t sireflect_type_category(sireflect_handle_t type);
+SIREFLECT_API bool sireflect_type_is_numeric_handle(sireflect_handle_t type);
+SIREFLECT_API bool sireflect_type_is_scalar(sireflect_handle_t type);
+SIREFLECT_API bool sireflect_type_is_cstring(sireflect_handle_t type);
+SIREFLECT_API bool sireflect_type_is_integral(sireflect_handle_t type);
+SIREFLECT_API bool sireflect_type_is_floating(sireflect_handle_t type);
+SIREFLECT_API bool sireflect_type_is_function_pointer(sireflect_handle_t type);
+
+SIREFLECT_API const void *sireflect_array_element_ptr(sireflect_handle_t array_type,
+    const void *array, size_t index);
+SIREFLECT_API void *sireflect_array_element_mut_ptr(sireflect_handle_t array_type,
+    void *array, size_t index);
+
+/* Keys and string values are copied. Returned metadata is borrowed until the
+ * final fini; replacing a key updates the same object. */
+SIREFLECT_API bool sireflect_type_set_meta(sireflect_handle_t type, const sireflect_meta_t *meta);
+SIREFLECT_API const sireflect_meta_t *sireflect_type_meta(sireflect_handle_t type,
+    const char *key);
+SIREFLECT_API const sireflect_metas_t *sireflect_type_metas(sireflect_handle_t type);
+SIREFLECT_API bool sireflect_field_set_meta(sireflect_handle_t type, const char *field,
+    const sireflect_meta_t *meta);
+SIREFLECT_API const sireflect_meta_t *sireflect_field_meta(sireflect_handle_t type,
+    const char *field, const char *key);
+SIREFLECT_API const sireflect_metas_t *sireflect_field_metas(sireflect_handle_t type,
+    const char *field);
+
+SIREFLECT_API bool sireflect_enum_value_valid(sireflect_handle_t type, int64_t value);
 
 #ifdef __cplusplus
 }
@@ -1179,7 +1319,16 @@ typedef struct {
     ecs_type_ops_t ops;
     ecs_resource_hook_t on_set;
     ecs_resource_hook_t on_remove;
+    const sireflect_struct_desc_t *struct_desc;
 } ecs_resource_desc_t;
+
+typedef struct {
+    const char *name;
+    uint64_t size;
+    sireflect_handle_t type;
+    /* Copied reflection descriptor, borrowed until ecs_fini(). */
+    const sireflect_struct_desc_t *reflection;
+} ecs_resource_info_t;
 
 /* Component and resource access mode. */
 typedef enum {
@@ -2047,8 +2196,7 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
  */
 #ifdef __cplusplus
 #define ECS_RESOURCE_DECLARE(rname, ...)                                                           \
-    typedef struct rname rname;                                                                    \
-    struct rname __VA_ARGS__;                                                                      \
+    SIJSON_DECLARE(rname, __VA_ARGS__)                                                             \
     extern "C" {                                                                                   \
     SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                                          \
     SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);                              \
@@ -2073,16 +2221,22 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
         _Alignof(rname) == _Alignof(SIECS_CPP_LAYOUT_TYPE(rname)),                                 \
         "C++ resource methods must preserve alignment"                                             \
     );                                                                                             \
+    SIREFLECT_UNUSED static const sireflect_struct_desc_t sireflect_desc(rname) = {               \
+        .name = #rname,                                                                            \
+        .fields = SIECS_CPP_FIELD_SOURCE(field_block),                                             \
+        .size = sizeof(rname),                                                                     \
+        .align = _Alignof(rname)                                                                   \
+    };                                                                                             \
     }                                                                                              \
     extern "C" {                                                                                   \
+    extern sireflect_handle_t sijson_handle(rname);                                                \
     SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                                          \
     SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);                              \
     }                                                                                              \
     SIECS_CPP_C_TRAITS(c_resource_traits, rname, ecs_id)
 #else
 #define ECS_RESOURCE_DECLARE(rname, ...)                                                           \
-    typedef struct rname rname;                                                                    \
-    struct rname __VA_ARGS__;                                                                      \
+    SIJSON_DECLARE(rname, __VA_ARGS__)                                                             \
     SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                                          \
     SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc)
 
@@ -2091,6 +2245,16 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
 
 /* Define a resource descriptor and its stable id storage. */
 #define ECS_RESOURCE_DEFINE(rname, ...)                                                            \
+    SIJSON_DEFINE(rname)                                                                           \
+    SIECS_PUBLIC_API ecs_resource_desc_t ecs_id(rname##_desc) = { .name = #rname,                  \
+                                                                  .size = sizeof(rname),           \
+                                                                  .struct_desc = &sireflect_desc(rname), \
+                                                                  __VA_ARGS__ };                   \
+    SIECS_PUBLIC_API ecs_resource_t ecs_id(rname) = 0
+
+/* Explicit opt-out for resources with opaque or external field types. */
+#define ECS_RESOURCE_DEFINE_UNREFLECTED(rname, ...)                                                \
+    SIJSON_DEFINE(rname)                                                                           \
     SIECS_PUBLIC_API ecs_resource_desc_t ecs_id(rname##_desc) = { .name = #rname,                  \
                                                                   .size = sizeof(rname),           \
                                                                   __VA_ARGS__ };                   \
@@ -2137,6 +2301,9 @@ SIECS_API ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
 SIECS_API ecs_resource_t ecs_resource_find(const char *name);
 /* Return the registered resource name; pointer remains owned by the world. */
 SIECS_API const char *ecs_resource_name(ecs_resource_t resource);
+/* Immutable metadata for a registered resource, or NULL for an invalid id. */
+SIECS_API const ecs_resource_info_t *ecs_resource_info(ecs_resource_t resource);
+SIECS_API uint32_t ecs_resource_count(void);
 /* Return whether a resource id is registered in the active world. */
 SIECS_API bool ecs_resource_is_registered_rid(ecs_resource_t id);
 /* Register a resource using stable id storage; returns the resulting id. */

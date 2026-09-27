@@ -352,7 +352,16 @@ typedef struct {
     ecs_type_ops_t ops;
     ecs_resource_hook_t on_set;
     ecs_resource_hook_t on_remove;
+    const sireflect_struct_desc_t *struct_desc;
 } ecs_resource_desc_t;
+
+typedef struct {
+    const char *name;
+    uint64_t size;
+    sireflect_handle_t type;
+    /* Copied reflection descriptor, borrowed until ecs_fini(). */
+    const sireflect_struct_desc_t *reflection;
+} ecs_resource_info_t;
 
 /* Component and resource access mode. */
 typedef enum {
@@ -1220,8 +1229,7 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
  */
 #ifdef __cplusplus
 #define ECS_RESOURCE_DECLARE(rname, ...)                                                           \
-    typedef struct rname rname;                                                                    \
-    struct rname __VA_ARGS__;                                                                      \
+    SIJSON_DECLARE(rname, __VA_ARGS__)                                                             \
     extern "C" {                                                                                   \
     SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                                          \
     SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);                              \
@@ -1246,16 +1254,22 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
         _Alignof(rname) == _Alignof(SIECS_CPP_LAYOUT_TYPE(rname)),                                 \
         "C++ resource methods must preserve alignment"                                             \
     );                                                                                             \
+    SIREFLECT_UNUSED static const sireflect_struct_desc_t sireflect_desc(rname) = {               \
+        .name = #rname,                                                                            \
+        .fields = SIECS_CPP_FIELD_SOURCE(field_block),                                             \
+        .size = sizeof(rname),                                                                     \
+        .align = _Alignof(rname)                                                                   \
+    };                                                                                             \
     }                                                                                              \
     extern "C" {                                                                                   \
+    extern sireflect_handle_t sijson_handle(rname);                                                \
     SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                                          \
     SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc);                              \
     }                                                                                              \
     SIECS_CPP_C_TRAITS(c_resource_traits, rname, ecs_id)
 #else
 #define ECS_RESOURCE_DECLARE(rname, ...)                                                           \
-    typedef struct rname rname;                                                                    \
-    struct rname __VA_ARGS__;                                                                      \
+    SIJSON_DECLARE(rname, __VA_ARGS__)                                                             \
     SIECS_PUBLIC_API extern ecs_resource_t ecs_id(rname);                                          \
     SIECS_PUBLIC_API extern ecs_resource_desc_t ecs_id(rname##_desc)
 
@@ -1264,6 +1278,16 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
 
 /* Define a resource descriptor and its stable id storage. */
 #define ECS_RESOURCE_DEFINE(rname, ...)                                                            \
+    SIJSON_DEFINE(rname)                                                                           \
+    SIECS_PUBLIC_API ecs_resource_desc_t ecs_id(rname##_desc) = { .name = #rname,                  \
+                                                                  .size = sizeof(rname),           \
+                                                                  .struct_desc = &sireflect_desc(rname), \
+                                                                  __VA_ARGS__ };                   \
+    SIECS_PUBLIC_API ecs_resource_t ecs_id(rname) = 0
+
+/* Explicit opt-out for resources with opaque or external field types. */
+#define ECS_RESOURCE_DEFINE_UNREFLECTED(rname, ...)                                                \
+    SIJSON_DEFINE(rname)                                                                           \
     SIECS_PUBLIC_API ecs_resource_desc_t ecs_id(rname##_desc) = { .name = #rname,                  \
                                                                   .size = sizeof(rname),           \
                                                                   __VA_ARGS__ };                   \
@@ -1310,6 +1334,9 @@ SIECS_API ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
 SIECS_API ecs_resource_t ecs_resource_find(const char *name);
 /* Return the registered resource name; pointer remains owned by the world. */
 SIECS_API const char *ecs_resource_name(ecs_resource_t resource);
+/* Immutable metadata for a registered resource, or NULL for an invalid id. */
+SIECS_API const ecs_resource_info_t *ecs_resource_info(ecs_resource_t resource);
+SIECS_API uint32_t ecs_resource_count(void);
 /* Return whether a resource id is registered in the active world. */
 SIECS_API bool ecs_resource_is_registered_rid(ecs_resource_t id);
 /* Register a resource using stable id storage; returns the resulting id. */

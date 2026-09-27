@@ -10,29 +10,12 @@ static const sireflect_enum_desc_t key_reflection = {
     .size = sizeof(Key),
     .align = _Alignof(Key),
 };
-static const sireflect_struct_desc_t keyboard_reflection = {
-    .name = "Keyboard",
-    .fields = "{ bool keys[13]; }",
-    .size = sizeof(Keyboard),
-    .align = _Alignof(Keyboard),
-};
-static const sireflect_struct_desc_t pointer_reflection = {
-    .name = "Pointer",
-    .fields = "{ float x; float y; float delta_x; float delta_y; float wheel_x; float wheel_y; "
-              "uint32_t buttons; uint32_t pressed; uint32_t released; uint32_t pointer_id; uint8_t "
-              "pointer_type; }",
-    .size = sizeof(Pointer),
-    .align = _Alignof(Pointer),
-};
-
 static siinput_pointer_edge_t edges[SIINPUT_POINTER_QUEUE_CAPACITY];
 static uint32_t edge_count;
 static uint32_t dropped_events;
 static bool had_motion;
 static uint16_t modifiers;
 static ecs_system_id_t begin_input_system;
-static sireflect_handle_t keyboard_type;
-static sireflect_handle_t pointer_type;
 
 static void push_edge(siinput_pointer_edge_t edge) {
     if (edge_count == SIINPUT_POINTER_QUEUE_CAPACITY) {
@@ -165,8 +148,6 @@ void sigpu_input_init(void) {
     sireflect_register_enum(&key_reflection);
     ecs_resource_register(&ecs_id(Keyboard), &ecs_id(Keyboard_desc));
     ecs_resource_register(&ecs_id(Pointer), &ecs_id(Pointer_desc));
-    keyboard_type = sireflect_register_struct(&keyboard_reflection);
-    pointer_type = sireflect_register_struct(&pointer_reflection);
     ecs_set_resource(Keyboard, { 0 });
     ecs_set_resource(Pointer, { 0 });
     begin_input_system = ecs_system(
@@ -190,9 +171,9 @@ uint16_t sigpu_input_resource_id(const char *name) {
 }
 sireflect_handle_t sigpu_input_resource_type(const char *name) {
     if (SDL_strcmp(name, "Keyboard") == 0)
-        return keyboard_type;
+        return ecs_resource_info(ecs_id(Keyboard))->type;
     if (SDL_strcmp(name, "Pointer") == 0)
-        return pointer_type;
+        return ecs_resource_info(ecs_id(Pointer))->type;
     return 0;
 }
 bool sigpu_input_had_motion(void) { return had_motion; }
