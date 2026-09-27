@@ -86,6 +86,7 @@ ecs_system_id_t sigpu_static_chunks_register(ecs_system_id_t camera_system);
 void sigpu_static_chunks_invalidate(ecs_observer_event_t *event);
 void sigpu_bounds_register(ecs_system_id_t static_cache_system);
 ecs_system_id_t sigpu_primitives_register(void);
+void sigpu_ui_types_register(void);
 void sigpu_ui_register(void);
 void sigpu_ui_pass(void);
 void sigpu_ui_fini(void);
