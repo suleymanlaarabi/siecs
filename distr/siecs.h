@@ -1392,6 +1392,8 @@ SIECS_API void ecs_quit(void);
 #ifndef __cplusplus
 /* C sees only the shared fields and keeps the existing declaration ABI. */
 #define ECS_COMPONENT_DECLARE_CPP(cname, fields, methods) ECS_COMPONENT_DECLARE(cname, { fields })
+#define ECS_COMPONENT_DECLARE_CPP_REFLECTED(cname, fields, reflection_fields, methods)              \
+    ECS_COMPONENT_DECLARE(cname, { fields })
 #endif
 #define SIECS_COMPONENT_META_DEFINE(cname) SIJSON_DEFINE(cname)
 #define SIECS_COMPONENT_META_INIT(cname) .struct_desc = &sireflect_desc(cname),
@@ -1670,12 +1672,14 @@ ECS_TAG_DECLARE(Abstract);
 
 #define SIECS_CPP_STRINGIFY_INNER(...) #__VA_ARGS__
 #define SIECS_CPP_STRINGIFY(...) SIECS_CPP_STRINGIFY_INNER(__VA_ARGS__)
-#define SIECS_CPP_FIELD_SOURCE(fields) "{" SIECS_CPP_STRINGIFY(fields) "}"
+#define SIECS_CPP_FIELD_SOURCE(...) "{" SIECS_CPP_STRINGIFY(__VA_ARGS__) "}"
 #define SIECS_CPP_LAYOUT_TYPE_INNER(cname) __siecs_cpp_layout_##cname
 #define SIECS_CPP_LAYOUT_TYPE(cname) SIECS_CPP_LAYOUT_TYPE_INNER(cname)
 
-/* Declare a C-compatible component with C++-only member methods. */
-#define ECS_COMPONENT_DECLARE_CPP(cname, field_block, method_block)                                \
+/* Declare a C-compatible component with C++-only methods and separate reflection fields. */
+#define ECS_COMPONENT_DECLARE_CPP_REFLECTED(                                                       \
+    cname, field_block, reflection_field_block, method_block                                       \
+)                                                                                                \
     extern "C++" {                                                                                 \
     typedef struct cname cname;                                                                    \
     struct cname {                                                                                 \
@@ -1691,6 +1695,37 @@ ECS_TAG_DECLARE(Abstract);
     static_assert(                                                                                 \
         _Alignof(cname) == _Alignof(SIECS_CPP_LAYOUT_TYPE(cname)),                                 \
         "C++ component methods must preserve alignment"                                            \
+    );                                                                                             \
+    SIREFLECT_UNUSED static const sireflect_struct_desc_t                                          \
+        sireflect_desc(cname) = { .name = #cname,                                                  \
+                                  .fields = SIECS_CPP_FIELD_SOURCE(reflection_field_block),        \
+                                  .size = sizeof(cname),                                           \
+                                  .align = _Alignof(cname) };                                      \
+    }                                                                                              \
+    extern "C" {                                                                                   \
+    extern sireflect_handle_t sijson_handle(cname);                                                \
+    SIECS_PUBLIC_API extern ecs_component_t ecs_id(cname);                                         \
+    SIECS_PUBLIC_API extern ecs_component_desc_t ecs_id(cname##_desc);                             \
+    }                                                                                              \
+    SIECS_CPP_C_TRAITS(c_component_traits, cname, ecs_id)
+
+/* Declare a C-compatible component whose C++ and reflected fields are identical. */
+#define ECS_COMPONENT_DECLARE_CPP(cname, field_block, method_block)                                \
+    extern "C++" {                                                                                 \
+    typedef struct cname cname;                                                                    \
+    struct cname {                                                                                 \
+        field_block method_block                                                                   \
+    };                                                                                             \
+    struct SIECS_CPP_LAYOUT_TYPE(cname) {                                                          \
+        field_block                                                                                \
+    };                                                                                             \
+    static_assert(                                                                                 \
+        sizeof(cname) == sizeof(SIECS_CPP_LAYOUT_TYPE(cname)),                                     \
+        "C++ component methods must not add instance data"                                        \
+    );                                                                                             \
+    static_assert(                                                                                 \
+        _Alignof(cname) == _Alignof(SIECS_CPP_LAYOUT_TYPE(cname)),                                 \
+        "C++ component methods must preserve alignment"                                           \
     );                                                                                             \
     SIREFLECT_UNUSED static const sireflect_struct_desc_t                                          \
         sireflect_desc(cname) = { .name = #cname,                                                  \

@@ -64,22 +64,17 @@ ecs_set(panel, UiNode, {
 ecs_set(panel, UiPaint, {
     .background = {20, 20, 20, 255},
 });
-siui_set_text(panel, "Hello", 5);
+ecs_set(panel, UiText, { .text = "Hello", .color = {255, 255, 255, 255} });
 ```
 
 </TabItem>
 <TabItem label="C++">
 
 ```cpp
-auto panel = ui::node()
-    .width(400)
-    .max_width(600)
-    .padding(16)
-    .direction(ui::column)
-    .gap(8)
-    .background({20, 20, 20, 255})
-    .text("Hello")
-    .spawn();
+auto panel = ecs::entity::create()
+    .set(ui::vstack().wpx(400).maxwpx(600).padding_px(16).gap_px(8))
+    .set(UiPaint{ .background = {20, 20, 20, 255} })
+    .set(UiText{ .text = "Hello" });
 ```
 
 </TabItem>
@@ -96,14 +91,16 @@ laid out by `order`, then entity ID. Paint traversal uses `z_index`, then tree
 order. Absolute children do not contribute to intrinsic size. `overflow =
 SIUI_HIDDEN` clips descendants to the node's content box.
 
-Text bytes are owned by SIUI. Store a text handle in `UiText`; change content
-with `siui_set_text(entity, bytes, length)`. Open a font with
+`UiText.text` is a borrowed, NUL-terminated UTF-8 string. Keep its storage valid
+while the component references it, and set `UiText` again after changing the
+text. In C++, `UiText` defaults to opaque white; in C, set `.color` explicitly.
+Open a font with
 `siui_font_open(path, size)` and set `UiText.font` if the platform's default
 font fallback is unavailable. SIUI keeps a cached `TTF_Text` for each text
 node and uses SDL_ttf's surface text engine for GPU free measurement. The GPU
 engine provides atlas textures and geometry for overlay rendering.
 
-## C++ builder
+## Components and hierarchy
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -117,7 +114,7 @@ ecs_set(card, UiPaint, { .background = {20, 20, 20, 255},
                          .border_right = {80, 80, 80, 255},
                          .border_bottom = {80, 80, 80, 255},
                          .border_left = {80, 80, 80, 255} });
-siui_set_text(card, "Hello world", 11);
+ecs_set(card, UiText, { .text = "Hello world" });
 ```
 
 </TabItem>
@@ -126,22 +123,22 @@ siui_set_text(card, "Hello world", 11);
 ```cpp
 #include <siui/cpp.hpp>
 
-auto card = ui::node()
-    .max_width(420)
-    .padding(16)
-    .direction(ui::column)
-    .gap(8)
-    .background({20, 20, 20, 255})
-    .border(1, {80, 80, 80, 255})
-    .text("Hello world")
-    .spawn();
+auto card = ecs::entity::create()
+    .set(ui::vstack().maxwpx(420).padding_px(16).gap_px(8).border_px(1))
+    .set(UiPaint{}.bg({20, 20, 20, 255}).border_color({80, 80, 80, 255}))
+    .set(UiText{ .text = "Hello world" });
 ```
 
 </TabItem>
 </Tabs>
 
-The builder stores the description locally and writes each present component
-once when `spawn()` is called. Use `.child_of(parent)` to set the hierarchy.
+Use ordinary ECS operations for every node. Create entities with `ecs_new()`
+or `ecs::entity::create()`, set `UiNode`, `UiPaint`, and `UiText` as needed,
+and create parent-child relationships with `ecs_relate(child, ChildOf, parent)`.
+`ui::hstack()` and `ui::vstack()` return configured `UiNode` values; chain
+layout methods on the value, then pass it to `.set(...)` like any other component.
+In C++, `UiPaint` values provide `bg(...)`, `border_color(...)`, and per-edge
+`border_*_color(...)` methods before `.set(...)`.
 
 ## Scheduling and cache
 

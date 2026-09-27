@@ -1,4 +1,5 @@
 #include "render/render_internal.h"
+
 void record_shared(
     sigpu_shared_batch_t **batches,
     Uint32 *count,
@@ -20,6 +21,7 @@ void record_shared(
         (sigpu_shared_batch_t){ material,       first,        end - first,
                                 (uint16_t)mesh, (uint8_t)lod, (uint8_t)rotated };
 }
+
 void record_owned(
     sigpu_owned_batch_t **batches,
     Uint32 *count,

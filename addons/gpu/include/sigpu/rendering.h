@@ -43,6 +43,7 @@ ECS_COMPONENT_DECLARE_CPP(
         } static constexpr Color gray() { return { 128, 128, 128, 255 }; }
     )
 );
+
 ECS_COMPONENT_DECLARE_CPP(
     Cuboid,
     ECS_CPP_FIELDS(float width; float height; float depth;),
@@ -60,6 +61,7 @@ ECS_COMPONENT_DECLARE_CPP(
         }
     )
 );
+
 /* Centered on GlobalPosition3d. Radius is measured before GlobalScale3d;
  * nonuniform scale produces an ellipsoid. GlobalOrientation3d rotates it. */
 ECS_COMPONENT_DECLARE_CPP(
@@ -68,6 +70,7 @@ ECS_COMPONENT_DECLARE_CPP(
     ECS_CPP_METHODS(constexpr Sphere() : radius(0.5f) {
     } explicit constexpr Sphere(float value) : radius(value){})
 );
+
 /* Centered on GlobalPosition3d. Radius applies to local X/Z and height to
  * local Y before GlobalScale3d; nonuniform X/Z scale makes an elliptic cylinder. */
 ECS_COMPONENT_DECLARE_CPP(
@@ -85,17 +88,21 @@ ECS_COMPONENT_DECLARE_CPP(
     ECS_CPP_FIELDS(float intensity;),
     ECS_CPP_METHODS(Bloom() : intensity(0.0f) {} explicit Bloom(float value) : intensity(value){})
 );
+
 ECS_COMPONENT_DECLARE_CPP(
     Camera,
     ECS_CPP_FIELDS(float fov;),
     ECS_CPP_METHODS(Camera() : fov(60.0f) {} explicit Camera(float value) : fov(value){})
 );
+
 ECS_RESOURCE_DECLARE(WindowConfig, {
     int width;
     int height;
     const char *title;
 });
+
 ECS_RESOURCE_DECLARE(Sky, { Color color; });
+
 ECS_RESOURCE_DECLARE(Sun, {
     float x;
     float y;
@@ -103,24 +110,30 @@ ECS_RESOURCE_DECLARE(Sun, {
     Color color;
     float intensity;
 });
+
 ECS_RESOURCE_DECLARE(AmbientLight, {
     Color color;
     float intensity;
 });
+
 ECS_RESOURCE_DECLARE(Fog, {
     Color color;
     float start;
     float end;
 });
+
 ECS_RESOURCE_DECLARE(Shadows, {
     bool enabled;
     float distance;
 });
+
 ECS_RESOURCE_DECLARE(Multisampling, { int samples; });
+
 ECS_RESOURCE_DECLARE(CameraClip, {
     float near_plane;
     float far_plane;
 });
+
 ECS_RESOURCE_DECLARE(BloomSettings, {
     bool enabled;
     float threshold;

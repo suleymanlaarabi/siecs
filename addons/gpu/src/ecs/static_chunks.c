@@ -295,24 +295,46 @@ ecs_system_id_t sigpu_static_chunks_register(ecs_system_id_t camera_system) {
         RenderChunkDirty
     );
     static_ready_query = ecs_query({ .components = { ecs_filter(Static3dReady) } });
-    ecs_observer({ .on = EcsOnSet, .query.components = { ecs_filter(Static3dReady) },
-                   .callback = sigpu_static_chunks_invalidate });
-    ecs_observer({ .on = EcsOnAdd, .query.components = { ecs_filter(Static3dReady) },
-                   .callback = sigpu_static_chunks_invalidate });
-    ecs_observer({ .on = EcsOnRemove, .query.components = { ecs_filter(Static3dReady) },
-                   .callback = sigpu_static_chunks_invalidate });
-    ecs_observer({ .on = EcsOnRelationSet,
-                   .query.components = { ecs_filter(Static3dReady) },
-                   .callback = sigpu_static_chunks_invalidate });
-    ecs_observer({ .on = EcsOnRelationRemove,
-                   .query.components = { ecs_filter(Static3dReady) },
-                   .callback = sigpu_static_chunks_invalidate });
-    ecs_observer({ .on = EcsOnSet, .query.components = { ecs_filter(Abstract) },
-                   .callback = sigpu_static_chunks_invalidate });
-    ecs_observer({ .on = EcsOnAdd, .query.components = { ecs_filter(Abstract) },
-                   .callback = sigpu_static_chunks_invalidate });
-    ecs_observer({ .on = EcsOnRemove, .query.components = { ecs_filter(Abstract) },
-                   .callback = sigpu_static_chunks_invalidate });
+    ecs_observer(
+        { .on = EcsOnSet,
+          .query.components = { ecs_filter(Static3dReady) },
+          .callback = sigpu_static_chunks_invalidate }
+    );
+    ecs_observer(
+        { .on = EcsOnAdd,
+          .query.components = { ecs_filter(Static3dReady) },
+          .callback = sigpu_static_chunks_invalidate }
+    );
+    ecs_observer(
+        { .on = EcsOnRemove,
+          .query.components = { ecs_filter(Static3dReady) },
+          .callback = sigpu_static_chunks_invalidate }
+    );
+    ecs_observer(
+        { .on = EcsOnRelationSet,
+          .query.components = { ecs_filter(Static3dReady) },
+          .callback = sigpu_static_chunks_invalidate }
+    );
+    ecs_observer(
+        { .on = EcsOnRelationRemove,
+          .query.components = { ecs_filter(Static3dReady) },
+          .callback = sigpu_static_chunks_invalidate }
+    );
+    ecs_observer(
+        { .on = EcsOnSet,
+          .query.components = { ecs_filter(Abstract) },
+          .callback = sigpu_static_chunks_invalidate }
+    );
+    ecs_observer(
+        { .on = EcsOnAdd,
+          .query.components = { ecs_filter(Abstract) },
+          .callback = sigpu_static_chunks_invalidate }
+    );
+    ecs_observer(
+        { .on = EcsOnRemove,
+          .query.components = { ecs_filter(Abstract) },
+          .callback = sigpu_static_chunks_invalidate }
+    );
     ecs_system_id_t assign = ecs_system(
         {
             .name = "AssignStaticChunks",

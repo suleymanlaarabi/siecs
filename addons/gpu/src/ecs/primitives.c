@@ -1,4 +1,5 @@
 #include "render/render_internal.h"
+
 typedef struct {
     union {
         sigpu_shared_axis_instance_t shared_axis;
@@ -28,8 +29,13 @@ static void append_candidate(
 }
 
 static void emit_candidates(
-    primitive_candidate_t *candidates, Uint32 heads[6], Uint32 count,
-    sigpu_primitive_t primitive, bool shared, sigpu_shared_material_t material, bool shadow
+    primitive_candidate_t *candidates,
+    Uint32 heads[6],
+    Uint32 count,
+    sigpu_primitive_t primitive,
+    bool shared,
+    sigpu_shared_material_t material,
+    bool shadow
 ) {
     if (!count)
         return;
@@ -64,7 +70,8 @@ static void emit_candidates(
     };
     Uint32 *shared_batch_capacities[2] = {
         shadow ? &queue->shadow_shared_axis_batch_capacity : &queue->shared_axis_batch_capacity,
-        shadow ? &queue->shadow_shared_rotated_batch_capacity : &queue->shared_rotated_batch_capacity,
+        shadow ? &queue->shadow_shared_rotated_batch_capacity
+               : &queue->shared_rotated_batch_capacity,
     };
     sigpu_owned_batch_t **owned_batches[2] = {
         shadow ? &queue->shadow_owned_axis_batches : &queue->owned_axis_batches,
@@ -87,24 +94,44 @@ static void emit_candidates(
                 primitive_candidate_t *candidate = &candidates[i];
                 if (shared) {
                     if (rotated)
-                        ((sigpu_shared_rotated_instance_t *)mapped[1])[(*shared_counts[1])++] = candidate->instance.shared_rotated;
+                        ((sigpu_shared_rotated_instance_t *)mapped[1])[(*shared_counts[1])++] =
+                            candidate->instance.shared_rotated;
                     else
-                        ((sigpu_shared_axis_instance_t *)mapped[0])[(*shared_counts[0])++] = candidate->instance.shared_axis;
+                        ((sigpu_shared_axis_instance_t *)mapped[0])[(*shared_counts[0])++] =
+                            candidate->instance.shared_axis;
                 } else {
                     if (rotated)
-                        ((sigpu_rotated_instance_t *)mapped[1])[capacities[1] - ++*owned_counts[1]] = candidate->instance.owned_rotated;
+                        ((sigpu_rotated_instance_t *)
+                             mapped[1])[capacities[1] - ++*owned_counts[1]] =
+                            candidate->instance.owned_rotated;
                     else
-                        ((sigpu_axis_instance_t *)mapped[0])[capacities[0] - ++*owned_counts[0]] = candidate->instance.owned_axis;
+                        ((sigpu_axis_instance_t *)mapped[0])[capacities[0] - ++*owned_counts[0]] =
+                            candidate->instance.owned_axis;
                 }
             }
             Uint32 end = shared ? *shared_counts[rotated] : *owned_counts[rotated];
             Uint32 mesh = primitive_mesh(primitive, lod);
             if (shared)
-                record_shared(shared_batches[rotated], shared_batch_counts[rotated],
-                    shared_batch_capacities[rotated], first, end, material, mesh, lod, rotated);
+                record_shared(
+                    shared_batches[rotated],
+                    shared_batch_counts[rotated],
+                    shared_batch_capacities[rotated],
+                    first,
+                    end,
+                    material,
+                    mesh,
+                    lod,
+                    rotated
+                );
             else
-                record_owned(owned_batches[rotated], owned_batch_counts[rotated],
-                    owned_batch_capacities[rotated], first, end, mesh);
+                record_owned(
+                    owned_batches[rotated],
+                    owned_batch_counts[rotated],
+                    owned_batch_capacities[rotated],
+                    first,
+                    end,
+                    mesh
+                );
         }
     }
 }
@@ -119,8 +146,8 @@ static void render_primitives(ecs_iter_t *it, sigpu_primitive_t primitive) {
     field_Color colors = FIELD(Color, it, 4);
     field_Bloom blooms = FIELD(Bloom, it, 5);
     ptrdiff_t shape_stride = ecs_field_is_shared(it, 3) ? 0 : 1;
-    bool shared = !shape_stride && ecs_field_is_shared(it, 4) &&
-        (!blooms.data || ecs_field_is_shared(it, 5));
+    bool shared =
+        !shape_stride && ecs_field_is_shared(it, 4) && (!blooms.data || ecs_field_is_shared(it, 5));
     primitive_size_t shared_size = { 0 };
     sigpu_shared_material_t material = { 0 };
     if (shared) {
@@ -128,26 +155,25 @@ static void render_primitives(ecs_iter_t *it, sigpu_primitive_t primitive) {
         float bloom = blooms.data ? fmaxf(AT(blooms, 0).intensity, 0.0f) : 0.0f;
         material = make_shared_material(shared_size, AT(colors, 0), bloom);
     }
-    primitive_candidate_t *candidates[2] = {
-        SDL_malloc(it->count * sizeof(*candidates[0])),
-        SDL_malloc(it->count * sizeof(*candidates[1])),
-    };
+    primitive_candidate_t *storage = SDL_malloc(2 * it->count * sizeof(*storage));
+    primitive_candidate_t *candidates[2] = { storage, storage + it->count };
     Uint32 heads[2][6], tails[2][6], counts[2] = { 0, 0 };
     for (Uint32 q = 0; q < 2; q++)
         for (Uint32 bucket = 0; bucket < 6; bucket++)
             heads[q][bucket] = tails[q][bucket] = UINT32_MAX;
-    float aspect = (float)SIGPU_FRAMECONTEXT->frame_width / SIGPU_FRAMECONTEXT->frame_height;
     for (Uint32 i = 0; i < it->count; i++) {
         GlobalPosition3d position = AT(positions, i);
         GlobalScale3d scale = AT(scales, i);
         primitive_size_t size = scaled_size(
-            shared ? shared_size : primitive_size(primitive, primitive_field(it, primitive, i, shape_stride)),
+            shared ? shared_size
+                   : primitive_size(primitive, primitive_field(it, primitive, i, shape_stride)),
             scale
         );
         float radius = primitive_radius(primitive, size);
         sigpu_vec3_t center = { position.x, position.y, position.z };
-        bool camera_visible = sigpu_camera_visible(center, radius, aspect);
-        bool shadow_visible = SIGPU_RENDERSETTINGS->shadows_enabled && sigpu_shadow_visible(center, radius);
+        bool camera_visible = sigpu_camera_visible(center, radius);
+        bool shadow_visible =
+            SIGPU_RENDERSETTINGS->shadows_enabled && sigpu_shadow_visible(center, radius);
         if (!camera_visible && !shadow_visible)
             continue;
         Uint32 lod = primitive == SIGPU_PRIMITIVE_CUBE ? 0 : sigpu_primitive_lod(center, radius);
@@ -158,14 +184,14 @@ static void render_primitives(ecs_iter_t *it, sigpu_primitive_t primitive) {
         if (shared) {
             if (rotated) {
                 packed_rotation packed = pack_rotation(rotation);
-                candidate.instance.shared_rotated = (sigpu_shared_rotated_instance_t){
-                    position.x, position.y, position.z, scale.x, scale.y, scale.z,
-                    packed.x, packed.y, packed.z, packed.w
-                };
+                candidate.instance.shared_rotated =
+                    (sigpu_shared_rotated_instance_t){ position.x, position.y, position.z, scale.x,
+                                                       scale.y,    scale.z,    packed.x,   packed.y,
+                                                       packed.z,   packed.w };
             } else {
-                candidate.instance.shared_axis = (sigpu_shared_axis_instance_t){
-                    position.x, position.y, position.z, scale.x, scale.y, scale.z
-                };
+                candidate.instance.shared_axis =
+                    (sigpu_shared_axis_instance_t){ position.x, position.y, position.z,
+                                                    scale.x,    scale.y,    scale.z };
             }
             if (camera_visible)
                 SIGPU_RENDERQUEUE->any_bloom |= material.size_bloom[3] > 0.0f;
@@ -173,7 +199,8 @@ static void render_primitives(ecs_iter_t *it, sigpu_primitive_t primitive) {
             float bloom = blooms.data ? fmaxf(AT(blooms, i).intensity, 0.0f) : 0.0f;
             Color color = AT(colors, i);
             if (rotated)
-                candidate.instance.owned_rotated = make_owned_rotated(position, rotation, size, color, bloom);
+                candidate.instance.owned_rotated =
+                    make_owned_rotated(position, rotation, size, color, bloom);
             else
                 candidate.instance.owned_axis = make_owned_axis(position, size, color, bloom);
             if (camera_visible)
@@ -186,19 +213,22 @@ static void render_primitives(ecs_iter_t *it, sigpu_primitive_t primitive) {
     }
     emit_candidates(candidates[0], heads[0], counts[0], primitive, shared, material, false);
     emit_candidates(candidates[1], heads[1], counts[1], primitive, shared, material, true);
-    SDL_free(candidates[0]);
-    SDL_free(candidates[1]);
+    SDL_free(storage);
     if (SIGPU_RENDERSTATS->profile_enabled)
         SIGPU_RENDERSTATS->collect_ns += SDL_GetTicksNS() - start;
 }
+
 static void render_cuboids(ecs_iter_t *it) { render_primitives(it, SIGPU_PRIMITIVE_CUBE); }
+
 static void render_cylinders(ecs_iter_t *it) { render_primitives(it, SIGPU_PRIMITIVE_CYLINDER); }
+
 static void render_spheres(ecs_iter_t *it) { render_primitives(it, SIGPU_PRIMITIVE_SPHERE); }
+
 static void cull_static_primitives(ecs_iter_t *it) {
     Uint64 start = SIGPU_RENDERSTATS->profile_enabled ? SDL_GetTicksNS() : 0;
     if (!SIGPU_FRAMECONTEXT->frame_width || !SIGPU_FRAMECONTEXT->frame_height)
         return;
-    sigpu_static_cull((float)SIGPU_FRAMECONTEXT->frame_width / SIGPU_FRAMECONTEXT->frame_height);
+    sigpu_static_cull();
     for (Uint32 i = 0; i < SIGPU_STATICRENDERCACHE->static_chunk_count; i++) {
         const sigpu_static_chunk_t *chunk = &SIGPU_STATICRENDERCACHE->static_chunks[i];
         RenderChunkVisibility *visibility =
@@ -209,6 +239,7 @@ static void cull_static_primitives(ecs_iter_t *it) {
     if (SIGPU_RENDERSTATS->profile_enabled)
         SIGPU_RENDERSTATS->cull_ns += SDL_GetTicksNS() - start;
 }
+
 static ecs_system_id_t shadow_cull_system;
 
 static void cull_static_shadows(ecs_iter_t *it) {

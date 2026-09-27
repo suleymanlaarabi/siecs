@@ -982,7 +982,7 @@ static ecs_entity_t ui_make_nodes(uint32_t count,bool text,bool paint) {
     for(uint32_t i=0;i<count;i++) {
         ecs_entity_t child=ecs_new();
         ecs_set(child,UiNode,{.width=siui_px(40),.height=siui_px(10)});
-        if(text) siui_set_text(child,"Hello",5);
+        if(text) ecs_set(child,UiText,{.text="Hello"});
         if(paint) ecs_set(child,UiPaint,{.background={40,80,120,255}});
         ecs_relate(child,ChildOf,root);
     }
@@ -1026,7 +1026,7 @@ BENCH_SETUP(ui_text_measure_1k, {
     siui_layout_update(1000,800);
     const ecs_relation_sources_t sources=ecs_relation_sources(root,ecs_rid(ChildOf));
     BENCH({for(uint32_t i=0;i<sources.count;i++) {
-        siui_set_text(sources.entities[i],"Longer text to measure",22);
+        ecs_set(sources.entities[i],UiText,{.text="Longer text to measure"});
     } siui_layout_update(1000,800);});
     ui_report(__bench_id,siui_stats());
 });

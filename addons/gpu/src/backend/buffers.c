@@ -208,8 +208,18 @@ void sigpu_resources_create(int samples) {
     sigpu_meshes_create();
     resize_axis_instances(SIGPU_AXIS_CAPACITY);
     resize_rotated_instances(SIGPU_ROTATED_CAPACITY);
-    resize_instances(&SIGPU_GPUCONTEXT->shadow_axis_buffer, &SIGPU_GPUCONTEXT->shadow_axis_transfer, 8192, sizeof(sigpu_axis_instance_t));
-    resize_instances(&SIGPU_GPUCONTEXT->shadow_rotated_buffer, &SIGPU_GPUCONTEXT->shadow_rotated_transfer, 2048, sizeof(sigpu_rotated_instance_t));
+    resize_instances(
+        &SIGPU_GPUCONTEXT->shadow_axis_buffer,
+        &SIGPU_GPUCONTEXT->shadow_axis_transfer,
+        8192,
+        sizeof(sigpu_axis_instance_t)
+    );
+    resize_instances(
+        &SIGPU_GPUCONTEXT->shadow_rotated_buffer,
+        &SIGPU_GPUCONTEXT->shadow_rotated_transfer,
+        2048,
+        sizeof(sigpu_rotated_instance_t)
+    );
     SIGPU_GPUCONTEXT->shadow_axis_capacity = 8192;
     SIGPU_GPUCONTEXT->shadow_rotated_capacity = 2048;
     sigpu_pipelines_create();
@@ -226,7 +236,10 @@ void sigpu_resources_destroy(void) {
     SDL_ReleaseGPUBuffer(SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->shadow_axis_buffer);
     SDL_ReleaseGPUBuffer(SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->shadow_rotated_buffer);
     SDL_ReleaseGPUTransferBuffer(SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->shadow_axis_transfer);
-    SDL_ReleaseGPUTransferBuffer(SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->shadow_rotated_transfer);
+    SDL_ReleaseGPUTransferBuffer(
+        SIGPU_GPUCONTEXT->device,
+        SIGPU_GPUCONTEXT->shadow_rotated_transfer
+    );
     sigpu_frame_targets_release();
     sigpu_static_chunks_release();
     SDL_free(SIGPU_STATICRENDERCACHE->static_chunks);
@@ -303,8 +316,10 @@ void sigpu_upload_instances(void) {
         return;
     if (!SIGPU_RENDERQUEUE->shared_axis_count && !SIGPU_RENDERQUEUE->shared_rotated_count &&
         !SIGPU_RENDERQUEUE->owned_axis_count && !SIGPU_RENDERQUEUE->owned_rotated_count &&
-        !SIGPU_RENDERQUEUE->shadow_shared_axis_count && !SIGPU_RENDERQUEUE->shadow_shared_rotated_count &&
-        !SIGPU_RENDERQUEUE->shadow_owned_axis_count && !SIGPU_RENDERQUEUE->shadow_owned_rotated_count)
+        !SIGPU_RENDERQUEUE->shadow_shared_axis_count &&
+        !SIGPU_RENDERQUEUE->shadow_shared_rotated_count &&
+        !SIGPU_RENDERQUEUE->shadow_owned_axis_count &&
+        !SIGPU_RENDERQUEUE->shadow_owned_rotated_count)
         return;
     SDL_GPUCopyPass *copy = SDL_BeginGPUCopyPass(SIGPU_FRAMECONTEXT->command_buffer);
     upload_instance_buffer(
@@ -327,16 +342,26 @@ void sigpu_upload_instances(void) {
         sizeof(sigpu_rotated_instance_t),
         SIGPU_RENDERQUEUE->owned_rotated_count
     );
-    upload_instance_buffer(copy, SIGPU_GPUCONTEXT->shadow_axis_transfer,
+    upload_instance_buffer(
+        copy,
+        SIGPU_GPUCONTEXT->shadow_axis_transfer,
         SIGPU_GPUCONTEXT->shadow_axis_buffer,
         SIGPU_GPUCONTEXT->shadow_axis_capacity * sizeof(sigpu_axis_instance_t),
-        sizeof(sigpu_shared_axis_instance_t), SIGPU_RENDERQUEUE->shadow_shared_axis_count,
-        sizeof(sigpu_axis_instance_t), SIGPU_RENDERQUEUE->shadow_owned_axis_count);
-    upload_instance_buffer(copy, SIGPU_GPUCONTEXT->shadow_rotated_transfer,
+        sizeof(sigpu_shared_axis_instance_t),
+        SIGPU_RENDERQUEUE->shadow_shared_axis_count,
+        sizeof(sigpu_axis_instance_t),
+        SIGPU_RENDERQUEUE->shadow_owned_axis_count
+    );
+    upload_instance_buffer(
+        copy,
+        SIGPU_GPUCONTEXT->shadow_rotated_transfer,
         SIGPU_GPUCONTEXT->shadow_rotated_buffer,
         SIGPU_GPUCONTEXT->shadow_rotated_capacity * sizeof(sigpu_rotated_instance_t),
-        sizeof(sigpu_shared_rotated_instance_t), SIGPU_RENDERQUEUE->shadow_shared_rotated_count,
-        sizeof(sigpu_rotated_instance_t), SIGPU_RENDERQUEUE->shadow_owned_rotated_count);
+        sizeof(sigpu_shared_rotated_instance_t),
+        SIGPU_RENDERQUEUE->shadow_shared_rotated_count,
+        sizeof(sigpu_rotated_instance_t),
+        SIGPU_RENDERQUEUE->shadow_owned_rotated_count
+    );
     SDL_EndGPUCopyPass(copy);
 }
 
@@ -351,14 +376,30 @@ void sigpu_instances_reserve(Uint32 additional) {
 }
 
 void sigpu_shadow_instances_reserve(Uint32 additional) {
-    while (SIGPU_RENDERQUEUE->shadow_shared_axis_count + SIGPU_RENDERQUEUE->shadow_owned_axis_count + additional > SIGPU_GPUCONTEXT->shadow_axis_capacity)
-        grow_instances(&SIGPU_GPUCONTEXT->shadow_axis_buffer, &SIGPU_GPUCONTEXT->shadow_axis_transfer,
-            &SIGPU_RENDERQUEUE->shadow_axis_mapped, &SIGPU_GPUCONTEXT->shadow_axis_capacity,
-            sizeof(sigpu_shared_axis_instance_t), SIGPU_RENDERQUEUE->shadow_shared_axis_count,
-            sizeof(sigpu_axis_instance_t), SIGPU_RENDERQUEUE->shadow_owned_axis_count);
-    while (SIGPU_RENDERQUEUE->shadow_shared_rotated_count + SIGPU_RENDERQUEUE->shadow_owned_rotated_count + additional > SIGPU_GPUCONTEXT->shadow_rotated_capacity)
-        grow_instances(&SIGPU_GPUCONTEXT->shadow_rotated_buffer, &SIGPU_GPUCONTEXT->shadow_rotated_transfer,
-            &SIGPU_RENDERQUEUE->shadow_rotated_mapped, &SIGPU_GPUCONTEXT->shadow_rotated_capacity,
-            sizeof(sigpu_shared_rotated_instance_t), SIGPU_RENDERQUEUE->shadow_shared_rotated_count,
-            sizeof(sigpu_rotated_instance_t), SIGPU_RENDERQUEUE->shadow_owned_rotated_count);
+    while (SIGPU_RENDERQUEUE->shadow_shared_axis_count +
+               SIGPU_RENDERQUEUE->shadow_owned_axis_count + additional >
+           SIGPU_GPUCONTEXT->shadow_axis_capacity)
+        grow_instances(
+            &SIGPU_GPUCONTEXT->shadow_axis_buffer,
+            &SIGPU_GPUCONTEXT->shadow_axis_transfer,
+            &SIGPU_RENDERQUEUE->shadow_axis_mapped,
+            &SIGPU_GPUCONTEXT->shadow_axis_capacity,
+            sizeof(sigpu_shared_axis_instance_t),
+            SIGPU_RENDERQUEUE->shadow_shared_axis_count,
+            sizeof(sigpu_axis_instance_t),
+            SIGPU_RENDERQUEUE->shadow_owned_axis_count
+        );
+    while (SIGPU_RENDERQUEUE->shadow_shared_rotated_count +
+               SIGPU_RENDERQUEUE->shadow_owned_rotated_count + additional >
+           SIGPU_GPUCONTEXT->shadow_rotated_capacity)
+        grow_instances(
+            &SIGPU_GPUCONTEXT->shadow_rotated_buffer,
+            &SIGPU_GPUCONTEXT->shadow_rotated_transfer,
+            &SIGPU_RENDERQUEUE->shadow_rotated_mapped,
+            &SIGPU_GPUCONTEXT->shadow_rotated_capacity,
+            sizeof(sigpu_shared_rotated_instance_t),
+            SIGPU_RENDERQUEUE->shadow_shared_rotated_count,
+            sizeof(sigpu_rotated_instance_t),
+            SIGPU_RENDERQUEUE->shadow_owned_rotated_count
+        );
 }

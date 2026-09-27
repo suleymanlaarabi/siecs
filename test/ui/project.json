@@ -12,7 +12,7 @@
       "utf8", "empty_text", "order", "order_runtime", "deep_tree", "many_siblings",
       "static_clean", "paint_only", "reparent", "font_size_runtime", "auto_parent_percent",
       "aspect_ratio", "align_content", "space_between", "margin", "line_height",
-      "text_cleared", "overflow_runtime"
+      "text_cleared", "overflow_runtime", "node_after_table_move", "text_before_node"
     ]}]
   }
 }

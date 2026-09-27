@@ -235,13 +235,24 @@ static void create_main_pipelines(void) {
 }
 
 static void create_shadow_resources(void) {
-    SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    SDL_GPUTextureUsageFlags usage =
+        SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
     SIGPU_GPUTARGETS->shadow_format = SDL_GPU_TEXTUREFORMAT_D16_UNORM;
-    if (SDL_GPUTextureSupportsFormat(SIGPU_GPUCONTEXT->device, SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-            SDL_GPU_TEXTURETYPE_2D_ARRAY, usage))
+    if (SDL_GPUTextureSupportsFormat(
+            SIGPU_GPUCONTEXT->device,
+            SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+            SDL_GPU_TEXTURETYPE_2D_ARRAY,
+            usage
+        ))
         SIGPU_GPUTARGETS->shadow_format = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
-    else if (SDL_GPUTextureSupportsFormat(SIGPU_GPUCONTEXT->device, SDL_GPU_TEXTUREFORMAT_D24_UNORM,
-            SDL_GPU_TEXTURETYPE_2D_ARRAY, usage))
+    else if (
+        SDL_GPUTextureSupportsFormat(
+            SIGPU_GPUCONTEXT->device,
+            SDL_GPU_TEXTUREFORMAT_D24_UNORM,
+            SDL_GPU_TEXTURETYPE_2D_ARRAY,
+            usage
+        )
+    )
         SIGPU_GPUTARGETS->shadow_format = SDL_GPU_TEXTUREFORMAT_D24_UNORM;
     SIGPU_GPUTARGETS->shadow_texture = SDL_CreateGPUTexture(
         SIGPU_GPUCONTEXT->device,

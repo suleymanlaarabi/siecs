@@ -11,16 +11,15 @@ static uint32_t count, capacity;
 static sigpu_overlay_id_t next_id = 1;
 
 sigpu_overlay_id_t sigpu_overlay_register(sigpu_overlay_callback_t callback, void *user_data) {
-    if (!callback) return 0;
     if (count == capacity) {
         uint32_t next = capacity ? capacity * 2 : 8;
         void *memory = SDL_realloc(slots, next * sizeof(*slots));
-        if (!memory) return 0;
+        if (!memory)
+            return 0;
         slots = memory;
         capacity = next;
     }
     sigpu_overlay_id_t id = next_id++;
-    if (!id) id = next_id++;
     slots[count++] = (overlay_slot_t){ callback, user_data, id };
     return id;
 }
@@ -36,7 +35,8 @@ void sigpu_overlay_unregister(sigpu_overlay_id_t id) {
 }
 
 void sigpu_overlay_run(void) {
-    if (!SIGPU_FRAMECONTEXT->swapchain) return;
+    if (!count || !SIGPU_FRAMECONTEXT->swapchain)
+        return;
     sigpu_overlay_context_t context = {
         .device = SIGPU_GPUCONTEXT->device,
         .command_buffer = SIGPU_FRAMECONTEXT->command_buffer,
@@ -45,7 +45,8 @@ void sigpu_overlay_run(void) {
         .width = SIGPU_FRAMECONTEXT->frame_width,
         .height = SIGPU_FRAMECONTEXT->frame_height,
     };
-    for (uint32_t i = 0; i < count; i++) slots[i].callback(&context, slots[i].user_data);
+    for (uint32_t i = 0; i < count; i++)
+        slots[i].callback(&context, slots[i].user_data);
 }
 
 void sigpu_overlay_reset(void) {

@@ -47,6 +47,8 @@ void layout_margin(void);
 void layout_line_height(void);
 void layout_text_cleared(void);
 void layout_overflow_runtime(void);
+void layout_node_after_table_move(void);
+void layout_text_before_node(void);
 
 bake_test_case layout_testcases[] = {
     {
@@ -200,6 +202,14 @@ bake_test_case layout_testcases[] = {
     {
         "overflow_runtime",
         layout_overflow_runtime
+    },
+    {
+        "node_after_table_move",
+        layout_node_after_table_move
+    },
+    {
+        "text_before_node",
+        layout_text_before_node
     }
 };
 
@@ -209,7 +219,7 @@ static bake_test_suite suites[] = {
         "layout",
         NULL,
         NULL,
-        38,
+        40,
         layout_testcases
     }
 };

@@ -50,8 +50,12 @@ static void profile_frame(void) {
         profile_drawn_instances / profile_count,
         SIGPU_STATICRENDERCACHE->static_camera_visible_count,
         SIGPU_STATICRENDERCACHE->static_chunk_count,
-        profile_shadow_redraws[0], profile_shadow_redraws[1], profile_shadow_redraws[2],
-        profile_shadow_reuses[0], profile_shadow_reuses[1], profile_shadow_reuses[2]
+        profile_shadow_redraws[0],
+        profile_shadow_redraws[1],
+        profile_shadow_redraws[2],
+        profile_shadow_reuses[0],
+        profile_shadow_reuses[1],
+        profile_shadow_reuses[2]
     );
     profile_count = 0;
     profile_acquire_ms = profile_collect_ms = profile_cull_ms = profile_encode_ms = 0.0;
@@ -80,8 +84,10 @@ void sigpu_init(const char *title, int width, int height, int samples) {
     );
     SDL_GPUPresentMode present_mode = SDL_GPU_PRESENTMODE_VSYNC;
     if (SIGPU_RENDERSTATS->profile_enabled && SDL_WindowSupportsGPUPresentMode(
-            SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->window, SDL_GPU_PRESENTMODE_IMMEDIATE
-        ))
+                                                  SIGPU_GPUCONTEXT->device,
+                                                  SIGPU_GPUCONTEXT->window,
+                                                  SDL_GPU_PRESENTMODE_IMMEDIATE
+                                              ))
         present_mode = SDL_GPU_PRESENTMODE_IMMEDIATE;
     SDL_SetGPUSwapchainParameters(
         SIGPU_GPUCONTEXT->device,
@@ -116,10 +122,14 @@ bool sigpu_begin_frame(void) {
         true
     );
     SIGPU_RENDERQUEUE->shadow_axis_mapped = SDL_MapGPUTransferBuffer(
-        SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->shadow_axis_transfer, true
+        SIGPU_GPUCONTEXT->device,
+        SIGPU_GPUCONTEXT->shadow_axis_transfer,
+        true
     );
     SIGPU_RENDERQUEUE->shadow_rotated_mapped = SDL_MapGPUTransferBuffer(
-        SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->shadow_rotated_transfer, true
+        SIGPU_GPUCONTEXT->device,
+        SIGPU_GPUCONTEXT->shadow_rotated_transfer,
+        true
     );
     return true;
 }

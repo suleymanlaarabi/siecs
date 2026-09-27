@@ -8,39 +8,39 @@
 
 #include <test.h>
 
-// Testsuite 'builder'
-void builder_card(void);
-void builder_child_of(void);
-void builder_string_view_copy(void);
-void builder_single_mutations(void);
+// Testsuite 'ecs'
+void ecs_components(void);
+void ecs_child_of(void);
+void ecs_text_component(void);
+void ecs_component_updates(void);
 
-bake_test_case builder_testcases[] = {
+bake_test_case ecs_testcases[] = {
     {
-        "card",
-        builder_card
+        "components",
+        ecs_components
     },
     {
         "child_of",
-        builder_child_of
+        ecs_child_of
     },
     {
-        "string_view_copy",
-        builder_string_view_copy
+        "text_component",
+        ecs_text_component
     },
     {
-        "single_mutations",
-        builder_single_mutations
+        "component_updates",
+        ecs_component_updates
     }
 };
 
 
 static bake_test_suite suites[] = {
     {
-        "builder",
+        "ecs",
         NULL,
         NULL,
         4,
-        builder_testcases
+        ecs_testcases
     }
 };
 

@@ -1,4 +1,5 @@
 #include "backend/passes/passes.h"
+
 void sigpu_forward_pass(void) {
     bool msaa = SIGPU_GPUTARGETS->sample_count != SDL_GPU_SAMPLECOUNT_1;
     SDL_GPUColorTargetInfo color_targets[2] = {
@@ -36,15 +37,17 @@ void sigpu_forward_pass(void) {
     };
     for (Uint32 i = 0; i < SIGPU_SHADOW_CASCADES; i++)
         transforms.light_view_projection[i] = i < SIGPU_RENDERVIEW->cascade_count
-            ? SIGPU_RENDERVIEW->cascades[i].view_projection : sigpu_mat4_identity();
+                                                  ? SIGPU_RENDERVIEW->cascades[i].view_projection
+                                                  : sigpu_mat4_identity();
     for (Uint32 i = 0; i < SIGPU_RENDERVIEW->cascade_count; i++)
-        transforms.shadow_texel_world[i] = 2.0f * SIGPU_RENDERVIEW->cascades[i].max_x / SIGPU_SHADOW_SIZE;
+        transforms.shadow_texel_world[i] =
+            2.0f * SIGPU_RENDERVIEW->cascades[i].max_x / SIGPU_SHADOW_SIZE;
     transforms.sun_direction[0] = SIGPU_RENDERSETTINGS->sun_direction.x;
     transforms.sun_direction[1] = SIGPU_RENDERSETTINGS->sun_direction.y;
     transforms.sun_direction[2] = SIGPU_RENDERSETTINGS->sun_direction.z;
-    sigpu_vec3_t direction = sigpu_vec3_normalize(sigpu_vec3_sub(
-        SIGPU_RENDERVIEW->camera.target, SIGPU_RENDERVIEW->camera.position
-    ));
+    sigpu_vec3_t direction = sigpu_vec3_normalize(
+        sigpu_vec3_sub(SIGPU_RENDERVIEW->camera.target, SIGPU_RENDERVIEW->camera.position)
+    );
     sigpu_lighting_uniform_t lighting = {
         .camera_position = { SIGPU_RENDERVIEW->camera.position.x, SIGPU_RENDERVIEW->camera.position.y, SIGPU_RENDERVIEW->camera.position.z, 1.0f },
         .camera_direction = { direction.x, direction.y, direction.z, 0.0f },

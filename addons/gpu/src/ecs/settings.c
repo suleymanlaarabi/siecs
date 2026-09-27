@@ -1,8 +1,10 @@
 #include "input/input.h"
 #include "render/render_internal.h"
+
 static sigpu_color_t to_sigpu(Color color) {
     return (sigpu_color_t){ color.r, color.g, color.b, color.a };
 }
+
 static SDL_FColor linear_color(sigpu_color_t color) {
     return (SDL_FColor){
         SIGPU_RENDERSETTINGS->linear_lut[color.r] / 255.0f,
@@ -57,23 +59,28 @@ static void set_sky(const void *ptr) {
     const Sky *sky = ptr;
     sigpu_sky(to_sigpu(sky->color));
 }
+
 static void set_sun(const void *ptr) {
     const Sun *sun = ptr;
     sigpu_sun(sun->x, sun->y, sun->z, to_sigpu(sun->color), sun->intensity);
 }
+
 static void set_ambient(const void *ptr) {
     const AmbientLight *ambient = ptr;
     sigpu_ambient(to_sigpu(ambient->color), ambient->intensity);
 }
+
 static void set_fog(const void *ptr) {
     const Fog *fog = ptr;
     sigpu_fog(to_sigpu(fog->color), fog->start, fog->end);
 }
+
 static void set_shadows(const void *ptr) {
     const Shadows *shadows = ptr;
     sigpu_shadows(shadows->enabled, shadows->distance);
     sigpu_render_schedule_set_shadows(shadows->enabled);
 }
+
 static void set_camera_clip(const void *ptr) {
     const CameraClip *clip = ptr;
     if (clip->near_plane > 0.0f && clip->far_plane > clip->near_plane) {
@@ -81,10 +88,12 @@ static void set_camera_clip(const void *ptr) {
         SIGPU_RENDERVIEW->camera.far_plane = clip->far_plane;
     }
 }
+
 static void set_multisampling(const void *ptr) {
     const Multisampling *multisampling = ptr;
     sigpu_msaa(multisampling->samples);
 }
+
 static void set_bloom(const void *ptr) {
     const BloomSettings *bloom = ptr;
     sigpu_bloom(bloom->enabled, bloom->threshold, bloom->intensity);

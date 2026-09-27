@@ -4,5 +4,7 @@
 #include "siui/style.h"
 #include "siui/text.h"
 #include <sigpu/overlay.h>
+
 ECS_MODULE_DECLARE(siui, { bool gpu; });
+
 #endif

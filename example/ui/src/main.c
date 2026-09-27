@@ -23,7 +23,7 @@ int main(void) {
     });
     ecs_relate(card,ChildOf,root);
     const char *message="SIUI overlay — Hello world";
-    siui_set_text(card,message,strlen(message));
+    ecs_set(card,UiText,{.text=message});
     ecs_entity_t strip=ecs_new();
     ecs_set(strip,UiNode,{.width=siui_px(440),.height=siui_px(48)});
     ecs_set(strip,UiPaint,{.background={65,105,180,220}});
