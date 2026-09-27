@@ -22,6 +22,7 @@ _Static_assert(sizeof(sigpu_shared_axis_instance_t) == 24, "shared axis instance
 _Static_assert(sizeof(sigpu_shared_rotated_instance_t) == 32, "shared rotated instance layout");
 static void fini_rendering(void *data) {
     sigpu_render_schedule_fini();
+    sigpu_ui_fini();
     sigpu_fini();
     sigpu_render_schedule_reset();
 }
@@ -44,6 +45,7 @@ void sigpu_import(const sigpu_props_t *props) {
 
     ECS_MODULE_IMPORT(sispatial, { 0 });
     ECS_COMPONENT_REGISTER(Color, Cuboid, Cylinder, Sphere, Bloom, Camera);
+    sigpu_ui_types_register();
     sigpu_settings_register();
     ECS_RESOURCE_REGISTER(GpuContext);
     ecs_set_resource(GpuContext, { 0 });
@@ -72,6 +74,7 @@ void sigpu_import(const sigpu_props_t *props) {
     sigpu_init(window->title, window->width, window->height, config.samples);
     sigpu_camera(0.0f, 2.0f, -6.0f, 0.0f, 0.0f, 0.0f, 60.0f);
     sigpu_input_init();
+    sigpu_ui_register();
     ecs_set_resource(Sky, { .color = { 13, 13, 20, 255 } });
     ecs_set_resource(
         Sun,
@@ -103,6 +106,9 @@ uint16_t sigpu_component_id(const char *name) {
     COMPONENT_ID(Sphere);
     COMPONENT_ID(Bloom);
     COMPONENT_ID(Camera);
+    COMPONENT_ID(UiNode);
+    COMPONENT_ID(UiBackground);
+    COMPONENT_ID(UiBorder);
     COMPONENT_ID(PointerEvents);
     COMPONENT_ID(Position2d);
     COMPONENT_ID(Velocity2d);
