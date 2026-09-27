@@ -73,19 +73,26 @@ jobs:
       - name: Install SDL3 (Linux)
         if: runner.os == 'Linux'
         run: |
+          sudo apt-get update
+          sudo apt-get install -y libfreetype-dev libharfbuzz-dev
           git clone --depth 1 --branch release-3.4.16 https://github.com/libsdl-org/SDL.git
           cmake -S SDL -B SDL/build -DCMAKE_BUILD_TYPE=Release -DSDL_TEST_LIBRARY=OFF -DSDL_UNIX_CONSOLE_BUILD=ON
           cmake --build SDL/build --parallel 2
           sudo cmake --install SDL/build
+          git clone --depth 1 --branch release-3.2.2 https://github.com/libsdl-org/SDL_ttf.git
+          cmake -S SDL_ttf -B SDL_ttf/build -DCMAKE_BUILD_TYPE=Release -DSDLTTF_SAMPLES=OFF -DSDLTTF_VENDORED=OFF
+          cmake --build SDL_ttf/build --parallel 2
+          sudo cmake --install SDL_ttf/build
           sudo ldconfig
 
       - name: Install SDL3 (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install sdl3
+          brew install sdl3 sdl3_ttf
           SDL3_PREFIX="$(brew --prefix sdl3)"
-          echo "CPATH=$SDL3_PREFIX/include${CPATH:+:$CPATH}" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=$SDL3_PREFIX/lib${LIBRARY_PATH:+:$LIBRARY_PATH}" >> "$GITHUB_ENV"
+          SDL3_TTF_PREFIX="$(brew --prefix sdl3_ttf)"
+          echo "CPATH=$SDL3_TTF_PREFIX/include:$SDL3_PREFIX/include${CPATH:+:$CPATH}" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=$SDL3_TTF_PREFIX/lib:$SDL3_PREFIX/lib${LIBRARY_PATH:+:$LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Install bake
         run: |
@@ -146,6 +153,7 @@ jobs:
       - name: Build SIUI and tests
         run: |
           sh addons/ui/tools/embed_shaders.sh
+          bake rebuild . -r
           bake rebuild addons/ui -r
           bake rebuild test/ui -r
           bake rebuild test/ui_cpp -r
