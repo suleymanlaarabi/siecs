@@ -60,6 +60,11 @@ static void bloom_pass(ecs_iter_t *it) {
 static void composite_pass(ecs_iter_t *it) {
     if (SIGPU_FRAMECONTEXT->swapchain)
         sigpu_composite_pass();
+}
+
+static void ui_pass(ecs_iter_t *it) {
+    if (SIGPU_FRAMECONTEXT->swapchain)
+        sigpu_ui_pass();
     if (SIGPU_RENDERSTATS->profile_enabled && SIGPU_FRAMECONTEXT->swapchain)
         SIGPU_RENDERSTATS->encode_ns = SDL_GetTicksNS() - SIGPU_RENDERSTATS->encode_ns;
 }
@@ -155,11 +160,20 @@ void sigpu_render_schedule_register(ecs_system_id_t input_system) {
             .main_thread_only = true,
         }
     );
+    ecs_system_id_t ui = ecs_system(
+        {
+            .name = "UiPass",
+            .phase = EcsPostRender,
+            .after = { composite },
+            .callback = ui_pass,
+            .main_thread_only = true,
+        }
+    );
     ecs_system(
         {
             .name = "EndGpuFrame",
             .phase = EcsPostRender,
-            .after = { composite },
+            .after = { ui },
             .callback = end_gpu_frame,
             .main_thread_only = true,
             .no_defer = true,
