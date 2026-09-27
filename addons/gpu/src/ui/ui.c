@@ -53,6 +53,53 @@ ECS_COMPONENT_DEFINE(UiNode);
 ECS_COMPONENT_DEFINE(UiBackground, .inheritance = EcsInheritShared);
 ECS_COMPONENT_DEFINE(UiBorder, .inheritance = EcsInheritShared);
 
+static const sireflect_enum_desc_t ui_value_type_reflection = {
+    .name = "SiUiValueType",
+    .values = "{ Px = 0, Percent = 1, Auto = 2 }",
+    .size = sizeof(SiUiValueType),
+    .align = _Alignof(SiUiValueType),
+};
+static const sireflect_enum_desc_t ui_direction_reflection = {
+    .name = "SiUiDirection",
+    .values = "{ Column = 0, Row = 1 }",
+    .size = sizeof(SiUiDirection),
+    .align = _Alignof(SiUiDirection),
+};
+static const sireflect_enum_desc_t ui_justify_reflection = {
+    .name = "SiUiJustify",
+    .values = "{ Start = 0, Center = 1, End = 2, SpaceBetween = 3, SpaceAround = 4 }",
+    .size = sizeof(SiUiJustify),
+    .align = _Alignof(SiUiJustify),
+};
+static const sireflect_enum_desc_t ui_align_reflection = {
+    .name = "SiUiAlign",
+    .values = "{ Start = 0, Center = 1, End = 2, SpaceBetween = 3, SpaceAround = 4 }",
+    .size = sizeof(SiUiAlign),
+    .align = _Alignof(SiUiAlign),
+};
+static const sireflect_struct_desc_t ui_value_reflection = {
+    .name = "SiUiValue",
+    .fields = "{ SiUiValueType type; float value; }",
+    .size = sizeof(SiUiValue),
+    .align = _Alignof(SiUiValue),
+};
+static const sireflect_struct_desc_t ui_insets_reflection = {
+    .name = "SiUiInsets",
+    .fields = "{ float left; float top; float right; float bottom; }",
+    .size = sizeof(SiUiInsets),
+    .align = _Alignof(SiUiInsets),
+};
+
+void sigpu_ui_types_register(void) {
+    sireflect_register_enum(&ui_value_type_reflection);
+    sireflect_register_enum(&ui_direction_reflection);
+    sireflect_register_enum(&ui_justify_reflection);
+    sireflect_register_enum(&ui_align_reflection);
+    sireflect_register_struct(&ui_value_reflection);
+    sireflect_register_struct(&ui_insets_reflection);
+    ECS_COMPONENT_REGISTER(UiNode, UiBackground, UiBorder);
+}
+
 static float ui_max(float a, float b) { return a > b ? a : b; }
 static float ui_min(float a, float b) { return a < b ? a : b; }
 static float ui_nonnegative(float value) { return value > 0.0f ? value : 0.0f; }
