@@ -213,9 +213,7 @@ using Node = ::UiNode;
 using Background = ::UiBackground;
 using Border = ::UiBorder;
 }
-extern "C" {
-#endif
-
+#else
 SIECS_PUBLIC_API SiUiValue sigpu_ui_px(float value);
 SIECS_PUBLIC_API SiUiValue sigpu_ui_percent(float value);
 SIECS_PUBLIC_API SiUiValue sigpu_ui_auto(void);
@@ -226,9 +224,6 @@ SIECS_PUBLIC_API ecs_entity_t sigpu_ui_create(ecs_entity_t parent, const UiNode 
 SIECS_PUBLIC_API void sigpu_ui_set_node(ecs_entity_t entity, const UiNode *node);
 SIECS_PUBLIC_API void sigpu_ui_set_background(ecs_entity_t entity, Color color);
 SIECS_PUBLIC_API void sigpu_ui_set_border(ecs_entity_t entity, float width, Color color);
-
-#ifdef __cplusplus
-}
 #endif
 
 #endif
