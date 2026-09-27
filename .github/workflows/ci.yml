@@ -153,6 +153,7 @@ jobs:
       - name: Build SIUI and tests
         run: |
           sh addons/ui/tools/embed_shaders.sh
+          bake rebuild test -r
           bake rebuild . -r
           bake rebuild addons/ui -r
           bake rebuild test/ui -r

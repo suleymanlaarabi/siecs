@@ -21,7 +21,7 @@
 #define SICORE_CTRL_EMPTY UINT8_C(0x80)
 #define SICORE_CTRL_DELETED UINT8_C(0xfe)
 
-/* 16 octets sur ABI 64 bits: 1/4 de ligne de cache de 64 octets. */
+/* 16 bytes on a 64-bit ABI: 1/4 of a 64-byte cache line. */
 typedef struct {
     const char *key;
     uint32_t value;
@@ -29,8 +29,8 @@ typedef struct {
 } sicore_map_entry_t;
 
 /*
- * Hash de chaîne basé sur wyhash final v4 (domaine public / Unlicense), adapté
- * et préfixé pour rester entièrement interne à cette unité de compilation.
+ * String hash based on wyhash final v4 (public domain / Unlicense), adapted
+ * and prefixed to remain entirely internal to this compilation unit.
  */
 static const uint64_t sicore_hash_secret[5] = { UINT64_C(0xa0761d6478bd642f),
                                                 UINT64_C(0xe7037ed1a0b428db),
@@ -202,7 +202,7 @@ static inline uint32_t sicore_match_byte(const uint8_t *ctrl, uint8_t byte) {
 #endif
 
 static inline uint32_t sicore_max_load(uint32_t capacity) {
-    return capacity - (capacity >> 3); /* 87,5 % */
+    return capacity - (capacity >> 3); /* 87.5% */
 }
 
 static inline uint8_t sicore_hash_h2(uint64_t hash) { return (uint8_t)(hash & UINT64_C(0x7f)); }
