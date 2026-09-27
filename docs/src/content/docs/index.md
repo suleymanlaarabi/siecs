@@ -41,5 +41,3 @@ API snippets.
 - [Building SIECS](./quickstart/#building-siecs)
 - [Scenes and Serialization](./scenes/)
 - [Cookbook](./cookbook/)
-- [FAQ](./faq/)
-- [API Reference](./reference/api/)

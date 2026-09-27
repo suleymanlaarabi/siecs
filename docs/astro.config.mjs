@@ -133,10 +133,6 @@ export default defineConfig({
             'manual',
           ],
         },
-        {
-          label: 'Reference and FAQ',
-          items: ['reference/api', 'faq'],
-        },
       ],
     }),
   ],
