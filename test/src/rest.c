@@ -34,6 +34,8 @@ static sijson_value_t rest_schema_type(sijson_value_t schema, sireflect_handle_t
 
 static uint32_t rest_create_entity(void) {
     sihttp_response_t response = sirest_dispatch(SIHTTP_METHOD_POST, "/entities", NULL);
+    test_int(200, response.status);
+    test_int(SIHTTP_CONTENT_JSON, response.content_type);
     test_true(response.body != NULL);
     sijson_value_t body = sijson_parse(response.body);
     test_true(body != NULL);
@@ -98,6 +100,7 @@ void rest_enum_schema_and_component_roundtrip(void) {
     sihttp_response_t schema_response = sirest_dispatch(SIHTTP_METHOD_GET, "/schema", NULL);
 
     test_int(200, schema_response.status);
+    test_int(SIHTTP_CONTENT_JSON, schema_response.content_type);
     test_true(schema_response.body != NULL);
 
     sijson_value_t schema = sijson_parse(schema_response.body);
@@ -155,4 +158,64 @@ void rest_enum_schema_and_component_roundtrip(void) {
 void rest_is_a_and_child_of_same_target_routes(void) {
     rest_is_a_child_of_same_target_case(true);
     rest_is_a_child_of_same_target_case(false);
+}
+
+void rest_in_process_body_limit(void) {
+    ecs_init();
+    ECS_MODULE_IMPORT(sirest, { .in_process = true, .max_scene_bytes = 8 });
+
+    const char oversized[] = "123456789";
+    sihttp_response_t response = sirest_dispatch_bytes(
+        SIHTTP_METHOD_POST, "/scene", oversized, sizeof(oversized) - 1
+    );
+    test_int(413, response.status);
+    sihttp_response_fini(&response);
+
+    ecs_fini();
+}
+
+static void rest_expect_json_error(
+    sihttp_method_t method, const char *path, const char *body, const char *message
+) {
+    sihttp_response_t response = sirest_dispatch(method, path, body);
+    test_int(404, response.status);
+    test_int(SIHTTP_CONTENT_JSON, response.content_type);
+    test_true(response.body != NULL);
+    sijson_clean();
+    sijson_value_t json = sijson_parse(response.body);
+    test_true(json != NULL);
+    sijson_value_t error = sijson_object_get(json, "error");
+    test_true(error != NULL);
+    test_true(strcmp(sijson_string(error), message) == 0);
+    sihttp_response_fini(&response);
+}
+
+void rest_invalid_route_parameters(void) {
+    ecs_init();
+    ECS_MODULE_IMPORT(sirest, { .in_process = true });
+
+    const char *invalid_entities[] = {
+        "/entities/abc",
+        "/entities/-1",
+        "/entities/4294967296",
+        "/entities/1x",
+    };
+    for (size_t i = 0; i < sizeof(invalid_entities) / sizeof(invalid_entities[0]); i++) {
+        rest_expect_json_error(
+            SIHTTP_METHOD_GET, invalid_entities[i], NULL, "entity not found"
+        );
+    }
+
+    uint32_t entity = rest_create_entity();
+    char path[96];
+    const char *invalid_ids[] = { "abc", "65536", "1x" };
+    for (size_t i = 0; i < sizeof(invalid_ids) / sizeof(invalid_ids[0]); i++) {
+        snprintf(path, sizeof(path), "/entities/%u/components/%s", entity, invalid_ids[i]);
+        rest_expect_json_error(SIHTTP_METHOD_POST, path, "{}", "component not found");
+
+        snprintf(path, sizeof(path), "/entities/%u/relations/%s", entity, invalid_ids[i]);
+        rest_expect_json_error(SIHTTP_METHOD_PUT, path, "{\"target\":1}", "relation not found");
+    }
+
+    ecs_fini();
 }

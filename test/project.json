@@ -113,7 +113,9 @@
         "id": "rest",
     "testcases": [
       "is_a_and_child_of_same_target_routes",
-      "enum_schema_and_component_roundtrip"
+      "enum_schema_and_component_roundtrip",
+      "in_process_body_limit",
+      "invalid_route_parameters"
     ]
       },
       {

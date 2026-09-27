@@ -86,6 +86,8 @@ void world_at_fini_is_cleared_on_restart(void);
 // Testsuite 'rest'
 void rest_is_a_and_child_of_same_target_routes(void);
 void rest_enum_schema_and_component_roundtrip(void);
+void rest_in_process_body_limit(void);
+void rest_invalid_route_parameters(void);
 
 // Testsuite 'childof'
 void childof_is_a_and_child_of_same_target_queries(void);
@@ -521,6 +523,14 @@ bake_test_case rest_testcases[] = {
     {
         "enum_schema_and_component_roundtrip",
         rest_enum_schema_and_component_roundtrip
+    },
+    {
+        "in_process_body_limit",
+        rest_in_process_body_limit
+    },
+    {
+        "invalid_route_parameters",
+        rest_invalid_route_parameters
     }
 };
 
@@ -1144,7 +1154,7 @@ static bake_test_suite suites[] = {
         "rest",
         NULL,
         NULL,
-        2,
+        4,
         rest_testcases
     },
     {

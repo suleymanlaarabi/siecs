@@ -3,7 +3,6 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 static void rest_state_on_remove(const void *ptr);
 static sihttp_response_t rest_health(const sihttp_request_t *req);
@@ -40,7 +39,6 @@ static void rest_fail(const sirest_props_t *props, int error_number) {
 static void rest_state_on_remove(const void *ptr) {
     const SiecsRestState *state = ptr;
     if (state->server) {
-        sihttp_server_stop(state->server);
         sihttp_server_fini(state->server);
     }
     ecs_id(SiecsRestState) = 0;
@@ -57,6 +55,7 @@ static void rest_poll(ecs_iter_t *it) {
 static sihttp_server_t *rest_server_create(const sirest_props_t *props) {
     sihttp_server_t *server = sihttp_server(
         {
+            .host = props->host,
             .port = props->port,
             .backlog = props->backlog,
             .max_requests_per_poll = props->max_requests_per_poll,
@@ -69,13 +68,6 @@ static sihttp_server_t *rest_server_create(const sirest_props_t *props) {
 
     rest_register_routes(server);
     if (!props->in_process) {
-        int listen_result = sihttp_server_listen(server, props->host, (uint16_t)props->port);
-        int listen_errno = errno;
-        if (listen_result != 0) {
-            sihttp_server_fini(server);
-            rest_fail(props, listen_errno);
-        }
-
         if (sihttp_server_start(server) != 0) {
             int start_errno = errno;
             sihttp_server_fini(server);
@@ -110,7 +102,6 @@ void sirest_import(const sirest_props_t *props) {
         SiecsRestState,
         {
             .server = server,
-            .max_scene_bytes = config.max_scene_bytes,
         }
     );
     if (!config.in_process) {
@@ -167,12 +158,5 @@ sirest_dispatch_bytes(sihttp_method_t method, const char *path, const void *data
 
 static sihttp_response_t rest_health(const sihttp_request_t *req) {
     (void)req;
-    sihttp_response_t response = { 0 };
-    response.status = 200;
-    response.body = malloc(3);
-    if (response.body) {
-        memcpy(response.body, "OK", 3);
-        response.body_size = 2;
-    }
-    return response;
+    return sihttp_response_text(200, "OK");
 }

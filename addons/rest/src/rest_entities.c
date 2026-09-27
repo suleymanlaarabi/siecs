@@ -96,7 +96,7 @@ sijson_value_t ecs_rest_entity_json(ecs_entity_t entity, bool has_children) {
     return object;
 }
 
-sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity) {
+static sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity) {
     sijson_value_t children = sijson_make_array();
     rest_children_set_t children_set = rest_children_set_init();
     ecs_query_id_t query = rest_entity_query(ecs_rel(ChildOf));
@@ -115,7 +115,7 @@ sijson_value_t ecs_rest_entity_children_json(ecs_entity_t entity) {
     return children;
 }
 
-sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
+static sijson_value_t ecs_rest_entity_detail_json(ecs_entity_t entity) {
     sijson_value_t detail = sijson_make_object();
 
     sijson_object_set(detail, "name", sijson_make_string(ecs_entity_name(entity)));
@@ -154,7 +154,7 @@ static sihttp_response_t rest_get_entity_list(ecs_query_relation_term_t relation
     }
     ecs_query_fini(query);
     rest_children_set_fini(&children_set);
-    return ecs_rest_json_response(200, array);
+    return sihttp_response_json(200, array);
 }
 
 sihttp_response_t ecs_rest_get_entities(const sihttp_request_t *req) {
@@ -172,9 +172,9 @@ sihttp_response_t ecs_rest_get_entity(const sihttp_request_t *req) {
 
     ecs_entity_t entity = ecs_rest_request_entity(req);
     if (!entity) {
-        return ecs_rest_error_response(404, "entity not found");
+        return sihttp_response_json_error(404, "entity not found");
     }
-    return ecs_rest_json_response(200, ecs_rest_entity_detail_json(entity));
+    return sihttp_response_json(200, ecs_rest_entity_detail_json(entity));
 }
 
 sihttp_response_t ecs_rest_get_entity_children(const sihttp_request_t *req) {
@@ -182,15 +182,14 @@ sihttp_response_t ecs_rest_get_entity_children(const sihttp_request_t *req) {
 
     ecs_entity_t entity = ecs_rest_request_entity(req);
     if (!entity) {
-        return ecs_rest_error_response(404, "entity not found");
+        return sihttp_response_json_error(404, "entity not found");
     }
-    return ecs_rest_json_response(200, ecs_rest_entity_children_json(entity));
+    return sihttp_response_json(200, ecs_rest_entity_children_json(entity));
 }
 
 sihttp_response_t ecs_rest_post_entities(const sihttp_request_t *req) {
     (void)req;
+    sijson_clean();
     ecs_entity_t entity = ecs_new();
-    sihttp_response_t response = { 0 };
-    response.body = sijson_stringify(ecs_rest_entity_json(entity, false));
-    return response;
+    return sihttp_response_json(200, ecs_rest_entity_json(entity, false));
 }

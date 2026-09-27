@@ -184,5 +184,5 @@ sihttp_response_t ecs_rest_get_schema(const sihttp_request_t *req) {
     sijson_object_set(schema, "components", components);
     sijson_object_set(schema, "relations", relations);
     sijson_object_set(schema, "types", type_values);
-    return ecs_rest_json_response(200, schema);
+    return sihttp_response_json(200, schema);
 }

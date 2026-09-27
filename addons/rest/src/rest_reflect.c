@@ -82,28 +82,28 @@ sihttp_response_t ecs_rest_set_entity_component(
     sijson_clean();
 
     if (!ecs_is_alive(entity)) {
-        return ecs_rest_error_response(404, "entity not found");
+        return sihttp_response_json_error(404, "entity not found");
     }
     if (!ecs_rest_entity_component_is_reflected(component)) {
-        return ecs_rest_error_response(404, "component not found");
+        return sihttp_response_json_error(404, "component not found");
     }
     if (!ecs_has_cid_owned(entity, component)) {
-        return ecs_rest_error_response(404, "entity component not found");
+        return sihttp_response_json_error(404, "entity component not found");
     }
 
     sijson_value_t body = body_text ? sijson_parse(body_text) : NULL;
     sijson_value_t value = body ? sijson_object_get(body, "value") : NULL;
     if (!body || sijson_type(body) != SIJSON_OBJECT || sijson_object_len(body) != 1 || !value) {
-        return ecs_rest_error_response(400, "invalid json body");
+        return sihttp_response_json_error(400, "invalid json body");
     }
 
     void *decoded = NULL;
     if (!ecs_rest_decode_component_value(component, value, &decoded)) {
-        return ecs_rest_error_response(400, "invalid component value");
+        return sihttp_response_json_error(400, "invalid component value");
     }
 
     ecs_set_cid(entity, component, decoded);
-    return ecs_rest_json_response(
+    return sihttp_response_json(
         200,
         ecs_rest_entity_component_json(component, ecs_get_cid(entity, component))
     );
