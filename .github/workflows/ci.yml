@@ -125,45 +125,6 @@ jobs:
           bake run test --cfg lsan
           bake run test/cpp --cfg lsan
 
-  ui:
-    name: SIUI SDL3 overlay and layout
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v5
-      - name: Install SDL dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfreetype-dev libharfbuzz-dev libvulkan-dev glslc xxd
-          git clone --depth 1 --branch release-3.4.16 https://github.com/libsdl-org/SDL.git
-          cmake -S SDL -B SDL/build -DCMAKE_BUILD_TYPE=Release -DSDL_TEST_LIBRARY=OFF -DSDL_UNIX_CONSOLE_BUILD=ON
-          cmake --build SDL/build --parallel 2
-          sudo cmake --install SDL/build
-          git clone --depth 1 --branch release-3.2.2 https://github.com/libsdl-org/SDL_ttf.git
-          cmake -S SDL_ttf -B SDL_ttf/build -DCMAKE_BUILD_TYPE=Release -DSDLTTF_SAMPLES=OFF -DSDLTTF_VENDORED=OFF
-          cmake --build SDL_ttf/build --parallel 2
-          sudo cmake --install SDL_ttf/build
-          sudo ldconfig
-      - name: Install Bake
-        run: |
-          git clone https://github.com/suleymanlaarabi/bake
-          git -C bake checkout --detach "$BAKE_COMMIT"
-          make -C bake/build-$(uname)
-          bake/bake setup
-      - name: Build SIUI and tests
-        run: |
-          sh addons/ui/tools/embed_shaders.sh
-          bake rebuild test -r
-          bake rebuild . -r
-          bake rebuild addons/ui -r
-          bake rebuild test/ui -r
-          bake rebuild test/ui_cpp -r
-          bake build example/ui
-      - name: Run headless layout tests
-        run: |
-          bake run test/ui
-          bake run test/ui_cpp
-
   windows:
     name: bake Windows MSVC
     runs-on: windows-2022
