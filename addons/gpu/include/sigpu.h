@@ -3,6 +3,7 @@
 #include "sigpu/input.h"
 #include "sigpu/interaction.h"
 #include "sigpu/rendering.h"
+#include "sigpu/ui.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
