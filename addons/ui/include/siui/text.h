@@ -24,7 +24,7 @@ ECS_COMPONENT_DECLARE_CPP_REFLECTED(
     UiText,
     ECS_CPP_FIELDS(
         const char *text;
-        siui_font_handle_t font;
+        uint32_t font;
         float font_size, line_height;
         siui_color_t color SIUI_CPP_DEFAULT_TEXT_COLOR;
         siui_text_wrap_t wrap;
