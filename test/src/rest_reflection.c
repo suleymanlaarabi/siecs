@@ -4,6 +4,7 @@
 #include <siecs_test.h>
 #include <sijson.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 SIREFLECT_ENUM(RestChoice, { REST_CHOICE_LOW = -2, REST_CHOICE_HIGH = 5 });
@@ -37,6 +38,177 @@ static int rest_settings_sets;
 static float rest_complex_last_x;
 static float rest_settings_last_x;
 
+static char *rest_strdup(const char *src)
+{
+    if (!src)
+        return NULL;
+
+    size_t size = strlen(src) + 1;
+    char *dst = malloc(size);
+
+    if (!dst)
+        abort();
+
+    memcpy(dst, src, size);
+    return dst;
+}
+
+static void rest_complex_dtor(void *ptr, uint32_t count)
+{
+    RestComplex *values = ptr;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        free((void *)values[i].label);
+        values[i].label = NULL;
+    }
+}
+
+static void rest_complex_copy_ctor(
+    void *dst,
+    const void *src,
+    uint32_t count)
+{
+    RestComplex *out = dst;
+    const RestComplex *in = src;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        out[i] = in[i];
+        out[i].label = rest_strdup(in[i].label);
+    }
+}
+
+static void rest_complex_copy(
+    void *dst,
+    const void *src,
+    uint32_t count)
+{
+    RestComplex *out = dst;
+    const RestComplex *in = src;
+
+    if (out == in)
+        return;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        char *label = rest_strdup(in[i].label);
+
+        free((void *)out[i].label);
+
+        out[i] = in[i];
+        out[i].label = label;
+    }
+}
+
+static void rest_complex_move_ctor(
+    void *dst,
+    void *src,
+    uint32_t count)
+{
+    RestComplex *out = dst;
+    RestComplex *in = src;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        out[i] = in[i];
+        in[i].label = NULL;
+    }
+}
+
+static void rest_complex_move(
+    void *dst,
+    void *src,
+    uint32_t count)
+{
+    RestComplex *out = dst;
+    RestComplex *in = src;
+
+    if (out == in)
+        return;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        free((void *)out[i].label);
+
+        out[i] = in[i];
+        in[i].label = NULL;
+    }
+}
+
+static void rest_settings_dtor(void *ptr, uint32_t count)
+{
+    RestSettings *values = ptr;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        free((void *)values[i].label);
+        values[i].label = NULL;
+    }
+}
+
+static void rest_settings_copy_ctor(
+    void *dst,
+    const void *src,
+    uint32_t count)
+{
+    RestSettings *out = dst;
+    const RestSettings *in = src;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        out[i] = in[i];
+        out[i].label = rest_strdup(in[i].label);
+    }
+}
+
+static void rest_settings_copy(
+    void *dst,
+    const void *src,
+    uint32_t count)
+{
+    RestSettings *out = dst;
+    const RestSettings *in = src;
+
+    if (out == in)
+        return;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        char *label = rest_strdup(in[i].label);
+
+        free((void *)out[i].label);
+
+        out[i] = in[i];
+        out[i].label = label;
+    }
+}
+
+static void rest_settings_move_ctor(
+    void *dst,
+    void *src,
+    uint32_t count)
+{
+    RestSettings *out = dst;
+    RestSettings *in = src;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        out[i] = in[i];
+        in[i].label = NULL;
+    }
+}
+
+static void rest_settings_move(
+    void *dst,
+    void *src,
+    uint32_t count)
+{
+    RestSettings *out = dst;
+    RestSettings *in = src;
+
+    if (out == in)
+        return;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        free((void *)out[i].label);
+
+        out[i] = in[i];
+        in[i].label = NULL;
+    }
+}
+
 static void rest_complex_on_set(
     ecs_entity_t entity,
     ecs_component_t component,
@@ -53,8 +225,28 @@ static void rest_settings_on_set(const void *next) {
     rest_settings_sets++;
     rest_settings_last_x = ((const RestSettings *)next)->point.x;
 }
-ECS_COMPONENT_DEFINE(RestComplex, .on_set = rest_complex_on_set);
-ECS_RESOURCE_DEFINE(RestSettings, .on_set = rest_settings_on_set);
+ECS_COMPONENT_DEFINE(
+    RestComplex,
+    .ops = {
+        .dtor = rest_complex_dtor,
+        .copy_ctor = rest_complex_copy_ctor,
+        .copy = rest_complex_copy,
+        .move_ctor = rest_complex_move_ctor,
+        .move = rest_complex_move,
+    },
+    .on_set = rest_complex_on_set
+);
+ECS_RESOURCE_DEFINE(
+    RestSettings,
+    .ops = {
+        .dtor = rest_settings_dtor,
+        .copy_ctor = rest_settings_copy_ctor,
+        .copy = rest_settings_copy,
+        .move_ctor = rest_settings_move_ctor,
+        .move = rest_settings_move,
+    },
+    .on_set = rest_settings_on_set
+);
 
 static sijson_value_t reflected_type(sijson_value_t schema, sireflect_handle_t handle) {
     sijson_value_t types = sijson_object_get(schema, "types");

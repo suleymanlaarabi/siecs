@@ -40,7 +40,7 @@ sihttp_response_t ecs_rest_post_entity_component(const sihttp_request_t *req) {
         if (!ecs_rest_decode_component_value(component, value, &decoded)) {
             return ecs_rest_error(400, "invalid_component_value", "invalid component value");
         }
-        ecs_set_cid(entity, component, decoded);
+        ecs_move_cid(entity, component, decoded);
     }
 
     return sihttp_response_json(

@@ -246,7 +246,7 @@ sihttp_response_t ecs_rest_set_entity_component(
     void *decoded = NULL;
     if (!ecs_rest_decode_value(info->type, info->reflection, value, &decoded))
         return ecs_rest_error(400, "invalid_component_value", "invalid component value");
-    ecs_set_cid(entity, component, decoded);
+    ecs_move_cid(entity, component, decoded);
     return sihttp_response_json(
         200,
         ecs_rest_entity_component_json(component, ecs_get_cid(entity, component))
@@ -275,6 +275,6 @@ ecs_rest_set_resource(ecs_resource_t resource, const char *body_text, bool patch
     void *decoded = NULL;
     if (!ecs_rest_decode_value(info->type, info->reflection, value, &decoded))
         return ecs_rest_error(400, "invalid_resource_value", "invalid resource value");
-    ecs_set_resource_rid(resource, decoded);
+    ecs_move_resource_rid(resource, decoded);
     return sihttp_response_json(200, ecs_rest_resource_json(resource, ecs_resource_rid(resource)));
 }
