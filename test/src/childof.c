@@ -80,6 +80,49 @@ ECS_RELATION_DEFINE(
 
 static void register_value(void) { ECS_COMPONENT_REGISTER(RelValue); }
 
+void childof_relation_batch_views(void) {
+    ecs_init();
+    ECS_RELATION_REGISTER(DenseRel, DepthRel, GroupOf);
+    ecs_entity_t dense_target = ecs_new();
+    ecs_entity_t depth_target = ecs_new();
+    ecs_entity_t group_target = ecs_new();
+    ecs_entity_t base = ecs_new();
+    ecs_entity_t dense_source = ecs_new();
+    ecs_entity_t depth_source = ecs_new();
+    ecs_entity_t group_source = ecs_new();
+    ecs_entity_t instance = ecs_new();
+    ecs_relate(dense_source, DenseRel, dense_target);
+    ecs_relate(depth_source, DepthRel, depth_target);
+    ecs_relate(group_source, GroupOf, group_target);
+    ecs_relate(instance, IsA, base);
+
+    const ecs_relation_id_t relations[] = {
+        ecs_rid(DenseRel), ecs_rid(DepthRel), ecs_rid(GroupOf), ecs_rid(IsA)
+    };
+    const ecs_entity_t sources[] = { dense_source, depth_source, group_source, instance };
+    const ecs_entity_t targets[] = { dense_target, depth_target, group_target, base };
+    for (uint32_t i = 0; i < 4; ++i) {
+        ecs_query_id_t q = ecs_query_init(&(ecs_query_desc_t){
+            .relations = { { .id = relations[i], .kind = EcsRelationRequired } }
+        });
+        ecs_iter_t it = ecs_query_iter(q);
+        test_true(ecs_iter_next(&it));
+        test_uint(it.entities[0], sources[i]);
+        ecs_relation_batch_t batch = ecs_relation_batch_id(&it, relations[i]);
+        if (i < 2) {
+            test_false(batch.shared);
+            test_assert(batch.targets != NULL);
+            test_uint(batch.targets[0].entity, targets[i]);
+        } else {
+            test_true(batch.shared);
+            test_assert(batch.targets == NULL);
+            test_uint(batch.shared_target, targets[i]);
+        }
+        ecs_query_fini(q);
+    }
+    ecs_fini();
+}
+
 static void childof_run_rest_entity_queries(ecs_entity_t parent, ecs_entity_t child) {
     ecs_query_id_t query = ecs_query({
         .components = {

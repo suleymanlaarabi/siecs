@@ -154,7 +154,8 @@ template <typename T> class observer : public query {
             "lifecycle observers must read at least one component"
         );
 
-        ecs::detail::append_callback_terms<args>(this->desc, component_index, resource_index);
+        ecs::detail::append_callback_terms<args>(this->desc, component_index, resource_index,
+                                                 relation_index);
 
         ecs_observer_desc_t observer_desc = {
             .on = detail::ecs_cpp_event_id<T>(),

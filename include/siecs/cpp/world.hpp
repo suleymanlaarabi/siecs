@@ -6,6 +6,7 @@
 #include "siecs/cpp/observer.hpp"
 #include "siecs/cpp/phase.hpp"
 #include "siecs/cpp/query.hpp"
+#include "siecs/cpp/relation.hpp"
 #include "siecs/cpp/resource.hpp"
 #include "siecs/cpp/system.hpp"
 #include "siecs/cpp/type.hpp"
@@ -23,15 +24,12 @@ inline bool save(const std::string &path) { return ecs_save(path.c_str()); }
 /* Load a world from a file; returns false on failure. */
 inline bool load(const std::string &path) { return ecs_load(path.c_str()); }
 
-struct ChildOf {};
-
 /** Synchronize builtin component ids after the C world is initialized. */
 inline void init_cpp_state() {
     detail::typed_id<Disabled, detail::id_kind::component> = ecs_id(Disabled);
     detail::typed_id<Name, detail::id_kind::component> = ecs_id(Name);
 
     detail::typed_id<Abstract, detail::id_kind::component> = ecs_id(Abstract);
-    detail::typed_id<ChildOf, detail::id_kind::relation> = ecs_rid(ChildOf);
 }
 /** Initialize the process-wide active ECS world and C++ builtin ids. */
 inline void init() {

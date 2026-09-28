@@ -8864,6 +8864,23 @@ ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relati
     return ecs_table_target_id(table, relation);
 }
 
+ecs_relation_batch_t ecs_relation_batch_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
+    const ecs_relation_record_t *record = ecs_relation_record(relation);
+    const uint16_t table_id = ecs_query_table_id(it->cache, it->table_idx);
+    const ecs_table_t *table = ecs_get_table(table_id);
+    if (record->component == 0 || record->info.desc.storage == EcsRelationByTarget) {
+        return (ecs_relation_batch_t){
+            .shared_target = ecs_type_pair_get(&table->type, relation),
+            .shared = true,
+        };
+    }
+    const uint16_t column = ecs_table_column_or_invalid(table, record->component);
+    return (ecs_relation_batch_t){
+        .targets = column == UINT16_MAX ? NULL : table->cls[column].data,
+        .shared = false,
+    };
+}
+
 void ecs_query_fini(ecs_query_id_t qid) {
     ecs_query_cache_t *cache = ecs_query_cache(qid);
     if (cache->active_index != UINT32_MAX) {

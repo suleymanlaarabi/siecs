@@ -131,6 +131,7 @@
       {
         "id": "childof",
         "testcases": [
+          "relation_batch_views",
           "is_a_and_child_of_same_target_queries",
           "kill_parent",
           "with_relation_adds_default_relation",

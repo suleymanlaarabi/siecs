@@ -1725,6 +1725,14 @@ typedef struct {
     uint32_t source_index;
 } ecs_relation_target_t;
 
+/* Target view for one query batch. Dense and ByDepth use targets per row;
+ * ByTarget and virtual relations use shared_target. */
+typedef struct {
+    const ecs_relation_target_t *targets;
+    ecs_entity_t shared_target;
+    bool shared;
+} ecs_relation_batch_t;
+
 typedef enum { EcsRemoveRelation, EcsDeleteSources } ecs_delete_target_t;
 
 typedef struct {
@@ -2480,6 +2488,8 @@ ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation);
 /* Return the shared relation target for a ByTarget batch. */
 SIECS_API ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relation);
 #define ecs_target_shared(it, relation) ecs_target_shared_id(it, ecs_rid(relation))
+SIECS_API ecs_relation_batch_t ecs_relation_batch_id(const ecs_iter_t *it, ecs_relation_id_t relation);
+#define ecs_relation_batch(it, relation) ecs_relation_batch_id(it, ecs_rid(relation))
 
 /*
  * Return the component array for a read term in the current iterator batch.
@@ -2964,6 +2974,9 @@ template <typename T> class component_ref {
 
 namespace ecs {
 
+struct IsA;
+struct ChildOf;
+
 namespace detail {
 
 class defer_scope {
@@ -3156,22 +3169,15 @@ class entity {
     }
 
     /** Add or retarget IsA; a new target recursively snapshots its owned ChildOf subtree. */
-    entity is_a(entity target) {
-        ecs_relate_id(_entity, ecs_rid(IsA), target.id());
-        return *this;
-    }
+    entity is_a(entity target);
 
     /** Add IsA to the singleton for `T` with the same ChildOf snapshot semantics. */
     template <typename T> entity is_a() {
-        ecs_relate_id(_entity, ecs_rid(IsA), ecs::entity::create<T>());
-        return *this;
+        return is_a(ecs::entity::create<T>());
     }
 
     /** C-compatible IsA overload with the same ChildOf snapshot semantics. */
-    entity is_a(ecs_entity_t target) {
-        ecs_relate_id(_entity, ecs_rid(IsA), target);
-        return *this;
-    }
+    entity is_a(ecs_entity_t target) { return is_a(entity::from(target)); }
 
     /** Test whether this entity is or inherits from the singleton `T`. */
     template <typename T> bool is() { return ecs_is(_entity, ecs::entity::typed<T>()); }
@@ -3180,10 +3186,7 @@ class entity {
     [[nodiscard]] bool is(entity target) const { return ecs_is(_entity, target._entity); }
 
     /** Set the builtin `ChildOf` relation to `parent`. */
-    entity child_of(entity parent) {
-        ecs_relate_id(_entity, ecs_rid(ChildOf), parent.id());
-        return *this;
-    }
+    entity child_of(entity parent);
 
     template <typename Relation> entity relate(entity target) {
         ecs_relate_id(_entity, detail::ecs_cpp_relation_id<Relation>(), target.id());
@@ -3233,6 +3236,41 @@ class entity {
     /** Return the currently cached singleton entity for `T`, or null. */
     template <typename T> static entity typed() { return from(by_type<T>()); }
 };
+
+} // namespace ecs
+
+#pragma once
+
+namespace ecs {
+
+struct IsA {};
+struct ChildOf {};
+
+namespace detail {
+template <> struct c_relation_traits<ecs::IsA> {
+    static constexpr bool value = true;
+    static constexpr const char *relation_name() noexcept { return "IsA"; }
+    static ecs_relation_id_t *id_storage() noexcept { return &::ecs_rid(IsA); }
+    static ecs_relation_desc_t *desc_storage() noexcept { return &::ecs_rid(IsA_desc); }
+};
+template <> struct c_relation_traits<ecs::ChildOf> {
+    static constexpr bool value = true;
+    static constexpr const char *relation_name() noexcept { return "ChildOf"; }
+    static ecs_relation_id_t *id_storage() noexcept { return &::ecs_rid(ChildOf); }
+    static ecs_relation_desc_t *desc_storage() noexcept { return &::ecs_rid(ChildOf_desc); }
+};
+} // namespace detail
+
+template <typename Relation> class target : public entity {
+  public:
+    using relation_type = Relation;
+    target() noexcept = default;
+    explicit target(ecs_entity_t value) noexcept : entity(value) {}
+    explicit target(entity value) noexcept : entity(value.id()) {}
+};
+
+inline entity entity::is_a(entity value) { return relate<ecs::IsA>(value); }
+inline entity entity::child_of(entity value) { return relate<ecs::ChildOf>(value); }
 
 } // namespace ecs
 
@@ -3574,6 +3612,15 @@ namespace detail {
 template <typename T> struct is_entity : std::false_type {};
 template <> struct is_entity<ecs::entity> : std::true_type {};
 
+template <typename T> struct is_target : std::false_type {};
+template <typename R> struct is_target<ecs::target<R>> : std::true_type {};
+template <typename T>
+inline constexpr bool is_target_v = is_target<std::remove_cvref_t<T>>::value;
+template <typename T> struct target_relation;
+template <typename R> struct target_relation<ecs::target<R>> { using type = R; };
+template <typename T>
+using target_relation_t = typename target_relation<std::remove_cvref_t<T>>::type;
+
 template <typename T> struct is_observer_event : std::false_type {};
 template <typename T>
 inline constexpr bool is_observer_event_v = is_observer_event<std::remove_cvref_t<T>>::value;
@@ -3596,18 +3643,26 @@ using optional_value_t = typename optional_value<std::remove_reference_t<T>>::ty
 
 template <typename T> inline constexpr bool is_entity_v = is_entity<std::remove_cvref_t<T>>::value;
 
+template <typename T>
+inline constexpr bool is_component_callback_arg_v =
+    !is_res_v<T> && !is_entity_v<T> && !is_observer_event_v<T> && !is_target_v<T>;
+
 template <typename Args> consteval bool has_entity_arg() {
     return []<std::size_t... Is>(std::index_sequence<Is...>) {
         return (is_entity_v<std::tuple_element_t<Is, Args>> || ... || false);
     }(std::make_index_sequence<std::tuple_size_v<Args>>{});
 }
 
+template <typename Args> consteval bool has_target_arg() {
+    return []<std::size_t... Is>(std::index_sequence<Is...>) {
+        return (is_target_v<std::tuple_element_t<Is, Args>> || ... || false);
+    }(std::make_index_sequence<std::tuple_size_v<Args>>{});
+}
+
 template <typename Args, std::size_t I> consteval std::size_t field_index_before() {
     return []<std::size_t... Is>(std::index_sequence<Is...>) {
         return (
-            (!is_res_v<std::tuple_element_t<Is, Args>> &&
-                     !is_entity_v<std::tuple_element_t<Is, Args>> &&
-                     !is_observer_event_v<std::tuple_element_t<Is, Args>>
+            (is_component_callback_arg_v<std::tuple_element_t<Is, Args>>
                  ? 1U
                  : 0U) +
             ... + 0U
@@ -3627,6 +3682,31 @@ template <typename T, bool Optional = false> struct field_cursor {
 struct entity_cursor {
     ecs_entity_t *value;
 };
+
+template <typename Relation> struct relation_target_cursor {
+    const ecs_relation_target_t *targets;
+    ecs_entity_t shared_target;
+    bool shared;
+};
+
+template <typename Relation>
+inline ecs::target<Relation> cursor_get(relation_target_cursor<Relation> &cursor) noexcept {
+    return ecs::target<Relation>(cursor.shared ? cursor.shared_target : cursor.targets->entity);
+}
+
+template <typename Relation>
+inline ecs::target<Relation>
+cursor_get_at(relation_target_cursor<Relation> &cursor, std::ptrdiff_t row) noexcept {
+    return ecs::target<Relation>(
+        cursor.shared ? cursor.shared_target : cursor.targets[row].entity
+    );
+}
+
+template <bool OwnedOnly, typename Relation>
+inline void cursor_next(relation_target_cursor<Relation> &cursor) noexcept {
+    if (!cursor.shared)
+        ++cursor.targets;
+}
 
 inline entity cursor_get(entity_cursor &cursor) { return entity::from(*cursor.value); }
 
@@ -3694,6 +3774,12 @@ inline auto make_cursor(ecs_iter_t *it, Resources &resources, bool &has_shared) 
         return entity_cursor{ it->entities };
     } else if constexpr (is_res_v<arg>) {
         return std::get<I>(resources);
+    } else if constexpr (is_target_v<arg>) {
+        using relation_type = target_relation_t<arg>;
+        const ecs_relation_batch_t batch =
+            ecs_relation_batch_id(it, ecs_cpp_relation_id<relation_type>());
+        assert(batch.shared || batch.targets != nullptr);
+        return relation_target_cursor<relation_type>{ batch.targets, batch.shared_target, batch.shared };
     } else {
         constexpr std::size_t field = field_index_before<Args, I>();
         constexpr bool optional = is_optional_v<arg>;
@@ -3839,9 +3925,34 @@ template <typename T> consteval ecs_access_t resource_term_access() {
     return std::is_const_v<value_type> ? EcsIn : EcsInOut;
 }
 
+inline ecs_query_relation_term_t *find_relation_term(
+    ecs_query_desc_t &desc, uint16_t relation_count, ecs_relation_id_t id
+) {
+    for (uint16_t i = 0; i < relation_count; ++i)
+        if (desc.relations[i].id == id)
+            return &desc.relations[i];
+    return nullptr;
+}
+
+template <typename R>
+inline void ensure_required_relation(ecs_query_desc_t &desc, uint16_t &relation_index) {
+    const ecs_relation_id_t id = ecs_cpp_relation_id<R>();
+    if (auto *existing = find_relation_term(desc, relation_index, id)) {
+        assert(existing->kind != EcsRelationExcluded &&
+               "ecs::target<R> requires relation R, but the query explicitly excludes it");
+        assert(existing->kind != EcsRelationOptional &&
+               "ecs::target<R> requires relation R; use an optional target for optional relations");
+        return;
+    }
+    assert(relation_index < ECS_QUERY_RELATION_CAPACITY && "too many query relation terms");
+    desc.relations[relation_index++] = { .target = 0, .id = id, .kind = EcsRelationRequired };
+}
+
 template <typename Args, std::size_t I>
-inline void
-append_callback_term(ecs_query_desc_t &desc, uint16_t &component_index, uint16_t &resource_index) {
+inline void append_callback_term(
+    ecs_query_desc_t &desc, uint16_t &component_index, uint16_t &resource_index,
+    uint16_t &relation_index
+) {
     using T = std::tuple_element_t<I, Args>;
     if constexpr (is_entity_v<T>) {
         static_assert(I == 0, "ecs::entity must be the first callback argument");
@@ -3849,6 +3960,9 @@ append_callback_term(ecs_query_desc_t &desc, uint16_t &component_index, uint16_t
     } else if constexpr (is_observer_event_v<T>) {
         static_assert(I == 0, "ecs::observer_event must be the first callback argument");
         static_assert(!std::is_reference_v<T>, "ecs::observer_event must be passed by value");
+    } else if constexpr (is_target_v<T>) {
+        static_assert(!std::is_reference_v<T>, "ecs::target<R> must be passed by value");
+        ensure_required_relation<target_relation_t<T>>(desc, relation_index);
     } else if constexpr (is_optional_v<T>) {
         append_callback_component_term(
             desc,
@@ -3879,18 +3993,22 @@ inline void append_callback_terms_impl(
     ecs_query_desc_t &desc,
     uint16_t &component_index,
     uint16_t &resource_index,
+    uint16_t &relation_index,
     std::index_sequence<Is...>
 ) {
-    (append_callback_term<Args, Is>(desc, component_index, resource_index), ...);
+    (append_callback_term<Args, Is>(desc, component_index, resource_index, relation_index), ...);
 }
 
 template <typename Args>
-inline void
-append_callback_terms(ecs_query_desc_t &desc, uint16_t &component_index, uint16_t &resource_index) {
+inline void append_callback_terms(
+    ecs_query_desc_t &desc, uint16_t &component_index, uint16_t &resource_index,
+    uint16_t &relation_index
+) {
     append_callback_terms_impl<Args>(
         desc,
         component_index,
         resource_index,
+        relation_index,
         std::make_index_sequence<std::tuple_size_v<Args>>{}
     );
 }
@@ -3902,6 +4020,13 @@ inline uint16_t query_resource_count(const ecs_query_desc_t &desc) {
     return count;
 }
 
+inline uint16_t query_relation_count(const ecs_query_desc_t &desc) {
+    uint16_t count = 0;
+    while (count < ECS_QUERY_RELATION_CAPACITY && desc.relations[count].id)
+        ++count;
+    return count;
+}
+
 } // namespace detail
 
 /** Move-only RAII owner of a persistent query id. */
@@ -3910,10 +4035,12 @@ class query_handle {
     ecs_query_desc_t _base_desc{};
     uint16_t _base_component_index = UINT16_MAX;
     uint16_t _base_resource_index = UINT16_MAX;
+    uint16_t _base_relation_index = UINT16_MAX;
     uint64_t _signature = 0;
 
     static uint64_t
-    signature(const ecs_query_desc_t &desc, uint16_t component_count, uint16_t resource_count) {
+    signature(const ecs_query_desc_t &desc, uint16_t component_count, uint16_t resource_count,
+              uint16_t relation_count) {
         uint64_t value = component_count;
         for (uint16_t i = 0; i < component_count; i++)
             value = (value * 1099511628211ULL) ^ desc.components[i].id ^
@@ -3922,6 +4049,13 @@ class query_handle {
         for (uint16_t i = 0; i < resource_count; i++)
             value = (value * 1099511628211ULL) ^ desc.resources[i].id ^
                     ((uint64_t)desc.resources[i].access << 16);
+        value = (value * 1099511628211ULL) ^ relation_count;
+        for (uint16_t i = 0; i < relation_count; ++i) {
+            const auto &r = desc.relations[i];
+            value = (value * 1099511628211ULL) ^ r.id;
+            value = (value * 1099511628211ULL) ^ r.kind;
+            value = (value * 1099511628211ULL) ^ r.target;
+        }
         return value;
     }
 
@@ -3930,11 +4064,15 @@ class query_handle {
     explicit query_handle(ecs_query_id_t id) noexcept : _id(id) {}
     /** Build and own a query from its descriptor and term count. */
     query_handle(const ecs_query_desc_t &desc, uint16_t component_index)
-        : query_handle(desc, component_index, detail::query_resource_count(desc)) {}
+        : query_handle(desc, component_index, detail::query_resource_count(desc),
+                       detail::query_relation_count(desc)) {}
     query_handle(const ecs_query_desc_t &desc, uint16_t component_index, uint16_t resource_index)
+        : query_handle(desc, component_index, resource_index, detail::query_relation_count(desc)) {}
+    query_handle(const ecs_query_desc_t &desc, uint16_t component_index, uint16_t resource_index,
+                 uint16_t relation_index)
         : _id(ecs_query_init(&desc)), _base_desc(desc), _base_component_index(component_index),
-          _base_resource_index(resource_index),
-          _signature(signature(desc, component_index, resource_index)) {}
+          _base_resource_index(resource_index), _base_relation_index(relation_index),
+          _signature(signature(desc, component_index, resource_index, relation_index)) {}
     /** Destroy the owned query, if any. */
     ~query_handle() {
         if (_id != 0)
@@ -3955,6 +4093,7 @@ class query_handle {
             std::swap(_base_desc, other._base_desc);
             std::swap(_base_component_index, other._base_component_index);
             std::swap(_base_resource_index, other._base_resource_index);
+            std::swap(_base_relation_index, other._base_relation_index);
             std::swap(_signature, other._signature);
         }
         return *this;
@@ -3972,8 +4111,9 @@ class query_handle {
             ecs_query_desc_t desc = _base_desc;
             uint16_t component_index = _base_component_index;
             uint16_t resource_index = _base_resource_index;
-            detail::append_callback_terms<args>(desc, component_index, resource_index);
-            uint64_t next_signature = signature(desc, component_index, resource_index);
+            uint16_t relation_index = _base_relation_index;
+            detail::append_callback_terms<args>(desc, component_index, resource_index, relation_index);
+            uint64_t next_signature = signature(desc, component_index, resource_index, relation_index);
             if (next_signature != _signature) {
                 if (_id != 0)
                     ecs_query_fini(_id);
@@ -4000,6 +4140,7 @@ class query {
 
     template <typename Relation>
     query &relation(ecs_entity_t target, ecs_query_relation_kind_t kind) {
+        assert(relation_index < ECS_QUERY_RELATION_CAPACITY && "too many query relation terms");
         desc.relations[relation_index++] = {
             .target = target,
             .id = detail::ecs_cpp_relation_id<Relation>(),
@@ -4031,6 +4172,17 @@ class query {
 
     template <typename Relation> query &with_relation() {
         return relation<Relation>(0, EcsRelationRequired);
+    }
+
+    template <typename Relation> query &where() { return with_relation<Relation>(); }
+    template <typename Relation> query &where(ecs_entity_t target) { return to<Relation>(target); }
+    template <typename Relation> query &where(entity target) { return to<Relation>(target); }
+    template <typename Relation> query &at_depth(uint32_t value) { return depth<Relation>(value); }
+    template <typename Relation> query &optional_relation() {
+        return relation<Relation>(0, EcsRelationOptional);
+    }
+    template <typename Relation> query &exclude_relation() {
+        return relation<Relation>(0, EcsRelationExcluded);
     }
 
     template <typename Relation> query &to(ecs_entity_t target) {
@@ -4068,7 +4220,7 @@ class query {
     ecs_query_id_t build() { return ecs_query_init(&desc); }
 
     /** Build a move-only RAII query handle. */
-    query_handle build_handle() { return query_handle(desc, component_index, resource_index); }
+    query_handle build_handle() { return query_handle(desc, component_index, resource_index, relation_index); }
 
     /** Build, iterate, and destroy a temporary query around `func`. */
     template <typename F> void each(F &&func) {
@@ -4076,7 +4228,9 @@ class query {
         ecs_query_desc_t typed = desc;
         uint16_t typed_component_index = component_index;
         uint16_t typed_resource_index = resource_index;
-        detail::append_callback_terms<args>(typed, typed_component_index, typed_resource_index);
+        uint16_t typed_relation_index = relation_index;
+        detail::append_callback_terms<args>(typed, typed_component_index, typed_resource_index,
+                                            typed_relation_index);
         ecs_query_id_t qid = ecs_query_init(&typed);
         detail::each_query(qid, std::forward<F>(func));
         ecs_query_fini(qid);
@@ -4250,7 +4404,8 @@ template <typename T> class observer : public query {
             "lifecycle observers must read at least one component"
         );
 
-        ecs::detail::append_callback_terms<args>(this->desc, component_index, resource_index);
+        ecs::detail::append_callback_terms<args>(this->desc, component_index, resource_index,
+                                                 relation_index);
 
         ecs_observer_desc_t observer_desc = {
             .on = detail::ecs_cpp_event_id<T>(),
@@ -4316,7 +4471,8 @@ namespace detail {
 template <typename Callback, typename Args> static void system_callback(ecs_iter_t *it) {
     Callback &callback = *reinterpret_cast<Callback *>(it->user_data);
     auto resources = make_resources<Args>();
-    if constexpr (component_arg_count<Args>() == 0 && !has_entity_arg<Args>()) {
+    if constexpr (component_arg_count<Args>() == 0 && !has_entity_arg<Args>() &&
+                  !has_target_arg<Args>()) {
         std::apply(callback, resources);
     } else {
         run_batch<Callback, Args>(callback, it, resources);
@@ -4425,7 +4581,7 @@ class system : protected query {
     template <typename F> ecs_system_id_t each(F &&func) {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
-        detail::append_callback_terms<args>(desc, component_index, resource_index);
+        detail::append_callback_terms<args>(desc, component_index, resource_index, relation_index);
         callback *state = new callback(std::forward<F>(func));
 
         _system.query = this->desc;
@@ -4459,15 +4615,12 @@ inline bool save(const std::string &path) { return ecs_save(path.c_str()); }
 /* Load a world from a file; returns false on failure. */
 inline bool load(const std::string &path) { return ecs_load(path.c_str()); }
 
-struct ChildOf {};
-
 /** Synchronize builtin component ids after the C world is initialized. */
 inline void init_cpp_state() {
     detail::typed_id<Disabled, detail::id_kind::component> = ecs_id(Disabled);
     detail::typed_id<Name, detail::id_kind::component> = ecs_id(Name);
 
     detail::typed_id<Abstract, detail::id_kind::component> = ecs_id(Abstract);
-    detail::typed_id<ChildOf, detail::id_kind::relation> = ecs_rid(ChildOf);
 }
 /** Initialize the process-wide active ECS world and C++ builtin ids. */
 inline void init() {

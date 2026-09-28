@@ -6,6 +6,9 @@
 
 namespace ecs {
 
+struct IsA;
+struct ChildOf;
+
 namespace detail {
 
 class defer_scope {
@@ -198,22 +201,15 @@ class entity {
     }
 
     /** Add or retarget IsA; a new target recursively snapshots its owned ChildOf subtree. */
-    entity is_a(entity target) {
-        ecs_relate_id(_entity, ecs_rid(IsA), target.id());
-        return *this;
-    }
+    entity is_a(entity target);
 
     /** Add IsA to the singleton for `T` with the same ChildOf snapshot semantics. */
     template <typename T> entity is_a() {
-        ecs_relate_id(_entity, ecs_rid(IsA), ecs::entity::create<T>());
-        return *this;
+        return is_a(ecs::entity::create<T>());
     }
 
     /** C-compatible IsA overload with the same ChildOf snapshot semantics. */
-    entity is_a(ecs_entity_t target) {
-        ecs_relate_id(_entity, ecs_rid(IsA), target);
-        return *this;
-    }
+    entity is_a(ecs_entity_t target) { return is_a(entity::from(target)); }
 
     /** Test whether this entity is or inherits from the singleton `T`. */
     template <typename T> bool is() { return ecs_is(_entity, ecs::entity::typed<T>()); }
@@ -222,10 +218,7 @@ class entity {
     [[nodiscard]] bool is(entity target) const { return ecs_is(_entity, target._entity); }
 
     /** Set the builtin `ChildOf` relation to `parent`. */
-    entity child_of(entity parent) {
-        ecs_relate_id(_entity, ecs_rid(ChildOf), parent.id());
-        return *this;
-    }
+    entity child_of(entity parent);
 
     template <typename Relation> entity relate(entity target) {
         ecs_relate_id(_entity, detail::ecs_cpp_relation_id<Relation>(), target.id());
@@ -277,3 +270,5 @@ class entity {
 };
 
 } // namespace ecs
+
+#include "siecs/cpp/relation.hpp"

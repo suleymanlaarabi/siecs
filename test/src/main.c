@@ -97,6 +97,7 @@ void rest_reflection_reflected_schema_graph_and_roles(void);
 void rest_reflection_reflected_patch_and_resources(void);
 
 // Testsuite 'childof'
+void childof_relation_batch_views(void);
 void childof_is_a_and_child_of_same_target_queries(void);
 void childof_kill_parent(void);
 void childof_with_relation_adds_default_relation(void);
@@ -565,6 +566,10 @@ bake_test_case rest_reflection_testcases[] = {
 };
 
 bake_test_case childof_testcases[] = {
+    {
+        "relation_batch_views",
+        childof_relation_batch_views
+    },
     {
         "is_a_and_child_of_same_target_queries",
         childof_is_a_and_child_of_same_target_queries
@@ -1198,7 +1203,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        47,
+        48,
         childof_testcases
     },
     {

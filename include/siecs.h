@@ -758,6 +758,14 @@ typedef struct {
     uint32_t source_index;
 } ecs_relation_target_t;
 
+/* Target view for one query batch. Dense and ByDepth use targets per row;
+ * ByTarget and virtual relations use shared_target. */
+typedef struct {
+    const ecs_relation_target_t *targets;
+    ecs_entity_t shared_target;
+    bool shared;
+} ecs_relation_batch_t;
+
 typedef enum { EcsRemoveRelation, EcsDeleteSources } ecs_delete_target_t;
 
 typedef struct {
@@ -1513,6 +1521,8 @@ ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation);
 /* Return the shared relation target for a ByTarget batch. */
 SIECS_API ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relation);
 #define ecs_target_shared(it, relation) ecs_target_shared_id(it, ecs_rid(relation))
+SIECS_API ecs_relation_batch_t ecs_relation_batch_id(const ecs_iter_t *it, ecs_relation_id_t relation);
+#define ecs_relation_batch(it, relation) ecs_relation_batch_id(it, ecs_rid(relation))
 
 /*
  * Return the component array for a read term in the current iterator batch.
