@@ -63,7 +63,3 @@ class system_param_query {
 };
 
 } // namespace ecs
-
-#ifndef SIECS_NO_CPP
-#include "siecs/cpp.hpp"
-#endif

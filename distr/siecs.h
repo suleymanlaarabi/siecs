@@ -3038,9 +3038,6 @@ class system_param_query {
 
 } // namespace ecs
 
-#ifndef SIECS_NO_CPP
-#endif
-
 #include <cassert>
 #include <cstring>
 #include <string>
