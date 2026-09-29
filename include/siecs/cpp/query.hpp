@@ -3,8 +3,8 @@
 #include "siecs/cpp/c_api.hpp"
 #include "siecs/cpp/component.hpp"
 #include "siecs/cpp/entity.hpp"
-#include "siecs/cpp/relation.hpp"
 #include "siecs/cpp/function_traits.hpp"
+#include "siecs/cpp/relation.hpp"
 #include "siecs/cpp/resource.hpp"
 #include "siecs/cpp/system_param.hpp"
 #include <cassert>
@@ -38,7 +38,9 @@ template <typename T> class optional {
             _step = std::is_const_v<T> && ecs_field_is_shared(it, _field) ? 0 : 1;
         } else {
             _column = static_cast<T *>(ecs_try_get_cid(
-                it->entities[0], detail::ecs_cpp_component_id<std::remove_cv_t<T>>()));
+                it->entities[0],
+                detail::ecs_cpp_component_id<std::remove_cv_t<T>>()
+            ));
             _step = 0;
         }
     }
@@ -62,21 +64,25 @@ struct no_param {};
 struct no_cursor {};
 
 template <typename T>
-concept system_param_field = SystemParam<T> &&
-    requires(system_param_t<T> &value, uint16_t index) { value.field(index); };
+concept system_param_field =
+    SystemParam<T> && requires(system_param_t<T> &value, uint16_t index) { value.field(index); };
 
 template <typename T>
 inline constexpr bool callback_arg_has_field = !SystemParam<T> || system_param_field<T>;
 
 template <typename Args, std::size_t I> consteval std::size_t field_index_before() {
     return []<std::size_t... Is>(std::index_sequence<Is...>) {
-        return (static_cast<std::size_t>(callback_arg_has_field<std::tuple_element_t<Is, Args>>) + ... + 0U);
+        return (
+            static_cast<std::size_t>(callback_arg_has_field<std::tuple_element_t<Is, Args>>) + ... +
+            0U
+        );
     }(std::make_index_sequence<I>{});
 }
 
-template <typename T> inline constexpr bool callback_arg_requires_row =
-    !SystemParam<T> || IsSystemParamRow<T>;
-template <typename T> inline constexpr bool callback_arg_requires_table =
+template <typename T>
+inline constexpr bool callback_arg_requires_row = !SystemParam<T> || IsSystemParamRow<T>;
+template <typename T>
+inline constexpr bool callback_arg_requires_table =
     !SystemParam<T> || IsSystemParamTable<T> || IsSystemParamRow<T>;
 
 template <typename Args, std::size_t... Is>
@@ -96,23 +102,24 @@ template <typename T> auto init_system_param() {
         return no_param{};
 }
 
-template <typename Args, std::size_t... Is>
-auto init_system_params(std::index_sequence<Is...>) {
-    return std::tuple{init_system_param<std::tuple_element_t<Is, Args>>()...};
+template <typename Args, std::size_t... Is> auto init_system_params(std::index_sequence<Is...>) {
+    return std::tuple{ init_system_param<std::tuple_element_t<Is, Args>>()... };
 }
 
 template <typename T> inline void prepare_world(T &value, ecs_world_t *world) noexcept {
-    if constexpr (IsSystemParamWorld<T>) value.world(world);
+    if constexpr (IsSystemParamWorld<T>)
+        value.world(world);
 }
 template <typename T> inline void prepare_table(T &value, ecs_iter_t *it) noexcept {
-    if constexpr (IsSystemParamTable<T>) value.table(it);
+    if constexpr (IsSystemParamTable<T>)
+        value.table(it);
 }
 template <typename T> inline void prepare_row(T &value, ecs_iter_t *it, uint32_t row) noexcept {
-    if constexpr (IsSystemParamRow<T>) value.row(it, row);
+    if constexpr (IsSystemParamRow<T>)
+        value.row(it, row);
 }
 
-template <typename Args, std::size_t I, typename T>
-inline void prepare_field(T &value) noexcept {
+template <typename Args, std::size_t I, typename T> inline void prepare_field(T &value) noexcept {
     if constexpr (system_param_field<T>)
         value.field(static_cast<uint16_t>(field_index_before<Args, I>()));
 }
@@ -122,8 +129,7 @@ template <typename T> struct field_cursor {
     std::ptrdiff_t step;
 };
 
-template <typename Args, std::size_t I>
-inline auto make_cursor(ecs_iter_t *it, bool &has_shared) {
+template <typename Args, std::size_t I> inline auto make_cursor(ecs_iter_t *it, bool &has_shared) {
     using arg = std::tuple_element_t<I, Args>;
     if constexpr (SystemParam<arg>) {
         return no_cursor{};
@@ -136,13 +142,13 @@ inline auto make_cursor(ecs_iter_t *it, bool &has_shared) {
             shared = ecs_field_is_shared(it, field);
             has_shared |= shared;
         }
-        return field_cursor<value_type>{value, static_cast<std::ptrdiff_t>(shared ? 0 : 1)};
+        return field_cursor<value_type>{ value, static_cast<std::ptrdiff_t>(shared ? 0 : 1) };
     }
 }
 
 template <typename Args, std::size_t... Is>
 inline auto make_cursors(ecs_iter_t *it, bool &has_shared, std::index_sequence<Is...>) {
-    return std::tuple{make_cursor<Args, Is>(it, has_shared)...};
+    return std::tuple{ make_cursor<Args, Is>(it, has_shared)... };
 }
 
 template <typename Arg, typename Param, typename Cursor>
@@ -154,10 +160,16 @@ inline decltype(auto) callback_arg(Param &param, Cursor &cursor, uint32_t row) n
 }
 
 template <typename Args, typename F, typename Params, typename Cursors, std::size_t... Is>
-inline void invoke_row(F &func, Params &params, Cursors &cursors, uint32_t row,
-                       std::index_sequence<Is...>) {
-    std::invoke(func, callback_arg<std::tuple_element_t<Is, Args>>(
-                          std::get<Is>(params), std::get<Is>(cursors), row)...);
+inline void
+invoke_row(F &func, Params &params, Cursors &cursors, uint32_t row, std::index_sequence<Is...>) {
+    std::invoke(
+        func,
+        callback_arg<std::tuple_element_t<Is, Args>>(
+            std::get<Is>(params),
+            std::get<Is>(cursors),
+            row
+        )...
+    );
 }
 
 template <typename Args, typename F, typename Params, std::size_t... Is>
@@ -194,7 +206,8 @@ template <typename F> inline void each_query(ecs_query_id_t qid, F &&func) {
     }(indices);
     std::apply([&](auto &...param) { (prepare_world(param, ecs_world_current()), ...); }, params);
     ecs_iter_t it = ecs_query_iter(qid);
-    while (ecs_iter_next(&it)) run_batch<args>(state, &it, params);
+    while (ecs_iter_next(&it))
+        run_batch<args>(state, &it, params);
 }
 
 template <typename T> consteval ecs_access_t term_access() {
@@ -266,9 +279,8 @@ inline void append_resource_term(
     desc.resources[resource_index++] = { .id = id, .access = static_cast<uint32_t>(access) };
 }
 
-inline ecs_query_relation_term_t *find_relation_term(
-    ecs_query_desc_t &desc, uint16_t relation_count, ecs_relation_id_t id
-) {
+inline ecs_query_relation_term_t *
+find_relation_term(ecs_query_desc_t &desc, uint16_t relation_count, ecs_relation_id_t id) {
     for (uint16_t i = 0; i < relation_count; ++i)
         if (desc.relations[i].id == id)
             return &desc.relations[i];
@@ -279,10 +291,14 @@ template <typename R>
 inline void ensure_required_relation(ecs_query_desc_t &desc, uint16_t &relation_index) {
     const ecs_relation_id_t id = ecs_cpp_relation_id<R>();
     if (auto *existing = find_relation_term(desc, relation_index, id)) {
-        assert(existing->kind != EcsRelationExcluded &&
-               "ecs::target<R> requires relation R, but the query explicitly excludes it");
-        assert(existing->kind != EcsRelationOptional &&
-               "ecs::target<R> requires relation R; use an optional target for optional relations");
+        assert(
+            existing->kind != EcsRelationExcluded &&
+            "ecs::target<R> requires relation R, but the query explicitly excludes it"
+        );
+        assert(
+            existing->kind != EcsRelationOptional &&
+            "ecs::target<R> requires relation R; use an optional target for optional relations"
+        );
         return;
     }
     assert(relation_index < ECS_QUERY_RELATION_CAPACITY && "too many query relation terms");
@@ -290,26 +306,42 @@ inline void ensure_required_relation(ecs_query_desc_t &desc, uint16_t &relation_
 }
 
 struct system_param_query_access {
-    static system_param_query make(ecs_query_desc_t &desc, uint16_t &component_index,
-                                   uint16_t &resource_index, uint16_t &relation_index) {
-        return {desc, component_index, resource_index, relation_index};
+    static system_param_query make(
+        ecs_query_desc_t &desc,
+        uint16_t &component_index,
+        uint16_t &resource_index,
+        uint16_t &relation_index
+    ) {
+        return { desc, component_index, resource_index, relation_index };
     }
 };
 
 template <typename Args, std::size_t I>
-inline void append_callback_term(ecs_query_desc_t &desc, uint16_t &component_index,
-                                 uint16_t &resource_index, uint16_t &relation_index) {
+inline void append_callback_term(
+    ecs_query_desc_t &desc,
+    uint16_t &component_index,
+    uint16_t &resource_index,
+    uint16_t &relation_index
+) {
     using T = std::tuple_element_t<I, Args>;
     if constexpr (SystemParam<T>) {
         static_assert(!std::is_reference_v<T>, "SystemParam arguments must be passed by value");
         if constexpr (HasSystemParamQuery<T>) {
-            auto query = system_param_query_access::make(desc, component_index,
-                                                          resource_index, relation_index);
+            auto query = system_param_query_access::make(
+                desc,
+                component_index,
+                resource_index,
+                relation_index
+            );
             system_param_t<T>::query(query);
         }
     } else {
         append_callback_component_term(
-            desc, component_index, ecs_cpp_component_id<std::remove_cvref_t<T>>(), term_access<T>());
+            desc,
+            component_index,
+            ecs_cpp_component_id<std::remove_cvref_t<T>>(),
+            term_access<T>()
+        );
     }
 }
 
@@ -326,7 +358,9 @@ inline void append_callback_terms_impl(
 
 template <typename Args>
 inline void append_callback_terms(
-    ecs_query_desc_t &desc, uint16_t &component_index, uint16_t &resource_index,
+    ecs_query_desc_t &desc,
+    uint16_t &component_index,
+    uint16_t &resource_index,
     uint16_t &relation_index
 ) {
     append_callback_terms_impl<Args>(
@@ -365,8 +399,11 @@ template <typename Relation> inline void system_param_query::require_relation() 
 }
 template <typename T> inline void system_param_query::optional_component() {
     detail::append_callback_component_term(
-        desc_, component_index_, detail::ecs_cpp_component_id<std::remove_cv_t<T>>(),
-        std::is_const_v<T> ? EcsInOptional : EcsInOutOptional);
+        desc_,
+        component_index_,
+        detail::ecs_cpp_component_id<std::remove_cv_t<T>>(),
+        std::is_const_v<T> ? EcsInOptional : EcsInOutOptional
+    );
 }
 
 /** Move-only RAII owner of a persistent query id. */
@@ -378,9 +415,12 @@ class query_handle {
     uint16_t _base_relation_index = UINT16_MAX;
     uint64_t _signature = 0;
 
-    static uint64_t
-    signature(const ecs_query_desc_t &desc, uint16_t component_count, uint16_t resource_count,
-              uint16_t relation_count) {
+    static uint64_t signature(
+        const ecs_query_desc_t &desc,
+        uint16_t component_count,
+        uint16_t resource_count,
+        uint16_t relation_count
+    ) {
         uint64_t value = component_count;
         for (uint16_t i = 0; i < component_count; i++)
             value = (value * 1099511628211ULL) ^ desc.components[i].id ^
@@ -404,12 +444,20 @@ class query_handle {
     explicit query_handle(ecs_query_id_t id) noexcept : _id(id) {}
     /** Build and own a query from its descriptor and term count. */
     query_handle(const ecs_query_desc_t &desc, uint16_t component_index)
-        : query_handle(desc, component_index, detail::query_resource_count(desc),
-                       detail::query_relation_count(desc)) {}
+        : query_handle(
+              desc,
+              component_index,
+              detail::query_resource_count(desc),
+              detail::query_relation_count(desc)
+          ) {}
     query_handle(const ecs_query_desc_t &desc, uint16_t component_index, uint16_t resource_index)
         : query_handle(desc, component_index, resource_index, detail::query_relation_count(desc)) {}
-    query_handle(const ecs_query_desc_t &desc, uint16_t component_index, uint16_t resource_index,
-                 uint16_t relation_index)
+    query_handle(
+        const ecs_query_desc_t &desc,
+        uint16_t component_index,
+        uint16_t resource_index,
+        uint16_t relation_index
+    )
         : _id(ecs_query_init(&desc)), _base_desc(desc), _base_component_index(component_index),
           _base_resource_index(resource_index), _base_relation_index(relation_index),
           _signature(signature(desc, component_index, resource_index, relation_index)) {}
@@ -452,8 +500,14 @@ class query_handle {
             uint16_t component_index = _base_component_index;
             uint16_t resource_index = _base_resource_index;
             uint16_t relation_index = _base_relation_index;
-            detail::append_callback_terms<args>(desc, component_index, resource_index, relation_index);
-            uint64_t next_signature = signature(desc, component_index, resource_index, relation_index);
+            detail::append_callback_terms<args>(
+                desc,
+                component_index,
+                resource_index,
+                relation_index
+            );
+            uint64_t next_signature =
+                signature(desc, component_index, resource_index, relation_index);
             if (next_signature != _signature) {
                 if (_id != 0)
                     ecs_query_fini(_id);
@@ -517,7 +571,7 @@ class query {
     template <typename Relation> query &where() { return with_relation<Relation>(); }
     template <typename Relation> query &where(ecs_entity_t target) { return to<Relation>(target); }
     template <typename Relation> query &where(entity target) { return to<Relation>(target); }
-    template <typename Relation> query &at_depth(uint32_t value) { return depth<Relation>(value); }
+
     template <typename Relation> query &optional_relation() {
         return relation<Relation>(0, EcsRelationOptional);
     }
@@ -560,7 +614,9 @@ class query {
     ecs_query_id_t build() { return ecs_query_init(&desc); }
 
     /** Build a move-only RAII query handle. */
-    query_handle build_handle() { return query_handle(desc, component_index, resource_index, relation_index); }
+    query_handle build_handle() {
+        return query_handle(desc, component_index, resource_index, relation_index);
+    }
 
     /** Build, iterate, and destroy a temporary query around `func`. */
     template <typename F> void each(F &&func) {
@@ -569,8 +625,12 @@ class query {
         uint16_t typed_component_index = component_index;
         uint16_t typed_resource_index = resource_index;
         uint16_t typed_relation_index = relation_index;
-        detail::append_callback_terms<args>(typed, typed_component_index, typed_resource_index,
-                                            typed_relation_index);
+        detail::append_callback_terms<args>(
+            typed,
+            typed_component_index,
+            typed_resource_index,
+            typed_relation_index
+        );
         ecs_query_id_t qid = ecs_query_init(&typed);
         detail::each_query(qid, std::forward<F>(func));
         ecs_query_fini(qid);
