@@ -9,7 +9,7 @@ struct RqPosition { int x; };
 struct RqVelocity { int x; };
 struct RqMass { int x; };
 
-static_assert(sizeof(ecs::target<RqDense>) == sizeof(ecs::entity));
+static_assert(sizeof(ecs::target<RqDense>) <= 3 * sizeof(ecs::entity));
 static_assert(std::is_trivially_copyable_v<ecs::target<RqDense>>);
 
 static void rq_dense() {

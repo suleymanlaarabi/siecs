@@ -2356,6 +2356,7 @@ static inline void sireflect_register_builtin_types(void) {
     add_type(f32, sireflect_kind_f32);
     add_type(f64, sireflect_kind_f64);
     add_type(bool, sireflect_kind_bool);
+    add_named_type(bool, "_Bool", sireflect_kind_bool);
     add_type(char, sireflect_kind_char);
     add_type(ptr, sireflect_kind_ptr);
 
@@ -5849,6 +5850,7 @@ typedef struct {
     double interval_elapsed;
     float prepared_delta_time;
     bool iterates_query;
+    bool callback_iterates_query;
     ecs_system_id_t next_module;
     bool enabled;
     bool main_thread_only;
@@ -11026,8 +11028,10 @@ static void ecs_system_run_with_delta(ecs_system_t *sys, float delta_time) {
         it.user_data = sys->user_data;
         it.delta_time = delta_time;
 
-        while (ecs_iter_next(&it)) {
+        if (sys->callback_iterates_query) {
             sys->callback(&it);
+        } else {
+            while (ecs_iter_next(&it)) sys->callback(&it);
         }
     } else {
         ecs_iter_t it = {
@@ -11907,6 +11911,7 @@ void ecs_worker_pool_flush(ecs_worker_pool_t *pool) {
 void ecs_scene_type_cache_fini(void);
 
 ecs_world_t ecs_world;
+ecs_world_t *ecs_world_current(void) { return &ecs_world; }
 ecs_entity_index_t entity_index;
 #ifndef NDEBUG
 static bool ecs_world_started;
@@ -12711,6 +12716,7 @@ ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query_id_t qid, bool 
         .name = desc->name,
         .qid = qid,
         .iterates_query = iterates_query,
+        .callback_iterates_query = desc->callback_iterates_query,
         .callback = desc->callback,
         .user_data = desc->user_data,
         .user_data_dtor = desc->user_data_dtor,

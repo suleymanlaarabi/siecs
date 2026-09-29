@@ -1,6 +1,7 @@
 #pragma once
 #include "siecs/cpp/component.hpp"
 #include "siecs/cpp/type.hpp"
+#include "siecs/cpp/system_param.hpp"
 #include <cassert>
 #include <string>
 #include <tuple>
@@ -56,8 +57,18 @@ template <typename T> class res {
     T *_ptr = nullptr;
 
   public:
+    res() noexcept = default;
     /** Construct from callback-owned storage; `ptr` must not be null. */
     explicit res(T *ptr) noexcept : _ptr(ptr) { assert(ptr != nullptr); }
+
+    static res init() noexcept { return {}; }
+    static void query(system_param_query &query) {
+        if constexpr (std::is_const_v<T>)
+            query.read_resource<std::remove_const_t<T>>();
+        else
+            query.write_resource<T>();
+    }
+    void world(ecs_world_t *world) noexcept;
 
     /** Access the borrowed resource member. */
     [[nodiscard]] T *operator->() const noexcept { return _ptr; }
@@ -71,22 +82,6 @@ namespace detail {
 
 template <typename T>
 concept c_declared_resource = c_resource_traits<std::remove_cv_t<T>>::value;
-
-template <typename T> struct is_res : std::false_type {};
-template <typename T> struct is_res<ecs::res<T>> : std::true_type {};
-
-template <typename T> inline constexpr bool is_res_v = is_res<std::remove_cvref_t<T>>::value;
-
-template <typename T> struct res_value;
-template <typename T> struct res_value<ecs::res<T>> {
-    using type = T;
-};
-
-template <typename T> using res_value_t = typename res_value<std::remove_cvref_t<T>>::type;
-
-template <typename T> using resource_value_t = std::remove_cv_t<res_value_t<T>>;
-
-struct no_resource {};
 
 template <typename T> struct resource_hook_state {
     static inline resource_hooks<T> hooks{};
@@ -155,29 +150,9 @@ template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {
     return detail::typed_id<type, detail::id_kind::resource>;
 }
 
-namespace detail {
-
-template <typename Arg> inline auto make_resource_arg() {
-    if constexpr (is_res_v<Arg>) {
-        using value_type = res_value_t<Arg>;
-        using resource_type = std::remove_cv_t<value_type>;
-
-        ecs_resource_t id = ecs_cpp_resource_id<resource_type>();
-        return ecs::res<value_type>(static_cast<value_type *>(ecs_resource_rid(id)));
-    } else {
-        return no_resource{};
-    }
+template <typename T> void res<T>::world(ecs_world_t *world) noexcept {
+    (void)world;
+    _ptr = static_cast<T *>(ecs_resource_rid(ecs_cpp_resource_id<std::remove_cv_t<T>>()));
 }
-
-template <typename Args, std::size_t... Is> inline auto make_resources(std::index_sequence<Is...>) {
-    return std::tuple{ make_resource_arg<std::tuple_element_t<Is, Args>>()... };
-}
-
-template <typename Args> inline auto make_resources() {
-    constexpr std::size_t N = std::tuple_size_v<Args>;
-    return make_resources<Args>(std::make_index_sequence<N>{});
-}
-
-} // namespace detail
 
 } // namespace ecs

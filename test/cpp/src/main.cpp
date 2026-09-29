@@ -8,6 +8,12 @@
 
 #include <test.h>
 
+// Testsuite 'system_param'
+void system_param_custom_query_phases(void);
+void system_param_custom_system_phases(void);
+void system_param_resource_and_component(void);
+void system_param_custom_observer(void);
+
 // Testsuite 'relation_query'
 void relation_query_target_dense_is_inferred(void);
 void relation_query_target_bydepth_is_inferred(void);
@@ -102,6 +108,25 @@ void traffic_long_run_relation_integrity(void);
 // Testsuite 'module_state'
 void module_state_lookup_empty(void);
 void module_state_enable(void);
+
+bake_test_case system_param_testcases[] = {
+    {
+        "custom_query_phases",
+        system_param_custom_query_phases
+    },
+    {
+        "custom_system_phases",
+        system_param_custom_system_phases
+    },
+    {
+        "resource_and_component",
+        system_param_resource_and_component
+    },
+    {
+        "custom_observer",
+        system_param_custom_observer
+    }
+};
 
 bake_test_case relation_query_testcases[] = {
     {
@@ -441,6 +466,13 @@ bake_test_case module_state_testcases[] = {
 
 static bake_test_suite suites[] = {
     {
+        "system_param",
+        NULL,
+        NULL,
+        4,
+        system_param_testcases
+    },
+    {
         "relation_query",
         NULL,
         NULL,
@@ -506,5 +538,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.cpp.test", argc, argv, suites, 9);
+    return bake_test_run("siecs.cpp.test", argc, argv, suites, 10);
 }

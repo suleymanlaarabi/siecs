@@ -488,6 +488,9 @@ typedef struct {
 #define ecs_order_by_depth(name) ecs_order_by_depth_id(ecs_rid(name))
 
 /* Create an ECS world. */
+typedef struct ecs_world_s ecs_world_t;
+/* Opaque handle to the active world for C++ SystemParam hooks. */
+SIECS_API ecs_world_t *ecs_world_current(void);
 SIECS_API void ecs_init(void);
 
 /* World feature descriptor. */
@@ -1617,6 +1620,8 @@ typedef struct {
     bool disabled;
     bool main_thread_only;
     bool no_defer;
+    /* Callback consumes the query iterator itself instead of one batch at a time. */
+    bool callback_iterates_query;
     double interval;
 } ecs_system_desc_t;
 

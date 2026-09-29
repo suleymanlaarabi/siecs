@@ -25,11 +25,14 @@ struct OnRelationRemove {};
 
 /** Typed, callback-lifetime view of an observer event. */
 class observer_event {
-    ecs_observer_event_t *_event;
+    ecs_observer_event_t *_event = nullptr;
 
   public:
+    observer_event() noexcept = default;
     /** Wrap a non-null C event payload; the wrapper does not own it. */
     explicit observer_event(ecs_observer_event_t *event) noexcept : _event(event) {}
+    static observer_event init() noexcept { return {}; }
+    void event(ecs_observer_event_t *value) noexcept { _event = value; }
 
     /** Return the entity that emitted the event. */
     [[nodiscard]] entity target() const noexcept { return entity::from(_event->entity); }
@@ -50,8 +53,6 @@ class observer_event {
 };
 
 namespace detail {
-
-template <> struct is_observer_event<ecs::observer_event> : std::true_type {};
 
 template <typename T> inline constexpr ecs_event_t builtin_event = UINT16_MAX;
 template <> inline constexpr ecs_event_t builtin_event<OnAdd> = EcsOnAdd;
@@ -81,16 +82,15 @@ template <typename T> static ecs_event_t ecs_cpp_event_id() {
     return custom_event<T>;
 }
 
-template <typename Args, std::size_t I, typename Resources>
-decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event, Resources &resources) {
+template <typename T>
+concept system_param_observer = SystemParam<T> &&
+    requires(system_param_t<T> &value, ecs_observer_event_t *event) { value.event(event); };
+
+template <typename Args, std::size_t I, typename Params>
+decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event, Params &params) {
     using arg = std::tuple_element_t<I, Args>;
-    if constexpr (is_res_v<arg>) {
-        (void)event;
-        return std::get<I>(resources);
-    } else if constexpr (is_observer_event_v<arg>) {
-        return observer_event(event);
-    } else if constexpr (is_entity_v<arg>) {
-        return entity::from(event->entity);
+    if constexpr (SystemParam<arg>) {
+        return system_param_t<arg>(std::get<I>(params));
     } else {
         using raw = std::remove_cvref_t<arg>;
         void *ptr = ecs_get_cid(event->entity, ecs_cpp_component_id<raw>());
@@ -104,10 +104,24 @@ decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event, Resources &reso
 template <typename Func, typename Args>
 void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
     Func func{};
-    auto resources = make_resources<Args>();
+    constexpr auto indices = std::make_index_sequence<std::tuple_size_v<Args>>{};
+    auto params = init_system_params<Args>(indices);
     [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-        std::invoke(func, ecs_cpp_observer_arg<Args, Is>(event, resources)...);
-    }(std::make_index_sequence<std::tuple_size_v<Args>>{});
+        (prepare_field<Args, Is>(std::get<Is>(params)), ...);
+    }(indices);
+    std::apply([&](auto &...param) { (prepare_world(param, ecs_world_current()), ...); }, params);
+    ecs_entity_t entity_id = event->entity;
+    ecs_iter_t it{};
+    it.count = 1;
+    it.entities = &entity_id;
+    std::apply([&](auto &...param) { (prepare_table(param, &it), ...); }, params);
+    std::apply([&](auto &...param) { (prepare_row(param, &it, 0), ...); }, params);
+    std::apply([&](auto &...param) {
+        (([&] { if constexpr (system_param_observer<decltype(param)>) param.event(event); }()), ...);
+    }, params);
+    [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        std::invoke(func, ecs_cpp_observer_arg<Args, Is>(event, params)...);
+    }(indices);
 }
 
 } // namespace detail
@@ -149,7 +163,8 @@ template <typename T> class observer : public query {
         using traits = function_traits<callback>;
         using args = typename traits::args_tuple;
         static_assert(
-            detail::component_arg_count<args>() > 0 || detail::builtin_event<T> == UINT16_MAX ||
+            detail::field_index_before<args, std::tuple_size_v<args>>() > 0 ||
+                detail::builtin_event<T> == UINT16_MAX ||
                 std::is_same_v<T, OnRelationSet> || std::is_same_v<T, OnRelationRemove>,
             "lifecycle observers must read at least one component"
         );

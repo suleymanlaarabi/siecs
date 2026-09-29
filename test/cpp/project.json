@@ -14,6 +14,15 @@
   "test": {
     "testsuites": [
       {
+        "id": "system_param",
+        "testcases": [
+          "custom_query_phases",
+          "custom_system_phases",
+          "resource_and_component",
+          "custom_observer"
+        ]
+      },
+      {
         "id": "relation_query",
         "testcases": [
           "target_dense_is_inferred",
