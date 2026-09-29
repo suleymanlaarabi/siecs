@@ -15,6 +15,7 @@ typedef struct {
     double interval_elapsed;
     float prepared_delta_time;
     bool iterates_query;
+    bool callback_iterates_query;
     ecs_system_id_t next_module;
     bool enabled;
     bool main_thread_only;

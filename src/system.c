@@ -63,8 +63,10 @@ static void ecs_system_run_with_delta(ecs_system_t *sys, float delta_time) {
         it.user_data = sys->user_data;
         it.delta_time = delta_time;
 
-        while (ecs_iter_next(&it)) {
+        if (sys->callback_iterates_query) {
             sys->callback(&it);
+        } else {
+            while (ecs_iter_next(&it)) sys->callback(&it);
         }
     } else {
         ecs_iter_t it = {

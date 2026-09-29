@@ -112,6 +112,7 @@ ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query_id_t qid, bool 
         .name = desc->name,
         .qid = qid,
         .iterates_query = iterates_query,
+        .callback_iterates_query = desc->callback_iterates_query,
         .callback = desc->callback,
         .user_data = desc->user_data,
         .user_data_dtor = desc->user_data_dtor,

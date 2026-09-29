@@ -12,6 +12,7 @@
 void ecs_scene_type_cache_fini(void);
 
 ecs_world_t ecs_world;
+ecs_world_t *ecs_world_current(void) { return &ecs_world; }
 ecs_entity_index_t entity_index;
 #ifndef NDEBUG
 static bool ecs_world_started;

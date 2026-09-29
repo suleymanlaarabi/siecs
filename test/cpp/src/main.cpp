@@ -8,16 +8,20 @@
 
 #include <test.h>
 
+// Testsuite 'system_param'
+void system_param_custom_query_phases(void);
+void system_param_custom_system_phases(void);
+void system_param_resource_and_component(void);
+void system_param_custom_observer(void);
+
 // Testsuite 'relation_query'
 void relation_query_target_dense_is_inferred(void);
-void relation_query_target_bydepth_is_inferred(void);
 void relation_query_target_bytarget_is_inferred(void);
 void relation_query_target_isa_is_inferred(void);
 void relation_query_target_childof_is_inferred(void);
 void relation_query_target_does_not_shift_component_fields(void);
 void relation_query_target_with_explicit_required_is_deduplicated(void);
 void relation_query_target_with_explicit_target_filter_is_deduplicated(void);
-void relation_query_target_with_explicit_depth_filter_is_deduplicated(void);
 void relation_query_target_query_handle_rebuilds_signature(void);
 void relation_query_target_system_infers_relation(void);
 
@@ -103,14 +107,29 @@ void traffic_long_run_relation_integrity(void);
 void module_state_lookup_empty(void);
 void module_state_enable(void);
 
+bake_test_case system_param_testcases[] = {
+    {
+        "custom_query_phases",
+        system_param_custom_query_phases
+    },
+    {
+        "custom_system_phases",
+        system_param_custom_system_phases
+    },
+    {
+        "resource_and_component",
+        system_param_resource_and_component
+    },
+    {
+        "custom_observer",
+        system_param_custom_observer
+    }
+};
+
 bake_test_case relation_query_testcases[] = {
     {
         "target_dense_is_inferred",
         relation_query_target_dense_is_inferred
-    },
-    {
-        "target_bydepth_is_inferred",
-        relation_query_target_bydepth_is_inferred
     },
     {
         "target_bytarget_is_inferred",
@@ -135,10 +154,6 @@ bake_test_case relation_query_testcases[] = {
     {
         "target_with_explicit_target_filter_is_deduplicated",
         relation_query_target_with_explicit_target_filter_is_deduplicated
-    },
-    {
-        "target_with_explicit_depth_filter_is_deduplicated",
-        relation_query_target_with_explicit_depth_filter_is_deduplicated
     },
     {
         "target_query_handle_rebuilds_signature",
@@ -441,10 +456,17 @@ bake_test_case module_state_testcases[] = {
 
 static bake_test_suite suites[] = {
     {
+        "system_param",
+        NULL,
+        NULL,
+        4,
+        system_param_testcases
+    },
+    {
         "relation_query",
         NULL,
         NULL,
-        11,
+        9,
         relation_query_testcases
     },
     {
@@ -506,5 +528,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.cpp.test", argc, argv, suites, 9);
+    return bake_test_run("siecs.cpp.test", argc, argv, suites, 10);
 }

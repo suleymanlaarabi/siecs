@@ -8,12 +8,16 @@ namespace detail {
 
 template <typename Callback, typename Args> static void system_callback(ecs_iter_t *it) {
     Callback &callback = *reinterpret_cast<Callback *>(it->user_data);
-    auto resources = make_resources<Args>();
-    if constexpr (component_arg_count<Args>() == 0 && !has_entity_arg<Args>() &&
-                  !has_target_arg<Args>()) {
-        std::apply(callback, resources);
+    constexpr auto indices = std::make_index_sequence<std::tuple_size_v<Args>>{};
+    auto params = init_system_params<Args>(indices);
+    [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        (prepare_field<Args, Is>(std::get<Is>(params)), ...);
+    }(indices);
+    std::apply([&](auto &...param) { (prepare_world(param, ecs_world_current()), ...); }, params);
+    if (it->cache) {
+        while (ecs_iter_next(it)) run_batch<Args>(callback, it, params);
     } else {
-        run_batch<Callback, Args>(callback, it, resources);
+        run_batch<Args>(callback, it, params);
     }
 }
 
@@ -124,6 +128,7 @@ class system : protected query {
 
         _system.query = this->desc;
         _system.callback = detail::system_callback<callback, args>;
+        _system.callback_iterates_query = true;
         _system.user_data = reinterpret_cast<uintptr_t>(state);
         _system.user_data_dtor = detail::system_callback_dtor<callback>;
         return ecs_system_init(&_system);

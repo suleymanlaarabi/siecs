@@ -1,5 +1,6 @@
 #pragma once
 #include "siecs/cpp/component.hpp"
+#include "siecs/cpp/system_param.hpp"
 #include <cassert>
 #include <cstring>
 #include <string>
@@ -48,6 +49,8 @@ class entity {
   public:
     /** Construct the null entity handle. */
     entity() noexcept = default;
+    static entity init() noexcept { return {}; }
+    void row(ecs_iter_t *it, uint32_t row) noexcept { _entity = it->entities[row]; }
 
     /** Wrap a raw id without validating it; use `is_alive()` to validate. */
     entity(ecs_entity_t entity) noexcept : _entity(entity) {}

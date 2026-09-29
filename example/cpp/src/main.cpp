@@ -3,6 +3,8 @@
 #include "siecs/cpp/resource.hpp"
 #include "siecs/cpp/system.hpp"
 #include "siecs_spatial.h"
+#include <concepts>
+#include <cstdint>
 #include <execution>
 #include <siecs/cpp/entity.hpp>
 #include <siecs/cpp/world.hpp>
@@ -102,6 +104,6 @@ int main() {
             Color{ 255, 220, 110 },
             Bloom{ 3.0f }
         );
-    
+
     ecs::run();
 }
