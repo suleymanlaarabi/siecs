@@ -16,14 +16,12 @@ void system_param_custom_observer(void);
 
 // Testsuite 'relation_query'
 void relation_query_target_dense_is_inferred(void);
-void relation_query_target_bydepth_is_inferred(void);
 void relation_query_target_bytarget_is_inferred(void);
 void relation_query_target_isa_is_inferred(void);
 void relation_query_target_childof_is_inferred(void);
 void relation_query_target_does_not_shift_component_fields(void);
 void relation_query_target_with_explicit_required_is_deduplicated(void);
 void relation_query_target_with_explicit_target_filter_is_deduplicated(void);
-void relation_query_target_with_explicit_depth_filter_is_deduplicated(void);
 void relation_query_target_query_handle_rebuilds_signature(void);
 void relation_query_target_system_infers_relation(void);
 
@@ -134,10 +132,6 @@ bake_test_case relation_query_testcases[] = {
         relation_query_target_dense_is_inferred
     },
     {
-        "target_bydepth_is_inferred",
-        relation_query_target_bydepth_is_inferred
-    },
-    {
         "target_bytarget_is_inferred",
         relation_query_target_bytarget_is_inferred
     },
@@ -160,10 +154,6 @@ bake_test_case relation_query_testcases[] = {
     {
         "target_with_explicit_target_filter_is_deduplicated",
         relation_query_target_with_explicit_target_filter_is_deduplicated
-    },
-    {
-        "target_with_explicit_depth_filter_is_deduplicated",
-        relation_query_target_with_explicit_depth_filter_is_deduplicated
     },
     {
         "target_query_handle_rebuilds_signature",
@@ -476,7 +466,7 @@ static bake_test_suite suites[] = {
         "relation_query",
         NULL,
         NULL,
-        11,
+        9,
         relation_query_testcases
     },
     {

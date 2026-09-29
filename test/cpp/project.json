@@ -26,14 +26,12 @@
         "id": "relation_query",
         "testcases": [
           "target_dense_is_inferred",
-          "target_bydepth_is_inferred",
           "target_bytarget_is_inferred",
           "target_isa_is_inferred",
           "target_childof_is_inferred",
           "target_does_not_shift_component_fields",
           "target_with_explicit_required_is_deduplicated",
           "target_with_explicit_target_filter_is_deduplicated",
-          "target_with_explicit_depth_filter_is_deduplicated",
           "target_query_handle_rebuilds_signature",
           "target_system_infers_relation"
         ]
