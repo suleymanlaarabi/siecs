@@ -2409,6 +2409,14 @@ typedef struct {
 SIECS_API ecs_event_t ecs_event(void);
 
 /*
+ * Return the process-wide id slot for `key`, created with `initial` on first
+ * use. Every binary of the process (executable, shared libraries, plugins)
+ * gets the same stable pointer, so typed C++ ids registered in one binary are
+ * visible from the others. Keys are copied; the slot lives until exit.
+ */
+SIECS_API uint16_t *ecs_type_slot(const char *key, uint16_t initial);
+
+/*
  * Register a process-wide typed event id in this world.
  *
  * If *id is UINT16_MAX, allocates a new custom event id and stores it in *id.
@@ -2755,8 +2763,24 @@ template <typename T> struct component_options {
 
 namespace detail {
 
-enum class id_kind : uint8_t { component, relation, resource };
-template <typename T, id_kind Kind> inline uint16_t typed_id = 0;
+enum class id_kind : uint8_t { component, relation, resource, event, module };
+
+/**
+ * Id storage shared by every binary of the process, keyed by kind and type
+ * name. A per-binary static would give a shared library and the executable
+ * different ids for the same type (e.g. an event triggered by a plugin and
+ * observed by the app).
+ */
+template <typename T> uint16_t &shared_id(id_kind kind, uint16_t initial) {
+    static constexpr const char *prefixes[] = { "component:", "relation:", "resource:", "event:", "module:" };
+    std::string key = std::string(prefixes[static_cast<uint8_t>(kind)]) + std::string(type_name<T>());
+    return *ecs_type_slot(key.c_str(), initial);
+}
+
+template <typename T, id_kind Kind> uint16_t &typed_id() {
+    static uint16_t &id = shared_id<T>(Kind, 0);
+    return id;
+}
 
 template <typename T>
 concept c_declared_component = c_component_traits<std::remove_cv_t<T>>::value;
@@ -2868,7 +2892,7 @@ static ecs_component_t ecs_cpp_component_id(
         return ecs_component_register(id, c_component_traits<type>::desc_storage());
     }
 
-    ecs_component_t &cid = typed_id<T, id_kind::component>;
+    ecs_component_t &cid = typed_id<T, id_kind::component>();
 
     if (cid != 0)
         return cid;
@@ -2921,7 +2945,7 @@ static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = n
         );
     }
 
-    ecs_relation_id_t &id = typed_id<T, id_kind::relation>;
+    ecs_relation_id_t &id = typed_id<T, id_kind::relation>();
     if (id)
         return id;
     static const ecs_relation_desc_t dense = {
@@ -3410,9 +3434,10 @@ template <typename T> class module_ref {
 
 namespace detail {
 
-template <typename T> struct module_type {
-    static inline ecs_module_id_t id;
-};
+template <typename T> ecs_module_id_t &module_id() {
+    static ecs_module_id_t &id = shared_id<T>(id_kind::module, 0);
+    return id;
+}
 
 template <typename T>
 concept c_declared_module = requires {
@@ -3594,7 +3619,7 @@ ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) 
             detail::c_resource_traits<type>::desc_storage()
         );
     }
-    ecs_resource_t &rid = detail::typed_id<type, detail::id_kind::resource>;
+    ecs_resource_t &rid = detail::typed_id<type, detail::id_kind::resource>();
 
     if (rid != 0)
         return rid;
@@ -3633,7 +3658,7 @@ template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {
     if constexpr (detail::c_declared_resource<type>) {
         return *detail::c_resource_traits<type>::id_storage();
     }
-    return detail::typed_id<type, detail::id_kind::resource>;
+    return detail::typed_id<type, detail::id_kind::resource>();
 }
 
 template <typename T> void res<T>::world(ecs_world_t *world) noexcept {
@@ -4346,7 +4371,6 @@ template <> inline constexpr ecs_event_t builtin_event<OnSet> = EcsOnSet;
 template <> inline constexpr ecs_event_t builtin_event<OnRemove> = EcsOnRemove;
 template <> inline constexpr ecs_event_t builtin_event<OnRelationSet> = EcsOnRelationSet;
 template <> inline constexpr ecs_event_t builtin_event<OnRelationRemove> = EcsOnRelationRemove;
-template <typename T> inline ecs_event_t custom_event = UINT16_MAX;
 
 /**
  * External event tags can provide their runtime event id with a static
@@ -4363,9 +4387,10 @@ template <typename T> static ecs_event_t ecs_cpp_event_id() {
         return builtin_event<T>;
     if constexpr (event_id_provider<T>)
         return T::event_id();
-    if (custom_event<T> == UINT16_MAX)
-        custom_event<T> = ecs_event();
-    return custom_event<T>;
+    static ecs_event_t &id = shared_id<T>(id_kind::event, UINT16_MAX);
+    if (id == UINT16_MAX)
+        id = ecs_event();
+    return id;
 }
 
 template <typename T>
@@ -4673,10 +4698,10 @@ inline bool load(const std::string &path) { return ecs_load(path.c_str()); }
 
 /** Synchronize builtin component ids after the C world is initialized. */
 inline void init_cpp_state() {
-    detail::typed_id<Disabled, detail::id_kind::component> = ecs_id(Disabled);
-    detail::typed_id<Name, detail::id_kind::component> = ecs_id(Name);
+    detail::typed_id<Disabled, detail::id_kind::component>() = ecs_id(Disabled);
+    detail::typed_id<Name, detail::id_kind::component>() = ecs_id(Name);
 
-    detail::typed_id<Abstract, detail::id_kind::component> = ecs_id(Abstract);
+    detail::typed_id<Abstract, detail::id_kind::component>() = ecs_id(Abstract);
 }
 /** Initialize the process-wide active ECS world and C++ builtin ids. */
 inline void init() {
@@ -4845,15 +4870,16 @@ module_ref<T> import() {
 template <typename T, typename... Args>
     requires(!detail::c_declared_module<T>) && detail::module_importable<T, Args...>
 module_ref<T> import(Args &&...args) {
-    if (detail::module_type<T>::id != 0) {
-        return module_ref<T>(detail::module_type<T>::id);
+    ecs_module_id_t &id = detail::module_id<T>();
+    if (id != 0) {
+        return module_ref<T>(id);
     }
     using context_t = detail::module_import_context<T, Args...>;
     context_t context{ std::tuple<std::decay_t<Args>...>(std::forward<Args>(args)...) };
     static const std::string name = std::string(type_name<T>());
     ecs_module_desc_t desc = {
         .name = name.c_str(),
-        .id = &detail::module_type<T>::id,
+        .id = &id,
         .import = import_module_callback<T, Args...>,
         .desc = &context,
         .desc_size = sizeof(context_t),
@@ -4867,7 +4893,7 @@ template <typename T> [[nodiscard]] module_ref<T> module() noexcept {
     if constexpr (detail::c_declared_module<T>) {
         return module_ref<T>(*T::id_storage());
     }
-    return module_ref<T>(detail::module_type<T>::id);
+    return module_ref<T>(detail::module_id<T>());
 }
 
 /** Build an observer for event tag `T`. */

@@ -26,10 +26,10 @@ inline bool load(const std::string &path) { return ecs_load(path.c_str()); }
 
 /** Synchronize builtin component ids after the C world is initialized. */
 inline void init_cpp_state() {
-    detail::typed_id<Disabled, detail::id_kind::component> = ecs_id(Disabled);
-    detail::typed_id<Name, detail::id_kind::component> = ecs_id(Name);
+    detail::typed_id<Disabled, detail::id_kind::component>() = ecs_id(Disabled);
+    detail::typed_id<Name, detail::id_kind::component>() = ecs_id(Name);
 
-    detail::typed_id<Abstract, detail::id_kind::component> = ecs_id(Abstract);
+    detail::typed_id<Abstract, detail::id_kind::component>() = ecs_id(Abstract);
 }
 /** Initialize the process-wide active ECS world and C++ builtin ids. */
 inline void init() {
@@ -198,15 +198,16 @@ module_ref<T> import() {
 template <typename T, typename... Args>
     requires(!detail::c_declared_module<T>) && detail::module_importable<T, Args...>
 module_ref<T> import(Args &&...args) {
-    if (detail::module_type<T>::id != 0) {
-        return module_ref<T>(detail::module_type<T>::id);
+    ecs_module_id_t &id = detail::module_id<T>();
+    if (id != 0) {
+        return module_ref<T>(id);
     }
     using context_t = detail::module_import_context<T, Args...>;
     context_t context{ std::tuple<std::decay_t<Args>...>(std::forward<Args>(args)...) };
     static const std::string name = std::string(type_name<T>());
     ecs_module_desc_t desc = {
         .name = name.c_str(),
-        .id = &detail::module_type<T>::id,
+        .id = &id,
         .import = import_module_callback<T, Args...>,
         .desc = &context,
         .desc_size = sizeof(context_t),
@@ -220,7 +221,7 @@ template <typename T> [[nodiscard]] module_ref<T> module() noexcept {
     if constexpr (detail::c_declared_module<T>) {
         return module_ref<T>(*T::id_storage());
     }
-    return module_ref<T>(detail::module_type<T>::id);
+    return module_ref<T>(detail::module_id<T>());
 }
 
 /** Build an observer for event tag `T`. */

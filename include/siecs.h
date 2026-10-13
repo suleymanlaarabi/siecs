@@ -1442,6 +1442,14 @@ typedef struct {
 SIECS_API ecs_event_t ecs_event(void);
 
 /*
+ * Return the process-wide id slot for `key`, created with `initial` on first
+ * use. Every binary of the process (executable, shared libraries, plugins)
+ * gets the same stable pointer, so typed C++ ids registered in one binary are
+ * visible from the others. Keys are copied; the slot lives until exit.
+ */
+SIECS_API uint16_t *ecs_type_slot(const char *key, uint16_t initial);
+
+/*
  * Register a process-wide typed event id in this world.
  *
  * If *id is UINT16_MAX, allocates a new custom event id and stores it in *id.

@@ -60,7 +60,6 @@ template <> inline constexpr ecs_event_t builtin_event<OnSet> = EcsOnSet;
 template <> inline constexpr ecs_event_t builtin_event<OnRemove> = EcsOnRemove;
 template <> inline constexpr ecs_event_t builtin_event<OnRelationSet> = EcsOnRelationSet;
 template <> inline constexpr ecs_event_t builtin_event<OnRelationRemove> = EcsOnRelationRemove;
-template <typename T> inline ecs_event_t custom_event = UINT16_MAX;
 
 /**
  * External event tags can provide their runtime event id with a static
@@ -77,9 +76,10 @@ template <typename T> static ecs_event_t ecs_cpp_event_id() {
         return builtin_event<T>;
     if constexpr (event_id_provider<T>)
         return T::event_id();
-    if (custom_event<T> == UINT16_MAX)
-        custom_event<T> = ecs_event();
-    return custom_event<T>;
+    static ecs_event_t &id = shared_id<T>(id_kind::event, UINT16_MAX);
+    if (id == UINT16_MAX)
+        id = ecs_event();
+    return id;
 }
 
 template <typename T>

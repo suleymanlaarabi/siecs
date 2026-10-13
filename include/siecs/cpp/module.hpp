@@ -1,5 +1,6 @@
 #pragma once
 #include "siecs/cpp/c_api.hpp"
+#include "siecs/cpp/component.hpp"
 #include <cassert>
 #include <concepts>
 #include <tuple>
@@ -44,9 +45,10 @@ template <typename T> class module_ref {
 
 namespace detail {
 
-template <typename T> struct module_type {
-    static inline ecs_module_id_t id;
-};
+template <typename T> ecs_module_id_t &module_id() {
+    static ecs_module_id_t &id = shared_id<T>(id_kind::module, 0);
+    return id;
+}
 
 template <typename T>
 concept c_declared_module = requires {

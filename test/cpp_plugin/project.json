@@ -1,0 +1,14 @@
+{
+  "id": "siecs.test.cpp_plugin",
+  "type": "package",
+  "value": {
+    "language": "cpp",
+    "public": true,
+    "use": ["siecs"]
+  },
+  "lang.cpp": {
+    "cpp-standard": "c++20",
+    "export-symbols": true,
+    "include": ["include"]
+  }
+}

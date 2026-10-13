@@ -108,7 +108,7 @@ ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) 
             detail::c_resource_traits<type>::desc_storage()
         );
     }
-    ecs_resource_t &rid = detail::typed_id<type, detail::id_kind::resource>;
+    ecs_resource_t &rid = detail::typed_id<type, detail::id_kind::resource>();
 
     if (rid != 0)
         return rid;
@@ -147,7 +147,7 @@ template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {
     if constexpr (detail::c_declared_resource<type>) {
         return *detail::c_resource_traits<type>::id_storage();
     }
-    return detail::typed_id<type, detail::id_kind::resource>;
+    return detail::typed_id<type, detail::id_kind::resource>();
 }
 
 template <typename T> void res<T>::world(ecs_world_t *world) noexcept {

@@ -85,6 +85,11 @@ void observer_resource_does_not_create_component_term(void);
 void observer_resource_field_index_stays_correct(void);
 void observer_relation_events(void);
 
+// Testsuite 'shared_library'
+void shared_library_event_ids_match(void);
+void shared_library_component_ids_match(void);
+void shared_library_plugin_trigger_reaches_app_observer(void);
+
 // Testsuite 'module_import'
 void module_import_import_without_props(void);
 void module_import_import_with_props(void);
@@ -380,6 +385,21 @@ bake_test_case observer_testcases[] = {
     }
 };
 
+bake_test_case shared_library_testcases[] = {
+    {
+        "event_ids_match",
+        shared_library_event_ids_match
+    },
+    {
+        "component_ids_match",
+        shared_library_component_ids_match
+    },
+    {
+        "plugin_trigger_reaches_app_observer",
+        shared_library_plugin_trigger_reaches_app_observer
+    }
+};
+
 bake_test_case module_import_testcases[] = {
     {
         "import_without_props",
@@ -505,6 +525,13 @@ static bake_test_suite suites[] = {
         observer_testcases
     },
     {
+        "shared_library",
+        NULL,
+        NULL,
+        3,
+        shared_library_testcases
+    },
+    {
         "module_import",
         NULL,
         NULL,
@@ -528,5 +555,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.cpp.test", argc, argv, suites, 10);
+    return bake_test_run("siecs.cpp.test", argc, argv, suites, 11);
 }

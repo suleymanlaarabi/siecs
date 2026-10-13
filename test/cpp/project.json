@@ -5,7 +5,7 @@
     "language": "cpp",
     "public": false,
     "clangd": true,
-    "use": ["siecs", "siecs_spatial"]
+    "use": ["siecs", "siecs_spatial", "siecs.test.cpp_plugin"]
   },
   "lang.cpp": {
     "cpp-standard": "c++20",
@@ -110,6 +110,14 @@
           "resource_does_not_create_component_term",
           "resource_field_index_stays_correct",
           "relation_events"
+        ]
+      },
+      {
+        "id": "shared_library",
+        "testcases": [
+          "event_ids_match",
+          "component_ids_match",
+          "plugin_trigger_reaches_app_observer"
         ]
       },
       {

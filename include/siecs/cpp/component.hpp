@@ -35,8 +35,24 @@ template <typename T> struct component_options {
 
 namespace detail {
 
-enum class id_kind : uint8_t { component, relation, resource };
-template <typename T, id_kind Kind> inline uint16_t typed_id = 0;
+enum class id_kind : uint8_t { component, relation, resource, event, module };
+
+/**
+ * Id storage shared by every binary of the process, keyed by kind and type
+ * name. A per-binary static would give a shared library and the executable
+ * different ids for the same type (e.g. an event triggered by a plugin and
+ * observed by the app).
+ */
+template <typename T> uint16_t &shared_id(id_kind kind, uint16_t initial) {
+    static constexpr const char *prefixes[] = { "component:", "relation:", "resource:", "event:", "module:" };
+    std::string key = std::string(prefixes[static_cast<uint8_t>(kind)]) + std::string(type_name<T>());
+    return *ecs_type_slot(key.c_str(), initial);
+}
+
+template <typename T, id_kind Kind> uint16_t &typed_id() {
+    static uint16_t &id = shared_id<T>(Kind, 0);
+    return id;
+}
 
 template <typename T>
 concept c_declared_component = c_component_traits<std::remove_cv_t<T>>::value;
@@ -148,7 +164,7 @@ static ecs_component_t ecs_cpp_component_id(
         return ecs_component_register(id, c_component_traits<type>::desc_storage());
     }
 
-    ecs_component_t &cid = typed_id<T, id_kind::component>;
+    ecs_component_t &cid = typed_id<T, id_kind::component>();
 
     if (cid != 0)
         return cid;
@@ -201,7 +217,7 @@ static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = n
         );
     }
 
-    ecs_relation_id_t &id = typed_id<T, id_kind::relation>;
+    ecs_relation_id_t &id = typed_id<T, id_kind::relation>();
     if (id)
         return id;
     static const ecs_relation_desc_t dense = {
