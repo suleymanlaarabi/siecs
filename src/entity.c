@@ -14,7 +14,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 static inline ecs_entity_t ecs_entity_index_create(uint32_t row, bool reuse) {
     ecs_entity_index_t *index = &entity_index;

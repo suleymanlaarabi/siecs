@@ -60,7 +60,7 @@ template <> inline constexpr ecs_event_t builtin_event<OnSet> = EcsOnSet;
 template <> inline constexpr ecs_event_t builtin_event<OnRemove> = EcsOnRemove;
 template <> inline constexpr ecs_event_t builtin_event<OnRelationSet> = EcsOnRelationSet;
 template <> inline constexpr ecs_event_t builtin_event<OnRelationRemove> = EcsOnRelationRemove;
-template <typename T> static inline ecs_event_t custom_event = UINT16_MAX;
+template <typename T> inline ecs_event_t custom_event = UINT16_MAX;
 
 /**
  * External event tags can provide their runtime event id with a static
