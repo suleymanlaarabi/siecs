@@ -228,6 +228,11 @@ class entity {
         return *this;
     }
 
+    template <typename Relation, typename Target> entity relate() {
+        relate<Relation>(ecs::entity::typed<Target>);
+        return *this;
+    }
+
     template <typename Relation> entity unrelate() {
         ecs_unrelate_id(_entity, detail::ecs_cpp_relation_id<Relation>());
         return *this;
