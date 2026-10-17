@@ -63,8 +63,19 @@ static inline bool ecs_observer_query_matches(
             ecs_query_resolve_up_fields(cache, table, ecs_query_table_at(cache, position)));
 }
 
-static inline void ecs_emit_target_observers(
-    ecs_table_t *table,
+/*
+ * Observer callbacks may create tables, entities or observers, which reallocates table
+ * storage and the observer indexes. `table` is always the emitting entity's table, so after a
+ * callback it is dropped and reloaded from the entity record only if a later observer needs
+ * it. Events nobody observes cost nothing extra. Both functions return whether a callback ran.
+ */
+static ECS_COLD ecs_table_t *ecs_emit_entity_table(ecs_entity_t entity) {
+    return ecs_entity_index_is_alive(entity) ? ecs_get_table(ecs_get_record(entity)->table_id)
+                                             : NULL;
+}
+
+static inline bool ecs_emit_target_observers(
+    ecs_table_t **table,
     ecs_entity_t entity,
     ecs_entity_t observer_target,
     ecs_event_t event,
@@ -74,11 +85,9 @@ static inline void ecs_emit_target_observers(
     uint64_t key = ecs_observer_target_key(ecs_entity_id(observer_target), event);
     uint32_t at = ecs_observer_target_lower_bound(key);
     const uint64_t *keys = observer_index.target_keys.data;
-    if (at == observer_index.target_keys.size || keys[at] != key)
-        return;
-
     const ecs_observer_id_t *ids = observer_index.target_observers.data;
     uint32_t count = observer_index.target_keys.size;
+    bool called = false;
     while (at < count && keys[at] == key) {
         ecs_observer_id_t oid = ids[at++];
         ecs_observer_t *observer =
@@ -86,8 +95,10 @@ static inline void ecs_emit_target_observers(
         if (!observer->enabled)
             continue;
         if (observer->query != ECS_OBSERVER_NO_QUERY) {
+            if (ECS_UNLIKELY(!*table) && !(*table = ecs_emit_entity_table(entity)))
+                continue;
             ecs_query_cache_t *cache = ecs_query_cache(observer->query);
-            if (!ecs_observer_query_matches(cache, table, entity))
+            if (!ecs_observer_query_matches(cache, *table, entity))
                 continue;
         }
         ecs_observer_event_t observer_event = {
@@ -98,19 +109,31 @@ static inline void ecs_emit_target_observers(
             .trigger_data = trigger_data,
         };
         observer->callback(&observer_event);
+        called = true;
+        *table = NULL;
+        keys = observer_index.target_keys.data;
+        ids = observer_index.target_observers.data;
+        count = observer_index.target_keys.size;
     }
+    return called;
 }
 
-static inline void ecs_emit(
+/* Body of ecs_emit, forced inline where the event is the whole operation (triggers). */
+static ECS_ALWAYS_INLINE bool ecs_emit_inline(
     ecs_table_t *table,
     ecs_entity_t entity,
     ecs_event_t event,
     ecs_component_t component,
     const void *trigger_data
 ) {
+    bool called = false;
     if (table->observers_by_event.size > event) {
+        // This event belongs to this table even if a callback moves the entity, so its index
+        // is kept to reload the table and its observer list.
+        uint16_t table_id = 0;
         const sicore_vec_t *list = sicore_vec_get(&table->observers_by_event, event, sicore_vec_t);
-        uint32_t n = list->size;
+        // Observers registered by a callback wait for the next event.
+        const uint32_t n = list->size;
         for (uint32_t i = 0; i < n; i++) {
             ecs_observer_id_t oid = *sicore_vec_get(list, i, ecs_observer_id_t);
             ecs_observer_t *obs =
@@ -128,17 +151,36 @@ static inline void ecs_emit(
                 .user_data = obs->user_data,
                 .trigger_data = trigger_data,
             };
+            if (!called)
+                table_id = (uint16_t)(table - table_index.tables);
             obs->callback(&observer_event);
+            called = true;
+            table = ecs_get_table(table_id);
+            list = sicore_vec_get(&table->observers_by_event, event, sicore_vec_t);
         }
+        if (called)
+            table = NULL;
     }
 
     if (observer_index.target_keys.size == 0) {
-        return;
+        return called;
     }
 
     for (ecs_entity_t target = entity; target; target = ecs_entity_base_raw(target)) {
-        ecs_emit_target_observers(table, entity, target, event, component, trigger_data);
+        called |=
+            ecs_emit_target_observers(&table, entity, target, event, component, trigger_data);
     }
+    return called;
+}
+
+static inline bool ecs_emit(
+    ecs_table_t *table,
+    ecs_entity_t entity,
+    ecs_event_t event,
+    ecs_component_t component,
+    const void *trigger_data
+) {
+    return ecs_emit_inline(table, entity, event, component, trigger_data);
 }
 
 static inline bool ecs_is_deferred(void) {

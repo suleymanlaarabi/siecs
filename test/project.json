@@ -287,7 +287,12 @@
           "target_entity_kill",
           "target_index_reuse",
           "target_on_remove",
-          "target_many"
+          "target_many",
+          "on_add_survives_table_growth",
+          "deferred_on_add_survives_table_growth",
+          "deferred_on_set_survives_column_growth",
+          "on_remove_survives_table_growth",
+          "trigger_survives_table_growth"
         ]
       },
       {

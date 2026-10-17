@@ -9,6 +9,8 @@
 
 #define ECS_LIKELY(x) (!!(x))
 #define ECS_UNLIKELY(x) (!!(x))
+#define ECS_COLD __declspec(noinline)
+#define ECS_ALWAYS_INLINE __forceinline
 
 static inline unsigned ecs_ctz(unsigned value) {
     unsigned long index;
@@ -20,6 +22,9 @@ static inline unsigned ecs_ctz(unsigned value) {
 #else
 #define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
 #define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
+/* Rare paths kept out of line, so hot inline callers stay small enough to inline. */
+#define ECS_COLD __attribute__((cold, noinline))
+#define ECS_ALWAYS_INLINE inline __attribute__((always_inline))
 #define ECS_CTZ(x) __builtin_ctz((unsigned)(x))
 #endif
 

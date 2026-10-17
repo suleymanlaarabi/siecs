@@ -4921,6 +4921,8 @@ char *sijson_stringify(sijson_value_t value) {
 
 #define ECS_LIKELY(x) (!!(x))
 #define ECS_UNLIKELY(x) (!!(x))
+#define ECS_COLD __declspec(noinline)
+#define ECS_ALWAYS_INLINE __forceinline
 
 static inline unsigned ecs_ctz(unsigned value) {
     unsigned long index;
@@ -4932,6 +4934,9 @@ static inline unsigned ecs_ctz(unsigned value) {
 #else
 #define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
 #define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
+/* Rare paths kept out of line, so hot inline callers stay small enough to inline. */
+#define ECS_COLD __attribute__((cold, noinline))
+#define ECS_ALWAYS_INLINE inline __attribute__((always_inline))
 #define ECS_CTZ(x) __builtin_ctz((unsigned)(x))
 #endif
 
@@ -5990,8 +5995,19 @@ static inline bool ecs_observer_query_matches(
             ecs_query_resolve_up_fields(cache, table, ecs_query_table_at(cache, position)));
 }
 
-static inline void ecs_emit_target_observers(
-    ecs_table_t *table,
+/*
+ * Observer callbacks may create tables, entities or observers, which reallocates table
+ * storage and the observer indexes. `table` is always the emitting entity's table, so after a
+ * callback it is dropped and reloaded from the entity record only if a later observer needs
+ * it. Events nobody observes cost nothing extra. Both functions return whether a callback ran.
+ */
+static ECS_COLD ecs_table_t *ecs_emit_entity_table(ecs_entity_t entity) {
+    return ecs_entity_index_is_alive(entity) ? ecs_get_table(ecs_get_record(entity)->table_id)
+                                             : NULL;
+}
+
+static inline bool ecs_emit_target_observers(
+    ecs_table_t **table,
     ecs_entity_t entity,
     ecs_entity_t observer_target,
     ecs_event_t event,
@@ -6001,11 +6017,9 @@ static inline void ecs_emit_target_observers(
     uint64_t key = ecs_observer_target_key(ecs_entity_id(observer_target), event);
     uint32_t at = ecs_observer_target_lower_bound(key);
     const uint64_t *keys = observer_index.target_keys.data;
-    if (at == observer_index.target_keys.size || keys[at] != key)
-        return;
-
     const ecs_observer_id_t *ids = observer_index.target_observers.data;
     uint32_t count = observer_index.target_keys.size;
+    bool called = false;
     while (at < count && keys[at] == key) {
         ecs_observer_id_t oid = ids[at++];
         ecs_observer_t *observer =
@@ -6013,8 +6027,10 @@ static inline void ecs_emit_target_observers(
         if (!observer->enabled)
             continue;
         if (observer->query != ECS_OBSERVER_NO_QUERY) {
+            if (ECS_UNLIKELY(!*table) && !(*table = ecs_emit_entity_table(entity)))
+                continue;
             ecs_query_cache_t *cache = ecs_query_cache(observer->query);
-            if (!ecs_observer_query_matches(cache, table, entity))
+            if (!ecs_observer_query_matches(cache, *table, entity))
                 continue;
         }
         ecs_observer_event_t observer_event = {
@@ -6025,19 +6041,31 @@ static inline void ecs_emit_target_observers(
             .trigger_data = trigger_data,
         };
         observer->callback(&observer_event);
+        called = true;
+        *table = NULL;
+        keys = observer_index.target_keys.data;
+        ids = observer_index.target_observers.data;
+        count = observer_index.target_keys.size;
     }
+    return called;
 }
 
-static inline void ecs_emit(
+/* Body of ecs_emit, forced inline where the event is the whole operation (triggers). */
+static ECS_ALWAYS_INLINE bool ecs_emit_inline(
     ecs_table_t *table,
     ecs_entity_t entity,
     ecs_event_t event,
     ecs_component_t component,
     const void *trigger_data
 ) {
+    bool called = false;
     if (table->observers_by_event.size > event) {
+        // This event belongs to this table even if a callback moves the entity, so its index
+        // is kept to reload the table and its observer list.
+        uint16_t table_id = 0;
         const sicore_vec_t *list = sicore_vec_get(&table->observers_by_event, event, sicore_vec_t);
-        uint32_t n = list->size;
+        // Observers registered by a callback wait for the next event.
+        const uint32_t n = list->size;
         for (uint32_t i = 0; i < n; i++) {
             ecs_observer_id_t oid = *sicore_vec_get(list, i, ecs_observer_id_t);
             ecs_observer_t *obs =
@@ -6055,17 +6083,36 @@ static inline void ecs_emit(
                 .user_data = obs->user_data,
                 .trigger_data = trigger_data,
             };
+            if (!called)
+                table_id = (uint16_t)(table - table_index.tables);
             obs->callback(&observer_event);
+            called = true;
+            table = ecs_get_table(table_id);
+            list = sicore_vec_get(&table->observers_by_event, event, sicore_vec_t);
         }
+        if (called)
+            table = NULL;
     }
 
     if (observer_index.target_keys.size == 0) {
-        return;
+        return called;
     }
 
     for (ecs_entity_t target = entity; target; target = ecs_entity_base_raw(target)) {
-        ecs_emit_target_observers(table, entity, target, event, component, trigger_data);
+        called |=
+            ecs_emit_target_observers(&table, entity, target, event, component, trigger_data);
     }
+    return called;
+}
+
+static inline bool ecs_emit(
+    ecs_table_t *table,
+    ecs_entity_t entity,
+    ecs_event_t event,
+    ecs_component_t component,
+    const void *trigger_data
+) {
+    return ecs_emit_inline(table, entity, event, component, trigger_data);
 }
 
 static inline bool ecs_is_deferred(void) {
@@ -6279,21 +6326,76 @@ ecs_apply_component_default_relations(ecs_entity_t entity, ecs_component_t compo
     }
 }
 
+/* Emit OnAdd/OnRemove for one column. Returns whether a hook or observer ran, which may have
+ * created tables or moved the entity. */
 static inline bool ecs_emit_component_event(
     ecs_table_t *table,
     ecs_entity_t entity,
     uint32_t row,
     uint16_t column,
-    bool add
+    bool add,
+    bool *has_default_relations
 ) {
     ecs_component_t id = table->type.ids[column];
     void *data = ecs_table_component_at_column(table, column, row);
     const ecs_component_record_t *record = ecs_component_index_get(id);
     ecs_component_on_add_t hook = add ? record->on_add : record->on_remove;
-    bool has_default_relations = record->default_relation_count != 0;
-    if (hook)
+    *has_default_relations |= record->default_relation_count != 0;
+    if (ECS_UNLIKELY(hook != NULL)) {
         hook(entity, id, data);
-    ecs_emit(table, entity, add ? EcsOnAdd : EcsOnRemove, id, data);
+        if (!ecs_is_alive(entity))
+            return true;
+        const ecs_entity_record_t *current = ecs_get_record(entity);
+        table = ecs_get_table(current->table_id);
+        column = ecs_table_column_or_invalid(table, id);
+        if (column == UINT16_MAX)
+            return true;
+        data = ecs_table_component_at_column(table, column, current->table_row);
+        ecs_emit(table, entity, add ? EcsOnAdd : EcsOnRemove, id, data);
+        return true;
+    }
+    return ecs_emit(table, entity, add ? EcsOnAdd : EcsOnRemove, id, data);
+}
+
+/*
+ * Emit one event per component of `candidate` (the layout of `table_id`, where the entity
+ * sits at `row`) missing from `known`. Until a callback runs, the diff index is the column
+ * and nothing is reloaded. Afterwards the entity's record is reloaded before the next event,
+ * since a callback may have moved table storage or migrated, killed or recycled the entity.
+ * The diffed id arrays are separate allocations that table growth never moves.
+ */
+static inline bool ecs_emit_type_diff(
+    ecs_type_t known,
+    ecs_type_t candidate,
+    uint16_t table_id,
+    uint32_t row,
+    ecs_entity_t entity,
+    bool add
+) {
+    bool has_default_relations = false;
+    ecs_type_diff_t diff = { .known = known, .candidate = candidate };
+    ecs_table_t *table = ecs_get_table(table_id);
+    bool stale = false, moved = false;
+    uint16_t index;
+    while (ecs_type_diff_next(&diff, &index)) {
+        uint16_t column = index;
+        if (ECS_UNLIKELY(stale)) {
+            if (!ecs_is_alive(entity))
+                break;
+            const ecs_entity_record_t *record = ecs_get_record(entity);
+            moved |= record->table_id != table_id;
+            table_id = record->table_id;
+            table = ecs_get_table(table_id);
+            row = record->table_row;
+            stale = false;
+        }
+        if (ECS_UNLIKELY(moved)) {
+            column = ecs_table_column_or_invalid(table, candidate.ids[index]);
+            if (column == UINT16_MAX)
+                continue;
+        }
+        stale = ecs_emit_component_event(table, entity, row, column, add, &has_default_relations);
+    }
     return has_default_relations;
 }
 
@@ -6303,23 +6405,25 @@ static inline bool ecs_emit_added_components(
     ecs_entity_t entity,
     uint32_t row
 ) {
-    bool has_default_relations = false;
-    ecs_type_diff_t diff = { .known = from_table->type, .candidate = to_table->type };
-    uint16_t column;
-    while (ecs_type_diff_next(&diff, &column)) {
-        has_default_relations |= ecs_emit_component_event(to_table, entity, row, column, true);
-    }
-    return has_default_relations;
+    return ecs_emit_type_diff(
+        from_table->type,
+        to_table->type,
+        (uint16_t)(to_table - table_index.tables),
+        row,
+        entity,
+        true
+    );
 }
 
+/* Takes types, not tables: the emission above may have moved table storage. */
 static inline void ecs_apply_added_component_default_relations(
-    const ecs_table_t *from_table,
-    const ecs_table_t *to_table,
+    const ecs_type_t *from_type,
+    const ecs_type_t *to_type,
     ecs_entity_t entity
 ) {
-    ecs_type_diff_t diff = { .known = from_table->type, .candidate = to_table->type };
+    ecs_type_diff_t diff = { .known = *from_type, .candidate = *to_type };
     uint16_t column;
-    while (ecs_type_diff_next(&diff, &column))
+    while (ecs_type_diff_next(&diff, &column) && ecs_is_alive(entity))
         ecs_apply_component_default_relations(entity, diff.candidate.ids[column]);
 }
 
@@ -6329,10 +6433,14 @@ static inline void ecs_emit_removed_components(
     ecs_entity_t entity,
     uint32_t row
 ) {
-    ecs_type_diff_t diff = { .known = *to_type, .candidate = from_table->type };
-    uint16_t column;
-    while (ecs_type_diff_next(&diff, &column))
-        ecs_emit_component_event(from_table, entity, row, column, false);
+    ecs_emit_type_diff(
+        *to_type,
+        from_table->type,
+        (uint16_t)(from_table - table_index.tables),
+        row,
+        entity,
+        false
+    );
 }
 
 #endif
@@ -6939,7 +7047,22 @@ static void command_apply_changes(ecs_entity_command_t *command) {
             column = ecs_table_get_column_index(table, id);
             dst = ecs_table_component_at_column(table, column, entity_record->table_row);
         }
-        ecs_emit(table, command->entity, EcsOnSet, changes[i].id, changes[i].data);
+        const uint16_t table_id = entity_record->table_id;
+        if (ecs_emit(table, command->entity, EcsOnSet, changes[i].id, changes[i].data)) {
+            // Observers may have created tables or rows in this table, moving its storage.
+            if (!ecs_is_alive(command->entity)) {
+                return;
+            }
+            entity_record = ecs_get_record(command->entity);
+            table = ecs_get_table(entity_record->table_id);
+            if (entity_record->table_id != table_id) {
+                column = ecs_table_column_or_invalid(table, id);
+                if (column == UINT16_MAX) {
+                    continue;
+                }
+            }
+            dst = ecs_table_component_at_column(table, column, entity_record->table_row);
+        }
         ecs_component_value_move(record, dst, changes[i].data, 1);
         changes[i].data = NULL;
     }
@@ -7078,8 +7201,9 @@ static void command_apply(
                 ecs_inheritance_plan_copy(copy_plan, command->base, new_table, record->table_row);
             }
         }
+        const ecs_type_t old_type = old_table->type, new_type = new_table->type;
         if (ecs_emit_added_components(old_table, new_table, command->entity, record->table_row)) {
-            ecs_apply_added_component_default_relations(old_table, new_table, command->entity);
+            ecs_apply_added_component_default_relations(&old_type, &new_type, command->entity);
         }
     }
 
@@ -7131,8 +7255,10 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
 
 void ecs_command_buffer_flush() {
     ecs_execution_context_t *context = ecs_execution_context_current();
+    /* Commands queued by hooks and observers during a flush are applied by the running
+     * flush loop once the current batch completes. A nested flush would apply them in the
+     * middle of another command's events and reset the arena holding its pending values. */
     if (context->flushing_commands) {
-        ecs_command_buffer_flush_buffer(&context->commands);
         return;
     }
     context->flushing_commands = true;
@@ -7456,6 +7582,32 @@ const char *ecs_component_name(ecs_component_t component) {
     ecs_entity_record_t *record = ecs_get_record(entity);                                          \
     ecs_table_t *table = ecs_get_table(record->table_id);
 
+/* OnAdd for one component just migrated into `table` at `data`. Only a hook that ran
+ * can have moved storage, so the location is resolved again only in that case. */
+static inline void ecs_emit_added_component(
+    ecs_entity_t entity,
+    ecs_component_t cid,
+    const ecs_component_record_t *crec,
+    ecs_table_t *table,
+    void *data
+) {
+    if (crec->on_add) {
+        crec->on_add(entity, cid, data);
+        if (!ecs_is_alive(entity))
+            return;
+        const ecs_entity_record_t *record = ecs_get_record(entity);
+        table = ecs_get_table(record->table_id);
+        uint16_t column = ecs_table_column_or_invalid(table, cid);
+        if (column == UINT16_MAX)
+            return;
+        data = ecs_table_component_at_column(table, column, record->table_row);
+    }
+    ecs_emit(table, entity, EcsOnAdd, cid, data);
+    if (ECS_UNLIKELY(ecs_component_default_relations(cid)) && ecs_is_alive(entity)) {
+        ecs_apply_component_default_relations(entity, cid);
+    }
+}
+
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_entity_record_t *record = ecs_get_record(entity);
     uint16_t from_id = record->table_id;
@@ -7477,16 +7629,8 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
             ecs_id_map_set(&table->add_edge, cid, edge);
         }
 
-        ecs_table_t *new_table = ecs_get_table(edge);
         void *component_data = ecs_migrate(record, entity, table, edge, cid);
-
-        if (crec->on_add) {
-            crec->on_add(entity, cid, component_data);
-        }
-        ecs_emit(new_table, entity, EcsOnAdd, cid, component_data);
-        if (ECS_UNLIKELY(ecs_component_default_relations(cid))) {
-            ecs_apply_component_default_relations(entity, cid);
-        }
+        ecs_emit_added_component(entity, cid, crec, ecs_get_table(edge), component_data);
         return;
     }
 
@@ -7514,22 +7658,17 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
         ecs_id_map_set(&table->add_edge, cid, edge);
     }
 
-    ecs_table_t *new_table = ecs_get_table(edge);
+    const ecs_type_t from_type = table->type;
+    const ecs_type_t to_type = ecs_get_table(edge)->type;
     void *component_data = ecs_migrate(record, entity, table, edge, cid);
 
-    if (new_table->type.component_count > table->type.component_count + 1) {
-        if (ecs_emit_added_components(table, new_table, entity, record->table_row)) {
-            ecs_apply_added_component_default_relations(table, new_table, entity);
+    if (to_type.component_count > from_type.component_count + 1) {
+        if (ecs_emit_type_diff(from_type, to_type, edge, record->table_row, entity, true)) {
+            ecs_apply_added_component_default_relations(&from_type, &to_type, entity);
         }
         return;
     }
-    if (crec->on_add) {
-        crec->on_add(entity, cid, component_data);
-    }
-    ecs_emit(new_table, entity, EcsOnAdd, cid, component_data);
-    if (ECS_UNLIKELY(ecs_component_default_relations(cid))) {
-        ecs_apply_component_default_relations(entity, cid);
-    }
+    ecs_emit_added_component(entity, cid, crec, ecs_get_table(edge), component_data);
 }
 
 void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
@@ -7544,6 +7683,17 @@ void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_add_cid_now(entity, cid);
 }
 
+static inline uint16_t ecs_remove_edge(uint16_t from_id, uint16_t col_idx) {
+    ecs_table_t *table = ecs_get_table(from_id);
+    uint16_t new_table_id = table->cls[col_idx].remove_edge;
+    if (new_table_id == UINT16_MAX) {
+        ecs_type_t new_type = ecs_type_without(&table->type, col_idx, 0);
+        new_table_id = ecs_table_index_get_or_create(new_type);
+        ecs_get_table(from_id)->cls[col_idx].remove_edge = new_table_id;
+    }
+    return new_table_id;
+}
+
 void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_entity_record_t *record = ecs_get_record(entity);
     uint16_t from_id = record->table_id;
@@ -7555,22 +7705,39 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
         return;
     }
 
-    uint16_t new_table_id = table->cls[col_idx].remove_edge;
-    if (new_table_id == UINT16_MAX) {
-        ecs_type_t new_type = ecs_type_without(&table->type, col_idx, 0);
-        new_table_id = ecs_table_index_get_or_create(new_type);
-        table = ecs_get_table(from_id);
-        table->cls[col_idx].remove_edge = new_table_id;
-    }
-
+    uint16_t new_table_id = ecs_remove_edge(from_id, col_idx);
+    table = ecs_get_table(from_id);
     void *removed_data = ecs_table_component_at_column(table, col_idx, record->table_row);
 
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
+    bool called = false;
     if (crec->on_remove) {
         crec->on_remove(entity, cid, removed_data);
+        called = true;
+        if (!ecs_is_alive(entity))
+            return;
+        record = ecs_get_record(entity);
+        table = ecs_get_table(record->table_id);
+        col_idx = ecs_table_column_or_invalid(table, cid);
+        if (col_idx == UINT16_MAX)
+            return;
+        removed_data = ecs_table_component_at_column(table, col_idx, record->table_row);
     }
-    ecs_emit(table, entity, EcsOnRemove, cid, removed_data);
+    called |= ecs_emit(table, entity, EcsOnRemove, cid, removed_data);
 
+    if (ECS_UNLIKELY(called)) {
+        // Callbacks may have created tables or entities, or moved or killed this one.
+        if (!ecs_is_alive(entity))
+            return;
+        record = ecs_get_record(entity);
+        if (record->table_id != from_id) {
+            col_idx = ecs_table_column_or_invalid(ecs_get_table(record->table_id), cid);
+            if (col_idx == UINT16_MAX)
+                return;
+            new_table_id = ecs_remove_edge(record->table_id, col_idx);
+        }
+        table = ecs_get_table(record->table_id);
+    }
     ecs_migrate(record, entity, table, new_table_id, 0);
 }
 
@@ -8673,7 +8840,7 @@ void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *tr
     ecs_assert_is_alive(entity);
     ecs_entity_record_t *record = ecs_get_record(entity);
     ecs_table_t *table = ecs_get_table(record->table_id);
-    ecs_emit(table, entity, event, 0, trigger_data);
+    ecs_emit_inline(table, entity, event, 0, trigger_data);
 }
 
 #ifdef _WIN32

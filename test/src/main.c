@@ -234,6 +234,11 @@ void observer_target_entity_kill(void);
 void observer_target_index_reuse(void);
 void observer_target_on_remove(void);
 void observer_target_many(void);
+void observer_on_add_survives_table_growth(void);
+void observer_deferred_on_add_survives_table_growth(void);
+void observer_deferred_on_set_survives_column_growth(void);
+void observer_on_remove_survives_table_growth(void);
+void observer_trigger_survives_table_growth(void);
 
 // Testsuite 'module'
 void module_import_registers_runtime(void);
@@ -1102,6 +1107,26 @@ bake_test_case observer_testcases[] = {
     {
         "target_many",
         observer_target_many
+    },
+    {
+        "on_add_survives_table_growth",
+        observer_on_add_survives_table_growth
+    },
+    {
+        "deferred_on_add_survives_table_growth",
+        observer_deferred_on_add_survives_table_growth
+    },
+    {
+        "deferred_on_set_survives_column_growth",
+        observer_deferred_on_set_survives_column_growth
+    },
+    {
+        "on_remove_survives_table_growth",
+        observer_on_remove_survives_table_growth
+    },
+    {
+        "trigger_survives_table_growth",
+        observer_trigger_survives_table_growth
     }
 };
 
@@ -1239,7 +1264,7 @@ static bake_test_suite suites[] = {
         "observer",
         NULL,
         NULL,
-        21,
+        26,
         observer_testcases
     },
     {

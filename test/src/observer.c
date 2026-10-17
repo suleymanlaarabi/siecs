@@ -12,6 +12,9 @@ ECS_COMPONENT_DECLARE(ObserverPosition, {
 });
 ECS_COMPONENT_DEFINE(ObserverPosition);
 
+ECS_COMPONENT_DECLARE(ObserverExtra, { int value; });
+ECS_COMPONENT_DEFINE(ObserverExtra);
+
 static uint32_t observer_calls;
 static int observer_last_value;
 static ecs_entity_t observer_last_entity;
@@ -558,5 +561,179 @@ void observer_deferred_on_set_reports_component_at_flush(void) {
 
     test_uint(1, state.calls);
     test_uint(ecs_id(ObserverPosition), state.component);
+    ecs_fini();
+}
+
+/* Enough new archetypes to reallocate table storage several times. */
+#define OBSERVER_GROWTH 96
+static ecs_component_t observer_growth_tags[OBSERVER_GROWTH];
+static uint32_t observer_growth_calls;
+static ecs_entity_t observer_growth_entities[OBSERVER_GROWTH];
+
+/* A nested defer scope flushes here when not already flushing, so the world grows and the
+ * observed entity migrates while its own events are still being emitted. */
+static void observer_grow_world(void) {
+    ecs_defer_begin();
+    for (uint32_t i = 0; i < OBSERVER_GROWTH; i++) {
+        observer_growth_entities[i] = ecs_new();
+        ecs_add_cid(observer_growth_entities[i], observer_growth_tags[i]);
+    }
+    ecs_defer_end();
+}
+
+static void observer_growth_setup(void) {
+    ECS_COMPONENT_REGISTER(ObserverValue, ObserverPosition, ObserverExtra);
+    for (uint32_t i = 0; i < OBSERVER_GROWTH; i++)
+        observer_growth_tags[i] = ecs_component({ 0 });
+    observer_growth_calls = 0;
+}
+
+static void observer_growth_check_world(void) {
+    for (uint32_t i = 0; i < OBSERVER_GROWTH; i++) {
+        test_true(ecs_is_alive(observer_growth_entities[i]));
+        test_true(ecs_has_cid(observer_growth_entities[i], observer_growth_tags[i]));
+    }
+}
+
+static void observer_grow_on_value_add(ecs_observer_event_t *event) {
+    observer_growth_calls++;
+    if (event->component != ecs_id(ObserverValue))
+        return;
+    observer_grow_world();
+    ecs_defer_begin();
+    ecs_set(event->entity, ObserverExtra, { 9 });
+    ecs_defer_end();
+}
+
+static ecs_entity_t observer_add_with_growth(bool deferred) {
+    observer_growth_setup();
+    ecs_with(ObserverValue, ObserverPosition);
+    ecs_observer(
+        { .on = EcsOnAdd,
+          .query.components = { ecs_in(ObserverPosition) },
+          .callback = observer_grow_on_value_add }
+    );
+    ecs_entity_t entity = ecs_new();
+    if (deferred)
+        ecs_defer_begin();
+    ecs_add(entity, ObserverValue);
+    if (deferred)
+        ecs_defer_end();
+    return entity;
+}
+
+static void observer_check_add_with_growth(ecs_entity_t entity) {
+    // OnAdd for ObserverValue, ObserverPosition, then ObserverExtra added by the callback.
+    test_uint(3, observer_growth_calls);
+    test_true(ecs_has(entity, ObserverValue));
+    test_true(ecs_has(entity, ObserverPosition));
+    test_int(9, ecs_get(entity, ObserverExtra)->value);
+    observer_growth_check_world();
+}
+
+void observer_on_add_survives_table_growth(void) {
+    ecs_init();
+    observer_check_add_with_growth(observer_add_with_growth(false));
+    ecs_fini();
+}
+
+void observer_deferred_on_add_survives_table_growth(void) {
+    ecs_init();
+    observer_check_add_with_growth(observer_add_with_growth(true));
+    ecs_fini();
+}
+
+static ecs_entity_t observer_set_target;
+
+static void observer_grow_on_value_set(ecs_observer_event_t *event) {
+    if (event->entity != observer_set_target)
+        return;
+    observer_growth_calls++;
+    // New rows in the observed entity's table move that table's column storage.
+    ecs_defer_begin();
+    for (uint32_t i = 0; i < OBSERVER_GROWTH; i++)
+        ecs_set(ecs_new(), ObserverValue, { -1 });
+    ecs_defer_end();
+    observer_grow_world();
+}
+
+void observer_deferred_on_set_survives_column_growth(void) {
+    ecs_init();
+    observer_growth_setup();
+    observer_set_target = ecs_new();
+    ecs_set(observer_set_target, ObserverValue, { 1 });
+    ecs_observer(
+        { .on = EcsOnSet,
+          .query.components = { ecs_in(ObserverValue) },
+          .callback = observer_grow_on_value_set }
+    );
+    ecs_defer_begin();
+    ecs_set(observer_set_target, ObserverValue, { 42 });
+    ecs_defer_end();
+    test_uint(1, observer_growth_calls);
+    test_int(42, ecs_get(observer_set_target, ObserverValue)->value);
+    observer_growth_check_world();
+    ecs_fini();
+}
+
+static void observer_grow_on_extra_remove(ecs_observer_event_t *event) {
+    observer_growth_calls++;
+    test_int(5, ((const ObserverExtra *)event->trigger_data)->value);
+    observer_grow_world();
+}
+
+void observer_on_remove_survives_table_growth(void) {
+    ecs_init();
+    observer_growth_setup();
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, ObserverValue, { 3 });
+    ecs_set(entity, ObserverExtra, { 5 });
+    ecs_observer(
+        { .on = EcsOnRemove,
+          .query.components = { ecs_in(ObserverExtra) },
+          .callback = observer_grow_on_extra_remove }
+    );
+    ecs_remove(entity, ObserverExtra);
+    test_uint(1, observer_growth_calls);
+    test_false(ecs_has(entity, ObserverExtra));
+    test_int(3, ecs_get(entity, ObserverValue)->value);
+    observer_growth_check_world();
+    ecs_fini();
+}
+
+static uint32_t observer_trigger_second_calls;
+
+static void observer_trigger_grows(ecs_observer_event_t *event) {
+    (void)event;
+    observer_growth_calls++;
+    observer_grow_world();
+}
+
+static void observer_trigger_second(ecs_observer_event_t *event) {
+    (void)event;
+    observer_trigger_second_calls++;
+}
+
+void observer_trigger_survives_table_growth(void) {
+    ecs_init();
+    observer_growth_setup();
+    observer_trigger_second_calls = 0;
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, ObserverValue, { 1 });
+    ecs_event_t event = ecs_event();
+    ecs_observer(
+        { .on = event,
+          .query.components = { ecs_in(ObserverValue) },
+          .callback = observer_trigger_grows }
+    );
+    ecs_observer(
+        { .on = event,
+          .query.components = { ecs_in(ObserverValue) },
+          .callback = observer_trigger_second }
+    );
+    ecs_observer_trigger(entity, event, NULL);
+    test_uint(1, observer_growth_calls);
+    test_uint(1, observer_trigger_second_calls);
+    observer_growth_check_world();
     ecs_fini();
 }

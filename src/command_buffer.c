@@ -463,7 +463,22 @@ static void command_apply_changes(ecs_entity_command_t *command) {
             column = ecs_table_get_column_index(table, id);
             dst = ecs_table_component_at_column(table, column, entity_record->table_row);
         }
-        ecs_emit(table, command->entity, EcsOnSet, changes[i].id, changes[i].data);
+        const uint16_t table_id = entity_record->table_id;
+        if (ecs_emit(table, command->entity, EcsOnSet, changes[i].id, changes[i].data)) {
+            // Observers may have created tables or rows in this table, moving its storage.
+            if (!ecs_is_alive(command->entity)) {
+                return;
+            }
+            entity_record = ecs_get_record(command->entity);
+            table = ecs_get_table(entity_record->table_id);
+            if (entity_record->table_id != table_id) {
+                column = ecs_table_column_or_invalid(table, id);
+                if (column == UINT16_MAX) {
+                    continue;
+                }
+            }
+            dst = ecs_table_component_at_column(table, column, entity_record->table_row);
+        }
         ecs_component_value_move(record, dst, changes[i].data, 1);
         changes[i].data = NULL;
     }
@@ -602,8 +617,9 @@ static void command_apply(
                 ecs_inheritance_plan_copy(copy_plan, command->base, new_table, record->table_row);
             }
         }
+        const ecs_type_t old_type = old_table->type, new_type = new_table->type;
         if (ecs_emit_added_components(old_table, new_table, command->entity, record->table_row)) {
-            ecs_apply_added_component_default_relations(old_table, new_table, command->entity);
+            ecs_apply_added_component_default_relations(&old_type, &new_type, command->entity);
         }
     }
 
@@ -655,8 +671,10 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
 
 void ecs_command_buffer_flush() {
     ecs_execution_context_t *context = ecs_execution_context_current();
+    /* Commands queued by hooks and observers during a flush are applied by the running
+     * flush loop once the current batch completes. A nested flush would apply them in the
+     * middle of another command's events and reset the arena holding its pending values. */
     if (context->flushing_commands) {
-        ecs_command_buffer_flush_buffer(&context->commands);
         return;
     }
     context->flushing_commands = true;

@@ -26,6 +26,32 @@
     ecs_entity_record_t *record = ecs_get_record(entity);                                          \
     ecs_table_t *table = ecs_get_table(record->table_id);
 
+/* OnAdd for one component just migrated into `table` at `data`. Only a hook that ran
+ * can have moved storage, so the location is resolved again only in that case. */
+static inline void ecs_emit_added_component(
+    ecs_entity_t entity,
+    ecs_component_t cid,
+    const ecs_component_record_t *crec,
+    ecs_table_t *table,
+    void *data
+) {
+    if (crec->on_add) {
+        crec->on_add(entity, cid, data);
+        if (!ecs_is_alive(entity))
+            return;
+        const ecs_entity_record_t *record = ecs_get_record(entity);
+        table = ecs_get_table(record->table_id);
+        uint16_t column = ecs_table_column_or_invalid(table, cid);
+        if (column == UINT16_MAX)
+            return;
+        data = ecs_table_component_at_column(table, column, record->table_row);
+    }
+    ecs_emit(table, entity, EcsOnAdd, cid, data);
+    if (ECS_UNLIKELY(ecs_component_default_relations(cid)) && ecs_is_alive(entity)) {
+        ecs_apply_component_default_relations(entity, cid);
+    }
+}
+
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_entity_record_t *record = ecs_get_record(entity);
     uint16_t from_id = record->table_id;
@@ -47,16 +73,8 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
             ecs_id_map_set(&table->add_edge, cid, edge);
         }
 
-        ecs_table_t *new_table = ecs_get_table(edge);
         void *component_data = ecs_migrate(record, entity, table, edge, cid);
-
-        if (crec->on_add) {
-            crec->on_add(entity, cid, component_data);
-        }
-        ecs_emit(new_table, entity, EcsOnAdd, cid, component_data);
-        if (ECS_UNLIKELY(ecs_component_default_relations(cid))) {
-            ecs_apply_component_default_relations(entity, cid);
-        }
+        ecs_emit_added_component(entity, cid, crec, ecs_get_table(edge), component_data);
         return;
     }
 
@@ -84,22 +102,17 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
         ecs_id_map_set(&table->add_edge, cid, edge);
     }
 
-    ecs_table_t *new_table = ecs_get_table(edge);
+    const ecs_type_t from_type = table->type;
+    const ecs_type_t to_type = ecs_get_table(edge)->type;
     void *component_data = ecs_migrate(record, entity, table, edge, cid);
 
-    if (new_table->type.component_count > table->type.component_count + 1) {
-        if (ecs_emit_added_components(table, new_table, entity, record->table_row)) {
-            ecs_apply_added_component_default_relations(table, new_table, entity);
+    if (to_type.component_count > from_type.component_count + 1) {
+        if (ecs_emit_type_diff(from_type, to_type, edge, record->table_row, entity, true)) {
+            ecs_apply_added_component_default_relations(&from_type, &to_type, entity);
         }
         return;
     }
-    if (crec->on_add) {
-        crec->on_add(entity, cid, component_data);
-    }
-    ecs_emit(new_table, entity, EcsOnAdd, cid, component_data);
-    if (ECS_UNLIKELY(ecs_component_default_relations(cid))) {
-        ecs_apply_component_default_relations(entity, cid);
-    }
+    ecs_emit_added_component(entity, cid, crec, ecs_get_table(edge), component_data);
 }
 
 void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
@@ -114,6 +127,17 @@ void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_add_cid_now(entity, cid);
 }
 
+static inline uint16_t ecs_remove_edge(uint16_t from_id, uint16_t col_idx) {
+    ecs_table_t *table = ecs_get_table(from_id);
+    uint16_t new_table_id = table->cls[col_idx].remove_edge;
+    if (new_table_id == UINT16_MAX) {
+        ecs_type_t new_type = ecs_type_without(&table->type, col_idx, 0);
+        new_table_id = ecs_table_index_get_or_create(new_type);
+        ecs_get_table(from_id)->cls[col_idx].remove_edge = new_table_id;
+    }
+    return new_table_id;
+}
+
 void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_entity_record_t *record = ecs_get_record(entity);
     uint16_t from_id = record->table_id;
@@ -125,22 +149,39 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
         return;
     }
 
-    uint16_t new_table_id = table->cls[col_idx].remove_edge;
-    if (new_table_id == UINT16_MAX) {
-        ecs_type_t new_type = ecs_type_without(&table->type, col_idx, 0);
-        new_table_id = ecs_table_index_get_or_create(new_type);
-        table = ecs_get_table(from_id);
-        table->cls[col_idx].remove_edge = new_table_id;
-    }
-
+    uint16_t new_table_id = ecs_remove_edge(from_id, col_idx);
+    table = ecs_get_table(from_id);
     void *removed_data = ecs_table_component_at_column(table, col_idx, record->table_row);
 
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
+    bool called = false;
     if (crec->on_remove) {
         crec->on_remove(entity, cid, removed_data);
+        called = true;
+        if (!ecs_is_alive(entity))
+            return;
+        record = ecs_get_record(entity);
+        table = ecs_get_table(record->table_id);
+        col_idx = ecs_table_column_or_invalid(table, cid);
+        if (col_idx == UINT16_MAX)
+            return;
+        removed_data = ecs_table_component_at_column(table, col_idx, record->table_row);
     }
-    ecs_emit(table, entity, EcsOnRemove, cid, removed_data);
+    called |= ecs_emit(table, entity, EcsOnRemove, cid, removed_data);
 
+    if (ECS_UNLIKELY(called)) {
+        // Callbacks may have created tables or entities, or moved or killed this one.
+        if (!ecs_is_alive(entity))
+            return;
+        record = ecs_get_record(entity);
+        if (record->table_id != from_id) {
+            col_idx = ecs_table_column_or_invalid(ecs_get_table(record->table_id), cid);
+            if (col_idx == UINT16_MAX)
+                return;
+            new_table_id = ecs_remove_edge(record->table_id, col_idx);
+        }
+        table = ecs_get_table(record->table_id);
+    }
     ecs_migrate(record, entity, table, new_table_id, 0);
 }
 
