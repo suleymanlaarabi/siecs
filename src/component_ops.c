@@ -196,8 +196,7 @@ static inline void
 ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     bool had_value = move && ecs_has_cid_owned(entity, cid);
     ecs_add_cid_now(entity, cid);
-    if (!move)
-        ecs_defer_begin();
+    ecs_defer_begin();
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
     entity_edit(entity, table, record);
     void *dst = ecs_table_get_component(table, cid, record->table_row);
@@ -214,8 +213,7 @@ ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool mov
         ecs_component_value_move(crec, dst, data, 1);
     else
         ecs_component_value_move_ctor(crec, dst, data, 1);
-    if (!move)
-        ecs_defer_end();
+    ecs_defer_end();
 }
 
 void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data) {

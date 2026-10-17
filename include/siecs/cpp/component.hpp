@@ -113,19 +113,66 @@ value_transfer(void *dst, std::conditional_t<Move, void *, const void *> src, ui
     }
 }
 
+/** The C move ABI consumes and destroys its input. Preserve the lifetime of
+ * caller-owned C++ rvalues by moving through raw temporary storage. */
+template <typename T, typename F> inline void move_input(T &value, F &&consume) {
+    if constexpr (std::is_trivially_destructible_v<T>) {
+        consume(&value);
+    } else {
+        alignas(T) std::byte storage[sizeof(T)];
+        T *input = std::construct_at(reinterpret_cast<T *>(storage), std::move(value));
+        consume(input); // native move operation destroys this temporary
+    }
+}
+
 template <typename T> consteval ecs_type_ops_t value_ops() {
     if constexpr (!is_complete<T>::value) {
         return {};
     } else if constexpr (sizeof(T) == 0 || std::is_trivially_copyable_v<T>) {
-        return {};
+        if constexpr (
+            std::is_default_constructible_v<T> && !std::is_trivially_default_constructible_v<T>
+        )
+            return { .ctor = value_lifetime<T, false> };
+        else
+            return {};
     } else {
         return {
-            .ctor = std::is_default_constructible_v<T> ? value_lifetime<T, false> : nullptr,
-            .dtor = std::is_destructible_v<T> ? value_lifetime<T, true> : nullptr,
-            .copy_ctor = std::is_copy_constructible_v<T> ? value_transfer<T, false, true> : nullptr,
-            .copy = std::is_copy_constructible_v<T> ? value_transfer<T, false, false> : nullptr,
-            .move_ctor = std::is_move_constructible_v<T> ? value_transfer<T, true, true> : nullptr,
-            .move = std::is_move_constructible_v<T> ? value_transfer<T, true, false> : nullptr,
+            .ctor = []() -> decltype(ecs_type_ops_t{}.ctor) {
+                if constexpr (std::is_default_constructible_v<T>)
+                    return value_lifetime<T, false>;
+                else
+                    return nullptr;
+            }(),
+            .dtor = []() -> decltype(ecs_type_ops_t{}.dtor) {
+                if constexpr (std::is_destructible_v<T>)
+                    return value_lifetime<T, true>;
+                else
+                    return nullptr;
+            }(),
+            .copy_ctor = []() -> decltype(ecs_type_ops_t{}.copy_ctor) {
+                if constexpr (std::is_copy_constructible_v<T>)
+                    return value_transfer<T, false, true>;
+                else
+                    return nullptr;
+            }(),
+            .copy = []() -> decltype(ecs_type_ops_t{}.copy) {
+                if constexpr (std::is_copy_constructible_v<T>)
+                    return value_transfer<T, false, false>;
+                else
+                    return nullptr;
+            }(),
+            .move_ctor = []() -> decltype(ecs_type_ops_t{}.move_ctor) {
+                if constexpr (std::is_move_constructible_v<T>)
+                    return value_transfer<T, true, true>;
+                else
+                    return nullptr;
+            }(),
+            .move = []() -> decltype(ecs_type_ops_t{}.move) {
+                if constexpr (std::is_move_constructible_v<T>)
+                    return value_transfer<T, true, false>;
+                else
+                    return nullptr;
+            }(),
         };
     }
 }
@@ -185,6 +232,7 @@ static ecs_component_t ecs_cpp_component_id(
     };
 
     cid = ecs_component_init(&desc);
+    ecs_id_reset_on_fini(&cid);
 
     return cid;
 }
@@ -211,6 +259,7 @@ static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = n
     };
     static const std::string name = std::string(type_name<T>());
     id = ecs_relation_register(&id, name.c_str(), desc ? desc : &dense);
+    ecs_id_reset_on_fini(&id);
     return id;
 }
 
@@ -243,6 +292,12 @@ template <typename T> class component_ref {
     component_ref with() const {
         ::ecs_with_many(_id, detail::ecs_cpp_component_id<Required>()..., 0);
 
+        return *this;
+    }
+
+    /** Add a default relation with this component, using the native requirement. */
+    template <typename Relation> component_ref with_relation(const auto &target) const {
+        ::ecs_with_relation_id(_id, detail::ecs_cpp_relation_id<Relation>(), target.id());
         return *this;
     }
 

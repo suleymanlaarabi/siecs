@@ -888,3 +888,35 @@ If high-volume work can batch naturally, put it in a system.
 
 Use default defer behavior. `no_defer` intentionally cannot be combined with
 entity query iteration.
+
+## Manual and scoped execution
+
+`.manual()` registers a system without scheduling it during regular phases.
+It still has a phase, enabled state, dependencies and native typed callback.
+`ecs::run_system(id)` explicitly runs it. Disabled systems remain skipped.
+
+```cpp
+auto draw = ecs::system("Draw")
+    .phase(EcsOnRender)
+    .manual()
+    .each([](const Sprite &sprite) { /* draw */ });
+
+ecs::run_system_target<Owner>(draw, root);
+```
+
+`ecs_run_phase_target(phase, relation, target)` executes only manual systems in
+that phase, in native dependency order, restricted to one `ByTarget` target. Each
+manual system must have an entity query. Neither scoped API rebuilds queries or
+changes enabled states; explicit execution ignores scheduling intervals. Scoped
+execution must be driven outside parallel worker waves.
+
+`SimulationPaused` is an opt-in simulation marker, separate from `Disabled`.
+Spatial velocity integration ignores entities with this marker on themselves or
+on a `ChildOf` ancestor. Their transforms remain available for rendering. Other
+simulation systems can use `exclude_up<ecs::ChildOf, SimulationPaused>()` to adopt
+the same behavior. Adding the marker does not stop global services or networking.
+
+Native integrations that cache world-local 16-bit IDs can register stable ID
+storage with `ecs_id_reset_on_fini(&id)`. The reset occurs after teardown callbacks
+and before module unloading. The C++ component, relation and resource caches use
+this to support destroying and recreating the world in the same process.

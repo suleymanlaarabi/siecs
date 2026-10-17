@@ -47,6 +47,22 @@ typedef struct {
     sicore_vec_get_mut(&entity_index.entities, ecs_first(entity), ecs_entity_record_t)
 #define ecs_get_table(tid) ecs_table_index_at(tid)
 
+static inline bool ecs_observer_query_matches(
+    ecs_query_cache_t *cache,
+    const ecs_table_t *table,
+    ecs_entity_t entity
+) {
+    uint16_t position = ecs_query_table_position(cache, (uint16_t)(table - table_index.tables));
+    if (position == UINT16_MAX)
+        return false;
+    const ecs_query_t *q = cache->query;
+    uint32_t row = ecs_get_record(entity)->table_row;
+    return (!(q->source_flags & 1) || ecs_query_source_matches(q, table, row, false)) &&
+           (!(q->source_flags & 2) || ecs_query_source_matches(q, table, row, true)) &&
+           (!q->up_mask ||
+            ecs_query_resolve_up_fields(cache, table, ecs_query_table_at(cache, position)));
+}
+
 static inline void ecs_emit_target_observers(
     ecs_table_t *table,
     ecs_entity_t entity,
@@ -61,7 +77,6 @@ static inline void ecs_emit_target_observers(
     if (at == observer_index.target_keys.size || keys[at] != key)
         return;
 
-    uint16_t table_id = (uint16_t)(table - table_index.tables);
     const ecs_observer_id_t *ids = observer_index.target_observers.data;
     uint32_t count = observer_index.target_keys.size;
     while (at < count && keys[at] == key) {
@@ -72,7 +87,7 @@ static inline void ecs_emit_target_observers(
             continue;
         if (observer->query != ECS_OBSERVER_NO_QUERY) {
             ecs_query_cache_t *cache = ecs_query_cache(observer->query);
-            if (ecs_query_table_position(cache, table_id) == UINT16_MAX)
+            if (!ecs_observer_query_matches(cache, table, entity))
                 continue;
         }
         ecs_observer_event_t observer_event = {
@@ -103,6 +118,9 @@ static inline void ecs_emit(
             if (!obs->enabled) {
                 continue;
             }
+            if (obs->query != ECS_OBSERVER_NO_QUERY &&
+                !ecs_observer_query_matches(ecs_query_cache(obs->query), table, entity))
+                continue;
             ecs_observer_event_t observer_event = {
                 .entity = entity,
                 .event = event,

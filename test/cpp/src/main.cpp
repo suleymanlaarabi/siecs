@@ -107,6 +107,24 @@ void traffic_long_run_relation_integrity(void);
 void module_state_lookup_empty(void);
 void module_state_enable(void);
 
+// Testsuite 'source_query'
+void source_query_target_filters_and_mutable_source(void);
+void source_query_ancestor_filters_slice_fields_and_targets(void);
+void source_query_manual_scoped_phase_preserves_order(void);
+void source_query_scheduler_tracks_shared_writes(void);
+void source_query_move_only_resources_and_import(void);
+void source_query_observers_respect_target_filters(void);
+void source_query_resource_ids_reset_with_world(void);
+
+// Testsuite 'physics_api'
+void physics_api_component_event_filter(void);
+void physics_api_relation_sources_and_scoped_phase(void);
+void physics_api_manual_phase_with_resources(void);
+void physics_api_required_component_defaults(void);
+void physics_api_deferred_relation_source_deletion(void);
+void physics_api_default_relation_and_move_observer(void);
+void physics_api_events_across_files_and_worlds(void);
+
 bake_test_case system_param_testcases[] = {
     {
         "custom_query_phases",
@@ -453,6 +471,68 @@ bake_test_case module_state_testcases[] = {
     }
 };
 
+bake_test_case source_query_testcases[] = {
+    {
+        "target_filters_and_mutable_source",
+        source_query_target_filters_and_mutable_source
+    },
+    {
+        "ancestor_filters_slice_fields_and_targets",
+        source_query_ancestor_filters_slice_fields_and_targets
+    },
+    {
+        "manual_scoped_phase_preserves_order",
+        source_query_manual_scoped_phase_preserves_order
+    },
+    {
+        "scheduler_tracks_shared_writes",
+        source_query_scheduler_tracks_shared_writes
+    },
+    {
+        "move_only_resources_and_import",
+        source_query_move_only_resources_and_import
+    },
+    {
+        "observers_respect_target_filters",
+        source_query_observers_respect_target_filters
+    },
+    {
+        "resource_ids_reset_with_world",
+        source_query_resource_ids_reset_with_world
+    }
+};
+
+bake_test_case physics_api_testcases[] = {
+    {
+        "component_event_filter",
+        physics_api_component_event_filter
+    },
+    {
+        "relation_sources_and_scoped_phase",
+        physics_api_relation_sources_and_scoped_phase
+    },
+    {
+        "manual_phase_with_resources",
+        physics_api_manual_phase_with_resources
+    },
+    {
+        "required_component_defaults",
+        physics_api_required_component_defaults
+    },
+    {
+        "deferred_relation_source_deletion",
+        physics_api_deferred_relation_source_deletion
+    },
+    {
+        "default_relation_and_move_observer",
+        physics_api_default_relation_and_move_observer
+    },
+    {
+        "events_across_files_and_worlds",
+        physics_api_events_across_files_and_worlds
+    }
+};
+
 
 static bake_test_suite suites[] = {
     {
@@ -524,9 +604,23 @@ static bake_test_suite suites[] = {
         NULL,
         2,
         module_state_testcases
+    },
+    {
+        "source_query",
+        NULL,
+        NULL,
+        7,
+        source_query_testcases
+    },
+    {
+        "physics_api",
+        NULL,
+        NULL,
+        7,
+        physics_api_testcases
     }
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.cpp.test", argc, argv, suites, 10);
+    return bake_test_run("siecs.cpp.test", argc, argv, suites, 12);
 }

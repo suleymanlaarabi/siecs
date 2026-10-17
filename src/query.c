@@ -15,46 +15,91 @@ ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
         .count = 0,
     };
 }
+ecs_iter_t
+ecs_query_iter_target(ecs_query_id_t query_id, ecs_relation_id_t relation, ecs_entity_t target) {
+    ecs_assert(
+        ecs_relation_record(relation)->info.desc.storage == EcsRelationByTarget,
+        "scoped iteration requires ByTarget"
+    );
+    ecs_iter_t it = ecs_query_iter(query_id);
+    it.scope_relation = relation;
+    it.scope_target = target;
+    return it;
+}
+
 uint32_t ecs_query_count(ecs_query_id_t query_id) {
-    ecs_query_cache_t *cache = ecs_query_cache(query_id);
+    ecs_iter_t it = ecs_query_iter(query_id);
     uint32_t count = 0;
-    for (uint16_t i = 0; i < cache->table_count; i++) {
-        const uint16_t table_id = ecs_query_table_id(cache, i);
-        const ecs_table_t *table = ecs_get_table(table_id);
-        if (!table->entity_count)
-            continue;
-        if (ECS_UNLIKELY(cache->query->up_mask) &&
-            !ecs_query_resolve_up_fields(cache, table, ecs_query_table_at(cache, i))) {
-            continue;
-        }
-        count += table->entity_count;
-    }
+    while (ecs_iter_next(&it))
+        count += it.count;
     return count;
 }
+
 bool ecs_iter_next(ecs_iter_t *it) {
     ecs_query_cache_t *cache = it->cache;
-    ecs_table_t *table;
-    do {
-        if (++it->table_idx >= it->table_count)
-            return false;
-        const uint16_t table_id = ecs_query_table_id(cache, it->table_idx);
-        table = &table_index.tables[table_id];
-        it->count = table->entity_count;
-        if (it->count && ECS_UNLIKELY(cache->query->up_mask) &&
-            !ecs_query_resolve_up_fields(cache, table, ecs_query_table_at(cache, it->table_idx))) {
-            it->count = 0;
-        }
-    } while (it->count == 0);
-    if (cache->query->field_count == 0) {
-        it->ptrs = NULL;
-        it->field_kind_bits = 0;
-    } else {
-        ecs_query_table_t *query_table = ecs_query_table_at(cache, it->table_idx);
-        it->ptrs = query_table->fields;
-        it->field_kind_bits = query_table->field_kind_bits;
+    const ecs_query_t *q = cache->query;
+    ecs_table_t *table = NULL;
+    if (it->table_idx != UINT16_MAX && it->row_cursor) {
+        table = ecs_get_table(ecs_query_table_id(cache, it->table_idx));
+        if (it->row_cursor >= table->entity_count)
+            table = NULL;
     }
-    it->entities = table->entities;
-    return true;
+    for (;;) {
+        if (!table) {
+            if (++it->table_idx >= it->table_count)
+                return false;
+            table = ecs_get_table(ecs_query_table_id(cache, it->table_idx));
+            it->row_cursor = 0;
+            if (!table->entity_count ||
+                (it->scope_relation &&
+                 ecs_table_target_id(table, it->scope_relation) != it->scope_target) ||
+                ((q->source_flags & 1) && !ecs_query_source_matches(q, table, 0, false)) ||
+                (q->up_mask && !ecs_query_resolve_up_fields(
+                                   cache,
+                                   table,
+                                   ecs_query_table_at(cache, it->table_idx)
+                               ))) {
+                table = NULL;
+                continue;
+            }
+        }
+        uint32_t first = it->row_cursor;
+        uint32_t end = table->entity_count;
+        if ((q->source_flags & 2)) {
+            while (first < end && !ecs_query_source_matches(q, table, first, true))
+                first++;
+            if (first == end) {
+                table = NULL;
+                continue;
+            }
+            end = first + 1;
+            while (end < table->entity_count && ecs_query_source_matches(q, table, end, true))
+                end++;
+        }
+        it->row_cursor = end;
+        it->row_offset = first;
+        it->count = end - first;
+        it->entities = table->entities + first;
+        if (!q->field_count) {
+            it->ptrs = NULL;
+            it->field_kind_bits = 0;
+        } else {
+            ecs_query_table_t *entry = ecs_query_table_at(cache, it->table_idx);
+            it->field_kind_bits = entry->field_kind_bits;
+            it->ptrs = entry->fields;
+            if (first) {
+                for (uint8_t i = 0; i < q->field_count; i++) {
+                    it->field_views[i] = entry->fields[i];
+                    if (((entry->field_kind_bits >> (i * 2)) & 3) == EcsFieldOwned)
+                        it->field_views[i] =
+                            (uint8_t *)entry->fields[i] +
+                            first * ecs_component_info(ecs_query_fields(q)[i].id)->size;
+                }
+                it->ptrs = it->field_views;
+            }
+        }
+        return true;
+    }
 }
 const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
@@ -65,7 +110,9 @@ const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_i
     const uint16_t table_id = ecs_query_table_id(it->cache, it->table_idx);
     const ecs_table_t *table = ecs_get_table(table_id);
     uint16_t column = ecs_table_column_or_invalid(table, record->component);
-    return column == UINT16_MAX ? NULL : table->cls[column].data;
+    return column == UINT16_MAX
+               ? NULL
+               : (const ecs_relation_target_t *)table->cls[column].data + it->row_offset;
 }
 ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
     const uint16_t table_id = ecs_query_table_id(it->cache, it->table_idx);
@@ -85,7 +132,9 @@ ecs_relation_batch_t ecs_relation_batch_id(const ecs_iter_t *it, ecs_relation_id
     }
     const uint16_t column = ecs_table_column_or_invalid(table, record->component);
     return (ecs_relation_batch_t){
-        .targets = column == UINT16_MAX ? NULL : table->cls[column].data,
+        .targets = column == UINT16_MAX
+                       ? NULL
+                       : (const ecs_relation_target_t *)table->cls[column].data + it->row_offset,
         .shared = false,
     };
 }

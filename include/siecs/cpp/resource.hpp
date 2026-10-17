@@ -1,7 +1,7 @@
 #pragma once
 #include "siecs/cpp/component.hpp"
-#include "siecs/cpp/type.hpp"
 #include "siecs/cpp/system_param.hpp"
+#include "siecs/cpp/type.hpp"
 #include <cassert>
 #include <string>
 #include <tuple>
@@ -34,7 +34,9 @@ template <typename T> class resource_ref {
         if constexpr (std::is_lvalue_reference_v<U>)
             ecs_set_resource_rid(_id, &value);
         else
-            ecs_move_resource_rid(_id, &value);
+            detail::move_input(value, [&](value_type *input) {
+                ecs_move_resource_rid(_id, input);
+            });
     }
 
     /** Return storage or null when the resource is absent. */
@@ -127,6 +129,7 @@ ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) 
     };
 
     rid = ecs_resource_init(&desc);
+    ecs_id_reset_on_fini(&rid);
     return rid;
 }
 

@@ -5,11 +5,16 @@
     "language": "cpp",
     "public": false,
     "clangd": true,
-    "use": ["siecs", "siecs_spatial"]
+    "use": [
+      "siecs",
+      "siecs_spatial"
+    ]
   },
   "lang.cpp": {
     "cpp-standard": "c++20",
-    "include": ["../../include"]
+    "include": [
+      "../../include"
+    ]
   },
   "test": {
     "testsuites": [
@@ -49,7 +54,6 @@
           "at_fini_captures_callable_state"
         ]
       },
-
       {
         "id": "entity_state",
         "testcases": [
@@ -141,6 +145,30 @@
         "testcases": [
           "lookup_empty",
           "enable"
+        ]
+      },
+      {
+        "id": "source_query",
+        "testcases": [
+          "target_filters_and_mutable_source",
+          "ancestor_filters_slice_fields_and_targets",
+          "manual_scoped_phase_preserves_order",
+          "scheduler_tracks_shared_writes",
+          "move_only_resources_and_import",
+          "observers_respect_target_filters",
+          "resource_ids_reset_with_world"
+        ]
+      },
+      {
+        "id": "physics_api",
+        "testcases": [
+          "component_event_filter",
+          "relation_sources_and_scoped_phase",
+          "manual_phase_with_resources",
+          "required_component_defaults",
+          "deferred_relation_source_deletion",
+          "default_relation_and_move_observer",
+          "events_across_files_and_worlds"
         ]
       }
     ]

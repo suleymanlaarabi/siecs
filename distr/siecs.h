@@ -1345,6 +1345,12 @@ typedef enum {
     EcsInUp,          /* Read the nearest inherited field through an acyclic ByTarget
                          relation. */
     EcsInUpOptional,  /* Same as EcsInUp, but permits a missing field. */
+    EcsInTarget,      /* Read a component on a direct ByTarget relation target. */
+    EcsInOutTarget,   /* Explicit shared mutable access to that component. */
+    EcsFilterTarget,  /* Direct target must have the component. No returned field. */
+    EcsNotTarget,     /* Missing relation/component matches. No returned field. */
+    EcsFilterUp,      /* Entity or an ancestor through the relation has the component. */
+    EcsNotUp,         /* Neither entity nor any ancestor has the component. */
 } ecs_access_t;
 
 /*
@@ -1495,6 +1501,9 @@ typedef struct ecs_fini_desc_t {
  * Registering another fini callback from a fini callback is invalid.
  */
 SIECS_API void ecs_at_fini_init(const ecs_fini_desc_t *desc);
+/* Reset a cached 16-bit world-local id after teardown callbacks and before module
+ * unload. Storage must remain alive until ecs_fini(); register once per cache. */
+SIECS_API void ecs_id_reset_on_fini(uint16_t *id);
 
 /*
  * Finalize the world.
@@ -1809,6 +1818,9 @@ ECS_TAG_DECLARE(Disabled);
 
 /* Builtin tag for abstract entities. */
 ECS_TAG_DECLARE(Abstract);
+
+/* Simulation systems may opt out of paused entities and their ChildOf descendants. */
+ECS_TAG_DECLARE(SimulationPaused);
 
 /* C++ declarations made after this header use the C id/descriptor directly. */
 #ifdef __cplusplus
@@ -2461,6 +2473,12 @@ typedef struct {
     uintptr_t user_data;
     uint16_t table_idx;
     uint16_t table_count;
+    /* Scoped iterators and contiguous row slices for ancestor filters. */
+    ecs_relation_id_t scope_relation;
+    ecs_entity_t scope_target;
+    uint32_t row_offset;
+    uint32_t row_cursor;
+    void *field_views[ECS_QUERY_TERM_CAPACITY];
 } ecs_iter_t;
 
 /*
@@ -2473,6 +2491,11 @@ typedef struct {
  *   }
  */
 SIECS_API ecs_iter_t ecs_query_iter(ecs_query_id_t query_id);
+
+/* Reuse a query, restricting tables to one ByTarget relation target.
+ * target == 0 selects tables without the relation. */
+SIECS_API ecs_iter_t ecs_query_iter_target(
+    ecs_query_id_t query_id, ecs_relation_id_t relation, ecs_entity_t target);
 
 /* Return the number of entities currently matching a query. */
 SIECS_API uint32_t ecs_query_count(ecs_query_id_t query_id);
@@ -2587,6 +2610,8 @@ typedef struct {
     bool disabled;
     bool main_thread_only;
     bool no_defer;
+    /* Only explicit run calls execute this system; phase scheduling skips it. */
+    bool manual;
     /* Callback consumes the query iterator itself instead of one batch at a time. */
     bool callback_iterates_query;
     double interval;
@@ -2630,10 +2655,18 @@ SIECS_API void ecs_run(void);
 /* Run all enabled systems from one phase immediately, ignoring interval
  * without changing interval accumulation. */
 SIECS_API void ecs_run_phase(ecs_phase_t phase);
+/* Execute only manual systems, including resource-only systems, in phase/dependency order. */
+SIECS_API void ecs_run_manual_phase(ecs_phase_t phase);
+/* Execute only manual systems in phase/dependency order for a ByTarget scope. */
+SIECS_API void ecs_run_phase_target(
+    ecs_phase_t phase, ecs_relation_id_t relation, ecs_entity_t target);
 
 /* Run one enabled system immediately, ignoring interval without changing
  * interval accumulation. */
 SIECS_API void ecs_run_system(ecs_system_id_t system);
+/* Explicitly execute a query system for one ByTarget target, without rebuilding it. */
+SIECS_API void ecs_run_system_target(
+    ecs_system_id_t system, ecs_relation_id_t relation, ecs_entity_t target);
 
 /* Enable or disable a system. Disabled systems stay registered but do not run.
  */
@@ -2833,19 +2866,66 @@ value_transfer(void *dst, std::conditional_t<Move, void *, const void *> src, ui
     }
 }
 
+/** The C move ABI consumes and destroys its input. Preserve the lifetime of
+ * caller-owned C++ rvalues by moving through raw temporary storage. */
+template <typename T, typename F> inline void move_input(T &value, F &&consume) {
+    if constexpr (std::is_trivially_destructible_v<T>) {
+        consume(&value);
+    } else {
+        alignas(T) std::byte storage[sizeof(T)];
+        T *input = std::construct_at(reinterpret_cast<T *>(storage), std::move(value));
+        consume(input); // native move operation destroys this temporary
+    }
+}
+
 template <typename T> consteval ecs_type_ops_t value_ops() {
     if constexpr (!is_complete<T>::value) {
         return {};
     } else if constexpr (sizeof(T) == 0 || std::is_trivially_copyable_v<T>) {
-        return {};
+        if constexpr (
+            std::is_default_constructible_v<T> && !std::is_trivially_default_constructible_v<T>
+        )
+            return { .ctor = value_lifetime<T, false> };
+        else
+            return {};
     } else {
         return {
-            .ctor = std::is_default_constructible_v<T> ? value_lifetime<T, false> : nullptr,
-            .dtor = std::is_destructible_v<T> ? value_lifetime<T, true> : nullptr,
-            .copy_ctor = std::is_copy_constructible_v<T> ? value_transfer<T, false, true> : nullptr,
-            .copy = std::is_copy_constructible_v<T> ? value_transfer<T, false, false> : nullptr,
-            .move_ctor = std::is_move_constructible_v<T> ? value_transfer<T, true, true> : nullptr,
-            .move = std::is_move_constructible_v<T> ? value_transfer<T, true, false> : nullptr,
+            .ctor = []() -> decltype(ecs_type_ops_t{}.ctor) {
+                if constexpr (std::is_default_constructible_v<T>)
+                    return value_lifetime<T, false>;
+                else
+                    return nullptr;
+            }(),
+            .dtor = []() -> decltype(ecs_type_ops_t{}.dtor) {
+                if constexpr (std::is_destructible_v<T>)
+                    return value_lifetime<T, true>;
+                else
+                    return nullptr;
+            }(),
+            .copy_ctor = []() -> decltype(ecs_type_ops_t{}.copy_ctor) {
+                if constexpr (std::is_copy_constructible_v<T>)
+                    return value_transfer<T, false, true>;
+                else
+                    return nullptr;
+            }(),
+            .copy = []() -> decltype(ecs_type_ops_t{}.copy) {
+                if constexpr (std::is_copy_constructible_v<T>)
+                    return value_transfer<T, false, false>;
+                else
+                    return nullptr;
+            }(),
+            .move_ctor = []() -> decltype(ecs_type_ops_t{}.move_ctor) {
+                if constexpr (std::is_move_constructible_v<T>)
+                    return value_transfer<T, true, true>;
+                else
+                    return nullptr;
+            }(),
+            .move = []() -> decltype(ecs_type_ops_t{}.move) {
+                if constexpr (std::is_move_constructible_v<T>)
+                    return value_transfer<T, true, false>;
+                else
+                    return nullptr;
+            }(),
         };
     }
 }
@@ -2905,6 +2985,7 @@ static ecs_component_t ecs_cpp_component_id(
     };
 
     cid = ecs_component_init(&desc);
+    ecs_id_reset_on_fini(&cid);
 
     return cid;
 }
@@ -2931,6 +3012,7 @@ static ecs_relation_id_t ecs_cpp_relation_id(const ecs_relation_desc_t *desc = n
     };
     static const std::string name = std::string(type_name<T>());
     id = ecs_relation_register(&id, name.c_str(), desc ? desc : &dense);
+    ecs_id_reset_on_fini(&id);
     return id;
 }
 
@@ -2966,6 +3048,12 @@ template <typename T> class component_ref {
         return *this;
     }
 
+    /** Add a default relation with this component, using the native requirement. */
+    template <typename Relation> component_ref with_relation(const auto &target) const {
+        ::ecs_with_relation_id(_id, detail::ecs_cpp_relation_id<Relation>(), target.id());
+        return *this;
+    }
+
   private:
     ecs_component_t _id;
 };
@@ -2996,25 +3084,29 @@ concept SystemParam = requires {
 };
 
 template <typename T>
-concept IsSystemParamWorld = SystemParam<T> &&
+concept IsSystemParamWorld =
+    SystemParam<T> &&
     requires(system_param_t<T> &value, ecs_world_t *world) { value.world(world); };
 
 template <typename T>
-concept IsSystemParamTable = SystemParam<T> &&
-    requires(system_param_t<T> &value, ecs_iter_t *it) { value.table(it); };
+concept IsSystemParamTable =
+    SystemParam<T> && requires(system_param_t<T> &value, ecs_iter_t *it) { value.table(it); };
 
 template <typename T>
-concept IsSystemParamRow = SystemParam<T> &&
+concept IsSystemParamRow =
+    SystemParam<T> &&
     requires(system_param_t<T> &value, ecs_iter_t *it, uint32_t row) { value.row(it, row); };
 
 class system_param_query;
 template <typename T> class optional;
 
 template <typename T>
-concept HasSystemParamQuery = SystemParam<T> &&
-    requires(system_param_query &query) { system_param_t<T>::query(query); };
+concept HasSystemParamQuery =
+    SystemParam<T> && requires(system_param_query &query) { system_param_t<T>::query(query); };
 
-namespace detail { struct system_param_query_access; }
+namespace detail {
+struct system_param_query_access;
+}
 
 class system_param_query {
     ecs_query_desc_t &desc_;
@@ -3022,8 +3114,12 @@ class system_param_query {
     uint16_t &resource_index_;
     uint16_t &relation_index_;
 
-    system_param_query(ecs_query_desc_t &desc, uint16_t &component_index,
-                       uint16_t &resource_index, uint16_t &relation_index) noexcept
+    system_param_query(
+        ecs_query_desc_t &desc,
+        uint16_t &component_index,
+        uint16_t &resource_index,
+        uint16_t &relation_index
+    ) noexcept
         : desc_(desc), component_index_(component_index), resource_index_(resource_index),
           relation_index_(relation_index) {}
     friend struct detail::system_param_query_access;
@@ -3034,12 +3130,15 @@ class system_param_query {
     template <typename T> void read_resource();
     template <typename T> void write_resource();
     template <typename Relation> void require_relation();
+    template <typename Relation, typename T> void source_component();
 };
 
 } // namespace ecs
 
 #include <cassert>
 #include <cstring>
+#include <ranges>
+#include <span>
 #include <string>
 
 namespace ecs {
@@ -3168,7 +3267,9 @@ class entity {
         if constexpr (std::is_lvalue_reference_v<T>)
             ecs_set_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
         else
-            ecs_move_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
+            detail::move_input(value, [&](type *input) {
+                ecs_move_cid(_entity, detail::ecs_cpp_component_id<type>(), input);
+            });
         return *this;
     }
 
@@ -3244,9 +3345,7 @@ class entity {
     entity is_a(entity target);
 
     /** Add IsA to the singleton for `T` with the same ChildOf snapshot semantics. */
-    template <typename T> entity is_a() {
-        return is_a(ecs::entity::create<T>());
-    }
+    template <typename T> entity is_a() { return is_a(ecs::entity::create<T>()); }
 
     /** C-compatible IsA overload with the same ChildOf snapshot semantics. */
     entity is_a(ecs_entity_t target) { return is_a(entity::from(target)); }
@@ -3276,6 +3375,14 @@ class entity {
 
     template <typename Relation> [[nodiscard]] entity target() const {
         return entity(ecs_target_id(_entity, detail::ecs_cpp_relation_id<Relation>()));
+    }
+
+    /** Borrow sources of an indexed Dense/ByDepth relation (empty for ByTarget).
+     * The view expires when that relation is mutated. */
+    template <typename Relation> [[nodiscard]] auto sources() const {
+        const auto view = ecs_relation_sources(_entity, detail::ecs_cpp_relation_id<Relation>());
+        return std::span(view.entities, view.count) |
+               std::views::transform([](ecs_entity_t id) { return entity::from(id); });
     }
 
     /** Remove `Disabled`, allowing the entity in default queries. */
@@ -3520,7 +3627,9 @@ template <typename T> class resource_ref {
         if constexpr (std::is_lvalue_reference_v<U>)
             ecs_set_resource_rid(_id, &value);
         else
-            ecs_move_resource_rid(_id, &value);
+            detail::move_input(value, [&](value_type *input) {
+                ecs_move_resource_rid(_id, input);
+            });
     }
 
     /** Return storage or null when the resource is absent. */
@@ -3613,6 +3722,7 @@ ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) 
     };
 
     rid = ecs_resource_init(&desc);
+    ecs_id_reset_on_fini(&rid);
     return rid;
 }
 
@@ -3653,6 +3763,34 @@ template <typename T> void res<T>::world(ecs_world_t *world) noexcept {
 #include <utility>
 
 namespace ecs {
+
+/** Borrow a component on the direct target of a ByTarget relation.
+ * Mutable access is explicit and participates in scheduler conflicts. */
+template <typename Relation, typename T> class source {
+    T *_ptr = nullptr;
+    uint16_t _field = 0;
+
+  public:
+    static source init() noexcept { return {}; }
+    static void query(system_param_query &q) { q.source_component<Relation, T>(); }
+    void field(uint16_t value) noexcept { _field = value; }
+    void table(ecs_iter_t *it) noexcept {
+        if (it->cache)
+            _ptr = static_cast<T *>(ecs_field(it, _field));
+        else {
+            const auto target =
+                ecs_target_id(it->entities[0], detail::ecs_cpp_relation_id<Relation>());
+            _ptr = target ? static_cast<T *>(ecs_try_get_cid(
+                                target,
+                                detail::ecs_cpp_component_id<std::remove_cv_t<T>>()
+                            ))
+                          : nullptr;
+        }
+    }
+    T *get() const noexcept { return _ptr; }
+    T *operator->() const noexcept { return _ptr; }
+    T &operator*() const noexcept { return *_ptr; }
+};
 
 /** Nullable view for an optional query field; it never owns `T`. */
 template <typename T> class optional {
@@ -4033,6 +4171,27 @@ template <typename T> inline void system_param_query::write_resource() {
 template <typename Relation> inline void system_param_query::require_relation() {
     detail::ensure_required_relation<Relation>(desc_, relation_index_);
 }
+template <typename Relation, typename T> inline void system_param_query::source_component() {
+    const auto id = detail::ecs_cpp_component_id<std::remove_cv_t<T>>();
+    const auto relation = detail::ecs_cpp_relation_id<Relation>();
+    for (uint16_t i = 0; i < component_index_; i++) {
+        if (desc_.components[i].id == id &&
+            desc_.components[i].access == ECS_QUERY_UP_ACCESS(EcsFilterTarget, relation)) {
+            std::memmove(
+                desc_.components + i,
+                desc_.components + i + 1,
+                (--component_index_ - i) * sizeof(ecs_component_term_t)
+            );
+            break;
+        }
+    }
+    detail::append_component_term(
+        desc_,
+        component_index_,
+        id,
+        ECS_QUERY_UP_ACCESS(std::is_const_v<T> ? EcsInTarget : EcsInOutTarget, relation)
+    );
+}
 template <typename T> inline void system_param_query::optional_component() {
     detail::append_callback_component_term(
         desc_,
@@ -4192,6 +4351,49 @@ class query {
     /** Add terms that must be absent from matching tables. */
     template <typename... T> query &exclude() { return components<EcsNot, T...>(); }
 
+    /** Filter on a direct ByTarget relation target's components. */
+    template <typename Relation, typename... T> query &require_target() {
+        (detail::append_component_term(
+             desc,
+             component_index,
+             detail::ecs_cpp_component_id<T>(),
+             ECS_QUERY_UP_ACCESS(EcsFilterTarget, detail::ecs_cpp_relation_id<Relation>())
+         ),
+         ...);
+        return *this;
+    }
+    template <typename Relation, typename... T> query &exclude_target() {
+        (detail::append_component_term(
+             desc,
+             component_index,
+             detail::ecs_cpp_component_id<T>(),
+             ECS_QUERY_UP_ACCESS(EcsNotTarget, detail::ecs_cpp_relation_id<Relation>())
+         ),
+         ...);
+        return *this;
+    }
+    /** Filter the entity and its ancestors. Supports acyclic ByTarget/ByDepth relations. */
+    template <typename Relation, typename... T> query &require_up() {
+        (detail::append_component_term(
+             desc,
+             component_index,
+             detail::ecs_cpp_component_id<T>(),
+             ECS_QUERY_UP_ACCESS(EcsFilterUp, detail::ecs_cpp_relation_id<Relation>())
+         ),
+         ...);
+        return *this;
+    }
+    template <typename Relation, typename... T> query &exclude_up() {
+        (detail::append_component_term(
+             desc,
+             component_index,
+             detail::ecs_cpp_component_id<T>(),
+             ECS_QUERY_UP_ACCESS(EcsNotUp, detail::ecs_cpp_relation_id<Relation>())
+         ),
+         ...);
+        return *this;
+    }
+
     /** Restrict matches to entities inheriting from `target`. */
     query &is_a(ecs_entity_t target) {
         desc.is_a = target;
@@ -4288,8 +4490,8 @@ class query {
 
 } // namespace ecs
 
-#include <cstddef>
 #include <concepts>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <tuple>
@@ -4346,7 +4548,7 @@ template <> inline constexpr ecs_event_t builtin_event<OnSet> = EcsOnSet;
 template <> inline constexpr ecs_event_t builtin_event<OnRemove> = EcsOnRemove;
 template <> inline constexpr ecs_event_t builtin_event<OnRelationSet> = EcsOnRelationSet;
 template <> inline constexpr ecs_event_t builtin_event<OnRelationRemove> = EcsOnRelationRemove;
-template <typename T> static inline ecs_event_t custom_event = UINT16_MAX;
+template <typename T> inline ecs_event_t custom_event = UINT16_MAX;
 
 /**
  * External event tags can provide their runtime event id with a static
@@ -4363,13 +4565,20 @@ template <typename T> static ecs_event_t ecs_cpp_event_id() {
         return builtin_event<T>;
     if constexpr (event_id_provider<T>)
         return T::event_id();
-    if (custom_event<T> == UINT16_MAX)
+    if (custom_event<T> == UINT16_MAX) {
         custom_event<T> = ecs_event();
+        ecs_fini_desc_t reset{
+            .callback = [](void *id) { *static_cast<ecs_event_t *>(id) = UINT16_MAX; },
+            .data = &custom_event<T>,
+        };
+        ecs_at_fini_init(&reset);
+    }
     return custom_event<T>;
 }
 
 template <typename T>
-concept system_param_observer = SystemParam<T> &&
+concept system_param_observer =
+    SystemParam<T> &&
     requires(system_param_t<T> &value, ecs_observer_event_t *event) { value.event(event); };
 
 template <typename Args, std::size_t I, typename Params>
@@ -4387,8 +4596,12 @@ decltype(auto) ecs_cpp_observer_arg(ecs_observer_event_t *event, Params &params)
     }
 }
 
-template <typename Func, typename Args>
+template <typename Func, typename Args, typename Changed = void>
 void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
+    if constexpr (!std::is_void_v<Changed>) {
+        if (event->component != ecs_cpp_component_id<Changed>())
+            return;
+    }
     Func func{};
     constexpr auto indices = std::make_index_sequence<std::tuple_size_v<Args>>{};
     auto params = init_system_params<Args>(indices);
@@ -4402,9 +4615,16 @@ void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
     it.entities = &entity_id;
     std::apply([&](auto &...param) { (prepare_table(param, &it), ...); }, params);
     std::apply([&](auto &...param) { (prepare_row(param, &it, 0), ...); }, params);
-    std::apply([&](auto &...param) {
-        (([&] { if constexpr (system_param_observer<decltype(param)>) param.event(event); }()), ...);
-    }, params);
+    std::apply(
+        [&](auto &...param) {
+            (([&] {
+                 if constexpr (system_param_observer<decltype(param)>)
+                     param.event(event);
+             }()),
+             ...);
+        },
+        params
+    );
     [&]<std::size_t... Is>(std::index_sequence<Is...>) {
         std::invoke(func, ecs_cpp_observer_arg<Args, Is>(event, params)...);
     }(indices);
@@ -4439,7 +4659,20 @@ template <typename T> class observer : public query {
     }
 
     /** Register the callback and return its observer id. */
-    template <typename F> ecs_observer_id_t each(F &&) {
+    template <typename F> ecs_observer_id_t each(F &&) { return register_callback<void, F>(); }
+
+    /** Observe only lifecycle events caused by Component, while retaining the
+     * callback's other query terms. OnSet payload is the incoming value. */
+    template <typename Component, typename F> ecs_observer_id_t each_for(F &&) {
+        static_assert(
+            std::is_same_v<T, OnAdd> || std::is_same_v<T, OnSet> || std::is_same_v<T, OnRemove>
+        );
+        this->template require<Component>();
+        return register_callback<Component, F>();
+    }
+
+  private:
+    template <typename Changed, typename F> ecs_observer_id_t register_callback() {
         using callback = std::remove_cvref_t<F>;
         static_assert(
             std::is_empty_v<callback> && std::is_default_constructible_v<callback>,
@@ -4449,20 +4682,25 @@ template <typename T> class observer : public query {
         using traits = function_traits<callback>;
         using args = typename traits::args_tuple;
         static_assert(
-            detail::field_index_before<args, std::tuple_size_v<args>>() > 0 ||
-                detail::builtin_event<T> == UINT16_MAX ||
-                std::is_same_v<T, OnRelationSet> || std::is_same_v<T, OnRelationRemove>,
+            !std::is_void_v<Changed> ||
+                detail::field_index_before<args, std::tuple_size_v<args>>() > 0 ||
+                detail::builtin_event<T> == UINT16_MAX || std::is_same_v<T, OnRelationSet> ||
+                std::is_same_v<T, OnRelationRemove>,
             "lifecycle observers must read at least one component"
         );
 
-        ecs::detail::append_callback_terms<args>(this->desc, component_index, resource_index,
-                                                 relation_index);
+        ecs::detail::append_callback_terms<args>(
+            this->desc,
+            component_index,
+            resource_index,
+            relation_index
+        );
 
         ecs_observer_desc_t observer_desc = {
             .on = detail::ecs_cpp_event_id<T>(),
             .entity = _target,
             .query = this->desc,
-            .callback = detail::ecs_cpp_observer_callback<callback, args>,
+            .callback = detail::ecs_cpp_observer_callback<callback, args, Changed>,
             .user_data = _user_data,
         };
 
@@ -4528,7 +4766,8 @@ template <typename Callback, typename Args> static void system_callback(ecs_iter
     }(indices);
     std::apply([&](auto &...param) { (prepare_world(param, ecs_world_current()), ...); }, params);
     if (it->cache) {
-        while (ecs_iter_next(it)) run_batch<Args>(callback, it, params);
+        while (ecs_iter_next(it))
+            run_batch<Args>(callback, it, params);
     } else {
         run_batch<Args>(callback, it, params);
     }
@@ -4569,6 +4808,23 @@ class system : protected query {
     /** Match entities with a relation of the requested type. */
     template <typename Relation> system &with_relation() {
         query::with_relation<Relation>();
+        return *this;
+    }
+
+    template <typename Relation, typename... T> system &require_target() {
+        query::require_target<Relation, T...>();
+        return *this;
+    }
+    template <typename Relation, typename... T> system &exclude_target() {
+        query::exclude_target<Relation, T...>();
+        return *this;
+    }
+    template <typename Relation, typename... T> system &require_up() {
+        query::require_up<Relation, T...>();
+        return *this;
+    }
+    template <typename Relation, typename... T> system &exclude_up() {
+        query::exclude_up<Relation, T...>();
         return *this;
     }
 
@@ -4626,6 +4882,12 @@ class system : protected query {
         return *this;
     }
 
+    /** Register for explicit execution only, preserving its phase and dependencies. */
+    system &manual() {
+        _system.manual = true;
+        return *this;
+    }
+
     /** Set whether the system starts disabled when registered. */
     system &disabled(bool value = true) {
         _system.disabled = value;
@@ -4650,6 +4912,10 @@ class system : protected query {
 
 /** Run one enabled system immediately. */
 inline void run_system(ecs_system_id_t id) { ecs_run_system(id); }
+/** Execute for one ByTarget target without changing the query or enabled state. */
+template <typename Relation> inline void run_system_target(ecs_system_id_t id, entity target) {
+    ecs_run_system_target(id, detail::ecs_cpp_relation_id<Relation>(), target.id());
+}
 /** Enable a registered system. */
 inline void enable_system(ecs_system_id_t id) { ecs_system_enable(id); }
 /** Disable a registered system. */
@@ -4677,6 +4943,7 @@ inline void init_cpp_state() {
     detail::typed_id<Name, detail::id_kind::component> = ecs_id(Name);
 
     detail::typed_id<Abstract, detail::id_kind::component> = ecs_id(Abstract);
+    detail::typed_id<SimulationPaused, detail::id_kind::component> = ecs_id(SimulationPaused);
 }
 /** Initialize the process-wide active ECS world and C++ builtin ids. */
 inline void init() {
@@ -4726,6 +4993,17 @@ inline bool progress() { return ecs_progress(); }
 inline void run() { ecs_run(); }
 /** Run enabled systems from the specified phase. */
 inline void run_phase(ecs_phase_t phase) { ecs_run_phase(phase); }
+/** Execute manual systems, including resource-only systems, in dependency order. */
+inline void run_manual_phase(ecs_phase_t phase) { ecs_run_manual_phase(phase); }
+/** Batch mutations through the native command buffer; nested batches share its boundary. */
+template <typename F> inline void defer(F &&commands) {
+    detail::defer_scope scope;
+    std::forward<F>(commands)();
+}
+/** Execute manual systems in phase/dependency order for one relation target. */
+template <typename Relation> inline void run_phase_target(ecs_phase_t phase, entity target) {
+    ecs_run_phase_target(phase, detail::ecs_cpp_relation_id<Relation>(), target.id());
+}
 
 /** Register or return the component id associated with `T`. */
 template <typename T> inline component_ref<T> component() {
@@ -4776,7 +5054,9 @@ template <typename T> inline void set_resource(T &&value) {
     if constexpr (std::is_lvalue_reference_v<T>) {
         ecs_set_resource_rid(ecs_cpp_resource_id<type>(), &value);
     } else {
-        ecs_move_resource_rid(ecs_cpp_resource_id<type>(), &value);
+        detail::move_input(value, [&](type *input) {
+            ecs_move_resource_rid(ecs_cpp_resource_id<type>(), input);
+        });
     }
 }
 
@@ -4817,7 +5097,7 @@ template <typename T> inline void remove_resource() {
 template <typename T, typename... Args> static void import_module_callback(const void *ptr) {
     using context_t = detail::module_import_context<T, Args...>;
     auto &context = *static_cast<context_t *>(const_cast<void *>(ptr));
-    std::apply([](auto &...args) { T::import(args...); }, context.args);
+    std::apply([](auto &...args) { T::import(static_cast<Args &&>(args)...); }, context.args);
 }
 
 template <typename T>

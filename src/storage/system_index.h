@@ -20,6 +20,7 @@ typedef struct {
     bool enabled;
     bool main_thread_only;
     bool no_defer;
+    bool manual;
 } ecs_system_t;
 
 typedef struct {

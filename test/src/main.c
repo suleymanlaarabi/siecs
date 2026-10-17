@@ -248,6 +248,10 @@ void module_forgets_manually_destroyed_query(void);
 void module_query_id_reuse_does_not_keep_old_owner(void);
 void module_queries_survive_disable_enable(void);
 
+// Testsuite 'source_query'
+void source_query_c_target_filter_and_shared_write(void);
+void source_query_c_ancestor_filter_without_fields(void);
+
 bake_test_case public_testcases[] = {
     {
         "metadata_and_entity_introspection",
@@ -1148,6 +1152,17 @@ bake_test_case module_testcases[] = {
     }
 };
 
+bake_test_case source_query_testcases[] = {
+    {
+        "c_target_filter_and_shared_write",
+        source_query_c_target_filter_and_shared_write
+    },
+    {
+        "c_ancestor_filter_without_fields",
+        source_query_c_ancestor_filter_without_fields
+    }
+};
+
 
 static bake_test_suite suites[] = {
     {
@@ -1233,9 +1248,16 @@ static bake_test_suite suites[] = {
         NULL,
         11,
         module_testcases
+    },
+    {
+        "source_query",
+        NULL,
+        NULL,
+        2,
+        source_query_testcases
     }
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 12);
+    return bake_test_run("siecs.test", argc, argv, suites, 13);
 }

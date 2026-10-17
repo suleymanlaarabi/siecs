@@ -22,25 +22,29 @@ concept SystemParam = requires {
 };
 
 template <typename T>
-concept IsSystemParamWorld = SystemParam<T> &&
+concept IsSystemParamWorld =
+    SystemParam<T> &&
     requires(system_param_t<T> &value, ecs_world_t *world) { value.world(world); };
 
 template <typename T>
-concept IsSystemParamTable = SystemParam<T> &&
-    requires(system_param_t<T> &value, ecs_iter_t *it) { value.table(it); };
+concept IsSystemParamTable =
+    SystemParam<T> && requires(system_param_t<T> &value, ecs_iter_t *it) { value.table(it); };
 
 template <typename T>
-concept IsSystemParamRow = SystemParam<T> &&
+concept IsSystemParamRow =
+    SystemParam<T> &&
     requires(system_param_t<T> &value, ecs_iter_t *it, uint32_t row) { value.row(it, row); };
 
 class system_param_query;
 template <typename T> class optional;
 
 template <typename T>
-concept HasSystemParamQuery = SystemParam<T> &&
-    requires(system_param_query &query) { system_param_t<T>::query(query); };
+concept HasSystemParamQuery =
+    SystemParam<T> && requires(system_param_query &query) { system_param_t<T>::query(query); };
 
-namespace detail { struct system_param_query_access; }
+namespace detail {
+struct system_param_query_access;
+}
 
 class system_param_query {
     ecs_query_desc_t &desc_;
@@ -48,8 +52,12 @@ class system_param_query {
     uint16_t &resource_index_;
     uint16_t &relation_index_;
 
-    system_param_query(ecs_query_desc_t &desc, uint16_t &component_index,
-                       uint16_t &resource_index, uint16_t &relation_index) noexcept
+    system_param_query(
+        ecs_query_desc_t &desc,
+        uint16_t &component_index,
+        uint16_t &resource_index,
+        uint16_t &relation_index
+    ) noexcept
         : desc_(desc), component_index_(component_index), resource_index_(resource_index),
           relation_index_(relation_index) {}
     friend struct detail::system_param_query_access;
@@ -60,6 +68,7 @@ class system_param_query {
     template <typename T> void read_resource();
     template <typename T> void write_resource();
     template <typename Relation> void require_relation();
+    template <typename Relation, typename T> void source_component();
 };
 
 } // namespace ecs

@@ -18,6 +18,7 @@ ecs_entity_index_t entity_index;
 static bool ecs_world_started;
 #endif
 static bool ecs_world_finished;
+static sicore_vec_t ecs_cached_ids;
 
 void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_assert(!ecs_world_started, "ecs_init called while ECS is already running\n");
@@ -28,6 +29,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
 #ifndef NDEBUG
     ecs_world_started = true;
 #endif
+    sicore_vec_init(&ecs_cached_ids, sizeof(uint16_t *));
     sireflect_init();
     sicore_vec_init_w_size(&entity_index.entities, sizeof(ecs_entity_record_t), 256);
     entity_index.first_available = UINT32_MAX;
@@ -61,6 +63,12 @@ void ecs_at_fini_init(const ecs_fini_desc_t *desc) {
     ecs_assert(!ecs_world_finished, "ecs_at_fini called during or after ecs_fini\n");
 
     sicore_vec_push(&ecs_world.fini_callbacks, desc, sizeof(*desc));
+}
+
+void ecs_id_reset_on_fini(uint16_t *id) {
+    ecs_assert_not_scheduler_parallel("cached id registration");
+    ecs_assert_not_null(id);
+    sicore_vec_push(&ecs_cached_ids, &id, sizeof id);
 }
 
 static void ecs_fini_callbacks_run(void) {
@@ -97,6 +105,10 @@ void ecs_fini(void) {
     ecs_scene_type_cache_fini();
     sireflect_fini();
     sicore_map_fini(&name_map);
+    uint16_t **ids = ecs_cached_ids.data;
+    for (uint32_t i = 0; i < ecs_cached_ids.size; i++)
+        *ids[i] = 0;
+    sicore_vec_fini(&ecs_cached_ids);
     ecs_module_storage_fini();
 #ifndef NDEBUG
     ecs_world_started = false;

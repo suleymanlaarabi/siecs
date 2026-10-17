@@ -18,6 +18,34 @@
 
 namespace ecs {
 
+/** Borrow a component on the direct target of a ByTarget relation.
+ * Mutable access is explicit and participates in scheduler conflicts. */
+template <typename Relation, typename T> class source {
+    T *_ptr = nullptr;
+    uint16_t _field = 0;
+
+  public:
+    static source init() noexcept { return {}; }
+    static void query(system_param_query &q) { q.source_component<Relation, T>(); }
+    void field(uint16_t value) noexcept { _field = value; }
+    void table(ecs_iter_t *it) noexcept {
+        if (it->cache)
+            _ptr = static_cast<T *>(ecs_field(it, _field));
+        else {
+            const auto target =
+                ecs_target_id(it->entities[0], detail::ecs_cpp_relation_id<Relation>());
+            _ptr = target ? static_cast<T *>(ecs_try_get_cid(
+                                target,
+                                detail::ecs_cpp_component_id<std::remove_cv_t<T>>()
+                            ))
+                          : nullptr;
+        }
+    }
+    T *get() const noexcept { return _ptr; }
+    T *operator->() const noexcept { return _ptr; }
+    T &operator*() const noexcept { return *_ptr; }
+};
+
 /** Nullable view for an optional query field; it never owns `T`. */
 template <typename T> class optional {
     T *_ptr = nullptr;
@@ -397,6 +425,27 @@ template <typename T> inline void system_param_query::write_resource() {
 template <typename Relation> inline void system_param_query::require_relation() {
     detail::ensure_required_relation<Relation>(desc_, relation_index_);
 }
+template <typename Relation, typename T> inline void system_param_query::source_component() {
+    const auto id = detail::ecs_cpp_component_id<std::remove_cv_t<T>>();
+    const auto relation = detail::ecs_cpp_relation_id<Relation>();
+    for (uint16_t i = 0; i < component_index_; i++) {
+        if (desc_.components[i].id == id &&
+            desc_.components[i].access == ECS_QUERY_UP_ACCESS(EcsFilterTarget, relation)) {
+            std::memmove(
+                desc_.components + i,
+                desc_.components + i + 1,
+                (--component_index_ - i) * sizeof(ecs_component_term_t)
+            );
+            break;
+        }
+    }
+    detail::append_component_term(
+        desc_,
+        component_index_,
+        id,
+        ECS_QUERY_UP_ACCESS(std::is_const_v<T> ? EcsInTarget : EcsInOutTarget, relation)
+    );
+}
 template <typename T> inline void system_param_query::optional_component() {
     detail::append_callback_component_term(
         desc_,
@@ -555,6 +604,49 @@ class query {
 
     /** Add terms that must be absent from matching tables. */
     template <typename... T> query &exclude() { return components<EcsNot, T...>(); }
+
+    /** Filter on a direct ByTarget relation target's components. */
+    template <typename Relation, typename... T> query &require_target() {
+        (detail::append_component_term(
+             desc,
+             component_index,
+             detail::ecs_cpp_component_id<T>(),
+             ECS_QUERY_UP_ACCESS(EcsFilterTarget, detail::ecs_cpp_relation_id<Relation>())
+         ),
+         ...);
+        return *this;
+    }
+    template <typename Relation, typename... T> query &exclude_target() {
+        (detail::append_component_term(
+             desc,
+             component_index,
+             detail::ecs_cpp_component_id<T>(),
+             ECS_QUERY_UP_ACCESS(EcsNotTarget, detail::ecs_cpp_relation_id<Relation>())
+         ),
+         ...);
+        return *this;
+    }
+    /** Filter the entity and its ancestors. Supports acyclic ByTarget/ByDepth relations. */
+    template <typename Relation, typename... T> query &require_up() {
+        (detail::append_component_term(
+             desc,
+             component_index,
+             detail::ecs_cpp_component_id<T>(),
+             ECS_QUERY_UP_ACCESS(EcsFilterUp, detail::ecs_cpp_relation_id<Relation>())
+         ),
+         ...);
+        return *this;
+    }
+    template <typename Relation, typename... T> query &exclude_up() {
+        (detail::append_component_term(
+             desc,
+             component_index,
+             detail::ecs_cpp_component_id<T>(),
+             ECS_QUERY_UP_ACCESS(EcsNotUp, detail::ecs_cpp_relation_id<Relation>())
+         ),
+         ...);
+        return *this;
+    }
 
     /** Restrict matches to entities inheriting from `target`. */
     query &is_a(ecs_entity_t target) {

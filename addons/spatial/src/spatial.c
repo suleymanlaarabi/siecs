@@ -25,6 +25,7 @@ ECS_COMPONENT_DEFINE(GlobalScale3d, .ops = { .ctor = ecs_ctor_id(GlobalScale3d) 
 
 ECS_TAG_DEFINE(Static);
 ECS_TAG_DEFINE(Static3dReady);
+ECS_TAG_DEFINE(ExternalMotion2d);
 ECS_MODULE_DEFINE(sispatial);
 
 static ecs_query_id_t static_3d_candidates;
@@ -160,8 +161,7 @@ static inline void spatial_3d_compute_static(
 static bool spatial_3d_can_be_static(ecs_entity_t entity) {
     bool inside_static_subtree = false;
     bool dynamic_ancestor = false;
-    for (ecs_entity_t current = entity; current != 0;
-         current = ecs_target(current, ChildOf)) {
+    for (ecs_entity_t current = entity; current != 0; current = ecs_target(current, ChildOf)) {
         if (ecs_has(current, Static)) {
             inside_static_subtree = true;
             dynamic_ancestor = false;
@@ -180,8 +180,7 @@ static void spatial_3d_static_classification_event(ecs_observer_event_t *event) 
 }
 
 static void spatial_3d_ready_on_set(ecs_observer_event_t *event) {
-    if (event->component == ecs_id(Position3d) ||
-        event->component == ecs_id(Rotation3d) ||
+    if (event->component == ecs_id(Position3d) || event->component == ecs_id(Rotation3d) ||
         event->component == ecs_id(Scale3d)) {
         static_3d_transform_dirty = true;
     }
@@ -534,7 +533,8 @@ static void spatial_3d_propagate(ecs_iter_t *it) {
 
         if (direct_parent != cached_parent) {
             const ecs_entity_t parent_entity = ecs_has(direct_parent, Position3d)
-                ? direct_parent : spatial_3d_transform_parent(it->entities[i]);
+                                                   ? direct_parent
+                                                   : spatial_3d_transform_parent(it->entities[i]);
             const GlobalPosition3d *parent_position =
                 parent_entity ? ecs_try_get(parent_entity, GlobalPosition3d) : NULL;
 
@@ -637,7 +637,8 @@ void sispatial_import(const sispatial_props_t *props) {
         GlobalScale3d,
 
         Static,
-        Static3dReady
+        Static3dReady,
+        ExternalMotion2d
     );
 
     ecs_with(Position2d, Rotation2d, Scale2d, GlobalPosition2d, GlobalRotation2d, GlobalScale2d);
@@ -647,10 +648,12 @@ void sispatial_import(const sispatial_props_t *props) {
     static_3d_classification_dirty = true;
     static_3d_transform_dirty = true;
     static_3d_candidates = ecs_query({ .components = { ecs_filter(Position3d) } });
-    static_3d_ready = ecs_query({
-        .components = { ecs_filter(Position3d), ecs_filter(Static3dReady) },
-        .order_by = ecs_order_by_depth(ChildOf),
-    });
+    static_3d_ready = ecs_query(
+        {
+            .components = { ecs_filter(Position3d), ecs_filter(Static3dReady) },
+            .order_by = ecs_order_by_depth(ChildOf),
+        }
+    );
 
     ecs_observer({ .on = EcsOnAdd, .callback = spatial_3d_static_classification_event });
     ecs_observer({ .on = EcsOnRemove, .callback = spatial_3d_static_classification_event });
@@ -671,12 +674,14 @@ void sispatial_import(const sispatial_props_t *props) {
         }
     );
 
-    ecs_system({
-        .name = "Spatial3dClassifyStatic",
-        .callback = spatial_3d_classify_statics,
-        .phase = EcsPreUpdate,
-        .main_thread_only = true,
-    });
+    ecs_system(
+        {
+            .name = "Spatial3dClassifyStatic",
+            .callback = spatial_3d_classify_statics,
+            .phase = EcsPreUpdate,
+            .main_thread_only = true,
+        }
+    );
 
     /*
      * Static transforms are excluded from the per-frame propagation systems.
@@ -832,6 +837,8 @@ void sispatial_import(const sispatial_props_t *props) {
                 .components = {
                     ecs_inout(Position2d),
                     ecs_in(Velocity2d),
+                    ecs_not(ExternalMotion2d),
+                    { ecs_id(SimulationPaused), ECS_QUERY_UP_ACCESS(EcsNotUp, ecs_rid(ChildOf)) },
                 },
             },
             .callback = spatial_2d_integrate,
@@ -846,6 +853,7 @@ void sispatial_import(const sispatial_props_t *props) {
                 .components = {
                     ecs_inout(Position3d),
                     ecs_in(Velocity3d),
+                    { ecs_id(SimulationPaused), ECS_QUERY_UP_ACCESS(EcsNotUp, ecs_rid(ChildOf)) },
                 },
             },
             .callback = spatial_3d_integrate,

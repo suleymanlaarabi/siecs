@@ -4,12 +4,23 @@
   "value": {
     "public": false,
     "clangd": true,
-    "use": ["siecs", "siecs_rest", "sijson", "sireflect", "sicore"],
-    "use_runtime": ["siecs.test.my_module"]
+    "use": [
+      "siecs",
+      "siecs_rest",
+      "sijson",
+      "sireflect",
+      "sicore"
+    ],
+    "use_runtime": [
+      "siecs.test.my_module"
+    ]
   },
   "lang.c": {
     "c-standard": "c17",
-    "include": ["../src", "../include"]
+    "include": [
+      "../src",
+      "../include"
+    ]
   },
   "bundle": {
     "repositories": {
@@ -114,12 +125,12 @@
       },
       {
         "id": "rest",
-    "testcases": [
-      "is_a_and_child_of_same_target_routes",
-      "enum_schema_and_component_roundtrip",
-      "in_process_body_limit",
-      "invalid_route_parameters"
-    ]
+        "testcases": [
+          "is_a_and_child_of_same_target_routes",
+          "enum_schema_and_component_roundtrip",
+          "in_process_body_limit",
+          "invalid_route_parameters"
+        ]
       },
       {
         "id": "rest_reflection",
@@ -253,7 +264,6 @@
           "custom_phase"
         ]
       },
-
       {
         "id": "observer",
         "testcases": [
@@ -294,6 +304,13 @@
           "forgets_manually_destroyed_query",
           "query_id_reuse_does_not_keep_old_owner",
           "queries_survive_disable_enable"
+        ]
+      },
+      {
+        "id": "source_query",
+        "testcases": [
+          "c_target_filter_and_shared_write",
+          "c_ancestor_filter_without_fields"
         ]
       }
     ]

@@ -124,6 +124,7 @@ ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query_id_t qid, bool 
         .enabled = !desc->disabled,
         .main_thread_only = desc->main_thread_only,
         .no_defer = desc->no_defer,
+        .manual = desc->manual,
     };
     for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY && desc->after[i]; i++) {
 #ifndef NDEBUG
@@ -162,7 +163,8 @@ static bool ecs_query_tables_overlap(const ecs_query_cache_t *a, const ecs_query
 }
 
 static inline bool ecs_query_access_writes(ecs_access_t access) {
-    return access == EcsOut || access == EcsInOut || access == EcsInOutOptional;
+    return access == EcsOut || access == EcsInOut || access == EcsInOutOptional ||
+           access == EcsInOutTarget;
 }
 
 static bool ecs_query_terms_conflict(
@@ -207,7 +209,7 @@ static bool ecs_system_conflict(const ecs_system_t *a, const ecs_system_t *b) {
                ecs_query_fields(bq),
                bq->field_count
            ) &&
-           ecs_query_tables_overlap(a_cache, b_cache);
+           (aq->up_mask || bq->up_mask || ecs_query_tables_overlap(a_cache, b_cache));
 }
 
 void ecs_system_index_build_plan(void) {

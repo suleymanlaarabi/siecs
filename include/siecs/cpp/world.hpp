@@ -30,6 +30,7 @@ inline void init_cpp_state() {
     detail::typed_id<Name, detail::id_kind::component> = ecs_id(Name);
 
     detail::typed_id<Abstract, detail::id_kind::component> = ecs_id(Abstract);
+    detail::typed_id<SimulationPaused, detail::id_kind::component> = ecs_id(SimulationPaused);
 }
 /** Initialize the process-wide active ECS world and C++ builtin ids. */
 inline void init() {
@@ -79,6 +80,17 @@ inline bool progress() { return ecs_progress(); }
 inline void run() { ecs_run(); }
 /** Run enabled systems from the specified phase. */
 inline void run_phase(ecs_phase_t phase) { ecs_run_phase(phase); }
+/** Execute manual systems, including resource-only systems, in dependency order. */
+inline void run_manual_phase(ecs_phase_t phase) { ecs_run_manual_phase(phase); }
+/** Batch mutations through the native command buffer; nested batches share its boundary. */
+template <typename F> inline void defer(F &&commands) {
+    detail::defer_scope scope;
+    std::forward<F>(commands)();
+}
+/** Execute manual systems in phase/dependency order for one relation target. */
+template <typename Relation> inline void run_phase_target(ecs_phase_t phase, entity target) {
+    ecs_run_phase_target(phase, detail::ecs_cpp_relation_id<Relation>(), target.id());
+}
 
 /** Register or return the component id associated with `T`. */
 template <typename T> inline component_ref<T> component() {
@@ -129,7 +141,9 @@ template <typename T> inline void set_resource(T &&value) {
     if constexpr (std::is_lvalue_reference_v<T>) {
         ecs_set_resource_rid(ecs_cpp_resource_id<type>(), &value);
     } else {
-        ecs_move_resource_rid(ecs_cpp_resource_id<type>(), &value);
+        detail::move_input(value, [&](type *input) {
+            ecs_move_resource_rid(ecs_cpp_resource_id<type>(), input);
+        });
     }
 }
 
@@ -170,7 +184,7 @@ template <typename T> inline void remove_resource() {
 template <typename T, typename... Args> static void import_module_callback(const void *ptr) {
     using context_t = detail::module_import_context<T, Args...>;
     auto &context = *static_cast<context_t *>(const_cast<void *>(ptr));
-    std::apply([](auto &...args) { T::import(args...); }, context.args);
+    std::apply([](auto &...args) { T::import(static_cast<Args &&>(args)...); }, context.args);
 }
 
 template <typename T>

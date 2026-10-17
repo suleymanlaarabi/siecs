@@ -15,7 +15,8 @@ template <typename Callback, typename Args> static void system_callback(ecs_iter
     }(indices);
     std::apply([&](auto &...param) { (prepare_world(param, ecs_world_current()), ...); }, params);
     if (it->cache) {
-        while (ecs_iter_next(it)) run_batch<Args>(callback, it, params);
+        while (ecs_iter_next(it))
+            run_batch<Args>(callback, it, params);
     } else {
         run_batch<Args>(callback, it, params);
     }
@@ -56,6 +57,23 @@ class system : protected query {
     /** Match entities with a relation of the requested type. */
     template <typename Relation> system &with_relation() {
         query::with_relation<Relation>();
+        return *this;
+    }
+
+    template <typename Relation, typename... T> system &require_target() {
+        query::require_target<Relation, T...>();
+        return *this;
+    }
+    template <typename Relation, typename... T> system &exclude_target() {
+        query::exclude_target<Relation, T...>();
+        return *this;
+    }
+    template <typename Relation, typename... T> system &require_up() {
+        query::require_up<Relation, T...>();
+        return *this;
+    }
+    template <typename Relation, typename... T> system &exclude_up() {
+        query::exclude_up<Relation, T...>();
         return *this;
     }
 
@@ -113,6 +131,12 @@ class system : protected query {
         return *this;
     }
 
+    /** Register for explicit execution only, preserving its phase and dependencies. */
+    system &manual() {
+        _system.manual = true;
+        return *this;
+    }
+
     /** Set whether the system starts disabled when registered. */
     system &disabled(bool value = true) {
         _system.disabled = value;
@@ -137,6 +161,10 @@ class system : protected query {
 
 /** Run one enabled system immediately. */
 inline void run_system(ecs_system_id_t id) { ecs_run_system(id); }
+/** Execute for one ByTarget target without changing the query or enabled state. */
+template <typename Relation> inline void run_system_target(ecs_system_id_t id, entity target) {
+    ecs_run_system_target(id, detail::ecs_cpp_relation_id<Relation>(), target.id());
+}
 /** Enable a registered system. */
 inline void enable_system(ecs_system_id_t id) { ecs_system_enable(id); }
 /** Disable a registered system. */

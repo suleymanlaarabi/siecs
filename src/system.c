@@ -50,7 +50,12 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
 
 const char *ecs_system_name(ecs_system_id_t system) { return ecs_system_index_get(system)->name; }
 
-static void ecs_system_run_with_delta(ecs_system_t *sys, float delta_time) {
+static void ecs_system_run_with_delta(
+    ecs_system_t *sys,
+    float delta_time,
+    ecs_relation_id_t relation,
+    ecs_entity_t target
+) {
     if (!sys->enabled) {
         return;
     }
@@ -59,14 +64,16 @@ static void ecs_system_run_with_delta(ecs_system_t *sys, float delta_time) {
         ecs_defer_begin();
     }
     if (sys->iterates_query) {
-        ecs_iter_t it = ecs_query_iter(sys->qid);
+        ecs_iter_t it =
+            relation ? ecs_query_iter_target(sys->qid, relation, target) : ecs_query_iter(sys->qid);
         it.user_data = sys->user_data;
         it.delta_time = delta_time;
 
         if (sys->callback_iterates_query) {
             sys->callback(&it);
         } else {
-            while (ecs_iter_next(&it)) sys->callback(&it);
+            while (ecs_iter_next(&it))
+                sys->callback(&it);
         }
     } else {
         ecs_iter_t it = {
@@ -85,12 +92,23 @@ static void ecs_system_run_with_delta(ecs_system_t *sys, float delta_time) {
 
 void ecs_system_run_prepared(ecs_system_id_t system) {
     ecs_system_t *sys = ecs_system_index_get(system);
-    ecs_system_run_with_delta(sys, sys->prepared_delta_time);
+    ecs_system_run_with_delta(sys, sys->prepared_delta_time, 0, 0);
 }
 
 void ecs_run_system(ecs_system_id_t system) {
     ecs_system_t *sys = ecs_system_index_get(system);
-    ecs_system_run_with_delta(sys, (float)ecs_world.delta_time);
+    ecs_system_run_with_delta(sys, (float)ecs_world.delta_time, 0, 0);
+}
+
+void ecs_run_system_target(
+    ecs_system_id_t system,
+    ecs_relation_id_t relation,
+    ecs_entity_t target
+) {
+    ecs_assert_not_scheduler_parallel("scoped system execution");
+    ecs_system_t *sys = ecs_system_index_get(system);
+    ecs_assert(sys->iterates_query, "scoped execution requires an entity query");
+    ecs_system_run_with_delta(sys, (float)ecs_world.delta_time, relation, target);
 }
 
 static bool ecs_system_prepare_scheduled(ecs_system_t *sys) {
@@ -111,7 +129,7 @@ static bool ecs_system_prepare_scheduled(ecs_system_t *sys) {
     return true;
 }
 
-static void ecs_run_phase_internal(ecs_phase_t phase, bool respect_interval) {
+static void ecs_run_phase_internal(ecs_phase_t phase, bool respect_interval, bool manual) {
     ecs_system_index_t *index = &system_index;
     ecs_phase_info_t *pinfo = ecs_system_index_get_phase(phase);
 
@@ -141,7 +159,7 @@ static void ecs_run_phase_internal(ecs_phase_t phase, bool respect_interval) {
         for (uint32_t j = 0; j < count; j++) {
             ecs_system_t *sys = ecs_system_index_get(systems[j]);
 
-            if (!sys->enabled) {
+            if (!sys->enabled || sys->manual != manual) {
                 sys->prepared_delta_time = -1.0f;
                 continue;
             }
@@ -181,7 +199,28 @@ static void ecs_run_phase_internal(ecs_phase_t phase, bool respect_interval) {
     }
 }
 
-void ecs_run_phase(ecs_phase_t phase) { ecs_run_phase_internal(phase, false); }
+void ecs_run_phase(ecs_phase_t phase) { ecs_run_phase_internal(phase, false, false); }
+
+void ecs_run_manual_phase(ecs_phase_t phase) {
+    ecs_assert_not_scheduler_parallel("manual phase execution");
+    ecs_run_phase_internal(phase, false, true);
+}
+
+void ecs_run_phase_target(ecs_phase_t phase, ecs_relation_id_t relation, ecs_entity_t target) {
+    ecs_assert_not_scheduler_parallel("scoped phase execution");
+    if (system_index.plan_dirty)
+        ecs_system_index_build_plan();
+    const ecs_phase_info_t *info = ecs_system_index_get_phase(phase);
+    ecs_assert(info, "invalid scoped phase");
+    const ecs_system_id_t *order = system_index.execution_order.data;
+    for (uint32_t i = info->plan_first; i < info->plan_first + info->plan_count; i++) {
+        if (!order[i])
+            continue;
+        ecs_system_t *sys = ecs_system_index_get(order[i]);
+        if (sys->manual)
+            ecs_run_system_target(order[i], relation, target);
+    }
+}
 
 bool ecs_progress(void) {
     double frame_start = ecs_platform_time_now_sec();
@@ -213,7 +252,7 @@ bool ecs_progress(void) {
     for (uint32_t i = index->start_phase_count; i < index->phase_order.size; i++) {
         ecs_phase_t phase = *sicore_vec_get(&index->phase_order, i, ecs_phase_t);
 
-        ecs_run_phase_internal(phase, true);
+        ecs_run_phase_internal(phase, true, false);
     }
 
     if (ecs_world.features.target_fps) {

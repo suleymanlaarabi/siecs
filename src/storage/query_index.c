@@ -44,11 +44,12 @@ static void ecs_query_compile_term(ecs_query_builder_t *b, ecs_component_term_t 
     ecs_relation_id_t source = ecs_access_term_source_relation(term);
     ecs_assert_id_valid(term.id);
     ecs_assert(
-        access <= EcsInUpOptional && (access >= EcsInUp) == (source != 0),
+        access <= EcsNotUp && (access >= EcsInUp) == (source != 0),
         "invalid query access or up relation\n"
     );
 #ifndef NDEBUG
-    if (access == EcsOut || access == EcsInOut || access == EcsInOutOptional) {
+    if (access == EcsOut || access == EcsInOut || access == EcsInOutOptional ||
+        access == EcsInOutTarget) {
         ecs_assert(
             ecs_component_info(term.id)->mutation != EcsSetOnly,
             "SetOnly component cannot be used as writable query field"
@@ -56,17 +57,26 @@ static void ecs_query_compile_term(ecs_query_builder_t *b, ecs_component_term_t 
     }
     for (uint8_t i = 0; i < q->field_count + q->match_count; i++) {
         uint8_t at = i < q->field_count ? i : ECS_COMPILED_TERMS - 1 - (i - q->field_count);
-        ecs_assert(b->terms[at].id != term.id, "duplicate query component: %u\n", term.id);
+        ecs_assert(
+            b->terms[at].id != term.id || ecs_access_term_source_relation(b->terms[at]) != source,
+            "duplicate query component/source: %u\n",
+            term.id
+        );
     }
     if (source) {
         const ecs_relation_desc_t *desc = &ecs_relation_record(source)->info.desc;
+        bool up_filter = access == EcsFilterUp || access == EcsNotUp;
         ecs_assert(
-            desc->storage == EcsRelationByTarget && desc->acyclic,
-            "ecs_up requires acyclic ByTarget\n"
+            up_filter ? desc->acyclic : desc->storage == EcsRelationByTarget,
+            "source fields require ByTarget; ancestor filters require acyclic relations\n"
+        );
+        ecs_assert(
+            (access != EcsInUp && access != EcsInUpOptional) || desc->acyclic,
+            "ecs_up requires an acyclic relation\n"
         );
     }
 #endif
-    if (access == EcsFilter || access == EcsNot) {
+    if (access == EcsFilter || access == EcsNot || access >= EcsFilterTarget) {
         b->terms[ECS_COMPILED_TERMS - ++q->match_count] = term;
     } else {
         uint16_t bit = (uint16_t)(1u << q->field_count);
@@ -127,6 +137,13 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
             if (tables.count < b.candidates.count)
                 b.candidates = tables;
         }
+    }
+    for (uint8_t i = 0; i < q->match_count; i++) {
+        ecs_relation_id_t source =
+            ecs_access_term_source_relation(b.terms[ECS_COMPILED_TERMS - q->match_count + i]);
+        if (source)
+            q->source_flags |=
+                ecs_relation_record(source)->info.desc.storage == EcsRelationByTarget ? 1 : 2;
     }
     while (q->resource_count < ECS_QUERY_RESOURCE_CAPACITY &&
            desc->resources[q->resource_count].id) {
@@ -214,12 +231,45 @@ bool ecs_query_resolve_up_fields(
         ecs_relation_id_t relation = ecs_access_term_source_relation(term);
         ecs_entity_t target = ecs_relation_target_at_table(table, relation, 0);
         void *ptr = NULL;
-        while (target && !(ptr = ecs_try_get_cid(target, term.id)))
-            target = ecs_target_id(target, relation);
+        ecs_access_t access = ecs_access_term_access(term);
+        if (access == EcsInTarget || access == EcsInOutTarget) {
+            if (target)
+                ptr = ecs_try_get_cid(target, term.id);
+        } else {
+            while (target && !(ptr = ecs_try_get_cid(target, term.id)))
+                target = ecs_target_id(target, relation);
+        }
         entry->fields[i] = ptr;
         entry->field_kind_bits = (entry->field_kind_bits & ~(3u << (i * 2))) |
                                  (uint32_t)(ptr ? EcsFieldShared : EcsFieldNone) << (i * 2);
-        if (!ptr && ecs_access_term_access(term) == EcsInUp)
+        if (!ptr && ecs_access_term_access(term) != EcsInUpOptional)
+            return false;
+    }
+    return true;
+}
+
+bool ecs_query_source_matches(
+    const ecs_query_t *q,
+    const ecs_table_t *table,
+    uint32_t row,
+    bool per_row
+) {
+    for (uint8_t i = 0; i < q->match_count; i++) {
+        ecs_component_term_t term = ecs_query_match_terms(q)[i];
+        ecs_relation_id_t relation = ecs_access_term_source_relation(term);
+        if (!relation ||
+            (ecs_relation_record(relation)->info.desc.storage != EcsRelationByTarget) != per_row)
+            continue;
+        ecs_access_t access = ecs_access_term_access(term);
+        bool up = access == EcsFilterUp || access == EcsNotUp;
+        bool has = up && ecs_has_cid(table->entities[row], term.id);
+        ecs_entity_t target = ecs_relation_target_at_table(table, relation, row);
+        while (target && !has) {
+            has = ecs_has_cid(target, term.id);
+            target = up && !has ? ecs_target_id(target, relation) : 0;
+        }
+        bool exclude = access == EcsNotTarget || access == EcsNotUp;
+        if (has == exclude)
             return false;
     }
     return true;
@@ -271,6 +321,8 @@ ecs_query_add(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t id, b
         return false;
     for (uint8_t i = 0; i < q->match_count; i++) {
         ecs_component_term_t term = ecs_query_match_terms(q)[i];
+        if (ecs_access_term_source_relation(term))
+            continue;
         if (ecs_table_has(table, term.id) == (term.access == EcsNot))
             return false;
     }

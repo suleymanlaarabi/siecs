@@ -1255,3 +1255,41 @@ When a query matches too much:
 2. verify relation target restriction;
 3. check optional terms were not intended to be required;
 4. remember inheritance can make read-only components effectively available.
+
+## Components on relation targets
+
+A `ByTarget` relation groups entities by their target. Target component filters
+are resolved once per table when iterating, so adding/removing a component on the
+target immediately changes matching without rebuilding the query.
+
+```cpp
+ecs::relation<Owner>({.storage = EcsRelationByTarget});
+ecs::query()
+    .require_target<Owner, Active>()
+    .each([](Position &position, ecs::source<Owner, const Settings> settings) {
+        position.x += settings->speed;
+    });
+```
+
+`exclude_target<Owner, Active>()` also matches an absent relation or component.
+`ecs::source<Owner, Settings>` explicitly borrows mutable target storage; its write
+access conflicts with readers/writers of `Settings`, including systems whose
+entity tables are disjoint. A source parameter without row-dependent parameters
+runs once per matching table, following the normal system parameter rules.
+Sources and filters also work in observers. Borrowed pointers expire when the
+component storage moves; do not retain them across structural mutations.
+
+The C equivalents use component terms with
+`ECS_QUERY_UP_ACCESS(EcsInTarget, relation)`, `EcsInOutTarget`, `EcsFilterTarget`
+and `EcsNotTarget`.
+
+`require_up<Relation, Marker>()` and `exclude_up<Relation, Marker>()` test the
+entity itself and its ancestors through an acyclic relation. `ByTarget` filters
+operate per table. `ByDepth` and dense relations may contain different parents
+within a table; the iterator returns contiguous matching row slices, with fields,
+entity IDs and relation targets adjusted to that slice. This avoids allocating a
+filtered entity list. C uses `EcsFilterUp` and `EcsNotUp` with the same access macro.
+
+`ecs_query_iter_target(query, relation, target)` reuses an existing query for one
+`ByTarget` target. Zero selects tables without that relation; it does not mean all
+targets. The query descriptor and cached matching tables remain unchanged.

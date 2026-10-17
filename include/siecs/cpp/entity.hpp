@@ -3,6 +3,8 @@
 #include "siecs/cpp/system_param.hpp"
 #include <cassert>
 #include <cstring>
+#include <ranges>
+#include <span>
 #include <string>
 
 namespace ecs {
@@ -131,7 +133,9 @@ class entity {
         if constexpr (std::is_lvalue_reference_v<T>)
             ecs_set_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
         else
-            ecs_move_cid(_entity, detail::ecs_cpp_component_id<type>(), &value);
+            detail::move_input(value, [&](type *input) {
+                ecs_move_cid(_entity, detail::ecs_cpp_component_id<type>(), input);
+            });
         return *this;
     }
 
@@ -207,9 +211,7 @@ class entity {
     entity is_a(entity target);
 
     /** Add IsA to the singleton for `T` with the same ChildOf snapshot semantics. */
-    template <typename T> entity is_a() {
-        return is_a(ecs::entity::create<T>());
-    }
+    template <typename T> entity is_a() { return is_a(ecs::entity::create<T>()); }
 
     /** C-compatible IsA overload with the same ChildOf snapshot semantics. */
     entity is_a(ecs_entity_t target) { return is_a(entity::from(target)); }
@@ -239,6 +241,14 @@ class entity {
 
     template <typename Relation> [[nodiscard]] entity target() const {
         return entity(ecs_target_id(_entity, detail::ecs_cpp_relation_id<Relation>()));
+    }
+
+    /** Borrow sources of an indexed Dense/ByDepth relation (empty for ByTarget).
+     * The view expires when that relation is mutated. */
+    template <typename Relation> [[nodiscard]] auto sources() const {
+        const auto view = ecs_relation_sources(_entity, detail::ecs_cpp_relation_id<Relation>());
+        return std::span(view.entities, view.count) |
+               std::views::transform([](ecs_entity_t id) { return entity::from(id); });
     }
 
     /** Remove `Disabled`, allowing the entity in default queries. */

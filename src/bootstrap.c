@@ -133,6 +133,7 @@ ECS_RESOURCE_DEFINE(DeltaTime);
 
 ECS_TAG_DEFINE(Disabled);
 ECS_TAG_DEFINE(Abstract);
+ECS_TAG_DEFINE(SimulationPaused);
 
 void ecs_bootstrap() {
     // Reserve identifiers used to represent false return values.
@@ -159,4 +160,5 @@ void ecs_bootstrap() {
     sicore_map_init(&name_map);
     ECS_COMPONENT_REGISTER(Disabled);
     ECS_COMPONENT_REGISTER(Abstract);
+    ECS_COMPONENT_REGISTER(SimulationPaused);
 }

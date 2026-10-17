@@ -378,6 +378,12 @@ typedef enum {
     EcsInUp,          /* Read the nearest inherited field through an acyclic ByTarget
                          relation. */
     EcsInUpOptional,  /* Same as EcsInUp, but permits a missing field. */
+    EcsInTarget,      /* Read a component on a direct ByTarget relation target. */
+    EcsInOutTarget,   /* Explicit shared mutable access to that component. */
+    EcsFilterTarget,  /* Direct target must have the component. No returned field. */
+    EcsNotTarget,     /* Missing relation/component matches. No returned field. */
+    EcsFilterUp,      /* Entity or an ancestor through the relation has the component. */
+    EcsNotUp,         /* Neither entity nor any ancestor has the component. */
 } ecs_access_t;
 
 /*
@@ -528,6 +534,9 @@ typedef struct ecs_fini_desc_t {
  * Registering another fini callback from a fini callback is invalid.
  */
 SIECS_API void ecs_at_fini_init(const ecs_fini_desc_t *desc);
+/* Reset a cached 16-bit world-local id after teardown callbacks and before module
+ * unload. Storage must remain alive until ecs_fini(); register once per cache. */
+SIECS_API void ecs_id_reset_on_fini(uint16_t *id);
 
 /*
  * Finalize the world.
@@ -842,6 +851,9 @@ ECS_TAG_DECLARE(Disabled);
 
 /* Builtin tag for abstract entities. */
 ECS_TAG_DECLARE(Abstract);
+
+/* Simulation systems may opt out of paused entities and their ChildOf descendants. */
+ECS_TAG_DECLARE(SimulationPaused);
 
 /* C++ declarations made after this header use the C id/descriptor directly. */
 #ifdef __cplusplus
@@ -1494,6 +1506,12 @@ typedef struct {
     uintptr_t user_data;
     uint16_t table_idx;
     uint16_t table_count;
+    /* Scoped iterators and contiguous row slices for ancestor filters. */
+    ecs_relation_id_t scope_relation;
+    ecs_entity_t scope_target;
+    uint32_t row_offset;
+    uint32_t row_cursor;
+    void *field_views[ECS_QUERY_TERM_CAPACITY];
 } ecs_iter_t;
 
 /*
@@ -1506,6 +1524,11 @@ typedef struct {
  *   }
  */
 SIECS_API ecs_iter_t ecs_query_iter(ecs_query_id_t query_id);
+
+/* Reuse a query, restricting tables to one ByTarget relation target.
+ * target == 0 selects tables without the relation. */
+SIECS_API ecs_iter_t ecs_query_iter_target(
+    ecs_query_id_t query_id, ecs_relation_id_t relation, ecs_entity_t target);
 
 /* Return the number of entities currently matching a query. */
 SIECS_API uint32_t ecs_query_count(ecs_query_id_t query_id);
@@ -1620,6 +1643,8 @@ typedef struct {
     bool disabled;
     bool main_thread_only;
     bool no_defer;
+    /* Only explicit run calls execute this system; phase scheduling skips it. */
+    bool manual;
     /* Callback consumes the query iterator itself instead of one batch at a time. */
     bool callback_iterates_query;
     double interval;
@@ -1663,10 +1688,18 @@ SIECS_API void ecs_run(void);
 /* Run all enabled systems from one phase immediately, ignoring interval
  * without changing interval accumulation. */
 SIECS_API void ecs_run_phase(ecs_phase_t phase);
+/* Execute only manual systems, including resource-only systems, in phase/dependency order. */
+SIECS_API void ecs_run_manual_phase(ecs_phase_t phase);
+/* Execute only manual systems in phase/dependency order for a ByTarget scope. */
+SIECS_API void ecs_run_phase_target(
+    ecs_phase_t phase, ecs_relation_id_t relation, ecs_entity_t target);
 
 /* Run one enabled system immediately, ignoring interval without changing
  * interval accumulation. */
 SIECS_API void ecs_run_system(ecs_system_id_t system);
+/* Explicitly execute a query system for one ByTarget target, without rebuilding it. */
+SIECS_API void ecs_run_system_target(
+    ecs_system_id_t system, ecs_relation_id_t relation, ecs_entity_t target);
 
 /* Enable or disable a system. Disabled systems stay registered but do not run.
  */
