@@ -737,3 +737,47 @@ void observer_trigger_survives_table_growth(void) {
     observer_growth_check_world();
     ecs_fini();
 }
+
+static int observer_seen_extra;
+
+static void observer_write_extra_on_add(ecs_observer_event_t *event) {
+    if (event->component != ecs_id(ObserverValue))
+        return;
+    ecs_defer_begin();
+    ecs_set(event->entity, ObserverExtra, { 7 });
+    ecs_defer_end();
+}
+
+static void observer_read_extra_on_set(ecs_observer_event_t *event) {
+    const ObserverExtra *extra =
+        ecs_has(event->entity, ObserverExtra) ? ecs_get(event->entity, ObserverExtra) : NULL;
+    observer_seen_extra = extra ? extra->value : -1;
+}
+
+/* An observer's deferred write during a flush is visible to the next events of the same
+ * command, while that command's own pending value still lands. */
+void observer_deferred_write_visible_to_later_events(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(ObserverValue, ObserverPosition, ObserverExtra);
+    observer_seen_extra = 0;
+    ecs_observer(
+        { .on = EcsOnAdd,
+          .query.components = { ecs_in(ObserverValue) },
+          .callback = observer_write_extra_on_add }
+    );
+    ecs_observer(
+        { .on = EcsOnSet,
+          .query.components = { ecs_in(ObserverPosition) },
+          .callback = observer_read_extra_on_set }
+    );
+    ecs_entity_t entity = ecs_new();
+    ecs_defer_begin();
+    ecs_add(entity, ObserverValue);
+    ecs_set(entity, ObserverPosition, { 3, 4 });
+    ecs_defer_end();
+    test_int(7, observer_seen_extra);
+    test_int(7, ecs_get(entity, ObserverExtra)->value);
+    test_int(3, ecs_get(entity, ObserverPosition)->x);
+    test_int(4, ecs_get(entity, ObserverPosition)->y);
+    ecs_fini();
+}

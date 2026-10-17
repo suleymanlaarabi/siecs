@@ -7217,9 +7217,8 @@ static void command_apply(
     }
 }
 
-void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
+static void command_buffer_apply(ecs_command_buffer_t *buffer) {
     if (buffer->commands.size == 0) {
-        ecs_arena_reset(buffer->arena);
         return;
     }
 
@@ -7250,15 +7249,21 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
         sicore_vec_fini(&relations);
     }
     command_transition_fini(&transition);
+}
+
+void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
+    command_buffer_apply(buffer);
     ecs_arena_reset(buffer->arena);
 }
 
 void ecs_command_buffer_flush() {
     ecs_execution_context_t *context = ecs_execution_context_current();
-    /* Commands queued by hooks and observers during a flush are applied by the running
-     * flush loop once the current batch completes. A nested flush would apply them in the
-     * middle of another command's events and reset the arena holding its pending values. */
+    /* A defer scope closing inside a hook or observer during a flush applies its commands at
+     * once, so later events of the running command see them. Only the outermost flush resets
+     * the arena: it still holds the values of the running command and of the rest of its
+     * batch. */
     if (context->flushing_commands) {
+        command_buffer_apply(&context->commands);
         return;
     }
     context->flushing_commands = true;

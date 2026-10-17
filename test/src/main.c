@@ -239,6 +239,7 @@ void observer_deferred_on_add_survives_table_growth(void);
 void observer_deferred_on_set_survives_column_growth(void);
 void observer_on_remove_survives_table_growth(void);
 void observer_trigger_survives_table_growth(void);
+void observer_deferred_write_visible_to_later_events(void);
 
 // Testsuite 'module'
 void module_import_registers_runtime(void);
@@ -1127,6 +1128,10 @@ bake_test_case observer_testcases[] = {
     {
         "trigger_survives_table_growth",
         observer_trigger_survives_table_growth
+    },
+    {
+        "deferred_write_visible_to_later_events",
+        observer_deferred_write_visible_to_later_events
     }
 };
 
@@ -1264,7 +1269,7 @@ static bake_test_suite suites[] = {
         "observer",
         NULL,
         NULL,
-        26,
+        27,
         observer_testcases
     },
     {
