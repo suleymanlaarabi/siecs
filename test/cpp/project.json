@@ -60,6 +60,7 @@
           "enable_disable",
           "disabled_entities_are_skipped",
           "typed_entity_creation",
+          "typed_entity_survives_world_restart",
           "variadic_set_and_read",
           "variadic_add_remove_batches_migration"
         ]

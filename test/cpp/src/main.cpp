@@ -39,6 +39,7 @@ void api_at_fini_captures_callable_state(void);
 void entity_state_enable_disable(void);
 void entity_state_disabled_entities_are_skipped(void);
 void entity_state_typed_entity_creation(void);
+void entity_state_typed_entity_survives_world_restart(void);
 void entity_state_variadic_set_and_read(void);
 void entity_state_variadic_add_remove_batches_migration(void);
 
@@ -230,6 +231,10 @@ bake_test_case entity_state_testcases[] = {
     {
         "typed_entity_creation",
         entity_state_typed_entity_creation
+    },
+    {
+        "typed_entity_survives_world_restart",
+        entity_state_typed_entity_survives_world_restart
     },
     {
         "variadic_set_and_read",
@@ -560,7 +565,7 @@ static bake_test_suite suites[] = {
         "entity_state",
         NULL,
         NULL,
-        5,
+        6,
         entity_state_testcases
     },
     {

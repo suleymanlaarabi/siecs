@@ -272,6 +272,15 @@ class entity {
     template <typename T> static entity create(const char *name = nullptr) {
         ecs_entity_t &id = by_type<T>();
         if (id == 0 || !ecs_is_alive(id)) {
+            // A cached id from a previous world may name a live, unrelated entity in this
+            // one, so the cache is cleared at teardown; register that once per world.
+            if (id == 0) {
+                ecs_fini_desc_t reset{
+                    .callback = [](void *cached) { *static_cast<ecs_entity_t *>(cached) = 0; },
+                    .data = &id,
+                };
+                ecs_at_fini_init(&reset);
+            }
             const std::string generated = std::string(type_name<T>());
             id = create(name ? name : generated.c_str()).id();
         }

@@ -6,6 +6,7 @@ struct EntityStatePosition {
 };
 
 struct EntityStateTypedEntity {};
+struct EntityStateRestartSingleton {};
 
 struct EntityStateVelocity {
     int value;
@@ -92,6 +93,26 @@ void entity_state_typed_entity_creation(void) {
 
     test_true(entity.is_alive());
     test_true(entity.has<Name>());
+}
+
+void entity_state_typed_entity_survives_world_restart(void) {
+    ecs_entity_t stale;
+    {
+        ecs_test_scope _ecs_scope;
+        (void)ecs::entity::create();
+        stale = ecs::entity::create<EntityStateRestartSingleton>().id();
+    }
+    ecs_test_scope _ecs_scope;
+    // The previous world's singleton id ends up naming an unrelated live entity.
+    for (int i = 0; i < 16 && !ecs_is_alive(stale); i++)
+        (void)ecs::entity::create();
+    test_true(ecs_is_alive(stale));
+
+    auto singleton = ecs::entity::create<EntityStateRestartSingleton>();
+    test_true(singleton.id() != stale);
+    test_true(singleton.has<Name>());
+    test_true(ecs::entity::typed<EntityStateRestartSingleton>().id() == singleton.id());
+    test_true(ecs::entity::create<EntityStateRestartSingleton>().id() == singleton.id());
 }
 
 void entity_state_variadic_set_and_read(void) {
