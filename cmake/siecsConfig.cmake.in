@@ -1,0 +1,9 @@
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+find_dependency(sicore CONFIG)
+find_dependency(sireflect CONFIG)
+find_dependency(sijson CONFIG)
+find_dependency(Threads)
+include("${CMAKE_CURRENT_LIST_DIR}/siecsTargets.cmake")
+check_required_components(siecs)
+
