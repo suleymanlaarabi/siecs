@@ -20,4 +20,5 @@ cd "$work_dir"
 mkdir -p "$out_root/distr" "$out_root/include/siecs"
 cp distr/siecs.c "$out_root/distr/siecs.c"
 cp distr/siecs.h "$out_root/distr/siecs.h"
-cp include/siecs/bake_config.h "$out_root/include/siecs/bake_config.h"
+# Drop the trailing blank line emitted by Bake's header generator.
+sed '${/^$/d;}' include/siecs/bake_config.h > "$out_root/include/siecs/bake_config.h"
