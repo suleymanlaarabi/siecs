@@ -2,6 +2,7 @@
 #define SIECS_COMMAND_BUFFER_H
 
 #include "datastructure/arena.h"
+#include "naming.h"
 #include "siecs.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -28,6 +29,15 @@ typedef struct {
 } ecs_deferred_relation_t;
 
 typedef struct {
+    char *name;
+    char *reservation;
+    ecs_entity_t parent;
+    ecs_entity_t reserved_parent;
+    bool set_name;
+    bool set_parent;
+} ecs_deferred_identity_t;
+
+typedef struct {
     ecs_entity_t entity;
     uint32_t relation_head;
     uint32_t change_count;
@@ -36,6 +46,7 @@ typedef struct {
     bool has_base;
     ecs_entity_t base;
     ecs_deferred_change_t *changes;
+    ecs_deferred_identity_t *identity; /* allocated only for name/ChildOf changes */
 } ecs_entity_command_t;
 
 typedef struct ecs_command_buffer_s {
@@ -44,6 +55,7 @@ typedef struct ecs_command_buffer_s {
     uint32_t *entity_to_command;
     uint32_t entity_capacity;
     ecs_arena_t *arena;
+    ecs_name_index_t pending_names;
 } ecs_command_buffer_t;
 
 typedef struct ecs_execution_context_s {
@@ -68,6 +80,12 @@ void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data);
 void ecs_command_buffer_kill(ecs_entity_t entity);
 void ecs_command_buffer_set_base(ecs_entity_t entity, ecs_entity_t target);
+void ecs_command_buffer_identity(
+    ecs_entity_t entity, const char *name, bool set_name, ecs_entity_t parent, bool set_parent
+);
+ecs_entity_t ecs_command_buffer_lookup_name(
+    ecs_entity_t parent, const char *name, size_t length
+);
 void ecs_command_buffer_relate(
     ecs_entity_t entity,
     ecs_relation_id_t relation,

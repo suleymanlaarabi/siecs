@@ -14,6 +14,14 @@
   "test": {
     "testsuites": [
       {
+        "id": "naming",
+        "testcases": [
+          "paths_and_relative_creation",
+          "rename_and_reparent_replace",
+          "deferred_creation_and_anonymous_paths"
+        ]
+      },
+      {
         "id": "system_param",
         "testcases": [
           "custom_query_phases",

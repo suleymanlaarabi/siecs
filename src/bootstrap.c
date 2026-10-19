@@ -25,7 +25,6 @@ ECS_RELATION_DEFINE(
         .acyclic = true,
     }
 );
-sicore_map_t name_map;
 
 static void name_ctor(void *ptr, uint32_t count) { memset(ptr, 0, (size_t)count * sizeof(Name)); }
 
@@ -41,7 +40,7 @@ static void name_copy_ctor(void *dst, const void *src, uint32_t count) {
     Name *out = dst;
     const Name *in = src;
     for (uint32_t i = 0; i < count; i++) {
-        out[i].value = strdup(in[i].value);
+        out[i].value = in[i].value ? strdup(in[i].value) : NULL;
     }
 }
 
@@ -52,7 +51,7 @@ static void name_copy(void *dst, const void *src, uint32_t count) {
         if (out[i].value && in[i].value && strcmp(out[i].value, in[i].value) == 0) {
             continue;
         }
-        char *copy = strdup(in[i].value);
+        char *copy = in[i].value ? strdup(in[i].value) : NULL;
         free(out[i].value);
         out[i].value = copy;
     }
@@ -81,39 +80,6 @@ static void name_move(void *dst, void *src, uint32_t count) {
     }
 }
 
-void name_on_add(ecs_entity_t entity, ecs_component_t component, void *data) {
-    Name *name = data;
-    if (name->value) {
-        sicore_map_set(&name_map, name->value, ecs_first(entity));
-    }
-}
-
-void name_on_set(
-    ecs_entity_t entity,
-    ecs_component_t component,
-    const void *new_value,
-    void *current_value
-) {
-    Name *name = current_value;
-    const Name *new_name = new_value;
-    if (name != new_name) {
-        char *value = strdup(new_name->value);
-        if (name->value)
-            sicore_map_unset(&name_map, name->value);
-        free(name->value);
-        name->value = value;
-    }
-    if (name->value)
-        sicore_map_set(&name_map, name->value, ecs_first(entity));
-}
-
-void name_on_remove(ecs_entity_t entity, ecs_component_t component, void *data) {
-    Name *name = data;
-    if (name->value) {
-        sicore_map_unset(&name_map, name->value);
-    }
-}
-
 ECS_COMPONENT_DEFINE(
     Name,
     .ops = {
@@ -124,9 +90,8 @@ ECS_COMPONENT_DEFINE(
         .move_ctor = name_move_ctor,
         .move = name_move,
     },
-    .on_add = name_on_add,
-    .on_remove = name_on_remove,
-    .on_set = name_on_set
+    ECS_SET_ONLY
+    .on_remove = ecs_name_on_remove
 );
 
 ECS_RESOURCE_DEFINE(DeltaTime);
@@ -135,6 +100,7 @@ ECS_TAG_DEFINE(Disabled);
 ECS_TAG_DEFINE(Abstract);
 
 void ecs_bootstrap() {
+    ecs_names_init();
     // Reserve identifiers used to represent false return values.
     ecs_table_index_get_or_create((ecs_type_t){ 0 });
     sicore_vec_push_u64(&entity_index.entities, 0);
@@ -156,7 +122,6 @@ void ecs_bootstrap() {
     ECS_COMPONENT_REGISTER(Name);
     ECS_RESOURCE_REGISTER(DeltaTime);
     ecs_set_resource(DeltaTime, { .value = 0.0f });
-    sicore_map_init(&name_map);
     ECS_COMPONENT_REGISTER(Disabled);
     ECS_COMPONENT_REGISTER(Abstract);
 }

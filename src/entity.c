@@ -102,14 +102,6 @@ ecs_entity_t ecs_entity_base_raw(ecs_entity_t entity) {
 
 ecs_entity_t ecs_entity_base(ecs_entity_t entity) { return ecs_target_id(entity, ecs_rid(IsA)); }
 
-ecs_entity_t ecs_lookup(const char *key) {
-    uint32_t index = sicore_map_get(&name_map, key);
-    if (index == UINT32_MAX) {
-        return 0;
-    }
-    return ecs_entity(index, ecs_entity_index_get_record(index)->generation);
-}
-
 void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     if (target) {
         ecs_assert(entity != target, "entity cannot inherit itself: %d\n", ecs_first(entity));
@@ -240,13 +232,14 @@ void ecs_kill(ecs_entity_t entity) {
 }
 
 const char *ecs_entity_name(ecs_entity_t entity) {
-    static char *buff = NULL;
-    const Name *name = ecs_try_get(entity, Name);
-    if (name)
-        return name->value;
-    if (!buff) {
-        buff = calloc(20, sizeof(char));
-    }
-    sprintf(buff, "(%d, %d)", ecs_first(entity), ecs_second(entity));
+#ifdef _MSC_VER
+    static __declspec(thread) char buff[32];
+#else
+    static _Thread_local char buff[32];
+#endif
+    if (!ecs_name_entity_alive(entity)) return NULL;
+    const char *name = ecs_name_local(entity);
+    if (name) return name;
+    snprintf(buff, sizeof buff, "(%u, %u)", ecs_first(entity), ecs_second(entity));
     return buff;
 }

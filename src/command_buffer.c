@@ -222,6 +222,10 @@ static inline void command_fini(ecs_entity_command_t *command) {
     for (uint32_t i = 0; i < command->change_count; i++) {
         deferred_change_fini(&changes[i]);
     }
+    if (command->identity) {
+        free(command->identity->name);
+        free(command->identity->reservation);
+    }
 }
 
 void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena) {
@@ -230,6 +234,7 @@ void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena) {
     buffer->entity_to_command = NULL;
     buffer->entity_capacity = 0;
     buffer->arena = arena;
+    buffer->pending_names = (ecs_name_index_t){ 0 };
 }
 
 void ecs_command_buffer_fini(ecs_command_buffer_t *buffer) {
@@ -240,6 +245,7 @@ void ecs_command_buffer_fini(ecs_command_buffer_t *buffer) {
     sicore_vec_fini(&buffer->commands);
     sicore_vec_fini(&buffer->relations);
     free(buffer->entity_to_command);
+    ecs_name_index_fini(&buffer->pending_names);
 }
 
 void ecs_execution_context_init(ecs_execution_context_t *context) {
@@ -317,20 +323,40 @@ void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id) {
 }
 
 void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id) {
+    if (ECS_UNLIKELY(id == ecs_id(Name))) {
+        ecs_command_buffer_identity(entity, NULL, true, 0, false);
+        return;
+    }
     command_buffer_change(entity, id, NULL, EcsDeferredRemove);
 }
 
 void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void *data) {
+    if (ECS_UNLIKELY(id == ecs_id(Name))) {
+        ecs_command_buffer_identity(entity, ((const Name *)data)->value, true, 0, false);
+        return;
+    }
     command_buffer_change(entity, id, (void *)data, EcsDeferredCopy);
 }
 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data) {
+    if (ECS_UNLIKELY(id == ecs_id(Name))) {
+        ecs_command_buffer_identity(entity, ((Name *)data)->value, true, 0, false);
+        free(((Name *)data)->value);
+        ((Name *)data)->value = NULL;
+        return;
+    }
     command_buffer_change(entity, id, data, EcsDeferredMove);
 }
 
 void ecs_command_buffer_kill(ecs_entity_t entity) {
     ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
+    if (command->identity && command->identity->reservation) {
+        ecs_name_index_remove(&buffer->pending_names, command->identity->reserved_parent,
+            command->identity->reservation, entity);
+        free(command->identity->reservation);
+        command->identity->reservation = NULL;
+    }
     command->kill = true;
     command->has_base = false;
     ecs_deferred_change_t *changes = command_changes(command);
@@ -353,6 +379,10 @@ void ecs_command_buffer_relate(
     ecs_relation_id_t relation,
     ecs_entity_t target
 ) {
+    if (relation == ecs_rid(ChildOf)) {
+        ecs_command_buffer_identity(entity, NULL, false, target, true);
+        return;
+    }
     ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
     uint32_t index = command->relation_head;
@@ -372,6 +402,68 @@ void ecs_command_buffer_relate(
     };
     command->relation_head = buffer->relations.size;
     sicore_vec_push(&buffer->relations, &value, sizeof value);
+}
+
+void ecs_command_buffer_identity(
+    ecs_entity_t entity, const char *name, bool set_name, ecs_entity_t parent, bool set_parent
+) {
+    if (set_name && !ecs_name_valid(name)) return;
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
+    if (command->kill) return;
+    if (!command->identity) {
+        command->identity = ecs_arena_alloc(buffer->arena, sizeof *command->identity);
+        *command->identity = (ecs_deferred_identity_t){ 0 };
+    }
+    ecs_deferred_identity_t *identity = command->identity;
+    /* Input may be the current reservation; copy it before invalidating either string. */
+    char *copy = set_name && name && name[0] ? strdup(name) : NULL;
+    if (identity->reservation) {
+        ecs_name_index_remove(&buffer->pending_names, identity->reserved_parent,
+            identity->reservation, entity);
+        free(identity->reservation);
+        identity->reservation = NULL;
+    }
+    if (set_name) {
+        free(identity->name);
+        identity->name = copy;
+        identity->set_name = true;
+    }
+    if (set_parent) {
+        identity->parent = parent;
+        identity->set_parent = true;
+    }
+    const char *effective = identity->set_name ? identity->name : ecs_name_local(entity);
+    if (effective) {
+        identity->reservation = strdup(effective);
+        identity->reserved_parent = identity->set_parent ? identity->parent : ecs_name_parent(entity);
+        ecs_name_index_insert(&buffer->pending_names, identity->reserved_parent,
+            identity->reservation, entity);
+    }
+}
+
+ecs_entity_t ecs_command_buffer_lookup_name(
+    ecs_entity_t parent, const char *name, size_t length
+) {
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_t entity = ecs_name_index_find(&buffer->pending_names, parent, name, length);
+    if (entity && ecs_name_entity_alive(entity)) return entity;
+    entity = ecs_name_lookup_segment(parent, name, length);
+    if (!entity) return 0;
+    uint32_t id = ecs_first(entity);
+    if (id < buffer->entity_capacity && buffer->entity_to_command[id] != ECS_COMMAND_NONE) {
+        const ecs_entity_command_t *command = sicore_vec_get(&buffer->commands,
+            buffer->entity_to_command[id], ecs_entity_command_t);
+        if (command->entity != entity || command->kill) return 0;
+        const ecs_deferred_identity_t *identity = command->identity;
+        if (identity) {
+            const char *effective = identity->set_name ? identity->name : ecs_name_local(entity);
+            ecs_entity_t effective_parent = identity->set_parent ? identity->parent : ecs_name_parent(entity);
+            if (!effective || effective_parent != parent || strlen(effective) != length ||
+                memcmp(effective, name, length) != 0) return 0;
+        }
+    }
+    return entity;
 }
 
 static ecs_type_t command_build_type(
@@ -516,6 +608,13 @@ static void command_apply(
         return;
     }
 
+    if (command->identity) {
+        const ecs_deferred_identity_t *identity = command->identity;
+        ecs_name_update_now(command->entity, identity->name, identity->set_name,
+            identity->parent, identity->set_parent);
+        if (!ecs_name_entity_alive(command->entity)) return;
+    }
+
     ecs_entity_record_t *record = ecs_get_record(command->entity);
     uint16_t old_table_id = record->table_id;
     ecs_table_t *old_table = ecs_get_table(old_table_id);
@@ -637,6 +736,10 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
         }
 
         for (uint32_t i = 0; i < commands.size; i++) {
+            if (items[i].identity && items[i].identity->reservation) {
+                ecs_name_index_remove(&buffer->pending_names, items[i].identity->reserved_parent,
+                    items[i].identity->reservation, items[i].entity);
+            }
             command_apply(
                 buffer,
                 &items[i],
@@ -655,10 +758,7 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
 
 void ecs_command_buffer_flush() {
     ecs_execution_context_t *context = ecs_execution_context_current();
-    if (context->flushing_commands) {
-        ecs_command_buffer_flush_buffer(&context->commands);
-        return;
-    }
+    if (context->flushing_commands) return;
     context->flushing_commands = true;
     ecs_command_buffer_flush_buffer(&context->commands);
     context->flushing_commands = false;
@@ -670,7 +770,7 @@ void ecs_defer_end(void) {
     ecs_execution_context_t *context = ecs_execution_context_current();
     ecs_assert(context->defer_depth > 0, "ecs_defer_end called without ecs_defer_begin\n");
     context->defer_depth--;
-    if (context->defer_depth == 0 && !context->scheduler_parallel &&
+    if (context->defer_depth == 0 && !context->flushing_commands && !context->scheduler_parallel &&
         context->commands.commands.size != 0) {
         ecs_command_buffer_flush();
     }

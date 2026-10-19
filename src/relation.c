@@ -255,7 +255,7 @@ ecs_entity_t ecs_table_target_id(const ecs_table_t *table, ecs_relation_id_t rel
     return ecs_type_pair_get(&table->type, relation);
 }
 
-static void ecs_emit_relation_event(
+void ecs_emit_relation_event(
     ecs_entity_t entity,
     ecs_relation_id_t relation,
     ecs_event_t event,
@@ -287,6 +287,9 @@ static void ecs_relation_set_dense(
     ecs_defer_begin();
     if (crec->on_set) {
         crec->on_set(entity, component, &value, current);
+        record = ecs_get_record(entity);
+        table = ecs_get_table(record->table_id);
+        current = ecs_table_get_component(table, component, record->table_row);
     }
     ecs_emit(table, entity, EcsOnSet, component, &value);
     current->entity = value.entity;
@@ -383,6 +386,9 @@ static void ecs_relation_set_depth(
     const ecs_component_record_t *component = ecs_component_index_get(relation_record->component);
     RelationTarget value = { .entity = target };
     component->on_set(entity, relation_record->component, &value, current);
+    entity_record = ecs_get_record(entity);
+    table = ecs_get_table(entity_record->table_id);
+    current = ecs_table_get_component(table, relation_record->component, entity_record->table_row);
     current->entity = value.entity;
     ecs_relation_update_children_depth(entity, relation, depth);
 }
@@ -411,7 +417,7 @@ ecs_relation_default_set_now(ecs_entity_t entity, ecs_relation_id_t relation, ec
             );
         } else {
             RelationTarget value = { .entity = target };
-            ecs_set_cid(entity, record->component, &value);
+            ecs_set_cid_now(entity, record->component, &value);
         }
     } else if (record->info.desc.storage == EcsRelationByDepth) {
         ecs_relation_set_depth(entity, relation, record, target, old_target != 0);
@@ -450,6 +456,10 @@ const ecs_relation_ops_t ecs_relation_ops_isa = {
 };
 
 void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
+    if (relation == ecs_rid(ChildOf)) {
+        ecs_name_update_now(entity, NULL, false, target, true);
+        return;
+    }
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     const ecs_relation_ops_t *ops = ecs_relation_record_ops(record);
     ecs_assert(
@@ -522,6 +532,10 @@ static void ecs_relation_default_remove_now(ecs_entity_t entity, ecs_relation_id
 }
 
 void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
+    if (relation == ecs_rid(ChildOf)) {
+        ecs_name_update_now(entity, NULL, false, 0, true);
+        return;
+    }
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     const ecs_relation_ops_t *ops = ecs_relation_record_ops(record);
     ecs_entity_t old_target = ops->target(entity, relation);
@@ -534,6 +548,15 @@ void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
     }
 
     ops->remove_now(entity, relation);
+}
+
+void ecs_childof_update_now(ecs_entity_t entity, ecs_entity_t parent) {
+    if (parent) {
+        ecs_relation_default_set_now(entity, ecs_rid(ChildOf), parent);
+        if (ecs_has_cid_owned(parent, ecs_id(Abstract))) ecs_abstract_now(entity);
+    } else {
+        ecs_relation_default_remove_now(entity, ecs_rid(ChildOf));
+    }
 }
 
 void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation) {

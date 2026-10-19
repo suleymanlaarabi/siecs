@@ -169,42 +169,74 @@ storing only the index.
 
 ### Names
 
-SIECS supports names through the built-in `Name` component and a world name
-index.
-
-Both APIs can look up names; C++ also offers creation that reuses an existing
-named entity:
+Names are local to a parent: `SceneA::Player` and `SceneB::Player` are distinct
+entities. Paths always use `::` in both C and C++; the separator is fixed.
+Names are case-sensitive. A leading `::` resolves from the world root.
 
 <Tabs syncKey="language">
 <TabItem label="C">
 
 ```c
-ecs_entity_t player = ecs_lookup("Player");
+ecs_entity_t scene = ecs_new_named(0, "SceneA");
+ecs_entity_t player = ecs_new_named(scene, "Player");
+ecs_entity_t same = ecs_lookup("SceneA::Player");
+ecs_entity_t relative = ecs_lookup_from(scene, "Player");
+
+// Allocated absolute path: caller frees it.
+char *path = ecs_entity_path(player); // "::SceneA::Player"
+free(path);
 ```
 
 </TabItem>
 <TabItem label="C++">
 
 ```cpp
-auto player = ecs::entity::create("Player");
-auto same = ecs::entity::lookup("Player");
+auto scene = ecs::entity::create("SceneA");
+auto player = ecs::entity::create(scene, "Player");
+auto same = ecs::entity::lookup("SceneA::Player");
+auto relative = ecs::entity::lookup(scene, "Player");
+auto path = player.path(); // std::string("::SceneA::Player")
 ```
 
 </TabItem>
 </Tabs>
 
-`create("Player")` first performs a lookup and returns the existing live entity
-when that name already exists.
+Named creation finds an existing entity or creates the missing path segments.
+Relative lookup searches only the supplied parent, without falling back to its
+ancestors. A missing or malformed path returns `0`/a null handle.
 
-`ecs_lookup()` returns `0` when no live entity has the requested registered
-name.
+`ecs_set_name(entity, "Player")` and `entity.set_name("Player")` set a copied local
+name. `ecs_set(entity, Name, { "Player" })` uses the same rules. `Name` is set-only;
+do not edit its string through mutable storage. NULL or an empty name removes
+`Name`; `::`, a trailing `:`, and a leading `#` are reserved in local names. NULL passed to named
+creation creates an anonymous entity, while an empty creation path is invalid.
 
-Use `ecs_entity_name(entity)` to obtain the explicit name when one exists. For
-unnamed entities the function returns a generated representation based on the
-index and generation, which is useful for diagnostics.
+**Renaming an entity to an occupied name under the same parent deletes the old
+entity and all its `ChildOf` descendants.** The renamed entity keeps its identity,
+components, and children. Moving an entity to a parent with an occupied name
+applies the same rule, including removal of `ChildOf` to move to the root.
+An operation that would delete the moving entity or its destination parent is
+rejected without deleting the conflicting subtree. `ecs_set_name` returns false
+for invalid names or destructive ancestor collisions; the void relation APIs
+leave an invalid hierarchy change unapplied.
 
-Names are world-level lookup names. SIECS does not use hierarchical path lookup
-semantics; hierarchy is represented independently with `ChildOf`.
+In a defer scope, the final name and parent are applied together. Intermediate
+names/parents do not trigger replacements. Named creation also finds paths staged
+in the current execution context; ordinary lookup still sees committed state.
+The boolean result of deferred `set_name` means queued: collision protection is
+checked again when applying the command. Setting an unchanged local name is a
+no-op and emits no `OnSet` event. Commands targeting an entity destroyed
+by a replacement are skipped.
+
+`ecs_entity_name()`/`entity.name()` return the local explicit name, or a diagnostic
+`(index, generation)` representation for an anonymous entity. Computed absolute
+paths represent anonymous segments as `#index:generation`; lookup validates the
+handle generation and its parent. Paths are computed on demand, with no implicit
+cache or descendant reindexing when a parent is renamed. Direct and relative
+lookups hash each segment without allocating memory.
+
+Root instances do not inherit a prefab's name. Instantiated children copy their
+local names under the new instance, so multiple prefab instances coexist.
 
 ### Disabling
 
@@ -258,6 +290,7 @@ subtree.
 
 Abstract entities are intended to act as reusable bases rather than ordinary
 simulation instances.
+
 
 ## Components
 

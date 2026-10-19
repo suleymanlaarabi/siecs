@@ -3,6 +3,8 @@
 #include "siecs/cpp/system_param.hpp"
 #include <cassert>
 #include <cstring>
+#include <cstdlib>
+#include <memory>
 #include <string>
 
 namespace ecs {
@@ -55,9 +57,12 @@ class entity {
     /** Wrap a raw id without validating it; use `is_alive()` to validate. */
     entity(ecs_entity_t entity) noexcept : _entity(entity) {}
 
-    /** Look up a named live entity; returns null when names are disabled/missing. */
+    /** Look up a :: path from the root; returns null when absent. */
+    static entity lookup(const char *path) { return entity::from(ecs_lookup(path)); }
+
+    /** Look up an existing string without making a temporary string copy. */
     static inline entity lookup(const std::string &name) {
-        return entity::from(ecs_lookup(name.c_str()));
+        return lookup(name.c_str());
     }
 
     /** Create a new live entity in the active world. */
@@ -66,21 +71,34 @@ class entity {
     /** Create a new live entity without reusing a freed entity index. */
     static entity create_no_reuse() noexcept { return entity(ecs_new_no_reuse()); }
 
-    /** Look up or create a named entity; name storage is copied by the world. */
-    static entity create(const char *name) {
-        entity value = lookup(name);
+    /** Find or create a :: path, including missing parents. */
+    static entity create(const char *path) { return from(ecs_new_named(0, path)); }
 
-        if (value) {
-            return value;
-        }
+    /** Find or create a path relative to parent; leading :: selects the root. */
+    static entity create(entity parent, const char *path) {
+        return from(ecs_new_named(parent.id(), path));
+    }
 
-        value = create();
+    /** Resolve a path relative to parent, without searching its ancestors. */
+    static entity lookup(entity parent, const char *path) {
+        return from(ecs_lookup_from(parent.id(), path));
+    }
 
-        if (name != nullptr) {
-            char *copy = strdup(name);
-            value.set<Name>({ .value = copy });
-        }
-        return value;
+    /** Resolve an existing string relative to parent without copying it. */
+    static entity lookup(entity parent, const std::string &path) {
+        return lookup(parent, path.c_str());
+    }
+
+    /** Rename locally; a collision deletes the previous entity and its children. */
+    bool set_name(const char *name) { return ecs_set_name(_entity, name); }
+
+    /** Return the local name, or the generated diagnostic name when anonymous. */
+    [[nodiscard]] const char *name() const { return ecs_entity_name(_entity); }
+
+    /** Compute the absolute path; no implicit path cache is maintained. */
+    [[nodiscard]] std::string path() const {
+        std::unique_ptr<char, decltype(&std::free)> value(ecs_entity_path(_entity), &std::free);
+        return value ? std::string(value.get()) : std::string();
     }
 
     /** Create an IsA instance and recursively snapshot the prefab's owned ChildOf subtree. */

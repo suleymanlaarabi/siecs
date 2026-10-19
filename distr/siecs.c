@@ -5287,6 +5287,72 @@ static inline void ecs_arena_reset(ecs_arena_t *allocator) {
 
 #endif
 
+#ifndef SIECS_NAMING_H
+#define SIECS_NAMING_H
+
+typedef struct {
+    ecs_entity_t parent;
+    ecs_entity_t entity;
+    const char *name; /* borrowed; stable until the entry is removed */
+    uint32_t hash;
+    uint32_t length;
+} ecs_name_entry_t;
+
+typedef struct {
+    ecs_name_entry_t *entries;
+    uint32_t capacity;
+    uint32_t count;
+    uint32_t deleted;
+} ecs_name_index_t;
+
+void ecs_name_index_fini(ecs_name_index_t *index);
+void ecs_names_fini(void);
+void ecs_names_init(void);
+ecs_entity_t ecs_name_index_find(
+    const ecs_name_index_t *index,
+    ecs_entity_t parent,
+    const char *name,
+    size_t length
+);
+void ecs_name_index_insert(
+    ecs_name_index_t *index,
+    ecs_entity_t parent,
+    const char *name,
+    ecs_entity_t entity
+);
+void ecs_name_index_remove(
+    ecs_name_index_t *index,
+    ecs_entity_t parent,
+    const char *name,
+    ecs_entity_t entity
+);
+
+bool ecs_name_entity_alive(ecs_entity_t entity);
+bool ecs_name_valid(const char *name);
+const char *ecs_name_local(ecs_entity_t entity);
+ecs_entity_t ecs_name_parent(ecs_entity_t entity);
+ecs_entity_t ecs_name_lookup_segment(ecs_entity_t parent, const char *name, size_t length);
+void ecs_name_unregister(ecs_entity_t entity);
+void ecs_name_on_remove(ecs_entity_t entity, ecs_component_t component, void *data);
+bool ecs_name_update_now(
+    ecs_entity_t entity,
+    const char *name,
+    bool set_name,
+    ecs_entity_t parent,
+    bool set_parent
+);
+/* Apply the structural ChildOf change without emitting its public relation event. */
+void ecs_childof_update_now(ecs_entity_t entity, ecs_entity_t parent);
+void ecs_emit_relation_event(
+    ecs_entity_t entity,
+    ecs_relation_id_t relation,
+    ecs_event_t event,
+    ecs_entity_t old_target,
+    ecs_entity_t new_target
+);
+
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -5312,6 +5378,15 @@ typedef struct {
 } ecs_deferred_relation_t;
 
 typedef struct {
+    char *name;
+    char *reservation;
+    ecs_entity_t parent;
+    ecs_entity_t reserved_parent;
+    bool set_name;
+    bool set_parent;
+} ecs_deferred_identity_t;
+
+typedef struct {
     ecs_entity_t entity;
     uint32_t relation_head;
     uint32_t change_count;
@@ -5320,6 +5395,7 @@ typedef struct {
     bool has_base;
     ecs_entity_t base;
     ecs_deferred_change_t *changes;
+    ecs_deferred_identity_t *identity; /* allocated only for name/ChildOf changes */
 } ecs_entity_command_t;
 
 typedef struct ecs_command_buffer_s {
@@ -5328,6 +5404,7 @@ typedef struct ecs_command_buffer_s {
     uint32_t *entity_to_command;
     uint32_t entity_capacity;
     ecs_arena_t *arena;
+    ecs_name_index_t pending_names;
 } ecs_command_buffer_t;
 
 typedef struct ecs_execution_context_s {
@@ -5352,6 +5429,12 @@ void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data);
 void ecs_command_buffer_kill(ecs_entity_t entity);
 void ecs_command_buffer_set_base(ecs_entity_t entity, ecs_entity_t target);
+void ecs_command_buffer_identity(
+    ecs_entity_t entity, const char *name, bool set_name, ecs_entity_t parent, bool set_parent
+);
+ecs_entity_t ecs_command_buffer_lookup_name(
+    ecs_entity_t parent, const char *name, size_t length
+);
 void ecs_command_buffer_relate(
     ecs_entity_t entity,
     ecs_relation_id_t relation,
@@ -6059,8 +6142,6 @@ void ecs_system_run_prepared(ecs_system_id_t system);
 
 void ecs_bootstrap(void);
 
-extern sicore_map_t name_map;
-
 #endif
 
 ECS_RELATION_DEFINE(
@@ -6079,7 +6160,6 @@ ECS_RELATION_DEFINE(
         .acyclic = true,
     }
 );
-sicore_map_t name_map;
 
 static void name_ctor(void *ptr, uint32_t count) { memset(ptr, 0, (size_t)count * sizeof(Name)); }
 
@@ -6095,7 +6175,7 @@ static void name_copy_ctor(void *dst, const void *src, uint32_t count) {
     Name *out = dst;
     const Name *in = src;
     for (uint32_t i = 0; i < count; i++) {
-        out[i].value = strdup(in[i].value);
+        out[i].value = in[i].value ? strdup(in[i].value) : NULL;
     }
 }
 
@@ -6106,7 +6186,7 @@ static void name_copy(void *dst, const void *src, uint32_t count) {
         if (out[i].value && in[i].value && strcmp(out[i].value, in[i].value) == 0) {
             continue;
         }
-        char *copy = strdup(in[i].value);
+        char *copy = in[i].value ? strdup(in[i].value) : NULL;
         free(out[i].value);
         out[i].value = copy;
     }
@@ -6135,39 +6215,6 @@ static void name_move(void *dst, void *src, uint32_t count) {
     }
 }
 
-void name_on_add(ecs_entity_t entity, ecs_component_t component, void *data) {
-    Name *name = data;
-    if (name->value) {
-        sicore_map_set(&name_map, name->value, ecs_first(entity));
-    }
-}
-
-void name_on_set(
-    ecs_entity_t entity,
-    ecs_component_t component,
-    const void *new_value,
-    void *current_value
-) {
-    Name *name = current_value;
-    const Name *new_name = new_value;
-    if (name != new_name) {
-        char *value = strdup(new_name->value);
-        if (name->value)
-            sicore_map_unset(&name_map, name->value);
-        free(name->value);
-        name->value = value;
-    }
-    if (name->value)
-        sicore_map_set(&name_map, name->value, ecs_first(entity));
-}
-
-void name_on_remove(ecs_entity_t entity, ecs_component_t component, void *data) {
-    Name *name = data;
-    if (name->value) {
-        sicore_map_unset(&name_map, name->value);
-    }
-}
-
 ECS_COMPONENT_DEFINE(
     Name,
     .ops = {
@@ -6178,9 +6225,8 @@ ECS_COMPONENT_DEFINE(
         .move_ctor = name_move_ctor,
         .move = name_move,
     },
-    .on_add = name_on_add,
-    .on_remove = name_on_remove,
-    .on_set = name_on_set
+    ECS_SET_ONLY
+    .on_remove = ecs_name_on_remove
 );
 
 ECS_RESOURCE_DEFINE(DeltaTime);
@@ -6189,6 +6235,7 @@ ECS_TAG_DEFINE(Disabled);
 ECS_TAG_DEFINE(Abstract);
 
 void ecs_bootstrap() {
+    ecs_names_init();
     // Reserve identifiers used to represent false return values.
     ecs_table_index_get_or_create((ecs_type_t){ 0 });
     sicore_vec_push_u64(&entity_index.entities, 0);
@@ -6210,7 +6257,6 @@ void ecs_bootstrap() {
     ECS_COMPONENT_REGISTER(Name);
     ECS_RESOURCE_REGISTER(DeltaTime);
     ecs_set_resource(DeltaTime, { .value = 0.0f });
-    sicore_map_init(&name_map);
     ECS_COMPONENT_REGISTER(Disabled);
     ECS_COMPONENT_REGISTER(Abstract);
 }
@@ -6670,6 +6716,10 @@ static inline void command_fini(ecs_entity_command_t *command) {
     for (uint32_t i = 0; i < command->change_count; i++) {
         deferred_change_fini(&changes[i]);
     }
+    if (command->identity) {
+        free(command->identity->name);
+        free(command->identity->reservation);
+    }
 }
 
 void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena) {
@@ -6678,6 +6728,7 @@ void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena) {
     buffer->entity_to_command = NULL;
     buffer->entity_capacity = 0;
     buffer->arena = arena;
+    buffer->pending_names = (ecs_name_index_t){ 0 };
 }
 
 void ecs_command_buffer_fini(ecs_command_buffer_t *buffer) {
@@ -6688,6 +6739,7 @@ void ecs_command_buffer_fini(ecs_command_buffer_t *buffer) {
     sicore_vec_fini(&buffer->commands);
     sicore_vec_fini(&buffer->relations);
     free(buffer->entity_to_command);
+    ecs_name_index_fini(&buffer->pending_names);
 }
 
 void ecs_execution_context_init(ecs_execution_context_t *context) {
@@ -6765,20 +6817,40 @@ void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id) {
 }
 
 void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id) {
+    if (ECS_UNLIKELY(id == ecs_id(Name))) {
+        ecs_command_buffer_identity(entity, NULL, true, 0, false);
+        return;
+    }
     command_buffer_change(entity, id, NULL, EcsDeferredRemove);
 }
 
 void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void *data) {
+    if (ECS_UNLIKELY(id == ecs_id(Name))) {
+        ecs_command_buffer_identity(entity, ((const Name *)data)->value, true, 0, false);
+        return;
+    }
     command_buffer_change(entity, id, (void *)data, EcsDeferredCopy);
 }
 
 void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data) {
+    if (ECS_UNLIKELY(id == ecs_id(Name))) {
+        ecs_command_buffer_identity(entity, ((Name *)data)->value, true, 0, false);
+        free(((Name *)data)->value);
+        ((Name *)data)->value = NULL;
+        return;
+    }
     command_buffer_change(entity, id, data, EcsDeferredMove);
 }
 
 void ecs_command_buffer_kill(ecs_entity_t entity) {
     ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
+    if (command->identity && command->identity->reservation) {
+        ecs_name_index_remove(&buffer->pending_names, command->identity->reserved_parent,
+            command->identity->reservation, entity);
+        free(command->identity->reservation);
+        command->identity->reservation = NULL;
+    }
     command->kill = true;
     command->has_base = false;
     ecs_deferred_change_t *changes = command_changes(command);
@@ -6801,6 +6873,10 @@ void ecs_command_buffer_relate(
     ecs_relation_id_t relation,
     ecs_entity_t target
 ) {
+    if (relation == ecs_rid(ChildOf)) {
+        ecs_command_buffer_identity(entity, NULL, false, target, true);
+        return;
+    }
     ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
     uint32_t index = command->relation_head;
@@ -6820,6 +6896,68 @@ void ecs_command_buffer_relate(
     };
     command->relation_head = buffer->relations.size;
     sicore_vec_push(&buffer->relations, &value, sizeof value);
+}
+
+void ecs_command_buffer_identity(
+    ecs_entity_t entity, const char *name, bool set_name, ecs_entity_t parent, bool set_parent
+) {
+    if (set_name && !ecs_name_valid(name)) return;
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_command_t *command = command_for_entity(buffer, entity);
+    if (command->kill) return;
+    if (!command->identity) {
+        command->identity = ecs_arena_alloc(buffer->arena, sizeof *command->identity);
+        *command->identity = (ecs_deferred_identity_t){ 0 };
+    }
+    ecs_deferred_identity_t *identity = command->identity;
+    /* Input may be the current reservation; copy it before invalidating either string. */
+    char *copy = set_name && name && name[0] ? strdup(name) : NULL;
+    if (identity->reservation) {
+        ecs_name_index_remove(&buffer->pending_names, identity->reserved_parent,
+            identity->reservation, entity);
+        free(identity->reservation);
+        identity->reservation = NULL;
+    }
+    if (set_name) {
+        free(identity->name);
+        identity->name = copy;
+        identity->set_name = true;
+    }
+    if (set_parent) {
+        identity->parent = parent;
+        identity->set_parent = true;
+    }
+    const char *effective = identity->set_name ? identity->name : ecs_name_local(entity);
+    if (effective) {
+        identity->reservation = strdup(effective);
+        identity->reserved_parent = identity->set_parent ? identity->parent : ecs_name_parent(entity);
+        ecs_name_index_insert(&buffer->pending_names, identity->reserved_parent,
+            identity->reservation, entity);
+    }
+}
+
+ecs_entity_t ecs_command_buffer_lookup_name(
+    ecs_entity_t parent, const char *name, size_t length
+) {
+    ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
+    ecs_entity_t entity = ecs_name_index_find(&buffer->pending_names, parent, name, length);
+    if (entity && ecs_name_entity_alive(entity)) return entity;
+    entity = ecs_name_lookup_segment(parent, name, length);
+    if (!entity) return 0;
+    uint32_t id = ecs_first(entity);
+    if (id < buffer->entity_capacity && buffer->entity_to_command[id] != ECS_COMMAND_NONE) {
+        const ecs_entity_command_t *command = sicore_vec_get(&buffer->commands,
+            buffer->entity_to_command[id], ecs_entity_command_t);
+        if (command->entity != entity || command->kill) return 0;
+        const ecs_deferred_identity_t *identity = command->identity;
+        if (identity) {
+            const char *effective = identity->set_name ? identity->name : ecs_name_local(entity);
+            ecs_entity_t effective_parent = identity->set_parent ? identity->parent : ecs_name_parent(entity);
+            if (!effective || effective_parent != parent || strlen(effective) != length ||
+                memcmp(effective, name, length) != 0) return 0;
+        }
+    }
+    return entity;
 }
 
 static ecs_type_t command_build_type(
@@ -6964,6 +7102,13 @@ static void command_apply(
         return;
     }
 
+    if (command->identity) {
+        const ecs_deferred_identity_t *identity = command->identity;
+        ecs_name_update_now(command->entity, identity->name, identity->set_name,
+            identity->parent, identity->set_parent);
+        if (!ecs_name_entity_alive(command->entity)) return;
+    }
+
     ecs_entity_record_t *record = ecs_get_record(command->entity);
     uint16_t old_table_id = record->table_id;
     ecs_table_t *old_table = ecs_get_table(old_table_id);
@@ -7085,6 +7230,10 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
         }
 
         for (uint32_t i = 0; i < commands.size; i++) {
+            if (items[i].identity && items[i].identity->reservation) {
+                ecs_name_index_remove(&buffer->pending_names, items[i].identity->reserved_parent,
+                    items[i].identity->reservation, items[i].entity);
+            }
             command_apply(
                 buffer,
                 &items[i],
@@ -7103,10 +7252,7 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
 
 void ecs_command_buffer_flush() {
     ecs_execution_context_t *context = ecs_execution_context_current();
-    if (context->flushing_commands) {
-        ecs_command_buffer_flush_buffer(&context->commands);
-        return;
-    }
+    if (context->flushing_commands) return;
     context->flushing_commands = true;
     ecs_command_buffer_flush_buffer(&context->commands);
     context->flushing_commands = false;
@@ -7118,7 +7264,7 @@ void ecs_defer_end(void) {
     ecs_execution_context_t *context = ecs_execution_context_current();
     ecs_assert(context->defer_depth > 0, "ecs_defer_end called without ecs_defer_begin\n");
     context->defer_depth--;
-    if (context->defer_depth == 0 && !context->scheduler_parallel &&
+    if (context->defer_depth == 0 && !context->flushing_commands && !context->scheduler_parallel &&
         context->commands.commands.size != 0) {
         ecs_command_buffer_flush();
     }
@@ -7174,24 +7320,24 @@ void RelationOnSet(
     const RelationTarget *target_data = new_value;
     ecs_component_t source_component = target_component + 1;
 
-    const RelationTarget *old_target_data = current_value;
+    const RelationTarget old_target = *(const RelationTarget *)current_value;
 
     ecs_assert_entity_valid(target_data->entity);
     ecs_assert_is_alive(target_data->entity);
 
-    if (old_target_data->entity == target_data->entity) {
+    if (old_target.entity == target_data->entity) {
         return;
     }
 
-    if (old_target_data->entity) {
-        RelationSource *source = ecs_get_cid(old_target_data->entity, source_component);
+    if (old_target.entity) {
+        RelationSource *source = ecs_get_cid(old_target.entity, source_component);
 
         ecs_dense_relation_remove_source(
             entity,
-            old_target_data->entity,
+            old_target.entity,
             target_component,
             source,
-            old_target_data->source_index
+            old_target.source_index
         );
     }
 
@@ -7204,11 +7350,13 @@ void RelationOnSet(
         RelationSource source_data = { 0 };
         sicore_vec_init(&source_data.entities, sizeof(ecs_entity_t));
         sicore_vec_push_u64(&source_data.entities, entity);
-        ecs_set_cid(target_data->entity, source_component, &source_data);
+        /* Reverse indices are structural state, needed by the next source in
+         * this flush. They must not be deferred or overwrite each other. */
+        ecs_set_cid_now(target_data->entity, source_component, &source_data);
         source_index = 0;
     }
 
-    ((RelationTarget *)current_value)->source_index = source_index;
+    ((RelationTarget *)ecs_get_cid(entity, target_component))->source_index = source_index;
 }
 
 void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
@@ -7570,6 +7718,7 @@ ecs_component_get_from_record(const ecs_entity_record_t *record, ecs_component_t
         return ecs_table_component_at_column(table, col_idx, record->table_row);
     }
 
+    if (component == ecs_id(Name)) return NULL;
     ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0) {
         const ecs_entity_record_t *base_record = ecs_get_record(base);
@@ -7596,6 +7745,11 @@ void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) { return ecs_get
 
 static inline void
 ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
+    if (ECS_UNLIKELY(cid == ecs_id(Name))) {
+        ecs_name_update_now(entity, ((const Name *)data)->value, true, 0, false);
+        if (move) { free(((Name *)data)->value); ((Name *)data)->value = NULL; }
+        return;
+    }
     bool had_value = move && ecs_has_cid_owned(entity, cid);
     ecs_add_cid_now(entity, cid);
     if (!move)
@@ -7606,6 +7760,10 @@ ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool mov
 
     if (crec->on_set) {
         crec->on_set(entity, cid, data, dst);
+        /* Relation hooks can migrate their target and grow the table index. */
+        record = ecs_get_record(entity);
+        table = ecs_get_table(record->table_id);
+        dst = ecs_table_get_component(table, cid, record->table_row);
     }
     ecs_emit(table, entity, EcsOnSet, cid, data);
     if (crec->relation_flags & EcsComponentRelationTarget) {
@@ -7626,6 +7784,7 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
 
 static inline void ecs_store_cid(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     ecs_assert_component_access(entity, cid);
+    if (ECS_UNLIKELY(move && cid == ecs_id(Name)) && data == ecs_get_cid(entity, cid)) return;
     if (ecs_is_deferred()) {
         if (move)
             ecs_command_buffer_move(entity, cid, data);
@@ -7874,14 +8033,6 @@ ecs_entity_t ecs_entity_base_raw(ecs_entity_t entity) {
 
 ecs_entity_t ecs_entity_base(ecs_entity_t entity) { return ecs_target_id(entity, ecs_rid(IsA)); }
 
-ecs_entity_t ecs_lookup(const char *key) {
-    uint32_t index = sicore_map_get(&name_map, key);
-    if (index == UINT32_MAX) {
-        return 0;
-    }
-    return ecs_entity(index, ecs_entity_index_get_record(index)->generation);
-}
-
 void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     if (target) {
         ecs_assert(entity != target, "entity cannot inherit itself: %d\n", ecs_first(entity));
@@ -8012,14 +8163,15 @@ void ecs_kill(ecs_entity_t entity) {
 }
 
 const char *ecs_entity_name(ecs_entity_t entity) {
-    static char *buff = NULL;
-    const Name *name = ecs_try_get(entity, Name);
-    if (name)
-        return name->value;
-    if (!buff) {
-        buff = calloc(20, sizeof(char));
-    }
-    sprintf(buff, "(%d, %d)", ecs_first(entity), ecs_second(entity));
+#ifdef _MSC_VER
+    static __declspec(thread) char buff[32];
+#else
+    static _Thread_local char buff[32];
+#endif
+    if (!ecs_name_entity_alive(entity)) return NULL;
+    const char *name = ecs_name_local(entity);
+    if (name) return name;
+    snprintf(buff, sizeof buff, "(%u, %u)", ecs_first(entity), ecs_second(entity));
     return buff;
 }
 
@@ -8054,7 +8206,7 @@ static bool ecs_inheritance_type_has(const ecs_type_t *type, ecs_component_t com
 }
 
 static bool ecs_inheritance_component_is_owned(ecs_component_t component) {
-    if (component == ecs_id(Abstract)) {
+    if (component == ecs_id(Abstract) || component == ecs_id(Name)) {
         return false;
     }
 
@@ -8183,6 +8335,8 @@ void ecs_inheritance_instantiate_children(ecs_entity_t entity, ecs_entity_t base
         const ecs_entity_t child = ecs_new();
 
         ecs_relate_id_now(child, ecs_rid(ChildOf), entity);
+        const char *child_name = ecs_name_local(base_child);
+        if (child_name) ecs_name_update_now(child, child_name, true, 0, false);
 
         ecs_relate_id_now(child, ecs_rid(IsA), base_child);
     }
@@ -8454,6 +8608,514 @@ void ecs_module_forget_observer(ecs_observer_id_t observer) {
     }
     value->module = 0;
     value->next_module = UINT32_MAX;
+}
+
+#include <inttypes.h>
+
+/* No formatted composite keys, path copies, or allocations on the lookup path. */
+static ecs_name_index_t names;
+/* Root hits retain Sicore's compact SIMD string index and skip path parsing.
+ * The canonical parent/name index also accepts non-terminated path segments. */
+static sicore_map_t root_names;
+
+/* Wyhash-style word mixing (public domain), seeded by the complete parent
+ * handle. Short names need two multiplies rather than one multiply per byte. */
+static uint64_t ecs_name_mix(uint64_t a, uint64_t b) {
+#if defined(__SIZEOF_INT128__)
+    __uint128_t product = (__uint128_t)a * b;
+    return (uint64_t)product ^ (uint64_t)(product >> 64);
+#else
+    uint64_t ah = a >> 32, al = (uint32_t)a, bh = b >> 32, bl = (uint32_t)b;
+    uint64_t high = ah * bh, middle0 = ah * bl, middle1 = al * bh, low = al * bl;
+    uint64_t t = low + (middle0 << 32), carry = t < low;
+    uint64_t out = t + (middle1 << 32);
+    carry += out < t;
+    return out ^ (high + (middle0 >> 32) + (middle1 >> 32) + carry);
+#endif
+}
+
+static uint64_t ecs_name_read64(const char *value) {
+    uint64_t result;
+    memcpy(&result, value, sizeof result);
+    return result;
+}
+
+static uint64_t ecs_name_read32(const char *value) {
+    uint32_t result;
+    memcpy(&result, value, sizeof result);
+    return result;
+}
+
+static uint32_t ecs_name_hash(ecs_entity_t parent, const char *name, size_t length) {
+    const uint64_t secret = UINT64_C(0xe7037ed1a0b428db);
+    uint64_t seed = parent ^ UINT64_C(0xa0761d6478bd642f);
+    size_t remaining = length;
+    while (remaining > 16) {
+        seed = ecs_name_mix(ecs_name_read64(name) ^ secret, ecs_name_read64(name + 8) ^ seed);
+        name += 16;
+        remaining -= 16;
+    }
+    uint64_t a = 0, b = 0;
+    if (remaining > 8) {
+        a = ecs_name_read64(name);
+        b = ecs_name_read64(name + remaining - 8);
+    } else if (remaining >= 4) {
+        a = ecs_name_read32(name);
+        b = ecs_name_read32(name + remaining - 4);
+    } else if (remaining) {
+        a = ((uint64_t)(unsigned char)name[0] << 16) |
+            ((uint64_t)(unsigned char)name[remaining >> 1] << 8) |
+            (unsigned char)name[remaining - 1];
+    }
+    uint64_t hash = ecs_name_mix(secret ^ length, ecs_name_mix(a ^ secret, b ^ seed));
+    uint32_t result = (uint32_t)(hash ^ (hash >> 32));
+    return result >= 2 ? result : result + 2; /* 0 empty, 1 deleted */
+}
+
+static bool ecs_name_entry_matches(
+    const ecs_name_entry_t *entry,
+    uint32_t hash,
+    ecs_entity_t parent,
+    const char *name,
+    size_t length
+) {
+    return entry->hash == hash && entry->parent == parent && entry->length == length &&
+           memcmp(entry->name, name, length) == 0;
+}
+
+ecs_entity_t ecs_name_index_find(
+    const ecs_name_index_t *index,
+    ecs_entity_t parent,
+    const char *name,
+    size_t length
+) {
+    if (!index->count)
+        return 0;
+    uint32_t hash = ecs_name_hash(parent, name, length);
+    uint32_t mask = index->capacity - 1;
+    uint32_t at = (uint32_t)hash & mask;
+    while (index->entries[at].hash) {
+        if (ecs_name_entry_matches(&index->entries[at], hash, parent, name, length))
+            return index->entries[at].entity;
+        at = (at + 1) & mask;
+    }
+    return 0;
+}
+
+static void ecs_name_index_rehash(ecs_name_index_t *index, uint32_t capacity) {
+    ecs_name_entry_t *entries = calloc(capacity, sizeof *entries);
+    ecs_assert_not_null(entries);
+    for (uint32_t i = 0; i < index->capacity; i++) {
+        ecs_name_entry_t entry = index->entries[i];
+        if (entry.hash < 2)
+            continue;
+        uint32_t at = (uint32_t)entry.hash & (capacity - 1);
+        while (entries[at].hash)
+            at = (at + 1) & (capacity - 1);
+        entries[at] = entry;
+    }
+    free(index->entries);
+    index->entries = entries;
+    index->capacity = capacity;
+    index->deleted = 0;
+}
+
+void ecs_name_index_insert(
+    ecs_name_index_t *index,
+    ecs_entity_t parent,
+    const char *name,
+    ecs_entity_t entity
+) {
+    if (!index->capacity || (index->count + index->deleted + 1) * 4 >= index->capacity * 3) {
+        uint32_t capacity = index->capacity ? index->capacity : 16;
+        if ((index->count + 1) * 4 >= capacity * 3)
+            capacity *= 2;
+        ecs_name_index_rehash(index, capacity);
+    }
+    size_t length = strlen(name);
+    uint32_t hash = ecs_name_hash(parent, name, length);
+    uint32_t mask = index->capacity - 1, at = (uint32_t)hash & mask;
+    uint32_t deleted = UINT32_MAX;
+    while (index->entries[at].hash) {
+        if (ecs_name_entry_matches(&index->entries[at], hash, parent, name, length)) {
+            index->entries[at].entity = entity;
+            index->entries[at].name = name;
+            return;
+        }
+        if (index->entries[at].hash == 1 && deleted == UINT32_MAX)
+            deleted = at;
+        at = (at + 1) & mask;
+    }
+    if (deleted != UINT32_MAX) {
+        at = deleted;
+        index->deleted--;
+    }
+    index->entries[at] = (ecs_name_entry_t){ .parent = parent,
+                                             .entity = entity,
+                                             .name = name,
+                                             .hash = hash,
+                                             .length = (uint32_t)length };
+    index->count++;
+}
+
+void ecs_name_index_remove(
+    ecs_name_index_t *index,
+    ecs_entity_t parent,
+    const char *name,
+    ecs_entity_t entity
+) {
+    if (!name || !index->count)
+        return;
+    size_t length = strlen(name);
+    uint32_t hash = ecs_name_hash(parent, name, length);
+    uint32_t mask = index->capacity - 1, at = (uint32_t)hash & mask;
+    while (index->entries[at].hash) {
+        ecs_name_entry_t *entry = &index->entries[at];
+        if (ecs_name_entry_matches(entry, hash, parent, name, length)) {
+            if (entry->entity == entity) {
+                *entry = (ecs_name_entry_t){ .hash = 1 };
+                index->count--;
+                index->deleted++;
+            }
+            return;
+        }
+        at = (at + 1) & mask;
+    }
+}
+
+void ecs_name_index_fini(ecs_name_index_t *index) {
+    free(index->entries);
+    *index = (ecs_name_index_t){ 0 };
+}
+
+void ecs_names_init(void) { sicore_map_init(&root_names); }
+
+void ecs_names_fini(void) {
+    ecs_name_index_fini(&names);
+    sicore_map_fini(&root_names);
+}
+
+bool ecs_name_entity_alive(ecs_entity_t entity) {
+    uint32_t index = ecs_first(entity);
+    if (!index || index >= entity_index.entities.size)
+        return false;
+    const ecs_entity_record_t *record = ecs_entity_index_get_record(index);
+    return record->table_id != UINT16_MAX && record->generation == ecs_second(entity);
+}
+
+bool ecs_name_valid(const char *name) {
+    if (!name || !name[0])
+        return true;
+    size_t length = strlen(name);
+    /* A trailing : would merge with the separator before the next segment. */
+    return length <= UINT32_MAX && name[0] != '#' && name[length - 1] != ':' && !strstr(name, "::");
+}
+
+const char *ecs_name_local(ecs_entity_t entity) {
+    const ecs_entity_record_t *record = ecs_get_record(entity);
+    const ecs_table_t *table = ecs_get_table(record->table_id);
+    uint16_t column = ecs_table_column_or_invalid(table, ecs_id(Name));
+    if (column == UINT16_MAX)
+        return NULL;
+    const Name *name = ecs_table_component_at_column(table, column, record->table_row);
+    return name->value && name->value[0] ? name->value : NULL;
+}
+
+ecs_entity_t ecs_name_parent(ecs_entity_t entity) {
+    return ecs_target_id(entity, ecs_rid(ChildOf));
+}
+
+static void ecs_names_remove(ecs_entity_t entity, ecs_entity_t parent, const char *name) {
+    ecs_name_index_remove(&names, parent, name, entity);
+    if (!parent) {
+        uint32_t index = sicore_map_get(&root_names, name);
+        if (index != UINT32_MAX && ecs_entity_from_index(index) == entity)
+            sicore_map_unset(&root_names, name);
+    }
+}
+
+void ecs_name_unregister(ecs_entity_t entity) {
+    const char *name = ecs_name_local(entity);
+    if (name)
+        ecs_names_remove(entity, ecs_name_parent(entity), name);
+}
+
+void ecs_name_on_remove(ecs_entity_t entity, ecs_component_t component, void *data) {
+    (void)component;
+    const Name *name = data;
+    if (name->value)
+        ecs_names_remove(entity, ecs_name_parent(entity), name->value);
+}
+
+static bool ecs_name_is_ancestor(ecs_entity_t ancestor, ecs_entity_t entity) {
+    while (entity) {
+        if (entity == ancestor)
+            return true;
+        entity = ecs_name_parent(entity);
+    }
+    return false;
+}
+
+bool ecs_name_update_now(
+    ecs_entity_t entity,
+    const char *name,
+    bool set_name,
+    ecs_entity_t parent,
+    bool set_parent
+) {
+    if (!ecs_name_entity_alive(entity) || (set_name && !ecs_name_valid(name)))
+        return false;
+    ecs_entity_t old_parent = ecs_name_parent(entity);
+    if (!set_parent)
+        parent = old_parent;
+    if (parent != old_parent && parent &&
+        (!ecs_name_entity_alive(parent) || ecs_name_is_ancestor(entity, parent)))
+        return false;
+    const char *old_name = ecs_name_local(entity);
+    if (!set_name)
+        name = old_name;
+    if (name && !name[0])
+        name = NULL;
+    bool rename = set_name && (old_name || name);
+    if (old_name && name && strcmp(old_name, name) == 0)
+        rename = false;
+    if (!rename && parent == old_parent &&
+        !(set_name && !name && ecs_has_cid_owned(entity, ecs_id(Name))))
+        return true;
+
+    ecs_entity_t victim = name ? ecs_name_index_find(&names, parent, name, strlen(name)) : 0;
+    if (victim == entity)
+        victim = 0;
+    if (victim && (ecs_name_is_ancestor(victim, entity) || ecs_name_is_ancestor(victim, parent)))
+        return false;
+
+    /* Copy before deleting a victim: input may alias either entity's storage. */
+    char *copy = rename && name ? strdup(name) : NULL;
+    if (rename && name && !copy)
+        return false;
+    ecs_defer_begin();
+    if (victim)
+        ecs_kill_now(victim);
+    ecs_name_unregister(entity);
+    if (parent != old_parent)
+        ecs_childof_update_now(entity, parent);
+    if (set_name && !name) {
+        ecs_remove_cid_now(entity, ecs_id(Name));
+    } else if (rename) {
+        ecs_add_cid_now(entity, ecs_id(Name));
+        Name *value = ecs_get_cid(entity, ecs_id(Name));
+        free(value->value);
+        value->value = copy;
+        copy = NULL;
+    }
+    const char *current = ecs_name_local(entity);
+    if (current) {
+        ecs_name_index_insert(&names, parent, current, entity);
+        if (!parent)
+            sicore_map_set(&root_names, current, ecs_first(entity));
+    }
+    if (parent != old_parent) {
+        ecs_emit_relation_event(
+            entity,
+            ecs_rid(ChildOf),
+            parent ? EcsOnRelationSet : EcsOnRelationRemove,
+            old_parent,
+            parent
+        );
+    }
+    if (rename && name) {
+        ecs_entity_record_t *record = ecs_get_record(entity);
+        ecs_table_t *table = ecs_get_table(record->table_id);
+        const Name *value = ecs_get_cid(entity, ecs_id(Name));
+        ecs_emit(table, entity, EcsOnSet, ecs_id(Name), value);
+    }
+    ecs_defer_end();
+    free(copy);
+    return true;
+}
+
+bool ecs_set_name(ecs_entity_t entity, const char *name) {
+    ecs_assert_not_scheduler_parallel("entity naming");
+    if (!ecs_name_entity_alive(entity) || !ecs_name_valid(name))
+        return false;
+    if (ecs_is_deferred()) {
+        ecs_command_buffer_identity(entity, name, true, 0, false);
+        return true;
+    }
+    return ecs_name_update_now(entity, name, true, 0, false);
+}
+
+/* Reserved anonymous segments include the generation, never just a recycled index. */
+static ecs_entity_t ecs_name_anonymous(const char *segment, size_t length) {
+    if (length < 4 || segment[0] != '#')
+        return 0;
+    uint64_t parts[2] = { 0 };
+    unsigned part = 0;
+    bool digit = false;
+    for (size_t i = 1; i < length; i++) {
+        unsigned char c = (unsigned char)segment[i];
+        if (c == ':' && !part && digit) {
+            part = 1;
+            digit = false;
+            continue;
+        }
+        if (c < '0' || c > '9')
+            return 0;
+        digit = true;
+        parts[part] = parts[part] * 10 + c - '0';
+        if (parts[part] > UINT32_MAX)
+            return 0;
+    }
+    if (!part || !digit || !parts[0])
+        return 0;
+    ecs_entity_t entity = ecs_entity((uint32_t)parts[0], (uint32_t)parts[1]);
+    return ecs_name_entity_alive(entity) ? entity : 0;
+}
+
+static bool ecs_name_path_valid(const char *path) {
+    if (!path || !*path)
+        return false;
+    if (path[0] == ':' && path[1] == ':')
+        path += 2;
+    if (!*path)
+        return false;
+    while (*path) {
+        const char *end = strstr(path, "::");
+        size_t length = end ? (size_t)(end - path) : strlen(path);
+        if (!length || path[length - 1] == ':' ||
+            (path[0] == '#' && !ecs_name_anonymous(path, length)))
+            return false;
+        if (!end)
+            return true;
+        path = end + 2;
+        if (!*path)
+            return false;
+    }
+    return false;
+}
+
+ecs_entity_t ecs_name_lookup_segment(ecs_entity_t parent, const char *segment, size_t length) {
+    if (segment[0] == '#') {
+        ecs_entity_t entity = ecs_name_anonymous(segment, length);
+        return entity && !ecs_name_local(entity) && ecs_name_parent(entity) == parent ? entity : 0;
+    }
+    return ecs_name_index_find(&names, parent, segment, length);
+}
+
+static ecs_entity_t ecs_name_resolve(ecs_entity_t parent, const char *path, bool create) {
+    /* Read-only lookup validates while walking; creation validates before mutation. */
+    if (!path || !*path || (create && !ecs_name_path_valid(path)))
+        return 0;
+    if (path[0] == ':' && path[1] == ':') {
+        parent = 0;
+        path += 2;
+    }
+    if (!*path)
+        return 0;
+    if (parent && !ecs_name_entity_alive(parent))
+        return 0;
+    while (*path) {
+        const char *end = strstr(path, "::");
+        size_t length = end ? (size_t)(end - path) : strlen(path);
+        if (!length || (end && !end[2]))
+            return 0;
+        ecs_entity_t found = create && ecs_is_deferred()
+                                 ? ecs_command_buffer_lookup_name(parent, path, length)
+                                 : ecs_name_lookup_segment(parent, path, length);
+        if (!found && create && path[0] != '#') {
+            char *local = malloc(length + 1);
+            if (!local)
+                return 0;
+            memcpy(local, path, length);
+            local[length] = '\0';
+            found = ecs_new();
+            if (ecs_is_deferred())
+                ecs_command_buffer_identity(found, local, true, parent, true);
+            else if (!ecs_name_update_now(found, local, true, parent, true)) {
+                ecs_kill_now(found);
+                found = 0;
+            }
+            free(local);
+        }
+        if (!found)
+            return 0;
+        parent = found;
+        if (!end)
+            break;
+        path = end + 2;
+    }
+    return parent;
+}
+
+ecs_entity_t ecs_lookup_from(ecs_entity_t parent, const char *path) {
+    return parent ? ecs_name_resolve(parent, path, false) : ecs_lookup(path);
+}
+
+ecs_entity_t ecs_lookup(const char *path) {
+    if (!path || !*path)
+        return 0;
+    if (path[0] != '#' && !(path[0] == ':' && path[1] == ':')) {
+        uint32_t index = sicore_map_get(&root_names, path);
+        if (index != UINT32_MAX)
+            return ecs_entity(index, ecs_entity_index_get_record(index)->generation);
+        if (!strstr(path, "::"))
+            return 0;
+    }
+    return ecs_name_resolve(0, path, false);
+}
+
+ecs_entity_t ecs_new_named(ecs_entity_t parent, const char *path) {
+    ecs_assert_not_scheduler_parallel("named entity creation");
+    if (path)
+        return ecs_name_resolve(parent, path, true);
+    if (parent && !ecs_name_entity_alive(parent))
+        return 0;
+    ecs_entity_t entity = ecs_new();
+    if (parent)
+        ecs_relate_id(entity, ecs_rid(ChildOf), parent);
+    return entity;
+}
+
+char *ecs_entity_path(ecs_entity_t entity) {
+    if (!ecs_name_entity_alive(entity))
+        return NULL;
+    size_t size = 1;
+    for (ecs_entity_t current = entity; current; current = ecs_name_parent(current)) {
+        const char *name = ecs_name_local(current);
+        size += 2 + (name ? strlen(name)
+                          : (size_t)snprintf(
+                                NULL,
+                                0,
+                                "#%" PRIu32 ":%" PRIu32,
+                                ecs_first(current),
+                                ecs_second(current)
+                            ));
+    }
+    char *path = malloc(size);
+    if (!path)
+        return NULL;
+    char *out = path + size - 1;
+    *out = '\0';
+    for (ecs_entity_t current = entity; current; current = ecs_name_parent(current)) {
+        const char *name = ecs_name_local(current);
+        char anonymous[32];
+        if (!name) {
+            snprintf(
+                anonymous,
+                sizeof anonymous,
+                "#%" PRIu32 ":%" PRIu32,
+                ecs_first(current),
+                ecs_second(current)
+            );
+            name = anonymous;
+        }
+        size_t length = strlen(name);
+        out -= length;
+        memcpy(out, name, length);
+        *--out = ':';
+        *--out = ':';
+    }
+    return path;
 }
 
 #define ECS_BUILTIN_EVENT_COUNT 5
@@ -9187,7 +9849,7 @@ ecs_entity_t ecs_table_target_id(const ecs_table_t *table, ecs_relation_id_t rel
     return ecs_type_pair_get(&table->type, relation);
 }
 
-static void ecs_emit_relation_event(
+void ecs_emit_relation_event(
     ecs_entity_t entity,
     ecs_relation_id_t relation,
     ecs_event_t event,
@@ -9219,6 +9881,9 @@ static void ecs_relation_set_dense(
     ecs_defer_begin();
     if (crec->on_set) {
         crec->on_set(entity, component, &value, current);
+        record = ecs_get_record(entity);
+        table = ecs_get_table(record->table_id);
+        current = ecs_table_get_component(table, component, record->table_row);
     }
     ecs_emit(table, entity, EcsOnSet, component, &value);
     current->entity = value.entity;
@@ -9315,6 +9980,9 @@ static void ecs_relation_set_depth(
     const ecs_component_record_t *component = ecs_component_index_get(relation_record->component);
     RelationTarget value = { .entity = target };
     component->on_set(entity, relation_record->component, &value, current);
+    entity_record = ecs_get_record(entity);
+    table = ecs_get_table(entity_record->table_id);
+    current = ecs_table_get_component(table, relation_record->component, entity_record->table_row);
     current->entity = value.entity;
     ecs_relation_update_children_depth(entity, relation, depth);
 }
@@ -9343,7 +10011,7 @@ ecs_relation_default_set_now(ecs_entity_t entity, ecs_relation_id_t relation, ec
             );
         } else {
             RelationTarget value = { .entity = target };
-            ecs_set_cid(entity, record->component, &value);
+            ecs_set_cid_now(entity, record->component, &value);
         }
     } else if (record->info.desc.storage == EcsRelationByDepth) {
         ecs_relation_set_depth(entity, relation, record, target, old_target != 0);
@@ -9382,6 +10050,10 @@ const ecs_relation_ops_t ecs_relation_ops_isa = {
 };
 
 void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
+    if (relation == ecs_rid(ChildOf)) {
+        ecs_name_update_now(entity, NULL, false, target, true);
+        return;
+    }
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     const ecs_relation_ops_t *ops = ecs_relation_record_ops(record);
     ecs_assert(
@@ -9454,6 +10126,10 @@ static void ecs_relation_default_remove_now(ecs_entity_t entity, ecs_relation_id
 }
 
 void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
+    if (relation == ecs_rid(ChildOf)) {
+        ecs_name_update_now(entity, NULL, false, 0, true);
+        return;
+    }
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     const ecs_relation_ops_t *ops = ecs_relation_record_ops(record);
     ecs_entity_t old_target = ops->target(entity, relation);
@@ -9466,6 +10142,15 @@ void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
     }
 
     ops->remove_now(entity, relation);
+}
+
+void ecs_childof_update_now(ecs_entity_t entity, ecs_entity_t parent) {
+    if (parent) {
+        ecs_relation_default_set_now(entity, ecs_rid(ChildOf), parent);
+        if (ecs_has_cid_owned(parent, ecs_id(Abstract))) ecs_abstract_now(entity);
+    } else {
+        ecs_relation_default_remove_now(entity, ecs_rid(ChildOf));
+    }
 }
 
 void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation) {
@@ -9843,6 +10528,7 @@ typedef struct {
     ecs_entity_t *local_to_entity;
     uint32_t entity_count;
     bool component_owns_strings;
+    Name *names; /* published only after ChildOf edges have been restored */
 } ecs_scene_load_ctx_t;
 
 static void ecs_scene_writer_init(ecs_scene_writer_t *w) {
@@ -10789,8 +11475,15 @@ static bool ecs_scene_load_component_payload(
                 return false;
 
             bool ok = ecs_scene_load_value(&payload, record->info->type, temp, &component_ctx);
-            if (ok)
+            if (ok && component == ecs_id(Name)) {
+                if (!ecs_name_valid(((Name *)temp)->value)) ok = false;
+                else {
+                    ctx->names[entities - ctx->local_to_entity + row] = *(Name *)temp;
+                    ((Name *)temp)->value = NULL;
+                }
+            } else if (ok) {
                 ecs_set_cid(entities[row], component, temp);
+            }
             if (record->ops.dtor)
                 record->ops.dtor(temp, 1);
             free(temp);
@@ -10809,11 +11502,13 @@ static bool ecs_scene_second_pass(
     ecs_scene_reader_t *r,
     uint32_t table_count,
     uint32_t entity_count,
-    ecs_entity_t *local_to_entity
+    ecs_entity_t *local_to_entity,
+    Name *names
 ) {
     ecs_scene_load_ctx_t ctx = {
         .local_to_entity = local_to_entity,
         .entity_count = entity_count,
+        .names = names,
     };
 
     uint32_t local_base = 0;
@@ -10916,6 +11611,8 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
     if (entity_count && !local_to_entity) {
         return false;
     }
+    Name *names = entity_count ? calloc(entity_count, sizeof *names) : NULL;
+    if (entity_count && !names) { free(local_to_entity); return false; }
 
     ecs_scene_reader_t first = {
         .ptr = tables_begin,
@@ -10932,7 +11629,7 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
             .end = relations_begin,
             .ok = true,
         };
-        ok = ecs_scene_second_pass(&second, table_count, entity_count, local_to_entity) &&
+        ok = ecs_scene_second_pass(&second, table_count, entity_count, local_to_entity, names) &&
              second.ptr == second.end;
     }
 
@@ -10950,6 +11647,17 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
              ) &&
              relations.ptr == relations.end;
     }
+
+    if (ok) {
+        for (uint32_t i = 0; i < entity_count; i++) {
+            if (names[i].value && !ecs_name_update_now(local_to_entity[i], names[i].value, true, 0, false)) {
+                ok = false;
+                break;
+            }
+        }
+    }
+    for (uint32_t i = 0; i < entity_count; i++) free(names[i].value);
+    free(names);
 
     /*
      * A malformed file may have instantiated some entities before returning
@@ -11406,7 +12114,7 @@ bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
     }
 
     // Abstract is not inherited for query matching; only exclude tables that own it.
-    if (component_id == ecs_id(Abstract)) {
+    if (component_id == ecs_id(Abstract) || component_id == ecs_id(Name)) {
         return false;
     }
 
@@ -11451,6 +12159,7 @@ void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bo
         return table->cls[cidx].data;
     }
 
+    if (component_id == ecs_id(Name)) { *is_shared = false; return NULL; }
     ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
@@ -12030,7 +12739,7 @@ void ecs_fini(void) {
     ecs_relation_index_fini();
     ecs_scene_type_cache_fini();
     sireflect_fini();
-    sicore_map_fini(&name_map);
+    ecs_names_fini();
     ecs_module_storage_fini();
 #ifndef NDEBUG
     ecs_world_started = false;
@@ -13120,7 +13829,8 @@ static void ecs_table_index_register_inherited_components(ecs_table_t *table, ui
 
         for (uint16_t i = 0; i < base_table->type.component_count; i++) {
             ecs_component_t component = base_table->type.ids[i];
-            if (ecs_table_column_or_invalid(table, component) != UINT16_MAX ||
+            if (component == ecs_id(Name) ||
+                ecs_table_column_or_invalid(table, component) != UINT16_MAX ||
                 ecs_table_index_inherits_component_before(table, base, component)) {
                 continue;
             }

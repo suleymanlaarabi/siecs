@@ -8,6 +8,11 @@
 
 #include <test.h>
 
+// Testsuite 'naming'
+void naming_paths_and_relative_creation(void);
+void naming_rename_and_reparent_replace(void);
+void naming_deferred_creation_and_anonymous_paths(void);
+
 // Testsuite 'system_param'
 void system_param_custom_query_phases(void);
 void system_param_custom_system_phases(void);
@@ -111,6 +116,21 @@ void traffic_long_run_relation_integrity(void);
 // Testsuite 'module_state'
 void module_state_lookup_empty(void);
 void module_state_enable(void);
+
+bake_test_case naming_testcases[] = {
+    {
+        "paths_and_relative_creation",
+        naming_paths_and_relative_creation
+    },
+    {
+        "rename_and_reparent_replace",
+        naming_rename_and_reparent_replace
+    },
+    {
+        "deferred_creation_and_anonymous_paths",
+        naming_deferred_creation_and_anonymous_paths
+    }
+};
 
 bake_test_case system_param_testcases[] = {
     {
@@ -476,6 +496,13 @@ bake_test_case module_state_testcases[] = {
 
 static bake_test_suite suites[] = {
     {
+        "naming",
+        NULL,
+        NULL,
+        3,
+        naming_testcases
+    },
+    {
         "system_param",
         NULL,
         NULL,
@@ -555,5 +582,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.cpp.test", argc, argv, suites, 11);
+    return bake_test_run("siecs.cpp.test", argc, argv, suites, 12);
 }

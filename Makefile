@@ -7,7 +7,7 @@ WASM_NODE ?= node
 BENCH_CPU ?= 0
 VEC_ARCH_FLAGS ?=
 
-.PHONY: clean bench bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-release test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release build-wasm-debug build-wasm-release test-wasm test-wasm-browser vec-cpp act-ci act-docs act
+.PHONY: clean bench bench-naming bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-release test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release build-wasm-debug build-wasm-release test-wasm test-wasm-browser vec-cpp act-ci act-docs act
 
 ACT ?= act
 ACT_PLATFORM ?= ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
@@ -38,6 +38,10 @@ bench-add:
 
 bench-create:
 	$(call run-bench,-- create)
+
+bench-naming:
+	@bake rebuild bench/naming -r --cfg release >/dev/null
+	@bake run bench/naming --cfg release
 
 bench-compare:
 	@python3 tools/bench_compare.py $(if $(SCOPE),--scope $(SCOPE),) $(if $(RUNS),--runs $(RUNS),) $(if $(THRESHOLD),--threshold $(THRESHOLD),) $(if $(BENCH_CPU),--cpu $(BENCH_CPU),)

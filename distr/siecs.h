@@ -1878,8 +1878,29 @@ SIECS_API uint32_t ecs_relation_count(void);
  */
 SIECS_API const ecs_relation_info_t *ecs_relation_info(ecs_relation_id_t relation);
 
-/* Look up a live entity by its registered name; returns 0 when absent. */
-ecs_entity_t ecs_lookup(const char *key);
+/* Look up a live entity by its :: separated path from the root. No allocation.
+ * Returns 0 when absent or malformed. A leading :: always selects the root. */
+SIECS_API ecs_entity_t ecs_lookup(const char *path);
+
+/* Look up a path relative to parent (0 = root), without searching ancestors. */
+SIECS_API ecs_entity_t ecs_lookup_from(ecs_entity_t parent, const char *path);
+
+/* Find or create a path, including missing parents. Names are case-sensitive.
+ * NULL creates an anonymous entity. Returns 0 on invalid input. In a defer
+ * scope, creation also resolves names staged in the current execution context;
+ * ordinary lookup sees only committed state. */
+SIECS_API ecs_entity_t ecs_new_named(ecs_entity_t parent, const char *path);
+
+/* Set a copied local name. NULL/empty removes Name. ::, trailing :, and leading # are
+ * reserved. A collision deletes the previous entity and its ChildOf subtree.
+ * Returns false without mutation for invalid input or a destructive ancestor
+ * collision. In a defer scope true means queued; final validation is at flush. */
+SIECS_API bool ecs_set_name(ecs_entity_t entity, const char *name);
+
+/* Allocate an absolute :: path; caller frees it with free(). Anonymous segments
+ * use #index:generation and can be resolved by lookup. Returns NULL for a dead
+ * handle or allocation failure. No implicit path cache is maintained. */
+SIECS_API char *ecs_entity_path(ecs_entity_t entity);
 
 /* Return the current live handle for an entity index, or 0 when unavailable. */
 SIECS_API ecs_entity_t ecs_entity_from_index(uint32_t index);
@@ -2997,6 +3018,8 @@ class system_param_query {
 
 #include <cassert>
 #include <cstring>
+#include <cstdlib>
+#include <memory>
 #include <string>
 
 namespace ecs {
@@ -3049,9 +3072,12 @@ class entity {
     /** Wrap a raw id without validating it; use `is_alive()` to validate. */
     entity(ecs_entity_t entity) noexcept : _entity(entity) {}
 
-    /** Look up a named live entity; returns null when names are disabled/missing. */
+    /** Look up a :: path from the root; returns null when absent. */
+    static entity lookup(const char *path) { return entity::from(ecs_lookup(path)); }
+
+    /** Look up an existing string without making a temporary string copy. */
     static inline entity lookup(const std::string &name) {
-        return entity::from(ecs_lookup(name.c_str()));
+        return lookup(name.c_str());
     }
 
     /** Create a new live entity in the active world. */
@@ -3060,21 +3086,34 @@ class entity {
     /** Create a new live entity without reusing a freed entity index. */
     static entity create_no_reuse() noexcept { return entity(ecs_new_no_reuse()); }
 
-    /** Look up or create a named entity; name storage is copied by the world. */
-    static entity create(const char *name) {
-        entity value = lookup(name);
+    /** Find or create a :: path, including missing parents. */
+    static entity create(const char *path) { return from(ecs_new_named(0, path)); }
 
-        if (value) {
-            return value;
-        }
+    /** Find or create a path relative to parent; leading :: selects the root. */
+    static entity create(entity parent, const char *path) {
+        return from(ecs_new_named(parent.id(), path));
+    }
 
-        value = create();
+    /** Resolve a path relative to parent, without searching its ancestors. */
+    static entity lookup(entity parent, const char *path) {
+        return from(ecs_lookup_from(parent.id(), path));
+    }
 
-        if (name != nullptr) {
-            char *copy = strdup(name);
-            value.set<Name>({ .value = copy });
-        }
-        return value;
+    /** Resolve an existing string relative to parent without copying it. */
+    static entity lookup(entity parent, const std::string &path) {
+        return lookup(parent, path.c_str());
+    }
+
+    /** Rename locally; a collision deletes the previous entity and its children. */
+    bool set_name(const char *name) { return ecs_set_name(_entity, name); }
+
+    /** Return the local name, or the generated diagnostic name when anonymous. */
+    [[nodiscard]] const char *name() const { return ecs_entity_name(_entity); }
+
+    /** Compute the absolute path; no implicit path cache is maintained. */
+    [[nodiscard]] std::string path() const {
+        std::unique_ptr<char, decltype(&std::free)> value(ecs_entity_path(_entity), &std::free);
+        return value ? std::string(value.get()) : std::string();
     }
 
     /** Create an IsA instance and recursively snapshot the prefab's owned ChildOf subtree. */

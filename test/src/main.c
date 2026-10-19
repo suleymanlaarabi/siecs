@@ -15,6 +15,25 @@ void public_scene_invalid_load_is_non_destructive(void);
 void public_scene_reflected_codec_roundtrip(void);
 void public_scene_unsupported_pointer_is_consistent(void);
 
+// Testsuite 'naming'
+void naming_paths_and_scopes(void);
+void naming_rename_updates_descendant_paths(void);
+void naming_set_component_copies_and_removes(void);
+void naming_collision_deletes_previous_subtree(void);
+void naming_reparent_and_root_collision(void);
+void naming_protects_ancestors_and_cycles(void);
+void naming_invalid_input_is_non_destructive(void);
+void naming_anonymous_segments_and_generations(void);
+void naming_deferred_final_name_and_parent(void);
+void naming_deferred_creation_reuses_pending_paths(void);
+void naming_deferred_remove_kill_and_recreate(void);
+void naming_deferred_siblings_are_all_owned_by_parent(void);
+void naming_set_event_observes_final_identity(void);
+void naming_collision_callbacks_can_allocate(void);
+void naming_prefab_instances_have_local_child_names(void);
+void naming_scene_roundtrip_preserves_duplicate_local_names(void);
+void naming_hash_growth_tombstones_and_restart(void);
+
 // Testsuite 'entity'
 void entity_create(void);
 void entity_add_components_after_world_restart(void);
@@ -268,6 +287,77 @@ bake_test_case public_testcases[] = {
     {
         "scene_unsupported_pointer_is_consistent",
         public_scene_unsupported_pointer_is_consistent
+    }
+};
+
+bake_test_case naming_testcases[] = {
+    {
+        "paths_and_scopes",
+        naming_paths_and_scopes
+    },
+    {
+        "rename_updates_descendant_paths",
+        naming_rename_updates_descendant_paths
+    },
+    {
+        "set_component_copies_and_removes",
+        naming_set_component_copies_and_removes
+    },
+    {
+        "collision_deletes_previous_subtree",
+        naming_collision_deletes_previous_subtree
+    },
+    {
+        "reparent_and_root_collision",
+        naming_reparent_and_root_collision
+    },
+    {
+        "protects_ancestors_and_cycles",
+        naming_protects_ancestors_and_cycles
+    },
+    {
+        "invalid_input_is_non_destructive",
+        naming_invalid_input_is_non_destructive
+    },
+    {
+        "anonymous_segments_and_generations",
+        naming_anonymous_segments_and_generations
+    },
+    {
+        "deferred_final_name_and_parent",
+        naming_deferred_final_name_and_parent
+    },
+    {
+        "deferred_creation_reuses_pending_paths",
+        naming_deferred_creation_reuses_pending_paths
+    },
+    {
+        "deferred_remove_kill_and_recreate",
+        naming_deferred_remove_kill_and_recreate
+    },
+    {
+        "deferred_siblings_are_all_owned_by_parent",
+        naming_deferred_siblings_are_all_owned_by_parent
+    },
+    {
+        "set_event_observes_final_identity",
+        naming_set_event_observes_final_identity
+    },
+    {
+        "collision_callbacks_can_allocate",
+        naming_collision_callbacks_can_allocate
+    },
+    {
+        "prefab_instances_have_local_child_names",
+        naming_prefab_instances_have_local_child_names
+    },
+    {
+        "scene_roundtrip_preserves_duplicate_local_names",
+        naming_scene_roundtrip_preserves_duplicate_local_names
+    },
+    {
+        "hash_growth_tombstones_and_restart",
+        naming_hash_growth_tombstones_and_restart
     }
 };
 
@@ -1158,6 +1248,13 @@ static bake_test_suite suites[] = {
         public_testcases
     },
     {
+        "naming",
+        NULL,
+        NULL,
+        17,
+        naming_testcases
+    },
+    {
         "entity",
         NULL,
         NULL,
@@ -1237,5 +1334,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 12);
+    return bake_test_run("siecs.test", argc, argv, suites, 13);
 }

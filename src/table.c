@@ -203,7 +203,7 @@ bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
     }
 
     // Abstract is not inherited for query matching; only exclude tables that own it.
-    if (component_id == ecs_id(Abstract)) {
+    if (component_id == ecs_id(Abstract) || component_id == ecs_id(Name)) {
         return false;
     }
 
@@ -248,6 +248,7 @@ void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bo
         return table->cls[cidx].data;
     }
 
+    if (component_id == ecs_id(Name)) { *is_shared = false; return NULL; }
     ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);

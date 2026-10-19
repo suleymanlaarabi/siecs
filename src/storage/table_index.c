@@ -229,7 +229,8 @@ static void ecs_table_index_register_inherited_components(ecs_table_t *table, ui
 
         for (uint16_t i = 0; i < base_table->type.component_count; i++) {
             ecs_component_t component = base_table->type.ids[i];
-            if (ecs_table_column_or_invalid(table, component) != UINT16_MAX ||
+            if (component == ecs_id(Name) ||
+                ecs_table_column_or_invalid(table, component) != UINT16_MAX ||
                 ecs_table_index_inherits_component_before(table, base, component)) {
                 continue;
             }

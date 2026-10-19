@@ -168,6 +168,7 @@ ecs_component_get_from_record(const ecs_entity_record_t *record, ecs_component_t
         return ecs_table_component_at_column(table, col_idx, record->table_row);
     }
 
+    if (component == ecs_id(Name)) return NULL;
     ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0) {
         const ecs_entity_record_t *base_record = ecs_get_record(base);
@@ -194,6 +195,11 @@ void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) { return ecs_get
 
 static inline void
 ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
+    if (ECS_UNLIKELY(cid == ecs_id(Name))) {
+        ecs_name_update_now(entity, ((const Name *)data)->value, true, 0, false);
+        if (move) { free(((Name *)data)->value); ((Name *)data)->value = NULL; }
+        return;
+    }
     bool had_value = move && ecs_has_cid_owned(entity, cid);
     ecs_add_cid_now(entity, cid);
     if (!move)
@@ -204,6 +210,10 @@ ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool mov
 
     if (crec->on_set) {
         crec->on_set(entity, cid, data, dst);
+        /* Relation hooks can migrate their target and grow the table index. */
+        record = ecs_get_record(entity);
+        table = ecs_get_table(record->table_id);
+        dst = ecs_table_get_component(table, cid, record->table_row);
     }
     ecs_emit(table, entity, EcsOnSet, cid, data);
     if (crec->relation_flags & EcsComponentRelationTarget) {
@@ -224,6 +234,7 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
 
 static inline void ecs_store_cid(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     ecs_assert_component_access(entity, cid);
+    if (ECS_UNLIKELY(move && cid == ecs_id(Name)) && data == ecs_get_cid(entity, cid)) return;
     if (ecs_is_deferred()) {
         if (move)
             ecs_command_buffer_move(entity, cid, data);

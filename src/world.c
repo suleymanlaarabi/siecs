@@ -96,7 +96,7 @@ void ecs_fini(void) {
     ecs_relation_index_fini();
     ecs_scene_type_cache_fini();
     sireflect_fini();
-    sicore_map_fini(&name_map);
+    ecs_names_fini();
     ecs_module_storage_fini();
 #ifndef NDEBUG
     ecs_world_started = false;

@@ -30,5 +30,17 @@ int main() {
     assert(position != nullptr);
     assert(position->x == 3.0f);
     assert(position->y == 4.0f);
+
+    auto first = ecs::entity::create("SceneA::Player");
+    auto second = ecs::entity::create("SceneB::Player");
+    auto scene = ecs::entity::lookup("SceneA");
+    assert(first.id() != second.id());
+    assert(ecs::entity::lookup(scene, "Player").id() == first.id());
+    assert(first.path() == "::SceneA::Player");
+    auto replacement = ecs::entity::create(scene, "Replacement");
+    assert(replacement.set_name("Player"));
+    assert(!first.is_alive());
+    assert(second.is_alive());
+    assert(ecs::entity::lookup("SceneA::Player").id() == replacement.id());
     ecs::fini();
 }

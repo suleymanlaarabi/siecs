@@ -30,6 +30,28 @@
         ]
       },
       {
+        "id": "naming",
+        "testcases": [
+          "paths_and_scopes",
+          "rename_updates_descendant_paths",
+          "set_component_copies_and_removes",
+          "collision_deletes_previous_subtree",
+          "reparent_and_root_collision",
+          "protects_ancestors_and_cycles",
+          "invalid_input_is_non_destructive",
+          "anonymous_segments_and_generations",
+          "deferred_final_name_and_parent",
+          "deferred_creation_reuses_pending_paths",
+          "deferred_remove_kill_and_recreate",
+          "deferred_siblings_are_all_owned_by_parent",
+          "set_event_observes_final_identity",
+          "collision_callbacks_can_allocate",
+          "prefab_instances_have_local_child_names",
+          "scene_roundtrip_preserves_duplicate_local_names",
+          "hash_growth_tombstones_and_restart"
+        ]
+      },
+      {
         "id": "entity",
         "testcases": [
           "create",

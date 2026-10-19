@@ -39,7 +39,7 @@ static bool ecs_inheritance_type_has(const ecs_type_t *type, ecs_component_t com
 }
 
 static bool ecs_inheritance_component_is_owned(ecs_component_t component) {
-    if (component == ecs_id(Abstract)) {
+    if (component == ecs_id(Abstract) || component == ecs_id(Name)) {
         return false;
     }
 
@@ -168,6 +168,8 @@ void ecs_inheritance_instantiate_children(ecs_entity_t entity, ecs_entity_t base
         const ecs_entity_t child = ecs_new();
 
         ecs_relate_id_now(child, ecs_rid(ChildOf), entity);
+        const char *child_name = ecs_name_local(base_child);
+        if (child_name) ecs_name_update_now(child, child_name, true, 0, false);
 
         ecs_relate_id_now(child, ecs_rid(IsA), base_child);
     }

@@ -43,6 +43,7 @@ typedef struct {
     ecs_entity_t *local_to_entity;
     uint32_t entity_count;
     bool component_owns_strings;
+    Name *names; /* published only after ChildOf edges have been restored */
 } ecs_scene_load_ctx_t;
 
 static void ecs_scene_writer_init(ecs_scene_writer_t *w) {
@@ -989,8 +990,15 @@ static bool ecs_scene_load_component_payload(
                 return false;
 
             bool ok = ecs_scene_load_value(&payload, record->info->type, temp, &component_ctx);
-            if (ok)
+            if (ok && component == ecs_id(Name)) {
+                if (!ecs_name_valid(((Name *)temp)->value)) ok = false;
+                else {
+                    ctx->names[entities - ctx->local_to_entity + row] = *(Name *)temp;
+                    ((Name *)temp)->value = NULL;
+                }
+            } else if (ok) {
                 ecs_set_cid(entities[row], component, temp);
+            }
             if (record->ops.dtor)
                 record->ops.dtor(temp, 1);
             free(temp);
@@ -1009,11 +1017,13 @@ static bool ecs_scene_second_pass(
     ecs_scene_reader_t *r,
     uint32_t table_count,
     uint32_t entity_count,
-    ecs_entity_t *local_to_entity
+    ecs_entity_t *local_to_entity,
+    Name *names
 ) {
     ecs_scene_load_ctx_t ctx = {
         .local_to_entity = local_to_entity,
         .entity_count = entity_count,
+        .names = names,
     };
 
     uint32_t local_base = 0;
@@ -1116,6 +1126,8 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
     if (entity_count && !local_to_entity) {
         return false;
     }
+    Name *names = entity_count ? calloc(entity_count, sizeof *names) : NULL;
+    if (entity_count && !names) { free(local_to_entity); return false; }
 
     ecs_scene_reader_t first = {
         .ptr = tables_begin,
@@ -1132,7 +1144,7 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
             .end = relations_begin,
             .ok = true,
         };
-        ok = ecs_scene_second_pass(&second, table_count, entity_count, local_to_entity) &&
+        ok = ecs_scene_second_pass(&second, table_count, entity_count, local_to_entity, names) &&
              second.ptr == second.end;
     }
 
@@ -1150,6 +1162,17 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
              ) &&
              relations.ptr == relations.end;
     }
+
+    if (ok) {
+        for (uint32_t i = 0; i < entity_count; i++) {
+            if (names[i].value && !ecs_name_update_now(local_to_entity[i], names[i].value, true, 0, false)) {
+                ok = false;
+                break;
+            }
+        }
+    }
+    for (uint32_t i = 0; i < entity_count; i++) free(names[i].value);
+    free(names);
 
     /*
      * A malformed file may have instantiated some entities before returning

@@ -978,8 +978,29 @@ SIECS_API uint32_t ecs_relation_count(void);
  */
 SIECS_API const ecs_relation_info_t *ecs_relation_info(ecs_relation_id_t relation);
 
-/* Look up a live entity by its registered name; returns 0 when absent. */
-ecs_entity_t ecs_lookup(const char *key);
+/* Look up a live entity by its :: separated path from the root. No allocation.
+ * Returns 0 when absent or malformed. A leading :: always selects the root. */
+SIECS_API ecs_entity_t ecs_lookup(const char *path);
+
+/* Look up a path relative to parent (0 = root), without searching ancestors. */
+SIECS_API ecs_entity_t ecs_lookup_from(ecs_entity_t parent, const char *path);
+
+/* Find or create a path, including missing parents. Names are case-sensitive.
+ * NULL creates an anonymous entity. Returns 0 on invalid input. In a defer
+ * scope, creation also resolves names staged in the current execution context;
+ * ordinary lookup sees only committed state. */
+SIECS_API ecs_entity_t ecs_new_named(ecs_entity_t parent, const char *path);
+
+/* Set a copied local name. NULL/empty removes Name. ::, trailing :, and leading # are
+ * reserved. A collision deletes the previous entity and its ChildOf subtree.
+ * Returns false without mutation for invalid input or a destructive ancestor
+ * collision. In a defer scope true means queued; final validation is at flush. */
+SIECS_API bool ecs_set_name(ecs_entity_t entity, const char *name);
+
+/* Allocate an absolute :: path; caller frees it with free(). Anonymous segments
+ * use #index:generation and can be resolved by lookup. Returns NULL for a dead
+ * handle or allocation failure. No implicit path cache is maintained. */
+SIECS_API char *ecs_entity_path(ecs_entity_t entity);
 
 /* Return the current live handle for an entity index, or 0 when unavailable. */
 SIECS_API ecs_entity_t ecs_entity_from_index(uint32_t index);

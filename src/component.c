@@ -62,24 +62,24 @@ void RelationOnSet(
     const RelationTarget *target_data = new_value;
     ecs_component_t source_component = target_component + 1;
 
-    const RelationTarget *old_target_data = current_value;
+    const RelationTarget old_target = *(const RelationTarget *)current_value;
 
     ecs_assert_entity_valid(target_data->entity);
     ecs_assert_is_alive(target_data->entity);
 
-    if (old_target_data->entity == target_data->entity) {
+    if (old_target.entity == target_data->entity) {
         return;
     }
 
-    if (old_target_data->entity) {
-        RelationSource *source = ecs_get_cid(old_target_data->entity, source_component);
+    if (old_target.entity) {
+        RelationSource *source = ecs_get_cid(old_target.entity, source_component);
 
         ecs_dense_relation_remove_source(
             entity,
-            old_target_data->entity,
+            old_target.entity,
             target_component,
             source,
-            old_target_data->source_index
+            old_target.source_index
         );
     }
 
@@ -92,11 +92,13 @@ void RelationOnSet(
         RelationSource source_data = { 0 };
         sicore_vec_init(&source_data.entities, sizeof(ecs_entity_t));
         sicore_vec_push_u64(&source_data.entities, entity);
-        ecs_set_cid(target_data->entity, source_component, &source_data);
+        /* Reverse indices are structural state, needed by the next source in
+         * this flush. They must not be deferred or overwrite each other. */
+        ecs_set_cid_now(target_data->entity, source_component, &source_data);
         source_index = 0;
     }
 
-    ((RelationTarget *)current_value)->source_index = source_index;
+    ((RelationTarget *)ecs_get_cid(entity, target_component))->source_index = source_index;
 }
 
 void RelationOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {

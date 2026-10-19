@@ -1,0 +1,46 @@
+#include <siecs.h>
+#include <test.h>
+
+void naming_paths_and_relative_creation(void) {
+    ecs_test_scope scope;
+    auto first = ecs::entity::create("SceneA::Player");
+    auto second = ecs::entity::create("SceneB::Player");
+    auto scene = ecs::entity::lookup("SceneA");
+    test_true(first.id() != second.id());
+    test_uint(first.id(), ecs::entity::create(scene, "Player").id());
+    test_uint(first.id(), ecs::entity::lookup(scene, "Player").id());
+    test_uint(second.id(), ecs::entity::lookup(scene, "::SceneB::Player").id());
+    test_str("Player", first.name());
+    test_str("::SceneA::Player", first.path().c_str());
+    test_uint(0, ecs::entity::lookup("Player").id());
+    test_uint(0, ecs::entity::lookup(nullptr).id());
+    test_uint(0, ecs::entity::lookup(scene, nullptr).id());
+}
+
+void naming_rename_and_reparent_replace(void) {
+    ecs_test_scope scope;
+    auto previous = ecs::entity::create("Scene::Player");
+    auto child = ecs::entity::create(previous, "Child");
+    auto replacement = ecs::entity::create("Other::Replacement");
+    test_true(replacement.set_name("Player"));
+    test_true(previous.is_alive());
+    replacement.child_of(ecs::entity::lookup("Scene"));
+    test_false(previous.is_alive());
+    test_false(child.is_alive());
+    test_uint(replacement.id(), ecs::entity::lookup("Scene::Player").id());
+    test_str("::Scene::Player", replacement.path().c_str());
+    test_false(replacement.set_name("Invalid::Local"));
+}
+
+void naming_deferred_creation_and_anonymous_paths(void) {
+    ecs_test_scope scope;
+    ecs_defer_begin();
+    auto first = ecs::entity::create("Scene::Player");
+    test_uint(first.id(), ecs::entity::create("Scene::Player").id());
+    test_uint(0, ecs::entity::lookup("Scene::Player").id());
+    ecs_defer_end();
+    auto anonymous = ecs::entity::create(first, nullptr);
+    test_uint(anonymous.id(), ecs::entity::lookup(anonymous.path()).id());
+    test_true(first.set_name(nullptr));
+    test_uint(anonymous.id(), ecs::entity::lookup(anonymous.path()).id());
+}
