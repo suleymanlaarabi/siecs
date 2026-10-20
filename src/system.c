@@ -27,7 +27,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     ecs_assert(desc->callback, "system requires callback function\n");
     ecs_assert(desc->interval >= 0.0, "system interval must be >= 0 seconds\n");
     ecs_assert(
-        ecs_system_index_get_phase(desc->phase) != NULL,
+        desc->phase == ECS_PHASE_NONE || ecs_system_index_get_phase(desc->phase) != NULL,
         "invalid system phase: %u\n",
         desc->phase
     );

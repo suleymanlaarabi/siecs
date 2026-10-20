@@ -264,9 +264,7 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
         .size = info->size,
         .struct_desc = &reflection,
         .inheritance = desc->inheritance,
-#ifndef NDEBUG
         .mutation = desc->mutation,
-#endif
     };
 
     component.name = desc->name;

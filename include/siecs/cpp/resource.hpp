@@ -114,16 +114,16 @@ template <typename T> class resource_ref {
         requires(!std::is_const_v<T> && std::is_same_v<std::remove_cvref_t<U>, value_type>)
     void set(U &&value) const {
         if constexpr (std::is_lvalue_reference_v<U>)
-            ecs_set_resource_rid(id(), &value);
+            ecs_set_resource_id(id(), &value);
         else
-            ecs_move_resource_rid(id(), &value);
+            ecs_move_resource_id(id(), &value);
     }
     [[nodiscard]] const value_type *try_get() const {
         auto rid = ecs_cpp_try_resource_id<value_type>();
-        return rid ? static_cast<const value_type *>(ecs_try_resource_rid(rid)) : nullptr;
+        return rid ? static_cast<const value_type *>(ecs_try_get_resource_id(rid)) : nullptr;
     }
     [[nodiscard]] const value_type &get() const {
-        return *static_cast<const value_type *>(ecs_resource_rid(id()));
+        return *static_cast<const value_type *>(ecs_get_resource_id(id()));
     }
     [[nodiscard]] value_type *try_edit() const
         requires(!std::is_const_v<T>)
@@ -141,7 +141,7 @@ template <typename T> class resource_ref {
     {
         auto rid = ecs_cpp_try_resource_id<value_type>();
         if (rid)
-            ecs_remove_resource_rid(rid);
+            ecs_remove_resource_id(rid);
     }
 };
 
@@ -157,7 +157,7 @@ resource_ref<T> resource(const resource_hooks<std::remove_cv_t<T>> &hooks) {
 
 template <typename T> void res<T>::world(ecs_world_t *world) noexcept {
     (void)world;
-    _ptr = static_cast<T *>(ecs_resource_rid(ecs_cpp_resource_id<std::remove_cv_t<T>>()));
+    _ptr = static_cast<T *>(ecs_get_resource_id(ecs_cpp_resource_id<std::remove_cv_t<T>>()));
 }
 
 } // namespace ecs

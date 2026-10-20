@@ -257,13 +257,13 @@ sihttp_response_t
 ecs_rest_set_resource(ecs_resource_t resource, const char *body_text, bool patch) {
     sijson_clean();
     const ecs_resource_info_t *info = ecs_resource_info(resource);
-    if (!info || info->type == SIREFLECT_INVALID_HANDLE || !ecs_has_resource_rid(resource))
+    if (!info || info->type == SIREFLECT_INVALID_HANDLE || !ecs_has_resource_id(resource))
         return ecs_rest_error(404, "resource_not_found", "resource not found");
     sijson_value_t value = ecs_rest_body_value(body_text);
     if (!value)
         return ecs_rest_error(400, "invalid_json_body", "invalid json body");
     sijson_value_t current =
-        ecs_rest_value_json(info->type, info->reflection, ecs_resource_rid(resource));
+        ecs_rest_value_json(info->type, info->reflection, ecs_get_resource_id(resource));
     bool valid = patch ? ecs_rest_validate_patch_value(info->type, value, current)
                        : ecs_rest_validate_full_value(info->type, value, current);
     if (!valid)
@@ -275,6 +275,9 @@ ecs_rest_set_resource(ecs_resource_t resource, const char *body_text, bool patch
     void *decoded = NULL;
     if (!ecs_rest_decode_value(info->type, info->reflection, value, &decoded))
         return ecs_rest_error(400, "invalid_resource_value", "invalid resource value");
-    ecs_move_resource_rid(resource, decoded);
-    return sihttp_response_json(200, ecs_rest_resource_json(resource, ecs_resource_rid(resource)));
+    ecs_move_resource_id(resource, decoded);
+    return sihttp_response_json(
+        200,
+        ecs_rest_resource_json(resource, ecs_get_resource_id(resource))
+    );
 }

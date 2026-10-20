@@ -871,8 +871,7 @@ ecs_query_id_t q = ecs_query({
         ecs_not(Frozen),
     },
     .relations = {
-        ecs_rel(GroupOf),
-        ecs_to(GroupOf, group),
+        ecs_to(GroupOf, group), /* implies the relation is present */
     },
     .is_a = base,
 });
@@ -886,7 +885,6 @@ ecs::query()
     .with<Position>()
     .optional<Velocity>()
     .without<Frozen>()
-    .with_relation<GroupOf>()
     .with<GroupOf>(group)
     .is_a(base)
     .build();

@@ -62,7 +62,7 @@ void component_dynamic_component_layout_and_info(void) {
     test_uint(fields->fields[0].offset, 0);
     test_uint(fields->fields[1].offset, 8);
     test_uint(fields->fields[2].offset, 16);
-    test_null(ecs_component_info(0));
+    test_null((void *)ecs_component_info(0));
     test_int(
         0,
         ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
@@ -802,10 +802,10 @@ void component_tag_components_have_no_storage(void) {
     ecs_init();
 
     test_int(0, ecs_id(Disabled_desc).size);
-    test_not_null(ecs_id(Disabled_desc).struct_desc);
+    test_not_null((void *)ecs_id(Disabled_desc).struct_desc);
     test_str("{}", ecs_id(Disabled_desc).struct_desc->fields);
     test_int(0, ecs_id(Abstract_desc).size);
-    test_not_null(ecs_id(Abstract_desc).struct_desc);
+    test_not_null((void *)ecs_id(Abstract_desc).struct_desc);
     test_str("{}", ecs_id(Abstract_desc).struct_desc->fields);
 
     ecs_entity_t entity = ecs_new();
@@ -1054,7 +1054,7 @@ void component_set_hook_can_relocate_storage(void) {
 static unsigned inherited_tag_copies;
 static void inherited_tag_copy(void *dst, const void *src, uint32_t count) {
     test_null(dst);
-    test_null(src);
+    test_null((void *)src);
     inherited_tag_copies += count;
 }
 

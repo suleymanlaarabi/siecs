@@ -1,16 +1,22 @@
 #ifndef SIECS_UTILS_H
 #define SIECS_UTILS_H
-#ifndef NDEBUG
 #include <stdio.h>
 #include <stdlib.h>
+
+/* Invariant whose violation would corrupt the world: checked in every build. */
+#define ecs_fatal_if(condition, ...)                                                               \
+    do {                                                                                           \
+        if (condition) {                                                                           \
+            fprintf(stderr, __VA_ARGS__);                                                          \
+            abort();                                                                               \
+        }                                                                                          \
+    } while (0)
+
+#ifndef NDEBUG
 #define ecs_cid_valid(id) ((id) != 0)
 #define ecs_entity_valid(entity) (ecs_first(entity) != 0)
 
-#define ecs_assert(condition, ...)                                                                 \
-    if (!(condition)) {                                                                            \
-        fprintf(stderr, __VA_ARGS__);                                                              \
-        abort();                                                                                   \
-    }
+#define ecs_assert(condition, ...) ecs_fatal_if(!(condition), __VA_ARGS__)
 
 #define ecs_assert_id_valid(id)                                                                    \
     ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
@@ -35,13 +41,13 @@
     } while (0)
 
 #else
-#define ecs_assert(condition, ...)
-#define ecs_assert_id_valid(id)
-#define ecs_assert_not_null(ptr)
-#define ecs_assert_entity_valid(entity)
-#define ecs_assert_is_alive(entity)
-#define ecs_assert_entity_alive(entity)
-#define ecs_assert_component_access(entity, id)
+#define ecs_assert(condition, ...) ((void)0)
+#define ecs_assert_id_valid(id) ((void)0)
+#define ecs_assert_not_null(ptr) ((void)0)
+#define ecs_assert_entity_valid(entity) ((void)0)
+#define ecs_assert_is_alive(entity) ((void)0)
+#define ecs_assert_entity_alive(entity) ((void)0)
+#define ecs_assert_component_access(entity, id) ((void)0)
 #endif
 
 #endif

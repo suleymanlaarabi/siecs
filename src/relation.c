@@ -100,9 +100,10 @@ void ecs_propagate_add_id(
     ecs_assert_entity_alive(entity);
     const ecs_relation_info_t *info = ecs_relation_info(relation);
     ecs_assert(info && info->desc.acyclic, "propagation requires an acyclic relation");
-    ecs_assert(
-        ecs_relation_record(relation)->component != 0,
-        "propagation requires a relation source index"
+    /* Only Dense/ByDepth keep the RelationSource index read at component + 1. */
+    ecs_fatal_if(
+        ecs_relation_record(relation)->component == 0 || info->desc.storage == EcsRelationByTarget,
+        "propagation requires a Dense or ByDepth relation\n"
     );
 
     if (ecs_is_deferred()) {
@@ -311,7 +312,6 @@ static void ecs_relation_set_dense(
     ecs_defer_end();
 }
 
-#ifndef NDEBUG
 static bool
 ecs_relation_would_cycle(ecs_entity_t source, ecs_relation_id_t relation, ecs_entity_t target) {
     while (target) {
@@ -322,7 +322,6 @@ ecs_relation_would_cycle(ecs_entity_t source, ecs_relation_id_t relation, ecs_en
     }
     return false;
 }
-#endif
 
 static ecs_table_t *ecs_relation_set_pair(
     ecs_entity_t entity,
@@ -463,8 +462,8 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
     }
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     const ecs_relation_ops_t *ops = ecs_relation_record_ops(record);
-    ecs_assert(
-        !record->info.desc.acyclic || !ecs_relation_would_cycle(entity, relation, target),
+    ecs_fatal_if(
+        record->info.desc.acyclic && ecs_relation_would_cycle(entity, relation, target),
         "cyclic relation\n"
     );
 

@@ -221,10 +221,15 @@ Generic code can use:
 - `ecs_resource_init`;
 - `ecs_resource_find`;
 - `ecs_resource_name`;
-- `ecs_resource_rid`;
-- `ecs_try_resource_rid`;
-- `ecs_has_resource_rid`;
-- `ecs_remove_resource_rid`.
+- `ecs_set_resource_id` / `ecs_move_resource_id`;
+- `ecs_get_resource_id`;
+- `ecs_try_get_resource_id`;
+- `ecs_has_resource_id`;
+- `ecs_remove_resource_id`.
+
+Raw-id variants follow one naming rule: components use the `_cid` suffix
+(`ecs_set_cid`), relations and resources use `_id` (`ecs_relate_id`,
+`ecs_set_resource_id`). `ecs_rid(T)` always names a relation id.
 
 Resource lookup is direct by resource id and does not involve archetype
 matching.

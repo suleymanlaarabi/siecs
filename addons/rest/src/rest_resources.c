@@ -17,10 +17,10 @@ sihttp_response_t ecs_rest_get_resources(const sihttp_request_t *req) {
     for (uint32_t id = 1; id < ecs_resource_count(); id++) {
         const ecs_resource_info_t *info = ecs_resource_info((ecs_resource_t)id);
         if (info && info->type != SIREFLECT_INVALID_HANDLE &&
-            ecs_has_resource_rid((ecs_resource_t)id))
+            ecs_has_resource_id((ecs_resource_t)id))
             sijson_array_push(
                 resources,
-                ecs_rest_resource_json((ecs_resource_t)id, ecs_resource_rid((ecs_resource_t)id))
+                ecs_rest_resource_json((ecs_resource_t)id, ecs_get_resource_id((ecs_resource_t)id))
             );
     }
     return sihttp_response_json(200, resources);
@@ -28,10 +28,10 @@ sihttp_response_t ecs_rest_get_resources(const sihttp_request_t *req) {
 
 sihttp_response_t ecs_rest_get_resource(const sihttp_request_t *req) {
     ecs_resource_t id = ecs_rest_request_resource(req);
-    if (!id || !ecs_has_resource_rid(id))
+    if (!id || !ecs_has_resource_id(id))
         return ecs_rest_error(404, "resource_not_found", "resource not found");
     sijson_clean();
-    return sihttp_response_json(200, ecs_rest_resource_json(id, ecs_resource_rid(id)));
+    return sihttp_response_json(200, ecs_rest_resource_json(id, ecs_get_resource_id(id)));
 }
 
 sihttp_response_t ecs_rest_put_resource(const sihttp_request_t *req) {

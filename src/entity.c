@@ -70,7 +70,6 @@ ecs_entity_t ecs_entity_from_index(uint32_t index) {
     return ecs_entity(index, record->generation);
 }
 
-#ifndef NDEBUG
 static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_entity_t target) {
     while (target != 0) {
         if (target == entity) {
@@ -82,7 +81,6 @@ static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_en
     }
     return false;
 }
-#endif
 
 bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
     ecs_entity_t base = ecs_type_isa_target(&ecs_get_table(ecs_get_record(entity)->table_id)->type);
@@ -104,9 +102,8 @@ ecs_entity_t ecs_entity_base(ecs_entity_t entity) { return ecs_target_id(entity,
 
 void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     if (target) {
-        ecs_assert(entity != target, "entity cannot inherit itself: %d\n", ecs_first(entity));
-        ecs_assert(
-            !ecs_would_create_base_cycle(entity, target),
+        ecs_fatal_if(
+            ecs_would_create_base_cycle(entity, target),
             "cyclic inheritance: %d inherits from %d\n",
             ecs_first(entity),
             ecs_first(target)

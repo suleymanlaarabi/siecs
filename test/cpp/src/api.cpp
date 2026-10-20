@@ -254,7 +254,7 @@ void api_cpp_custom_phase(void) {
 
     auto physics = ecs::phase("Physics").after(EcsOnUpdate).before(EcsPostUpdate);
 
-    test_assert(physics.id() >= 11);
+    test_assert(physics.id() >= EcsPhaseCount);
     test_str("Physics", ecs_phase_name(physics));
 
     int order[3]{};
@@ -272,6 +272,26 @@ void api_cpp_custom_phase(void) {
     test_int(1, order[0]);
     test_int(2, order[1]);
     test_int(3, order[2]);
+}
+
+void api_cpp_custom_phase_after_only(void) {
+    ecs_test_scope _ecs_scope;
+
+    auto late = ecs::phase("LateUpdate").after(EcsOnUpdate);
+
+    int order[6]{};
+    int count = 0;
+
+    ecs::system("Sys1").phase(EcsOnUpdate).each([&]() { order[count++] = 1; });
+    ecs::system("Sys2").phase(late).each([&]() { order[count++] = 2; });
+    ecs::system("Sys3").phase(EcsPostUpdate).each([&]() { order[count++] = 3; });
+
+    ecs::progress();
+    ecs::progress();
+
+    test_int(6, count);
+    for (int i = 0; i < 6; i++)
+        test_int(i % 3 + 1, order[i]);
 }
 
 void api_cpp_system_interval(void) {

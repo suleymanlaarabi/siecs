@@ -26,7 +26,7 @@ static uint32_t ecs_phase_order_index(ecs_phase_t phase) {
 }
 
 ecs_phase_info_t *ecs_system_index_get_phase(ecs_phase_t phase) {
-    return phase < system_index.phases.size
+    return phase != ECS_PHASE_NONE && phase < system_index.phases.size
                ? sicore_vec_get_mut(&system_index.phases, phase, ecs_phase_info_t)
                : NULL;
 }
@@ -98,9 +98,12 @@ void ecs_system_index_init(void) {
         { "EcsOnRender", EcsPreRender, ECS_PHASE_NONE },
         { "EcsPostRender", EcsOnRender, ECS_PHASE_NONE },
     };
-    for (uint32_t i = 0; i < EcsPhaseCount; i++) {
-        ecs_phase_register(&phases[i]);
-        if (i == EcsPostStart)
+    /* Phase ids match the public enum; slot ECS_PHASE_NONE stays unused. */
+    ecs_phase_info_t none = { .name = "none" };
+    sicore_vec_init(&none.systems, sizeof(ecs_system_id_t));
+    sicore_vec_push(&index->phases, &none, sizeof none);
+    for (uint32_t i = 0; i < sizeof phases / sizeof phases[0]; i++) {
+        if (ecs_phase_register(&phases[i]) == EcsPostStart)
             index->start_phase_count = 3;
     }
 }
@@ -116,7 +119,7 @@ ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query_id_t qid, bool 
         .callback = desc->callback,
         .user_data = desc->user_data,
         .user_data_dtor = desc->user_data_dtor,
-        .phase = desc->phase,
+        .phase = desc->phase == ECS_PHASE_NONE ? EcsOnUpdate : desc->phase,
         .interval = desc->interval,
         .interval_elapsed = 0.0,
         .prepared_delta_time = -1.0f,

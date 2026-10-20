@@ -5198,17 +5198,23 @@ ecs_pair_tables_t ecs_table_index_pair_tables(uint16_t key, uint64_t value);
 
 #ifndef SIECS_UTILS_H
 #define SIECS_UTILS_H
-#ifndef NDEBUG
 #include <stdio.h>
 #include <stdlib.h>
+
+/* Invariant whose violation would corrupt the world: checked in every build. */
+#define ecs_fatal_if(condition, ...)                                                               \
+    do {                                                                                           \
+        if (condition) {                                                                           \
+            fprintf(stderr, __VA_ARGS__);                                                          \
+            abort();                                                                               \
+        }                                                                                          \
+    } while (0)
+
+#ifndef NDEBUG
 #define ecs_cid_valid(id) ((id) != 0)
 #define ecs_entity_valid(entity) (ecs_first(entity) != 0)
 
-#define ecs_assert(condition, ...)                                                                 \
-    if (!(condition)) {                                                                            \
-        fprintf(stderr, __VA_ARGS__);                                                              \
-        abort();                                                                                   \
-    }
+#define ecs_assert(condition, ...) ecs_fatal_if(!(condition), __VA_ARGS__)
 
 #define ecs_assert_id_valid(id)                                                                    \
     ecs_assert(ecs_cid_valid(id), "invalid id: %d, id must be registered\n", id)
@@ -5233,13 +5239,13 @@ ecs_pair_tables_t ecs_table_index_pair_tables(uint16_t key, uint64_t value);
     } while (0)
 
 #else
-#define ecs_assert(condition, ...)
-#define ecs_assert_id_valid(id)
-#define ecs_assert_not_null(ptr)
-#define ecs_assert_entity_valid(entity)
-#define ecs_assert_is_alive(entity)
-#define ecs_assert_entity_alive(entity)
-#define ecs_assert_component_access(entity, id)
+#define ecs_assert(condition, ...) ((void)0)
+#define ecs_assert_id_valid(id) ((void)0)
+#define ecs_assert_not_null(ptr) ((void)0)
+#define ecs_assert_entity_valid(entity) ((void)0)
+#define ecs_assert_is_alive(entity) ((void)0)
+#define ecs_assert_entity_alive(entity) ((void)0)
+#define ecs_assert_component_access(entity, id) ((void)0)
 #endif
 
 #endif
@@ -7606,9 +7612,7 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
         .size = info->size,
         .struct_desc = &reflection,
         .inheritance = desc->inheritance,
-#ifndef NDEBUG
         .mutation = desc->mutation,
-#endif
     };
 
     component.name = desc->name;
@@ -8004,7 +8008,6 @@ ecs_entity_t ecs_entity_from_index(uint32_t index) {
     return ecs_entity(index, record->generation);
 }
 
-#ifndef NDEBUG
 static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_entity_t target) {
     while (target != 0) {
         if (target == entity) {
@@ -8016,7 +8019,6 @@ static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_en
     }
     return false;
 }
-#endif
 
 bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
     ecs_entity_t base = ecs_type_isa_target(&ecs_get_table(ecs_get_record(entity)->table_id)->type);
@@ -8038,9 +8040,8 @@ ecs_entity_t ecs_entity_base(ecs_entity_t entity) { return ecs_target_id(entity,
 
 void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     if (target) {
-        ecs_assert(entity != target, "entity cannot inherit itself: %d\n", ecs_first(entity));
-        ecs_assert(
-            !ecs_would_create_base_cycle(entity, target),
+        ecs_fatal_if(
+            ecs_would_create_base_cycle(entity, target),
             "cyclic inheritance: %d inherits from %d\n",
             ecs_first(entity),
             ecs_first(target)
@@ -9712,9 +9713,10 @@ void ecs_propagate_add_id(
     ecs_assert_entity_alive(entity);
     const ecs_relation_info_t *info = ecs_relation_info(relation);
     ecs_assert(info && info->desc.acyclic, "propagation requires an acyclic relation");
-    ecs_assert(
-        ecs_relation_record(relation)->component != 0,
-        "propagation requires a relation source index"
+    /* Only Dense/ByDepth keep the RelationSource index read at component + 1. */
+    ecs_fatal_if(
+        ecs_relation_record(relation)->component == 0 || info->desc.storage == EcsRelationByTarget,
+        "propagation requires a Dense or ByDepth relation\n"
     );
 
     if (ecs_is_deferred()) {
@@ -9923,7 +9925,6 @@ static void ecs_relation_set_dense(
     ecs_defer_end();
 }
 
-#ifndef NDEBUG
 static bool
 ecs_relation_would_cycle(ecs_entity_t source, ecs_relation_id_t relation, ecs_entity_t target) {
     while (target) {
@@ -9934,7 +9935,6 @@ ecs_relation_would_cycle(ecs_entity_t source, ecs_relation_id_t relation, ecs_en
     }
     return false;
 }
-#endif
 
 static ecs_table_t *ecs_relation_set_pair(
     ecs_entity_t entity,
@@ -10075,8 +10075,8 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
     }
     const ecs_relation_record_t *record = ecs_relation_record(relation);
     const ecs_relation_ops_t *ops = ecs_relation_record_ops(record);
-    ecs_assert(
-        !record->info.desc.acyclic || !ecs_relation_would_cycle(entity, relation, target),
+    ecs_fatal_if(
+        record->info.desc.acyclic && ecs_relation_would_cycle(entity, relation, target),
         "cyclic relation\n"
     );
 
@@ -10411,7 +10411,7 @@ const ecs_resource_info_t *ecs_resource_info(ecs_resource_t resource) {
 
 uint32_t ecs_resource_count(void) { return ecs_resources.size; }
 
-bool ecs_resource_is_registered_rid(ecs_resource_t id) { return ecs_resource_registered(id); }
+bool ecs_resource_is_registered_id(ecs_resource_t id) { return ecs_resource_registered(id); }
 
 static inline void ecs_resource_store(ecs_resource_t id, void *data, bool move) {
     ecs_assert_not_null(data);
@@ -10429,30 +10429,30 @@ static inline void ecs_resource_store(ecs_resource_t id, void *data, bool move) 
     ecs_value_transfer(&record->ops, record->info->size, record->data, data, 1, move, construct);
 }
 
-void ecs_set_resource_rid(ecs_resource_t id, const void *data) {
+void ecs_set_resource_id(ecs_resource_t id, const void *data) {
     ecs_resource_store(id, (void *)data, false);
 }
 
-void ecs_move_resource_rid(ecs_resource_t id, void *data) { ecs_resource_store(id, data, true); }
+void ecs_move_resource_id(ecs_resource_t id, void *data) { ecs_resource_store(id, data, true); }
 
-void *ecs_resource_rid(ecs_resource_t id) {
+void *ecs_get_resource_id(ecs_resource_t id) {
     ecs_resource_assert_registered(id);
     void *data = ecs_resource_record(id)->data;
     ecs_assert(data != NULL, "resource does not exist: %u\n", id);
     return data;
 }
 
-void *ecs_try_resource_rid(ecs_resource_t id) {
+void *ecs_try_get_resource_id(ecs_resource_t id) {
     ecs_resource_assert_registered(id);
     return ecs_resource_record(id)->data;
 }
 
-bool ecs_has_resource_rid(const ecs_resource_t id) {
+bool ecs_has_resource_id(const ecs_resource_t id) {
     ecs_resource_assert_registered(id);
     return ecs_resource_record(id)->data != NULL;
 }
 
-void ecs_remove_resource_rid(ecs_resource_t id) {
+void ecs_remove_resource_id(ecs_resource_t id) {
     ecs_resource_assert_registered(id);
     ecs_resource_record_t *record = ecs_resource_record(id);
     void *data = record->data;
@@ -10472,7 +10472,7 @@ void ecs_remove_resource_rid(ecs_resource_t id) {
 void ecs_resource_storage_fini(void) {
     for (ecs_resource_t id = ecs_last_resource; id; id = ecs_resource_record(id)->previous) {
         if (ecs_resource_record(id)->data) {
-            ecs_remove_resource_rid(id);
+            ecs_remove_resource_id(id);
         }
     }
     ecs_resource_record_t *records = ecs_resources.data;
@@ -11304,8 +11304,16 @@ static bool ecs_scene_read_relations(
         const ecs_relation_record_t *record = ecs_relation_record(relation);
         if (!record->info.name && !record->component && !record->ops)
             return false;
-        if (apply)
-            ecs_relate_id(ctx->local_to_entity[source], relation, ctx->local_to_entity[target]);
+        if (!apply)
+            continue;
+        ecs_entity_t source_entity = ctx->local_to_entity[source];
+        ecs_entity_t target_entity = ctx->local_to_entity[target];
+        /* Reject scene cycles here instead of tripping the fatal relate check. */
+        for (ecs_entity_t up = target_entity; record->info.desc.acyclic && up;
+             up = ecs_target_id(up, relation))
+            if (up == source_entity)
+                return false;
+        ecs_relate_id(source_entity, relation, target_entity);
     }
     return r.ok && r.ptr == r.end;
 }
@@ -11342,7 +11350,7 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
     if (!ecs_scene_parse(input, size, &document))
         return false;
     uint32_t count = document.entity_count;
-    ecs_entity_t *entities = count ? malloc((size_t)count * sizeof *entities) : NULL;
+    ecs_entity_t *entities = count ? calloc(count, sizeof *entities) : NULL;
     if (count && !entities)
         return false;
     Name *names = count ? calloc(count, sizeof *names) : NULL;
@@ -11370,11 +11378,13 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
             }
         }
     }
-    for (uint32_t i = 0; i < count; i++)
+    for (uint32_t i = 0; i < count; i++) {
         free(names[i].value);
+        /* Roll back: a failed load leaves none of the scene's entities behind. */
+        if (!ok && entities[i] && ecs_is_alive(entities[i]))
+            ecs_kill(entities[i]);
+    }
     free(names);
-    /* As before, failures during application may leave instantiated entities.
-     * Full transactional scene loading belongs to the separate format redesign. */
     free(entities);
     return ok;
 }
@@ -11411,7 +11421,7 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
     ecs_assert(desc->callback, "system requires callback function\n");
     ecs_assert(desc->interval >= 0.0, "system interval must be >= 0 seconds\n");
     ecs_assert(
-        ecs_system_index_get_phase(desc->phase) != NULL,
+        desc->phase == ECS_PHASE_NONE || ecs_system_index_get_phase(desc->phase) != NULL,
         "invalid system phase: %u\n",
         desc->phase
     );
@@ -12531,9 +12541,7 @@ void ecs_component_index_register(
         .type = type,
         .reflection = reflection,
         .inheritance = desc->inheritance,
-#ifndef NDEBUG
         .mutation = desc->mutation,
-#endif
     };
     if (desc->name && !info->name) {
         abort();
@@ -12717,7 +12725,7 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
     while (q->resource_count < ECS_QUERY_RESOURCE_CAPACITY &&
            desc->resources[q->resource_count].id) {
         ecs_resource_term_t term = desc->resources[q->resource_count];
-        ecs_assert(ecs_resource_is_registered_rid(term.id), "invalid resource id: %u\n", term.id);
+        ecs_assert(ecs_resource_is_registered_id(term.id), "invalid resource id: %u\n", term.id);
         ecs_assert(
             ecs_access_term_source_relation(term) == 0,
             "resource access cannot have a source relation\n"
@@ -13022,7 +13030,7 @@ static uint32_t ecs_phase_order_index(ecs_phase_t phase) {
 }
 
 ecs_phase_info_t *ecs_system_index_get_phase(ecs_phase_t phase) {
-    return phase < system_index.phases.size
+    return phase != ECS_PHASE_NONE && phase < system_index.phases.size
                ? sicore_vec_get_mut(&system_index.phases, phase, ecs_phase_info_t)
                : NULL;
 }
@@ -13094,9 +13102,12 @@ void ecs_system_index_init(void) {
         { "EcsOnRender", EcsPreRender, ECS_PHASE_NONE },
         { "EcsPostRender", EcsOnRender, ECS_PHASE_NONE },
     };
-    for (uint32_t i = 0; i < EcsPhaseCount; i++) {
-        ecs_phase_register(&phases[i]);
-        if (i == EcsPostStart)
+    /* Phase ids match the public enum; slot ECS_PHASE_NONE stays unused. */
+    ecs_phase_info_t none = { .name = "none" };
+    sicore_vec_init(&none.systems, sizeof(ecs_system_id_t));
+    sicore_vec_push(&index->phases, &none, sizeof none);
+    for (uint32_t i = 0; i < sizeof phases / sizeof phases[0]; i++) {
+        if (ecs_phase_register(&phases[i]) == EcsPostStart)
             index->start_phase_count = 3;
     }
 }
@@ -13112,7 +13123,7 @@ ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query_id_t qid, bool 
         .callback = desc->callback,
         .user_data = desc->user_data,
         .user_data_dtor = desc->user_data_dtor,
-        .phase = desc->phase,
+        .phase = desc->phase == ECS_PHASE_NONE ? EcsOnUpdate : desc->phase,
         .interval = desc->interval,
         .interval_elapsed = 0.0,
         .prepared_delta_time = -1.0f,

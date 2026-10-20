@@ -255,18 +255,18 @@ void resource_zero_sized_presence_uses_storage_pointer(void) {
 
     int marker = 0;
 
-    test_false(ecs_has_resource_rid(id));
-    test_assert(ecs_try_resource_rid(id) == NULL);
+    test_false(ecs_has_resource_id(id));
+    test_assert(ecs_try_get_resource_id(id) == NULL);
 
-    ecs_set_resource_rid(id, &marker);
+    ecs_set_resource_id(id, &marker);
 
-    test_true(ecs_has_resource_rid(id));
-    test_assert(ecs_try_resource_rid(id) != NULL);
+    test_true(ecs_has_resource_id(id));
+    test_assert(ecs_try_get_resource_id(id) != NULL);
 
-    ecs_remove_resource_rid(id);
+    ecs_remove_resource_id(id);
 
-    test_false(ecs_has_resource_rid(id));
-    test_assert(ecs_try_resource_rid(id) == NULL);
+    test_false(ecs_has_resource_id(id));
+    test_assert(ecs_try_get_resource_id(id) == NULL);
 
     ecs_fini();
 }
@@ -369,22 +369,22 @@ void resource_lifecycle_ops_are_used_for_set_move_and_remove(void) {
     );
 
     int value = 1;
-    ecs_set_resource_rid(id, &value);
+    ecs_set_resource_id(id, &value);
     test_int(1, resource_lifecycle_copy_ctor_calls);
-    test_int(1, *(int *)ecs_resource_rid(id));
+    test_int(1, *(int *)ecs_get_resource_id(id));
 
     value = 2;
-    ecs_set_resource_rid(id, &value);
+    ecs_set_resource_id(id, &value);
     test_int(1, resource_lifecycle_copy_calls);
-    test_int(2, *(int *)ecs_resource_rid(id));
+    test_int(2, *(int *)ecs_get_resource_id(id));
 
     value = 3;
-    ecs_move_resource_rid(id, &value);
+    ecs_move_resource_id(id, &value);
     test_int(1, resource_lifecycle_move_calls);
     test_int(-100, value);
-    test_int(3, *(int *)ecs_resource_rid(id));
+    test_int(3, *(int *)ecs_get_resource_id(id));
 
-    ecs_remove_resource_rid(id);
+    ecs_remove_resource_id(id);
     test_int(1, resource_lifecycle_dtor_calls);
 
     ecs_fini();
@@ -435,11 +435,11 @@ void resource_fini_uses_reverse_registration_order(void) {
     });
 
     int value = 1;
-    ecs_set_resource_rid(a, &value);
+    ecs_set_resource_id(a, &value);
     value = 2;
-    ecs_set_resource_rid(b, &value);
+    ecs_set_resource_id(b, &value);
     value = 3;
-    ecs_set_resource_rid(c, &value);
+    ecs_set_resource_id(c, &value);
     (void)absent;
 
     ecs_fini();
@@ -478,18 +478,18 @@ void resource_transfer_hook_combinations(void) {
                 moved += use_move;
                 destroyed += move && use_copy && (mask & 16);
                 if (move)
-                    ecs_move_resource_rid(id, &value);
+                    ecs_move_resource_id(id, &value);
                 else
-                    ecs_set_resource_rid(id, &value);
-                test_int(42 + assign, *(int *)ecs_resource_rid(id));
+                    ecs_set_resource_id(id, &value);
+                test_int(42 + assign, *(int *)ecs_get_resource_id(id));
                 test_int(use_move ? -100 : 42 + assign, value);
                 test_int(copy_ctor, resource_lifecycle_copy_ctor_calls);
                 test_int(copy_assign, resource_lifecycle_copy_calls);
                 test_int(moved, resource_lifecycle_move_calls);
                 test_int(destroyed, resource_lifecycle_dtor_calls);
             }
-            ecs_remove_resource_rid(id);
-            test_false(ecs_has_resource_rid(id));
+            ecs_remove_resource_id(id);
+            test_false(ecs_has_resource_id(id));
             test_int(destroyed + !!(mask & 16), resource_lifecycle_dtor_calls);
         }
     }

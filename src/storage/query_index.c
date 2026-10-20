@@ -131,7 +131,7 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
     while (q->resource_count < ECS_QUERY_RESOURCE_CAPACITY &&
            desc->resources[q->resource_count].id) {
         ecs_resource_term_t term = desc->resources[q->resource_count];
-        ecs_assert(ecs_resource_is_registered_rid(term.id), "invalid resource id: %u\n", term.id);
+        ecs_assert(ecs_resource_is_registered_id(term.id), "invalid resource id: %u\n", term.id);
         ecs_assert(
             ecs_access_term_source_relation(term) == 0,
             "resource access cannot have a source relation\n"

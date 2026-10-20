@@ -1163,16 +1163,13 @@ typedef enum {
     EcsInheritShared = 1
 } ecs_component_inheritance_t;
 
-#ifndef NDEBUG
+/* Mutation policy. Always part of the descriptor ABI; enforced in debug builds. */
 typedef enum {
     EcsMutable = 0,
     EcsSetOnly = 1,
 } ecs_component_mutation_t;
 
 #define ECS_SET_ONLY .mutation = EcsSetOnly,
-#else
-#define ECS_SET_ONLY
-#endif
 
 /* Iterator storage returned by ecs_query_iter; ptrs/entities are batch views.
  */
@@ -1202,9 +1199,7 @@ typedef struct {
     ecs_component_on_add_t on_add;
     const sireflect_struct_desc_t *struct_desc;
     ecs_component_inheritance_t inheritance;
-#ifndef NDEBUG
     ecs_component_mutation_t mutation;
-#endif
 } ecs_component_desc_t;
 
 /* Immutable metadata for a registered component. */
@@ -1215,9 +1210,7 @@ typedef struct {
     /* Copied reflection descriptor, borrowed until ecs_fini(). */
     const sireflect_struct_desc_t *reflection;
     ecs_component_inheritance_t inheritance;
-#ifndef NDEBUG
     ecs_component_mutation_t mutation;
-#endif
 } ecs_component_info_t;
 
 /* Dynamic reflected component descriptor. Sireflect derives size and alignment.
@@ -1226,9 +1219,7 @@ typedef struct {
     const char *name;
     const char *fields;
     ecs_component_inheritance_t inheritance;
-#ifndef NDEBUG
     ecs_component_mutation_t mutation;
-#endif
 } ecs_dynamic_component_desc_t;
 
 /*
@@ -1631,17 +1622,15 @@ SIECS_API ecs_module_id_t ecs_module_init(const ecs_module_desc_t *desc);
 
 SIECS_API ecs_module_id_t ecs_module_load(const char *path);
 
+/* Enable systems and observers recorded during module import. */
+SIECS_API void ecs_module_enable(ecs_module_id_t module);
+
 /*
  * Find an already imported module by its id storage.
  *
  * For typed modules, pass &ecs_id(module_name). Returns 0 if the
  * module has not been imported into this world.
  */
-
-/* Enable systems and observers recorded during module import. */
-SIECS_API void ecs_module_enable(ecs_module_id_t module);
-
-/* Resolve a module id from stable id storage; returns 0 when not imported. */
 SIECS_API ecs_module_id_t ecs_module_find(const ecs_module_id_t *id);
 
 /* Return the registered module name. */
@@ -2096,7 +2085,7 @@ SIECS_API void ecs_remove_cid(ecs_entity_t entity, ecs_component_t id);
 /* Return whether an alive entity has a component id. */
 SIECS_API bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id);
 /* Return whether the entity owns the component rather than inheriting it. */
-bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id);
+SIECS_API bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id);
 
 /*
  * Get a typed component pointer from an alive entity.
@@ -2256,23 +2245,23 @@ ECS_RESOURCE_DECLARE(DeltaTime, { float value; });
  * Example:
  *   ecs_set_resource(Time, { .dt = 0.016f, .elapsed = 0.0f });
  */
-#define ecs_set_resource(rname, ...) ecs_set_resource_rid(ecs_id(rname), &(rname)__VA_ARGS__)
+#define ecs_set_resource(rname, ...) ecs_set_resource_id(ecs_id(rname), &(rname)__VA_ARGS__)
 
 /* Get a world resource. The resource must exist. */
-#define ecs_get_resource(rname) ((rname *)ecs_resource_rid(ecs_id(rname)))
+#define ecs_get_resource(rname) ((rname *)ecs_get_resource_id(ecs_id(rname)))
 /* Get a const world resource. The resource must exist. */
-#define ecs_get_resource_read(rname) ((const rname *)ecs_resource_rid(ecs_id(rname)))
+#define ecs_get_resource_read(rname) ((const rname *)ecs_get_resource_id(ecs_id(rname)))
 
 /* Get a world resource, or NULL if it does not exist. */
-#define ecs_try_get_resource(rname) ((rname *)ecs_try_resource_rid(ecs_id(rname)))
+#define ecs_try_get_resource(rname) ((rname *)ecs_try_get_resource_id(ecs_id(rname)))
 /* Get a const world resource, or NULL if it does not exist. */
-#define ecs_try_get_resource_read(rname) ((const rname *)ecs_try_resource_rid(ecs_id(rname)))
+#define ecs_try_get_resource_read(rname) ((const rname *)ecs_try_get_resource_id(ecs_id(rname)))
 
 /* Return whether a world resource exists. */
-#define ecs_has_resource(rname) ecs_has_resource_rid(ecs_id(rname))
+#define ecs_has_resource(rname) ecs_has_resource_id(ecs_id(rname))
 
 /* Remove a world resource if it exists. */
-#define ecs_remove_resource(rname) ecs_remove_resource_rid(ecs_id(rname))
+#define ecs_remove_resource(rname) ecs_remove_resource_id(ecs_id(rname))
 
 /* Register a resource descriptor in the active world and return its id. */
 SIECS_API ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc);
@@ -2284,21 +2273,21 @@ SIECS_API const char *ecs_resource_name(ecs_resource_t resource);
 SIECS_API const ecs_resource_info_t *ecs_resource_info(ecs_resource_t resource);
 SIECS_API uint32_t ecs_resource_count(void);
 /* Return whether a resource id is registered in the active world. */
-SIECS_API bool ecs_resource_is_registered_rid(ecs_resource_t id);
+SIECS_API bool ecs_resource_is_registered_id(ecs_resource_t id);
 /* Register a resource using stable id storage; returns the resulting id. */
 SIECS_API ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc);
 /* Copy or move data into a registered resource. */
-SIECS_API void ecs_set_resource_rid(ecs_resource_t id, const void *data);
+SIECS_API void ecs_set_resource_id(ecs_resource_t id, const void *data);
 /* Move an initialized resource value into storage and consume the source. */
-SIECS_API void ecs_move_resource_rid(ecs_resource_t id, void *data);
+SIECS_API void ecs_move_resource_id(ecs_resource_t id, void *data);
 /* Return a resource pointer (resource must exist), or NULL for try access. */
-SIECS_API void *ecs_resource_rid(ecs_resource_t id);
+SIECS_API void *ecs_get_resource_id(ecs_resource_t id);
 /* Return resource storage or NULL when the resource is absent. */
-SIECS_API void *ecs_try_resource_rid(ecs_resource_t id);
+SIECS_API void *ecs_try_get_resource_id(ecs_resource_t id);
 /* Test/remove a resource in the active world. */
-SIECS_API bool ecs_has_resource_rid(const ecs_resource_t id);
+SIECS_API bool ecs_has_resource_id(const ecs_resource_t id);
 /* Remove a resource and run its destructor/hook; no-op when absent. */
-SIECS_API void ecs_remove_resource_rid(ecs_resource_t id);
+SIECS_API void ecs_remove_resource_id(ecs_resource_t id);
 
 #define PP_EMPTY()
 #define PP_DEFER(id) id PP_EMPTY()
@@ -2499,23 +2488,29 @@ static inline bool ecs_field_is_shared(ecs_iter_t *it, uint16_t field_index) {
 }
 
 typedef uint32_t ecs_phase_t;
-#define ECS_PHASE_NONE ((ecs_phase_t) - 1)
+/* Zero means "no phase": omitted descriptor fields never name a real phase. */
+#define ECS_PHASE_NONE ((ecs_phase_t)0)
 
 enum {
-    EcsPreStart = 0,
-    EcsStart = 1,
-    EcsPostStart = 2,
-    EcsOnLoad = 3,
-    EcsPostLoad = 4,
-    EcsPreUpdate = 5,
-    EcsOnUpdate = 6,
-    EcsPostUpdate = 7,
-    EcsPreRender = 8,
-    EcsOnRender = 9,
-    EcsPostRender = 10,
-    EcsPhaseCount = 11,
+    EcsPreStart = 1,
+    EcsStart = 2,
+    EcsPostStart = 3,
+    EcsOnLoad = 4,
+    EcsPostLoad = 5,
+    EcsPreUpdate = 6,
+    EcsOnUpdate = 7,
+    EcsPostUpdate = 8,
+    EcsPreRender = 9,
+    EcsOnRender = 10,
+    EcsPostRender = 11,
+    EcsPhaseCount = 12, /* first custom phase id */
 };
 
+/*
+ * Phase descriptor. after/before are optional placement constraints; an
+ * omitted field is ECS_PHASE_NONE. A custom phase without constraints runs
+ * between EcsOnUpdate and EcsPostUpdate.
+ */
 typedef struct {
     const char *name;
     ecs_phase_t after;
@@ -2536,7 +2531,8 @@ SIECS_API const char *ecs_phase_name(ecs_phase_t phase);
  *
  * If query has terms, callback is called once per non-empty iterator batch
  * matching query. If query has no terms, the system runs once with an empty
- * iterator. phase controls when ecs_progress/ecs_run_phase executes the system.
+ * iterator. phase controls when ecs_progress/ecs_run_phase executes the system;
+ * an omitted phase (ECS_PHASE_NONE) defaults to EcsOnUpdate.
  * after contains system ids that must run before this system in the same phase.
  * Scheduler data dependencies come from query.components and query.resources.
  * main_thread_only prevents worker dispatch.
@@ -2734,9 +2730,7 @@ template <typename T> struct component_hooks {
 template <typename T> struct component_options {
     component_hooks<T> hooks{};
     ecs_component_inheritance_t inheritance = EcsInheritOwned;
-#ifndef NDEBUG
     ecs_component_mutation_t mutation = EcsMutable;
-#endif
 };
 
 namespace detail {
@@ -2855,11 +2849,8 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
 template <typename T>
 static ecs_component_t ecs_cpp_component_id(
     const component_hooks<T> *hooks = nullptr,
-    ecs_component_inheritance_t inheritance = EcsInheritOwned
-#ifndef NDEBUG
-    ,
+    ecs_component_inheritance_t inheritance = EcsInheritOwned,
     ecs_component_mutation_t mutation = EcsMutable
-#endif
 ) {
     using type = std::remove_cv_t<T>;
     if constexpr (c_declared_component<type>) {
@@ -2901,9 +2892,7 @@ static ecs_component_t ecs_cpp_component_id(
         .on_add = hooks && hooks->on_add ? component_hook<T, true> : nullptr,
         .struct_desc = &reflection,
         .inheritance = inheritance,
-#ifndef NDEBUG
         .mutation = mutation,
-#endif
     };
 
     cid = ecs_component_init(&desc);
@@ -3641,16 +3630,16 @@ template <typename T> class resource_ref {
         requires(!std::is_const_v<T> && std::is_same_v<std::remove_cvref_t<U>, value_type>)
     void set(U &&value) const {
         if constexpr (std::is_lvalue_reference_v<U>)
-            ecs_set_resource_rid(id(), &value);
+            ecs_set_resource_id(id(), &value);
         else
-            ecs_move_resource_rid(id(), &value);
+            ecs_move_resource_id(id(), &value);
     }
     [[nodiscard]] const value_type *try_get() const {
         auto rid = ecs_cpp_try_resource_id<value_type>();
-        return rid ? static_cast<const value_type *>(ecs_try_resource_rid(rid)) : nullptr;
+        return rid ? static_cast<const value_type *>(ecs_try_get_resource_id(rid)) : nullptr;
     }
     [[nodiscard]] const value_type &get() const {
-        return *static_cast<const value_type *>(ecs_resource_rid(id()));
+        return *static_cast<const value_type *>(ecs_get_resource_id(id()));
     }
     [[nodiscard]] value_type *try_edit() const
         requires(!std::is_const_v<T>)
@@ -3668,7 +3657,7 @@ template <typename T> class resource_ref {
     {
         auto rid = ecs_cpp_try_resource_id<value_type>();
         if (rid)
-            ecs_remove_resource_rid(rid);
+            ecs_remove_resource_id(rid);
     }
 };
 
@@ -3684,7 +3673,7 @@ resource_ref<T> resource(const resource_hooks<std::remove_cv_t<T>> &hooks) {
 
 template <typename T> void res<T>::world(ecs_world_t *world) noexcept {
     (void)world;
-    _ptr = static_cast<T *>(ecs_resource_rid(ecs_cpp_resource_id<std::remove_cv_t<T>>()));
+    _ptr = static_cast<T *>(ecs_get_resource_id(ecs_cpp_resource_id<std::remove_cv_t<T>>()));
 }
 
 } // namespace ecs
@@ -3879,7 +3868,6 @@ inline void run_batch(F &func, ecs_iter_t *it, Params &params) {
 template <typename Args, typename F> inline void each_query(ecs_query_id_t qid, F &&func) {
     using callback = std::remove_cvref_t<F>;
     using args = Args;
-    constexpr auto indices = std::make_index_sequence<std::tuple_size_v<args>>{};
     defer_scope defer;
     callback state(std::forward<F>(func));
     auto params = init_callback_params<args>();
@@ -4815,14 +4803,9 @@ inline component_ref<T> component(const component_hooks<T> &hooks) {
 template <typename T>
     requires(!detail::c_declared_component<T>)
 inline component_ref<T> component(const component_options<T> &options) {
-    return component_ref<T>(detail::ecs_cpp_component_id<T>(
-        &options.hooks,
-        options.inheritance
-#ifndef NDEBUG
-        ,
-        options.mutation
-#endif
-    ));
+    return component_ref<T>(
+        detail::ecs_cpp_component_id<T>(&options.hooks, options.inheritance, options.mutation)
+    );
 }
 
 /** Declare that adding `Component` implicitly adds `Required` first. */

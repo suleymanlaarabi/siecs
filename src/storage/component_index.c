@@ -37,9 +37,7 @@ void ecs_component_index_register(
         .type = type,
         .reflection = reflection,
         .inheritance = desc->inheritance,
-#ifndef NDEBUG
         .mutation = desc->mutation,
-#endif
     };
     if (desc->name && !info->name) {
         abort();

@@ -831,8 +831,16 @@ static bool ecs_scene_read_relations(
         const ecs_relation_record_t *record = ecs_relation_record(relation);
         if (!record->info.name && !record->component && !record->ops)
             return false;
-        if (apply)
-            ecs_relate_id(ctx->local_to_entity[source], relation, ctx->local_to_entity[target]);
+        if (!apply)
+            continue;
+        ecs_entity_t source_entity = ctx->local_to_entity[source];
+        ecs_entity_t target_entity = ctx->local_to_entity[target];
+        /* Reject scene cycles here instead of tripping the fatal relate check. */
+        for (ecs_entity_t up = target_entity; record->info.desc.acyclic && up;
+             up = ecs_target_id(up, relation))
+            if (up == source_entity)
+                return false;
+        ecs_relate_id(source_entity, relation, target_entity);
     }
     return r.ok && r.ptr == r.end;
 }
@@ -869,7 +877,7 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
     if (!ecs_scene_parse(input, size, &document))
         return false;
     uint32_t count = document.entity_count;
-    ecs_entity_t *entities = count ? malloc((size_t)count * sizeof *entities) : NULL;
+    ecs_entity_t *entities = count ? calloc(count, sizeof *entities) : NULL;
     if (count && !entities)
         return false;
     Name *names = count ? calloc(count, sizeof *names) : NULL;
@@ -897,11 +905,13 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
             }
         }
     }
-    for (uint32_t i = 0; i < count; i++)
+    for (uint32_t i = 0; i < count; i++) {
         free(names[i].value);
+        /* Roll back: a failed load leaves none of the scene's entities behind. */
+        if (!ok && entities[i] && ecs_is_alive(entities[i]))
+            ecs_kill(entities[i]);
+    }
     free(names);
-    /* As before, failures during application may leave instantiated entities.
-     * Full transactional scene loading belongs to the separate format redesign. */
     free(entities);
     return ok;
 }

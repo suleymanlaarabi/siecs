@@ -112,7 +112,7 @@ const ecs_resource_info_t *ecs_resource_info(ecs_resource_t resource) {
 
 uint32_t ecs_resource_count(void) { return ecs_resources.size; }
 
-bool ecs_resource_is_registered_rid(ecs_resource_t id) { return ecs_resource_registered(id); }
+bool ecs_resource_is_registered_id(ecs_resource_t id) { return ecs_resource_registered(id); }
 
 static inline void ecs_resource_store(ecs_resource_t id, void *data, bool move) {
     ecs_assert_not_null(data);
@@ -130,30 +130,30 @@ static inline void ecs_resource_store(ecs_resource_t id, void *data, bool move) 
     ecs_value_transfer(&record->ops, record->info->size, record->data, data, 1, move, construct);
 }
 
-void ecs_set_resource_rid(ecs_resource_t id, const void *data) {
+void ecs_set_resource_id(ecs_resource_t id, const void *data) {
     ecs_resource_store(id, (void *)data, false);
 }
 
-void ecs_move_resource_rid(ecs_resource_t id, void *data) { ecs_resource_store(id, data, true); }
+void ecs_move_resource_id(ecs_resource_t id, void *data) { ecs_resource_store(id, data, true); }
 
-void *ecs_resource_rid(ecs_resource_t id) {
+void *ecs_get_resource_id(ecs_resource_t id) {
     ecs_resource_assert_registered(id);
     void *data = ecs_resource_record(id)->data;
     ecs_assert(data != NULL, "resource does not exist: %u\n", id);
     return data;
 }
 
-void *ecs_try_resource_rid(ecs_resource_t id) {
+void *ecs_try_get_resource_id(ecs_resource_t id) {
     ecs_resource_assert_registered(id);
     return ecs_resource_record(id)->data;
 }
 
-bool ecs_has_resource_rid(const ecs_resource_t id) {
+bool ecs_has_resource_id(const ecs_resource_t id) {
     ecs_resource_assert_registered(id);
     return ecs_resource_record(id)->data != NULL;
 }
 
-void ecs_remove_resource_rid(ecs_resource_t id) {
+void ecs_remove_resource_id(ecs_resource_t id) {
     ecs_resource_assert_registered(id);
     ecs_resource_record_t *record = ecs_resource_record(id);
     void *data = record->data;
@@ -173,7 +173,7 @@ void ecs_remove_resource_rid(ecs_resource_t id) {
 void ecs_resource_storage_fini(void) {
     for (ecs_resource_t id = ecs_last_resource; id; id = ecs_resource_record(id)->previous) {
         if (ecs_resource_record(id)->data) {
-            ecs_remove_resource_rid(id);
+            ecs_remove_resource_id(id);
         }
     }
     ecs_resource_record_t *records = ecs_resources.data;

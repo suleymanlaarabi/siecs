@@ -12,6 +12,7 @@
 void public_metadata_and_entity_introspection(void);
 void public_scene_save_memory_roundtrip(void);
 void public_scene_invalid_load_is_non_destructive(void);
+void public_scene_failed_apply_rolls_back(void);
 void public_scene_reflected_codec_roundtrip(void);
 void public_scene_unsupported_pointer_is_consistent(void);
 void public_scene_binary_fixture_and_truncation(void);
@@ -164,6 +165,8 @@ void childof_generic_isa_target(void);
 void childof_generic_isa_retarget(void);
 void childof_generic_isa_unrelate(void);
 void childof_generic_isa_cycle(void);
+void childof_acyclic_dense_cycle_aborts(void);
+void childof_acyclic_by_target_cycle_aborts(void);
 void childof_generic_isa_deferred(void);
 void childof_isa_clones_child_tree(void);
 void childof_isa_clone_snapshot_and_same_target_noop(void);
@@ -178,6 +181,7 @@ void childof_new_child_of_abstract_parent_is_abstract(void);
 void childof_new_child_of_normal_parent_is_not_abstract(void);
 void childof_isa_instantiated_children_are_not_abstract(void);
 void childof_propagate_add_rejects_cyclic_relation_in_debug(void);
+void childof_propagate_add_rejects_by_target_relation(void);
 
 // Testsuite 'query'
 void query_tags_keep_presence_without_data(void);
@@ -244,6 +248,9 @@ void system_interval_manual_execution_is_forced(void);
 void system_interval_resets_on_enable_transition(void);
 void system_interval_does_not_gate_start_phase(void);
 void system_custom_phase(void);
+void system_default_phase_is_on_update(void);
+void system_custom_phase_after_only(void);
+void system_custom_phase_unconstrained(void);
 
 // Testsuite 'observer'
 void observer_global_registration_does_not_duplicate_queries(void);
@@ -294,6 +301,10 @@ bake_test_case public_testcases[] = {
     {
         "scene_invalid_load_is_non_destructive",
         public_scene_invalid_load_is_non_destructive
+    },
+    {
+        "scene_failed_apply_rolls_back",
+        public_scene_failed_apply_rolls_back
     },
     {
         "scene_reflected_codec_roundtrip",
@@ -859,6 +870,14 @@ bake_test_case childof_testcases[] = {
         childof_generic_isa_cycle
     },
     {
+        "acyclic_dense_cycle_aborts",
+        childof_acyclic_dense_cycle_aborts
+    },
+    {
+        "acyclic_by_target_cycle_aborts",
+        childof_acyclic_by_target_cycle_aborts
+    },
+    {
         "generic_isa_deferred",
         childof_generic_isa_deferred
     },
@@ -913,6 +932,10 @@ bake_test_case childof_testcases[] = {
     {
         "propagate_add_rejects_cyclic_relation_in_debug",
         childof_propagate_add_rejects_cyclic_relation_in_debug
+    },
+    {
+        "propagate_add_rejects_by_target_relation",
+        childof_propagate_add_rejects_by_target_relation
     }
 };
 
@@ -1167,6 +1190,18 @@ bake_test_case system_testcases[] = {
     {
         "custom_phase",
         system_custom_phase
+    },
+    {
+        "default_phase_is_on_update",
+        system_default_phase_is_on_update
+    },
+    {
+        "custom_phase_after_only",
+        system_custom_phase_after_only
+    },
+    {
+        "custom_phase_unconstrained",
+        system_custom_phase_unconstrained
     }
 };
 
@@ -1314,7 +1349,7 @@ static bake_test_suite suites[] = {
         "public",
         NULL,
         NULL,
-        7,
+        8,
         public_testcases
     },
     {
@@ -1377,7 +1412,7 @@ static bake_test_suite suites[] = {
         "childof",
         NULL,
         NULL,
-        48,
+        51,
         childof_testcases
     },
     {
@@ -1391,7 +1426,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        35,
+        38,
         system_testcases
     },
     {

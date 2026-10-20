@@ -197,7 +197,6 @@ inline void run_batch(F &func, ecs_iter_t *it, Params &params) {
 template <typename Args, typename F> inline void each_query(ecs_query_id_t qid, F &&func) {
     using callback = std::remove_cvref_t<F>;
     using args = Args;
-    constexpr auto indices = std::make_index_sequence<std::tuple_size_v<args>>{};
     defer_scope defer;
     callback state(std::forward<F>(func));
     auto params = init_callback_params<args>();

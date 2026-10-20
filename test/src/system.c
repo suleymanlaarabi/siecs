@@ -1340,7 +1340,7 @@ void system_custom_phase(void) {
         }
     );
 
-    test_assert(physics_phase >= 11);
+    test_assert(physics_phase >= EcsPhaseCount);
     test_str("Physics", ecs_phase_name(physics_phase));
 
     ecs_system(
@@ -1373,6 +1373,64 @@ void system_custom_phase(void) {
     test_assert(custom_phase_order[0] == 1);
     test_assert(custom_phase_order[1] == 2);
     test_assert(custom_phase_order[2] == 3);
+
+    ecs_fini();
+}
+
+static void custom_phase_expect_frames(int frames) {
+    for (int frame = 0; frame < frames; frame++) {
+        test_assert(custom_phase_order[frame * 3 + 0] == 1);
+        test_assert(custom_phase_order[frame * 3 + 1] == 2);
+        test_assert(custom_phase_order[frame * 3 + 2] == 3);
+    }
+    test_int(frames * 3, custom_phase_count);
+}
+
+static void custom_phase_register_around(ecs_phase_t middle) {
+    ecs_system({ .phase = EcsOnUpdate, .callback = custom_phase_sys1 });
+    ecs_system({ .phase = middle, .callback = custom_phase_sys2 });
+    ecs_system({ .phase = EcsPostUpdate, .callback = custom_phase_sys3 });
+}
+
+void system_default_phase_is_on_update(void) {
+    custom_phase_count = 0;
+    ecs_init();
+
+    ecs_system({ .phase = EcsOnUpdate, .callback = custom_phase_sys1 });
+    ecs_system({ .callback = custom_phase_sys2 });
+    ecs_system({ .phase = EcsPostUpdate, .callback = custom_phase_sys3 });
+
+    ecs_progress();
+    ecs_progress();
+    custom_phase_expect_frames(2);
+
+    ecs_fini();
+}
+
+void system_custom_phase_after_only(void) {
+    custom_phase_count = 0;
+    ecs_init();
+
+    ecs_phase_t phase = ecs_phase({ .name = "AfterUpdate", .after = EcsOnUpdate });
+    test_assert(phase >= EcsPhaseCount);
+    custom_phase_register_around(phase);
+
+    ecs_progress();
+    ecs_progress();
+    custom_phase_expect_frames(2);
+
+    ecs_fini();
+}
+
+void system_custom_phase_unconstrained(void) {
+    custom_phase_count = 0;
+    ecs_init();
+
+    custom_phase_register_around(ecs_phase({ .name = "Free" }));
+
+    ecs_progress();
+    ecs_progress();
+    custom_phase_expect_frames(2);
 
     ecs_fini();
 }

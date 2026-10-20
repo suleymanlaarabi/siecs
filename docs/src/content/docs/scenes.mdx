@@ -183,6 +183,12 @@ If the application needs "replace current level" semantics:
 
 Keep that policy outside the low-level scene loader.
 
+A load that fails returns `false` and kills the entities it already created, so
+the world keeps only its previous entities. Edges that would close a cycle on an
+acyclic relation make the load fail. Name collisions still follow the naming
+rules: a loaded name replaces an existing sibling with the same name, and that
+replaced entity is not restored if the load fails later.
+
 ## Validation versus compatibility
 
 A binary can be structurally valid but still be incompatible with a differently

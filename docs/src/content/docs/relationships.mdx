@@ -19,9 +19,9 @@ Key terms:
 | Source | Entity that owns the relation edge. |
 | Target | Entity referenced by the edge. |
 | Relation id | `ecs_relation_id_t` identifying the edge kind. |
-| Dense | Per-source target stored alongside source rows. |
+| Dense | Per-source target stored alongside source rows, plus a source index on the target. |
 | ByDepth | Dense relation with maintained depth information. |
-| ByTarget | Sources are grouped/indexed by target. |
+| ByTarget | Sources are grouped into tables per target; no per-target source list. |
 
 Unlike Flecs, SIECS relations are not general ids encoded as universal pairs.
 The relation type and target are represented through SIECS's relation-specific
@@ -195,13 +195,15 @@ The target is `0` when the relation is not present.
 
 ### Find sources for a target
 
-For relations configured for target-oriented storage/indexing, SIECS can expose
-source collections efficiently through relation-source APIs.
-
 Use this when the common question is "which entities point to this target?"
 
-Choosing `ByTarget` at relation registration is important for this access
-pattern.
+`Dense` and `ByDepth` relations keep a source index on the target:
+`ecs_relation_sources(target, R)` returns the direct sources in O(1). The view is
+borrowed until the relation changes, and its order is not stable.
+
+`ByTarget` relations keep no per-target source list (`ecs_relation_sources`
+returns an empty view). Their sources share tables per target, so query them with
+`ecs_to(R, target)`.
 
 ### Find all entities with a relation
 

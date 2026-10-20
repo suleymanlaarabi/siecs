@@ -186,6 +186,9 @@ Typical recurring phases are:
 
 Startup phases run only during the first progress cycle.
 
+A system registered without a phase runs in `EcsOnUpdate`. `ECS_PHASE_NONE` is
+`0`, so an omitted `.phase` field never selects a builtin phase by accident.
+
 ### Builtin phase pipeline
 
 `ecs_progress()` runs enabled systems according to the phase plan.
@@ -224,7 +227,11 @@ advancing the interval accumulator as an automatic execution would.
 
 Register a custom phase with `ecs_phase_init()` or `ecs_phase(...)`.
 
-A phase descriptor can place the new phase relative to existing phases.
+A phase descriptor can place the new phase relative to existing phases with
+`after` and/or `before`. An omitted field means no constraint, so
+`ecs_phase({ .name = "Physics", .after = EcsOnUpdate })` is a recurring phase
+placed after `EcsOnUpdate`. A custom phase without any constraint runs between
+`EcsOnUpdate` and `EcsPostUpdate`.
 
 Custom phases are useful when a subsystem needs a stable scheduling boundary
 that should be visible to modules and tooling.

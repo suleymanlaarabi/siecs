@@ -10,6 +10,16 @@ ECS_COMPONENT_DECLARE(PublicPosition, {
 
 ECS_COMPONENT_DEFINE(PublicPosition);
 
+static uint32_t public_scene_entity_count(void) {
+    void *data = NULL;
+    size_t size = 0;
+    test_true(ecs_save_memory(&data, &size));
+    uint32_t count = 0;
+    memcpy(&count, (const unsigned char *)data + 16, sizeof(count));
+    ecs_scene_free(data);
+    return count;
+}
+
 ECS_COMPONENT_DECLARE(SceneValue, {
     int value;
     ecs_entity_t ref;
@@ -19,6 +29,9 @@ ECS_COMPONENT_DEFINE(SceneValue);
 
 ECS_RELATION_DECLARE(SceneLink);
 ECS_RELATION_DEFINE(SceneLink, { .storage = EcsRelationDense });
+
+ECS_RELATION_DECLARE(SceneParent);
+ECS_RELATION_DEFINE(SceneParent, { .storage = EcsRelationDense, .acyclic = true });
 
 void public_metadata_and_entity_introspection(void) {
     ecs_init();
@@ -138,6 +151,38 @@ void public_scene_invalid_load_is_non_destructive(void) {
 
     free(invalid);
     ecs_scene_free(after_data);
+    ecs_scene_free(data);
+    ecs_fini();
+}
+
+void public_scene_failed_apply_rolls_back(void) {
+    void *data = NULL;
+    size_t size = 0;
+
+    ecs_init();
+    ECS_COMPONENT_REGISTER(SceneValue);
+    ECS_RELATION_REGISTER(SceneParent);
+    ecs_entity_t child = ecs_new();
+    ecs_entity_t parent = ecs_new();
+    ecs_set(child, SceneValue, { .value = 7, .ref = parent });
+    ecs_relate(child, SceneParent, parent);
+    test_true(ecs_save_memory(&data, &size));
+    ecs_fini();
+
+    /* The relation block ends the scene: retarget its only edge onto its source. */
+    unsigned char *edge = (unsigned char *)data + size - 12;
+    memcpy(edge + 8, edge, sizeof(uint32_t));
+
+    ecs_init();
+    ECS_COMPONENT_REGISTER(SceneValue);
+    ECS_RELATION_REGISTER(SceneParent);
+    test_true(ecs_scene_validate(data, size));
+    ecs_entity_t kept = ecs_new_named(0, "kept");
+    uint32_t before = public_scene_entity_count();
+    test_false(ecs_load_memory(data, size));
+    test_uint(before, public_scene_entity_count());
+    test_uint(kept, ecs_lookup("kept"));
+
     ecs_scene_free(data);
     ecs_fini();
 }

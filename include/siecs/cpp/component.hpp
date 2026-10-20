@@ -28,9 +28,7 @@ template <typename T> struct component_hooks {
 template <typename T> struct component_options {
     component_hooks<T> hooks{};
     ecs_component_inheritance_t inheritance = EcsInheritOwned;
-#ifndef NDEBUG
     ecs_component_mutation_t mutation = EcsMutable;
-#endif
 };
 
 namespace detail {
@@ -149,11 +147,8 @@ template <typename T> consteval ecs_type_ops_t value_ops() {
 template <typename T>
 static ecs_component_t ecs_cpp_component_id(
     const component_hooks<T> *hooks = nullptr,
-    ecs_component_inheritance_t inheritance = EcsInheritOwned
-#ifndef NDEBUG
-    ,
+    ecs_component_inheritance_t inheritance = EcsInheritOwned,
     ecs_component_mutation_t mutation = EcsMutable
-#endif
 ) {
     using type = std::remove_cv_t<T>;
     if constexpr (c_declared_component<type>) {
@@ -195,9 +190,7 @@ static ecs_component_t ecs_cpp_component_id(
         .on_add = hooks && hooks->on_add ? component_hook<T, true> : nullptr,
         .struct_desc = &reflection,
         .inheritance = inheritance,
-#ifndef NDEBUG
         .mutation = mutation,
-#endif
     };
 
     cid = ecs_component_init(&desc);

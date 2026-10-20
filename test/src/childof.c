@@ -5,7 +5,7 @@
 #include "world_internal.h"
 #include <siecs_test.h>
 
-#if defined(_WIN32) && !defined(NDEBUG)
+#ifdef _WIN32
 #include <process.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +31,13 @@ static bool childof_assert_abort_in_subprocess(const char *testcase) {
     return true;
 }
 #endif
+
+/* The next operation must abort; on Windows it runs in the subprocess above. */
+static void childof_expect_abort(void) {
+#ifndef _WIN32
+    test_expect_abort();
+#endif
+}
 
 ECS_COMPONENT_DECLARE(RelValue, { int value; });
 ECS_COMPONENT_DEFINE(RelValue);
@@ -92,6 +99,16 @@ ECS_RELATION_DEFINE(
     {
         .storage = EcsRelationByTarget,
         .on_delete_target = EcsDeleteSources,
+    }
+);
+
+ECS_RELATION_DECLARE(AcyclicDense);
+ECS_RELATION_DEFINE(
+    AcyclicDense,
+    {
+        .storage = EcsRelationDense,
+        .on_delete_target = EcsRemoveRelation,
+        .acyclic = true,
     }
 );
 
@@ -1058,7 +1075,7 @@ void childof_generic_isa_unrelate(void) {
 }
 
 void childof_generic_isa_cycle(void) {
-#if defined(_WIN32) && !defined(NDEBUG)
+#ifdef _WIN32
     if (childof_assert_abort_in_subprocess("childof.generic_isa_cycle"))
         return;
 #endif
@@ -1067,16 +1084,55 @@ void childof_generic_isa_cycle(void) {
     ecs_entity_t entity = ecs_new();
 
     ecs_relate_id(entity, ecs_rid(IsA), base);
-#ifndef NDEBUG
-#ifndef _WIN32
-    test_expect_abort();
-#endif
+    childof_expect_abort();
     ecs_relate_id(base, ecs_rid(IsA), entity);
-#else
-    test_true(ecs_has_relation_id(entity, ecs_rid(IsA)));
-    test_uint(base, ecs_entity_base(entity));
-    ecs_fini();
+}
+
+void childof_acyclic_dense_cycle_aborts(void) {
+#ifdef _WIN32
+    if (childof_assert_abort_in_subprocess("childof.acyclic_dense_cycle_aborts"))
+        return;
 #endif
+    ecs_init();
+    ECS_RELATION_REGISTER(AcyclicDense);
+    ecs_entity_t a = ecs_new();
+    ecs_entity_t b = ecs_new();
+    ecs_entity_t c = ecs_new();
+
+    ecs_relate(a, AcyclicDense, b);
+    ecs_relate(b, AcyclicDense, c);
+    childof_expect_abort();
+    ecs_relate(c, AcyclicDense, a);
+}
+
+void childof_acyclic_by_target_cycle_aborts(void) {
+#ifdef _WIN32
+    if (childof_assert_abort_in_subprocess("childof.acyclic_by_target_cycle_aborts"))
+        return;
+#endif
+    ecs_init();
+    ECS_RELATION_REGISTER(LocatedIn);
+    ecs_entity_t room = ecs_new();
+    ecs_entity_t house = ecs_new();
+
+    ecs_relate(room, LocatedIn, house);
+    childof_expect_abort();
+    ecs_relate(house, LocatedIn, room);
+}
+
+void childof_propagate_add_rejects_by_target_relation(void) {
+#ifdef _WIN32
+    if (childof_assert_abort_in_subprocess("childof.propagate_add_rejects_by_target_relation"))
+        return;
+#endif
+    ecs_init();
+    ECS_RELATION_REGISTER(LocatedIn);
+    ecs_entity_t house = ecs_new();
+    ecs_entity_t room = ecs_new();
+    ecs_relate(room, LocatedIn, house);
+
+    childof_expect_abort();
+    ecs_propagate_add(house, LocatedIn, Abstract);
 }
 
 void childof_generic_isa_deferred(void) {
@@ -1563,6 +1619,7 @@ void childof_propagate_add_rejects_cyclic_relation_in_debug(void) {
         return;
 #endif
     ecs_init();
+    ECS_RELATION_REGISTER(DenseRel);
 
     ecs_entity_t entity = ecs_new();
 #ifndef NDEBUG
@@ -1572,6 +1629,7 @@ void childof_propagate_add_rejects_cyclic_relation_in_debug(void) {
     ecs_propagate_add_id(entity, ecs_rid(DenseRel), ecs_id(Abstract));
 #else
     ecs_propagate_add_id(entity, ecs_rid(DenseRel), ecs_id(Abstract));
+    test_true(ecs_has_cid(entity, ecs_id(Abstract)));
     ecs_fini();
 #endif
 }
