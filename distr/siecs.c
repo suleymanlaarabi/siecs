@@ -8242,7 +8242,8 @@ static inline void ecs_entity_index_kill(uint32_t entity_id) {
 }
 
 void ecs_kill_now(ecs_entity_t entity) {
-    ecs_relation_virtual_target_on_remove(entity);
+    if (relation_index.virtual_scan_count || ecs_table_index_may_be_pair_target(entity))
+        ecs_relation_virtual_target_on_remove(entity);
     if (!ecs_is_alive(entity)) {
         return;
     }
@@ -8298,7 +8299,8 @@ void ecs_kill_now(ecs_entity_t entity) {
     // Remove from table
     ecs_table_remove_entity_update_record(table, entity, record->table_row, true);
 
-    ecs_observer_fini_entity(entity);
+    if (observer_index.target_keys.size)
+        ecs_observer_fini_entity(entity);
     ecs_entity_index_kill(ecs_first(entity));
 }
 
@@ -12085,6 +12087,15 @@ void ecs_value_dtor_hooked(ecs_component_t id, void *ptr) {
     ecs_component_index_get(id)->ops.dtor(ptr, 1);
 }
 
+/* Leaves the source column's row `old_row` dead: its value was moved out or
+ * destroyed. When it is not the last row, the last row fills the hole now, in
+ * the same pass, while the column descriptor is at hand. */
+static ECS_ALWAYS_INLINE void
+ecs_migrate_fill_hole(const ecs_data_column_t *from, uint32_t old_row, uint32_t last_row) {
+    if (old_row != last_row)
+        ecs_data_column_move(from, last_row, from, old_row);
+}
+
 static inline void *ecs_migrate_impl(
     ecs_entity_record_t *record,
     const ecs_entity_t entity,
@@ -12096,34 +12107,47 @@ static inline void *ecs_migrate_impl(
     ecs_table_t *to_table = ecs_get_table(to_table_id);
 
     uint32_t old_row = record->table_row;
+    uint32_t last_row = from_table->entity_count - 1;
     uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
     /* Both column lists are sorted by id: one merge pass moves shared values,
-     * destroys dropped ones and constructs added ones. */
+     * destroys dropped ones, constructs added ones and swap-removes the source
+     * row. */
     const ecs_data_column_t *from = from_table->data_columns;
     const ecs_data_column_t *from_end = from + from_table->add_edge.aux;
     const ecs_data_column_t *to = to_table->data_columns;
     const ecs_data_column_t *to_end = to + to_table->add_edge.aux;
     while (from < from_end && to < to_end) {
         if (from->id == to->id) {
-            ecs_data_column_move(from++, old_row, to++, new_row);
+            ecs_data_column_move(from, old_row, to++, new_row);
+            ecs_migrate_fill_hole(from++, old_row, last_row);
         } else if (from->id < to->id) {
-            ecs_data_column_dtor(from++, old_row);
+            ecs_data_column_dtor(from, old_row);
+            ecs_migrate_fill_hole(from++, old_row, last_row);
         } else {
             if (to->id != unconstructed_id)
                 ecs_data_column_ctor(to, new_row);
             to++;
         }
     }
-    while (from < from_end) {
-        ecs_data_column_dtor(from++, old_row);
+    for (; from < from_end; from++) {
+        ecs_data_column_dtor(from, old_row);
+        ecs_migrate_fill_hole(from, old_row, last_row);
     }
     for (; to < to_end; to++) {
         if (to->id != unconstructed_id)
             ecs_data_column_ctor(to, new_row);
     }
 
-    ecs_table_finish_migration(record, entity, from_table, old_row, to_table_id, new_row);
+    if (old_row != last_row) {
+        ecs_entity_t moved = from_table->entities[last_row];
+        from_table->entities[old_row] = moved;
+        ecs_get_record(moved)->table_row = old_row;
+    }
+    from_table->entity_count = last_row;
+    record->table_id = to_table_id;
+    record->table_row = new_row;
+
     if (!requested_id) {
         return NULL;
     }

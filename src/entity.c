@@ -159,7 +159,8 @@ static inline void ecs_entity_index_kill(uint32_t entity_id) {
 }
 
 void ecs_kill_now(ecs_entity_t entity) {
-    ecs_relation_virtual_target_on_remove(entity);
+    if (relation_index.virtual_scan_count || ecs_table_index_may_be_pair_target(entity))
+        ecs_relation_virtual_target_on_remove(entity);
     if (!ecs_is_alive(entity)) {
         return;
     }
@@ -215,7 +216,8 @@ void ecs_kill_now(ecs_entity_t entity) {
     // Remove from table
     ecs_table_remove_entity_update_record(table, entity, record->table_row, true);
 
-    ecs_observer_fini_entity(entity);
+    if (observer_index.target_keys.size)
+        ecs_observer_fini_entity(entity);
     ecs_entity_index_kill(ecs_first(entity));
 }
 
