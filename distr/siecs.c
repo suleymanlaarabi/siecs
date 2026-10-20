@@ -5082,6 +5082,16 @@ typedef struct {
     uint16_t flags;
 } ecs_column_t;
 
+/* Data (non-tag) columns in type order, carrying everything a row operation
+ * needs. Migration, swap-remove and growth walk only this compact array instead
+ * of chasing column index -> type id -> column. `data` mirrors cls[column].data. */
+typedef struct {
+    void *data;
+    uint32_t size;
+    ecs_component_t id;
+    uint16_t flags; // ecs_column_flags_t
+} ecs_data_column_t;
+
 struct ecs_table_s {
     ecs_id_map_t add_edge; // maps component id to the table that has the component added or column
                            // index if the component is in the table
@@ -5089,7 +5099,7 @@ struct ecs_table_s {
     uint32_t entity_count;
     ecs_entity_t *entities;
     ecs_column_t *cls;
-    uint16_t *data_columns;
+    ecs_data_column_t *data_columns; // add_edge.aux entries
     ecs_type_t type;
     uint64_t bloom;
     sicore_vec_t observers_by_event; // sicore_vec_t per event id; each holds uint16_t observer ids.
@@ -5435,9 +5445,22 @@ typedef struct ecs_execution_context_s {
     bool scheduler_parallel;
 } ecs_execution_context_t;
 
+#if defined(_MSC_VER)
+#define ECS_THREAD_LOCAL __declspec(thread)
+#elif defined(__GNUC__) && !defined(__EMSCRIPTEN__)
+/* Initial-exec keeps the access a single thread-pointer relative load, even
+ * when Siecs is built as a shared library (no __tls_get_addr call). */
+#define ECS_THREAD_LOCAL _Thread_local __attribute__((tls_model("initial-exec")))
+#else
+#define ECS_THREAD_LOCAL _Thread_local
+#endif
+
+/* Context installed by worker threads; null means the world's main context.
+ * Read through ecs_execution_context_current() (world_internal.h). */
+extern ECS_THREAD_LOCAL ecs_execution_context_t *ecs_tls_context;
+
 void ecs_execution_context_init(ecs_execution_context_t *context);
 void ecs_execution_context_fini(ecs_execution_context_t *context);
-ecs_execution_context_t *ecs_execution_context_current(void);
 void ecs_execution_context_set(ecs_execution_context_t *context);
 
 void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena);
@@ -5624,6 +5647,37 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
 #include <stdlib.h>
 #include <string.h>
 
+/* Component values are mostly small PODs. A call to libc memcpy/memset costs
+ * more than the copy itself, so common sizes get a fixed-size copy the
+ * compiler lowers to a couple of moves; other sizes fall back to libc. */
+#define ECS_FIXED_SIZES(X) X(1) X(2) X(4) X(8) X(12) X(16) X(24) X(32) X(48) X(64)
+
+static inline void ecs_bytes_copy(void *dst, const void *src, size_t size) {
+    switch (size) {
+#define ECS_COPY_CASE(n)                                                                           \
+    case n:                                                                                        \
+        memcpy(dst, src, n);                                                                       \
+        return;
+        ECS_FIXED_SIZES(ECS_COPY_CASE)
+#undef ECS_COPY_CASE
+    default:
+        memcpy(dst, src, size);
+    }
+}
+
+static inline void ecs_bytes_zero(void *dst, size_t size) {
+    switch (size) {
+#define ECS_ZERO_CASE(n)                                                                           \
+    case n:                                                                                        \
+        memset(dst, 0, n);                                                                         \
+        return;
+        ECS_FIXED_SIZES(ECS_ZERO_CASE)
+#undef ECS_ZERO_CASE
+    default:
+        memset(dst, 0, size);
+    }
+}
+
 /* Copying an inherited owned tag still invokes its explicit copy hook. Normal
  * storage transfers skip zero-sized values before entering this primitive. */
 static inline bool ecs_value_copy(
@@ -5640,7 +5694,7 @@ static inline bool ecs_value_copy(
         return true;
     }
     if (size)
-        memcpy(dst, src, size * count);
+        ecs_bytes_copy(dst, src, size * count);
     return false;
 }
 
@@ -5691,6 +5745,11 @@ typedef struct {
 #define ECS_COMPONENT_RELATION_FLAGS(id, flags) ((uint32_t)(flags) | ((uint32_t)(id) << 16))
 
 typedef struct {
+    uint32_t size; // info->size, kept in the record for structural fast paths
+    // Sized value without lifecycle ops or hooks, not a relation storage
+    // component: setting it is a plain byte copy no user code can observe
+    // unless an observer is registered.
+    bool plain;
     ecs_component_info_t *info;
     uint16_t *required;
     uint32_t required_count;
@@ -5721,7 +5780,9 @@ void ecs_component_index_register(
 void ecs_component_index_init();
 void ecs_component_index_fini();
 
-ecs_component_record_t *ecs_component_index_get(ecs_component_t cid);
+static inline ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {
+    return sicore_vec_get_mut(&component_index.components, cid, ecs_component_record_t);
+}
 
 static inline ecs_component_required_relation_t *
 ecs_component_default_relations(ecs_component_t component) {
@@ -6036,6 +6097,11 @@ struct ecs_world_s {
 
 extern ecs_world_t ecs_world;
 
+static inline ecs_execution_context_t *ecs_execution_context_current(void) {
+    ecs_execution_context_t *context = ecs_tls_context;
+    return context ? context : &ecs_world.main_context;
+}
+
 void ecs_resource_storage_init(void);
 void ecs_resource_storage_fini(void);
 void ecs_module_storage_init(void);
@@ -6125,6 +6191,14 @@ static inline void ecs_emit(
     for (ecs_entity_t target = entity; target; target = ecs_entity_base_raw(target)) {
         ecs_emit_target_observers(table, entity, target, event, component, trigger_data);
     }
+}
+
+/* True when emitting `event` on this table could run an observer. */
+static inline bool ecs_table_observed(const ecs_table_t *table, ecs_event_t event) {
+    if (observer_index.target_keys.size != 0)
+        return true;
+    return table->observers_by_event.size > event &&
+           sicore_vec_get(&table->observers_by_event, event, sicore_vec_t)->size != 0;
 }
 
 static inline bool ecs_is_deferred(void) {
@@ -6476,24 +6550,25 @@ ecs_component_locate(const ecs_table_t *table, uint32_t row, ecs_component_t id,
     return (ecs_component_location_t){ 0 };
 }
 
-static inline void ecs_table_move_column(
-    const ecs_table_t *from_table,
-    uint16_t from_col,
+static inline void *ecs_data_column_at(const ecs_data_column_t *column, uint32_t row) {
+    return (uint8_t *)column->data + (size_t)column->size * row;
+}
+
+/* Move-construct `to[to_row]` from `from[from_row]`, leaving the source dead. */
+static inline void ecs_data_column_move(
+    const ecs_data_column_t *from,
     uint32_t from_row,
-    ecs_table_t *to_table,
-    uint16_t to_col,
+    const ecs_data_column_t *to,
     uint32_t to_row
 ) {
-    const ecs_column_t *from_column = &from_table->cls[from_col];
-    void *src = ecs_table_component_at_column(from_table, from_col, from_row);
-    void *dst = ecs_table_component_at_column(to_table, to_col, to_row);
-    if (from_column->flags & EcsColumnTrivialMove) {
-        memcpy(dst, src, from_column->size);
+    void *src = ecs_data_column_at(from, from_row);
+    void *dst = ecs_data_column_at(to, to_row);
+    if (from->flags & EcsColumnTrivialMove) {
+        ecs_bytes_copy(dst, src, from->size);
         return;
     }
 
-    ecs_component_t component = from_table->type.ids[from_col];
-    const ecs_component_record_t *record = ecs_component_index_get(component);
+    const ecs_component_record_t *record = ecs_component_index_get(from->id);
     if (record->ops.move_ctor) {
         record->ops.move_ctor(dst, src, 1);
         return;
@@ -6505,29 +6580,22 @@ static inline void ecs_table_move_column(
     }
 }
 
-static inline void ecs_table_ctor_column(const ecs_table_t *table, uint16_t col, uint32_t row) {
-    const ecs_column_t *column = &table->cls[col];
-    void *dst = ecs_table_component_at_column(table, col, row);
+static inline void ecs_data_column_ctor(const ecs_data_column_t *column, uint32_t row) {
+    void *dst = ecs_data_column_at(column, row);
     if (column->flags & EcsColumnZeroCtor) {
-        memset(dst, 0, column->size);
+        ecs_bytes_zero(dst, column->size);
         return;
     }
 
-    ecs_component_t component = table->type.ids[col];
-    const ecs_component_record_t *record = ecs_component_index_get(component);
-    record->ops.ctor(dst, 1);
+    ecs_component_index_get(column->id)->ops.ctor(dst, 1);
 }
 
-static inline void ecs_table_dtor_column(const ecs_table_t *table, uint16_t col, uint32_t row) {
-    const ecs_column_t *column = &table->cls[col];
+static inline void ecs_data_column_dtor(const ecs_data_column_t *column, uint32_t row) {
     if (column->flags & EcsColumnNoDtor) {
         return;
     }
 
-    ecs_component_t component = table->type.ids[col];
-    const ecs_component_record_t *record = ecs_component_index_get(component);
-    void *ptr = ecs_table_component_at_column(table, col, row);
-    record->ops.dtor(ptr, 1);
+    ecs_component_index_get(column->id)->ops.dtor(ecs_data_column_at(column, row), 1);
 }
 
 static inline void ecs_table_remove_entity_update_record(
@@ -6570,8 +6638,12 @@ static inline void ecs_migrate_same_layout(
     uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
     for (uint16_t i = 0; i < from_table->add_edge.aux; i++) {
-        uint16_t col = from_table->data_columns[i];
-        ecs_table_move_column(from_table, col, old_row, to_table, col, new_row);
+        ecs_data_column_move(
+            &from_table->data_columns[i],
+            old_row,
+            &to_table->data_columns[i],
+            new_row
+        );
     }
 
     ecs_table_finish_migration(record, entity, from_table, old_row, to_table_id, new_row);
@@ -6583,6 +6655,16 @@ void *ecs_migrate(
     ecs_table_t *from_table,
     uint16_t to_table_id,
     ecs_component_t requested_id
+);
+
+/* Like ecs_migrate, but leaves `added_id` unconstructed in the destination
+ * row and returns its storage: the caller constructs it in place. */
+void *ecs_migrate_add(
+    ecs_entity_record_t *record,
+    ecs_entity_t entity,
+    ecs_table_t *from_table,
+    uint16_t to_table_id,
+    ecs_component_t added_id
 );
 
 /* Type registration may relocate the table index. Reacquire the source only
@@ -6630,16 +6712,7 @@ typedef struct {
     bool valid;
 } ecs_command_transition_t;
 
-#if defined(_MSC_VER)
-#define ECS_THREAD_LOCAL __declspec(thread)
-#else
-#define ECS_THREAD_LOCAL _Thread_local
-#endif
-static ECS_THREAD_LOCAL ecs_execution_context_t *ecs_tls_context;
-
-ecs_execution_context_t *ecs_execution_context_current(void) {
-    return ecs_tls_context ? ecs_tls_context : &ecs_world.main_context;
-}
+ECS_THREAD_LOCAL ecs_execution_context_t *ecs_tls_context;
 
 void ecs_execution_context_set(ecs_execution_context_t *context) { ecs_tls_context = context; }
 
@@ -7772,6 +7845,39 @@ void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
 
 void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) { return ecs_get_cid(entity, cid); }
 
+/* Set fast path for plain components when no observer can see the change: the
+ * value is copied straight into its row, so there is no zero-fill before the
+ * copy, no second entity/column lookup and no defer scope (no user code runs).
+ * Copying and moving a plain value are the same operation. Returns false when
+ * the generic path must run (first use of the edge, required components,
+ * hooks, observers or default relations). */
+static inline bool ecs_store_plain_now(ecs_entity_t entity, ecs_component_t cid, const void *data) {
+    const ecs_component_record_t *crec = ecs_component_index_get(cid);
+    if (!crec->plain || crec->default_relation_count)
+        return false;
+    ecs_entity_record_t *record = ecs_get_record(entity);
+    ecs_table_t *table = ecs_get_table(record->table_id);
+    uint16_t edge = ecs_table_get_add_edge(table, cid);
+    if (edge < table->type.component_count && table->type.ids[edge] == cid) {
+        if (ecs_table_observed(table, EcsOnSet))
+            return false;
+        ecs_bytes_copy(
+            ecs_table_component_at_column(table, edge, record->table_row),
+            data,
+            crec->size
+        );
+        return true;
+    }
+    if (edge == UINT16_MAX)
+        return false;
+    ecs_table_t *to_table = ecs_get_table(edge);
+    if (to_table->type.component_count != table->type.component_count + 1 ||
+        ecs_table_observed(to_table, EcsOnAdd) || ecs_table_observed(to_table, EcsOnSet))
+        return false;
+    ecs_bytes_copy(ecs_migrate_add(record, entity, table, edge, cid), data, crec->size);
+    return true;
+}
+
 static inline void
 ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     if (ECS_UNLIKELY(cid == ecs_id(Name))) {
@@ -7779,6 +7885,8 @@ ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool mov
         if (move) { free(((Name *)data)->value); ((Name *)data)->value = NULL; }
         return;
     }
+    if (ecs_store_plain_now(entity, cid, data))
+        return;
     bool had_value = move && ecs_has_cid_owned(entity, cid);
     ecs_add_cid_now(entity, cid);
     if (!move)
@@ -11647,8 +11755,9 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     table->entities = malloc(sizeof(ecs_entity_t) * table->entity_capacity);
     table->cls =
         type.component_count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.component_count);
-    table->data_columns =
-        type.component_count == 0 ? NULL : malloc(sizeof(uint16_t) * type.component_count);
+    table->data_columns = type.component_count == 0
+                              ? NULL
+                              : malloc(sizeof(ecs_data_column_t) * type.component_count);
     table->bloom = ecs_type_bloom(&type);
 
     sicore_vec_init(&table->observers_by_event, sizeof(sicore_vec_t));
@@ -11660,9 +11769,6 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
         table->cls[i].size = rec->info->size;
         table->cls[i].data =
             rec->info->size != 0 ? calloc(table->entity_capacity, rec->info->size) : NULL;
-        if (rec->info->size != 0) {
-            table->data_columns[table->add_edge.aux++] = i;
-        }
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
         table->cls[i].flags = 0;
@@ -11675,13 +11781,22 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
         if (rec->info->size == 0 || !rec->ops.ctor) {
             table->cls[i].flags |= EcsColumnZeroCtor;
         }
+        if (rec->info->size != 0) {
+            table->data_columns[table->add_edge.aux++] = (ecs_data_column_t){
+                .data = table->cls[i].data,
+                .size = rec->info->size,
+                .id = type.ids[i],
+                .flags = table->cls[i].flags,
+            };
+        }
     }
 
     if (table->add_edge.aux == 0) {
         free(table->data_columns);
         table->data_columns = NULL;
     } else if (table->add_edge.aux < type.component_count) {
-        table->data_columns = realloc(table->data_columns, sizeof(uint16_t) * table->add_edge.aux);
+        table->data_columns =
+            realloc(table->data_columns, sizeof(ecs_data_column_t) * table->add_edge.aux);
     }
 }
 
@@ -11689,31 +11804,29 @@ static inline void ecs_table_grow(ecs_table_t *table) {
     uint64_t new_capacity = table->entity_capacity * (uint64_t)2;
     table->entities = realloc(table->entities, sizeof(ecs_entity_t) * new_capacity);
     for (uint16_t i = 0; i < table->add_edge.aux; i++) {
-        uint16_t column_index = table->data_columns[i];
-        ecs_column_t *column = &table->cls[column_index];
+        ecs_data_column_t *column = &table->data_columns[i];
+        void *new_data;
 
         if (column->flags & EcsColumnTrivialMove) {
-            void *new_data = realloc(column->data, (size_t)new_capacity * column->size);
+            new_data = realloc(column->data, (size_t)new_capacity * column->size);
             ecs_assert_not_null(new_data);
-            column->data = new_data;
-            continue;
+        } else {
+            const ecs_component_record_t *record = ecs_component_index_get(column->id);
+            new_data = malloc((size_t)new_capacity * column->size);
+            ecs_assert_not_null(new_data);
+            ecs_value_transfer(
+                &record->ops,
+                record->info->size,
+                new_data,
+                column->data,
+                table->entity_count,
+                true,
+                true
+            );
+            free(column->data);
         }
-
-        const ecs_component_record_t *record =
-            ecs_component_index_get(table->type.ids[column_index]);
-        void *new_data = malloc((size_t)new_capacity * column->size);
-        ecs_assert_not_null(new_data);
-        ecs_value_transfer(
-            &record->ops,
-            record->info->size,
-            new_data,
-            column->data,
-            table->entity_count,
-            true,
-            true
-        );
-        free(column->data);
         column->data = new_data;
+        table->cls[ecs_table_get_column_index(table, column->id)].data = new_data;
     }
     table->entity_capacity = new_capacity;
     ecs_query_index_refresh_table_fields(table);
@@ -11733,18 +11846,18 @@ uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
 ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) {
     ecs_entity_t removed_entity = table->entities[row];
     uint32_t last_row = table->entity_count - 1;
+    const ecs_data_column_t *columns = table->data_columns;
+    const uint16_t column_count = table->add_edge.aux;
     if (row_values_live) {
-        for (uint16_t i = 0; i < table->add_edge.aux; i++) {
-            uint16_t column_index = table->data_columns[i];
-            ecs_table_dtor_column(table, column_index, row);
+        for (uint16_t i = 0; i < column_count; i++) {
+            ecs_data_column_dtor(&columns[i], row);
         }
     }
     if (row != last_row) {
         ecs_entity_t moved_entity = table->entities[last_row];
         table->entities[row] = moved_entity;
-        for (uint16_t i = 0; i < table->add_edge.aux; i++) {
-            uint16_t column_index = table->data_columns[i];
-            ecs_table_move_column(table, column_index, last_row, table, column_index, row);
+        for (uint16_t i = 0; i < column_count; i++) {
+            ecs_data_column_move(&columns[i], last_row, &columns[i], row);
         }
         table->entity_count -= 1;
         return moved_entity;
@@ -11860,44 +11973,42 @@ void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bo
                : NULL;
 }
 
-void *ecs_migrate(
+static inline void *ecs_migrate_impl(
     ecs_entity_record_t *record,
     const ecs_entity_t entity,
     ecs_table_t *from_table,
     const uint16_t to_table_id,
-    const ecs_component_t requested_id
+    const ecs_component_t requested_id,
+    const ecs_component_t unconstructed_id
 ) {
     ecs_table_t *to_table = ecs_get_table(to_table_id);
 
     uint32_t old_row = record->table_row;
     uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
-    uint16_t from_data = 0;
-    uint16_t to_data = 0;
-    while (from_data < from_table->add_edge.aux && to_data < to_table->add_edge.aux) {
-        uint16_t from_col = from_table->data_columns[from_data];
-        uint16_t to_col = to_table->data_columns[to_data];
-        ecs_component_t from_id = from_table->type.ids[from_col];
-        ecs_component_t to_id = to_table->type.ids[to_col];
-        if (from_id == to_id) {
-            ecs_table_move_column(from_table, from_col, old_row, to_table, to_col, new_row);
-            from_data++;
-            to_data++;
-        } else if (from_id < to_id) {
-            ecs_table_dtor_column(from_table, from_col, old_row);
-            from_data++;
+    /* Both column lists are sorted by id: one merge pass moves shared values,
+     * destroys dropped ones and constructs added ones. */
+    const ecs_data_column_t *from = from_table->data_columns;
+    const ecs_data_column_t *from_end = from + from_table->add_edge.aux;
+    const ecs_data_column_t *to = to_table->data_columns;
+    const ecs_data_column_t *to_end = to + to_table->add_edge.aux;
+    while (from < from_end && to < to_end) {
+        if (from->id == to->id) {
+            ecs_data_column_move(from++, old_row, to++, new_row);
+        } else if (from->id < to->id) {
+            ecs_data_column_dtor(from++, old_row);
         } else {
-            ecs_table_ctor_column(to_table, to_col, new_row);
-            to_data++;
+            if (to->id != unconstructed_id)
+                ecs_data_column_ctor(to, new_row);
+            to++;
         }
     }
-    while (from_data < from_table->add_edge.aux) {
-        ecs_table_dtor_column(from_table, from_table->data_columns[from_data], old_row);
-        from_data++;
+    while (from < from_end) {
+        ecs_data_column_dtor(from++, old_row);
     }
-    while (to_data < to_table->add_edge.aux) {
-        ecs_table_ctor_column(to_table, to_table->data_columns[to_data], new_row);
-        to_data++;
+    for (; to < to_end; to++) {
+        if (to->id != unconstructed_id)
+            ecs_data_column_ctor(to, new_row);
     }
 
     ecs_table_finish_migration(record, entity, from_table, old_row, to_table_id, new_row);
@@ -11909,6 +12020,26 @@ void *ecs_migrate(
         ecs_table_get_column_index(to_table, requested_id),
         new_row
     );
+}
+
+void *ecs_migrate(
+    ecs_entity_record_t *record,
+    const ecs_entity_t entity,
+    ecs_table_t *from_table,
+    const uint16_t to_table_id,
+    const ecs_component_t requested_id
+) {
+    return ecs_migrate_impl(record, entity, from_table, to_table_id, requested_id, 0);
+}
+
+void *ecs_migrate_add(
+    ecs_entity_record_t *record,
+    const ecs_entity_t entity,
+    ecs_table_t *from_table,
+    const uint16_t to_table_id,
+    const ecs_component_t added_id
+) {
+    return ecs_migrate_impl(record, entity, from_table, to_table_id, added_id, added_id);
 }
 
 static size_t ecs_type_pairs_offset(uint16_t count) {
@@ -12547,7 +12678,11 @@ void ecs_component_index_register(
         abort();
     }
 
+    static const ecs_type_ops_t no_ops = { 0 };
     ecs_component_record_t record = {
+        .size = (uint32_t)desc->size,
+        .plain = desc->size != 0 && !memcmp(&desc->ops, &no_ops, sizeof no_ops) &&
+                 !desc->on_set && !desc->on_add && !desc->on_remove && !relation_flags,
         .info = info,
         .required = NULL,
         .required_count = 0,
@@ -12592,10 +12727,6 @@ void ecs_component_index_fini() {
     }
     sicore_vec_fini(&component_index.components);
     component_index = (ecs_component_index_t){ 0 };
-}
-
-ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {
-    return sicore_vec_get_mut(&component_index.components, cid, ecs_component_record_t);
 }
 
 #define ECS_COMPILED_TERMS (ECS_QUERY_TERM_CAPACITY + ECS_QUERY_RELATION_CAPACITY + 2)

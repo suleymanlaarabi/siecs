@@ -35,24 +35,25 @@ ecs_component_locate(const ecs_table_t *table, uint32_t row, ecs_component_t id,
     return (ecs_component_location_t){ 0 };
 }
 
-static inline void ecs_table_move_column(
-    const ecs_table_t *from_table,
-    uint16_t from_col,
+static inline void *ecs_data_column_at(const ecs_data_column_t *column, uint32_t row) {
+    return (uint8_t *)column->data + (size_t)column->size * row;
+}
+
+/* Move-construct `to[to_row]` from `from[from_row]`, leaving the source dead. */
+static inline void ecs_data_column_move(
+    const ecs_data_column_t *from,
     uint32_t from_row,
-    ecs_table_t *to_table,
-    uint16_t to_col,
+    const ecs_data_column_t *to,
     uint32_t to_row
 ) {
-    const ecs_column_t *from_column = &from_table->cls[from_col];
-    void *src = ecs_table_component_at_column(from_table, from_col, from_row);
-    void *dst = ecs_table_component_at_column(to_table, to_col, to_row);
-    if (from_column->flags & EcsColumnTrivialMove) {
-        memcpy(dst, src, from_column->size);
+    void *src = ecs_data_column_at(from, from_row);
+    void *dst = ecs_data_column_at(to, to_row);
+    if (from->flags & EcsColumnTrivialMove) {
+        ecs_bytes_copy(dst, src, from->size);
         return;
     }
 
-    ecs_component_t component = from_table->type.ids[from_col];
-    const ecs_component_record_t *record = ecs_component_index_get(component);
+    const ecs_component_record_t *record = ecs_component_index_get(from->id);
     if (record->ops.move_ctor) {
         record->ops.move_ctor(dst, src, 1);
         return;
@@ -64,29 +65,22 @@ static inline void ecs_table_move_column(
     }
 }
 
-static inline void ecs_table_ctor_column(const ecs_table_t *table, uint16_t col, uint32_t row) {
-    const ecs_column_t *column = &table->cls[col];
-    void *dst = ecs_table_component_at_column(table, col, row);
+static inline void ecs_data_column_ctor(const ecs_data_column_t *column, uint32_t row) {
+    void *dst = ecs_data_column_at(column, row);
     if (column->flags & EcsColumnZeroCtor) {
-        memset(dst, 0, column->size);
+        ecs_bytes_zero(dst, column->size);
         return;
     }
 
-    ecs_component_t component = table->type.ids[col];
-    const ecs_component_record_t *record = ecs_component_index_get(component);
-    record->ops.ctor(dst, 1);
+    ecs_component_index_get(column->id)->ops.ctor(dst, 1);
 }
 
-static inline void ecs_table_dtor_column(const ecs_table_t *table, uint16_t col, uint32_t row) {
-    const ecs_column_t *column = &table->cls[col];
+static inline void ecs_data_column_dtor(const ecs_data_column_t *column, uint32_t row) {
     if (column->flags & EcsColumnNoDtor) {
         return;
     }
 
-    ecs_component_t component = table->type.ids[col];
-    const ecs_component_record_t *record = ecs_component_index_get(component);
-    void *ptr = ecs_table_component_at_column(table, col, row);
-    record->ops.dtor(ptr, 1);
+    ecs_component_index_get(column->id)->ops.dtor(ecs_data_column_at(column, row), 1);
 }
 
 static inline void ecs_table_remove_entity_update_record(

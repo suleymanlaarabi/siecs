@@ -150,6 +150,39 @@ void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
 
 void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) { return ecs_get_cid(entity, cid); }
 
+/* Set fast path for plain components when no observer can see the change: the
+ * value is copied straight into its row, so there is no zero-fill before the
+ * copy, no second entity/column lookup and no defer scope (no user code runs).
+ * Copying and moving a plain value are the same operation. Returns false when
+ * the generic path must run (first use of the edge, required components,
+ * hooks, observers or default relations). */
+static inline bool ecs_store_plain_now(ecs_entity_t entity, ecs_component_t cid, const void *data) {
+    const ecs_component_record_t *crec = ecs_component_index_get(cid);
+    if (!crec->plain || crec->default_relation_count)
+        return false;
+    ecs_entity_record_t *record = ecs_get_record(entity);
+    ecs_table_t *table = ecs_get_table(record->table_id);
+    uint16_t edge = ecs_table_get_add_edge(table, cid);
+    if (edge < table->type.component_count && table->type.ids[edge] == cid) {
+        if (ecs_table_observed(table, EcsOnSet))
+            return false;
+        ecs_bytes_copy(
+            ecs_table_component_at_column(table, edge, record->table_row),
+            data,
+            crec->size
+        );
+        return true;
+    }
+    if (edge == UINT16_MAX)
+        return false;
+    ecs_table_t *to_table = ecs_get_table(edge);
+    if (to_table->type.component_count != table->type.component_count + 1 ||
+        ecs_table_observed(to_table, EcsOnAdd) || ecs_table_observed(to_table, EcsOnSet))
+        return false;
+    ecs_bytes_copy(ecs_migrate_add(record, entity, table, edge, cid), data, crec->size);
+    return true;
+}
+
 static inline void
 ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     if (ECS_UNLIKELY(cid == ecs_id(Name))) {
@@ -157,6 +190,8 @@ ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool mov
         if (move) { free(((Name *)data)->value); ((Name *)data)->value = NULL; }
         return;
     }
+    if (ecs_store_plain_now(entity, cid, data))
+        return;
     bool had_value = move && ecs_has_cid_owned(entity, cid);
     ecs_add_cid_now(entity, cid);
     if (!move)

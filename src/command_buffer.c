@@ -37,16 +37,7 @@ typedef struct {
     bool valid;
 } ecs_command_transition_t;
 
-#if defined(_MSC_VER)
-#define ECS_THREAD_LOCAL __declspec(thread)
-#else
-#define ECS_THREAD_LOCAL _Thread_local
-#endif
-static ECS_THREAD_LOCAL ecs_execution_context_t *ecs_tls_context;
-
-ecs_execution_context_t *ecs_execution_context_current(void) {
-    return ecs_tls_context ? ecs_tls_context : &ecs_world.main_context;
-}
+ECS_THREAD_LOCAL ecs_execution_context_t *ecs_tls_context;
 
 void ecs_execution_context_set(ecs_execution_context_t *context) { ecs_tls_context = context; }
 

@@ -32,6 +32,11 @@ struct ecs_world_s {
 
 extern ecs_world_t ecs_world;
 
+static inline ecs_execution_context_t *ecs_execution_context_current(void) {
+    ecs_execution_context_t *context = ecs_tls_context;
+    return context ? context : &ecs_world.main_context;
+}
+
 void ecs_resource_storage_init(void);
 void ecs_resource_storage_fini(void);
 void ecs_module_storage_init(void);
@@ -121,6 +126,14 @@ static inline void ecs_emit(
     for (ecs_entity_t target = entity; target; target = ecs_entity_base_raw(target)) {
         ecs_emit_target_observers(table, entity, target, event, component, trigger_data);
     }
+}
+
+/* True when emitting `event` on this table could run an observer. */
+static inline bool ecs_table_observed(const ecs_table_t *table, ecs_event_t event) {
+    if (observer_index.target_keys.size != 0)
+        return true;
+    return table->observers_by_event.size > event &&
+           sicore_vec_get(&table->observers_by_event, event, sicore_vec_t)->size != 0;
 }
 
 static inline bool ecs_is_deferred(void) {

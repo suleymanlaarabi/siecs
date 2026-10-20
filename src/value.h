@@ -5,6 +5,37 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Component values are mostly small PODs. A call to libc memcpy/memset costs
+ * more than the copy itself, so common sizes get a fixed-size copy the
+ * compiler lowers to a couple of moves; other sizes fall back to libc. */
+#define ECS_FIXED_SIZES(X) X(1) X(2) X(4) X(8) X(12) X(16) X(24) X(32) X(48) X(64)
+
+static inline void ecs_bytes_copy(void *dst, const void *src, size_t size) {
+    switch (size) {
+#define ECS_COPY_CASE(n)                                                                           \
+    case n:                                                                                        \
+        memcpy(dst, src, n);                                                                       \
+        return;
+        ECS_FIXED_SIZES(ECS_COPY_CASE)
+#undef ECS_COPY_CASE
+    default:
+        memcpy(dst, src, size);
+    }
+}
+
+static inline void ecs_bytes_zero(void *dst, size_t size) {
+    switch (size) {
+#define ECS_ZERO_CASE(n)                                                                           \
+    case n:                                                                                        \
+        memset(dst, 0, n);                                                                         \
+        return;
+        ECS_FIXED_SIZES(ECS_ZERO_CASE)
+#undef ECS_ZERO_CASE
+    default:
+        memset(dst, 0, size);
+    }
+}
+
 /* Copying an inherited owned tag still invokes its explicit copy hook. Normal
  * storage transfers skip zero-sized values before entering this primitive. */
 static inline bool ecs_value_copy(
@@ -21,7 +52,7 @@ static inline bool ecs_value_copy(
         return true;
     }
     if (size)
-        memcpy(dst, src, size * count);
+        ecs_bytes_copy(dst, src, size * count);
     return false;
 }
 

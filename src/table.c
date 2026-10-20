@@ -15,8 +15,9 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     table->entities = malloc(sizeof(ecs_entity_t) * table->entity_capacity);
     table->cls =
         type.component_count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.component_count);
-    table->data_columns =
-        type.component_count == 0 ? NULL : malloc(sizeof(uint16_t) * type.component_count);
+    table->data_columns = type.component_count == 0
+                              ? NULL
+                              : malloc(sizeof(ecs_data_column_t) * type.component_count);
     table->bloom = ecs_type_bloom(&type);
 
     sicore_vec_init(&table->observers_by_event, sizeof(sicore_vec_t));
@@ -28,9 +29,6 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
         table->cls[i].size = rec->info->size;
         table->cls[i].data =
             rec->info->size != 0 ? calloc(table->entity_capacity, rec->info->size) : NULL;
-        if (rec->info->size != 0) {
-            table->data_columns[table->add_edge.aux++] = i;
-        }
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
         table->cls[i].flags = 0;
@@ -43,13 +41,22 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
         if (rec->info->size == 0 || !rec->ops.ctor) {
             table->cls[i].flags |= EcsColumnZeroCtor;
         }
+        if (rec->info->size != 0) {
+            table->data_columns[table->add_edge.aux++] = (ecs_data_column_t){
+                .data = table->cls[i].data,
+                .size = rec->info->size,
+                .id = type.ids[i],
+                .flags = table->cls[i].flags,
+            };
+        }
     }
 
     if (table->add_edge.aux == 0) {
         free(table->data_columns);
         table->data_columns = NULL;
     } else if (table->add_edge.aux < type.component_count) {
-        table->data_columns = realloc(table->data_columns, sizeof(uint16_t) * table->add_edge.aux);
+        table->data_columns =
+            realloc(table->data_columns, sizeof(ecs_data_column_t) * table->add_edge.aux);
     }
 }
 
@@ -57,31 +64,29 @@ static inline void ecs_table_grow(ecs_table_t *table) {
     uint64_t new_capacity = table->entity_capacity * (uint64_t)2;
     table->entities = realloc(table->entities, sizeof(ecs_entity_t) * new_capacity);
     for (uint16_t i = 0; i < table->add_edge.aux; i++) {
-        uint16_t column_index = table->data_columns[i];
-        ecs_column_t *column = &table->cls[column_index];
+        ecs_data_column_t *column = &table->data_columns[i];
+        void *new_data;
 
         if (column->flags & EcsColumnTrivialMove) {
-            void *new_data = realloc(column->data, (size_t)new_capacity * column->size);
+            new_data = realloc(column->data, (size_t)new_capacity * column->size);
             ecs_assert_not_null(new_data);
-            column->data = new_data;
-            continue;
+        } else {
+            const ecs_component_record_t *record = ecs_component_index_get(column->id);
+            new_data = malloc((size_t)new_capacity * column->size);
+            ecs_assert_not_null(new_data);
+            ecs_value_transfer(
+                &record->ops,
+                record->info->size,
+                new_data,
+                column->data,
+                table->entity_count,
+                true,
+                true
+            );
+            free(column->data);
         }
-
-        const ecs_component_record_t *record =
-            ecs_component_index_get(table->type.ids[column_index]);
-        void *new_data = malloc((size_t)new_capacity * column->size);
-        ecs_assert_not_null(new_data);
-        ecs_value_transfer(
-            &record->ops,
-            record->info->size,
-            new_data,
-            column->data,
-            table->entity_count,
-            true,
-            true
-        );
-        free(column->data);
         column->data = new_data;
+        table->cls[ecs_table_get_column_index(table, column->id)].data = new_data;
     }
     table->entity_capacity = new_capacity;
     ecs_query_index_refresh_table_fields(table);
@@ -101,18 +106,18 @@ uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
 ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) {
     ecs_entity_t removed_entity = table->entities[row];
     uint32_t last_row = table->entity_count - 1;
+    const ecs_data_column_t *columns = table->data_columns;
+    const uint16_t column_count = table->add_edge.aux;
     if (row_values_live) {
-        for (uint16_t i = 0; i < table->add_edge.aux; i++) {
-            uint16_t column_index = table->data_columns[i];
-            ecs_table_dtor_column(table, column_index, row);
+        for (uint16_t i = 0; i < column_count; i++) {
+            ecs_data_column_dtor(&columns[i], row);
         }
     }
     if (row != last_row) {
         ecs_entity_t moved_entity = table->entities[last_row];
         table->entities[row] = moved_entity;
-        for (uint16_t i = 0; i < table->add_edge.aux; i++) {
-            uint16_t column_index = table->data_columns[i];
-            ecs_table_move_column(table, column_index, last_row, table, column_index, row);
+        for (uint16_t i = 0; i < column_count; i++) {
+            ecs_data_column_move(&columns[i], last_row, &columns[i], row);
         }
         table->entity_count -= 1;
         return moved_entity;

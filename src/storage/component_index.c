@@ -43,7 +43,11 @@ void ecs_component_index_register(
         abort();
     }
 
+    static const ecs_type_ops_t no_ops = { 0 };
     ecs_component_record_t record = {
+        .size = (uint32_t)desc->size,
+        .plain = desc->size != 0 && !memcmp(&desc->ops, &no_ops, sizeof no_ops) &&
+                 !desc->on_set && !desc->on_add && !desc->on_remove && !relation_flags,
         .info = info,
         .required = NULL,
         .required_count = 0,
@@ -88,8 +92,4 @@ void ecs_component_index_fini() {
     }
     sicore_vec_fini(&component_index.components);
     component_index = (ecs_component_index_t){ 0 };
-}
-
-ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {
-    return sicore_vec_get_mut(&component_index.components, cid, ecs_component_record_t);
 }

@@ -854,19 +854,19 @@ void component_table_type_tracks_data_columns(void) {
     ecs_set_cid(entity, data_a, &value_a);
     table = ecs_get_table(ecs_get_record(entity)->table_id);
     test_int(1, table->add_edge.aux);
-    test_assert(table->type.ids[table->data_columns[0]] == data_a);
+    test_assert(table->data_columns[0].id == data_a);
 
     uint64_t value_b = 84;
     ecs_set_cid(entity, data_b, &value_b);
     table = ecs_get_table(ecs_get_record(entity)->table_id);
     test_int(2, table->add_edge.aux);
-    test_assert(table->type.ids[table->data_columns[0]] == data_a);
-    test_assert(table->type.ids[table->data_columns[1]] == data_b);
+    test_assert(table->data_columns[0].id == data_a);
+    test_assert(table->data_columns[1].id == data_b);
 
     ecs_remove_cid(entity, data_a);
     table = ecs_get_table(ecs_get_record(entity)->table_id);
     test_int(1, table->add_edge.aux);
-    test_assert(table->type.ids[table->data_columns[0]] == data_b);
+    test_assert(table->data_columns[0].id == data_b);
     test_int(84, *(uint64_t *)ecs_get_cid(entity, data_b));
 
     ecs_fini();

@@ -19,8 +19,12 @@ static inline void ecs_migrate_same_layout(
     uint32_t new_row = ecs_table_add_entity(to_table, entity);
 
     for (uint16_t i = 0; i < from_table->add_edge.aux; i++) {
-        uint16_t col = from_table->data_columns[i];
-        ecs_table_move_column(from_table, col, old_row, to_table, col, new_row);
+        ecs_data_column_move(
+            &from_table->data_columns[i],
+            old_row,
+            &to_table->data_columns[i],
+            new_row
+        );
     }
 
     ecs_table_finish_migration(record, entity, from_table, old_row, to_table_id, new_row);
@@ -32,6 +36,16 @@ void *ecs_migrate(
     ecs_table_t *from_table,
     uint16_t to_table_id,
     ecs_component_t requested_id
+);
+
+/* Like ecs_migrate, but leaves `added_id` unconstructed in the destination
+ * row and returns its storage: the caller constructs it in place. */
+void *ecs_migrate_add(
+    ecs_entity_record_t *record,
+    ecs_entity_t entity,
+    ecs_table_t *from_table,
+    uint16_t to_table_id,
+    ecs_component_t added_id
 );
 
 /* Type registration may relocate the table index. Reacquire the source only

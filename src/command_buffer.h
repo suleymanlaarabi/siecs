@@ -66,9 +66,22 @@ typedef struct ecs_execution_context_s {
     bool scheduler_parallel;
 } ecs_execution_context_t;
 
+#if defined(_MSC_VER)
+#define ECS_THREAD_LOCAL __declspec(thread)
+#elif defined(__GNUC__) && !defined(__EMSCRIPTEN__)
+/* Initial-exec keeps the access a single thread-pointer relative load, even
+ * when Siecs is built as a shared library (no __tls_get_addr call). */
+#define ECS_THREAD_LOCAL _Thread_local __attribute__((tls_model("initial-exec")))
+#else
+#define ECS_THREAD_LOCAL _Thread_local
+#endif
+
+/* Context installed by worker threads; null means the world's main context.
+ * Read through ecs_execution_context_current() (world_internal.h). */
+extern ECS_THREAD_LOCAL ecs_execution_context_t *ecs_tls_context;
+
 void ecs_execution_context_init(ecs_execution_context_t *context);
 void ecs_execution_context_fini(ecs_execution_context_t *context);
-ecs_execution_context_t *ecs_execution_context_current(void);
 void ecs_execution_context_set(ecs_execution_context_t *context);
 
 void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena);

@@ -21,6 +21,16 @@ typedef struct {
     uint16_t flags;
 } ecs_column_t;
 
+/* Data (non-tag) columns in type order, carrying everything a row operation
+ * needs. Migration, swap-remove and growth walk only this compact array instead
+ * of chasing column index -> type id -> column. `data` mirrors cls[column].data. */
+typedef struct {
+    void *data;
+    uint32_t size;
+    ecs_component_t id;
+    uint16_t flags; // ecs_column_flags_t
+} ecs_data_column_t;
+
 struct ecs_table_s {
     ecs_id_map_t add_edge; // maps component id to the table that has the component added or column
                            // index if the component is in the table
@@ -28,7 +38,7 @@ struct ecs_table_s {
     uint32_t entity_count;
     ecs_entity_t *entities;
     ecs_column_t *cls;
-    uint16_t *data_columns;
+    ecs_data_column_t *data_columns; // add_edge.aux entries
     ecs_type_t type;
     uint64_t bloom;
     sicore_vec_t observers_by_event; // sicore_vec_t per event id; each holds uint16_t observer ids.

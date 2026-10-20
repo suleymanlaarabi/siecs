@@ -23,6 +23,11 @@ typedef struct {
 #define ECS_COMPONENT_RELATION_FLAGS(id, flags) ((uint32_t)(flags) | ((uint32_t)(id) << 16))
 
 typedef struct {
+    uint32_t size; // info->size, kept in the record for structural fast paths
+    // Sized value without lifecycle ops or hooks, not a relation storage
+    // component: setting it is a plain byte copy no user code can observe
+    // unless an observer is registered.
+    bool plain;
     ecs_component_info_t *info;
     uint16_t *required;
     uint32_t required_count;
@@ -53,7 +58,9 @@ void ecs_component_index_register(
 void ecs_component_index_init();
 void ecs_component_index_fini();
 
-ecs_component_record_t *ecs_component_index_get(ecs_component_t cid);
+static inline ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {
+    return sicore_vec_get_mut(&component_index.components, cid, ecs_component_record_t);
+}
 
 static inline ecs_component_required_relation_t *
 ecs_component_default_relations(ecs_component_t component) {
