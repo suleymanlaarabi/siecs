@@ -108,7 +108,7 @@ export default defineConfig({
         { label: 'Overview', link: '/' },
         {
           label: 'Getting Started',
-          items: ['quickstart', 'cookbook'],
+          items: ['quickstart', 'cookbook', 'ai-agents'],
         },
         {
           label: 'Fundamentals',

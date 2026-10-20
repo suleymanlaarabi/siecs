@@ -1,0 +1,4 @@
+interface:
+  display_name: "SIECS"
+  short_description: "Build composable ECS applications in C and C++"
+  default_prompt: "Use $siecs to implement this feature with SIECS, composition, and data-oriented design."
