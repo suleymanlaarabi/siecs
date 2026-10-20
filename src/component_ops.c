@@ -260,9 +260,12 @@ ecs_store_cid_slow(ecs_entity_t entity, ecs_component_t cid, void *data, bool mo
  * line. */
 static inline void ecs_store_cid(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     ecs_assert_component_access(entity, cid);
-    if (ECS_LIKELY(cid != ecs_id(Name) && !ecs_is_deferred()) &&
-        ecs_store_plain_now(entity, cid, data))
+    if (ECS_LIKELY(cid != ecs_id(Name) && !ecs_is_deferred())) {
+        // Values with hooks or lifecycle operations skip the fast path at the cost of one test.
+        if (!ecs_component_index_get(cid)->plain || !ecs_store_plain_now(entity, cid, data))
+            ecs_store_cid_notify(entity, cid, data, move);
         return;
+    }
     ecs_store_cid_slow(entity, cid, data, move);
 }
 
