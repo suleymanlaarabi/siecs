@@ -91,6 +91,26 @@ static inline void ecs_emit_target_observers(
     }
 }
 
+/* True when emitting `event` on this table could run an observer. */
+static inline bool ecs_table_observed(const ecs_table_t *table, ecs_event_t event) {
+    if (observer_index.target_keys.size != 0)
+        return true;
+    return table->observers_by_event.size > event &&
+           sicore_vec_get(&table->observers_by_event, event, sicore_vec_t)->size != 0;
+}
+
+/* Deliver an event to the table's observers and to observers targeting the
+ * entity or one of its bases. Callers test ecs_table_observed() first. */
+void ecs_emit_observers(
+    ecs_table_t *table,
+    ecs_entity_t entity,
+    ecs_event_t event,
+    ecs_component_t component,
+    const void *trigger_data
+);
+
+/* Most tables have no observer for most events: test that inline and keep the
+ * delivery code (and its stack frame) out of every structural fast path. */
 static inline void ecs_emit(
     ecs_table_t *table,
     ecs_entity_t entity,
@@ -98,42 +118,8 @@ static inline void ecs_emit(
     ecs_component_t component,
     const void *trigger_data
 ) {
-    if (table->observers_by_event.size > event) {
-        const sicore_vec_t *list = sicore_vec_get(&table->observers_by_event, event, sicore_vec_t);
-        uint32_t n = list->size;
-        for (uint32_t i = 0; i < n; i++) {
-            ecs_observer_id_t oid = *sicore_vec_get(list, i, ecs_observer_id_t);
-            ecs_observer_t *obs =
-                sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
-            if (!obs->enabled) {
-                continue;
-            }
-            ecs_observer_event_t observer_event = {
-                .entity = entity,
-                .event = event,
-                .component = component,
-                .user_data = obs->user_data,
-                .trigger_data = trigger_data,
-            };
-            obs->callback(&observer_event);
-        }
-    }
-
-    if (observer_index.target_keys.size == 0) {
-        return;
-    }
-
-    for (ecs_entity_t target = entity; target; target = ecs_entity_base_raw(target)) {
-        ecs_emit_target_observers(table, entity, target, event, component, trigger_data);
-    }
-}
-
-/* True when emitting `event` on this table could run an observer. */
-static inline bool ecs_table_observed(const ecs_table_t *table, ecs_event_t event) {
-    if (observer_index.target_keys.size != 0)
-        return true;
-    return table->observers_by_event.size > event &&
-           sicore_vec_get(&table->observers_by_event, event, sicore_vec_t)->size != 0;
+    if (ECS_UNLIKELY(ecs_table_observed(table, event)))
+        ecs_emit_observers(table, entity, event, component, trigger_data);
 }
 
 static inline bool ecs_is_deferred(void) {

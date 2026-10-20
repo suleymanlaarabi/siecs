@@ -97,16 +97,11 @@ void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_add_cid_now(entity, cid);
 }
 
-void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
+static ECS_NOINLINE void
+ecs_remove_cid_notify(ecs_entity_t entity, ecs_component_t cid, uint16_t col_idx) {
     ecs_entity_record_t *record = ecs_get_record(entity);
     uint16_t from_id = record->table_id;
     ecs_table_t *table = ecs_get_table(from_id);
-
-    uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
-
-    if (ECS_UNLIKELY(col_idx == UINT16_MAX)) {
-        return;
-    }
 
     uint16_t new_table_id = table->cls[col_idx].remove_edge;
     if (new_table_id == UINT16_MAX) {
@@ -125,6 +120,27 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_emit(table, entity, EcsOnRemove, cid, removed_data);
 
     ecs_migrate(record, entity, table, new_table_id, 0);
+}
+
+void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
+    ecs_entity_record_t *record = ecs_get_record(entity);
+    ecs_table_t *table = ecs_get_table(record->table_id);
+
+    uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
+
+    if (ECS_UNLIKELY(col_idx == UINT16_MAX)) {
+        return;
+    }
+
+    /* Cached edge and nothing to notify: only the migration remains. The first
+     * crossing of the edge, hooks and observers take the out-of-line path. */
+    uint16_t new_table_id = table->cls[col_idx].remove_edge;
+    if (ECS_LIKELY(new_table_id != UINT16_MAX) && !ecs_component_index_get(cid)->on_remove &&
+        !ecs_table_observed(table, EcsOnRemove)) {
+        ecs_migrate(record, entity, table, new_table_id, 0);
+        return;
+    }
+    ecs_remove_cid_notify(entity, cid, col_idx);
 }
 
 void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
@@ -183,15 +199,11 @@ static inline bool ecs_store_plain_now(ecs_entity_t entity, ecs_component_t cid,
     return true;
 }
 
-static inline void
-ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
-    if (ECS_UNLIKELY(cid == ecs_id(Name))) {
-        ecs_name_update_now(entity, ((const Name *)data)->value, true, 0, false);
-        if (move) { free(((Name *)data)->value); ((Name *)data)->value = NULL; }
-        return;
-    }
-    if (ecs_store_plain_now(entity, cid, data))
-        return;
+/* Generic set: add the component (running OnAdd hooks and observers), then
+ * write the value inside a defer scope so hooks and observers cannot
+ * restructure storage under the write. */
+static ECS_NOINLINE void
+ecs_store_cid_notify(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     bool had_value = move && ecs_has_cid_owned(entity, cid);
     ecs_add_cid_now(entity, cid);
     if (!move)
@@ -214,12 +226,24 @@ ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool mov
         ecs_defer_end();
 }
 
+static inline void
+ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
+    if (ECS_UNLIKELY(cid == ecs_id(Name))) {
+        ecs_name_update_now(entity, ((const Name *)data)->value, true, 0, false);
+        if (move) { free(((Name *)data)->value); ((Name *)data)->value = NULL; }
+        return;
+    }
+    if (ecs_store_plain_now(entity, cid, data))
+        return;
+    ecs_store_cid_notify(entity, cid, data, move);
+}
+
 void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data) {
     ecs_store_cid_now(entity, cid, (void *)data, false);
 }
 
-static inline void ecs_store_cid(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
-    ecs_assert_component_access(entity, cid);
+static ECS_NOINLINE void
+ecs_store_cid_slow(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     if (ECS_UNLIKELY(move && cid == ecs_id(Name)) && data == ecs_get_cid(entity, cid)) return;
     if (ecs_is_deferred()) {
         if (move)
@@ -229,6 +253,17 @@ static inline void ecs_store_cid(ecs_entity_t entity, ecs_component_t cid, void 
         return;
     }
     ecs_store_cid_now(entity, cid, data, move);
+}
+
+/* The plain-component fast path is tried first, from a frame that holds
+ * nothing else; everything that may defer, notify or touch names is out of
+ * line. */
+static inline void ecs_store_cid(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
+    ecs_assert_component_access(entity, cid);
+    if (ECS_LIKELY(cid != ecs_id(Name) && !ecs_is_deferred()) &&
+        ecs_store_plain_now(entity, cid, data))
+        return;
+    ecs_store_cid_slow(entity, cid, data, move);
 }
 
 void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {

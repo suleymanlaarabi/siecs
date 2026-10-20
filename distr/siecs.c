@@ -4919,6 +4919,8 @@ char *sijson_stringify(sijson_value_t value) {
 #if defined(_MSC_VER)
 #include <intrin.h>
 
+#define ECS_ALWAYS_INLINE __forceinline
+#define ECS_NOINLINE __declspec(noinline)
 #define ECS_LIKELY(x) (!!(x))
 #define ECS_UNLIKELY(x) (!!(x))
 
@@ -4930,6 +4932,8 @@ static inline unsigned ecs_ctz(unsigned value) {
 
 #define ECS_CTZ(x) ecs_ctz((unsigned)(x))
 #else
+#define ECS_ALWAYS_INLINE inline __attribute__((always_inline))
+#define ECS_NOINLINE __attribute__((noinline))
 #define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
 #define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #define ECS_CTZ(x) __builtin_ctz((unsigned)(x))
@@ -5674,7 +5678,7 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
  * compiler lowers to a couple of moves; other sizes fall back to libc. */
 #define ECS_FIXED_SIZES(X) X(1) X(2) X(4) X(8) X(12) X(16) X(24) X(32) X(48) X(64)
 
-static inline void ecs_bytes_copy(void *dst, const void *src, size_t size) {
+static ECS_ALWAYS_INLINE void ecs_bytes_copy(void *dst, const void *src, size_t size) {
     switch (size) {
 #define ECS_COPY_CASE(n)                                                                           \
     case n:                                                                                        \
@@ -5687,7 +5691,7 @@ static inline void ecs_bytes_copy(void *dst, const void *src, size_t size) {
     }
 }
 
-static inline void ecs_bytes_zero(void *dst, size_t size) {
+static ECS_ALWAYS_INLINE void ecs_bytes_zero(void *dst, size_t size) {
     switch (size) {
 #define ECS_ZERO_CASE(n)                                                                           \
     case n:                                                                                        \
@@ -5716,7 +5720,7 @@ static inline bool ecs_value_copy(
         return true;
     }
     if (size)
-        ecs_bytes_copy(dst, src, size * count);
+        memcpy(dst, src, size * count);
     return false;
 }
 
@@ -6178,6 +6182,26 @@ static inline void ecs_emit_target_observers(
     }
 }
 
+/* True when emitting `event` on this table could run an observer. */
+static inline bool ecs_table_observed(const ecs_table_t *table, ecs_event_t event) {
+    if (observer_index.target_keys.size != 0)
+        return true;
+    return table->observers_by_event.size > event &&
+           sicore_vec_get(&table->observers_by_event, event, sicore_vec_t)->size != 0;
+}
+
+/* Deliver an event to the table's observers and to observers targeting the
+ * entity or one of its bases. Callers test ecs_table_observed() first. */
+void ecs_emit_observers(
+    ecs_table_t *table,
+    ecs_entity_t entity,
+    ecs_event_t event,
+    ecs_component_t component,
+    const void *trigger_data
+);
+
+/* Most tables have no observer for most events: test that inline and keep the
+ * delivery code (and its stack frame) out of every structural fast path. */
 static inline void ecs_emit(
     ecs_table_t *table,
     ecs_entity_t entity,
@@ -6185,42 +6209,8 @@ static inline void ecs_emit(
     ecs_component_t component,
     const void *trigger_data
 ) {
-    if (table->observers_by_event.size > event) {
-        const sicore_vec_t *list = sicore_vec_get(&table->observers_by_event, event, sicore_vec_t);
-        uint32_t n = list->size;
-        for (uint32_t i = 0; i < n; i++) {
-            ecs_observer_id_t oid = *sicore_vec_get(list, i, ecs_observer_id_t);
-            ecs_observer_t *obs =
-                sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
-            if (!obs->enabled) {
-                continue;
-            }
-            ecs_observer_event_t observer_event = {
-                .entity = entity,
-                .event = event,
-                .component = component,
-                .user_data = obs->user_data,
-                .trigger_data = trigger_data,
-            };
-            obs->callback(&observer_event);
-        }
-    }
-
-    if (observer_index.target_keys.size == 0) {
-        return;
-    }
-
-    for (ecs_entity_t target = entity; target; target = ecs_entity_base_raw(target)) {
-        ecs_emit_target_observers(table, entity, target, event, component, trigger_data);
-    }
-}
-
-/* True when emitting `event` on this table could run an observer. */
-static inline bool ecs_table_observed(const ecs_table_t *table, ecs_event_t event) {
-    if (observer_index.target_keys.size != 0)
-        return true;
-    return table->observers_by_event.size > event &&
-           sicore_vec_get(&table->observers_by_event, event, sicore_vec_t)->size != 0;
+    if (ECS_UNLIKELY(ecs_table_observed(table, event)))
+        ecs_emit_observers(table, entity, event, component, trigger_data);
 }
 
 static inline bool ecs_is_deferred(void) {
@@ -6576,8 +6566,14 @@ static inline void *ecs_data_column_at(const ecs_data_column_t *column, uint32_t
     return (uint8_t *)column->data + (size_t)column->size * row;
 }
 
+/* Lifecycle hooks of non-trivial values (out of line: row operations inline
+ * only the byte copies of plain values). */
+void ecs_value_move_hooked(ecs_component_t id, void *dst, void *src);
+void ecs_value_ctor_hooked(ecs_component_t id, void *dst);
+void ecs_value_dtor_hooked(ecs_component_t id, void *ptr);
+
 /* Move-construct `to[to_row]` from `from[from_row]`, leaving the source dead. */
-static inline void ecs_data_column_move(
+static ECS_ALWAYS_INLINE void ecs_data_column_move(
     const ecs_data_column_t *from,
     uint32_t from_row,
     const ecs_data_column_t *to,
@@ -6585,39 +6581,23 @@ static inline void ecs_data_column_move(
 ) {
     void *src = ecs_data_column_at(from, from_row);
     void *dst = ecs_data_column_at(to, to_row);
-    if (from->flags & EcsColumnTrivialMove) {
+    if (ECS_LIKELY(from->flags & EcsColumnTrivialMove))
         ecs_bytes_copy(dst, src, from->size);
-        return;
-    }
-
-    const ecs_component_record_t *record = ecs_component_index_get(from->id);
-    if (record->ops.move_ctor) {
-        record->ops.move_ctor(dst, src, 1);
-        return;
-    }
-
-    record->ops.copy_ctor(dst, src, 1);
-    if (record->ops.dtor) {
-        record->ops.dtor(src, 1);
-    }
+    else
+        ecs_value_move_hooked(from->id, dst, src);
 }
 
-static inline void ecs_data_column_ctor(const ecs_data_column_t *column, uint32_t row) {
+static ECS_ALWAYS_INLINE void ecs_data_column_ctor(const ecs_data_column_t *column, uint32_t row) {
     void *dst = ecs_data_column_at(column, row);
-    if (column->flags & EcsColumnZeroCtor) {
+    if (ECS_LIKELY(column->flags & EcsColumnZeroCtor))
         ecs_bytes_zero(dst, column->size);
-        return;
-    }
-
-    ecs_component_index_get(column->id)->ops.ctor(dst, 1);
+    else
+        ecs_value_ctor_hooked(column->id, dst);
 }
 
-static inline void ecs_data_column_dtor(const ecs_data_column_t *column, uint32_t row) {
-    if (column->flags & EcsColumnNoDtor) {
-        return;
-    }
-
-    ecs_component_index_get(column->id)->ops.dtor(ecs_data_column_at(column, row), 1);
+static ECS_ALWAYS_INLINE void ecs_data_column_dtor(const ecs_data_column_t *column, uint32_t row) {
+    if (ECS_UNLIKELY(!(column->flags & EcsColumnNoDtor)))
+        ecs_value_dtor_hooked(column->id, ecs_data_column_at(column, row));
 }
 
 static inline void ecs_table_remove_entity_update_record(
@@ -7814,16 +7794,11 @@ void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_add_cid_now(entity, cid);
 }
 
-void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
+static ECS_NOINLINE void
+ecs_remove_cid_notify(ecs_entity_t entity, ecs_component_t cid, uint16_t col_idx) {
     ecs_entity_record_t *record = ecs_get_record(entity);
     uint16_t from_id = record->table_id;
     ecs_table_t *table = ecs_get_table(from_id);
-
-    uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
-
-    if (ECS_UNLIKELY(col_idx == UINT16_MAX)) {
-        return;
-    }
 
     uint16_t new_table_id = table->cls[col_idx].remove_edge;
     if (new_table_id == UINT16_MAX) {
@@ -7842,6 +7817,27 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_emit(table, entity, EcsOnRemove, cid, removed_data);
 
     ecs_migrate(record, entity, table, new_table_id, 0);
+}
+
+void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
+    ecs_entity_record_t *record = ecs_get_record(entity);
+    ecs_table_t *table = ecs_get_table(record->table_id);
+
+    uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
+
+    if (ECS_UNLIKELY(col_idx == UINT16_MAX)) {
+        return;
+    }
+
+    /* Cached edge and nothing to notify: only the migration remains. The first
+     * crossing of the edge, hooks and observers take the out-of-line path. */
+    uint16_t new_table_id = table->cls[col_idx].remove_edge;
+    if (ECS_LIKELY(new_table_id != UINT16_MAX) && !ecs_component_index_get(cid)->on_remove &&
+        !ecs_table_observed(table, EcsOnRemove)) {
+        ecs_migrate(record, entity, table, new_table_id, 0);
+        return;
+    }
+    ecs_remove_cid_notify(entity, cid, col_idx);
 }
 
 void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
@@ -7900,15 +7896,11 @@ static inline bool ecs_store_plain_now(ecs_entity_t entity, ecs_component_t cid,
     return true;
 }
 
-static inline void
-ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
-    if (ECS_UNLIKELY(cid == ecs_id(Name))) {
-        ecs_name_update_now(entity, ((const Name *)data)->value, true, 0, false);
-        if (move) { free(((Name *)data)->value); ((Name *)data)->value = NULL; }
-        return;
-    }
-    if (ecs_store_plain_now(entity, cid, data))
-        return;
+/* Generic set: add the component (running OnAdd hooks and observers), then
+ * write the value inside a defer scope so hooks and observers cannot
+ * restructure storage under the write. */
+static ECS_NOINLINE void
+ecs_store_cid_notify(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     bool had_value = move && ecs_has_cid_owned(entity, cid);
     ecs_add_cid_now(entity, cid);
     if (!move)
@@ -7931,12 +7923,24 @@ ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool mov
         ecs_defer_end();
 }
 
+static inline void
+ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
+    if (ECS_UNLIKELY(cid == ecs_id(Name))) {
+        ecs_name_update_now(entity, ((const Name *)data)->value, true, 0, false);
+        if (move) { free(((Name *)data)->value); ((Name *)data)->value = NULL; }
+        return;
+    }
+    if (ecs_store_plain_now(entity, cid, data))
+        return;
+    ecs_store_cid_notify(entity, cid, data, move);
+}
+
 void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data) {
     ecs_store_cid_now(entity, cid, (void *)data, false);
 }
 
-static inline void ecs_store_cid(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
-    ecs_assert_component_access(entity, cid);
+static ECS_NOINLINE void
+ecs_store_cid_slow(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     if (ECS_UNLIKELY(move && cid == ecs_id(Name)) && data == ecs_get_cid(entity, cid)) return;
     if (ecs_is_deferred()) {
         if (move)
@@ -7946,6 +7950,17 @@ static inline void ecs_store_cid(ecs_entity_t entity, ecs_component_t cid, void 
         return;
     }
     ecs_store_cid_now(entity, cid, data, move);
+}
+
+/* The plain-component fast path is tried first, from a frame that holds
+ * nothing else; everything that may defer, notify or touch names is out of
+ * line. */
+static inline void ecs_store_cid(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
+    ecs_assert_component_access(entity, cid);
+    if (ECS_LIKELY(cid != ecs_id(Name) && !ecs_is_deferred()) &&
+        ecs_store_plain_now(entity, cid, data))
+        return;
+    ecs_store_cid_slow(entity, cid, data, move);
 }
 
 void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
@@ -9446,6 +9461,43 @@ void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *tr
     ecs_entity_record_t *record = ecs_get_record(entity);
     ecs_table_t *table = ecs_get_table(record->table_id);
     ecs_emit(table, entity, event, 0, trigger_data);
+}
+
+void ecs_emit_observers(
+    ecs_table_t *table,
+    ecs_entity_t entity,
+    ecs_event_t event,
+    ecs_component_t component,
+    const void *trigger_data
+) {
+    if (table->observers_by_event.size > event) {
+        const sicore_vec_t *list = sicore_vec_get(&table->observers_by_event, event, sicore_vec_t);
+        uint32_t n = list->size;
+        for (uint32_t i = 0; i < n; i++) {
+            ecs_observer_id_t oid = *sicore_vec_get(list, i, ecs_observer_id_t);
+            ecs_observer_t *obs =
+                sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
+            if (!obs->enabled) {
+                continue;
+            }
+            ecs_observer_event_t observer_event = {
+                .entity = entity,
+                .event = event,
+                .component = component,
+                .user_data = obs->user_data,
+                .trigger_data = trigger_data,
+            };
+            obs->callback(&observer_event);
+        }
+    }
+
+    if (observer_index.target_keys.size == 0) {
+        return;
+    }
+
+    for (ecs_entity_t target = entity; target; target = ecs_entity_base_raw(target)) {
+        ecs_emit_target_observers(table, entity, target, event, component, trigger_data);
+    }
 }
 
 #ifdef _WIN32
@@ -12010,6 +12062,27 @@ void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bo
     return location.table
                ? ecs_table_component_at_column(location.table, location.column, location.row)
                : NULL;
+}
+
+void ecs_value_move_hooked(ecs_component_t id, void *dst, void *src) {
+    const ecs_component_record_t *record = ecs_component_index_get(id);
+    if (record->ops.move_ctor) {
+        record->ops.move_ctor(dst, src, 1);
+        return;
+    }
+
+    record->ops.copy_ctor(dst, src, 1);
+    if (record->ops.dtor) {
+        record->ops.dtor(src, 1);
+    }
+}
+
+void ecs_value_ctor_hooked(ecs_component_t id, void *dst) {
+    ecs_component_index_get(id)->ops.ctor(dst, 1);
+}
+
+void ecs_value_dtor_hooked(ecs_component_t id, void *ptr) {
+    ecs_component_index_get(id)->ops.dtor(ptr, 1);
 }
 
 static inline void *ecs_migrate_impl(

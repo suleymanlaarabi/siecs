@@ -1,6 +1,7 @@
 #ifndef SIECS_VALUE_H
 #define SIECS_VALUE_H
 
+#include "helper.h"
 #include "siecs.h"
 #include <stdlib.h>
 #include <string.h>
@@ -10,7 +11,7 @@
  * compiler lowers to a couple of moves; other sizes fall back to libc. */
 #define ECS_FIXED_SIZES(X) X(1) X(2) X(4) X(8) X(12) X(16) X(24) X(32) X(48) X(64)
 
-static inline void ecs_bytes_copy(void *dst, const void *src, size_t size) {
+static ECS_ALWAYS_INLINE void ecs_bytes_copy(void *dst, const void *src, size_t size) {
     switch (size) {
 #define ECS_COPY_CASE(n)                                                                           \
     case n:                                                                                        \
@@ -23,7 +24,7 @@ static inline void ecs_bytes_copy(void *dst, const void *src, size_t size) {
     }
 }
 
-static inline void ecs_bytes_zero(void *dst, size_t size) {
+static ECS_ALWAYS_INLINE void ecs_bytes_zero(void *dst, size_t size) {
     switch (size) {
 #define ECS_ZERO_CASE(n)                                                                           \
     case n:                                                                                        \
@@ -52,7 +53,7 @@ static inline bool ecs_value_copy(
         return true;
     }
     if (size)
-        ecs_bytes_copy(dst, src, size * count);
+        memcpy(dst, src, size * count);
     return false;
 }
 

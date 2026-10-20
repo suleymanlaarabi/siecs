@@ -234,3 +234,24 @@ void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bo
                ? ecs_table_component_at_column(location.table, location.column, location.row)
                : NULL;
 }
+
+void ecs_value_move_hooked(ecs_component_t id, void *dst, void *src) {
+    const ecs_component_record_t *record = ecs_component_index_get(id);
+    if (record->ops.move_ctor) {
+        record->ops.move_ctor(dst, src, 1);
+        return;
+    }
+
+    record->ops.copy_ctor(dst, src, 1);
+    if (record->ops.dtor) {
+        record->ops.dtor(src, 1);
+    }
+}
+
+void ecs_value_ctor_hooked(ecs_component_t id, void *dst) {
+    ecs_component_index_get(id)->ops.ctor(dst, 1);
+}
+
+void ecs_value_dtor_hooked(ecs_component_t id, void *ptr) {
+    ecs_component_index_get(id)->ops.dtor(ptr, 1);
+}

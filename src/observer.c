@@ -208,3 +208,40 @@ void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *tr
     ecs_table_t *table = ecs_get_table(record->table_id);
     ecs_emit(table, entity, event, 0, trigger_data);
 }
+
+void ecs_emit_observers(
+    ecs_table_t *table,
+    ecs_entity_t entity,
+    ecs_event_t event,
+    ecs_component_t component,
+    const void *trigger_data
+) {
+    if (table->observers_by_event.size > event) {
+        const sicore_vec_t *list = sicore_vec_get(&table->observers_by_event, event, sicore_vec_t);
+        uint32_t n = list->size;
+        for (uint32_t i = 0; i < n; i++) {
+            ecs_observer_id_t oid = *sicore_vec_get(list, i, ecs_observer_id_t);
+            ecs_observer_t *obs =
+                sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
+            if (!obs->enabled) {
+                continue;
+            }
+            ecs_observer_event_t observer_event = {
+                .entity = entity,
+                .event = event,
+                .component = component,
+                .user_data = obs->user_data,
+                .trigger_data = trigger_data,
+            };
+            obs->callback(&observer_event);
+        }
+    }
+
+    if (observer_index.target_keys.size == 0) {
+        return;
+    }
+
+    for (ecs_entity_t target = entity; target; target = ecs_entity_base_raw(target)) {
+        ecs_emit_target_observers(table, entity, target, event, component, trigger_data);
+    }
+}

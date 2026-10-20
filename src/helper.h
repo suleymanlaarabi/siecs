@@ -7,6 +7,8 @@
 #if defined(_MSC_VER)
 #include <intrin.h>
 
+#define ECS_ALWAYS_INLINE __forceinline
+#define ECS_NOINLINE __declspec(noinline)
 #define ECS_LIKELY(x) (!!(x))
 #define ECS_UNLIKELY(x) (!!(x))
 
@@ -18,6 +20,8 @@ static inline unsigned ecs_ctz(unsigned value) {
 
 #define ECS_CTZ(x) ecs_ctz((unsigned)(x))
 #else
+#define ECS_ALWAYS_INLINE inline __attribute__((always_inline))
+#define ECS_NOINLINE __attribute__((noinline))
 #define ECS_LIKELY(x) __builtin_expect(!!(x), 1)
 #define ECS_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #define ECS_CTZ(x) __builtin_ctz((unsigned)(x))

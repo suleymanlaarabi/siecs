@@ -39,8 +39,14 @@ static inline void *ecs_data_column_at(const ecs_data_column_t *column, uint32_t
     return (uint8_t *)column->data + (size_t)column->size * row;
 }
 
+/* Lifecycle hooks of non-trivial values (out of line: row operations inline
+ * only the byte copies of plain values). */
+void ecs_value_move_hooked(ecs_component_t id, void *dst, void *src);
+void ecs_value_ctor_hooked(ecs_component_t id, void *dst);
+void ecs_value_dtor_hooked(ecs_component_t id, void *ptr);
+
 /* Move-construct `to[to_row]` from `from[from_row]`, leaving the source dead. */
-static inline void ecs_data_column_move(
+static ECS_ALWAYS_INLINE void ecs_data_column_move(
     const ecs_data_column_t *from,
     uint32_t from_row,
     const ecs_data_column_t *to,
@@ -48,39 +54,23 @@ static inline void ecs_data_column_move(
 ) {
     void *src = ecs_data_column_at(from, from_row);
     void *dst = ecs_data_column_at(to, to_row);
-    if (from->flags & EcsColumnTrivialMove) {
+    if (ECS_LIKELY(from->flags & EcsColumnTrivialMove))
         ecs_bytes_copy(dst, src, from->size);
-        return;
-    }
-
-    const ecs_component_record_t *record = ecs_component_index_get(from->id);
-    if (record->ops.move_ctor) {
-        record->ops.move_ctor(dst, src, 1);
-        return;
-    }
-
-    record->ops.copy_ctor(dst, src, 1);
-    if (record->ops.dtor) {
-        record->ops.dtor(src, 1);
-    }
+    else
+        ecs_value_move_hooked(from->id, dst, src);
 }
 
-static inline void ecs_data_column_ctor(const ecs_data_column_t *column, uint32_t row) {
+static ECS_ALWAYS_INLINE void ecs_data_column_ctor(const ecs_data_column_t *column, uint32_t row) {
     void *dst = ecs_data_column_at(column, row);
-    if (column->flags & EcsColumnZeroCtor) {
+    if (ECS_LIKELY(column->flags & EcsColumnZeroCtor))
         ecs_bytes_zero(dst, column->size);
-        return;
-    }
-
-    ecs_component_index_get(column->id)->ops.ctor(dst, 1);
+    else
+        ecs_value_ctor_hooked(column->id, dst);
 }
 
-static inline void ecs_data_column_dtor(const ecs_data_column_t *column, uint32_t row) {
-    if (column->flags & EcsColumnNoDtor) {
-        return;
-    }
-
-    ecs_component_index_get(column->id)->ops.dtor(ecs_data_column_at(column, row), 1);
+static ECS_ALWAYS_INLINE void ecs_data_column_dtor(const ecs_data_column_t *column, uint32_t row) {
+    if (ECS_UNLIKELY(!(column->flags & EcsColumnNoDtor)))
+        ecs_value_dtor_hooked(column->id, ecs_data_column_at(column, row));
 }
 
 static inline void ecs_table_remove_entity_update_record(
