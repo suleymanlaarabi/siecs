@@ -17,6 +17,8 @@ scheduled systems, relations, and runtime reflection.
 ## Project links
 
 - [Documentation](https://docs.siecs.dev/)
+- [AI coding skill](skills/README.md) — install SIECS guidance for Codex and
+  other Agent Skills-compatible coding agents.
 
 > [!CAUTION]
 > **Experimental project.**
