@@ -9,7 +9,10 @@
   },
   "lang.c": {
     "c-standard": "c17",
-    "include": ["../src", "../include"]
+    "include": ["../src", "../include"],
+    "${os windows}": {
+      "cflags": ["/experimental:c11atomics"]
+    }
   },
   "bundle": {
     "repositories": {

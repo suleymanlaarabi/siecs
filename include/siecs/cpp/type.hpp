@@ -19,11 +19,17 @@ template <class T> consteval std::string_view type_name() {
     constexpr auto end = end_semi == std::string_view::npos ? end_bracket : end_semi;
 #endif
 
+    auto name = func.substr(start, end - start);
 #if defined(_MSC_VER)
-    return func.substr(start, end - start);
-#else
-    return func.substr(start, end - start);
+    constexpr std::string_view prefixes[] = { "struct ", "class ", "enum ", "union " };
+    for (auto prefix : prefixes) {
+        if (name.starts_with(prefix)) {
+            name.remove_prefix(prefix.size());
+            break;
+        }
+    }
 #endif
+    return name;
 }
 
 } // namespace ecs

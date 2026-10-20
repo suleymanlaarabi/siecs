@@ -12,6 +12,7 @@
 void naming_paths_and_relative_creation(void);
 void naming_rename_and_reparent_replace(void);
 void naming_deferred_creation_and_anonymous_paths(void);
+void naming_cpp_type_names(void);
 
 // Testsuite 'system_param'
 void system_param_custom_query_phases(void);
@@ -141,6 +142,10 @@ bake_test_case naming_testcases[] = {
     {
         "deferred_creation_and_anonymous_paths",
         naming_deferred_creation_and_anonymous_paths
+    },
+    {
+        "cpp_type_names",
+        naming_cpp_type_names
     }
 };
 
@@ -554,7 +559,7 @@ static bake_test_suite suites[] = {
         "naming",
         NULL,
         NULL,
-        3,
+        4,
         naming_testcases
     },
     {
