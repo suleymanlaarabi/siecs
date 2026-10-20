@@ -39,6 +39,12 @@ static atomic_uint same_table_overlap;
 static SYSTEM_THREAD_LOCAL uint8_t system_thread_marker;
 static atomic_uintptr_t main_thread_only_marker;
 
+static void assert_parallel_worker_stacks(void) {
+    const uintptr_t first = atomic_load(&parallel_stacks[0]);
+    const uintptr_t second = atomic_load(&parallel_stacks[1]);
+    test_assert(first != second);
+}
+
 static ecs_entity_t create_system_entity(int value);
 static void add_tag_to_global_entity(ecs_iter_t *it);
 static void count_tag_system(ecs_iter_t *it);
@@ -124,7 +130,8 @@ static void resource_writer_system(ecs_iter_t *it) {
 
 static void resource_reader_system(ecs_iter_t *it) {
     (void)it;
-    test_assert(atomic_load_explicit(&resource_stage, memory_order_acquire) == 1);
+    const uint32_t stage = atomic_load_explicit(&resource_stage, memory_order_acquire);
+    test_uint(stage, 1);
     test_assert(ecs_get_resource_read(DeltaTime)->value == 1.0f);
     atomic_store_explicit(&resource_stage, 2, memory_order_release);
 }
@@ -306,7 +313,7 @@ void system_parallel_independent_callbacks(void) {
     ecs_progress();
 
     test_uint(2, atomic_load(&parallel_entered));
-    test_assert(atomic_load(&parallel_stacks[0]) != atomic_load(&parallel_stacks[1]));
+    assert_parallel_worker_stacks();
     ecs_fini();
 }
 
@@ -380,7 +387,7 @@ void system_parallel_query_table_conflicts(void) {
     );
     ecs_progress();
     test_uint(2, atomic_load(&parallel_entered));
-    test_assert(atomic_load(&parallel_stacks[0]) != atomic_load(&parallel_stacks[1]));
+    assert_parallel_worker_stacks();
 
     ecs_system(
         {
@@ -533,7 +540,7 @@ void system_resource_access_conflicts(void) {
 
     ecs_progress();
     test_uint(2, atomic_load(&parallel_entered));
-    test_assert(atomic_load(&parallel_stacks[0]) != atomic_load(&parallel_stacks[1]));
+    assert_parallel_worker_stacks();
     ecs_fini();
 
     atomic_store(&resource_stage, 0);
