@@ -226,3 +226,77 @@ void public_scene_unsupported_pointer_is_consistent(void) {
     test_null(data);
     ecs_fini();
 }
+
+void public_scene_binary_fixture_and_truncation(void) {
+    ecs_init();
+    ecs_component_t cid = ecs_component({ .name = "FixtureValue", .size = sizeof(int) });
+    ecs_entity_t entity = ecs_new();
+    int value = 42;
+    ecs_set_cid(entity, cid, &value);
+    /* Version 1: header, one table, one component id and its raw column. */
+    unsigned char fixture[42] = { 'S', 'I', 'E', 'C', 'S', 'S', 'C', 'N' };
+    uint32_t one = 1, zero = 0, payload = sizeof(int);
+    uint16_t count = 1;
+    memcpy(fixture + 8, &one, 4);
+    memcpy(fixture + 12, &one, 4);
+    memcpy(fixture + 16, &one, 4);
+    memcpy(fixture + 20, &zero, 4);
+    memcpy(fixture + 24, &one, 4);
+    memcpy(fixture + 28, &count, 2);
+    memcpy(fixture + 32, &cid, 2);
+    memcpy(fixture + 34, &payload, 4);
+    memcpy(fixture + 38, &value, 4);
+    void *saved = NULL;
+    size_t size = 0;
+    test_true(ecs_save_memory(&saved, &size));
+    test_uint(sizeof fixture, size);
+    test_assert(memcmp(fixture, saved, size) == 0);
+    for (size_t length = 0; length < size; length++) {
+        test_false(ecs_scene_validate(fixture, length));
+        test_false(ecs_load_memory(fixture, length));
+    }
+    fixture[30] = 1;
+    test_false(ecs_scene_validate(fixture, size));
+    fixture[30] = 0;
+    test_int(42, *(int *)ecs_get_cid(entity, cid));
+    ecs_kill(entity);
+    test_true(ecs_load_memory(fixture, size));
+    ecs_query_id_t query = ecs_query({ .components = { { cid, EcsIn } } });
+    test_int(1, ecs_query_count(query));
+    ecs_iter_t it = ecs_query_iter(query);
+    test_true(ecs_iter_next(&it));
+    test_int(42, *(int *)ecs_field(&it, 0));
+    ecs_query_fini(query);
+    ecs_scene_free(saved);
+    ecs_fini();
+}
+
+void public_scene_unaligned_component_ids(void) {
+    ecs_init();
+    ecs_component_t cid = ecs_component({ .name = "UnalignedValue", .size = sizeof(int) });
+    ecs_new_named(0, "A");
+    ecs_entity_t entity = ecs_new();
+    int value = 17;
+    ecs_set_cid(entity, cid, &value);
+    void *data = NULL;
+    size_t size = 0;
+    test_true(ecs_save_memory(&data, &size));
+    /* The one-byte name payload leaves the following table at an odd offset. */
+    uint32_t payload = 0;
+    memcpy(&payload, (const unsigned char *)data + 34, sizeof payload);
+    test_int(5, payload);
+    test_true(((38 + payload + 8) & 1) != 0);
+    test_true(ecs_scene_validate(data, size));
+    ecs_kill(ecs_lookup("A"));
+    ecs_kill(entity);
+    test_true(ecs_load_memory(data, size));
+    test_true(ecs_lookup("A") != 0);
+    ecs_query_id_t query = ecs_query({ .components = { { cid, EcsIn } } });
+    test_int(1, ecs_query_count(query));
+    ecs_iter_t it = ecs_query_iter(query);
+    test_true(ecs_iter_next(&it));
+    test_int(17, *(int *)ecs_field(&it, 0));
+    ecs_query_fini(query);
+    ecs_scene_free(data);
+    ecs_fini();
+}

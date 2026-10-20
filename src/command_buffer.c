@@ -1,4 +1,5 @@
 #include "command_buffer.h"
+#include "component_write.h"
 #include "datastructure/arena.h"
 #include "event_ops.h"
 #include "inheritance.h"
@@ -160,11 +161,14 @@ static void command_transition_copy_inherited(
     for (uint16_t i = 0; i < transition->inheritance.count; i++) {
         const ecs_command_inherited_copy_t *copy = &transition->inherited_copies[i];
         void *destination = ecs_table_component_at_column(table, copy->column, row);
-        if (copy->record->ops.copy) {
-            copy->record->ops.copy(destination, copy->source, 1);
-        } else if (copy->record->info->size) {
-            memcpy(destination, copy->source, copy->record->info->size);
-        }
+        ecs_value_copy(
+            &copy->record->ops,
+            copy->record->info->size,
+            destination,
+            copy->source,
+            1,
+            false
+        );
     }
 }
 
@@ -312,9 +316,9 @@ command_buffer_change(ecs_entity_t entity, ecs_component_t id, void *data, ecs_d
     const ecs_component_record_t *record = ecs_component_index_get(id);
     change->data = ecs_arena_alloc(buffer->arena, record->info->size ? record->info->size : 1);
     if (op == EcsDeferredMove) {
-        ecs_component_value_move_ctor(record, change->data, data, 1);
+        ecs_value_transfer(&record->ops, record->info->size, change->data, data, 1, true, true);
     } else {
-        ecs_component_value_copy_ctor(record, change->data, data, 1);
+        ecs_value_transfer(&record->ops, record->info->size, change->data, data, 1, false, true);
     }
 }
 
@@ -543,20 +547,17 @@ static void command_apply_changes(ecs_entity_command_t *command) {
         ecs_entity_record_t *entity_record = ecs_get_record(command->entity);
         ecs_table_t *table = ecs_get_table(entity_record->table_id);
         uint16_t column = ecs_table_get_column_index(table, id);
-        void *dst = ecs_table_component_at_column(table, column, entity_record->table_row);
-
-        if (record->on_set) {
-            record->on_set(command->entity, id, changes[i].data, dst);
-            if (!ecs_is_alive(command->entity)) {
-                return;
-            }
-            entity_record = ecs_get_record(command->entity);
-            table = ecs_get_table(entity_record->table_id);
-            column = ecs_table_get_column_index(table, id);
-            dst = ecs_table_component_at_column(table, column, entity_record->table_row);
-        }
-        ecs_emit(table, command->entity, EcsOnSet, changes[i].id, changes[i].data);
-        ecs_component_value_move(record, dst, changes[i].data, 1);
+        if (!ecs_component_write(
+                command->entity,
+                id,
+                record,
+                table,
+                entity_record->table_row,
+                column,
+                changes[i].data,
+                EcsWriteMove | EcsWriteNotify | EcsWriteCheckAlive
+            ))
+            return;
         changes[i].data = NULL;
     }
 }
@@ -582,14 +583,13 @@ static void command_finish_base_change(ecs_entity_command_t *command, ecs_entity
     if (command->base) {
         ecs_inheritance_instantiate_children(command->entity, command->base);
     }
-    ecs_entity_record_t *record = ecs_get_record(command->entity);
-    ecs_table_t *table = ecs_get_table(record->table_id);
-    ecs_relation_event_t event = {
-        .relation = ecs_rid(IsA),
-        .old_target = old_base,
-        .new_target = command->base,
-    };
-    ecs_emit(table, command->entity, EcsOnRelationSet, 0, &event);
+    ecs_emit_relation_event(
+        command->entity,
+        ecs_rid(IsA),
+        EcsOnRelationSet,
+        old_base,
+        command->base
+    );
 }
 
 static void command_apply(
@@ -648,16 +648,7 @@ static void command_apply(
     } else {
         final_type = command_build_type(buffer, old_table, command);
         if (base_changed) {
-            ecs_inheritance_plan_build(&final_type, command->base, &inheritance_plan);
-            if (inheritance_plan.count != 0) {
-                ecs_type_t materialized = ecs_type_with_added_ids(
-                    &final_type,
-                    inheritance_plan.ids,
-                    inheritance_plan.count
-                );
-                ecs_type_fini(&final_type);
-                final_type = materialized;
-            }
+            final_type = ecs_inheritance_materialize(final_type, command->base, &inheritance_plan);
         }
         target_type = &final_type;
         copy_plan = &inheritance_plan;

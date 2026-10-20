@@ -4993,9 +4993,23 @@ typedef struct {
 
 ecs_type_t ecs_type_with(const ecs_type_t *type, ecs_component_t component, ecs_type_pair_t pair);
 ecs_type_t ecs_type_without(const ecs_type_t *type, uint16_t component_index, uint16_t pair_key);
-ecs_type_t ecs_type_with_ids(const ecs_type_t *type, const uint16_t *ids, uint16_t count);
+/* Copy sorted ids, including byte-aligned scene input, into an owned type. */
+ecs_type_t ecs_type_with_ids(const ecs_type_t *type, const void *ids, uint16_t count);
 ecs_type_t
 ecs_type_with_added_ids(const ecs_type_t *type, const ecs_component_t *ids, uint16_t count);
+static inline uint32_t
+ecs_ids_lower_bound(const ecs_component_t *ids, uint32_t count, ecs_component_t id) {
+    uint32_t first = 0;
+    while (first < count) {
+        uint32_t middle = first + (count - first) / 2;
+        if (ids[middle] < id)
+            first = middle + 1;
+        else
+            count = middle;
+    }
+    return first;
+}
+
 static inline ecs_type_pair_t *ecs_type_pairs(const ecs_type_t *type) {
     uintptr_t end = (uintptr_t)type->ids + (uintptr_t)type->component_count * sizeof(uint16_t);
     return (ecs_type_pair_t *)((end + _Alignof(ecs_type_pair_t) - 1) &
@@ -5598,6 +5612,59 @@ ecs_relation_target_at_table(const ecs_table_t *table, ecs_relation_id_t relatio
 
 #ifndef SIECS_STORAGE_COMPONENT_INDEX_H
 #define SIECS_STORAGE_COMPONENT_INDEX_H
+#ifndef SIECS_VALUE_H
+#define SIECS_VALUE_H
+
+#include <stdlib.h>
+#include <string.h>
+
+/* Copying an inherited owned tag still invokes its explicit copy hook. Normal
+ * storage transfers skip zero-sized values before entering this primitive. */
+static inline bool ecs_value_copy(
+    const ecs_type_ops_t *ops,
+    size_t size,
+    void *dst,
+    const void *src,
+    uint32_t count,
+    bool construct
+) {
+    ecs_type_copy_t copy = construct ? ops->copy_ctor : ops->copy;
+    if (copy) {
+        copy(dst, src, count);
+        return true;
+    }
+    if (size)
+        memcpy(dst, src, size * count);
+    return false;
+}
+
+/* Construction and assignment have different hooks. A move consumes its source
+ * only when a move hook or a copy hook plus destructor performs that work. */
+static inline void ecs_value_transfer(
+    const ecs_type_ops_t *ops,
+    size_t size,
+    void *dst,
+    const void *src,
+    uint32_t count,
+    bool move,
+    bool construct
+) {
+    if (!size)
+        return;
+    ecs_type_move_t move_op = construct ? ops->move_ctor : ops->move;
+    if (move && move_op) {
+        move_op(dst, (void *)src, count);
+        return;
+    }
+    if (ecs_value_copy(ops, size, dst, src, count, construct) && move && ops->dtor)
+        ops->dtor((void *)src, count);
+}
+
+sireflect_struct_desc_t *ecs_reflection_desc_copy(const sireflect_struct_desc_t *desc);
+void ecs_reflection_desc_free(const sireflect_struct_desc_t *desc);
+
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -5640,19 +5707,9 @@ extern ecs_component_index_t component_index;
 
 void ecs_component_index_register(
     ecs_component_t id,
-    const char *name,
-    uint64_t size,
-    ecs_type_ops_t ops,
-    ecs_component_on_set_t on_set,
-    ecs_component_on_remove_t on_remove,
-    ecs_component_on_add_t on_add,
-    ecs_component_inheritance_t inheritance,
-#ifndef NDEBUG
-    ecs_component_mutation_t mutation,
-#endif
+    const ecs_component_desc_t *desc,
     uint32_t relation_flags,
-    sireflect_handle_t type,
-    const sireflect_struct_desc_t *reflection_desc
+    sireflect_handle_t type
 );
 
 void ecs_component_index_init();
@@ -5663,70 +5720,6 @@ ecs_component_record_t *ecs_component_index_get(ecs_component_t cid);
 static inline ecs_component_required_relation_t *
 ecs_component_default_relations(ecs_component_t component) {
     return ecs_component_index_get(component)->default_relations;
-}
-
-static inline void ecs_component_value_copy(
-    const ecs_component_record_t *record,
-    void *dst,
-    const void *src,
-    uint32_t count
-) {
-    if (!record->info->size)
-        return;
-    if (record->ops.copy)
-        record->ops.copy(dst, src, count);
-    else
-        memcpy(dst, src, (size_t)record->info->size * count);
-}
-
-static inline void ecs_component_value_copy_ctor(
-    const ecs_component_record_t *record,
-    void *dst,
-    const void *src,
-    uint32_t count
-) {
-    if (!record->info->size)
-        return;
-    if (record->ops.copy_ctor)
-        record->ops.copy_ctor(dst, src, count);
-    else
-        memcpy(dst, src, (size_t)record->info->size * count);
-}
-
-static inline void ecs_component_value_move(
-    const ecs_component_record_t *record,
-    void *dst,
-    void *src,
-    uint32_t count
-) {
-    if (!record->info->size)
-        return;
-    if (record->ops.move)
-        record->ops.move(dst, src, count);
-    else if (record->ops.copy) {
-        record->ops.copy(dst, src, count);
-        if (record->ops.dtor)
-            record->ops.dtor(src, count);
-    } else
-        memcpy(dst, src, (size_t)record->info->size * count);
-}
-
-static inline void ecs_component_value_move_ctor(
-    const ecs_component_record_t *record,
-    void *dst,
-    void *src,
-    uint32_t count
-) {
-    if (!record->info->size)
-        return;
-    if (record->ops.move_ctor)
-        record->ops.move_ctor(dst, src, count);
-    else if (record->ops.copy_ctor) {
-        record->ops.copy_ctor(dst, src, count);
-        if (record->ops.dtor)
-            record->ops.dtor(src, count);
-    } else
-        memcpy(dst, src, (size_t)record->info->size * count);
 }
 
 #endif
@@ -6263,6 +6256,58 @@ void ecs_bootstrap() {
     ECS_COMPONENT_REGISTER(Abstract);
 }
 
+#ifndef SIECS_COMPONENT_WRITE_H
+#define SIECS_COMPONENT_WRITE_H
+
+typedef enum {
+    EcsWriteMove = 1 << 0,
+    EcsWriteConstruct = 1 << 1,
+    EcsWriteRelationTarget = 1 << 2,
+    EcsWriteNotify = 1 << 3,
+    EcsWriteCheckAlive = 1 << 4,
+} ecs_component_write_flags_t;
+
+/* The caller supplies the already resolved column. Hooks may grow the table
+ * index or migrate the entity, so only that path resolves the location again.
+ * Relation storage writes the target without overwriting its reverse index. */
+static inline bool ecs_component_write(
+    ecs_entity_t entity,
+    ecs_component_t id,
+    const ecs_component_record_t *component,
+    ecs_table_t *table,
+    uint32_t row,
+    uint16_t column,
+    void *data,
+    unsigned flags
+) {
+    void *dst = ecs_table_component_at_column(table, column, row);
+    if (component->on_set) {
+        component->on_set(entity, id, data, dst);
+        if ((flags & EcsWriteCheckAlive) && !ecs_is_alive(entity))
+            return false;
+        const ecs_entity_record_t *record = ecs_get_record(entity);
+        table = ecs_get_table(record->table_id);
+        dst = ecs_table_get_component(table, id, record->table_row);
+    }
+    if (flags & EcsWriteNotify)
+        ecs_emit(table, entity, EcsOnSet, id, data);
+    if (flags & EcsWriteRelationTarget)
+        ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
+    else
+        ecs_value_transfer(
+            &component->ops,
+            component->info->size,
+            dst,
+            data,
+            1,
+            flags & EcsWriteMove,
+            flags & EcsWriteConstruct
+        );
+    return true;
+}
+
+#endif
+
 #ifndef SIECS_EVENT_OPS_H
 #define SIECS_EVENT_OPS_H
 
@@ -6372,12 +6417,9 @@ typedef struct {
  */
 void ecs_inheritance_instantiate_children(ecs_entity_t entity, ecs_entity_t base);
 
-/* Collect components that must become owned when a type inherits from base. */
-void ecs_inheritance_plan_build(
-    const ecs_type_t *child_type,
-    ecs_entity_t base,
-    ecs_inheritance_plan_t *plan
-);
+/* Consume type and add the owned components supplied by base. */
+ecs_type_t
+ecs_inheritance_materialize(ecs_type_t type, ecs_entity_t base, ecs_inheritance_plan_t *plan);
 
 void ecs_inheritance_plan_fini(ecs_inheritance_plan_t *plan);
 
@@ -6397,6 +6439,35 @@ void ecs_inheritance_plan_copy(
 #define SIECS_TABLE_OPS_H
 
 #include <string.h>
+
+typedef struct {
+    const ecs_table_t *table;
+    uint32_t row;
+    uint16_t column;
+    bool shared;
+} ecs_component_location_t;
+
+/* A location, rather than a data pointer, also represents zero-sized tags.
+ * Presence excludes inherited Abstract; value/field access keeps its existing
+ * rules. Owned fields use row zero to return the whole column. */
+static inline ecs_component_location_t
+ecs_component_locate(const ecs_table_t *table, uint32_t row, ecs_component_t id, bool presence) {
+    uint16_t column = ecs_table_column_or_invalid(table, id);
+    if (column != UINT16_MAX)
+        return (ecs_component_location_t){ table, row, column, false };
+    if (id == ecs_id(Name) || (presence && id == ecs_id(Abstract)))
+        return (ecs_component_location_t){ 0 };
+    ecs_entity_t base = ecs_type_isa_target(&table->type);
+    while (base) {
+        const ecs_entity_record_t *record = ecs_get_record(base);
+        table = ecs_get_table(record->table_id);
+        column = ecs_table_column_or_invalid(table, id);
+        if (column != UINT16_MAX)
+            return (ecs_component_location_t){ table, record->table_row, column, true };
+        base = ecs_type_isa_target(&table->type);
+    }
+    return (ecs_component_location_t){ 0 };
+}
 
 static inline void ecs_table_move_column(
     const ecs_table_t *from_table,
@@ -6506,6 +6577,26 @@ void *ecs_migrate(
     uint16_t to_table_id,
     ecs_component_t requested_id
 );
+
+/* Type registration may relocate the table index. Reacquire the source only
+ * afterwards; same-layout pair edits keep their specialized column loop. */
+static inline ecs_table_t *ecs_table_change_type(
+    ecs_entity_record_t *record,
+    ecs_entity_t entity,
+    ecs_type_t type,
+    bool same_layout
+) {
+    uint16_t from_id = record->table_id;
+    uint16_t to_id = ecs_table_index_get_or_create(type);
+    if (to_id != from_id) {
+        ecs_table_t *from = ecs_get_table(from_id);
+        if (same_layout)
+            ecs_migrate_same_layout(record, entity, from, to_id);
+        else
+            ecs_migrate(record, entity, from, to_id, 0);
+    }
+    return ecs_get_table(record->table_id);
+}
 
 #endif
 
@@ -6656,11 +6747,14 @@ static void command_transition_copy_inherited(
     for (uint16_t i = 0; i < transition->inheritance.count; i++) {
         const ecs_command_inherited_copy_t *copy = &transition->inherited_copies[i];
         void *destination = ecs_table_component_at_column(table, copy->column, row);
-        if (copy->record->ops.copy) {
-            copy->record->ops.copy(destination, copy->source, 1);
-        } else if (copy->record->info->size) {
-            memcpy(destination, copy->source, copy->record->info->size);
-        }
+        ecs_value_copy(
+            &copy->record->ops,
+            copy->record->info->size,
+            destination,
+            copy->source,
+            1,
+            false
+        );
     }
 }
 
@@ -6808,9 +6902,9 @@ command_buffer_change(ecs_entity_t entity, ecs_component_t id, void *data, ecs_d
     const ecs_component_record_t *record = ecs_component_index_get(id);
     change->data = ecs_arena_alloc(buffer->arena, record->info->size ? record->info->size : 1);
     if (op == EcsDeferredMove) {
-        ecs_component_value_move_ctor(record, change->data, data, 1);
+        ecs_value_transfer(&record->ops, record->info->size, change->data, data, 1, true, true);
     } else {
-        ecs_component_value_copy_ctor(record, change->data, data, 1);
+        ecs_value_transfer(&record->ops, record->info->size, change->data, data, 1, false, true);
     }
 }
 
@@ -7039,20 +7133,17 @@ static void command_apply_changes(ecs_entity_command_t *command) {
         ecs_entity_record_t *entity_record = ecs_get_record(command->entity);
         ecs_table_t *table = ecs_get_table(entity_record->table_id);
         uint16_t column = ecs_table_get_column_index(table, id);
-        void *dst = ecs_table_component_at_column(table, column, entity_record->table_row);
-
-        if (record->on_set) {
-            record->on_set(command->entity, id, changes[i].data, dst);
-            if (!ecs_is_alive(command->entity)) {
-                return;
-            }
-            entity_record = ecs_get_record(command->entity);
-            table = ecs_get_table(entity_record->table_id);
-            column = ecs_table_get_column_index(table, id);
-            dst = ecs_table_component_at_column(table, column, entity_record->table_row);
-        }
-        ecs_emit(table, command->entity, EcsOnSet, changes[i].id, changes[i].data);
-        ecs_component_value_move(record, dst, changes[i].data, 1);
+        if (!ecs_component_write(
+                command->entity,
+                id,
+                record,
+                table,
+                entity_record->table_row,
+                column,
+                changes[i].data,
+                EcsWriteMove | EcsWriteNotify | EcsWriteCheckAlive
+            ))
+            return;
         changes[i].data = NULL;
     }
 }
@@ -7078,14 +7169,13 @@ static void command_finish_base_change(ecs_entity_command_t *command, ecs_entity
     if (command->base) {
         ecs_inheritance_instantiate_children(command->entity, command->base);
     }
-    ecs_entity_record_t *record = ecs_get_record(command->entity);
-    ecs_table_t *table = ecs_get_table(record->table_id);
-    ecs_relation_event_t event = {
-        .relation = ecs_rid(IsA),
-        .old_target = old_base,
-        .new_target = command->base,
-    };
-    ecs_emit(table, command->entity, EcsOnRelationSet, 0, &event);
+    ecs_emit_relation_event(
+        command->entity,
+        ecs_rid(IsA),
+        EcsOnRelationSet,
+        old_base,
+        command->base
+    );
 }
 
 static void command_apply(
@@ -7144,16 +7234,7 @@ static void command_apply(
     } else {
         final_type = command_build_type(buffer, old_table, command);
         if (base_changed) {
-            ecs_inheritance_plan_build(&final_type, command->base, &inheritance_plan);
-            if (inheritance_plan.count != 0) {
-                ecs_type_t materialized = ecs_type_with_added_ids(
-                    &final_type,
-                    inheritance_plan.ids,
-                    inheritance_plan.count
-                );
-                ecs_type_fini(&final_type);
-                final_type = materialized;
-            }
+            final_type = ecs_inheritance_materialize(final_type, command->base, &inheritance_plan);
         }
         target_type = &final_type;
         copy_plan = &inheritance_plan;
@@ -7421,23 +7502,7 @@ static ecs_component_t ecs_component_register_type(
     }
 
     ecs_component_t component = *id;
-    ecs_component_index_register(
-        component,
-        desc->name,
-
-        desc->size,
-        desc->ops,
-        desc->on_set,
-        desc->on_remove,
-        desc->on_add,
-        desc->inheritance,
-#ifndef NDEBUG
-        desc->mutation,
-#endif
-        0,
-        type,
-        desc->struct_desc
-    );
+    ecs_component_index_register(component, desc, 0, type);
     return component;
 }
 
@@ -7447,43 +7512,32 @@ ecs_component_t ecs_component_register_relation_internal(
     bool by_target
 ) {
     ecs_component_t component = ecs_component_alloc_ids(by_target ? 1 : 2);
-    uint32_t target_flags = ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationTarget);
+    ecs_component_desc_t desc = {
+        .name = name,
+        .size = by_target ? 0 : sizeof(RelationTarget),
+        .on_set = by_target ? NULL : RelationOnSet,
+        .on_remove = by_target ? ecs_relation_target_on_remove : RelationOnRemove,
+        .inheritance = EcsInheritShared,
+    };
     ecs_component_index_register(
         component,
-        name,
-
-        by_target ? 0 : sizeof(RelationTarget),
-        (ecs_type_ops_t){ 0 },
-        by_target ? NULL : RelationOnSet,
-        by_target ? ecs_relation_target_on_remove : RelationOnRemove,
-        NULL,
-        EcsInheritShared,
-#ifndef NDEBUG
-        EcsMutable,
-#endif
-        target_flags,
-        SIREFLECT_INVALID_HANDLE,
-        NULL
+        &desc,
+        ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationTarget),
+        SIREFLECT_INVALID_HANDLE
     );
-    if (by_target) {
+    if (by_target)
         return component;
-    }
+    desc = (ecs_component_desc_t){
+        .size = sizeof(RelationSource),
+        .ops.dtor = RelationSourceDtor,
+        .on_remove = RelationSourceOnRemove,
+        .inheritance = EcsInheritShared,
+    };
     ecs_component_index_register(
         component + 1,
-        NULL,
-
-        sizeof(RelationSource),
-        (ecs_type_ops_t){ .dtor = RelationSourceDtor },
-        NULL,
-        RelationSourceOnRemove,
-        NULL,
-        EcsInheritShared,
-#ifndef NDEBUG
-        EcsMutable,
-#endif
+        &desc,
         ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationSource),
-        SIREFLECT_INVALID_HANDLE,
-        NULL
+        SIREFLECT_INVALID_HANDLE
     );
     return component;
 }
@@ -7602,48 +7656,30 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
 
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
 
-    if (crec->required_count == 0) {
-        if (edge == UINT16_MAX) {
-            ecs_type_t new_type = ecs_type_with(&table->type, cid, (ecs_type_pair_t){ 0 });
-            edge = ecs_table_index_get_or_create(new_type);
-
-            table = ecs_get_table(from_id);
-            ecs_id_map_set(&table->add_edge, cid, edge);
-        }
-
-        ecs_table_t *new_table = ecs_get_table(edge);
-        void *component_data = ecs_migrate(record, entity, table, edge, cid);
-
-        if (crec->on_add) {
-            crec->on_add(entity, cid, component_data);
-        }
-        ecs_emit(new_table, entity, EcsOnAdd, cid, component_data);
-        if (ECS_UNLIKELY(ecs_component_default_relations(cid))) {
-            ecs_apply_component_default_relations(entity, cid);
-        }
-        return;
-    }
-
     if (edge == UINT16_MAX) {
-        ecs_component_t added[ECS_COMPONENT_REQUIRE_CAPACITY];
-        uint16_t count = 0, required = 0;
-        bool component_pending = true;
-        while (required < crec->required_count || component_pending) {
-            ecs_component_t next =
-                required < crec->required_count ? crec->required[required] : UINT16_MAX;
-            if (component_pending && cid < next) {
-                next = cid;
-                component_pending = false;
-            } else if (component_pending && cid == next)
-                component_pending = false;
-            else
-                required++;
-            if (!ecs_table_has_owned(table, next))
-                added[count++] = next;
+        ecs_type_t new_type;
+        if (crec->required_count == 0) {
+            new_type = ecs_type_with(&table->type, cid, (ecs_type_pair_t){ 0 });
+        } else {
+            ecs_component_t added[ECS_COMPONENT_REQUIRE_CAPACITY];
+            uint16_t count = 0, required = 0;
+            bool component_pending = true;
+            while (required < crec->required_count || component_pending) {
+                ecs_component_t next =
+                    required < crec->required_count ? crec->required[required] : UINT16_MAX;
+                if (component_pending && cid < next) {
+                    next = cid;
+                    component_pending = false;
+                } else if (component_pending && cid == next)
+                    component_pending = false;
+                else
+                    required++;
+                if (!ecs_table_has_owned(table, next))
+                    added[count++] = next;
+            }
+            new_type = ecs_type_with_added_ids(&table->type, added, count);
         }
-        ecs_type_t new_type = ecs_type_with_added_ids(&table->type, added, count);
         edge = ecs_table_index_get_or_create(new_type);
-
         table = ecs_get_table(from_id);
         ecs_id_map_set(&table->add_edge, cid, edge);
     }
@@ -7719,40 +7755,14 @@ void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_remove_cid_now(entity, cid);
 }
 
-/*
- * Resolve an owned or inherited component from a live entity record.
- * The record and every base in its type chain are trusted SIECS invariants;
- * callers perform the public entity validation before entering this helper.
- */
-static inline void *
-ecs_component_get_from_record(const ecs_entity_record_t *record, ecs_component_t component) {
-    ecs_table_t *table = ecs_get_table(record->table_id);
-    uint16_t col_idx = ecs_table_column_or_invalid(table, component);
-    if (col_idx != UINT16_MAX) {
-        return ecs_table_component_at_column(table, col_idx, record->table_row);
-    }
-
-    if (component == ecs_id(Name)) return NULL;
-    ecs_entity_t base = ecs_type_isa_target(&table->type);
-    while (base != 0) {
-        const ecs_entity_record_t *base_record = ecs_get_record(base);
-        ecs_table_t *base_table = ecs_get_table(base_record->table_id);
-
-        col_idx = ecs_table_column_or_invalid(base_table, component);
-        if (col_idx != UINT16_MAX) {
-            return ecs_table_component_at_column(base_table, col_idx, base_record->table_row);
-        }
-
-        base = ecs_type_isa_target(&base_table->type);
-    }
-
-    return NULL;
-}
-
 void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_component_access(entity, cid);
-
-    return ecs_component_get_from_record(ecs_get_record(entity), cid);
+    const ecs_entity_record_t *record = ecs_get_record(entity);
+    ecs_component_location_t location =
+        ecs_component_locate(ecs_get_table(record->table_id), record->table_row, cid, false);
+    return location.table
+               ? ecs_table_component_at_column(location.table, location.column, location.row)
+               : NULL;
 }
 
 void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid) { return ecs_get_cid(entity, cid); }
@@ -7770,24 +7780,18 @@ ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool mov
         ecs_defer_begin();
     const ecs_component_record_t *crec = ecs_component_index_get(cid);
     entity_edit(entity, table, record);
-    void *dst = ecs_table_get_component(table, cid, record->table_row);
-
-    if (crec->on_set) {
-        crec->on_set(entity, cid, data, dst);
-        /* Relation hooks can migrate their target and grow the table index. */
-        record = ecs_get_record(entity);
-        table = ecs_get_table(record->table_id);
-        dst = ecs_table_get_component(table, cid, record->table_row);
-    }
-    ecs_emit(table, entity, EcsOnSet, cid, data);
-    if (crec->relation_flags & EcsComponentRelationTarget) {
-        ((RelationTarget *)dst)->entity = ((const RelationTarget *)data)->entity;
-    } else if (!move) {
-        ecs_component_value_copy(crec, dst, data, 1);
-    } else if (had_value || crec->ops.ctor)
-        ecs_component_value_move(crec, dst, data, 1);
-    else
-        ecs_component_value_move_ctor(crec, dst, data, 1);
+    ecs_component_write(
+        entity,
+        cid,
+        crec,
+        table,
+        record->table_row,
+        ecs_table_get_column_index(table, cid),
+        data,
+        EcsWriteNotify | (move ? EcsWriteMove : 0) |
+            (move && !had_value && !crec->ops.ctor ? EcsWriteConstruct : 0) |
+            (crec->relation_flags & EcsComponentRelationTarget ? EcsWriteRelationTarget : 0)
+    );
     if (!move)
         ecs_defer_end();
 }
@@ -7844,21 +7848,8 @@ bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id) {
     return ecs_table_has_owned(ecs_get_table(tid), id);
 }
 
-static uint32_t
-ecs_required_lower_bound(const ecs_component_t *ids, uint32_t count, ecs_component_t id) {
-    uint32_t first = 0;
-    while (first < count) {
-        uint32_t middle = first + (count - first) / 2;
-        if (ids[middle] < id)
-            first = middle + 1;
-        else
-            count = middle;
-    }
-    return first;
-}
-
 static void ecs_required_add(ecs_component_record_t *record, ecs_component_t id) {
-    uint32_t at = ecs_required_lower_bound(record->required, record->required_count, id);
+    uint32_t at = ecs_ids_lower_bound(record->required, record->required_count, id);
     if (at < record->required_count && record->required[at] == id)
         return;
     ecs_assert(
@@ -7881,11 +7872,8 @@ static inline void ecs_with_impl(ecs_component_t component, ecs_component_t requ
     ecs_assert_id_valid(require);
     ecs_assert(component != require, "component cannot require itself: %d\n", component);
     const ecs_component_record_t *required_record = ecs_component_index_get(require);
-    uint32_t cycle = ecs_required_lower_bound(
-        required_record->required,
-        required_record->required_count,
-        component
-    );
+    uint32_t cycle =
+        ecs_ids_lower_bound(required_record->required, required_record->required_count, component);
     ecs_assert(
         cycle == required_record->required_count || required_record->required[cycle] != component,
         "cyclic component requirement: %d requires %d\n",
@@ -7897,7 +7885,7 @@ static inline void ecs_with_impl(ecs_component_t component, ecs_component_t requ
     ecs_component_record_t *records = component_index.components.data;
     for (uint32_t i = 1; i < component_index.components.size; i++) {
         ecs_component_record_t *record = &records[i];
-        uint32_t at = ecs_required_lower_bound(record->required, record->required_count, component);
+        uint32_t at = ecs_ids_lower_bound(record->required, record->required_count, component);
         if (i != component && (at == record->required_count || record->required[at] != component))
             continue;
         ecs_assert(record->tables.size == 0, "component already used cannot register requirement");
@@ -8067,27 +8055,23 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     }
 
     ecs_inheritance_plan_t plan;
-    ecs_inheritance_plan_build(&from_table->type, target, &plan);
-    ecs_type_t materialized = ecs_type_with_added_ids(&from_table->type, plan.ids, plan.count);
     ecs_type_t new_type;
     if (target) {
         new_type = ecs_type_with(
-            &materialized,
+            &from_table->type,
             0,
             (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = target }
         );
     } else {
         ecs_assert(
-            ecs_type_pair_index(&materialized, ecs_rid(IsA)) != UINT16_MAX,
+            ecs_type_pair_index(&from_table->type, ecs_rid(IsA)) != UINT16_MAX,
             "missing IsA pair\n"
         );
-        new_type = ecs_type_without(&materialized, UINT16_MAX, ecs_rid(IsA));
+        new_type = ecs_type_without(&from_table->type, UINT16_MAX, ecs_rid(IsA));
     }
-    ecs_type_fini(&materialized);
-    uint16_t to_table_id = ecs_table_index_get_or_create(new_type);
+    new_type = ecs_inheritance_materialize(new_type, target, &plan);
+    ecs_table_t *to_table = ecs_table_change_type(record, entity, new_type, false);
     from_table = ecs_get_table(from_table_id);
-    ecs_migrate(record, entity, from_table, to_table_id, 0);
-    ecs_table_t *to_table = ecs_get_table(to_table_id);
     ecs_inheritance_plan_copy(&plan, target, to_table, record->table_row);
     ecs_emit_added_components(from_table, to_table, entity, record->table_row);
     ecs_inheritance_plan_fini(&plan);
@@ -8201,24 +8185,6 @@ static uint16_t ecs_inheritance_base_component_capacity(ecs_entity_t base) {
     return (uint16_t)capacity;
 }
 
-static bool ecs_inheritance_type_has(const ecs_type_t *type, ecs_component_t component) {
-    uint16_t first = 0;
-    uint16_t last = type->component_count;
-    while (first < last) {
-        uint16_t middle = (uint16_t)(first + (last - first) / 2);
-        ecs_component_t current = type->ids[middle];
-        if (current == component) {
-            return true;
-        }
-        if (current < component) {
-            first = (uint16_t)(middle + 1);
-        } else {
-            last = middle;
-        }
-    }
-    return false;
-}
-
 static bool ecs_inheritance_component_is_owned(ecs_component_t component) {
     if (component == ecs_id(Abstract) || component == ecs_id(Name)) {
         return false;
@@ -8237,7 +8203,7 @@ static int ecs_inheritance_component_compare(const void *left, const void *right
     return a < b ? -1 : a > b ? 1 : 0;
 }
 
-void ecs_inheritance_plan_build(
+static void ecs_inheritance_plan_build(
     const ecs_type_t *child_type,
     ecs_entity_t base,
     ecs_inheritance_plan_t *plan
@@ -8259,8 +8225,11 @@ void ecs_inheritance_plan_build(
         const ecs_table_t *table = ecs_get_table(record->table_id);
         for (uint16_t i = 0; i < table->type.component_count; i++) {
             ecs_component_t component = table->type.ids[i];
-            if (ecs_inheritance_component_is_owned(component) &&
-                !ecs_inheritance_type_has(child_type, component)) {
+            if (!ecs_inheritance_component_is_owned(component))
+                continue;
+            uint32_t at =
+                ecs_ids_lower_bound(child_type->ids, child_type->component_count, component);
+            if (at == child_type->component_count || child_type->ids[at] != component) {
                 ids[count++] = component;
             }
         }
@@ -8284,6 +8253,16 @@ void ecs_inheritance_plan_build(
     plan->count = unique;
 }
 
+ecs_type_t
+ecs_inheritance_materialize(ecs_type_t type, ecs_entity_t base, ecs_inheritance_plan_t *plan) {
+    ecs_inheritance_plan_build(&type, base, plan);
+    if (!plan->count)
+        return type;
+    ecs_type_t materialized = ecs_type_with_added_ids(&type, plan->ids, plan->count);
+    ecs_type_fini(&type);
+    return materialized;
+}
+
 void ecs_inheritance_plan_fini(ecs_inheritance_plan_t *plan) {
     free(plan->ids);
     plan->ids = NULL;
@@ -8301,11 +8280,7 @@ void ecs_inheritance_plan_copy(
         const ecs_component_record_t *record = ecs_component_index_get(component);
         const void *source = ecs_try_get_cid(base, component);
         void *destination = ecs_table_get_component(child_table, component, child_row);
-        if (record->ops.copy) {
-            record->ops.copy(destination, source, 1);
-        } else if (record->info->size) {
-            memcpy(destination, source, record->info->size);
-        }
+        ecs_value_copy(&record->ops, record->info->size, destination, source, 1, false);
     }
 }
 
@@ -9617,6 +9592,28 @@ bool ecs_reflect_type_has_role(sireflect_handle_t type, const char *role) {
     return meta && meta->kind == SIREFLECT_META_STRING && strcmp(meta->value.string, role) == 0;
 }
 
+sireflect_struct_desc_t *ecs_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
+    if (!desc)
+        return NULL;
+    sireflect_struct_desc_t *copy = malloc(sizeof *copy);
+    if (!copy)
+        abort();
+    *copy = *desc;
+    copy->name = strdup(desc->name);
+    copy->fields = strdup(desc->fields);
+    if (!copy->name || !copy->fields)
+        abort();
+    return copy;
+}
+
+void ecs_reflection_desc_free(const sireflect_struct_desc_t *desc) {
+    if (!desc)
+        return;
+    free((char *)desc->name);
+    free((char *)desc->fields);
+    free((void *)desc);
+}
+
 ecs_relation_index_t relation_index;
 
 static void
@@ -9904,17 +9901,17 @@ static void ecs_relation_set_dense(
     const ecs_component_record_t *crec = ecs_component_index_get(component);
     RelationTarget value = { .entity = target };
     ecs_entity_record_t *record = ecs_get_record(entity);
-    RelationTarget *current = ecs_table_component_at_column(table, column, record->table_row);
-
     ecs_defer_begin();
-    if (crec->on_set) {
-        crec->on_set(entity, component, &value, current);
-        record = ecs_get_record(entity);
-        table = ecs_get_table(record->table_id);
-        current = ecs_table_get_component(table, component, record->table_row);
-    }
-    ecs_emit(table, entity, EcsOnSet, component, &value);
-    current->entity = value.entity;
+    ecs_component_write(
+        entity,
+        component,
+        crec,
+        table,
+        record->table_row,
+        column,
+        &value,
+        EcsWriteRelationTarget | EcsWriteNotify
+    );
     ecs_defer_end();
 }
 
@@ -9938,34 +9935,17 @@ static ecs_table_t *ecs_relation_set_pair(
     uint64_t value
 ) {
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    uint16_t from_id = entity_record->table_id;
-    ecs_table_t *from = ecs_get_table(from_id);
+    const ecs_table_t *from = ecs_get_table(entity_record->table_id);
     ecs_type_t type =
         ecs_type_with(&from->type, component, (ecs_type_pair_t){ .key = key, .value = value });
-    uint16_t to_id = ecs_table_index_get_or_create(type);
-    if (to_id != from_id) {
-        from = ecs_get_table(from_id);
-        if (component) {
-            ecs_migrate(entity_record, entity, from, to_id, 0);
-        } else {
-            ecs_migrate_same_layout(entity_record, entity, from, to_id);
-        }
-    }
-    return ecs_get_table(entity_record->table_id);
+    return ecs_table_change_type(entity_record, entity, type, component == 0);
 }
 
 static void ecs_relation_remove_pair(ecs_entity_t entity, uint16_t component_at, uint16_t key) {
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    uint16_t from_id = entity_record->table_id;
-    ecs_table_t *from = ecs_get_table(from_id);
+    const ecs_table_t *from = ecs_get_table(entity_record->table_id);
     ecs_type_t type = ecs_type_without(&from->type, component_at, key);
-    uint16_t to_id = ecs_table_index_get_or_create(type);
-    from = ecs_get_table(from_id);
-    if (component_at == UINT16_MAX) {
-        ecs_migrate_same_layout(entity_record, entity, from, to_id);
-    } else {
-        ecs_migrate(entity_record, entity, from, to_id, 0);
-    }
+    ecs_table_change_type(entity_record, entity, type, component_at == UINT16_MAX);
 }
 
 static void ecs_relation_update_children_depth(
@@ -10003,15 +9983,18 @@ static void ecs_relation_set_depth(
         depth
     );
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    RelationTarget *current =
-        ecs_table_get_component(table, relation_record->component, entity_record->table_row);
     const ecs_component_record_t *component = ecs_component_index_get(relation_record->component);
     RelationTarget value = { .entity = target };
-    component->on_set(entity, relation_record->component, &value, current);
-    entity_record = ecs_get_record(entity);
-    table = ecs_get_table(entity_record->table_id);
-    current = ecs_table_get_component(table, relation_record->component, entity_record->table_row);
-    current->entity = value.entity;
+    ecs_component_write(
+        entity,
+        relation_record->component,
+        component,
+        table,
+        entity_record->table_row,
+        ecs_table_get_column_index(table, relation_record->component),
+        &value,
+        EcsWriteRelationTarget
+    );
     ecs_relation_update_children_depth(entity, relation, depth);
 }
 
@@ -10373,25 +10356,11 @@ ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc
     ecs_resource_info_t *info = malloc(sizeof *info);
     if (!info)
         abort();
-    sireflect_struct_desc_t *reflection = NULL;
-    if (desc->struct_desc) {
-        reflection = malloc(sizeof *reflection);
-        if (!reflection)
-            abort();
-        *reflection = (sireflect_struct_desc_t){
-            .name = strdup(desc->struct_desc->name),
-            .fields = strdup(desc->struct_desc->fields),
-            .size = desc->struct_desc->size,
-            .align = desc->struct_desc->align,
-        };
-        if (!reflection->name || !reflection->fields)
-            abort();
-    }
     *info = (ecs_resource_info_t){
         .name = strdup(desc->name),
         .size = desc->size,
         .type = type,
-        .reflection = reflection,
+        .reflection = ecs_reflection_desc_copy(desc->struct_desc),
     };
     if (!info->name)
         abort();
@@ -10449,20 +10418,7 @@ static inline void ecs_resource_store(ecs_resource_t id, void *data, bool move) 
         record->data = calloc(1, record->info->size ? record->info->size : 1);
         ecs_assert_not_null(record->data);
     }
-    if (!record->info->size)
-        return;
-    ecs_type_move_t move_op = construct ? record->ops.move_ctor : record->ops.move;
-    if (move && move_op) {
-        move_op(record->data, data, 1);
-    } else {
-        ecs_type_copy_t copy_op = construct ? record->ops.copy_ctor : record->ops.copy;
-        if (copy_op) {
-            copy_op(record->data, data, 1);
-            if (move && record->ops.dtor)
-                record->ops.dtor(data, 1);
-        } else
-            memcpy(record->data, data, record->info->size);
-    }
+    ecs_value_transfer(&record->ops, record->info->size, record->data, data, 1, move, construct);
 }
 
 void ecs_set_resource_rid(ecs_resource_t id, const void *data) {
@@ -10517,11 +10473,7 @@ void ecs_resource_storage_fini(void) {
         if (!info)
             continue;
         free((char *)info->name);
-        if (info->reflection) {
-            free((char *)info->reflection->name);
-            free((char *)info->reflection->fields);
-            free((void *)info->reflection);
-        }
+        ecs_reflection_desc_free(info->reflection);
         free(info);
     }
     sicore_vec_fini(&ecs_resources);
@@ -10972,39 +10924,25 @@ static bool ecs_scene_write_component_payload(
     if (!column->size)
         return ecs_scene_write_u32(out, 0);
 
-    ecs_scene_writer_t payload;
-    ecs_scene_writer_init(&payload);
-
-    bool codec = ecs_scene_component_use_codec(record);
-    if (!codec) {
-        size_t bytes = (size_t)column->size * table->entity_count;
-        if (bytes > UINT32_MAX || !ecs_scene_write(&payload, column->data, bytes)) {
-            ecs_scene_writer_fini(&payload);
-            return false;
-        }
-    } else {
-        if (record->info->type == SIREFLECT_INVALID_HANDLE) {
-            ecs_scene_writer_fini(&payload);
-            return false;
-        }
-        for (uint32_t row = 0; row < table->entity_count; row++) {
-            const void *value = (const unsigned char *)column->data + (size_t)row * column->size;
-            if (!ecs_scene_save_value(&payload, record->info->type, value, ctx)) {
-                ecs_scene_writer_fini(&payload);
-                return false;
-            }
-        }
-    }
-
-    if (!payload.ok || payload.size > UINT32_MAX ||
-        !ecs_scene_write_u32(out, (uint32_t)payload.size) ||
-        !ecs_scene_write(out, payload.data, payload.size)) {
-        ecs_scene_writer_fini(&payload);
+    size_t length_at = out->size;
+    if (!ecs_scene_write_u32(out, 0))
         return false;
+    size_t begin = out->size;
+    if (!ecs_scene_component_use_codec(record)) {
+        uint64_t bytes = (uint64_t)column->size * table->entity_count;
+        if (bytes > UINT32_MAX || !ecs_scene_write(out, column->data, (size_t)bytes))
+            return false;
+    } else {
+        if (record->info->type == SIREFLECT_INVALID_HANDLE)
+            return false;
+        for (uint32_t row = 0; row < table->entity_count; row++) {
+            const void *value = ecs_table_component_at_column(table, column_index, row);
+            if (!ecs_scene_save_value(out, record->info->type, value, ctx))
+                return false;
+        }
     }
-
-    ecs_scene_writer_fini(&payload);
-    return true;
+    size_t bytes = out->size - begin;
+    return bytes <= UINT32_MAX && ecs_scene_writer_patch_u32(out, length_at, (uint32_t)bytes);
 }
 
 static bool ecs_scene_write_tables(ecs_scene_writer_t *w, const ecs_scene_save_ctx_t *ctx) {
@@ -11192,317 +11130,61 @@ static bool ecs_scene_read_file(const char *path, unsigned char **data_out, size
     return true;
 }
 
-static bool ecs_scene_validate_tables(
-    ecs_scene_reader_t *r,
-    uint32_t table_count,
-    uint32_t entity_count,
-    const unsigned char **relations_begin
-);
+/* All three table passes use the same checked cursor. Component ids stay in
+ * the input buffer and are read with memcpy: a preceding string payload may
+ * leave the next table unaligned. Only the archetype takes an owned copy. */
+typedef enum { EcsSceneCheck, EcsSceneCreate, EcsSceneApply } ecs_scene_table_pass_t;
+typedef struct {
+    uint32_t table_count, entity_count, relation_count;
+    ecs_scene_reader_t tables, relations;
+} ecs_scene_document_t;
 
-static bool ecs_scene_read_header(
-    ecs_scene_reader_t *r,
-    uint32_t *table_count,
-    uint32_t *entity_count,
-    uint32_t *relation_edge_count
-) {
-    unsigned char magic[ECS_SCENE_MAGIC_SIZE];
-    if (!ecs_scene_reader_take(r, magic, sizeof magic))
-        return false;
-    if (memcmp(magic, ecs_scene_magic, sizeof magic) != 0)
-        return false;
-
-    uint32_t version = ecs_scene_read_u32(r);
-    if (!r->ok || version != ECS_SCENE_VERSION)
-        return false;
-
-    *table_count = ecs_scene_read_u32(r);
-    *entity_count = ecs_scene_read_u32(r);
-    *relation_edge_count = ecs_scene_read_u32(r);
-    return r->ok;
+static ecs_component_t ecs_scene_component_at(const unsigned char *ids, uint16_t at) {
+    ecs_component_t id;
+    memcpy(&id, ids + (size_t)at * sizeof id, sizeof id);
+    return id;
 }
 
-SIECS_API bool ecs_scene_validate(const void *input, size_t size) {
-    if (!input || size < ECS_SCENE_MAGIC_SIZE + sizeof(uint32_t) * 4)
-        return false;
-
-    const unsigned char *data = input;
-    ecs_scene_reader_t header = { .ptr = data, .end = data + size, .ok = true };
-    uint32_t table_count = 0;
-    uint32_t entity_count = 0;
-    uint32_t relation_edge_count = 0;
-    if (!ecs_scene_read_header(&header, &table_count, &entity_count, &relation_edge_count))
-        return false;
-
-    if (table_count > (size - (size_t)(header.ptr - data)) / 8u)
-        return false;
-
-    ecs_scene_reader_t tables = { .ptr = header.ptr, .end = data + size, .ok = true };
-    const unsigned char *relations_begin = NULL;
-    if (!ecs_scene_validate_tables(&tables, table_count, entity_count, &relations_begin)) {
-        return false;
-    }
-
-    ecs_scene_reader_t relations = {
-        .ptr = relations_begin,
-        .end = data + size,
-        .ok = true,
-    };
-    if (relation_edge_count > (size_t)(relations.end - relations.ptr) / 12u)
-        return false;
-
-    for (uint32_t i = 0; i < relation_edge_count; i++) {
-        uint32_t source = ecs_scene_read_u32(&relations);
-        uint16_t relation = ecs_scene_read_u16(&relations);
-        uint16_t reserved = ecs_scene_read_u16(&relations);
-        uint32_t target = ecs_scene_read_u32(&relations);
-        if (!relations.ok || reserved != 0 || source >= entity_count || target >= entity_count ||
-            relation == 0 || relation >= relation_index.records.size)
-            return false;
-
-        const ecs_relation_record_t *record = ecs_relation_record(relation);
-        if (!record->info.name && !record->component && !record->ops)
-            return false;
-    }
-
-    return relations.ok && relations.ptr == relations.end;
-}
-
-static bool ecs_scene_validate_component_id(ecs_component_t component) {
-    return component != 0 && component < component_index.components.size &&
-           ecs_component_index_get(component)->info != NULL &&
-           !ecs_scene_component_is_relation_internal(component);
-}
-
-static bool ecs_scene_validate_tables(
-    ecs_scene_reader_t *r,
-    uint32_t table_count,
-    uint32_t entity_count,
-    const unsigned char **relations_begin
-) {
-    uint32_t local_base = 0;
-
-    for (uint32_t t = 0; t < table_count; t++) {
-        uint32_t row_count = ecs_scene_read_u32(r);
-        uint16_t component_count = ecs_scene_read_u16(r);
-        uint16_t reserved = ecs_scene_read_u16(r);
-        if (!r->ok || reserved != 0 || local_base > entity_count ||
-            row_count > entity_count - local_base)
-            return false;
-
-        ecs_component_t *components =
-            component_count ? malloc((size_t)component_count * sizeof(ecs_component_t)) : NULL;
-        if (component_count && !components)
-            return false;
-        for (uint16_t i = 0; i < component_count; i++) {
-            components[i] = ecs_scene_read_u16(r);
-            if (!r->ok || !ecs_scene_validate_component_id(components[i]) ||
-                (i && components[i - 1] >= components[i]))
-                goto invalid_table;
-
-            const ecs_component_record_t *record = ecs_component_index_get(components[i]);
-            if (record->info->size > UINT32_MAX || !ecs_scene_component_supported(record))
-                goto invalid_table;
-        }
-
-        for (uint16_t i = 0; i < component_count; i++) {
-            const ecs_component_record_t *record = ecs_component_index_get(components[i]);
-            uint32_t payload_size = ecs_scene_read_u32(r);
-            uint32_t component_size = (uint32_t)record->info->size;
-            if (!r->ok || (size_t)payload_size > (size_t)(r->end - r->ptr))
-                goto invalid_table;
-
-            const unsigned char *payload_end = r->ptr + payload_size;
-            if (!component_size) {
-                if (payload_size != 0)
-                    goto invalid_table;
-            } else if (!ecs_scene_component_use_codec(record)) {
-                if (row_count && (size_t)component_size > SIZE_MAX / row_count)
-                    goto invalid_table;
-                if ((size_t)component_size * row_count != payload_size)
-                    goto invalid_table;
-            } else {
-                ecs_scene_reader_t payload = { .ptr = r->ptr, .end = payload_end, .ok = true };
-                for (uint32_t row = 0; row < row_count; row++) {
-                    if (!ecs_scene_validate_value(&payload, record->info->type, entity_count))
-                        goto invalid_table;
-                }
-                if (!payload.ok || payload.ptr != payload.end)
-                    goto invalid_table;
-            }
-            r->ptr = payload_end;
-        }
-
-        free(components);
-        local_base += row_count;
-        continue;
-
-    invalid_table:
-        free(components);
-        return false;
-    }
-
-    if (local_base != entity_count)
-        return false;
-    *relations_begin = r->ptr;
-    return true;
-}
-
-static bool ecs_scene_create_table_entities(
-    ecs_scene_reader_t *r,
-    uint32_t row_count,
-    uint16_t component_count,
-    ecs_entity_t *local_to_entity,
-    uint32_t local_base,
-    uint32_t total_entities
-) {
-    if (local_base > total_entities || row_count > total_entities - local_base)
-        return false;
-
-    ecs_component_t *components =
-        component_count ? malloc((size_t)component_count * sizeof(ecs_component_t)) : NULL;
-    if (component_count && !components)
-        return false;
-
-    for (uint16_t i = 0; i < component_count; i++) {
-        components[i] = ecs_scene_read_u16(r);
-        if (!r->ok || !ecs_scene_validate_component_id(components[i])) {
-            free(components);
-            return false;
-        }
-        if (i && components[i - 1] >= components[i]) {
-            free(components);
-            return false;
-        }
-    }
-
-    ecs_type_t type = { 0 };
-    if (component_count) {
-        type = ecs_type_with_ids(&type, components, component_count);
-    }
-    uint16_t table_id = component_count ? ecs_table_index_get_or_create(type) : 0;
-
-    for (uint32_t row = 0; row < row_count; row++) {
-        ecs_entity_t entity = ecs_new();
-        if (table_id != 0) {
-            ecs_entity_record_t *record = ecs_get_record(entity);
-            ecs_table_t *from = ecs_get_table(record->table_id);
-            ecs_migrate(record, entity, from, table_id, 0);
-        }
-        local_to_entity[local_base + row] = entity;
-    }
-
-    /* Skip column payloads during pass 1. */
-    for (uint16_t i = 0; i < component_count; i++) {
-        uint32_t payload_size = ecs_scene_read_u32(r);
-        if (!r->ok || !ecs_scene_reader_skip(r, payload_size)) {
-            free(components);
-            return false;
-        }
-    }
-
-    free(components);
-    return true;
-}
-
-static bool ecs_scene_first_pass(
-    ecs_scene_reader_t *r,
-    uint32_t table_count,
-    uint32_t entity_count,
-    ecs_entity_t *local_to_entity
-) {
-    uint32_t local_base = 0;
-
-    for (uint32_t t = 0; t < table_count; t++) {
-        uint32_t row_count = ecs_scene_read_u32(r);
-        uint16_t component_count = ecs_scene_read_u16(r);
-        (void)ecs_scene_read_u16(r); /* reserved */
-        if (!r->ok)
-            return false;
-
-        if (!ecs_scene_create_table_entities(
-                r,
-                row_count,
-                component_count,
-                local_to_entity,
-                local_base,
-                entity_count
-            )) {
-            return false;
-        }
-        local_base += row_count;
-    }
-
-    return local_base == entity_count;
-}
-
-static bool ecs_scene_apply_on_add_for_table(
-    ecs_entity_t *entities,
-    uint32_t row_count,
-    const ecs_component_t *components,
-    uint16_t component_count
-) {
-    for (uint16_t c = 0; c < component_count; c++) {
-        ecs_component_t component = components[c];
-        ecs_component_record_t *record = ecs_component_index_get(component);
-        if (!record->on_add)
-            continue;
-
-        for (uint32_t row = 0; row < row_count; row++) {
-            void *value = record->info->size ? ecs_get_cid(entities[row], component) : NULL;
-            record->on_add(entities[row], component, value);
-        }
-    }
-    return true;
-}
-
-static bool ecs_scene_load_component_payload(
-    ecs_scene_reader_t *r,
-    uint32_t payload_size,
+static bool ecs_scene_read_payload(
+    ecs_scene_reader_t *payload,
     ecs_component_t component,
+    uint32_t rows,
     ecs_entity_t *entities,
-    uint32_t row_count,
-    const ecs_scene_load_ctx_t *ctx
+    const ecs_scene_load_ctx_t *ctx,
+    bool load
 ) {
     const ecs_component_record_t *record = ecs_component_index_get(component);
-    uint64_t component_size64 = record->info->size;
-    if (component_size64 > UINT32_MAX)
+    size_t size = record->info->size;
+    size_t bytes = (size_t)(payload->end - payload->ptr);
+    if (record->info->size > UINT32_MAX || !ecs_scene_component_supported(record))
         return false;
-    uint32_t component_size = (uint32_t)component_size64;
-
-    if (!ecs_scene_component_supported(record))
-        return false;
-    if (!component_size)
-        return payload_size == 0;
-    if ((size_t)payload_size > (size_t)(r->end - r->ptr))
-        return false;
-
-    const unsigned char *payload_end = r->ptr + payload_size;
-    ecs_scene_reader_t payload = { .ptr = r->ptr, .end = payload_end, .ok = true };
-
-    bool codec = ecs_scene_component_use_codec(record);
-    if (!codec) {
-        size_t expected = (size_t)component_size * row_count;
-        if (expected != payload_size)
+    if (!size)
+        return bytes == 0;
+    if (!ecs_scene_component_use_codec(record)) {
+        if ((rows && size > SIZE_MAX / rows) || size * rows != bytes)
             return false;
-
-        for (uint32_t row = 0; row < row_count; row++) {
-            void *dst = ecs_get_cid(entities[row], component);
-            if (!ecs_scene_reader_take(&payload, dst, component_size))
-                return false;
+        if (load) {
+            for (uint32_t row = 0; row < rows; row++)
+                if (!ecs_scene_reader_take(payload, ecs_get_cid(entities[row], component), size))
+                    return false;
+        } else {
+            payload->ptr = payload->end;
         }
     } else {
         if (record->info->type == SIREFLECT_INVALID_HANDLE)
             return false;
-
         ecs_scene_load_ctx_t component_ctx = *ctx;
         component_ctx.component_owns_strings = record->ops.dtor != NULL;
-
-        for (uint32_t row = 0; row < row_count; row++) {
-            void *temp = calloc(1, component_size);
+        for (uint32_t row = 0; row < rows; row++) {
+            if (!load) {
+                if (!ecs_scene_validate_value(payload, record->info->type, ctx->entity_count))
+                    return false;
+                continue;
+            }
+            void *temp = calloc(1, size);
             if (!temp)
                 return false;
-
-            bool ok = ecs_scene_load_value(&payload, record->info->type, temp, &component_ctx);
+            bool ok = ecs_scene_load_value(payload, record->info->type, temp, &component_ctx);
             if (ok && component == ecs_id(Name)) {
                 if (!ecs_name_valid(((Name *)temp)->value)) ok = false;
                 else {
@@ -11519,180 +11201,173 @@ static bool ecs_scene_load_component_payload(
                 return false;
         }
     }
-
-    if (!payload.ok || payload.ptr != payload.end)
-        return false;
-    r->ptr = payload_end;
-    return true;
+    return payload->ok && payload->ptr == payload->end;
 }
 
-static bool ecs_scene_second_pass(
+static bool ecs_scene_read_tables(
     ecs_scene_reader_t *r,
     uint32_t table_count,
-    uint32_t entity_count,
-    ecs_entity_t *local_to_entity,
-    Name *names
+    const ecs_scene_load_ctx_t *ctx,
+    ecs_scene_table_pass_t pass
 ) {
-    ecs_scene_load_ctx_t ctx = {
-        .local_to_entity = local_to_entity,
-        .entity_count = entity_count,
-        .names = names,
-    };
-
-    uint32_t local_base = 0;
-
+    uint32_t local = 0;
     for (uint32_t t = 0; t < table_count; t++) {
-        uint32_t row_count = ecs_scene_read_u32(r);
-        uint16_t component_count = ecs_scene_read_u16(r);
-        (void)ecs_scene_read_u16(r);
-        if (!r->ok || local_base > entity_count || row_count > entity_count - local_base) {
+        uint32_t rows = ecs_scene_read_u32(r);
+        uint16_t count = ecs_scene_read_u16(r);
+        uint16_t reserved = ecs_scene_read_u16(r);
+        if (!r->ok || reserved || local > ctx->entity_count || rows > ctx->entity_count - local)
             return false;
-        }
-
-        ecs_component_t *components =
-            component_count ? malloc((size_t)component_count * sizeof(ecs_component_t)) : NULL;
-        if (component_count && !components)
+        const unsigned char *ids = r->ptr;
+        if (!ecs_scene_reader_skip(r, (size_t)count * sizeof(ecs_component_t)))
             return false;
-
-        for (uint16_t i = 0; i < component_count; i++) {
-            components[i] = ecs_scene_read_u16(r);
-            if (!r->ok || !ecs_scene_validate_component_id(components[i])) {
-                free(components);
+        ecs_component_t previous = 0;
+        for (uint16_t i = 0; i < count; i++) {
+            ecs_component_t id = ecs_scene_component_at(ids, i);
+            if (id <= previous || id >= component_index.components.size ||
+                !ecs_component_index_get(id)->info || ecs_scene_component_is_relation_internal(id))
                 return false;
+            previous = id;
+        }
+        ecs_entity_t *entities = ctx->local_to_entity ? ctx->local_to_entity + local : NULL;
+        if (pass == EcsSceneCreate) {
+            ecs_type_t type = { 0 };
+            uint16_t table_id =
+                count ? ecs_table_index_get_or_create(ecs_type_with_ids(&type, ids, count)) : 0;
+            for (uint32_t row = 0; row < rows; row++) {
+                ecs_entity_t entity = ecs_new();
+                if (table_id) {
+                    ecs_entity_record_t *record = ecs_get_record(entity);
+                    ecs_migrate(record, entity, ecs_get_table(record->table_id), table_id, 0);
+                }
+                entities[row] = entity;
+            }
+        } else if (pass == EcsSceneApply) {
+            /* Keep component-major hook order, before any values are loaded. */
+            for (uint16_t i = 0; i < count; i++) {
+                ecs_component_t id = ecs_scene_component_at(ids, i);
+                const ecs_component_record_t *record = ecs_component_index_get(id);
+                if (record->on_add) {
+                    for (uint32_t row = 0; row < rows; row++)
+                        record->on_add(
+                            entities[row],
+                            id,
+                            record->info->size ? ecs_get_cid(entities[row], id) : NULL
+                        );
+                }
             }
         }
-
-        ecs_entity_t *entities = local_to_entity + local_base;
-        ecs_scene_apply_on_add_for_table(entities, row_count, components, component_count);
-
-        for (uint16_t i = 0; i < component_count; i++) {
-            uint32_t payload_size = ecs_scene_read_u32(r);
-            if (!r->ok || !ecs_scene_load_component_payload(
-                              r,
-                              payload_size,
-                              components[i],
-                              entities,
-                              row_count,
-                              &ctx
-                          )) {
-                free(components);
+        for (uint16_t i = 0; i < count; i++) {
+            uint32_t bytes = ecs_scene_read_u32(r);
+            if (!r->ok || bytes > (size_t)(r->end - r->ptr))
                 return false;
-            }
+            ecs_scene_reader_t payload = { .ptr = r->ptr, .end = r->ptr + bytes, .ok = true };
+            if (pass != EcsSceneCreate && !ecs_scene_read_payload(
+                                              &payload,
+                                              ecs_scene_component_at(ids, i),
+                                              rows,
+                                              entities,
+                                              ctx,
+                                              pass == EcsSceneApply
+                                          ))
+                return false;
+            r->ptr = payload.end;
         }
-
-        free(components);
-        local_base += row_count;
+        local += rows;
     }
-
-    return local_base == entity_count;
+    return r->ok && local == ctx->entity_count;
 }
 
-static bool ecs_scene_load_relations(
-    ecs_scene_reader_t *r,
-    uint32_t relation_edge_count,
-    ecs_entity_t *local_to_entity,
-    uint32_t entity_count
+static bool ecs_scene_read_relations(
+    ecs_scene_reader_t r,
+    uint32_t count,
+    const ecs_scene_load_ctx_t *ctx,
+    bool apply
 ) {
-    for (uint32_t i = 0; i < relation_edge_count; i++) {
-        uint32_t source = ecs_scene_read_u32(r);
-        uint16_t relation = ecs_scene_read_u16(r);
-        (void)ecs_scene_read_u16(r);
-        uint32_t target = ecs_scene_read_u32(r);
-
-        if (!r->ok || source >= entity_count || target >= entity_count || relation == 0 ||
-            relation >= relation_index.records.size) {
+    if (count > (size_t)(r.end - r.ptr) / 12u)
+        return false;
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t source = ecs_scene_read_u32(&r);
+        uint16_t relation = ecs_scene_read_u16(&r);
+        uint16_t reserved = ecs_scene_read_u16(&r);
+        uint32_t target = ecs_scene_read_u32(&r);
+        if (!r.ok || reserved || source >= ctx->entity_count || target >= ctx->entity_count ||
+            !relation || relation >= relation_index.records.size)
             return false;
-        }
-
-        const ecs_relation_record_t *relation_record = ecs_relation_record(relation);
-        if (!relation_record->info.name && !relation_record->component && !relation_record->ops) {
+        const ecs_relation_record_t *record = ecs_relation_record(relation);
+        if (!record->info.name && !record->component && !record->ops)
             return false;
-        }
-
-        ecs_relate_id(local_to_entity[source], relation, local_to_entity[target]);
+        if (apply)
+            ecs_relate_id(ctx->local_to_entity[source], relation, ctx->local_to_entity[target]);
     }
-    return true;
+    return r.ok && r.ptr == r.end;
+}
+
+static bool ecs_scene_parse(const void *input, size_t size, ecs_scene_document_t *document) {
+    if (!input || size < ECS_SCENE_MAGIC_SIZE + sizeof(uint32_t) * 4)
+        return false;
+    ecs_scene_reader_t r = { .ptr = input, .end = (const unsigned char *)input + size, .ok = true };
+    unsigned char magic[ECS_SCENE_MAGIC_SIZE];
+    if (!ecs_scene_reader_take(&r, magic, sizeof magic) ||
+        memcmp(magic, ecs_scene_magic, sizeof magic) || ecs_scene_read_u32(&r) != ECS_SCENE_VERSION)
+        return false;
+    document->table_count = ecs_scene_read_u32(&r);
+    document->entity_count = ecs_scene_read_u32(&r);
+    document->relation_count = ecs_scene_read_u32(&r);
+    if (!r.ok || document->table_count > (size_t)(r.end - r.ptr) / 8u)
+        return false;
+    document->tables = r;
+    ecs_scene_load_ctx_t ctx = { .entity_count = document->entity_count };
+    if (!ecs_scene_read_tables(&r, document->table_count, &ctx, EcsSceneCheck))
+        return false;
+    document->tables.end = r.ptr;
+    document->relations = r;
+    return ecs_scene_read_relations(r, document->relation_count, &ctx, false);
+}
+
+SIECS_API bool ecs_scene_validate(const void *input, size_t size) {
+    ecs_scene_document_t document;
+    return ecs_scene_parse(input, size, &document);
 }
 
 SIECS_API bool ecs_load_memory(const void *input, size_t size) {
-    if (!input || !ecs_scene_validate(input, size))
+    ecs_scene_document_t document;
+    if (!ecs_scene_parse(input, size, &document))
         return false;
-
-    const unsigned char *data = input;
-
-    ecs_scene_reader_t header_reader = {
-        .ptr = data,
-        .end = data + size,
-        .ok = true,
+    uint32_t count = document.entity_count;
+    ecs_entity_t *entities = count ? malloc((size_t)count * sizeof *entities) : NULL;
+    if (count && !entities)
+        return false;
+    Name *names = count ? calloc(count, sizeof *names) : NULL;
+    if (count && !names) {
+        free(entities);
+        return false;
+    }
+    ecs_scene_load_ctx_t ctx = {
+        .local_to_entity = entities,
+        .entity_count = count,
+        .names = names,
     };
-
-    uint32_t table_count = 0;
-    uint32_t entity_count = 0;
-    uint32_t relation_edge_count = 0;
-    if (!ecs_scene_read_header(&header_reader, &table_count, &entity_count, &relation_edge_count)) {
-        return false;
-    }
-
-    const unsigned char *tables_begin = header_reader.ptr;
-    ecs_entity_t *local_to_entity =
-        entity_count ? malloc((size_t)entity_count * sizeof(ecs_entity_t)) : NULL;
-    if (entity_count && !local_to_entity) {
-        return false;
-    }
-    Name *names = entity_count ? calloc(entity_count, sizeof *names) : NULL;
-    if (entity_count && !names) { free(local_to_entity); return false; }
-
-    ecs_scene_reader_t first = {
-        .ptr = tables_begin,
-        .end = data + size,
-        .ok = true,
-    };
-
-    bool ok = ecs_scene_first_pass(&first, table_count, entity_count, local_to_entity);
-    const unsigned char *relations_begin = first.ptr;
-
+    ecs_scene_reader_t first = document.tables, second = document.tables;
+    bool ok = ecs_scene_read_tables(&first, document.table_count, &ctx, EcsSceneCreate) &&
+              first.ptr == first.end &&
+              ecs_scene_read_tables(&second, document.table_count, &ctx, EcsSceneApply) &&
+              second.ptr == second.end &&
+              ecs_scene_read_relations(document.relations, document.relation_count, &ctx, true);
     if (ok) {
-        ecs_scene_reader_t second = {
-            .ptr = tables_begin,
-            .end = relations_begin,
-            .ok = true,
-        };
-        ok = ecs_scene_second_pass(&second, table_count, entity_count, local_to_entity, names) &&
-             second.ptr == second.end;
-    }
-
-    if (ok) {
-        ecs_scene_reader_t relations = {
-            .ptr = relations_begin,
-            .end = data + size,
-            .ok = true,
-        };
-        ok = ecs_scene_load_relations(
-                 &relations,
-                 relation_edge_count,
-                 local_to_entity,
-                 entity_count
-             ) &&
-             relations.ptr == relations.end;
-    }
-
-    if (ok) {
-        for (uint32_t i = 0; i < entity_count; i++) {
-            if (names[i].value && !ecs_name_update_now(local_to_entity[i], names[i].value, true, 0, false)) {
+        for (uint32_t i = 0; i < count; i++) {
+            if (names[i].value &&
+                !ecs_name_update_now(entities[i], names[i].value, true, 0, false)) {
                 ok = false;
                 break;
             }
         }
     }
-    for (uint32_t i = 0; i < entity_count; i++) free(names[i].value);
+    for (uint32_t i = 0; i < count; i++)
+        free(names[i].value);
     free(names);
-
-    /*
-     * A malformed file may have instantiated some entities before returning
-     * false. The API intentionally stays minimal; callers should only load
-     * trusted scene files produced by ecs_save().
-     */
-    free(local_to_entity);
+    /* As before, failures during application may leave instantiated entities.
+     * Full transactional scene loading belongs to the separate format redesign. */
+    free(entities);
     return ok;
 }
 
@@ -12010,7 +11685,15 @@ static inline void ecs_table_grow(ecs_table_t *table) {
             ecs_component_index_get(table->type.ids[column_index]);
         void *new_data = malloc((size_t)new_capacity * column->size);
         ecs_assert_not_null(new_data);
-        ecs_component_value_move_ctor(record, new_data, column->data, table->entity_count);
+        ecs_value_transfer(
+            &record->ops,
+            record->info->size,
+            new_data,
+            column->data,
+            table->entity_count,
+            true,
+            true
+        );
         free(column->data);
         column->data = new_data;
     }
@@ -12093,24 +11776,14 @@ static void ecs_table_fini_component_values(ecs_table_t *table) {
         ecs_component_t component = table->type.ids[c];
         const ecs_component_record_t *crec = ecs_component_index_get(component);
 
-        if (crec->relation_flags & EcsComponentRelationSource) {
-            for (uint32_t row = 0; row < table->entity_count; row++) {
-                void *ptr = ecs_table_component_at_column(table, c, row);
-                if (crec->ops.dtor) {
-                    crec->ops.dtor(ptr, 1);
-                }
-            }
+        if (crec->relation_flags & EcsComponentRelationTarget)
             continue;
-        }
-
-        if (crec->relation_flags & EcsComponentRelationTarget) {
-            continue;
-        }
-
+        ecs_component_on_remove_t on_remove =
+            crec->relation_flags & EcsComponentRelationSource ? NULL : crec->on_remove;
         for (uint32_t row = 0; row < table->entity_count; row++) {
             void *ptr = ecs_table_component_at_column(table, c, row);
-            if (crec->on_remove) {
-                crec->on_remove(table->entities[row], component, ptr);
+            if (on_remove) {
+                on_remove(table->entities[row], component, ptr);
             }
             if (crec->ops.dtor) {
                 crec->ops.dtor(ptr, 1);
@@ -12137,26 +11810,7 @@ void ecs_table_fini(ecs_table_t *table) {
 }
 
 bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
-    if (ecs_table_column_or_invalid(table, component_id) != UINT16_MAX) {
-        return true;
-    }
-
-    // Abstract is not inherited for query matching; only exclude tables that own it.
-    if (component_id == ecs_id(Abstract) || component_id == ecs_id(Name)) {
-        return false;
-    }
-
-    ecs_entity_t base = ecs_type_isa_target(&table->type);
-    while (base != 0) {
-        const ecs_entity_record_t *record = ecs_get_record(base);
-        const ecs_table_t *base_table = ecs_get_table(record->table_id);
-        if (ecs_table_column_or_invalid(base_table, component_id) != UINT16_MAX) {
-            return true;
-        }
-        base = ecs_type_isa_target(&base_table->type);
-    }
-
-    return false;
+    return ecs_component_locate(table, 0, component_id, true).table != NULL;
 }
 
 bool ecs_table_has_id(const ecs_table_t *table, ecs_component_t component_id) {
@@ -12181,29 +11835,11 @@ bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
 }
 
 void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bool *is_shared) {
-    uint16_t cidx = ecs_table_column_or_invalid(table, component_id);
-    if (cidx != UINT16_MAX) {
-        *is_shared = false;
-        return table->cls[cidx].data;
-    }
-
-    if (component_id == ecs_id(Name)) { *is_shared = false; return NULL; }
-    ecs_entity_t base = ecs_type_isa_target(&table->type);
-    while (base != 0) {
-        const ecs_entity_record_t *record = ecs_get_record(base);
-        const ecs_table_t *base_table = ecs_get_table(record->table_id);
-
-        cidx = ecs_table_column_or_invalid(base_table, component_id);
-        if (cidx != UINT16_MAX) {
-            *is_shared = true;
-            return ecs_table_component_at_column(base_table, cidx, record->table_row);
-        }
-
-        base = ecs_type_isa_target(&base_table->type);
-    }
-
-    *is_shared = false;
-    return NULL;
+    ecs_component_location_t location = ecs_component_locate(table, 0, component_id, false);
+    *is_shared = location.shared;
+    return location.table
+               ? ecs_table_component_at_column(location.table, location.column, location.row)
+               : NULL;
 }
 
 void *ecs_migrate(
@@ -12368,7 +12004,7 @@ ecs_type_t ecs_type_without(const ecs_type_t *type, uint16_t component_at, uint1
     return out;
 }
 
-ecs_type_t ecs_type_with_ids(const ecs_type_t *type, const uint16_t *ids, uint16_t count) {
+ecs_type_t ecs_type_with_ids(const ecs_type_t *type, const void *ids, uint16_t count) {
     ecs_type_t out = ecs_type_alloc(type, count - type->component_count, 0);
     if (count) {
         memcpy(out.ids, ids, (size_t)count * sizeof(uint16_t));
@@ -12858,43 +12494,11 @@ void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id) {
 
 ecs_component_index_t component_index;
 
-static sireflect_struct_desc_t *
-ecs_component_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
-    if (!desc) {
-        return NULL;
-    }
-
-    sireflect_struct_desc_t *copy = malloc(sizeof *copy);
-    if (!copy) {
-        abort();
-    }
-    *copy = (sireflect_struct_desc_t){
-        .name = strdup(desc->name),
-        .fields = strdup(desc->fields),
-        .size = desc->size,
-        .align = desc->align,
-    };
-    if (!copy->name || !copy->fields) {
-        abort();
-    }
-    return copy;
-}
-
 void ecs_component_index_register(
     ecs_component_t id,
-    const char *name,
-    uint64_t size,
-    ecs_type_ops_t ops,
-    ecs_component_on_set_t on_set,
-    ecs_component_on_remove_t on_remove,
-    ecs_component_on_add_t on_add,
-    ecs_component_inheritance_t inheritance,
-#ifndef NDEBUG
-    ecs_component_mutation_t mutation,
-#endif
+    const ecs_component_desc_t *desc,
     uint32_t relation_flags,
-    sireflect_handle_t type,
-    const sireflect_struct_desc_t *reflection_desc
+    sireflect_handle_t type
 ) {
     sicore_vec_ensure(
         &component_index.components,
@@ -12912,18 +12516,18 @@ void ecs_component_index_register(
     if (!info) {
         abort();
     }
-    sireflect_struct_desc_t *reflection = ecs_component_reflection_desc_copy(reflection_desc);
+    sireflect_struct_desc_t *reflection = ecs_reflection_desc_copy(desc->struct_desc);
     *info = (ecs_component_info_t){
-        .name = name ? strdup(name) : NULL,
-        .size = size,
+        .name = desc->name ? strdup(desc->name) : NULL,
+        .size = desc->size,
         .type = type,
         .reflection = reflection,
-        .inheritance = inheritance,
+        .inheritance = desc->inheritance,
 #ifndef NDEBUG
-        .mutation = mutation,
+        .mutation = desc->mutation,
 #endif
     };
-    if (name && !info->name) {
+    if (desc->name && !info->name) {
         abort();
     }
 
@@ -12933,10 +12537,10 @@ void ecs_component_index_register(
         .required_count = 0,
         .default_relations = NULL,
         .default_relation_count = 0,
-        .ops = ops,
-        .on_set = on_set,
-        .on_remove = on_remove,
-        .on_add = on_add,
+        .ops = desc->ops,
+        .on_set = desc->on_set,
+        .on_remove = desc->on_remove,
+        .on_add = desc->on_add,
         .relation_flags = relation_flags,
         .tables = { 0 },
     };
@@ -12963,12 +12567,7 @@ void ecs_component_index_fini() {
         if (records[i].info) {
             free((char *)records[i].info->name);
 
-            if (records[i].info->reflection) {
-                free((char *)records[i].info->reflection->name);
-                free((char *)records[i].info->reflection->fields);
-                free((void *)records[i].info->reflection);
-            }
-
+            ecs_reflection_desc_free(records[i].info->reflection);
             free(records[i].info);
         }
         free(records[i].required);

@@ -122,27 +122,23 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     }
 
     ecs_inheritance_plan_t plan;
-    ecs_inheritance_plan_build(&from_table->type, target, &plan);
-    ecs_type_t materialized = ecs_type_with_added_ids(&from_table->type, plan.ids, plan.count);
     ecs_type_t new_type;
     if (target) {
         new_type = ecs_type_with(
-            &materialized,
+            &from_table->type,
             0,
             (ecs_type_pair_t){ .key = ecs_rid(IsA), .value = target }
         );
     } else {
         ecs_assert(
-            ecs_type_pair_index(&materialized, ecs_rid(IsA)) != UINT16_MAX,
+            ecs_type_pair_index(&from_table->type, ecs_rid(IsA)) != UINT16_MAX,
             "missing IsA pair\n"
         );
-        new_type = ecs_type_without(&materialized, UINT16_MAX, ecs_rid(IsA));
+        new_type = ecs_type_without(&from_table->type, UINT16_MAX, ecs_rid(IsA));
     }
-    ecs_type_fini(&materialized);
-    uint16_t to_table_id = ecs_table_index_get_or_create(new_type);
+    new_type = ecs_inheritance_materialize(new_type, target, &plan);
+    ecs_table_t *to_table = ecs_table_change_type(record, entity, new_type, false);
     from_table = ecs_get_table(from_table_id);
-    ecs_migrate(record, entity, from_table, to_table_id, 0);
-    ecs_table_t *to_table = ecs_get_table(to_table_id);
     ecs_inheritance_plan_copy(&plan, target, to_table, record->table_row);
     ecs_emit_added_components(from_table, to_table, entity, record->table_row);
     ecs_inheritance_plan_fini(&plan);

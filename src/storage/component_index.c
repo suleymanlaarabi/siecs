@@ -8,43 +8,11 @@
 
 ecs_component_index_t component_index;
 
-static sireflect_struct_desc_t *
-ecs_component_reflection_desc_copy(const sireflect_struct_desc_t *desc) {
-    if (!desc) {
-        return NULL;
-    }
-
-    sireflect_struct_desc_t *copy = malloc(sizeof *copy);
-    if (!copy) {
-        abort();
-    }
-    *copy = (sireflect_struct_desc_t){
-        .name = strdup(desc->name),
-        .fields = strdup(desc->fields),
-        .size = desc->size,
-        .align = desc->align,
-    };
-    if (!copy->name || !copy->fields) {
-        abort();
-    }
-    return copy;
-}
-
 void ecs_component_index_register(
     ecs_component_t id,
-    const char *name,
-    uint64_t size,
-    ecs_type_ops_t ops,
-    ecs_component_on_set_t on_set,
-    ecs_component_on_remove_t on_remove,
-    ecs_component_on_add_t on_add,
-    ecs_component_inheritance_t inheritance,
-#ifndef NDEBUG
-    ecs_component_mutation_t mutation,
-#endif
+    const ecs_component_desc_t *desc,
     uint32_t relation_flags,
-    sireflect_handle_t type,
-    const sireflect_struct_desc_t *reflection_desc
+    sireflect_handle_t type
 ) {
     sicore_vec_ensure(
         &component_index.components,
@@ -62,18 +30,18 @@ void ecs_component_index_register(
     if (!info) {
         abort();
     }
-    sireflect_struct_desc_t *reflection = ecs_component_reflection_desc_copy(reflection_desc);
+    sireflect_struct_desc_t *reflection = ecs_reflection_desc_copy(desc->struct_desc);
     *info = (ecs_component_info_t){
-        .name = name ? strdup(name) : NULL,
-        .size = size,
+        .name = desc->name ? strdup(desc->name) : NULL,
+        .size = desc->size,
         .type = type,
         .reflection = reflection,
-        .inheritance = inheritance,
+        .inheritance = desc->inheritance,
 #ifndef NDEBUG
-        .mutation = mutation,
+        .mutation = desc->mutation,
 #endif
     };
-    if (name && !info->name) {
+    if (desc->name && !info->name) {
         abort();
     }
 
@@ -83,10 +51,10 @@ void ecs_component_index_register(
         .required_count = 0,
         .default_relations = NULL,
         .default_relation_count = 0,
-        .ops = ops,
-        .on_set = on_set,
-        .on_remove = on_remove,
-        .on_add = on_add,
+        .ops = desc->ops,
+        .on_set = desc->on_set,
+        .on_remove = desc->on_remove,
+        .on_add = desc->on_add,
         .relation_flags = relation_flags,
         .tables = { 0 },
     };
@@ -113,12 +81,7 @@ void ecs_component_index_fini() {
         if (records[i].info) {
             free((char *)records[i].info->name);
 
-            if (records[i].info->reflection) {
-                free((char *)records[i].info->reflection->name);
-                free((char *)records[i].info->reflection->fields);
-                free((void *)records[i].info->reflection);
-            }
-
+            ecs_reflection_desc_free(records[i].info->reflection);
             free(records[i].info);
         }
         free(records[i].required);

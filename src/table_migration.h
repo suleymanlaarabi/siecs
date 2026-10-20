@@ -3,6 +3,7 @@
 #include "siecs.h"
 #include "storage/component_index.h"
 #include "storage/entity_index.h"
+#include "storage/table_index.h"
 #include "table.h"
 #include "table_ops.h"
 #include <stdint.h>
@@ -32,5 +33,25 @@ void *ecs_migrate(
     uint16_t to_table_id,
     ecs_component_t requested_id
 );
+
+/* Type registration may relocate the table index. Reacquire the source only
+ * afterwards; same-layout pair edits keep their specialized column loop. */
+static inline ecs_table_t *ecs_table_change_type(
+    ecs_entity_record_t *record,
+    ecs_entity_t entity,
+    ecs_type_t type,
+    bool same_layout
+) {
+    uint16_t from_id = record->table_id;
+    uint16_t to_id = ecs_table_index_get_or_create(type);
+    if (to_id != from_id) {
+        ecs_table_t *from = ecs_get_table(from_id);
+        if (same_layout)
+            ecs_migrate_same_layout(record, entity, from, to_id);
+        else
+            ecs_migrate(record, entity, from, to_id, 0);
+    }
+    return ecs_get_table(record->table_id);
+}
 
 #endif

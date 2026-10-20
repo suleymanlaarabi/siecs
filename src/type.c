@@ -113,7 +113,7 @@ ecs_type_t ecs_type_without(const ecs_type_t *type, uint16_t component_at, uint1
     return out;
 }
 
-ecs_type_t ecs_type_with_ids(const ecs_type_t *type, const uint16_t *ids, uint16_t count) {
+ecs_type_t ecs_type_with_ids(const ecs_type_t *type, const void *ids, uint16_t count) {
     ecs_type_t out = ecs_type_alloc(type, count - type->component_count, 0);
     if (count) {
         memcpy(out.ids, ids, (size_t)count * sizeof(uint16_t));

@@ -65,25 +65,11 @@ ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc
     ecs_resource_info_t *info = malloc(sizeof *info);
     if (!info)
         abort();
-    sireflect_struct_desc_t *reflection = NULL;
-    if (desc->struct_desc) {
-        reflection = malloc(sizeof *reflection);
-        if (!reflection)
-            abort();
-        *reflection = (sireflect_struct_desc_t){
-            .name = strdup(desc->struct_desc->name),
-            .fields = strdup(desc->struct_desc->fields),
-            .size = desc->struct_desc->size,
-            .align = desc->struct_desc->align,
-        };
-        if (!reflection->name || !reflection->fields)
-            abort();
-    }
     *info = (ecs_resource_info_t){
         .name = strdup(desc->name),
         .size = desc->size,
         .type = type,
-        .reflection = reflection,
+        .reflection = ecs_reflection_desc_copy(desc->struct_desc),
     };
     if (!info->name)
         abort();
@@ -141,20 +127,7 @@ static inline void ecs_resource_store(ecs_resource_t id, void *data, bool move) 
         record->data = calloc(1, record->info->size ? record->info->size : 1);
         ecs_assert_not_null(record->data);
     }
-    if (!record->info->size)
-        return;
-    ecs_type_move_t move_op = construct ? record->ops.move_ctor : record->ops.move;
-    if (move && move_op) {
-        move_op(record->data, data, 1);
-    } else {
-        ecs_type_copy_t copy_op = construct ? record->ops.copy_ctor : record->ops.copy;
-        if (copy_op) {
-            copy_op(record->data, data, 1);
-            if (move && record->ops.dtor)
-                record->ops.dtor(data, 1);
-        } else
-            memcpy(record->data, data, record->info->size);
-    }
+    ecs_value_transfer(&record->ops, record->info->size, record->data, data, 1, move, construct);
 }
 
 void ecs_set_resource_rid(ecs_resource_t id, const void *data) {
@@ -209,11 +182,7 @@ void ecs_resource_storage_fini(void) {
         if (!info)
             continue;
         free((char *)info->name);
-        if (info->reflection) {
-            free((char *)info->reflection->name);
-            free((char *)info->reflection->fields);
-            free((void *)info->reflection);
-        }
+        ecs_reflection_desc_free(info->reflection);
         free(info);
     }
     sicore_vec_fini(&ecs_resources);

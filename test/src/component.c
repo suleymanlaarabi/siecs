@@ -965,3 +965,122 @@ void component_table_resolves_recursive_base_components(void) {
 
     ecs_fini();
 }
+
+void component_resolution_keeps_tags_and_local_names(void) {
+    ecs_init();
+    ecs_component_t tag = ecs_component({ .name = "SharedTag", .inheritance = EcsInheritShared });
+    ecs_entity_t base = ecs_new_named(0, "Base");
+    ecs_add_cid(base, tag);
+    ecs_entity_t child = ecs_new();
+    ecs_is_a(child, base);
+    test_true(ecs_has_cid(child, tag));
+    test_null(ecs_get_cid(child, tag));
+    test_false(ecs_has(child, Name));
+    test_null(ecs_get(child, Name));
+    test_false(ecs_has(child, Abstract));
+    const ecs_table_t *table = ecs_get_table(ecs_get_record(child)->table_id);
+    bool shared = false;
+    test_null(ecs_table_field(table, tag, &shared));
+    test_true(shared);
+    test_null(ecs_table_field(table, ecs_id(Name), &shared));
+    test_false(shared);
+    ecs_add_cid(child, tag);
+    test_true(ecs_has_cid_owned(child, tag));
+    table = ecs_get_table(ecs_get_record(child)->table_id);
+    test_null(ecs_table_field(table, tag, &shared));
+    test_false(shared);
+    ecs_fini();
+}
+
+static ecs_component_t relocation_tags[64];
+static ecs_component_t relocation_component;
+static ecs_entity_t relocation_entity;
+static unsigned relocation_hook_calls, relocation_event_calls;
+
+static void relocating_on_set(ecs_entity_t entity, ecs_component_t id, const void *src, void *dst) {
+    test_uint(relocation_entity, entity);
+    test_uint(relocation_component, id);
+    test_int(42, *(const int *)src);
+    test_int(0, *(const int *)dst);
+    relocation_hook_calls++;
+    ecs_add_cid_now(entity, relocation_tags[0]);
+    for (unsigned i = 1; i < 64; i++)
+        ecs_add_cid_now(ecs_new(), relocation_tags[i]);
+}
+
+static void relocated_on_set_event(ecs_observer_event_t *event) {
+    test_uint(relocation_entity, event->entity);
+    test_uint(relocation_component, event->component);
+    test_int(EcsOnSet, event->event);
+    test_int(42, *(const int *)event->trigger_data);
+    test_int(1, relocation_hook_calls);
+    relocation_event_calls++;
+}
+
+void component_set_hook_can_relocate_storage(void) {
+    for (unsigned deferred = 0; deferred < 2; deferred++) {
+        ecs_init();
+        relocation_hook_calls = relocation_event_calls = 0;
+        for (unsigned i = 0; i < 64; i++)
+            relocation_tags[i] = ecs_component({ 0 });
+        relocation_component = ecs_component({ .size = sizeof(int), .on_set = relocating_on_set });
+        relocation_entity = ecs_new();
+        ecs_observer(
+            {
+                .on = EcsOnSet,
+                .query.components = { { relocation_component, EcsIn } },
+                .callback = relocated_on_set_event,
+            }
+        );
+        int value = 42;
+        if (deferred)
+            ecs_defer_begin();
+        ecs_set_cid(relocation_entity, relocation_component, &value);
+        if (deferred) {
+            test_int(0, relocation_hook_calls);
+            test_int(0, relocation_event_calls);
+            ecs_defer_end();
+        }
+        test_int(1, relocation_hook_calls);
+        test_int(1, relocation_event_calls);
+        test_int(42, *(int *)ecs_get_cid(relocation_entity, relocation_component));
+        ecs_add_cid(relocation_entity, relocation_tags[1]);
+        test_int(1, relocation_hook_calls);
+        test_int(1, relocation_event_calls);
+        ecs_fini();
+    }
+}
+
+static unsigned inherited_tag_copies;
+static void inherited_tag_copy(void *dst, const void *src, uint32_t count) {
+    test_null(dst);
+    test_null(src);
+    inherited_tag_copies += count;
+}
+
+void component_owned_tag_copy_hooks_survive_inheritance(void) {
+    ecs_init();
+    ecs_component_t tag = ecs_component(
+        {
+            .inheritance = EcsInheritOwned,
+            .ops.copy = inherited_tag_copy,
+        }
+    );
+    ecs_entity_t base = ecs_new();
+    ecs_add_cid(base, tag);
+    inherited_tag_copies = 0;
+    ecs_entity_t immediate = ecs_new();
+    ecs_is_a(immediate, base);
+    test_int(1, inherited_tag_copies);
+    ecs_entity_t first = ecs_new(), second = ecs_new();
+    ecs_defer_begin();
+    ecs_is_a(first, base);
+    ecs_is_a(second, base);
+    test_int(1, inherited_tag_copies);
+    ecs_defer_end();
+    test_int(3, inherited_tag_copies);
+    test_true(ecs_has_cid_owned(immediate, tag));
+    test_true(ecs_has_cid_owned(first, tag));
+    test_true(ecs_has_cid_owned(second, tag));
+    ecs_fini();
+}

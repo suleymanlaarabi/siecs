@@ -6,6 +6,35 @@
 #include "world_internal.h"
 #include <string.h>
 
+typedef struct {
+    const ecs_table_t *table;
+    uint32_t row;
+    uint16_t column;
+    bool shared;
+} ecs_component_location_t;
+
+/* A location, rather than a data pointer, also represents zero-sized tags.
+ * Presence excludes inherited Abstract; value/field access keeps its existing
+ * rules. Owned fields use row zero to return the whole column. */
+static inline ecs_component_location_t
+ecs_component_locate(const ecs_table_t *table, uint32_t row, ecs_component_t id, bool presence) {
+    uint16_t column = ecs_table_column_or_invalid(table, id);
+    if (column != UINT16_MAX)
+        return (ecs_component_location_t){ table, row, column, false };
+    if (id == ecs_id(Name) || (presence && id == ecs_id(Abstract)))
+        return (ecs_component_location_t){ 0 };
+    ecs_entity_t base = ecs_type_isa_target(&table->type);
+    while (base) {
+        const ecs_entity_record_t *record = ecs_get_record(base);
+        table = ecs_get_table(record->table_id);
+        column = ecs_table_column_or_invalid(table, id);
+        if (column != UINT16_MAX)
+            return (ecs_component_location_t){ table, record->table_row, column, true };
+        base = ecs_type_isa_target(&table->type);
+    }
+    return (ecs_component_location_t){ 0 };
+}
+
 static inline void ecs_table_move_column(
     const ecs_table_t *from_table,
     uint16_t from_col,

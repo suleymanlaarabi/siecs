@@ -20,24 +20,6 @@ static uint16_t ecs_inheritance_base_component_capacity(ecs_entity_t base) {
     return (uint16_t)capacity;
 }
 
-static bool ecs_inheritance_type_has(const ecs_type_t *type, ecs_component_t component) {
-    uint16_t first = 0;
-    uint16_t last = type->component_count;
-    while (first < last) {
-        uint16_t middle = (uint16_t)(first + (last - first) / 2);
-        ecs_component_t current = type->ids[middle];
-        if (current == component) {
-            return true;
-        }
-        if (current < component) {
-            first = (uint16_t)(middle + 1);
-        } else {
-            last = middle;
-        }
-    }
-    return false;
-}
-
 static bool ecs_inheritance_component_is_owned(ecs_component_t component) {
     if (component == ecs_id(Abstract) || component == ecs_id(Name)) {
         return false;
@@ -56,7 +38,7 @@ static int ecs_inheritance_component_compare(const void *left, const void *right
     return a < b ? -1 : a > b ? 1 : 0;
 }
 
-void ecs_inheritance_plan_build(
+static void ecs_inheritance_plan_build(
     const ecs_type_t *child_type,
     ecs_entity_t base,
     ecs_inheritance_plan_t *plan
@@ -78,8 +60,11 @@ void ecs_inheritance_plan_build(
         const ecs_table_t *table = ecs_get_table(record->table_id);
         for (uint16_t i = 0; i < table->type.component_count; i++) {
             ecs_component_t component = table->type.ids[i];
-            if (ecs_inheritance_component_is_owned(component) &&
-                !ecs_inheritance_type_has(child_type, component)) {
+            if (!ecs_inheritance_component_is_owned(component))
+                continue;
+            uint32_t at =
+                ecs_ids_lower_bound(child_type->ids, child_type->component_count, component);
+            if (at == child_type->component_count || child_type->ids[at] != component) {
                 ids[count++] = component;
             }
         }
@@ -103,6 +88,16 @@ void ecs_inheritance_plan_build(
     plan->count = unique;
 }
 
+ecs_type_t
+ecs_inheritance_materialize(ecs_type_t type, ecs_entity_t base, ecs_inheritance_plan_t *plan) {
+    ecs_inheritance_plan_build(&type, base, plan);
+    if (!plan->count)
+        return type;
+    ecs_type_t materialized = ecs_type_with_added_ids(&type, plan->ids, plan->count);
+    ecs_type_fini(&type);
+    return materialized;
+}
+
 void ecs_inheritance_plan_fini(ecs_inheritance_plan_t *plan) {
     free(plan->ids);
     plan->ids = NULL;
@@ -120,11 +115,7 @@ void ecs_inheritance_plan_copy(
         const ecs_component_record_t *record = ecs_component_index_get(component);
         const void *source = ecs_try_get_cid(base, component);
         void *destination = ecs_table_get_component(child_table, component, child_row);
-        if (record->ops.copy) {
-            record->ops.copy(destination, source, 1);
-        } else if (record->info->size) {
-            memcpy(destination, source, record->info->size);
-        }
+        ecs_value_copy(&record->ops, record->info->size, destination, source, 1, false);
     }
 }
 

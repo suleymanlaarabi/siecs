@@ -26,7 +26,9 @@
           "scene_save_memory_roundtrip",
           "scene_invalid_load_is_non_destructive",
           "scene_reflected_codec_roundtrip",
-          "scene_unsupported_pointer_is_consistent"
+          "scene_unsupported_pointer_is_consistent",
+          "scene_binary_fixture_and_truncation",
+          "scene_unaligned_component_ids"
         ]
       },
       {
@@ -117,7 +119,10 @@
           "try_get_handles_missing_and_inherited",
           "table_type_tracks_data_columns",
           "table_index_resize_preserves_type_hashes",
-          "table_resolves_recursive_base_components"
+          "table_resolves_recursive_base_components",
+          "resolution_keeps_tags_and_local_names",
+          "set_hook_can_relocate_storage",
+          "owned_tag_copy_hooks_survive_inheritance"
         ]
       },
       {
@@ -131,6 +136,7 @@
           "remove",
           "replace",
           "lifecycle_ops_are_used_for_set_move_and_remove",
+          "transfer_hook_combinations",
           "from_system_c",
           "hooks",
           "fini_runs_after_component_remove",

@@ -450,3 +450,48 @@ void resource_fini_uses_reverse_registration_order(void) {
     test_int(0, resource_reverse_order[3]);
     test_int(3, resource_reverse_count);
 }
+
+/* All fallback combinations must distinguish first construction from assignment. */
+void resource_transfer_hook_combinations(void) {
+    ecs_init();
+    for (unsigned mask = 0; mask < 32; mask++) {
+        ecs_resource_t id = ecs_resource_init(&(ecs_resource_desc_t){
+            .name = "TransferMatrix",
+            .size = sizeof(int),
+            .ops = {
+                .copy_ctor = mask & 1 ? resource_lifecycle_copy_ctor : NULL,
+                .copy = mask & 2 ? resource_lifecycle_copy : NULL,
+                .move_ctor = mask & 4 ? resource_lifecycle_move : NULL,
+                .move = mask & 8 ? resource_lifecycle_move : NULL,
+                .dtor = mask & 16 ? resource_lifecycle_dtor : NULL,
+            },
+        });
+        for (unsigned move = 0; move < 2; move++) {
+            resource_lifecycle_reset();
+            unsigned copy_ctor = 0, copy_assign = 0, moved = 0, destroyed = 0;
+            for (int assign = 0; assign < 2; assign++) {
+                int value = 42 + assign;
+                bool use_move = move && (mask & (assign ? 8 : 4));
+                bool use_copy = !use_move && (mask & (assign ? 2 : 1));
+                copy_ctor += use_copy && !assign;
+                copy_assign += use_copy && assign;
+                moved += use_move;
+                destroyed += move && use_copy && (mask & 16);
+                if (move)
+                    ecs_move_resource_rid(id, &value);
+                else
+                    ecs_set_resource_rid(id, &value);
+                test_int(42 + assign, *(int *)ecs_resource_rid(id));
+                test_int(use_move ? -100 : 42 + assign, value);
+                test_int(copy_ctor, resource_lifecycle_copy_ctor_calls);
+                test_int(copy_assign, resource_lifecycle_copy_calls);
+                test_int(moved, resource_lifecycle_move_calls);
+                test_int(destroyed, resource_lifecycle_dtor_calls);
+            }
+            ecs_remove_resource_rid(id);
+            test_false(ecs_has_resource_rid(id));
+            test_int(destroyed + !!(mask & 16), resource_lifecycle_dtor_calls);
+        }
+    }
+    ecs_fini();
+}

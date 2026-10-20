@@ -14,6 +14,8 @@ void public_scene_save_memory_roundtrip(void);
 void public_scene_invalid_load_is_non_destructive(void);
 void public_scene_reflected_codec_roundtrip(void);
 void public_scene_unsupported_pointer_is_consistent(void);
+void public_scene_binary_fixture_and_truncation(void);
+void public_scene_unaligned_component_ids(void);
 
 // Testsuite 'registry'
 void registry_component_names(void);
@@ -93,6 +95,9 @@ void component_try_get_handles_missing_and_inherited(void);
 void component_table_type_tracks_data_columns(void);
 void component_table_index_resize_preserves_type_hashes(void);
 void component_table_resolves_recursive_base_components(void);
+void component_resolution_keeps_tags_and_local_names(void);
+void component_set_hook_can_relocate_storage(void);
+void component_owned_tag_copy_hooks_survive_inheritance(void);
 
 // Testsuite 'resource'
 void resource_set_get(void);
@@ -103,6 +108,7 @@ void resource_zero_sized_presence_uses_storage_pointer(void);
 void resource_remove(void);
 void resource_replace(void);
 void resource_lifecycle_ops_are_used_for_set_move_and_remove(void);
+void resource_transfer_hook_combinations(void);
 void resource_from_system_c(void);
 void resource_hooks(void);
 void resource_fini_runs_after_component_remove(void);
@@ -295,6 +301,14 @@ bake_test_case public_testcases[] = {
     {
         "scene_unsupported_pointer_is_consistent",
         public_scene_unsupported_pointer_is_consistent
+    },
+    {
+        "scene_binary_fixture_and_truncation",
+        public_scene_binary_fixture_and_truncation
+    },
+    {
+        "scene_unaligned_component_ids",
+        public_scene_unaligned_component_ids
     }
 };
 
@@ -591,6 +605,18 @@ bake_test_case component_testcases[] = {
     {
         "table_resolves_recursive_base_components",
         component_table_resolves_recursive_base_components
+    },
+    {
+        "resolution_keeps_tags_and_local_names",
+        component_resolution_keeps_tags_and_local_names
+    },
+    {
+        "set_hook_can_relocate_storage",
+        component_set_hook_can_relocate_storage
+    },
+    {
+        "owned_tag_copy_hooks_survive_inheritance",
+        component_owned_tag_copy_hooks_survive_inheritance
     }
 };
 
@@ -626,6 +652,10 @@ bake_test_case resource_testcases[] = {
     {
         "lifecycle_ops_are_used_for_set_move_and_remove",
         resource_lifecycle_ops_are_used_for_set_move_and_remove
+    },
+    {
+        "transfer_hook_combinations",
+        resource_transfer_hook_combinations
     },
     {
         "from_system_c",
@@ -1279,7 +1309,7 @@ static bake_test_suite suites[] = {
         "public",
         NULL,
         NULL,
-        5,
+        7,
         public_testcases
     },
     {
@@ -1307,14 +1337,14 @@ static bake_test_suite suites[] = {
         "component",
         NULL,
         NULL,
-        27,
+        30,
         component_testcases
     },
     {
         "resource",
         NULL,
         NULL,
-        13,
+        14,
         resource_testcases
     },
     {

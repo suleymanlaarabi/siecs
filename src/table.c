@@ -71,7 +71,15 @@ static inline void ecs_table_grow(ecs_table_t *table) {
             ecs_component_index_get(table->type.ids[column_index]);
         void *new_data = malloc((size_t)new_capacity * column->size);
         ecs_assert_not_null(new_data);
-        ecs_component_value_move_ctor(record, new_data, column->data, table->entity_count);
+        ecs_value_transfer(
+            &record->ops,
+            record->info->size,
+            new_data,
+            column->data,
+            table->entity_count,
+            true,
+            true
+        );
         free(column->data);
         column->data = new_data;
     }
@@ -154,24 +162,14 @@ static void ecs_table_fini_component_values(ecs_table_t *table) {
         ecs_component_t component = table->type.ids[c];
         const ecs_component_record_t *crec = ecs_component_index_get(component);
 
-        if (crec->relation_flags & EcsComponentRelationSource) {
-            for (uint32_t row = 0; row < table->entity_count; row++) {
-                void *ptr = ecs_table_component_at_column(table, c, row);
-                if (crec->ops.dtor) {
-                    crec->ops.dtor(ptr, 1);
-                }
-            }
+        if (crec->relation_flags & EcsComponentRelationTarget)
             continue;
-        }
-
-        if (crec->relation_flags & EcsComponentRelationTarget) {
-            continue;
-        }
-
+        ecs_component_on_remove_t on_remove =
+            crec->relation_flags & EcsComponentRelationSource ? NULL : crec->on_remove;
         for (uint32_t row = 0; row < table->entity_count; row++) {
             void *ptr = ecs_table_component_at_column(table, c, row);
-            if (crec->on_remove) {
-                crec->on_remove(table->entities[row], component, ptr);
+            if (on_remove) {
+                on_remove(table->entities[row], component, ptr);
             }
             if (crec->ops.dtor) {
                 crec->ops.dtor(ptr, 1);
@@ -198,26 +196,7 @@ void ecs_table_fini(ecs_table_t *table) {
 }
 
 bool ecs_table_has(const ecs_table_t *table, ecs_component_t component_id) {
-    if (ecs_table_column_or_invalid(table, component_id) != UINT16_MAX) {
-        return true;
-    }
-
-    // Abstract is not inherited for query matching; only exclude tables that own it.
-    if (component_id == ecs_id(Abstract) || component_id == ecs_id(Name)) {
-        return false;
-    }
-
-    ecs_entity_t base = ecs_type_isa_target(&table->type);
-    while (base != 0) {
-        const ecs_entity_record_t *record = ecs_get_record(base);
-        const ecs_table_t *base_table = ecs_get_table(record->table_id);
-        if (ecs_table_column_or_invalid(base_table, component_id) != UINT16_MAX) {
-            return true;
-        }
-        base = ecs_type_isa_target(&base_table->type);
-    }
-
-    return false;
+    return ecs_component_locate(table, 0, component_id, true).table != NULL;
 }
 
 bool ecs_table_has_id(const ecs_table_t *table, ecs_component_t component_id) {
@@ -242,27 +221,9 @@ bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
 }
 
 void *ecs_table_field(const ecs_table_t *table, ecs_component_t component_id, bool *is_shared) {
-    uint16_t cidx = ecs_table_column_or_invalid(table, component_id);
-    if (cidx != UINT16_MAX) {
-        *is_shared = false;
-        return table->cls[cidx].data;
-    }
-
-    if (component_id == ecs_id(Name)) { *is_shared = false; return NULL; }
-    ecs_entity_t base = ecs_type_isa_target(&table->type);
-    while (base != 0) {
-        const ecs_entity_record_t *record = ecs_get_record(base);
-        const ecs_table_t *base_table = ecs_get_table(record->table_id);
-
-        cidx = ecs_table_column_or_invalid(base_table, component_id);
-        if (cidx != UINT16_MAX) {
-            *is_shared = true;
-            return ecs_table_component_at_column(base_table, cidx, record->table_row);
-        }
-
-        base = ecs_type_isa_target(&base_table->type);
-    }
-
-    *is_shared = false;
-    return NULL;
+    ecs_component_location_t location = ecs_component_locate(table, 0, component_id, false);
+    *is_shared = location.shared;
+    return location.table
+               ? ecs_table_component_at_column(location.table, location.column, location.row)
+               : NULL;
 }

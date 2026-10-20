@@ -161,23 +161,7 @@ static ecs_component_t ecs_component_register_type(
     }
 
     ecs_component_t component = *id;
-    ecs_component_index_register(
-        component,
-        desc->name,
-
-        desc->size,
-        desc->ops,
-        desc->on_set,
-        desc->on_remove,
-        desc->on_add,
-        desc->inheritance,
-#ifndef NDEBUG
-        desc->mutation,
-#endif
-        0,
-        type,
-        desc->struct_desc
-    );
+    ecs_component_index_register(component, desc, 0, type);
     return component;
 }
 
@@ -187,43 +171,32 @@ ecs_component_t ecs_component_register_relation_internal(
     bool by_target
 ) {
     ecs_component_t component = ecs_component_alloc_ids(by_target ? 1 : 2);
-    uint32_t target_flags = ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationTarget);
+    ecs_component_desc_t desc = {
+        .name = name,
+        .size = by_target ? 0 : sizeof(RelationTarget),
+        .on_set = by_target ? NULL : RelationOnSet,
+        .on_remove = by_target ? ecs_relation_target_on_remove : RelationOnRemove,
+        .inheritance = EcsInheritShared,
+    };
     ecs_component_index_register(
         component,
-        name,
-
-        by_target ? 0 : sizeof(RelationTarget),
-        (ecs_type_ops_t){ 0 },
-        by_target ? NULL : RelationOnSet,
-        by_target ? ecs_relation_target_on_remove : RelationOnRemove,
-        NULL,
-        EcsInheritShared,
-#ifndef NDEBUG
-        EcsMutable,
-#endif
-        target_flags,
-        SIREFLECT_INVALID_HANDLE,
-        NULL
+        &desc,
+        ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationTarget),
+        SIREFLECT_INVALID_HANDLE
     );
-    if (by_target) {
+    if (by_target)
         return component;
-    }
+    desc = (ecs_component_desc_t){
+        .size = sizeof(RelationSource),
+        .ops.dtor = RelationSourceDtor,
+        .on_remove = RelationSourceOnRemove,
+        .inheritance = EcsInheritShared,
+    };
     ecs_component_index_register(
         component + 1,
-        NULL,
-
-        sizeof(RelationSource),
-        (ecs_type_ops_t){ .dtor = RelationSourceDtor },
-        NULL,
-        RelationSourceOnRemove,
-        NULL,
-        EcsInheritShared,
-#ifndef NDEBUG
-        EcsMutable,
-#endif
+        &desc,
         ECS_COMPONENT_RELATION_FLAGS(relation, EcsComponentRelationSource),
-        SIREFLECT_INVALID_HANDLE,
-        NULL
+        SIREFLECT_INVALID_HANDLE
     );
     return component;
 }

@@ -16,12 +16,9 @@ typedef struct {
  */
 void ecs_inheritance_instantiate_children(ecs_entity_t entity, ecs_entity_t base);
 
-/* Collect components that must become owned when a type inherits from base. */
-void ecs_inheritance_plan_build(
-    const ecs_type_t *child_type,
-    ecs_entity_t base,
-    ecs_inheritance_plan_t *plan
-);
+/* Consume type and add the owned components supplied by base. */
+ecs_type_t
+ecs_inheritance_materialize(ecs_type_t type, ecs_entity_t base, ecs_inheritance_plan_t *plan);
 
 void ecs_inheritance_plan_fini(ecs_inheritance_plan_t *plan);
 

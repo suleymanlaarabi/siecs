@@ -1,5 +1,6 @@
 #include "relation.h"
 #include "command_buffer.h"
+#include "component_write.h"
 #include "storage/component_index.h"
 #include "storage/table_index.h"
 #include "table_migration.h"
@@ -296,17 +297,17 @@ static void ecs_relation_set_dense(
     const ecs_component_record_t *crec = ecs_component_index_get(component);
     RelationTarget value = { .entity = target };
     ecs_entity_record_t *record = ecs_get_record(entity);
-    RelationTarget *current = ecs_table_component_at_column(table, column, record->table_row);
-
     ecs_defer_begin();
-    if (crec->on_set) {
-        crec->on_set(entity, component, &value, current);
-        record = ecs_get_record(entity);
-        table = ecs_get_table(record->table_id);
-        current = ecs_table_get_component(table, component, record->table_row);
-    }
-    ecs_emit(table, entity, EcsOnSet, component, &value);
-    current->entity = value.entity;
+    ecs_component_write(
+        entity,
+        component,
+        crec,
+        table,
+        record->table_row,
+        column,
+        &value,
+        EcsWriteRelationTarget | EcsWriteNotify
+    );
     ecs_defer_end();
 }
 
@@ -330,34 +331,17 @@ static ecs_table_t *ecs_relation_set_pair(
     uint64_t value
 ) {
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    uint16_t from_id = entity_record->table_id;
-    ecs_table_t *from = ecs_get_table(from_id);
+    const ecs_table_t *from = ecs_get_table(entity_record->table_id);
     ecs_type_t type =
         ecs_type_with(&from->type, component, (ecs_type_pair_t){ .key = key, .value = value });
-    uint16_t to_id = ecs_table_index_get_or_create(type);
-    if (to_id != from_id) {
-        from = ecs_get_table(from_id);
-        if (component) {
-            ecs_migrate(entity_record, entity, from, to_id, 0);
-        } else {
-            ecs_migrate_same_layout(entity_record, entity, from, to_id);
-        }
-    }
-    return ecs_get_table(entity_record->table_id);
+    return ecs_table_change_type(entity_record, entity, type, component == 0);
 }
 
 static void ecs_relation_remove_pair(ecs_entity_t entity, uint16_t component_at, uint16_t key) {
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    uint16_t from_id = entity_record->table_id;
-    ecs_table_t *from = ecs_get_table(from_id);
+    const ecs_table_t *from = ecs_get_table(entity_record->table_id);
     ecs_type_t type = ecs_type_without(&from->type, component_at, key);
-    uint16_t to_id = ecs_table_index_get_or_create(type);
-    from = ecs_get_table(from_id);
-    if (component_at == UINT16_MAX) {
-        ecs_migrate_same_layout(entity_record, entity, from, to_id);
-    } else {
-        ecs_migrate(entity_record, entity, from, to_id, 0);
-    }
+    ecs_table_change_type(entity_record, entity, type, component_at == UINT16_MAX);
 }
 
 static void ecs_relation_update_children_depth(
@@ -395,15 +379,18 @@ static void ecs_relation_set_depth(
         depth
     );
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    RelationTarget *current =
-        ecs_table_get_component(table, relation_record->component, entity_record->table_row);
     const ecs_component_record_t *component = ecs_component_index_get(relation_record->component);
     RelationTarget value = { .entity = target };
-    component->on_set(entity, relation_record->component, &value, current);
-    entity_record = ecs_get_record(entity);
-    table = ecs_get_table(entity_record->table_id);
-    current = ecs_table_get_component(table, relation_record->component, entity_record->table_row);
-    current->entity = value.entity;
+    ecs_component_write(
+        entity,
+        relation_record->component,
+        component,
+        table,
+        entity_record->table_row,
+        ecs_table_get_column_index(table, relation_record->component),
+        &value,
+        EcsWriteRelationTarget
+    );
     ecs_relation_update_children_depth(entity, relation, depth);
 }
 
