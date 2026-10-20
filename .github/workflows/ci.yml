@@ -160,6 +160,15 @@ jobs:
           $core = Join-Path $env:RUNNER_TEMP "siecs-core-tests"
           New-Item -ItemType Directory -Path $core -Force | Out-Null
           Copy-Item project.json, include, src, test -Destination $core -Recurse
+          # This job builds a static runtime; DLL loading is covered by the shared-library jobs.
+          $manifestPath = "$core/test/project.json"
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          foreach ($suite in $manifest.test.testsuites) {
+            if ($suite.id -eq "module") {
+              $suite.testcases = @($suite.testcases | Where-Object { $_ -ne "dynamic_load" })
+            }
+          }
+          $manifest | ConvertTo-Json -Depth 30 | Set-Content $manifestPath -Encoding utf8
           # GUI tests are exercised by the SDL-equipped Linux and macOS jobs.
           Remove-Item "$core/test/ui", "$core/test/ui_cpp" -Recurse -Force
           New-Item -ItemType Directory -Path "$core/addons" -Force | Out-Null
