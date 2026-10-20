@@ -110,6 +110,10 @@ jobs:
           bake rebuild test -r --cfg "${{ matrix.config }}"
           bake rebuild test/cpp -r --cfg "${{ matrix.config }}"
 
+      - name: Check C++ compile contracts
+        if: matrix.config == 'debug'
+        run: python3 test/cpp/compile_contracts.py
+
       - name: Run tests
         if: matrix.config != 'lsan'
         run: |

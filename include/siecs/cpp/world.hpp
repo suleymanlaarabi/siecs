@@ -123,50 +123,6 @@ inline ecs_relation_id_t relation(
     return detail::ecs_cpp_relation_id<T>(&desc);
 }
 
-/** Copy an lvalue or move an rvalue into the per-world resource of type `T`. */
-template <typename T> inline void set_resource(T &&value) {
-    using type = std::remove_cvref_t<T>;
-    if constexpr (std::is_lvalue_reference_v<T>) {
-        ecs_set_resource_rid(ecs_cpp_resource_id<type>(), &value);
-    } else {
-        ecs_move_resource_rid(ecs_cpp_resource_id<type>(), &value);
-    }
-}
-
-/** Return a mutable resource reference; a value must have been set first. */
-template <typename T> [[nodiscard]] inline T &resource() {
-    using type = std::remove_cv_t<T>;
-    return *static_cast<T *>(ecs_resource_rid(ecs_cpp_resource_id<type>()));
-}
-
-/** Return the registered resource id for `T`, creating registration if needed. */
-template <typename T> [[nodiscard]] inline ecs_resource_t resource_id() {
-    return ecs_cpp_resource_id<std::remove_cv_t<T>>();
-}
-
-/** Return a resource pointer, or null when `T` is not registered/present. */
-template <typename T> [[nodiscard]] inline T *try_resource() {
-    using type = std::remove_cv_t<T>;
-    ecs_resource_t id = ecs_cpp_try_resource_id<type>();
-    return id ? static_cast<T *>(ecs_try_resource_rid(id)) : nullptr;
-}
-
-/** Test whether a resource of type `T` is present in the active world. */
-template <typename T> [[nodiscard]] inline bool has_resource() {
-    using type = std::remove_cv_t<T>;
-    ecs_resource_t id = ecs_cpp_try_resource_id<type>();
-    return id && ecs_has_resource_rid(id);
-}
-
-/** Remove resource `T` if present; no-op when it has not been registered. */
-template <typename T> inline void remove_resource() {
-    using type = std::remove_cv_t<T>;
-    ecs_resource_t id = ecs_cpp_try_resource_id<type>();
-    if (id) {
-        ecs_remove_resource_rid(id);
-    }
-}
-
 template <typename T, typename... Args> static void import_module_callback(const void *ptr) {
     using context_t = detail::module_import_context<T, Args...>;
     auto &context = *static_cast<context_t *>(const_cast<void *>(ptr));
@@ -228,14 +184,18 @@ template <typename T> [[nodiscard]] module_ref<T> module() noexcept {
 template <typename T> [[nodiscard]] observer<T> observe() { return observer<T>(); }
 
 /** Return the stable event id associated with event tag `T`. */
-template <typename T> [[nodiscard]] ecs_event_t event() { return detail::ecs_cpp_event_id<T>(); }
+template <typename T> [[nodiscard]] ecs_event_t event_id() { return detail::ecs_cpp_event_id<T>(); }
 
-/** Trigger event `T` for a live entity; callback data is borrowed for the call. */
-template <typename T> inline void trigger(entity value, const void *data = nullptr) {
-    ecs_observer_trigger(value.id(), event<T>(), data);
+/** Emit a typed custom payload, borrowed synchronously by its observers. */
+template <typename T> inline void emit(entity value, const T &payload) {
+    static_assert(
+        detail::builtin_event<T> == UINT16_MAX,
+        "Builtin lifecycle events are emitted by ECS operations"
+    );
+    ecs_observer_trigger(value.id(), event_id<T>(), &payload);
 }
 
-/** Experimental: create an empty entity with an `IsA` link; this is not a deep clone. */
-inline entity instantiate(entity base) { return entity::create().is_a(base); }
+/** Instantiate a prefab, including its owned ChildOf subtree. */
+inline entity instantiate(entity base) { return spawn().is_a(base); }
 
 } // namespace ecs

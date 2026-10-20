@@ -316,7 +316,8 @@
           "target_entity_kill",
           "target_index_reuse",
           "target_on_remove",
-          "target_many"
+          "target_many",
+          "user_data_lifetime"
         ]
       },
       {

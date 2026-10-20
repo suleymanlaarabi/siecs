@@ -323,8 +323,8 @@ ecs_system_disable(damage);
 <TabItem label="C++">
 
 ```cpp
-ecs::enable_system(damage);
-ecs::disable_system(damage);
+damage.enable();
+damage.disable();
 ```
 
 </TabItem>
@@ -490,12 +490,18 @@ ecs_system({
 ```cpp
 ecs::system("Render")
     .phase(EcsOnRender)
-    .immediate()
+    .main_thread()
     .each([] {});
 ```
 
 </TabItem>
 </Tabs>
+
+The C++ `.main_thread()` option restricts execution to the main thread.
+`.no_defer()` separately controls the outer mutation scope of resource-only
+systems. Neither option runs a system when it is registered. The returned
+`system_ref` is non-owning and provides `.run()`, `.enable()`, `.disable()`,
+and `.id()`; `.after(other_system)` accepts another system handle.
 
 ### Parallel mutation
 

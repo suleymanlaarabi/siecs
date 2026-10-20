@@ -48,7 +48,7 @@ void entity_state_enable_disable(void) {
     ecs::entity empty;
     test_false(empty.is_alive());
 
-    auto entity = ecs::entity::create();
+    auto entity = ecs::spawn();
 
     test_true(entity.is_enabled());
     test_false(entity.is_disabled());
@@ -71,8 +71,8 @@ void entity_state_disabled_entities_are_skipped(void) {
     ecs_test_scope _ecs_scope;
     (void)ecs::component<EntityStatePosition>();
 
-    auto enabled = ecs::entity::create().set(EntityStatePosition{ 0 });
-    auto disabled = ecs::entity::create().set(EntityStatePosition{ 0 }).disable();
+    auto enabled = ecs::spawn().set(EntityStatePosition{ 0 });
+    auto disabled = ecs::spawn().set(EntityStatePosition{ 0 }).disable();
 
     ecs::system("EntityStateUpdate").each([](EntityStatePosition &position) {
         position.value++;
@@ -88,7 +88,7 @@ void entity_state_disabled_entities_are_skipped(void) {
 
 void entity_state_typed_entity_creation(void) {
     ecs_test_scope _ecs_scope;
-    auto entity = ecs::entity::create<EntityStateTypedEntity>();
+    auto entity = ecs::singleton<EntityStateTypedEntity>();
 
     test_true(entity.is_alive());
     test_true(entity.has<Name>());
@@ -97,7 +97,7 @@ void entity_state_typed_entity_creation(void) {
 void entity_state_variadic_set_and_read(void) {
     ecs_test_scope _ecs_scope;
 
-    auto entity = ecs::entity::create().set(EntityStatePosition{ 10 }, EntityStateVelocity{ 20 });
+    auto entity = ecs::spawn().set(EntityStatePosition{ 10 }, EntityStateVelocity{ 20 });
     const ecs::entity const_entity = entity;
 
     test_true((entity.has<EntityStatePosition, EntityStateVelocity>()));
@@ -110,7 +110,7 @@ void entity_state_variadic_set_and_read(void) {
 void entity_state_variadic_add_remove_batches_migration(void) {
     ecs_test_scope _ecs_scope;
 
-    auto entity = ecs::entity::create().set(EntityStateBatchTracked{ 42 });
+    auto entity = ecs::spawn().set(EntityStateBatchTracked{ 42 });
 
     EntityStateBatchTracked::moves = 0;
     entity.add<EntityStateBatchA, EntityStateBatchB, EntityStateBatchC>();

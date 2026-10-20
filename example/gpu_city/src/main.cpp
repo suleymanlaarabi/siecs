@@ -38,10 +38,10 @@ int main() {
         .height = 720,
         .samples = 1,
     }));
-    ecs::set_resource(AmbientLight{ Color{ 180, 195, 230 }, 0.45f });
-    ecs::set_resource(Shadows{ false, 200.0f });
-    ecs::set_resource(CameraClip{ 0.5f, 4000.0f });
-    ecs::set_resource(Multisampling{ 2 });
+    ecs::resource<AmbientLight>().set(AmbientLight{ Color{ 180, 195, 230 }, 0.45f });
+    ecs::resource<Shadows>().set(Shadows{ false, 200.0f });
+    ecs::resource<CameraClip>().set(CameraClip{ 0.5f, 4000.0f });
+    ecs::resource<Multisampling>().set(Multisampling{ 2 });
 
     ecs::component<FreeCameraController>();
     ecs::component<gpu_city::Car>();
@@ -71,7 +71,7 @@ int main() {
         });
 
     const bool aerial = std::getenv("GPU_CITY_AERIAL") != nullptr;
-    ecs::entity::create("Camera").add<FreeCameraController>().set(
+    ecs::ensure("Camera").add<FreeCameraController>().set(
         aerial ? Position3d{ 9.0f, 70.0f, 35.0f } : Position3d{ 17.0f, 23.0f, 43.0f },
         aerial ? Rotation3d{ -1.45f, 0.0f, 0.0f } : Rotation3d{ -0.4f, 0.35f, 0.0f },
         Camera{ 70.0f }

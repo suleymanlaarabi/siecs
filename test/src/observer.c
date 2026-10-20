@@ -560,3 +560,49 @@ void observer_deferred_on_set_reports_component_at_flush(void) {
     test_uint(ecs_id(ObserverPosition), state.component);
     ecs_fini();
 }
+
+static void observer_destroy_user_data(uintptr_t value) {
+    uint32_t *calls = (uint32_t *)value;
+    (*calls)++;
+}
+
+void observer_user_data_lifetime(void) {
+    uint32_t explicit_calls = 0, targeted_calls = 0, world_calls = 0;
+    ecs_init();
+    ecs_event_t event = ecs_event();
+    ecs_observer_id_t first = ecs_observer(
+        {
+            .on = event,
+            .callback = observer_ignore_event,
+            .user_data = (uintptr_t)&explicit_calls,
+            .user_data_dtor = observer_destroy_user_data,
+        }
+    );
+    ecs_observer_fini(first);
+    test_int(explicit_calls, 1);
+    ecs_entity_t owner = ecs_new();
+    ecs_observer(
+        {
+            .on = event,
+            .entity = owner,
+            .callback = observer_ignore_event,
+            .user_data = (uintptr_t)&targeted_calls,
+            .user_data_dtor = observer_destroy_user_data,
+        }
+    );
+    ecs_kill(owner);
+    test_int(targeted_calls, 1);
+    ecs_observer(
+        {
+            .on = event,
+            .callback = observer_ignore_event,
+            .user_data = (uintptr_t)&world_calls,
+            .user_data_dtor = observer_destroy_user_data,
+        }
+    );
+    test_int(world_calls, 0);
+    ecs_fini();
+    test_int(explicit_calls, 1);
+    test_int(targeted_calls, 1);
+    test_int(world_calls, 1);
+}

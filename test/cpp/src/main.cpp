@@ -119,6 +119,16 @@ void traffic_long_run_relation_integrity(void);
 void module_state_lookup_empty(void);
 void module_state_enable(void);
 
+// Testsuite 'ergonomics'
+void ergonomics_observer_chaining_and_captures(void);
+void ergonomics_observer_capture_lifetime(void);
+void ergonomics_typed_event_and_owner_handle(void);
+void ergonomics_system_relation_and_inheritance_filters(void);
+void ergonomics_query_generic_and_ownership(void);
+void ergonomics_resource_read_edit_and_presence(void);
+void ergonomics_spawn_ensure_singleton_world_restart(void);
+void ergonomics_observer_ancestor_access_and_optional(void);
+
 bake_test_case naming_testcases[] = {
     {
         "paths_and_relative_creation",
@@ -503,6 +513,41 @@ bake_test_case module_state_testcases[] = {
     }
 };
 
+bake_test_case ergonomics_testcases[] = {
+    {
+        "observer_chaining_and_captures",
+        ergonomics_observer_chaining_and_captures
+    },
+    {
+        "observer_capture_lifetime",
+        ergonomics_observer_capture_lifetime
+    },
+    {
+        "typed_event_and_owner_handle",
+        ergonomics_typed_event_and_owner_handle
+    },
+    {
+        "system_relation_and_inheritance_filters",
+        ergonomics_system_relation_and_inheritance_filters
+    },
+    {
+        "query_generic_and_ownership",
+        ergonomics_query_generic_and_ownership
+    },
+    {
+        "resource_read_edit_and_presence",
+        ergonomics_resource_read_edit_and_presence
+    },
+    {
+        "spawn_ensure_singleton_world_restart",
+        ergonomics_spawn_ensure_singleton_world_restart
+    },
+    {
+        "observer_ancestor_access_and_optional",
+        ergonomics_observer_ancestor_access_and_optional
+    }
+};
+
 
 static bake_test_suite suites[] = {
     {
@@ -588,9 +633,16 @@ static bake_test_suite suites[] = {
         NULL,
         2,
         module_state_testcases
+    },
+    {
+        "ergonomics",
+        NULL,
+        NULL,
+        8,
+        ergonomics_testcases
     }
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.cpp.test", argc, argv, suites, 12);
+    return bake_test_run("siecs.cpp.test", argc, argv, suites, 13);
 }

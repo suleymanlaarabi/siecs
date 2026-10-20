@@ -264,7 +264,7 @@ ecs_observer({
 
 ```cpp
 ecs::observe<ecs::OnSet>()
-    .require<Enemy>()
+    .with<Enemy>()
     .each([](ecs::entity entity, const Position &position) {
         (void)entity;
         (void)position;
@@ -314,17 +314,19 @@ ecs_observer_trigger(entity, DamageEvent, &payload);
 <TabItem label="C++">
 
 ```cpp
-struct DamageEvent {};
-
-ecs::observe<DamageEvent>()
-    .require<Health>()
-    .each([](ecs::observer_event event) {
-        const auto *payload = event.trigger_data<DamagePayload>();
-        (void)payload;
+struct DamageEvent { int amount; };
+int calls = 0;
+auto observer = ecs::observe<DamageEvent>()
+    .with<Health>()
+    .each([&calls](ecs::event<DamageEvent> event) {
+        ++calls;
+        const int amount = event->amount;
+        const auto target = event.target();
+        (void)amount;
+        (void)target;
     });
 
-DamagePayload payload{ .amount = 10 };
-ecs::trigger<DamageEvent>(entity, &payload);
+ecs::emit(entity, DamageEvent{ .amount = 10 });
 ```
 
 </TabItem>
@@ -332,7 +334,11 @@ ecs::trigger<DamageEvent>(entity, &payload);
 
 The payload type is defined by the application.
 
-Every observer that handles the event must agree on the payload contract.
+C++ custom events use their payload type as the event identity. The compiler
+checks that `ecs::event<T>` matches `ecs::observe<T>()`. Emission is synchronous;
+the payload view is borrowed until the callback returns. Callbacks can capture
+state, including move-only values. The world owns that state until the observer
+is removed, its target is destroyed, or the world shuts down.
 
 ### Typed event ids
 
@@ -362,9 +368,9 @@ ecs_observer_enable(observer);
 <TabItem label="C++">
 
 ```cpp
-// Typed observer builders return the public observer id used by control calls.
-ecs_observer_disable(observer);
-ecs_observer_enable(observer);
+observer.disable();
+observer.enable();
+observer.remove();
 ```
 
 </TabItem>
@@ -378,7 +384,9 @@ Modules use this when disabling all observers captured during module import.
 
 Disabled observers receive no callbacks but remain allocated.
 
-Use `ecs_observer_fini()` to destroy an observer registration completely.
+Use `ecs_observer_fini()` in C or `observer.remove()` in C++ to destroy a
+registration completely. C++ observer handles are non-owning; letting a handle
+go out of scope leaves the registration active.
 
 ### Observer Ordering
 

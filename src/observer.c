@@ -23,6 +23,8 @@ void ecs_observer_index_fini(void) {
     for (uint32_t i = 0; i < observer_index.observers.size; i++) {
         if (observers[i].query != ECS_OBSERVER_NO_QUERY)
             ecs_query_fini(observers[i].query);
+        if (observers[i].user_data_dtor)
+            observers[i].user_data_dtor(observers[i].user_data);
     }
     sicore_vec_fini(&observer_index.target_observers);
     sicore_vec_fini(&observer_index.target_keys);
@@ -113,6 +115,7 @@ ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
     *observer = (ecs_observer_t){
         .callback = desc->callback,
         .user_data = desc->user_data,
+        .user_data_dtor = desc->user_data_dtor,
         .next_module = UINT32_MAX,
         .target_entity =
             desc->entity != 0 ? ecs_entity_id(desc->entity) : ECS_OBSERVER_GLOBAL_ENTITY,
@@ -149,6 +152,8 @@ void ecs_observer_fini(ecs_observer_id_t id) {
     uint32_t target_entity = observer->target_entity;
     ecs_event_t event = observer->event;
     ecs_query_id_t query = observer->query;
+    uintptr_t user_data = observer->user_data;
+    void (*user_data_dtor)(uintptr_t) = observer->user_data_dtor;
 
     if (target_entity != ECS_OBSERVER_GLOBAL_ENTITY) {
         ecs_observer_target_remove(target_entity, event, id);
@@ -169,6 +174,8 @@ void ecs_observer_fini(ecs_observer_id_t id) {
     observer->target_entity = ECS_OBSERVER_GLOBAL_ENTITY;
     observer->query = ECS_OBSERVER_NO_QUERY;
     observer_index.first_free = id;
+    if (user_data_dtor)
+        user_data_dtor(user_data);
 }
 
 void ecs_observer_fini_entity(ecs_entity_t entity) {

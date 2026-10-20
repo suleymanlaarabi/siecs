@@ -160,6 +160,19 @@
           "lookup_empty",
           "enable"
         ]
+      },
+      {
+        "id": "ergonomics",
+        "testcases": [
+          "observer_chaining_and_captures",
+          "observer_capture_lifetime",
+          "typed_event_and_owner_handle",
+          "system_relation_and_inheritance_filters",
+          "query_generic_and_ownership",
+          "resource_read_edit_and_presence",
+          "spawn_ensure_singleton_world_restart",
+          "observer_ancestor_access_and_optional"
+        ]
       }
     ]
   }

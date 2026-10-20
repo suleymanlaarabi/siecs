@@ -8,14 +8,10 @@ namespace detail {
 
 template <typename Callback, typename Args> static void system_callback(ecs_iter_t *it) {
     Callback &callback = *reinterpret_cast<Callback *>(it->user_data);
-    constexpr auto indices = std::make_index_sequence<std::tuple_size_v<Args>>{};
-    auto params = init_system_params<Args>(indices);
-    [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-        (prepare_field<Args, Is>(std::get<Is>(params)), ...);
-    }(indices);
-    std::apply([&](auto &...param) { (prepare_world(param, ecs_world_current()), ...); }, params);
+    auto params = init_callback_params<Args>();
     if (it->cache) {
-        while (ecs_iter_next(it)) run_batch<Args>(callback, it, params);
+        while (ecs_iter_next(it))
+            run_batch<Args>(callback, it, params);
     } else {
         run_batch<Args>(callback, it, params);
     }
@@ -27,55 +23,25 @@ template <typename Callback> static void system_callback_dtor(uintptr_t user_dat
 
 } // namespace detail
 
-/** Fluent typed system builder; the resulting C system owns its callback. */
-class system : protected query {
+/** Non-owning handle to a system registered in the active world. */
+class system_ref {
+    ecs_system_id_t _id;
+
+  public:
+    explicit system_ref(ecs_system_id_t id) noexcept : _id(id) {}
+    void enable() const { ecs_system_enable(_id); }
+    void disable() const { ecs_system_disable(_id); }
+    void run() const { ecs_run_system(_id); }
+    [[nodiscard]] ecs_system_id_t id() const noexcept { return _id; }
+};
+
+/** Fluent system builder; the world owns its callback and registration. */
+class system : public query_filter<system> {
     ecs_system_desc_t _system{ .phase = EcsOnUpdate };
 
   public:
     /** Construct a system descriptor with an optional diagnostic name. */
     explicit system(const char *name = "unnamed") { _system.name = name; }
-
-    /** Add required filter terms to the system query. */
-    template <typename... T> system &require() {
-        query::require<T...>();
-        return *this;
-    }
-
-    /** Add optional component terms to the system query. */
-    template <typename... T> system &optional() {
-        query::optional<T...>();
-        return *this;
-    }
-
-    /** Add exclusion terms to the system query. */
-    template <typename... T> system &exclude() {
-        query::exclude<T...>();
-        return *this;
-    }
-
-    /** Match entities with a relation of the requested type. */
-    template <typename Relation> system &with_relation() {
-        query::with_relation<Relation>();
-        return *this;
-    }
-
-    /** Set the query ordering callback. */
-    system &order_by(ecs_query_order_t value) {
-        query::order_by(value);
-        return *this;
-    }
-
-    /** Order query results by the target of a relation. */
-    template <typename Relation> system &order_by_target() {
-        query::order_by_target<Relation>();
-        return *this;
-    }
-
-    /** Order query results by the depth of a relation. */
-    template <typename Relation> system &order_by_depth() {
-        query::order_by_depth<Relation>();
-        return *this;
-    }
 
     /** Select the phase in which the system is scheduled. */
     system &phase(ecs_phase_t _phase) {
@@ -90,7 +56,7 @@ class system : protected query {
     }
 
     /** Set whether the system is only run on the main thread. */
-    system &immediate() {
+    system &main_thread() {
         _system.main_thread_only = true;
         return *this;
     }
@@ -102,10 +68,10 @@ class system : protected query {
     }
 
     /** Add a same-phase dependency; capacity is `ECS_SYSTEM_AFTER_CAPACITY`. */
-    system &after(ecs_system_id_t dependency) {
+    system &after(system_ref dependency) {
         for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY; i++) {
             if (_system.after[i] == 0) {
-                _system.after[i] = dependency;
+                _system.after[i] = dependency.id();
                 return *this;
             }
         }
@@ -119,8 +85,8 @@ class system : protected query {
         return *this;
     }
 
-    /** Register the callback and return the owned system id. */
-    template <typename F> ecs_system_id_t each(F &&func) {
+    /** Register a world-owned callback and return its non-owning handle. */
+    template <typename F> system_ref each(F &&func) {
         using callback = std::remove_cvref_t<F>;
         using args = typename function_traits<callback>::args_tuple;
         detail::append_callback_terms<args>(desc, component_index, resource_index, relation_index);
@@ -131,15 +97,8 @@ class system : protected query {
         _system.callback_iterates_query = true;
         _system.user_data = reinterpret_cast<uintptr_t>(state);
         _system.user_data_dtor = detail::system_callback_dtor<callback>;
-        return ecs_system_init(&_system);
+        return system_ref(ecs_system_init(&_system));
     }
 };
-
-/** Run one enabled system immediately. */
-inline void run_system(ecs_system_id_t id) { ecs_run_system(id); }
-/** Enable a registered system. */
-inline void enable_system(ecs_system_id_t id) { ecs_system_enable(id); }
-/** Disable a registered system. */
-inline void disable_system(ecs_system_id_t id) { ecs_system_disable(id); }
 
 } // namespace ecs

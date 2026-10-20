@@ -83,10 +83,10 @@ static int api_order_by_target_desc(const ecs_table_t *a, const ecs_table_t *b, 
 void api_cpp_wrapper_helpers(void) {
     ecs_test_scope _ecs_scope;
 
-    auto monotonic = ecs::entity::create_no_reuse();
+    auto monotonic = ecs::spawn_no_reuse();
     uint32_t monotonic_index = ecs_entity_id(monotonic.id());
     monotonic.kill();
-    auto next_monotonic = ecs::entity::create_no_reuse();
+    auto next_monotonic = ecs::spawn_no_reuse();
     test_true(ecs_entity_id(next_monotonic.id()) > monotonic_index);
 
     test_true(
@@ -106,47 +106,47 @@ void api_cpp_wrapper_helpers(void) {
         .acyclic = true,
     });
 
-    auto relation_target = ecs::entity::create().set(ApiPosition{ 9 });
-    auto related = ecs::entity::create().relate<ApiRelation>(relation_target);
+    auto relation_target = ecs::spawn().set(ApiPosition{ 9 });
+    auto related = ecs::spawn().relate<ApiRelation>(relation_target);
     test_true(related.has_relation<ApiRelation>());
     test_true(related.target<ApiRelation>().id() == relation_target.id());
     related.unrelate<ApiRelation>();
     test_false(related.has_relation<ApiRelation>());
 
-    auto group = ecs::entity::create();
-    auto member = ecs::entity::create().relate<ApiGroup>(group);
-    test_uint(member.id(), ecs::query().to<ApiGroup>(group).first().id());
+    auto group = ecs::spawn();
+    auto member = ecs::spawn().relate<ApiGroup>(group);
+    test_uint(member.id(), ecs::query().with<ApiGroup>(group).first().id());
 
-    auto second_group = ecs::entity::create();
-    auto second_member = ecs::entity::create().set(ApiPosition{ 20 });
-    auto first_member = ecs::entity::create().set(ApiPosition{ 10 });
+    auto second_group = ecs::spawn();
+    auto second_member = ecs::spawn().set(ApiPosition{ 20 });
+    auto first_member = ecs::spawn().set(ApiPosition{ 10 });
     second_member.relate<ApiGroup>(second_group);
     first_member.relate<ApiGroup>(group);
 
-    auto ordered = ecs::query().require<ApiPosition>().order_by_target<ApiGroup>().build_handle();
+    auto ordered = ecs::query().with<ApiPosition>().order_by_target<ApiGroup>().build();
     int ordered_sum = 0;
     ordered.each([&](ApiPosition &position) { ordered_sum = ordered_sum * 10 + position.value; });
     test_int(1020, ordered_sum);
 
     auto custom_ordered = ecs::query()
-                              .require<ApiPosition>()
+                              .with<ApiPosition>()
                               .order_by(
                                   ecs_query_order_t{
                                       .func = api_order_by_target_desc,
                                       .data = ecs::relation<ApiGroup>(),
                                   }
                               )
-                              .build_handle();
+                              .build();
     ordered_sum = 0;
     custom_ordered.each([&](ApiPosition &position) {
         ordered_sum = ordered_sum * 10 + position.value;
     });
     test_int(2109, ordered_sum);
 
-    auto location = ecs::entity::create().set(ApiPosition{ 12 });
-    auto located = ecs::entity::create().relate<ApiLocated>(location);
+    auto location = ecs::spawn().set(ApiPosition{ 12 });
+    auto located = ecs::spawn().relate<ApiLocated>(location);
     int inherited_position = 0;
-    ecs::query().to<ApiLocated>(location).up<ApiPosition, ApiLocated>().each(
+    ecs::query().with<ApiLocated>(location).up<ApiPosition, ApiLocated>().each(
         [&](ecs::entity current, const ApiPosition &position) {
             test_true(current.id() == located.id());
             inherited_position = position.value;
@@ -154,13 +154,13 @@ void api_cpp_wrapper_helpers(void) {
     );
     test_int(12, inherited_position);
 
-    auto entity = ecs::entity::create().set(ApiPosition{ 1 });
-    ecs::query().require<ApiPosition>().each([](ApiPosition &position,
+    auto entity = ecs::spawn().set(ApiPosition{ 1 });
+    ecs::query().with<ApiPosition>().each([](ApiPosition &position,
                                                 ecs::optional<const ApiVelocity> velocity) {
         if (velocity)
             position.value += velocity->value;
     });
-    auto persistent = ecs::query().require<ApiPosition>().build_handle();
+    auto persistent = ecs::query().with<ApiPosition>().build();
     persistent.each([](ApiPosition &position) { position.value++; });
 
     auto first = ecs::system("ApiFirst").each([](ApiPosition &position) { position.value++; });
@@ -168,10 +168,10 @@ void api_cpp_wrapper_helpers(void) {
         position.value++;
     });
 
-    ecs::enable_system(second);
-    ecs::run_system(first);
-    ecs::run_system(second);
-    ecs::disable_system(second);
+    second.enable();
+    first.run();
+    second.run();
+    second.disable();
     test_int(4, entity.get<ApiPosition>().value);
 
     uint32_t observer_calls = 0;
@@ -185,21 +185,21 @@ void api_cpp_wrapper_helpers(void) {
     entity.set(ApiPosition{ 4 });
     test_int(1, observer_calls);
     test_int(4, entity.get<ApiPosition>().value);
-    test_true(ecs::resource_id<ApiTime>() != 0);
+    test_true(ecs::resource<ApiTime>().id() != 0);
 
     ecs::component_hooks<ApiHooked> component_hooks{ .on_set = api_hooked_on_set };
     ecs::component(component_hooks);
-    auto hooked = ecs::entity::create().add<ApiHooked>();
+    auto hooked = ecs::spawn().add<ApiHooked>();
     hooked.set(ApiHooked{ 7 });
     test_int(1, api_component_set_calls);
 
     ecs::resource_hooks<ApiHookTime> resource_hooks{ .on_set = api_hook_time_on_set };
-    auto time = ecs::resource_handle<ApiHookTime>(resource_hooks);
+    auto time = ecs::resource<ApiHookTime>(resource_hooks);
     time.set(ApiHookTime{ .dt = 0.016f });
     test_int(1, api_resource_set_calls);
     test_true(time.has());
     test_true(time.get().dt == 0.016f);
-    auto read_time = ecs::resource_handle<const ApiHookTime>();
+    auto read_time = ecs::resource<const ApiHookTime>();
     test_true(read_time.get().dt == 0.016f);
     time.remove();
     test_false(time.has());
@@ -212,7 +212,7 @@ void api_c_declared_component(void) {
     ecs_component_t id = ecs::component<cpp_c_position>();
     test_int(ecs_id(cpp_c_position), id);
 
-    auto entity = ecs::entity::create().set(cpp_c_position{ .value = 1 });
+    auto entity = ecs::spawn().set(cpp_c_position{ .value = 1 });
     test_true(entity.has<cpp_c_position>());
     test_int(1, entity.get<cpp_c_position>().value);
 
@@ -226,11 +226,11 @@ void api_c_declared_relation(void) {
     auto relation = ecs::relation<cpp_c_parent>();
     test_int(ecs_rid(cpp_c_parent), relation);
 
-    auto parent = ecs::entity::create();
-    auto child = ecs::entity::create().relate<cpp_c_parent>(parent);
+    auto parent = ecs::spawn();
+    auto child = ecs::spawn().relate<cpp_c_parent>(parent);
     test_true(child.has_relation<cpp_c_parent>());
     test_int(parent.id(), child.target<cpp_c_parent>().id());
-    test_int(child.id(), ecs::query().to<cpp_c_parent>(parent).first().id());
+    test_int(child.id(), ecs::query().with<cpp_c_parent>(parent).first().id());
 }
 
 void api_cpp_only_methods(void) {
@@ -245,7 +245,7 @@ void api_cpp_only_methods(void) {
     position.reset();
     test_int(0, position.value);
 
-    auto entity = ecs::entity::create().set(cpp_c_method_position{ .value = 4 });
+    auto entity = ecs::spawn().set(cpp_c_method_position{ .value = 4 });
     test_int(4, entity.get<cpp_c_method_position>().value);
 }
 
@@ -284,7 +284,7 @@ void api_cpp_system_interval(void) {
     ecs::progress();
     test_int(0, calls);
 
-    ecs::run_system(system);
+    system.run();
     test_int(1, calls);
 }
 
@@ -299,11 +299,11 @@ void api_component_with(void) {
 
     test_int(raw_root, ecs::component<ApiWithRoot>().id());
 
-    auto added = ecs::entity::create().add<ApiWithRoot>();
+    auto added = ecs::spawn().add<ApiWithRoot>();
 
     test_true((added.has<ApiWithRoot, ApiWithRequired, ApiWithSecond, ApiWithLeaf>()));
 
-    auto existing = ecs::entity::create().set(ApiWithRequired{ 42 });
+    auto existing = ecs::spawn().set(ApiWithRequired{ 42 });
 
     existing.add<ApiWithRoot>();
 
@@ -311,7 +311,7 @@ void api_component_with(void) {
 
     test_int(42, existing.get<ApiWithRequired>().value);
 
-    auto set_entity = ecs::entity::create().set(ApiWithRoot{ 7 });
+    auto set_entity = ecs::spawn().set(ApiWithRoot{ 7 });
 
     test_true((set_entity.has<ApiWithRoot, ApiWithRequired, ApiWithSecond, ApiWithLeaf>()));
 

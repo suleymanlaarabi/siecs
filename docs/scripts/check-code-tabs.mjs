@@ -8,7 +8,6 @@ let selectorCount = 0;
 let pairedCodeCount = 0;
 const sharedCppFunctions = new Set([
   'ecs_entity_id', 'ecs_entity_generation',
-  'ecs_observer_enable', 'ecs_observer_disable',
   'ecs_save_memory', 'ecs_scene_free', 'ecs_scene_validate',
   'ecs_load_memory', 'ecs_save', 'ecs_load',
 ]);

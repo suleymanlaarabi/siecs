@@ -39,14 +39,14 @@ void observer_custom_event(void) {
     cpp_observer_calls = 0;
 
     ecs_test_scope _ecs_scope;
-    auto entity = ecs::entity::create().set(CppObserverPosition{ .value = 1 });
+    auto entity = ecs::spawn().set(CppObserverPosition{ .value = 1 });
 
     ecs::observe<CppObserverEvent>().each([](CppObserverPosition &position) {
         position.value += 2;
         cpp_observer_calls++;
     });
 
-    ecs::trigger<CppObserverEvent>(entity);
+    ecs::emit(entity, CppObserverEvent{});
 
     test_int(1, cpp_observer_calls);
     test_int(3, cpp_observer_position(entity)->value);
@@ -55,28 +55,28 @@ void observer_custom_event(void) {
 void observer_entity_custom_event(void) {
     cpp_observer_calls = 0;
     ecs_test_scope _ecs_scope;
-    auto target = ecs::entity::create();
-    auto other = ecs::entity::create();
+    auto target = ecs::spawn();
+    auto other = ecs::spawn();
 
     target.observe<CppObserverEvent>([](ecs::observer_event) { cpp_observer_calls++; });
-    ecs::trigger<CppObserverEvent>(other);
+    ecs::emit(other, CppObserverEvent{});
     test_int(0, cpp_observer_calls);
-    ecs::trigger<CppObserverEvent>(target);
+    ecs::emit(target, CppObserverEvent{});
     test_int(1, cpp_observer_calls);
 
     ecs::observe<CppObserverEvent>().target(target).each([](ecs::observer_event) {
         cpp_observer_calls++;
     });
-    ecs::trigger<CppObserverEvent>(target);
+    ecs::emit(target, CppObserverEvent{});
     test_int(3, cpp_observer_calls);
 
     ecs::observe<CppObserverEvent>().target(target).each([](CppObserverPosition &) {
         cpp_observer_calls++;
     });
-    ecs::trigger<CppObserverEvent>(target);
+    ecs::emit(target, CppObserverEvent{});
     test_int(5, cpp_observer_calls);
     target.set(CppObserverPosition{ .value = 1 });
-    ecs::trigger<CppObserverEvent>(target);
+    ecs::emit(target, CppObserverEvent{});
     test_int(8, cpp_observer_calls);
 }
 
@@ -85,28 +85,28 @@ void observer_entity_custom_event_matches_is_a_instances(void) {
     cpp_observer_last_entity = 0;
     ecs_test_scope _ecs_scope;
 
-    auto prefab = ecs::entity::create();
-    auto instance = ecs::entity::create().is_a(prefab);
-    auto indirect_instance = ecs::entity::create().is_a(instance);
-    auto unrelated = ecs::entity::create();
+    auto prefab = ecs::spawn();
+    auto instance = ecs::spawn().is_a(prefab);
+    auto indirect_instance = ecs::spawn().is_a(instance);
+    auto unrelated = ecs::spawn();
 
     prefab.observe<CppObserverEvent>([](ecs::entity entity) {
         cpp_observer_calls++;
         cpp_observer_last_entity = entity.id();
     });
 
-    ecs::trigger<CppObserverEvent>(unrelated);
+    ecs::emit(unrelated, CppObserverEvent{});
     test_int(0, cpp_observer_calls);
 
-    ecs::trigger<CppObserverEvent>(prefab);
+    ecs::emit(prefab, CppObserverEvent{});
     test_int(1, cpp_observer_calls);
     test_assert(cpp_observer_last_entity == prefab.id());
 
-    ecs::trigger<CppObserverEvent>(instance);
+    ecs::emit(instance, CppObserverEvent{});
     test_int(2, cpp_observer_calls);
     test_assert(cpp_observer_last_entity == instance.id());
 
-    ecs::trigger<CppObserverEvent>(indirect_instance);
+    ecs::emit(indirect_instance, CppObserverEvent{});
     test_int(3, cpp_observer_calls);
     test_assert(cpp_observer_last_entity == indirect_instance.id());
 }
@@ -116,14 +116,14 @@ void observer_const_arg(void) {
     cpp_observer_read_value = 0;
 
     ecs_test_scope _ecs_scope;
-    auto entity = ecs::entity::create().set(CppObserverPosition{ .value = 4 });
+    auto entity = ecs::spawn().set(CppObserverPosition{ .value = 4 });
 
     ecs::observe<CppObserverEvent>().each([](const CppObserverPosition &position) {
         cpp_observer_read_value = position.value;
         cpp_observer_calls++;
     });
 
-    ecs::trigger<CppObserverEvent>(entity);
+    ecs::emit(entity, CppObserverEvent{});
 
     test_int(1, cpp_observer_calls);
     test_int(4, cpp_observer_read_value);
@@ -133,7 +133,7 @@ void observer_multi_arg_terms(void) {
     cpp_observer_calls = 0;
 
     ecs_test_scope _ecs_scope;
-    auto entity = ecs::entity::create()
+    auto entity = ecs::spawn()
                       .set(CppObserverPosition{ .value = 1 })
                       .set(CppObserverVelocity{ .value = 3 });
 
@@ -143,7 +143,7 @@ void observer_multi_arg_terms(void) {
         cpp_observer_calls++;
     });
 
-    ecs::trigger<CppObserverEvent>(entity);
+    ecs::emit(entity, CppObserverEvent{});
 
     test_int(1, cpp_observer_calls);
     test_int(4, cpp_observer_position(entity)->value);
@@ -153,7 +153,7 @@ void observer_does_not_match_missing_component(void) {
     cpp_observer_calls = 0;
 
     ecs_test_scope _ecs_scope;
-    auto entity = ecs::entity::create().set(CppObserverPosition{ .value = 1 });
+    auto entity = ecs::spawn().set(CppObserverPosition{ .value = 1 });
 
     ecs::observe<CppObserverEvent>().each([](CppObserverPosition &position,
                                              const CppObserverVelocity &velocity) {
@@ -161,7 +161,7 @@ void observer_does_not_match_missing_component(void) {
         cpp_observer_calls++;
     });
 
-    ecs::trigger<CppObserverEvent>(entity);
+    ecs::emit(entity, CppObserverEvent{});
 
     test_int(0, cpp_observer_calls);
     test_int(1, cpp_observer_position(entity)->value);
@@ -171,8 +171,8 @@ void observer_resource_read(void) {
     cpp_observer_calls = 0;
 
     ecs_test_scope _ecs_scope;
-    ecs::set_resource(CppObserverTime{ .dt = 3, .elapsed = 0 });
-    auto entity = ecs::entity::create().set(CppObserverPosition{ .value = 1 });
+    ecs::resource<CppObserverTime>().set(CppObserverTime{ .dt = 3, .elapsed = 0 });
+    auto entity = ecs::spawn().set(CppObserverPosition{ .value = 1 });
 
     ecs::observe<CppObserverEvent>().each([](ecs::res<const CppObserverTime> time,
                                              CppObserverPosition &position) {
@@ -180,7 +180,7 @@ void observer_resource_read(void) {
         cpp_observer_calls++;
     });
 
-    ecs::trigger<CppObserverEvent>(entity);
+    ecs::emit(entity, CppObserverEvent{});
 
     test_int(1, cpp_observer_calls);
     test_int(4, cpp_observer_position(entity)->value);
@@ -190,8 +190,8 @@ void observer_resource_write(void) {
     cpp_observer_calls = 0;
 
     ecs_test_scope _ecs_scope;
-    ecs::set_resource(CppObserverTime{ .dt = 2, .elapsed = 1 });
-    auto entity = ecs::entity::create().set(CppObserverPosition{ .value = 1 });
+    ecs::resource<CppObserverTime>().set(CppObserverTime{ .dt = 2, .elapsed = 1 });
+    auto entity = ecs::spawn().set(CppObserverPosition{ .value = 1 });
 
     ecs::observe<CppObserverEvent>().each([](ecs::res<CppObserverTime> time,
                                              CppObserverPosition &position) {
@@ -199,18 +199,18 @@ void observer_resource_write(void) {
         cpp_observer_calls++;
     });
 
-    ecs::trigger<CppObserverEvent>(entity);
+    ecs::emit(entity, CppObserverEvent{});
 
     test_int(1, cpp_observer_calls);
-    test_int(4, ecs::resource<CppObserverTime>().elapsed);
+    test_int(4, ecs::resource<CppObserverTime>().get().elapsed);
 }
 
 void observer_resource_does_not_create_component_term(void) {
     cpp_observer_calls = 0;
 
     ecs_test_scope _ecs_scope;
-    ecs::set_resource(CppObserverTime{ .dt = 1, .elapsed = 0 });
-    auto entity = ecs::entity::create().set(CppObserverPosition{ .value = 1 });
+    ecs::resource<CppObserverTime>().set(CppObserverTime{ .dt = 1, .elapsed = 0 });
+    auto entity = ecs::spawn().set(CppObserverPosition{ .value = 1 });
 
     ecs::observe<CppObserverEvent>().each([](ecs::res<const CppObserverTime> time,
                                              CppObserverPosition &position) {
@@ -218,7 +218,7 @@ void observer_resource_does_not_create_component_term(void) {
         cpp_observer_calls++;
     });
 
-    ecs::trigger<CppObserverEvent>(entity);
+    ecs::emit(entity, CppObserverEvent{});
 
     test_int(1, cpp_observer_calls);
     test_int(2, cpp_observer_position(entity)->value);
@@ -228,8 +228,8 @@ void observer_resource_field_index_stays_correct(void) {
     cpp_observer_calls = 0;
 
     ecs_test_scope _ecs_scope;
-    ecs::set_resource(CppObserverTime{ .dt = 5, .elapsed = 0 });
-    auto entity = ecs::entity::create()
+    ecs::resource<CppObserverTime>().set(CppObserverTime{ .dt = 5, .elapsed = 0 });
+    auto entity = ecs::spawn()
                       .set(CppObserverPosition{ .value = 1 })
                       .set(CppObserverVelocity{ .value = 2 });
 
@@ -241,7 +241,7 @@ void observer_resource_field_index_stays_correct(void) {
         cpp_observer_calls++;
     });
 
-    ecs::trigger<CppObserverEvent>(entity);
+    ecs::emit(entity, CppObserverEvent{});
 
     test_int(1, cpp_observer_calls);
     test_int(8, cpp_observer_position(entity)->value);
@@ -255,9 +255,9 @@ void observer_relation_events(void) {
     });
 
     CppRelationObserverState state{};
-    auto target_a = ecs::entity::create();
-    auto target_b = ecs::entity::create();
-    auto source = ecs::entity::create();
+    auto target_a = ecs::spawn();
+    auto target_b = ecs::spawn();
+    auto source = ecs::spawn();
 
     auto set_observer = ecs::observe<ecs::OnRelationSet>();
     set_observer.with_relation<CppObserverRelation>();

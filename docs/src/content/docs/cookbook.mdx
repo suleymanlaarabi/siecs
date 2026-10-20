@@ -20,7 +20,7 @@ ecs_fini();
 
 ```cpp
 ecs::init();
-auto e = ecs::entity::create();
+auto e = ecs::spawn();
 ecs::fini();
 ```
 
@@ -42,7 +42,7 @@ ecs_set(e, Velocity, {1, 0});
 <TabItem label="C++">
 
 ```cpp
-auto e = ecs::entity::create()
+auto e = ecs::spawn()
     .set(Position{0, 0}, Velocity{1, 0});
 ```
 
@@ -80,7 +80,7 @@ ecs_query_fini(q);
 <TabItem label="C++">
 
 ```cpp
-auto q = ecs::query().build_handle();
+auto q = ecs::query().build();
 q.each([](Position &p, const Velocity &v) {
     p.x += v.x;
     p.y += v.y;
@@ -136,7 +136,7 @@ The optional field is `NULL` for a batch whose table lacks the component.
 <TabItem label="C++">
 
 ```cpp
-ecs::query().exclude<Frozen>();
+ecs::query().without<Frozen>();
 ```
 
 </TabItem>
@@ -158,8 +158,8 @@ ecs_relate(child, ChildOf, parent);
 <TabItem label="C++">
 
 ```cpp
-auto parent = ecs::entity::create();
-auto child = ecs::entity::create().child_of(parent);
+auto parent = ecs::spawn();
+auto child = ecs::spawn().child_of(parent);
 ```
 
 </TabItem>
@@ -182,7 +182,7 @@ For a `ByTarget` relation:
 <TabItem label="C++">
 
 ```cpp
-ecs::query().to<GroupOf>(group);
+ecs::query().with<GroupOf>(group);
 ```
 
 </TabItem>
@@ -392,16 +392,15 @@ ecs_observer_trigger(target, Hit, &payload);
 <TabItem label="C++">
 
 ```cpp
-struct Hit {};
+struct Hit { int damage; };
 
 ecs::observe<Hit>()
-    .each([](ecs::observer_event event) {
-        const HitPayload *payload = event.trigger_data<HitPayload>();
-        (void)payload;
+    .each([](ecs::event<Hit> event) {
+        const int damage = event->damage;
+        (void)damage;
     });
 
-HitPayload payload{ .damage = 10 };
-ecs::trigger<Hit>(target, &payload);
+ecs::emit(target, Hit{ .damage = 10 });
 ```
 
 </TabItem>
@@ -447,7 +446,7 @@ ecs_query_id_t q = ecs_query({
 <TabItem label="C++">
 
 ```cpp
-ecs::query().require<Disabled>();
+ecs::query().with<Disabled>();
 ```
 
 </TabItem>
@@ -474,9 +473,9 @@ ecs_query_id_t q = ecs_query({
 
 ```cpp
 auto q = ecs::query()
-    .require<Health>()
+    .with<Health>()
     .is_a(enemy_base)
-    .build_handle();
+    .build();
 ```
 
 </TabItem>
@@ -484,7 +483,8 @@ auto q = ecs::query()
 
 ## Read an ancestor component
 
-For an acyclic ByTarget hierarchy relation:
+For an acyclic `ByTarget` hierarchy relation named `SettingsParent` (the
+built-in `ChildOf` relation uses `ByDepth` storage):
 
 <Tabs syncKey="language">
 <TabItem label="C">
@@ -492,7 +492,7 @@ For an acyclic ByTarget hierarchy relation:
 ```c
 .components = {
     ecs_in(LocalTransform),
-    ecs_up(WorldSettings, ChildOf),
+    ecs_up(WorldSettings, SettingsParent),
 }
 ```
 
@@ -501,8 +501,8 @@ For an acyclic ByTarget hierarchy relation:
 
 ```cpp
 ecs::query()
-    .require<LocalTransform>()
-    .up<WorldSettings, ChildOf>();
+    .with<LocalTransform>()
+    .up<WorldSettings, SettingsParent>();
 ```
 
 </TabItem>
@@ -549,7 +549,7 @@ ecs_system({
 ```cpp
 ecs::system("Render")
     .phase(EcsOnRender)
-    .immediate()
+    .main_thread()
     .each([] {});
 ```
 
@@ -635,7 +635,7 @@ ecs_entity_t tool_entity = ecs_new_no_reuse();
 <TabItem label="C++">
 
 ```cpp
-auto tool_entity = ecs::entity::create_no_reuse();
+auto tool_entity = ecs::spawn_no_reuse();
 ```
 
 </TabItem>

@@ -577,7 +577,7 @@ SIECS_API void ecs_quit(void);
 #ifndef __cplusplus
 /* C sees only the shared fields and keeps the existing declaration ABI. */
 #define ECS_COMPONENT_DECLARE_CPP(cname, fields, methods) ECS_COMPONENT_DECLARE(cname, { fields })
-#define ECS_COMPONENT_DECLARE_CPP_REFLECTED(cname, fields, reflection_fields, methods)              \
+#define ECS_COMPONENT_DECLARE_CPP_REFLECTED(cname, fields, reflection_fields, methods)             \
     ECS_COMPONENT_DECLARE(cname, { fields })
 #endif
 #define SIECS_COMPONENT_META_DEFINE(cname) SIJSON_DEFINE(cname)
@@ -871,8 +871,11 @@ ECS_TAG_DECLARE(Abstract);
 
 /* Declare a C-compatible component with C++-only methods and separate reflection fields. */
 #define ECS_COMPONENT_DECLARE_CPP_REFLECTED(                                                       \
-    cname, field_block, reflection_field_block, method_block                                       \
-)                                                                                                \
+    cname,                                                                                         \
+    field_block,                                                                                   \
+    reflection_field_block,                                                                        \
+    method_block                                                                                   \
+)                                                                                                  \
     extern "C++" {                                                                                 \
     typedef struct cname cname;                                                                    \
     struct cname {                                                                                 \
@@ -914,11 +917,11 @@ ECS_TAG_DECLARE(Abstract);
     };                                                                                             \
     static_assert(                                                                                 \
         sizeof(cname) == sizeof(SIECS_CPP_LAYOUT_TYPE(cname)),                                     \
-        "C++ component methods must not add instance data"                                        \
+        "C++ component methods must not add instance data"                                         \
     );                                                                                             \
     static_assert(                                                                                 \
         _Alignof(cname) == _Alignof(SIECS_CPP_LAYOUT_TYPE(cname)),                                 \
-        "C++ component methods must preserve alignment"                                           \
+        "C++ component methods must preserve alignment"                                            \
     );                                                                                             \
     SIREFLECT_UNUSED static const sireflect_struct_desc_t                                          \
         sireflect_desc(cname) = { .name = #cname,                                                  \
@@ -1068,7 +1071,7 @@ SIECS_API void ecs_is_a(ecs_entity_t entity, ecs_entity_t target);
 SIECS_API void
 ecs_propagate_add_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_component_t component);
 
-#define ecs_propagate_add(entity, relation, component)                                            \
+#define ecs_propagate_add(entity, relation, component)                                             \
     ecs_propagate_add_id(entity, ecs_rid(relation), ecs_id(component))
 
 /* Mark an entity and its owned ChildOf subtree abstract. */
@@ -1297,12 +1300,11 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
         _Alignof(rname) == _Alignof(SIECS_CPP_LAYOUT_TYPE(rname)),                                 \
         "C++ resource methods must preserve alignment"                                             \
     );                                                                                             \
-    SIREFLECT_UNUSED static const sireflect_struct_desc_t sireflect_desc(rname) = {               \
-        .name = #rname,                                                                            \
-        .fields = SIECS_CPP_FIELD_SOURCE(field_block),                                             \
-        .size = sizeof(rname),                                                                     \
-        .align = _Alignof(rname)                                                                   \
-    };                                                                                             \
+    SIREFLECT_UNUSED static const sireflect_struct_desc_t                                          \
+        sireflect_desc(rname) = { .name = #rname,                                                  \
+                                  .fields = SIECS_CPP_FIELD_SOURCE(field_block),                   \
+                                  .size = sizeof(rname),                                           \
+                                  .align = _Alignof(rname) };                                      \
     }                                                                                              \
     extern "C" {                                                                                   \
     extern sireflect_handle_t sijson_handle(rname);                                                \
@@ -1324,7 +1326,8 @@ SIECS_API void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)
     SIJSON_DEFINE(rname)                                                                           \
     SIECS_PUBLIC_API ecs_resource_desc_t ecs_id(rname##_desc) = { .name = #rname,                  \
                                                                   .size = sizeof(rname),           \
-                                                                  .struct_desc = &sireflect_desc(rname), \
+                                                                  .struct_desc =                   \
+                                                                      &sireflect_desc(rname),      \
                                                                   __VA_ARGS__ };                   \
     SIECS_PUBLIC_API ecs_resource_t ecs_id(rname) = 0
 
@@ -1445,6 +1448,8 @@ ecs_with_relation_id(ecs_component_t component, ecs_relation_id_t relation, ecs_
  *
  * callback is required. query describes which entities can receive the event.
  * user_data is copied into ecs_observer_event_t for the callback.
+ * Optional user_data_dtor releases owned callback state once when the observer
+ * is removed, its target is killed, or the world shuts down.
  * A targeted observer (entity != 0) also receives events emitted by direct or
  * indirect IsA instances. The callback event entity remains the concrete
  * entity that emitted the event.
@@ -1455,6 +1460,7 @@ typedef struct {
     ecs_query_desc_t query;
     ecs_observer_callback_t callback;
     uintptr_t user_data;
+    void (*user_data_dtor)(uintptr_t user_data);
 } ecs_observer_desc_t;
 
 /*
@@ -1564,7 +1570,8 @@ ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation);
 /* Return the shared relation target for a ByTarget batch. */
 SIECS_API ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relation);
 #define ecs_target_shared(it, relation) ecs_target_shared_id(it, ecs_rid(relation))
-SIECS_API ecs_relation_batch_t ecs_relation_batch_id(const ecs_iter_t *it, ecs_relation_id_t relation);
+SIECS_API
+    ecs_relation_batch_t ecs_relation_batch_id(const ecs_iter_t *it, ecs_relation_id_t relation);
 #define ecs_relation_batch(it, relation) ecs_relation_batch_id(it, ecs_rid(relation))
 
 /*

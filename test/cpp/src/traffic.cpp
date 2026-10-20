@@ -26,7 +26,7 @@ static void step() {
 
 static ecs::entity make_car(int column, int row, int direction, float progress) {
     auto lane = t::lane_from(t::junction(column, row), direction);
-    auto car = ecs::entity::create();
+    auto car = ecs::spawn();
     test_true(t::place_car(car, lane, progress));
     return car;
 }
@@ -55,7 +55,7 @@ static bool overlap(const t::Pose &a, const t::Pose &b) {
 static void assert_safe() {
     std::vector<t::Pose> poses;
     std::vector<ecs::entity> cars;
-    ecs::query().exclude<t::Waiting>().each([&](ecs::entity car, const t::Motion &motion) {
+    ecs::query().without<t::Waiting>().each([&](ecs::entity car, const t::Motion &motion) {
         cars.push_back(car);
         poses.push_back(motion.current);
     });
@@ -113,10 +113,10 @@ void traffic_red_amber_and_green(void) {
     test_true(car.has<t::Driving>());
     test_true(car.get<t::Motion>().progress <= t::EdgeLength - t::VehicleLength * 0.5f);
     test_uint(0, ecs_relation_sources(node.id(), ecs::relation<t::Crossing>()).count);
-    node.get_mut<t::Junction>().cycle = 14.1f;
+    node.edit<t::Junction>().cycle = 14.1f;
     step();
     test_uint(0, ecs_relation_sources(node.id(), ecs::relation<t::Crossing>()).count);
-    node.get_mut<t::Junction>().cycle = 8.0f;
+    node.edit<t::Junction>().cycle = 8.0f;
     for (int i = 0; i < 60 && car.has<t::Driving>(); ++i)
         step();
     test_true(car.has<t::Turning>());
@@ -127,8 +127,8 @@ void traffic_late_green_waits(void) {
     traffic_scope scope;
     auto car = make_car(0, 1, t::East, t::EdgeLength - t::VehicleLength - 1.0f);
     auto node = t::junction(1, 1);
-    car.get_mut<t::Motion>().outgoing = t::South;
-    node.get_mut<t::Junction>().cycle = 5.8f;
+    car.edit<t::Motion>().outgoing = t::South;
+    node.edit<t::Junction>().cycle = 5.8f;
     for (int i = 0; i < 15; ++i) {
         step();
         test_true(car.has<t::Driving>());
@@ -157,10 +157,10 @@ void traffic_exclusive_junction(void) {
 void traffic_turns_and_roundabout(void) {
     traffic_scope scope;
     auto turn = make_car(1, 2, t::East, 7.8f);
-    turn.get_mut<t::Motion>().outgoing = t::South;
+    turn.edit<t::Motion>().outgoing = t::South;
     constexpr int center = t::Grid / 2;
     auto circle = make_car(center - 1, center, t::East, 7.8f);
-    circle.get_mut<t::Motion>().outgoing = t::South;
+    circle.edit<t::Motion>().outgoing = t::South;
     test_true(t::junction(center, center).get<t::Junction>().roundabout);
     bool turned = false, circled = false;
     for (int i = 0; i < 150; ++i) {
@@ -224,7 +224,7 @@ void traffic_turn_paths_are_smooth(void) {
 void traffic_border_respawns(void) {
     traffic_scope scope;
     auto car = make_car(1, 5, t::West, 7.8f);
-    car.get_mut<t::Motion>().outgoing = t::West;
+    car.edit<t::Motion>().outgoing = t::West;
     bool left = false, returned = false;
     for (int i = 0; i < 300 && !returned; ++i) {
         step();
@@ -258,7 +258,7 @@ void traffic_long_run_relation_integrity(void) {
     t::seed_cars(ecs::entity::null(), 800);
     for (int tick = 0; tick < 5000; ++tick) {
         step();
-        ecs::query().exclude<t::Waiting>().each([&](ecs::entity car, const t::Motion &motion) {
+        ecs::query().without<t::Waiting>().each([&](ecs::entity car, const t::Motion &motion) {
             if (car.has<t::Turning>() && motion.progress == 0)
                 test_true(
                     t::light(car.target<t::Crossing>().get<t::Junction>(), motion.incoming) !=

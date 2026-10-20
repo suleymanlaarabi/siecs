@@ -78,7 +78,7 @@ struct Velocity {
 int main() {
     ecs::init();
 
-    ecs::entity::create().set(Position{ 0, 0 }, Velocity{ 10, 10 });
+    ecs::spawn().set(Position{ 0, 0 }, Velocity{ 10, 10 });
 
     ecs::system("Move")
         .each([](Position &pos, const Velocity &vel) {

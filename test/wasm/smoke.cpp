@@ -7,7 +7,7 @@ struct WasmCppPosition {
 extern "C" int siecs_wasm_cpp_smoke() {
     ecs::init(ecs_world_feat_desc_t{ .target_fps = 1 });
 
-    auto entity = ecs::entity::create().set(WasmCppPosition{ .value = 9 });
+    auto entity = ecs::spawn().set(WasmCppPosition{ .value = 9 });
     int calls = 0;
     ecs::system("WasmCppSmoke").each([&](WasmCppPosition &position) {
         position.value++;
