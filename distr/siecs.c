@@ -7963,6 +7963,75 @@ static inline void ecs_store_cid(ecs_entity_t entity, ecs_component_t cid, void 
     ecs_store_cid_slow(entity, cid, data, move);
 }
 
+/* Resolve the table reached by adding `cid` to table `from_id`, creating and
+ * caching the edge the first time. Returns UINT16_MAX when the component is
+ * already owned or brings required components (multi-component transitions
+ * keep the generic path). May reallocate the table index. */
+static uint16_t ecs_plain_add_edge(uint16_t from_id, ecs_component_t cid) {
+    ecs_table_t *table = ecs_get_table(from_id);
+    uint16_t edge = ecs_table_get_add_edge(table, cid);
+    if (edge < table->type.component_count && table->type.ids[edge] == cid)
+        return UINT16_MAX;
+    if (edge == UINT16_MAX) {
+        if (ecs_component_index_get(cid)->required_count)
+            return UINT16_MAX;
+        edge = ecs_table_index_get_or_create(
+            ecs_type_with(&table->type, cid, (ecs_type_pair_t){ 0 })
+        );
+        ecs_id_map_set(&ecs_get_table(from_id)->add_edge, cid, edge);
+    }
+    return edge;
+}
+
+bool ecs_set_plain_many(
+    ecs_entity_t entity,
+    uint32_t count,
+    const ecs_component_t *ids,
+    const void *const *values
+) {
+    if (ecs_is_deferred())
+        return false;
+    for (uint32_t i = 0; i < count; i++) {
+        ecs_assert_component_access(entity, ids[i]);
+        const ecs_component_record_t *crec = ecs_component_index_get(ids[i]);
+        if (!crec->plain || crec->default_relation_count || ids[i] == ecs_id(Name))
+            return false;
+    }
+
+    /* Follow the cached single-component edges to the final table: one move
+     * replaces `count` migrations or a command buffer round trip. */
+    ecs_entity_record_t *record = ecs_get_record(entity);
+    const uint16_t from_id = record->table_id;
+    uint16_t to_id = from_id;
+    for (uint32_t i = 0; i < count; i++) {
+        uint16_t edge = ecs_plain_add_edge(to_id, ids[i]);
+        if (edge != UINT16_MAX) {
+            if (ecs_get_table(edge)->type.component_count !=
+                ecs_get_table(to_id)->type.component_count + 1)
+                return false;
+            to_id = edge;
+        } else if (!ecs_table_has_owned(ecs_get_table(to_id), ids[i])) {
+            return false;
+        }
+    }
+
+    ecs_table_t *to_table = ecs_get_table(to_id);
+    if (ecs_table_observed(to_table, EcsOnSet) ||
+        (to_id != from_id && ecs_table_observed(to_table, EcsOnAdd)))
+        return false;
+    if (to_id != from_id)
+        ecs_migrate(record, entity, ecs_get_table(from_id), to_id, 0);
+    for (uint32_t i = 0; i < count; i++) {
+        uint16_t column = ecs_table_get_column_index(to_table, ids[i]);
+        ecs_bytes_copy(
+            ecs_table_component_at_column(to_table, column, record->table_row),
+            values[i],
+            ecs_component_index_get(ids[i])->size
+        );
+    }
+    return true;
+}
+
 void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
     ecs_store_cid(entity, cid, (void *)data, false);
 }

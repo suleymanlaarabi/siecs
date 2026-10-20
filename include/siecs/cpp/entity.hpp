@@ -148,6 +148,20 @@ class entity {
     /** Set multiple component values inside one deferred mutation scope. */
     template <typename First, typename Second, typename... Rest>
     entity set(First &&first, Second &&second, Rest &&...rest) {
+        /* Plain values reach their final table in a single move when nothing
+         * observes the change; otherwise the defer scope batches them. */
+        if constexpr (std::is_trivially_copyable_v<std::remove_cvref_t<First>> &&
+                      std::is_trivially_copyable_v<std::remove_cvref_t<Second>> &&
+                      (std::is_trivially_copyable_v<std::remove_cvref_t<Rest>> && ...)) {
+            const ecs_component_t ids[] = {
+                detail::ecs_cpp_component_id<std::remove_cvref_t<First>>(),
+                detail::ecs_cpp_component_id<std::remove_cvref_t<Second>>(),
+                detail::ecs_cpp_component_id<std::remove_cvref_t<Rest>>()...,
+            };
+            const void *const values[] = { &first, &second, &rest... };
+            if (ecs_set_plain_many(_entity, 2 + sizeof...(Rest), ids, values))
+                return *this;
+        }
         detail::defer_scope scope;
         set(std::forward<First>(first));
         set(std::forward<Second>(second));

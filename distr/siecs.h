@@ -2377,6 +2377,23 @@ SIECS_API ecs_event_t ecs_event(void);
 SIECS_API uint16_t *ecs_type_slot(const char *key, uint16_t initial);
 
 /*
+ * Binding support for setting several values at once (the C++ multi-value
+ * entity::set). Sets `count` plain components, registered without lifecycle
+ * operations or hooks, with one table change and writes values[i] (the raw
+ * bytes of the registered size) into ids[i]; a later duplicate id wins.
+ * Returns false and leaves the entity unchanged when no observer must see the
+ * result as it would through a defer scope (deferred context, observed or
+ * requiring components, hooks, ...): the caller then sets the values one by
+ * one inside a defer scope.
+ */
+SIECS_API bool ecs_set_plain_many(
+    ecs_entity_t entity,
+    uint32_t count,
+    const ecs_component_t *ids,
+    const void *const *values
+);
+
+/*
  * Register a process-wide typed event id in this world.
  *
  * If *id is UINT16_MAX, allocates a new custom event id and stores it in *id.
@@ -3176,6 +3193,20 @@ class entity {
     /** Set multiple component values inside one deferred mutation scope. */
     template <typename First, typename Second, typename... Rest>
     entity set(First &&first, Second &&second, Rest &&...rest) {
+        /* Plain values reach their final table in a single move when nothing
+         * observes the change; otherwise the defer scope batches them. */
+        if constexpr (std::is_trivially_copyable_v<std::remove_cvref_t<First>> &&
+                      std::is_trivially_copyable_v<std::remove_cvref_t<Second>> &&
+                      (std::is_trivially_copyable_v<std::remove_cvref_t<Rest>> && ...)) {
+            const ecs_component_t ids[] = {
+                detail::ecs_cpp_component_id<std::remove_cvref_t<First>>(),
+                detail::ecs_cpp_component_id<std::remove_cvref_t<Second>>(),
+                detail::ecs_cpp_component_id<std::remove_cvref_t<Rest>>()...,
+            };
+            const void *const values[] = { &first, &second, &rest... };
+            if (ecs_set_plain_many(_entity, 2 + sizeof...(Rest), ids, values))
+                return *this;
+        }
         detail::defer_scope scope;
         set(std::forward<First>(first));
         set(std::forward<Second>(second));

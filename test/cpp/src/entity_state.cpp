@@ -128,3 +128,45 @@ void entity_state_variadic_add_remove_batches_migration(void) {
     test_true(entity.has<EntityStateBatchC>());
     test_int(42, entity.get<EntityStateBatchTracked>().value);
 }
+
+void entity_state_variadic_set_single_move_keeps_last_duplicate(void) {
+    ecs_test_scope _ecs_scope;
+
+    auto entity = ecs::spawn().set(
+        EntityStatePosition{ 1 },
+        EntityStateVelocity{ 2 },
+        EntityStatePosition{ 3 }
+    );
+    test_int(3, entity.get<EntityStatePosition>().value);
+    test_int(2, entity.get<EntityStateVelocity>().value);
+
+    // Already owned components are overwritten in place.
+    entity.set(EntityStateVelocity{ 4 }, EntityStatePosition{ 5 });
+    test_int(5, entity.get<EntityStatePosition>().value);
+    test_int(4, entity.get<EntityStateVelocity>().value);
+
+    auto other = ecs::spawn().set(EntityStateVelocity{ 6 }, EntityStatePosition{ 7 });
+    test_int(7, other.get<EntityStatePosition>().value);
+    test_int(6, other.get<EntityStateVelocity>().value);
+    test_int(5, entity.get<EntityStatePosition>().value);
+}
+
+void entity_state_variadic_set_observer_sees_every_value(void) {
+    ecs_test_scope _ecs_scope;
+
+    // Warm the archetype edges so the single-move path would be available.
+    (void)ecs::spawn().set(EntityStatePosition{ 0 }, EntityStateVelocity{ 0 });
+
+    int calls = 0;
+    auto observer = ecs::observe<ecs::OnAdd>().each(
+        [&](ecs::entity current, const EntityStatePosition &) {
+            // A multi-value set is one structural change: when the observer
+            // runs, every component of the call is already on the entity.
+            test_true(current.has<EntityStateVelocity>());
+            ++calls;
+        }
+    );
+    (void)ecs::spawn().set(EntityStatePosition{ 10 }, EntityStateVelocity{ 20 });
+    test_int(2, calls); // one OnAdd per added component, both after the move
+    observer.remove();
+}

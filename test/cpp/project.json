@@ -67,7 +67,9 @@
           "disabled_entities_are_skipped",
           "typed_entity_creation",
           "variadic_set_and_read",
-          "variadic_add_remove_batches_migration"
+          "variadic_add_remove_batches_migration",
+          "variadic_set_single_move_keeps_last_duplicate",
+          "variadic_set_observer_sees_every_value"
         ]
       },
       {

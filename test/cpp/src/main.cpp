@@ -48,6 +48,8 @@ void entity_state_disabled_entities_are_skipped(void);
 void entity_state_typed_entity_creation(void);
 void entity_state_variadic_set_and_read(void);
 void entity_state_variadic_add_remove_batches_migration(void);
+void entity_state_variadic_set_single_move_keeps_last_duplicate(void);
+void entity_state_variadic_set_observer_sees_every_value(void);
 
 // Testsuite 'resource'
 void resource_world_api(void);
@@ -267,6 +269,14 @@ bake_test_case entity_state_testcases[] = {
     {
         "variadic_add_remove_batches_migration",
         entity_state_variadic_add_remove_batches_migration
+    },
+    {
+        "variadic_set_single_move_keeps_last_duplicate",
+        entity_state_variadic_set_single_move_keeps_last_duplicate
+    },
+    {
+        "variadic_set_observer_sees_every_value",
+        entity_state_variadic_set_observer_sees_every_value
     }
 };
 
@@ -592,7 +602,7 @@ static bake_test_suite suites[] = {
         "entity_state",
         NULL,
         NULL,
-        5,
+        7,
         entity_state_testcases
     },
     {

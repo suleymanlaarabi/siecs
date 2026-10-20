@@ -19,6 +19,7 @@
 - `ecs_move_cid` — `void ecs_move_cid(ecs_entity_t entity, ecs_component_t id, void *data)`
 - `ecs_remove_cid` — `void ecs_remove_cid(ecs_entity_t entity, ecs_component_t id)`
 - `ecs_set_cid` — `void ecs_set_cid(ecs_entity_t entity, ecs_component_t id, const void *data)`
+- `ecs_set_plain_many` — `bool ecs_set_plain_many(ecs_entity_t entity, uint32_t count, const ecs_component_t *ids, const void *const *values)`
 - `ecs_tag_init` — `ecs_component_t ecs_tag_init(const char *name)`
 - `ecs_try_get_cid` — `void *ecs_try_get_cid(ecs_entity_t entity, ecs_component_t cid)`
 - `ecs_type_slot` — `uint16_t *ecs_type_slot(const char *key, uint16_t initial)`
