@@ -125,12 +125,14 @@ void ecs_abstract(ecs_entity_t entity) {
 }
 
 void ecs_relation_index_init(void) {
+    sicore_map_init(&relation_index.names);
     sicore_vec_init_w_size(&relation_index.records, sizeof(ecs_relation_record_t), 1);
     sicore_vec_ensure(&relation_index.records, 1, sizeof(ecs_relation_record_t));
 }
 
 void ecs_relation_index_fini(void) {
     ecs_relation_index_t *index = &relation_index;
+    sicore_map_fini(&index->names);
     ecs_relation_record_t *records = index->records.data;
     for (uint32_t r = 1; r < relation_index.records.size; r++) {
         free((char *)records[r].info.name);
@@ -194,6 +196,11 @@ static ecs_relation_id_t ecs_relation_register_with_ops(
             },
             .ops = ops,
         };
+    const char *owned_name = ecs_relation_record(*id)->info.name;
+    if (owned_name && owned_name[0] &&
+        sicore_map_get(&relation_index.names, owned_name) == UINT32_MAX) {
+        sicore_map_set(&relation_index.names, owned_name, *id);
+    }
     return *id;
 }
 
@@ -219,6 +226,13 @@ ecs_relation_id_t ecs_relation_register_virtual(
 ecs_relation_id_t ecs_relation_init(const char *name, const ecs_relation_desc_t *desc) {
     ecs_relation_id_t id = 0;
     return ecs_relation_register(&id, name, desc);
+}
+
+ecs_relation_id_t ecs_relation_lookup(const char *name) {
+    if (!name || !name[0])
+        return 0;
+    uint32_t id = sicore_map_get(&relation_index.names, name);
+    return id == UINT32_MAX ? 0 : (ecs_relation_id_t)id;
 }
 
 uint32_t ecs_relation_count(void) { return relation_index.records.size; }

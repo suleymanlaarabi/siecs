@@ -5556,6 +5556,7 @@ typedef struct {
 
 typedef struct {
     sicore_vec_t records; /* ecs_relation_record_t */
+    sicore_map_t names; /* relation name -> id; borrowed metadata keys */
 } ecs_relation_index_t;
 
 extern ecs_relation_index_t relation_index;
@@ -5632,6 +5633,7 @@ typedef struct {
 
 typedef struct ecs_component_index_s {
     sicore_vec_t components; // ecs_component_record_t
+    sicore_map_t names; // public component name -> id; borrowed metadata keys
 } ecs_component_index_t;
 
 extern ecs_component_index_t component_index;
@@ -7513,12 +7515,24 @@ const ecs_component_info_t *ecs_component_info(ecs_component_t component) {
 
 uint32_t ecs_component_count(void) { return component_index.components.size; }
 
+ecs_component_t ecs_component_lookup(const char *name) {
+    if (!name || !name[0])
+        return 0;
+    uint32_t id = sicore_map_get(&component_index.names, name);
+    return id == UINT32_MAX ? 0 : (ecs_component_t)id;
+}
+
 ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc) {
     sireflect_handle_t type = sireflect_try_register_dynamic_struct(desc->name, desc->fields);
     if (type == SIREFLECT_INVALID_HANDLE) {
         return 0;
     }
 
+    ecs_component_t named = ecs_component_lookup(desc->name);
+    if (named && ecs_component_index_get(named)->info->type == type)
+        return named;
+
+    /* A reflected type may already be registered under a different ECS name. */
     for (uint32_t i = 1; i < component_index.components.size; i++) {
         const ecs_component_info_t *info = ecs_component_index_get((ecs_component_t)i)->info;
         if (info && info->type == type) {
@@ -9719,12 +9733,14 @@ void ecs_abstract(ecs_entity_t entity) {
 }
 
 void ecs_relation_index_init(void) {
+    sicore_map_init(&relation_index.names);
     sicore_vec_init_w_size(&relation_index.records, sizeof(ecs_relation_record_t), 1);
     sicore_vec_ensure(&relation_index.records, 1, sizeof(ecs_relation_record_t));
 }
 
 void ecs_relation_index_fini(void) {
     ecs_relation_index_t *index = &relation_index;
+    sicore_map_fini(&index->names);
     ecs_relation_record_t *records = index->records.data;
     for (uint32_t r = 1; r < relation_index.records.size; r++) {
         free((char *)records[r].info.name);
@@ -9788,6 +9804,11 @@ static ecs_relation_id_t ecs_relation_register_with_ops(
             },
             .ops = ops,
         };
+    const char *owned_name = ecs_relation_record(*id)->info.name;
+    if (owned_name && owned_name[0] &&
+        sicore_map_get(&relation_index.names, owned_name) == UINT32_MAX) {
+        sicore_map_set(&relation_index.names, owned_name, *id);
+    }
     return *id;
 }
 
@@ -9813,6 +9834,13 @@ ecs_relation_id_t ecs_relation_register_virtual(
 ecs_relation_id_t ecs_relation_init(const char *name, const ecs_relation_desc_t *desc) {
     ecs_relation_id_t id = 0;
     return ecs_relation_register(&id, name, desc);
+}
+
+ecs_relation_id_t ecs_relation_lookup(const char *name) {
+    if (!name || !name[0])
+        return 0;
+    uint32_t id = sicore_map_get(&relation_index.names, name);
+    return id == UINT32_MAX ? 0 : (ecs_relation_id_t)id;
 }
 
 uint32_t ecs_relation_count(void) { return relation_index.records.size; }
@@ -12406,13 +12434,13 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
 #include <stdatomic.h>
 
 typedef struct ecs_typed_id_slot_t {
-    struct ecs_typed_id_slot_t *next;
     uint16_t value;
     char key[];
 } ecs_typed_id_slot_t;
 
 /* Slots are never freed: their address is cached by every binary. */
-static ecs_typed_id_slot_t *type_slots;
+static sicore_map_t type_slot_names;
+static sicore_vec_t type_slots; /* ecs_typed_id_slot_t *; pointees never move */
 static atomic_flag type_slots_lock = ATOMIC_FLAG_INIT;
 
 uint16_t *ecs_type_slot(const char *key, uint16_t initial) {
@@ -12420,18 +12448,23 @@ uint16_t *ecs_type_slot(const char *key, uint16_t initial) {
     while (atomic_flag_test_and_set_explicit(&type_slots_lock, memory_order_acquire)) {
     }
 
-    ecs_typed_id_slot_t *slot = type_slots;
-    while (slot && strcmp(slot->key, key) != 0) {
-        slot = slot->next;
+    if (!type_slot_names.ctrl) {
+        sicore_map_init(&type_slot_names);
+        sicore_vec_init(&type_slots, sizeof(ecs_typed_id_slot_t *));
     }
-    if (!slot) {
+    uint32_t index = sicore_map_get(&type_slot_names, key);
+    ecs_typed_id_slot_t *slot;
+    if (index == UINT32_MAX) {
         size_t length = strlen(key) + 1;
         slot = malloc(sizeof(ecs_typed_id_slot_t) + length);
         ecs_assert_not_null(slot);
         memcpy(slot->key, key, length);
         slot->value = initial;
-        slot->next = type_slots;
-        type_slots = slot;
+        index = type_slots.size;
+        sicore_vec_push(&type_slots, &slot, sizeof slot);
+        sicore_map_set(&type_slot_names, slot->key, index);
+    } else {
+        slot = *sicore_vec_get_mut(&type_slots, index, ecs_typed_id_slot_t *);
     }
 
     atomic_flag_clear_explicit(&type_slots_lock, memory_order_release);
@@ -12910,13 +12943,20 @@ void ecs_component_index_register(
     sicore_vec_init(&record.tables, sizeof(uint16_t));
 
     *existing = record;
+    /* Relation implementation components belong to the relation namespace. */
+    if (!relation_flags && info->name && info->name[0] &&
+        sicore_map_get(&component_index.names, info->name) == UINT32_MAX) {
+        sicore_map_set(&component_index.names, info->name, id);
+    }
 }
 
 void ecs_component_index_init() {
+    sicore_map_init(&component_index.names);
     sicore_vec_init_w_size(&component_index.components, sizeof(ecs_component_record_t), 256);
 }
 
 void ecs_component_index_fini() {
+    sicore_map_fini(&component_index.names);
     ecs_component_record_t *records = component_index.components.data;
 
     for (uint32_t i = 0; i < component_index.components.size; i++) {
@@ -12936,6 +12976,7 @@ void ecs_component_index_fini() {
         sicore_vec_fini(&records[i].tables);
     }
     sicore_vec_fini(&component_index.components);
+    component_index = (ecs_component_index_t){ 0 };
 }
 
 ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {

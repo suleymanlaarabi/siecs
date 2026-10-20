@@ -15,6 +15,14 @@ void public_scene_invalid_load_is_non_destructive(void);
 void public_scene_reflected_codec_roundtrip(void);
 void public_scene_unsupported_pointer_is_consistent(void);
 
+// Testsuite 'registry'
+void registry_component_names(void);
+void registry_relation_names_and_namespaces(void);
+void registry_growth_and_owned_names(void);
+void registry_duplicate_names_keep_first(void);
+void registry_world_restart(void);
+void registry_type_slots_preserve_pointers(void);
+
 // Testsuite 'naming'
 void naming_paths_and_scopes(void);
 void naming_rename_updates_descendant_paths(void);
@@ -287,6 +295,33 @@ bake_test_case public_testcases[] = {
     {
         "scene_unsupported_pointer_is_consistent",
         public_scene_unsupported_pointer_is_consistent
+    }
+};
+
+bake_test_case registry_testcases[] = {
+    {
+        "component_names",
+        registry_component_names
+    },
+    {
+        "relation_names_and_namespaces",
+        registry_relation_names_and_namespaces
+    },
+    {
+        "growth_and_owned_names",
+        registry_growth_and_owned_names
+    },
+    {
+        "duplicate_names_keep_first",
+        registry_duplicate_names_keep_first
+    },
+    {
+        "world_restart",
+        registry_world_restart
+    },
+    {
+        "type_slots_preserve_pointers",
+        registry_type_slots_preserve_pointers
     }
 };
 
@@ -1248,6 +1283,13 @@ static bake_test_suite suites[] = {
         public_testcases
     },
     {
+        "registry",
+        NULL,
+        NULL,
+        6,
+        registry_testcases
+    },
+    {
         "naming",
         NULL,
         NULL,
@@ -1334,5 +1376,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 13);
+    return bake_test_run("siecs.test", argc, argv, suites, 14);
 }

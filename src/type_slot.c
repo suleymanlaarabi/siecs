@@ -5,13 +5,13 @@
 #include <string.h>
 
 typedef struct ecs_typed_id_slot_t {
-    struct ecs_typed_id_slot_t *next;
     uint16_t value;
     char key[];
 } ecs_typed_id_slot_t;
 
 /* Slots are never freed: their address is cached by every binary. */
-static ecs_typed_id_slot_t *type_slots;
+static sicore_map_t type_slot_names;
+static sicore_vec_t type_slots; /* ecs_typed_id_slot_t *; pointees never move */
 static atomic_flag type_slots_lock = ATOMIC_FLAG_INIT;
 
 uint16_t *ecs_type_slot(const char *key, uint16_t initial) {
@@ -19,18 +19,23 @@ uint16_t *ecs_type_slot(const char *key, uint16_t initial) {
     while (atomic_flag_test_and_set_explicit(&type_slots_lock, memory_order_acquire)) {
     }
 
-    ecs_typed_id_slot_t *slot = type_slots;
-    while (slot && strcmp(slot->key, key) != 0) {
-        slot = slot->next;
+    if (!type_slot_names.ctrl) {
+        sicore_map_init(&type_slot_names);
+        sicore_vec_init(&type_slots, sizeof(ecs_typed_id_slot_t *));
     }
-    if (!slot) {
+    uint32_t index = sicore_map_get(&type_slot_names, key);
+    ecs_typed_id_slot_t *slot;
+    if (index == UINT32_MAX) {
         size_t length = strlen(key) + 1;
         slot = malloc(sizeof(ecs_typed_id_slot_t) + length);
         ecs_assert_not_null(slot);
         memcpy(slot->key, key, length);
         slot->value = initial;
-        slot->next = type_slots;
-        type_slots = slot;
+        index = type_slots.size;
+        sicore_vec_push(&type_slots, &slot, sizeof slot);
+        sicore_map_set(&type_slot_names, slot->key, index);
+    } else {
+        slot = *sicore_vec_get_mut(&type_slots, index, ecs_typed_id_slot_t *);
     }
 
     atomic_flag_clear_explicit(&type_slots_lock, memory_order_release);

@@ -93,13 +93,20 @@ void ecs_component_index_register(
     sicore_vec_init(&record.tables, sizeof(uint16_t));
 
     *existing = record;
+    /* Relation implementation components belong to the relation namespace. */
+    if (!relation_flags && info->name && info->name[0] &&
+        sicore_map_get(&component_index.names, info->name) == UINT32_MAX) {
+        sicore_map_set(&component_index.names, info->name, id);
+    }
 }
 
 void ecs_component_index_init() {
+    sicore_map_init(&component_index.names);
     sicore_vec_init_w_size(&component_index.components, sizeof(ecs_component_record_t), 256);
 }
 
 void ecs_component_index_fini() {
+    sicore_map_fini(&component_index.names);
     ecs_component_record_t *records = component_index.components.data;
 
     for (uint32_t i = 0; i < component_index.components.size; i++) {
@@ -119,6 +126,7 @@ void ecs_component_index_fini() {
         sicore_vec_fini(&records[i].tables);
     }
     sicore_vec_fini(&component_index.components);
+    component_index = (ecs_component_index_t){ 0 };
 }
 
 ecs_component_record_t *ecs_component_index_get(ecs_component_t cid) {

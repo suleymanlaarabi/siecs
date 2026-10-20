@@ -30,6 +30,17 @@
         ]
       },
       {
+        "id": "registry",
+        "testcases": [
+          "component_names",
+          "relation_names_and_namespaces",
+          "growth_and_owned_names",
+          "duplicate_names_keep_first",
+          "world_restart",
+          "type_slots_preserve_pointers"
+        ]
+      },
+      {
         "id": "naming",
         "testcases": [
           "paths_and_scopes",

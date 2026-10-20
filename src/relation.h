@@ -19,6 +19,7 @@ typedef struct {
 
 typedef struct {
     sicore_vec_t records; /* ecs_relation_record_t */
+    sicore_map_t names; /* relation name -> id; borrowed metadata keys */
 } ecs_relation_index_t;
 
 extern ecs_relation_index_t relation_index;

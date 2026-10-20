@@ -15,6 +15,11 @@ int main() {
 
     ecs::component<Velocity>().with<Position>();
 
+    assert(ecs_component_lookup("Position") == ecs::component<Position>().id());
+    assert(ecs_relation_lookup("ChildOf") == ecs_rid(ChildOf));
+    assert(ecs_component_lookup("ChildOf") == 0);
+    assert(ecs_component_lookup(nullptr) == 0);
+
     ecs::entity entity = ecs::entity::create().set(Velocity{ 3.0f, 4.0f });
 
     ecs::system("Move").each([](Position &pos, const Velocity &vel) {

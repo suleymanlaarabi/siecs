@@ -923,6 +923,23 @@ compile-time macro.
 
 The typed macros are convenience layers over the same registration model.
 
+## Looking up registered types by name
+
+`ecs_component_lookup("Position")` and `ecs_relation_lookup("ChildOf")` return
+registered IDs from separate hash maps in the active world. Names are exact and
+case-sensitive; unknown, null or empty names return `0`. Lookup allocates no
+memory. Internal components used to implement relations are excluded from the
+component map. If several registrations use the same name in one namespace,
+lookup returns the first registered ID; registration itself does not merge them.
+
+Keep the returned ID for repeated operations. Resolve names once when importing
+data rather than for every entity or every frame. These maps are reset when the
+world is finalized; register types again after initializing a new world.
+
+Typed C++ IDs also use a process-wide hash map on first access. Their slots have
+stable addresses shared with plugins and survive world finalization. Subsequent
+typed accesses reuse the cached slot without looking up the name again.
+
 ## Dynamic reflected components
 
 `ecs_component_dynamic_init()` accepts a dynamic reflection description.

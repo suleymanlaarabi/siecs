@@ -960,6 +960,12 @@ SIECS_API const ecs_component_info_t *ecs_component_info(ecs_component_t compone
 /* Return the number of component slots, including reserved id 0. */
 SIECS_API uint32_t ecs_component_count(void);
 
+/* Look up an exact, case-sensitive name in the active world without allocating.
+ * Returns 0 for NULL, empty or unknown names. If multiple components have the
+ * same name, returns the first registered one. Internal relation components are
+ * excluded; component and relation names have separate namespaces. */
+SIECS_API ecs_component_t ecs_component_lookup(const char *name);
+
 /* Register a reflected component whose C layout is derived by Sireflect.
  * Returns 0 on error. */
 SIECS_API ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc);
@@ -972,6 +978,11 @@ SIECS_API const char *ecs_component_name(ecs_component_t component);
 
 /* Return the number of relation slots, including reserved id 0. */
 SIECS_API uint32_t ecs_relation_count(void);
+
+/* Look up an exact, case-sensitive relation name without allocating. Returns 0
+ * for NULL, empty or unknown names; the first registered id for duplicate names.
+ * The lookup is local to the active world, separately from component names. */
+SIECS_API ecs_relation_id_t ecs_relation_lookup(const char *name);
 
 /* Return immutable relation metadata borrowed until the next relation
  * registration or ecs_fini().

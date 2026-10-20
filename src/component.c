@@ -255,12 +255,24 @@ const ecs_component_info_t *ecs_component_info(ecs_component_t component) {
 
 uint32_t ecs_component_count(void) { return component_index.components.size; }
 
+ecs_component_t ecs_component_lookup(const char *name) {
+    if (!name || !name[0])
+        return 0;
+    uint32_t id = sicore_map_get(&component_index.names, name);
+    return id == UINT32_MAX ? 0 : (ecs_component_t)id;
+}
+
 ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc) {
     sireflect_handle_t type = sireflect_try_register_dynamic_struct(desc->name, desc->fields);
     if (type == SIREFLECT_INVALID_HANDLE) {
         return 0;
     }
 
+    ecs_component_t named = ecs_component_lookup(desc->name);
+    if (named && ecs_component_index_get(named)->info->type == type)
+        return named;
+
+    /* A reflected type may already be registered under a different ECS name. */
     for (uint32_t i = 1; i < component_index.components.size; i++) {
         const ecs_component_info_t *info = ecs_component_index_get((ecs_component_t)i)->info;
         if (info && info->type == type) {

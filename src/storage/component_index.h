@@ -37,6 +37,7 @@ typedef struct {
 
 typedef struct ecs_component_index_s {
     sicore_vec_t components; // ecs_component_record_t
+    sicore_map_t names; // public component name -> id; borrowed metadata keys
 } ecs_component_index_t;
 
 extern ecs_component_index_t component_index;

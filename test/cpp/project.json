@@ -125,7 +125,9 @@
         "testcases": [
           "event_ids_match",
           "component_ids_match",
-          "plugin_trigger_reaches_app_observer"
+          "plugin_trigger_reaches_app_observer",
+          "type_slots_survive_growth",
+          "concurrent_type_slots"
         ]
       },
       {
