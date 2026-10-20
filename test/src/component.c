@@ -813,8 +813,9 @@ void component_tag_components_have_no_storage(void) {
     ecs_add(entity, Abstract);
 
     ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
+    ecs_table_t *empty = ecs_get_table(ecs_get_record(ecs_new())->table_id);
     test_int(0, table->add_edge.aux);
-    test_null(table->data_columns);
+    test_ptr(empty->data_columns, table->data_columns);
 
     ecs_fini();
 }
@@ -847,8 +848,9 @@ void component_table_type_tracks_data_columns(void) {
     ecs_add_cid(entity, tag_a);
     ecs_add_cid(entity, tag_b);
     ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
+    ecs_table_t *empty = ecs_get_table(ecs_get_record(ecs_new())->table_id);
     test_int(0, table->add_edge.aux);
-    test_null(table->data_columns);
+    test_ptr(empty->data_columns, table->data_columns);
 
     uint32_t value_a = 42;
     ecs_set_cid(entity, data_a, &value_a);

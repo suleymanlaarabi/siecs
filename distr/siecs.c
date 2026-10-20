@@ -11911,6 +11911,10 @@ static void ecs_system_set_enabled(ecs_system_id_t system, bool enabled) {
 void ecs_system_enable(ecs_system_id_t system) { ecs_system_set_enabled(system, true); }
 void ecs_system_disable(ecs_system_id_t system) { ecs_system_set_enabled(system, false); }
 
+/* Column list of every table without data columns. It is never NULL so the
+ * migration pass can walk any list by pointer: NULL + 0 is undefined. */
+static ecs_data_column_t ecs_no_data_columns[1];
+
 void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     table->type = type;
     table->entity_capacity = 1;
@@ -11919,7 +11923,7 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     table->cls =
         type.component_count == 0 ? NULL : malloc(sizeof(ecs_column_t) * type.component_count);
     table->data_columns = type.component_count == 0
-                              ? NULL
+                              ? ecs_no_data_columns
                               : malloc(sizeof(ecs_data_column_t) * type.component_count);
     table->bloom = ecs_type_bloom(&type);
 
@@ -11957,8 +11961,9 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     }
 
     if (table->add_edge.aux == 0) {
-        free(table->data_columns);
-        table->data_columns = NULL;
+        if (table->data_columns != ecs_no_data_columns)
+            free(table->data_columns);
+        table->data_columns = ecs_no_data_columns;
     } else if (table->add_edge.aux < type.component_count) {
         table->data_columns =
             realloc(table->data_columns, sizeof(ecs_data_column_t) * table->add_edge.aux);
@@ -12101,7 +12106,8 @@ void ecs_table_fini(ecs_table_t *table) {
     ecs_id_map_fini(&table->add_edge);
     free(table->entities);
     free(table->cls);
-    free(table->data_columns);
+    if (table->data_columns != ecs_no_data_columns)
+        free(table->data_columns);
     ecs_type_fini(&table->type);
 }
 
