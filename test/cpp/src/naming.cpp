@@ -44,3 +44,25 @@ void naming_deferred_creation_and_anonymous_paths(void) {
     test_true(first.set_name(nullptr));
     test_uint(anonymous.id(), ecs::entity::lookup(anonymous.path()).id());
 }
+
+namespace NamingTypes {
+struct Structure {};
+class Class {};
+enum Enumeration { Value };
+union Union {
+    int value;
+};
+} // namespace NamingTypes
+
+void naming_cpp_type_names(void) {
+    test_str(
+        std::string(ecs::type_name<NamingTypes::Structure>()).c_str(),
+        "NamingTypes::Structure"
+    );
+    test_str(std::string(ecs::type_name<NamingTypes::Class>()).c_str(), "NamingTypes::Class");
+    test_str(
+        std::string(ecs::type_name<NamingTypes::Enumeration>()).c_str(),
+        "NamingTypes::Enumeration"
+    );
+    test_str(std::string(ecs::type_name<NamingTypes::Union>()).c_str(), "NamingTypes::Union");
+}

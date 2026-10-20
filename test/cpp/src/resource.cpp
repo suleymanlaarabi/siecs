@@ -221,7 +221,9 @@ void resource_c_declared_resource(void) {
 
     ecs_test_scope _ecs_scope;
     auto time = ecs::resource<cpp_c_time>();
-    test_int(ecs_id(cpp_c_time), time.id());
+    test_int(ecs_id(cpp_c_time), 0);
+    const auto registered_id = time.id();
+    test_int(ecs_id(cpp_c_time), registered_id);
 
     time.set(cpp_c_time{ .dt = 0.016f });
     test_true(time.has());

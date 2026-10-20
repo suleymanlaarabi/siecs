@@ -18,7 +18,8 @@
         "testcases": [
           "paths_and_relative_creation",
           "rename_and_reparent_replace",
-          "deferred_creation_and_anonymous_paths"
+          "deferred_creation_and_anonymous_paths",
+          "cpp_type_names"
         ]
       },
       {
