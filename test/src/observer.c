@@ -606,3 +606,76 @@ void observer_user_data_lifetime(void) {
     test_int(targeted_calls, 1);
     test_int(world_calls, 1);
 }
+
+void observer_observers_see_set_after_edge_is_cached(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(ObserverPosition);
+
+    /* Warm the add edge and the owned write path while nothing observes them. */
+    ecs_entity_t warm = ecs_new();
+    ecs_set(warm, ObserverPosition, { 1, 2 });
+    ecs_set(warm, ObserverPosition, { 3, 4 });
+
+    uint32_t added = 0;
+    uint32_t set = 0;
+    ecs_observer(
+        {
+            .on = EcsOnAdd,
+            .query.components = { ecs_filter(ObserverPosition) },
+            .callback = observer_count_event,
+            .user_data = (uintptr_t)&added,
+        }
+    );
+    ecs_observer(
+        {
+            .on = EcsOnSet,
+            .query.components = { ecs_filter(ObserverPosition) },
+            .callback = observer_count_event,
+            .user_data = (uintptr_t)&set,
+        }
+    );
+
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, ObserverPosition, { 5, 6 });
+    test_uint(1, added);
+    test_uint(1, set);
+
+    ecs_set(entity, ObserverPosition, { 7, 8 });
+    test_uint(1, added);
+    test_uint(2, set);
+
+    const ObserverPosition *position = ecs_get(entity, ObserverPosition);
+    test_int(7, position->x);
+    test_int(8, position->y);
+    test_int(3, ecs_get(warm, ObserverPosition)->x);
+    ecs_fini();
+}
+
+static uint32_t observer_tag_removed;
+
+static void observer_count_tag_remove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
+    (void)entity;
+    (void)component;
+    test_assert(ptr == NULL);
+    observer_tag_removed++;
+}
+
+void observer_kill_runs_on_remove_hook_of_tag(void) {
+    ecs_init();
+    observer_tag_removed = 0;
+    ECS_COMPONENT_REGISTER(ObserverPosition);
+    ecs_component_t tag = ecs_component({ .name = "HookedTag", .on_remove = observer_count_tag_remove });
+
+    /* The hook sits on a tag: the table has a hook even though no data column does. */
+    ecs_entity_t entity = ecs_new();
+    ecs_set(entity, ObserverPosition, { 1, 2 });
+    ecs_add_cid(entity, tag);
+    ecs_entity_t plain = ecs_new();
+    ecs_set(plain, ObserverPosition, { 3, 4 });
+
+    ecs_kill(plain);
+    test_uint(0, observer_tag_removed);
+    ecs_kill(entity);
+    test_uint(1, observer_tag_removed);
+    ecs_fini();
+}

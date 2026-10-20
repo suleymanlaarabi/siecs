@@ -4954,6 +4954,7 @@ typedef struct {
     uint16_t *ids;
     uint16_t capacity;
     uint16_t aux; /* free metadata stored in the pointer-alignment gap */
+    uint32_t aux_flags; /* more free metadata in the same gap */
 } ecs_id_map_t;
 
 void ecs_id_map_init(ecs_id_map_t *map);
@@ -5069,6 +5070,12 @@ static inline int ecs_type_equals(const ecs_type_t *a, const ecs_type_t *b) {
 #include <stdint.h>
 
 typedef enum {
+    // A component of the table has an on_remove hook (hooks are fixed at
+    // registration, so this never goes stale).
+    EcsTableHasOnRemoveHooks = 1 << 0,
+} ecs_table_flags_t;
+
+typedef enum {
     EcsColumnTrivialMove = 1 << 0,
     EcsColumnNoDtor = 1 << 1,
     EcsColumnZeroCtor = 1 << 2,
@@ -5094,7 +5101,8 @@ typedef struct {
 
 struct ecs_table_s {
     ecs_id_map_t add_edge; // maps component id to the table that has the component added or column
-                           // index if the component is in the table
+                           // index if the component is in the table. Its free metadata holds the
+                           // data column count (aux) and the ecs_table_flags_t (aux_flags).
     uint32_t entity_capacity;
     uint32_t entity_count;
     ecs_entity_t *entities;
@@ -5183,6 +5191,8 @@ typedef struct {
     uint16_t count;
 } ecs_pair_tables_t;
 
+#define ECS_PAIR_TARGET_BLOOM_BITS 4096
+
 typedef struct {
     ecs_table_t *tables;
     ecs_type_slot_t *slots;
@@ -5192,6 +5202,10 @@ typedef struct {
     ecs_pair_table_slot_t *pair_slots;
     uint32_t pair_slot_count;
     uint8_t pair_slot_shift;
+    // One bit per entity index (modulo the size), set once a pair slot exists
+    // for a target with that index. A clear bit proves the entity is the target
+    // of no pair table, so destroying it needs no source cleanup.
+    uint64_t pair_target_bloom[ECS_PAIR_TARGET_BLOOM_BITS / 64];
 } ecs_table_index_t;
 
 extern ecs_table_index_t table_index;
@@ -5202,6 +5216,11 @@ void ecs_table_index_fini();
 #define ecs_table_index_at(index) (&table_index.tables[index])
 
 uint16_t ecs_table_index_get_or_create(ecs_type_t type);
+
+static inline bool ecs_table_index_may_be_pair_target(uint64_t target) {
+    uint32_t bit = ecs_first(target) & (ECS_PAIR_TARGET_BLOOM_BITS - 1);
+    return (table_index.pair_target_bloom[bit / 64] >> (bit % 64)) & 1;
+}
 ecs_pair_tables_t ecs_table_index_pair_tables(uint16_t key, uint64_t value);
 
 #endif
@@ -5600,6 +5619,9 @@ typedef struct {
 typedef struct {
     sicore_vec_t records; /* ecs_relation_record_t */
     sicore_map_t names; /* relation name -> id; borrowed metadata keys */
+    /* Virtual relations (no storage component, served by ops) whose targets
+     * are not indexed by pair tables: destroying any entity scans for them. */
+    uint32_t virtual_scan_count;
 } ecs_relation_index_t;
 
 extern ecs_relation_index_t relation_index;
@@ -8216,6 +8238,12 @@ void ecs_kill_now(ecs_entity_t entity) {
     uint16_t component_count = initial_table->type.component_count;
     ecs_table_t *table = initial_table;
 
+    /* No hook or observer can see the removals: skip the per-component pass
+     * that would only find nothing to notify. */
+    if (!(table->add_edge.aux_flags & EcsTableHasOnRemoveHooks) &&
+        !ecs_table_observed(table, EcsOnRemove))
+        component_count = 0;
+
     for (uint16_t i = 0; i < component_count && ecs_is_alive(entity); i++) {
         ecs_component_t component = components[i];
         record = ecs_get_record(entity);
@@ -9390,6 +9418,8 @@ void ecs_observer_fini(ecs_observer_id_t id) {
 }
 
 void ecs_observer_fini_entity(ecs_entity_t entity) {
+    if (!observer_index.target_keys.size)
+        return;
     uint32_t entity_id = ecs_entity_id(entity);
     uint64_t first_key = (uint64_t)entity_id << 16;
     uint64_t after_key = ((uint64_t)entity_id + 1) << 16;
@@ -9919,6 +9949,8 @@ static ecs_relation_id_t ecs_relation_register_with_ops(
             },
             .ops = ops,
         };
+    if (!component && ops && desc->storage != EcsRelationByTarget)
+        relation_index.virtual_scan_count++;
     const char *owned_name = ecs_relation_record(*id)->info.name;
     if (owned_name && owned_name[0] &&
         sicore_map_get(&relation_index.names, owned_name) == UINT32_MAX) {
@@ -10343,6 +10375,11 @@ bool ecs_has_relation_to_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs
 }
 
 void ecs_relation_virtual_target_on_remove(ecs_entity_t target) {
+    /* Relations with a storage component clean their sources through component
+     * hooks; only virtual relations need this pass. ByTarget sources live in
+     * (relation, target) pair tables, which cannot exist for a clear bloom bit. */
+    if (!relation_index.virtual_scan_count && !ecs_table_index_may_be_pair_target(target))
+        return;
     for (ecs_relation_id_t relation = 1; relation < relation_index.records.size; relation++) {
         const ecs_relation_record_t *record = ecs_relation_record(relation);
         if (record->component || !record->ops) {
@@ -11766,6 +11803,8 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     for (uint16_t i = 0; i < type.component_count; i++) {
         ecs_component_record_t *rec = ecs_component_index_get(type.ids[i]);
         sicore_vec_push_u16(&rec->tables, table_id);
+        if (rec->on_remove)
+            table->add_edge.aux_flags |= EcsTableHasOnRemoveHooks;
         table->cls[i].size = rec->info->size;
         table->cls[i].data =
             rec->info->size != 0 ? calloc(table->entity_capacity, rec->info->size) : NULL;
@@ -12624,6 +12663,7 @@ void ecs_arena_fini(ecs_arena_t *allocator) {
 void ecs_id_map_init(ecs_id_map_t *map) {
     map->capacity = 1;
     map->aux = 0;
+    map->aux_flags = 0;
     map->ids = malloc(sizeof(uint16_t));
     *map->ids = UINT16_MAX;
 }
@@ -13490,6 +13530,8 @@ ecs_pair_slot(ecs_table_index_t *index, uint16_t key, uint64_t value, bool creat
         slot->key = key;
         slot->value = value;
         index->pair_slot_count++;
+        uint32_t bit = ecs_first(value) & (ECS_PAIR_TARGET_BLOOM_BITS - 1);
+        index->pair_target_bloom[bit / 64] |= UINT64_C(1) << (bit % 64);
     }
     return slot->value ? slot : NULL;
 }

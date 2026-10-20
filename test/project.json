@@ -315,6 +315,8 @@
           "modified_supports_zero_sized_tags",
           "on_set_reports_component",
           "on_add_reports_component",
+          "observers_see_set_after_edge_is_cached",
+          "kill_runs_on_remove_hook_of_tag",
           "on_remove_reports_component",
           "custom_event_reports_zero_component",
           "deferred_on_set_reports_component_at_flush",

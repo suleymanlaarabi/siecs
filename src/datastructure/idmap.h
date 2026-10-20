@@ -6,6 +6,7 @@ typedef struct {
     uint16_t *ids;
     uint16_t capacity;
     uint16_t aux; /* free metadata stored in the pointer-alignment gap */
+    uint32_t aux_flags; /* more free metadata in the same gap */
 } ecs_id_map_t;
 
 void ecs_id_map_init(ecs_id_map_t *map);

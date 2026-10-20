@@ -8,6 +8,12 @@
 #include <stdint.h>
 
 typedef enum {
+    // A component of the table has an on_remove hook (hooks are fixed at
+    // registration, so this never goes stale).
+    EcsTableHasOnRemoveHooks = 1 << 0,
+} ecs_table_flags_t;
+
+typedef enum {
     EcsColumnTrivialMove = 1 << 0,
     EcsColumnNoDtor = 1 << 1,
     EcsColumnZeroCtor = 1 << 2,
@@ -33,7 +39,8 @@ typedef struct {
 
 struct ecs_table_s {
     ecs_id_map_t add_edge; // maps component id to the table that has the component added or column
-                           // index if the component is in the table
+                           // index if the component is in the table. Its free metadata holds the
+                           // data column count (aux) and the ecs_table_flags_t (aux_flags).
     uint32_t entity_capacity;
     uint32_t entity_count;
     ecs_entity_t *entities;

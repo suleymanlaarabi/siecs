@@ -198,6 +198,8 @@ static ecs_relation_id_t ecs_relation_register_with_ops(
             },
             .ops = ops,
         };
+    if (!component && ops && desc->storage != EcsRelationByTarget)
+        relation_index.virtual_scan_count++;
     const char *owned_name = ecs_relation_record(*id)->info.name;
     if (owned_name && owned_name[0] &&
         sicore_map_get(&relation_index.names, owned_name) == UINT32_MAX) {
@@ -622,6 +624,11 @@ bool ecs_has_relation_to_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs
 }
 
 void ecs_relation_virtual_target_on_remove(ecs_entity_t target) {
+    /* Relations with a storage component clean their sources through component
+     * hooks; only virtual relations need this pass. ByTarget sources live in
+     * (relation, target) pair tables, which cannot exist for a clear bloom bit. */
+    if (!relation_index.virtual_scan_count && !ecs_table_index_may_be_pair_target(target))
+        return;
     for (ecs_relation_id_t relation = 1; relation < relation_index.records.size; relation++) {
         const ecs_relation_record_t *record = ecs_relation_record(relation);
         if (record->component || !record->ops) {

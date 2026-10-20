@@ -170,6 +170,12 @@ void ecs_kill_now(ecs_entity_t entity) {
     uint16_t component_count = initial_table->type.component_count;
     ecs_table_t *table = initial_table;
 
+    /* No hook or observer can see the removals: skip the per-component pass
+     * that would only find nothing to notify. */
+    if (!(table->add_edge.aux_flags & EcsTableHasOnRemoveHooks) &&
+        !ecs_table_observed(table, EcsOnRemove))
+        component_count = 0;
+
     for (uint16_t i = 0; i < component_count && ecs_is_alive(entity); i++) {
         ecs_component_t component = components[i];
         record = ecs_get_record(entity);

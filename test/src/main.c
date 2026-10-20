@@ -262,6 +262,8 @@ void observer_modified_emits_current_component_value(void);
 void observer_modified_supports_zero_sized_tags(void);
 void observer_on_set_reports_component(void);
 void observer_on_add_reports_component(void);
+void observer_observers_see_set_after_edge_is_cached(void);
+void observer_kill_runs_on_remove_hook_of_tag(void);
 void observer_on_remove_reports_component(void);
 void observer_custom_event_reports_zero_component(void);
 void observer_deferred_on_set_reports_component_at_flush(void);
@@ -1243,6 +1245,14 @@ bake_test_case observer_testcases[] = {
         observer_on_add_reports_component
     },
     {
+        "observers_see_set_after_edge_is_cached",
+        observer_observers_see_set_after_edge_is_cached
+    },
+    {
+        "kill_runs_on_remove_hook_of_tag",
+        observer_kill_runs_on_remove_hook_of_tag
+    },
+    {
         "on_remove_reports_component",
         observer_on_remove_reports_component
     },
@@ -1433,7 +1443,7 @@ static bake_test_suite suites[] = {
         "observer",
         NULL,
         NULL,
-        22,
+        24,
         observer_testcases
     },
     {

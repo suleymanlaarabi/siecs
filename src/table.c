@@ -26,6 +26,8 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
     for (uint16_t i = 0; i < type.component_count; i++) {
         ecs_component_record_t *rec = ecs_component_index_get(type.ids[i]);
         sicore_vec_push_u16(&rec->tables, table_id);
+        if (rec->on_remove)
+            table->add_edge.aux_flags |= EcsTableHasOnRemoveHooks;
         table->cls[i].size = rec->info->size;
         table->cls[i].data =
             rec->info->size != 0 ? calloc(table->entity_capacity, rec->info->size) : NULL;

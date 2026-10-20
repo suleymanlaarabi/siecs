@@ -100,6 +100,8 @@ ecs_pair_slot(ecs_table_index_t *index, uint16_t key, uint64_t value, bool creat
         slot->key = key;
         slot->value = value;
         index->pair_slot_count++;
+        uint32_t bit = ecs_first(value) & (ECS_PAIR_TARGET_BLOOM_BITS - 1);
+        index->pair_target_bloom[bit / 64] |= UINT64_C(1) << (bit % 64);
     }
     return slot->value ? slot : NULL;
 }

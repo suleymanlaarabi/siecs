@@ -179,6 +179,8 @@ void ecs_observer_fini(ecs_observer_id_t id) {
 }
 
 void ecs_observer_fini_entity(ecs_entity_t entity) {
+    if (!observer_index.target_keys.size)
+        return;
     uint32_t entity_id = ecs_entity_id(entity);
     uint64_t first_key = (uint64_t)entity_id << 16;
     uint64_t after_key = ((uint64_t)entity_id + 1) << 16;

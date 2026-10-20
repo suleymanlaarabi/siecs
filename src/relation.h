@@ -20,6 +20,9 @@ typedef struct {
 typedef struct {
     sicore_vec_t records; /* ecs_relation_record_t */
     sicore_map_t names; /* relation name -> id; borrowed metadata keys */
+    /* Virtual relations (no storage component, served by ops) whose targets
+     * are not indexed by pair tables: destroying any entity scans for them. */
+    uint32_t virtual_scan_count;
 } ecs_relation_index_t;
 
 extern ecs_relation_index_t relation_index;
