@@ -120,7 +120,16 @@ template <typename Args> auto init_callback_params() {
     [&]<std::size_t... Is>(std::index_sequence<Is...>) {
         (prepare_field<Args, Is>(std::get<Is>(params)), ...);
     }(indices);
-    std::apply([&](auto &...param) { (prepare_world(param, ecs_world_current()), ...); }, params);
+    std::apply(
+        [&](auto &...param) {
+            if constexpr ((IsSystemParamWorld<std::remove_cvref_t<decltype(param)>> || ... ||
+                           false)) {
+                ecs_world_t *world = ecs_world_current();
+                (prepare_world(param, world), ...);
+            }
+        },
+        params
+    );
     return params;
 }
 
@@ -159,12 +168,40 @@ inline decltype(auto) callback_arg(Param &param, Cursor &cursor, uint32_t row) n
         return *(cursor.value + row * cursor.step);
 }
 
+/* Same as callback_arg for tables without shared fields: every field is a
+ * dense column, so the row indexes it directly with a compile-time unit step. */
+template <typename Arg, typename Param, typename Cursor>
+inline decltype(auto) callback_arg_dense(Param &param, Cursor &cursor, uint32_t row) noexcept {
+    if constexpr (SystemParam<Arg>)
+        return system_param_t<Arg>(param);
+    else
+        return cursor.value[row];
+}
+
 template <typename Args, typename F, typename Params, typename Cursors, std::size_t... Is>
 inline void
 invoke_row(F &func, Params &params, Cursors &cursors, uint32_t row, std::index_sequence<Is...>) {
     std::invoke(
         func,
         callback_arg<std::tuple_element_t<Is, Args>>(
+            std::get<Is>(params),
+            std::get<Is>(cursors),
+            row
+        )...
+    );
+}
+
+template <typename Args, typename F, typename Params, typename Cursors, std::size_t... Is>
+inline void invoke_row_dense(
+    F &func,
+    Params &params,
+    Cursors &cursors,
+    uint32_t row,
+    std::index_sequence<Is...>
+) {
+    std::invoke(
+        func,
+        callback_arg_dense<std::tuple_element_t<Is, Args>>(
             std::get<Is>(params),
             std::get<Is>(cursors),
             row
@@ -184,8 +221,17 @@ inline void run_batch(F &func, ecs_iter_t *it, Params &params) {
     if constexpr (callback_requires_row<Args>(indices)) {
         bool has_shared = false;
         auto cursors = make_cursors<Args>(it, has_shared, indices);
-        (void)has_shared;
-        for (uint32_t row = 0; row < it->count; ++row) {
+        const uint32_t count = it->count;
+        /* Inherited (shared) values only come with IsA bases; every other table
+         * gets the loop the compiler sees as plain arrays and can vectorize. */
+        if (!has_shared) [[likely]] {
+            for (uint32_t row = 0; row < count; ++row) {
+                std::apply([&](auto &...param) { (prepare_row(param, it, row), ...); }, params);
+                invoke_row_dense<Args>(func, params, cursors, row, indices);
+            }
+            return;
+        }
+        for (uint32_t row = 0; row < count; ++row) {
             std::apply([&](auto &...param) { (prepare_row(param, it, row), ...); }, params);
             invoke_row<Args>(func, params, cursors, row, indices);
         }
@@ -401,6 +447,12 @@ template <typename T> inline void system_param_query::optional_component() {
     );
 }
 
+namespace detail {
+/* One distinct address per callback argument list: comparing it tells whether
+ * the terms appended for a callback are the ones the query already has. */
+template <typename Args> inline constexpr char callback_args_tag = 0;
+} // namespace detail
+
 /** Move-only RAII owner of a persistent query id. */
 template <typename... Signature> class query_handle {
     ecs_query_id_t _id = 0;
@@ -409,6 +461,7 @@ template <typename... Signature> class query_handle {
     uint16_t _base_resource_index = UINT16_MAX;
     uint16_t _base_relation_index = UINT16_MAX;
     uint64_t _signature = 0;
+    const void *_callback_args = nullptr;
 
     static uint64_t signature(
         const ecs_query_desc_t &desc,
@@ -471,6 +524,7 @@ template <typename... Signature> class query_handle {
             _base_resource_index = other._base_resource_index;
             _base_relation_index = other._base_relation_index;
             _signature = other._signature;
+            _callback_args = other._callback_args;
         }
         return *this;
     }
@@ -486,7 +540,9 @@ template <typename... Signature> class query_handle {
         using args = detail::callback_args_t<callback, Signature...>;
 
         if constexpr (sizeof...(Signature) == 0) {
-            if (_base_component_index != UINT16_MAX) {
+            if (_base_component_index != UINT16_MAX &&
+                _callback_args != &detail::callback_args_tag<args>) {
+                _callback_args = &detail::callback_args_tag<args>;
                 ecs_query_desc_t desc = _base_desc;
                 uint16_t component_index = _base_component_index;
                 uint16_t resource_index = _base_resource_index;
