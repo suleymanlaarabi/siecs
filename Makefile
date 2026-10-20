@@ -7,7 +7,7 @@ WASM_NODE ?= node
 BENCH_CPU ?= 0
 VEC_ARCH_FLAGS ?=
 
-.PHONY: clean bench bench-naming bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-release test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release build-wasm-debug build-wasm-release test-wasm test-wasm-browser vec-cpp act-ci act-docs act
+.PHONY: clean bench bench-naming bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-contracts test-cpp-release test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release build-wasm-debug build-wasm-release test-wasm test-wasm-browser vec-cpp act-ci act-docs act
 
 ACT ?= act
 ACT_PLATFORM ?= ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
@@ -87,7 +87,10 @@ test-leaks:
 	@bake rebuild example/c -r --cfg sanitize >/dev/null
 	@bash -o pipefail -c "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 LSAN_OPTIONS=exitcode=23 bake run example/c --cfg sanitize 2>&1 | $(QUIET_BAKE)"
 
-test-cpp:
+test-cpp-contracts:
+	@python3 test/cpp/compile_contracts.py
+
+test-cpp: test-cpp-contracts
 	@bake rebuild test/cpp -r >/dev/null
 	@bash -o pipefail -c "bake test test/cpp 2>&1 | $(QUIET_BAKE)"
 

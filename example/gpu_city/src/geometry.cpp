@@ -15,7 +15,7 @@ ecs::entity shape(int kind, float a, float b, float c, Rgb color) {
                   std::bit_cast<uint32_t>(c), color.r, color.g, color.b);
     if (auto found = ecs::entity::lookup(name))
         return found.target<ShapeModel>();
-    auto prefab = ecs::entity::create();
+    auto prefab = ecs::spawn();
     if (kind == 0)
         prefab.set(Cuboid{ a, b, c });
     else if (kind == 1)
@@ -23,12 +23,12 @@ ecs::entity shape(int kind, float a, float b, float c, Rgb color) {
     else
         prefab.set(Sphere{ a });
     prefab.set(Color{ color.r, color.g, color.b }).abstract();
-    ecs::entity::create(name).relate<ShapeModel>(prefab);
+    ecs::ensure(name).relate<ShapeModel>(prefab);
     return prefab;
 }
 
 ecs::entity place(ecs::entity prefab, float x, float y, float z, float yaw, bool is_static) {
-    auto instance = ecs::entity::create().is_a(prefab)
+    auto instance = ecs::spawn().is_a(prefab)
         .set(Position3d{ x, y, z }, Rotation3d{ 0, yaw, 0 });
     if (is_static)
         instance.add<Static>();

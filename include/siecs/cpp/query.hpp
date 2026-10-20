@@ -33,16 +33,8 @@ template <typename T> class optional {
     static void query(system_param_query &query) { query.optional_component<T>(); }
     void field(uint16_t index) noexcept { _field = index; }
     void table(ecs_iter_t *it) noexcept {
-        if (it->cache) {
-            _column = static_cast<T *>(ecs_field(it, _field));
-            _step = std::is_const_v<T> && ecs_field_is_shared(it, _field) ? 0 : 1;
-        } else {
-            _column = static_cast<T *>(ecs_try_get_cid(
-                it->entities[0],
-                detail::ecs_cpp_component_id<std::remove_cv_t<T>>()
-            ));
-            _step = 0;
-        }
+        _column = static_cast<T *>(ecs_field(it, _field));
+        _step = std::is_const_v<T> && ecs_field_is_shared(it, _field) ? 0 : 1;
     }
     void row(ecs_iter_t *, uint32_t row) noexcept {
         _ptr = _column ? _column + row * _step : nullptr;
@@ -102,10 +94,6 @@ template <typename T> auto init_system_param() {
         return no_param{};
 }
 
-template <typename Args, std::size_t... Is> auto init_system_params(std::index_sequence<Is...>) {
-    return std::tuple{ init_system_param<std::tuple_element_t<Is, Args>>()... };
-}
-
 template <typename T> inline void prepare_world(T &value, ecs_world_t *world) noexcept {
     if constexpr (IsSystemParamWorld<T>)
         value.world(world);
@@ -122,6 +110,18 @@ template <typename T> inline void prepare_row(T &value, ecs_iter_t *it, uint32_t
 template <typename Args, std::size_t I, typename T> inline void prepare_field(T &value) noexcept {
     if constexpr (system_param_field<T>)
         value.field(static_cast<uint16_t>(field_index_before<Args, I>()));
+}
+
+template <typename Args> auto init_callback_params() {
+    constexpr auto indices = std::make_index_sequence<std::tuple_size_v<Args>>{};
+    auto params = []<std::size_t... Is>(std::index_sequence<Is...>) {
+        return std::tuple{ init_system_param<std::tuple_element_t<Is, Args>>()... };
+    }(indices);
+    [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        (prepare_field<Args, Is>(std::get<Is>(params)), ...);
+    }(indices);
+    std::apply([&](auto &...param) { (prepare_world(param, ecs_world_current()), ...); }, params);
+    return params;
 }
 
 template <typename T> struct field_cursor {
@@ -194,17 +194,13 @@ inline void run_batch(F &func, ecs_iter_t *it, Params &params) {
     }
 }
 
-template <typename F> inline void each_query(ecs_query_id_t qid, F &&func) {
+template <typename Args, typename F> inline void each_query(ecs_query_id_t qid, F &&func) {
     using callback = std::remove_cvref_t<F>;
-    using args = typename function_traits<callback>::args_tuple;
+    using args = Args;
     constexpr auto indices = std::make_index_sequence<std::tuple_size_v<args>>{};
     defer_scope defer;
     callback state(std::forward<F>(func));
-    auto params = init_system_params<args>(indices);
-    [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-        (prepare_field<args, Is>(std::get<Is>(params)), ...);
-    }(indices);
-    std::apply([&](auto &...param) { (prepare_world(param, ecs_world_current()), ...); }, params);
+    auto params = init_callback_params<args>();
     ecs_iter_t it = ecs_query_iter(qid);
     while (ecs_iter_next(&it))
         run_batch<args>(state, &it, params);
@@ -407,7 +403,7 @@ template <typename T> inline void system_param_query::optional_component() {
 }
 
 /** Move-only RAII owner of a persistent query id. */
-class query_handle {
+template <typename... Signature> class query_handle {
     ecs_query_id_t _id = 0;
     ecs_query_desc_t _base_desc{};
     uint16_t _base_component_index = UINT16_MAX;
@@ -442,16 +438,7 @@ class query_handle {
   public:
     /** Adopt an existing query id; the handle destroys it on scope exit. */
     explicit query_handle(ecs_query_id_t id) noexcept : _id(id) {}
-    /** Build and own a query from its descriptor and term count. */
-    query_handle(const ecs_query_desc_t &desc, uint16_t component_index)
-        : query_handle(
-              desc,
-              component_index,
-              detail::query_resource_count(desc),
-              detail::query_relation_count(desc)
-          ) {}
-    query_handle(const ecs_query_desc_t &desc, uint16_t component_index, uint16_t resource_index)
-        : query_handle(desc, component_index, resource_index, detail::query_relation_count(desc)) {}
+    /** Build and own a query from its descriptor and term counts. */
     query_handle(
         const ecs_query_desc_t &desc,
         uint16_t component_index,
@@ -477,176 +464,189 @@ class query_handle {
     /** Replace this query by moving ownership from `other`. */
     query_handle &operator=(query_handle &&other) noexcept {
         if (this != &other) {
-            std::swap(_id, other._id);
-            std::swap(_base_desc, other._base_desc);
-            std::swap(_base_component_index, other._base_component_index);
-            std::swap(_base_resource_index, other._base_resource_index);
-            std::swap(_base_relation_index, other._base_relation_index);
-            std::swap(_signature, other._signature);
+            if (_id != 0)
+                ecs_query_fini(_id);
+            _id = std::exchange(other._id, 0);
+            _base_desc = other._base_desc;
+            _base_component_index = other._base_component_index;
+            _base_resource_index = other._base_resource_index;
+            _base_relation_index = other._base_relation_index;
+            _signature = other._signature;
         }
         return *this;
     }
 
     /** Return the owned query id, or zero for an empty/moved-from handle. */
     [[nodiscard]] ecs_query_id_t id() const noexcept { return _id; }
+    /** Transfer ownership to a C caller, which must call ecs_query_fini. */
+    [[nodiscard]] ecs_query_id_t release() noexcept { return std::exchange(_id, 0); }
 
     /** Iterate matching entities; callback arguments must be valid references. */
     template <typename F> void each(F &&func) {
         using callback = std::remove_cvref_t<F>;
-        using args = typename function_traits<callback>::args_tuple;
+        using args = detail::callback_args_t<callback, Signature...>;
 
-        if (_base_component_index != UINT16_MAX) {
-            ecs_query_desc_t desc = _base_desc;
-            uint16_t component_index = _base_component_index;
-            uint16_t resource_index = _base_resource_index;
-            uint16_t relation_index = _base_relation_index;
-            detail::append_callback_terms<args>(
-                desc,
-                component_index,
-                resource_index,
-                relation_index
-            );
-            uint64_t next_signature =
-                signature(desc, component_index, resource_index, relation_index);
-            if (next_signature != _signature) {
-                if (_id != 0)
-                    ecs_query_fini(_id);
-                _id = ecs_query_init(&desc);
-                _signature = next_signature;
+        if constexpr (sizeof...(Signature) == 0) {
+            if (_base_component_index != UINT16_MAX) {
+                ecs_query_desc_t desc = _base_desc;
+                uint16_t component_index = _base_component_index;
+                uint16_t resource_index = _base_resource_index;
+                uint16_t relation_index = _base_relation_index;
+                detail::append_callback_terms<args>(
+                    desc,
+                    component_index,
+                    resource_index,
+                    relation_index
+                );
+                uint64_t next_signature =
+                    signature(desc, component_index, resource_index, relation_index);
+                if (next_signature != _signature) {
+                    if (_id != 0)
+                        ecs_query_fini(_id);
+                    _id = ecs_query_init(&desc);
+                    _signature = next_signature;
+                }
             }
         }
-        detail::each_query(_id, std::forward<F>(func));
+        detail::each_query<args>(_id, std::forward<F>(func));
     }
 };
 
-/** Fluent typed query builder; `build_handle` owns the resulting query. */
-class query {
+/** Shared query filters; every operation preserves the concrete builder type. */
+template <typename Derived> class query_filter {
   protected:
     ecs_query_desc_t desc{};
     uint16_t component_index = 0;
     uint16_t resource_index = 0;
     uint16_t relation_index = 0;
 
-    template <ecs_access_t Access, typename... T> query &components() {
+    template <ecs_access_t Access, typename... T> Derived &components() {
         detail::append_terms<T...>(desc, component_index, Access);
-        return *this;
+        return static_cast<Derived &>(*this);
     }
 
     template <typename Relation>
-    query &relation(ecs_entity_t target, ecs_query_relation_kind_t kind) {
+    Derived &relation(ecs_entity_t target, ecs_query_relation_kind_t kind) {
         assert(relation_index < ECS_QUERY_RELATION_CAPACITY && "too many query relation terms");
         desc.relations[relation_index++] = {
             .target = target,
             .id = detail::ecs_cpp_relation_id<Relation>(),
             .kind = kind,
         };
-        return *this;
+        return static_cast<Derived &>(*this);
     }
 
   public:
-    /** Construct an empty query descriptor. */
-    query() = default;
-
     /** Add required, non-returned filter terms. */
-    template <typename... T> query &require() { return components<EcsFilter, T...>(); }
+    template <typename... T> Derived &with() { return components<EcsFilter, T...>(); }
 
     /** Add optional read/write component terms. */
-    template <typename... T> query &optional() { return components<EcsInOutOptional, T...>(); }
+    template <typename... T> Derived &optional() { return components<EcsInOutOptional, T...>(); }
 
     /** Add terms that must be absent from matching tables. */
-    template <typename... T> query &exclude() { return components<EcsNot, T...>(); }
+    template <typename... T> Derived &without() { return components<EcsNot, T...>(); }
 
     /** Restrict matches to entities inheriting from `target`. */
-    query &is_a(ecs_entity_t target) {
+    Derived &is_a(ecs_entity_t target) {
         desc.is_a = target;
-        return *this;
+        return static_cast<Derived &>(*this);
     }
 
-    query &is_a(entity target) { return is_a(target.id()); }
+    Derived &is_a(entity target) { return is_a(target.id()); }
 
-    template <typename Relation> query &with_relation() {
+    template <typename Relation> Derived &with_relation() {
         return relation<Relation>(0, EcsRelationRequired);
     }
 
-    template <typename Relation> query &where() { return with_relation<Relation>(); }
-    template <typename Relation> query &where(ecs_entity_t target) { return to<Relation>(target); }
-    template <typename Relation> query &where(entity target) { return to<Relation>(target); }
-
-    template <typename Relation> query &optional_relation() {
+    template <typename Relation> Derived &optional_relation() {
         return relation<Relation>(0, EcsRelationOptional);
     }
-    template <typename Relation> query &exclude_relation() {
+    template <typename Relation> Derived &without_relation() {
         return relation<Relation>(0, EcsRelationExcluded);
     }
 
-    template <typename Relation> query &to(ecs_entity_t target) {
+    template <typename Relation> Derived &with(ecs_entity_t target) {
         return relation<Relation>(target, EcsRelationTarget);
     }
 
-    template <typename Relation> query &to(entity target) { return to<Relation>(target.id()); }
+    template <typename Relation> Derived &with(entity target) {
+        return with<Relation>(target.id());
+    }
 
-    template <typename Relation> query &depth(uint32_t value) {
+    template <typename Relation> Derived &depth(uint32_t value) {
         return relation<Relation>(value, EcsRelationDepth);
     }
 
-    query &order_by(ecs_query_order_t value) {
+    Derived &order_by(ecs_query_order_t value) {
         desc.order_by = value;
-        return *this;
+        return static_cast<Derived &>(*this);
     }
 
-    template <typename Relation> query &order_by_target() {
+    template <typename Relation> Derived &order_by_target() {
         return order_by(ecs_order_by_target_id(detail::ecs_cpp_relation_id<Relation>()));
     }
 
-    template <typename Relation> query &order_by_depth() {
+    template <typename Relation> Derived &order_by_depth() {
         return order_by(ecs_order_by_depth_id(detail::ecs_cpp_relation_id<Relation>()));
     }
 
-    template <typename Component, typename Relation> query &up() {
-        desc.components[component_index++] = {
-            .id = detail::ecs_cpp_component_id<Component>(),
-            .access = ECS_QUERY_UP_ACCESS(EcsInUp, detail::ecs_cpp_relation_id<Relation>()),
-        };
-        return *this;
+    template <typename Component, typename Relation> Derived &up() {
+        detail::append_component_term(
+            desc,
+            component_index,
+            detail::ecs_cpp_component_id<Component>(),
+            ECS_QUERY_UP_ACCESS(EcsInUp, detail::ecs_cpp_relation_id<Relation>())
+        );
+        return static_cast<Derived &>(*this);
+    }
+};
+
+/** Typed query builder; build() returns a move-only persistent query. */
+template <typename... Signature> class query : public query_filter<query<Signature...>> {
+    using base = query_filter<query<Signature...>>;
+    using base::component_index;
+    using base::desc;
+    using base::relation_index;
+    using base::resource_index;
+
+    template <typename... Terms> query_handle<Terms...> build_signature() {
+        ecs_query_desc_t typed = desc;
+        auto components = component_index;
+        auto resources = resource_index;
+        auto relations = relation_index;
+        detail::append_callback_terms<std::tuple<Terms...>>(
+            typed,
+            components,
+            resources,
+            relations
+        );
+        return query_handle<Terms...>(typed, components, resources, relations);
     }
 
+  public:
     /** Build a raw query id; caller must eventually call `ecs_query_fini`. */
-    ecs_query_id_t build() { return ecs_query_init(&desc); }
+    ecs_query_id_t build_raw() {
+        auto typed = build();
+        return typed.release();
+    }
 
     /** Build a move-only RAII query handle. */
-    query_handle build_handle() {
-        return query_handle(desc, component_index, resource_index, relation_index);
-    }
+    query_handle<Signature...> build() { return build_signature<Signature...>(); }
 
-    /** Build, iterate, and destroy a temporary query around `func`. */
+    /** Iterate a temporary query, deducing access unless a signature was declared. */
     template <typename F> void each(F &&func) {
-        using args = typename function_traits<std::remove_cvref_t<F>>::args_tuple;
-        ecs_query_desc_t typed = desc;
-        uint16_t typed_component_index = component_index;
-        uint16_t typed_resource_index = resource_index;
-        uint16_t typed_relation_index = relation_index;
-        detail::append_callback_terms<args>(
-            typed,
-            typed_component_index,
-            typed_resource_index,
-            typed_relation_index
-        );
-        ecs_query_id_t qid = ecs_query_init(&typed);
-        detail::each_query(qid, std::forward<F>(func));
-        ecs_query_fini(qid);
+        using args = detail::callback_args_t<std::remove_cvref_t<F>, Signature...>;
+        [&]<typename... Terms>(std::tuple<Terms...> *) {
+            auto handle = build_signature<Terms...>();
+            detail::each_query<args>(handle.id(), std::forward<F>(func));
+        }(static_cast<args *>(nullptr));
     }
 
     /** Return the first match, or `entity::null()` when no table matches. */
     entity first() {
-        ecs_query_id_t qid = this->build();
-        ecs_iter_t it = ecs_query_iter(qid);
-
-        if (ecs_iter_next(&it)) {
-            ecs_query_fini(qid);
-            return it.entities[0];
-        }
-        ecs_query_fini(qid);
-        return entity::null();
+        auto handle = build();
+        ecs_iter_t it = ecs_query_iter(handle.id());
+        return ecs_iter_next(&it) && it.count ? entity::from(it.entities[0]) : entity::null();
     }
 };
 

@@ -111,7 +111,7 @@ ecs_kill(e);
 <TabItem label="C++">
 
 ```cpp
-auto e = ecs::entity::create();
+auto e = ecs::spawn();
 bool alive = e.is_alive();  // true
 e.kill();
 ```
@@ -160,7 +160,7 @@ ecs_remove(e, Position);
 ```cpp
 struct Position { float x, y; };
 
-auto e = ecs::entity::create().set(Position{10, 20});
+auto e = ecs::spawn().set(Position{10, 20});
 const Position &p = e.get<Position>();
 e.remove<Position>();
 ```
@@ -314,7 +314,7 @@ ecs_set_resource(Time, { .dt = 1.0f / 60.0f });
 ```cpp
 struct Time { float dt; };
 
-ecs::resource_handle<Time>().set(Time{1.0f / 60.0f});
+ecs::resource<Time>().set(Time{1.0f / 60.0f});
 ```
 
 </TabItem>
@@ -355,7 +355,7 @@ ecs_query_fini(q);
 <TabItem label="C++">
 
 ```cpp
-auto q = ecs::query().build_handle();
+auto q = ecs::query().build();
 q.each([](Position &p, const Velocity &v) {
     p.x += v.x;
     p.y += v.y;
@@ -572,7 +572,7 @@ int main() {
             p.y += v.y;
         });
 
-    auto e = ecs::entity::create()
+    auto e = ecs::spawn()
         .set(Position{0, 0})
         .set(Velocity{1, 0});
 

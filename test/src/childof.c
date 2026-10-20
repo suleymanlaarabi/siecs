@@ -5,6 +5,33 @@
 #include "world_internal.h"
 #include <siecs_test.h>
 
+#if defined(_WIN32) && !defined(NDEBUG)
+#include <process.h>
+#include <stdlib.h>
+#include <string.h>
+#include <windows.h>
+
+/* Bake's signal handler lives in a different CRT on Windows static builds.
+ * Run the invalid operation in a child and check the actual CRT abort status. */
+static bool childof_assert_abort_in_subprocess(const char *testcase) {
+    const char *child = getenv("SIECS_ABORT_TEST");
+    if (child && strcmp(child, testcase) == 0) {
+        _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+        return false;
+    }
+
+    char executable[MAX_PATH];
+    DWORD length = GetModuleFileNameA(NULL, executable, sizeof(executable));
+    test_assert(length > 0 && length < sizeof(executable));
+    test_int(_putenv_s("SIECS_ABORT_TEST", testcase), 0);
+    const char *arguments[] = { executable, testcase, NULL };
+    const intptr_t status = _spawnv(_P_WAIT, executable, arguments);
+    test_int(_putenv_s("SIECS_ABORT_TEST", ""), 0);
+    test_int(status, 3);
+    return true;
+}
+#endif
+
 ECS_COMPONENT_DECLARE(RelValue, { int value; });
 ECS_COMPONENT_DEFINE(RelValue);
 
@@ -96,15 +123,15 @@ void childof_relation_batch_views(void) {
     ecs_relate(group_source, GroupOf, group_target);
     ecs_relate(instance, IsA, base);
 
-    const ecs_relation_id_t relations[] = {
-        ecs_rid(DenseRel), ecs_rid(DepthRel), ecs_rid(GroupOf), ecs_rid(IsA)
-    };
+    const ecs_relation_id_t relations[] = { ecs_rid(DenseRel),
+                                            ecs_rid(DepthRel),
+                                            ecs_rid(GroupOf),
+                                            ecs_rid(IsA) };
     const ecs_entity_t sources[] = { dense_source, depth_source, group_source, instance };
     const ecs_entity_t targets[] = { dense_target, depth_target, group_target, base };
     for (uint32_t i = 0; i < 4; ++i) {
         ecs_query_id_t q = ecs_query_init(&(ecs_query_desc_t){
-            .relations = { { .id = relations[i], .kind = EcsRelationRequired } }
-        });
+            .relations = { { .id = relations[i], .kind = EcsRelationRequired } } });
         ecs_iter_t it = ecs_query_iter(q);
         test_true(ecs_iter_next(&it));
         test_uint(it.entities[0], sources[i]);
@@ -1031,13 +1058,19 @@ void childof_generic_isa_unrelate(void) {
 }
 
 void childof_generic_isa_cycle(void) {
+#if defined(_WIN32) && !defined(NDEBUG)
+    if (childof_assert_abort_in_subprocess("childof.generic_isa_cycle"))
+        return;
+#endif
     ecs_init();
     ecs_entity_t base = ecs_new();
     ecs_entity_t entity = ecs_new();
 
     ecs_relate_id(entity, ecs_rid(IsA), base);
 #ifndef NDEBUG
+#ifndef _WIN32
     test_expect_abort();
+#endif
     ecs_relate_id(base, ecs_rid(IsA), entity);
 #else
     test_true(ecs_has_relation_id(entity, ecs_rid(IsA)));
@@ -1523,11 +1556,19 @@ void childof_isa_instantiated_children_are_not_abstract(void) {
 }
 
 void childof_propagate_add_rejects_cyclic_relation_in_debug(void) {
+#if defined(_WIN32) && !defined(NDEBUG)
+    if (childof_assert_abort_in_subprocess(
+            "childof.propagate_add_rejects_cyclic_relation_in_debug"
+        ))
+        return;
+#endif
     ecs_init();
 
     ecs_entity_t entity = ecs_new();
 #ifndef NDEBUG
+#ifndef _WIN32
     test_expect_abort();
+#endif
     ecs_propagate_add_id(entity, ecs_rid(DenseRel), ecs_id(Abstract));
 #else
     ecs_propagate_add_id(entity, ecs_rid(DenseRel), ecs_id(Abstract));

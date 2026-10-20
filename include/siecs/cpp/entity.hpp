@@ -2,8 +2,8 @@
 #include "siecs/cpp/component.hpp"
 #include "siecs/cpp/system_param.hpp"
 #include <cassert>
-#include <cstring>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <string>
 
@@ -11,6 +11,13 @@ namespace ecs {
 
 struct IsA;
 struct ChildOf;
+class entity;
+class observer_ref;
+entity spawn() noexcept;
+entity spawn(entity parent);
+entity ensure(const char *path);
+entity ensure(entity parent, const char *path);
+template <typename T> entity singleton();
 
 namespace detail {
 
@@ -28,6 +35,7 @@ class defer_scope {
 /** Small non-owning handle to an entity in the active world. */
 class entity {
     ecs_entity_t _entity = 0;
+    template <typename T> friend entity singleton();
 
     template <typename> static ecs_entity_t &by_type() {
         static ecs_entity_t id = 0;
@@ -61,23 +69,7 @@ class entity {
     static entity lookup(const char *path) { return entity::from(ecs_lookup(path)); }
 
     /** Look up an existing string without making a temporary string copy. */
-    static inline entity lookup(const std::string &name) {
-        return lookup(name.c_str());
-    }
-
-    /** Create a new live entity in the active world. */
-    static entity create() noexcept { return entity(ecs_new()); }
-
-    /** Create a new live entity without reusing a freed entity index. */
-    static entity create_no_reuse() noexcept { return entity(ecs_new_no_reuse()); }
-
-    /** Find or create a :: path, including missing parents. */
-    static entity create(const char *path) { return from(ecs_new_named(0, path)); }
-
-    /** Find or create a path relative to parent; leading :: selects the root. */
-    static entity create(entity parent, const char *path) {
-        return from(ecs_new_named(parent.id(), path));
-    }
+    static inline entity lookup(const std::string &name) { return lookup(name.c_str()); }
 
     /** Resolve a path relative to parent, without searching its ancestors. */
     static entity lookup(entity parent, const char *path) {
@@ -102,7 +94,7 @@ class entity {
     }
 
     /** Create an IsA instance and recursively snapshot the prefab's owned ChildOf subtree. */
-    static entity instantiate(entity prefab) { return create().is_a(prefab); }
+    static entity instantiate(entity prefab) { return spawn().is_a(prefab); }
 
     /** Wrap an id without changing world state. */
     static entity from(ecs_entity_t id) noexcept { return entity(id); }
@@ -163,18 +155,8 @@ class entity {
         return *this;
     }
 
-    /** Return const component storage, or null when absent. */
-    template <typename T> [[nodiscard]] const T *try_get() {
-        return static_cast<const T *>(ecs_try_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
-    }
-
-    /** Return const component storage; the component must be present. */
-    template <typename T> [[nodiscard]] const T &get() {
-        return *static_cast<const T *>(ecs_get_cid(_entity, detail::ecs_cpp_component_id<T>()));
-    }
-
     /** Return mutable component storage, or null when absent. */
-    template <typename T> [[nodiscard]] T *try_get_mut() {
+    template <typename T> [[nodiscard]] T *try_edit() {
         ecs_component_t id = detail::ecs_cpp_component_id<T>();
 #ifndef NDEBUG
         assert(
@@ -186,7 +168,7 @@ class entity {
     }
 
     /** Return mutable component storage; the component must be present. */
-    template <typename T> [[nodiscard]] T &get_mut() {
+    template <typename T> [[nodiscard]] T &edit() {
         ecs_component_t id = detail::ecs_cpp_component_id<T>();
 #ifndef NDEBUG
         assert(
@@ -213,7 +195,7 @@ class entity {
     void kill() { ecs_kill(_entity); }
 
     /** Observe events of type `Event` using the provided callback. */
-    template <typename Event, typename F> entity observe(F &&callback);
+    template <typename Event, typename F> observer_ref observe(F &&callback);
 
     /** Add child entities to this entity. */
     template <typename... Entities> entity children(Entities... entities) {
@@ -225,15 +207,13 @@ class entity {
     entity is_a(entity target);
 
     /** Add IsA to the singleton for `T` with the same ChildOf snapshot semantics. */
-    template <typename T> entity is_a() {
-        return is_a(ecs::entity::create<T>());
-    }
+    template <typename T> entity is_a() { return is_a(ecs::singleton<T>()); }
 
     /** C-compatible IsA overload with the same ChildOf snapshot semantics. */
     entity is_a(ecs_entity_t target) { return is_a(entity::from(target)); }
 
     /** Test whether this entity is or inherits from the singleton `T`. */
-    template <typename T> bool is() { return ecs_is(_entity, ecs::entity::typed<T>()); }
+    template <typename T> bool is() { return ecs_is(_entity, by_type<T>()); }
 
     /** Test whether this entity is or inherits from `target`. */
     [[nodiscard]] bool is(entity target) const { return ecs_is(_entity, target._entity); }
@@ -247,7 +227,7 @@ class entity {
     }
 
     template <typename Relation, typename Target> entity relate() {
-        relate<Relation>(ecs::entity::typed<Target>);
+        relate<Relation>(ecs::singleton<Target>());
         return *this;
     }
 
@@ -280,20 +260,32 @@ class entity {
     [[nodiscard]] bool is_enabled() const { return !has<Disabled>(); }
     /** Return whether the entity is marked `Disabled`. */
     [[nodiscard]] bool is_disabled() const { return has<Disabled>(); }
-
-    /** Return/create the singleton entity associated with type `T`. */
-    template <typename T> static entity create(const char *name = nullptr) {
-        ecs_entity_t &id = by_type<T>();
-        if (id == 0 || !ecs_is_alive(id)) {
-            const std::string generated = std::string(type_name<T>());
-            id = create(name ? name : generated.c_str()).id();
-        }
-        return from(id);
-    }
-
-    /** Return the currently cached singleton entity for `T`, or null. */
-    template <typename T> static entity typed() { return from(by_type<T>()); }
 };
+
+/** Create a fresh anonymous entity; use ensure() for named paths. */
+inline entity spawn() noexcept { return entity::from(ecs_new()); }
+inline entity spawn(entity parent) { return spawn().child_of(parent); }
+/** Create a fresh entity without reusing a freed index. */
+inline entity spawn_no_reuse() noexcept { return entity::from(ecs_new_no_reuse()); }
+/** Find or create a path, including missing parents. */
+inline entity ensure(const char *path) { return entity::from(ecs_new_named(0, path)); }
+inline entity ensure(entity parent, const char *path) {
+    return entity::from(ecs_new_named(parent.id(), path));
+}
+/** Return/create the singleton for T, resetting its cache at world shutdown. */
+template <typename T> entity singleton() {
+    auto &id = entity::by_type<T>();
+    if (id == 0 || !ecs_is_alive(id)) {
+        const std::string name(type_name<T>());
+        id = ensure(name.c_str()).id();
+        ecs_fini_desc_t reset{
+            .callback = [](void *value) { *static_cast<ecs_entity_t *>(value) = 0; },
+            .data = &id,
+        };
+        ecs_at_fini_init(&reset);
+    }
+    return entity::from(id);
+}
 
 } // namespace ecs
 

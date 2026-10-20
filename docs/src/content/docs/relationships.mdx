@@ -222,7 +222,7 @@ ecs_query_id_t q = ecs_query({
 ```cpp
 auto q = ecs::query()
     .with_relation<GroupOf>()
-    .build_handle();
+    .build();
 ```
 
 </TabItem>
@@ -248,8 +248,8 @@ ecs_query_id_t q = ecs_query({
 
 ```cpp
 auto q = ecs::query()
-    .to<GroupOf>(group)
-    .build_handle();
+    .with<GroupOf>(group)
+    .build();
 ```
 
 </TabItem>
@@ -849,7 +849,7 @@ ecs_to(GroupOf, targetA)
 <TabItem label="C++">
 
 ```cpp
-ecs::query().to<GroupOf>(targetA);
+ecs::query().with<GroupOf>(targetA);
 ```
 
 </TabItem>

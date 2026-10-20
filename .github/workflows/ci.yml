@@ -110,6 +110,10 @@ jobs:
           bake rebuild test -r --cfg "${{ matrix.config }}"
           bake rebuild test/cpp -r --cfg "${{ matrix.config }}"
 
+      - name: Check C++ compile contracts
+        if: matrix.config == 'debug'
+        run: python3 test/cpp/compile_contracts.py
+
       - name: Run tests
         if: matrix.config != 'lsan'
         run: |
@@ -150,18 +154,48 @@ jobs:
           & "$env:GITHUB_WORKSPACE\bake\bake.exe" setup --local
           "$env:USERPROFILE\bake" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Build library and tests
+      - name: Prepare core test workspace
         shell: pwsh
         run: |
+          $core = Join-Path $env:RUNNER_TEMP "siecs-core-tests"
+          New-Item -ItemType Directory -Path $core -Force | Out-Null
+          Copy-Item project.json, include, src, test -Destination $core -Recurse
+          # This job builds a static runtime; DLL loading is covered by the shared-library jobs.
+          $manifestPath = "$core/test/project.json"
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          foreach ($suite in $manifest.test.testsuites) {
+            if ($suite.id -eq "module") {
+              $suite.testcases = @($suite.testcases | Where-Object { $_ -ne "dynamic_load" })
+            }
+          }
+          $manifest | ConvertTo-Json -Depth 30 | Set-Content $manifestPath -Encoding utf8
+          # GUI tests are exercised by the SDL-equipped Linux and macOS jobs.
+          Remove-Item "$core/test/ui", "$core/test/ui_cpp" -Recurse -Force
+          New-Item -ItemType Directory -Path "$core/addons" -Force | Out-Null
+          Copy-Item addons/rest, addons/spatial -Destination "$core/addons" -Recurse
+          New-Item -ItemType Directory -Path "$core/example/gpu_city/src" -Force | Out-Null
+          Copy-Item example/gpu_city/src/traffic.cpp, example/gpu_city/src/traffic.hpp -Destination "$core/example/gpu_city/src"
+          "SIECS_CORE_WORKSPACE=$core" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build library and tests
+        shell: pwsh
+        working-directory: ${{ env.SIECS_CORE_WORKSPACE }}
+        run: |
           bake rebuild . -r --static --cfg debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           bake rebuild test -r --static --cfg debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           bake rebuild test/cpp -r --static --cfg debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run tests
         shell: pwsh
+        working-directory: ${{ env.SIECS_CORE_WORKSPACE }}
         run: |
           bake run test --static --cfg debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           bake run test/cpp --static --cfg debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   distr:
     name: distr up to date

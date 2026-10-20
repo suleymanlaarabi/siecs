@@ -109,7 +109,7 @@ ecs_query_id_t q = ecs_query({
 auto q = ecs::query()
     .with_relation<ecs::ChildOf>()
     .order_by_depth<ecs::ChildOf>()
-    .build_handle();
+    .build();
 q.each([](WorldTransform &transform) {});
 ```
 

@@ -45,7 +45,7 @@ struct Time {
     float elapsed;
 };
 
-auto time = ecs::resource_handle<Time>();
+auto time = ecs::resource<Time>();
 ```
 
 </TabItem>
@@ -85,10 +85,10 @@ const Time *read_time = ecs_get_resource_read(Time);
 <TabItem label="C++">
 
 ```cpp
-auto time = ecs::resource_handle<Time>();
+auto time = ecs::resource<Time>();
 time.set(Time{ .dt = 0.016f, .elapsed = 0.0f });
 
-Time &writable_time = time.get();
+Time &writable_time = time.edit();
 const Time &read_time = time.get();
 ```
 
@@ -109,15 +109,19 @@ const Time *read_time = ecs_try_get_resource_read(Time);
 <TabItem label="C++">
 
 ```cpp
-auto time = ecs::resource_handle<Time>();
-Time *writable_time = time.try_get();
+auto time = ecs::resource<Time>();
+Time *writable_time = time.try_edit();
 const Time *read_time = time.try_get();
 ```
 
 </TabItem>
 </Tabs>
 
-The non-`try` getters require the resource to exist.
+The non-`try` getters require the resource to exist. In C++, `get()` and
+`try_get()` expose read-only storage; `edit()` and `try_edit()` explicitly
+request writable storage. A `resource<const T>()` handle cannot set, edit, or
+remove the resource. Creating a handle and checking presence do not register
+an absent resource type.
 
 ## Presence and removal
 
@@ -134,7 +138,7 @@ if (ecs_has_resource(Time)) {
 <TabItem label="C++">
 
 ```cpp
-auto time = ecs::resource_handle<Time>();
+auto time = ecs::resource<Time>();
 if (time.has()) {
     time.remove();
 }

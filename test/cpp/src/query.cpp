@@ -44,10 +44,10 @@ static CppQueryPosition *cpp_query_position(ecs::entity entity) {
 void query_required_owned_fields_advance(void) {
     ecs_test_scope _ecs_scope;
 
-    (void)ecs::entity::create()
+    (void)ecs::spawn()
         .set(CppQueryPosition{ .x = 1.0f })
         .set(CppQueryVelocity{ .x = 10.0f });
-    (void)ecs::entity::create()
+    (void)ecs::spawn()
         .set(CppQueryPosition{ .x = 2.0f })
         .set(CppQueryVelocity{ .x = 20.0f });
 
@@ -69,8 +69,8 @@ void query_required_owned_fields_advance(void) {
 void query_optional_field_absent_stays_null(void) {
     ecs_test_scope _ecs_scope;
 
-    (void)ecs::entity::create().set(CppQueryVelocity{ .x = 1.0f });
-    (void)ecs::entity::create().set(CppQueryVelocity{ .x = 2.0f });
+    (void)ecs::spawn().set(CppQueryVelocity{ .x = 1.0f });
+    (void)ecs::spawn().set(CppQueryVelocity{ .x = 2.0f });
 
     int calls = 0;
     float sum = 0.0f;
@@ -89,10 +89,10 @@ void query_optional_field_absent_stays_null(void) {
 void query_optional_field_present_advances(void) {
     ecs_test_scope _ecs_scope;
 
-    (void)ecs::entity::create()
+    (void)ecs::spawn()
         .set(CppQueryPosition{ .x = 1.0f })
         .set(CppQueryVelocity{ .x = 10.0f });
-    (void)ecs::entity::create()
+    (void)ecs::spawn()
         .set(CppQueryPosition{ .x = 2.0f })
         .set(CppQueryVelocity{ .x = 20.0f });
 
@@ -117,11 +117,11 @@ void query_reads_shared_inherited_field(void) {
     ecs_test_scope _ecs_scope;
 
     register_shared_query_position();
-    auto base = ecs::entity::create().set(CppQueryPosition{ .x = 10.0f });
+    auto base = ecs::spawn().set(CppQueryPosition{ .x = 10.0f });
     ecs_add(base.id(), Abstract);
 
-    (void)ecs::entity::create().is_a(base);
-    (void)ecs::entity::create().is_a(base);
+    (void)ecs::spawn().is_a(base);
+    (void)ecs::spawn().is_a(base);
 
     int calls = 0;
     float sum = 0.0f;
@@ -139,10 +139,10 @@ void query_mutable_does_not_match_shared_inherited_field(void) {
     ecs_test_scope _ecs_scope;
 
     register_shared_query_position();
-    auto base = ecs::entity::create().set(CppQueryPosition{ .x = 10.0f });
+    auto base = ecs::spawn().set(CppQueryPosition{ .x = 10.0f });
     ecs_add(base.id(), Abstract);
 
-    (void)ecs::entity::create().is_a(base);
+    (void)ecs::spawn().is_a(base);
 
     int calls = 0;
 
@@ -158,11 +158,11 @@ void query_reads_shared_and_writes_owned_field(void) {
     ecs_test_scope _ecs_scope;
 
     register_shared_query_position();
-    auto base = ecs::entity::create().set(CppQueryPosition{ .x = 3.0f });
+    auto base = ecs::spawn().set(CppQueryPosition{ .x = 3.0f });
     ecs_add(base.id(), Abstract);
 
-    auto a = ecs::entity::create().is_a(base).set(CppQueryVelocity{ .x = 1.0f });
-    auto b = ecs::entity::create().is_a(base).set(CppQueryVelocity{ .x = 2.0f });
+    auto a = ecs::spawn().is_a(base).set(CppQueryVelocity{ .x = 1.0f });
+    auto b = ecs::spawn().is_a(base).set(CppQueryVelocity{ .x = 2.0f });
 
     int calls = 0;
 
@@ -180,10 +180,10 @@ void query_owned_override_wins_over_shared_field(void) {
     ecs_test_scope _ecs_scope;
 
     register_shared_query_position();
-    auto base = ecs::entity::create().set(CppQueryPosition{ .x = 10.0f });
+    auto base = ecs::spawn().set(CppQueryPosition{ .x = 10.0f });
     ecs_add(base.id(), Abstract);
 
-    auto entity = ecs::entity::create()
+    auto entity = ecs::spawn()
                       .is_a(base)
                       .set(CppQueryPosition{ .x = 2.0f })
                       .set(CppQueryVelocity{ .x = 1.0f });
@@ -203,9 +203,9 @@ void query_owned_override_wins_over_shared_field(void) {
 void query_owned_inherited_field_is_owned_by_default(void) {
     ecs_test_scope _ecs_scope;
 
-    auto base = ecs::entity::create().set(CppQueryOwnedInherited{ .value = 10 });
+    auto base = ecs::spawn().set(CppQueryOwnedInherited{ .value = 10 });
     base.abstract();
-    auto child = ecs::entity::create().is_a(base);
+    auto child = ecs::spawn().is_a(base);
 
     ecs_component_t component = ecs::component<CppQueryOwnedInherited>();
     test_true(ecs_has_cid_owned(child.id(), component));
@@ -226,8 +226,8 @@ void query_owned_inherited_field_is_owned_by_default(void) {
 void query_each_receives_entity(void) {
     ecs_test_scope _ecs_scope;
 
-    auto first = ecs::entity::create().set(CppQueryPosition{ .x = 1.0f });
-    auto second = ecs::entity::create().set(CppQueryPosition{ .x = 2.0f });
+    auto first = ecs::spawn().set(CppQueryPosition{ .x = 1.0f });
+    auto second = ecs::spawn().set(CppQueryPosition{ .x = 2.0f });
     int calls = 0;
     bool saw_first = false;
     bool saw_second = false;
@@ -246,9 +246,9 @@ void query_each_receives_entity(void) {
 void query_each_defers_structural_mutation(void) {
     ecs_test_scope _ecs_scope;
 
-    auto first = ecs::entity::create().set(CppQueryVelocity{});
-    auto second = ecs::entity::create().set(CppQueryVelocity{});
-    auto third = ecs::entity::create().set(CppQueryVelocity{});
+    auto first = ecs::spawn().set(CppQueryVelocity{});
+    auto second = ecs::spawn().set(CppQueryVelocity{});
+    auto third = ecs::spawn().set(CppQueryVelocity{});
 
     int calls = 0;
 
@@ -274,14 +274,14 @@ void query_ordered_filter_build_is_aligned(void) {
         .storage = EcsRelationByTarget,
         .on_delete_target = EcsRemoveRelation,
     });
-    auto group = ecs::entity::create();
-    (void)ecs::entity::create().relate<CppQueryOrderRelation>(group).set(CppQueryVelocity{});
-    (void)ecs::entity::create().relate<CppQueryOrderRelation>(group).set(CppQueryMass{});
+    auto group = ecs::spawn();
+    (void)ecs::spawn().relate<CppQueryOrderRelation>(group).set(CppQueryVelocity{});
+    (void)ecs::spawn().relate<CppQueryOrderRelation>(group).set(CppQueryMass{});
 
     auto handle = ecs::query()
-                      .to<CppQueryOrderRelation>(group)
+                      .with<CppQueryOrderRelation>(group)
                       .order_by_target<CppQueryOrderRelation>()
-                      .build_handle();
+                      .build();
     int calls = 0;
     handle.each([&](ecs::entity) { ++calls; });
     test_int(2, calls);
@@ -293,14 +293,14 @@ void query_system_reads_shared_fields_with_interleaved_resource(void) {
     ecs::component<CppQueryMass>(ecs::component_options<CppQueryMass>{
         .inheritance = EcsInheritShared,
     });
-    ecs::set_resource(CppQueryScale{ .value = 2.0f });
+    ecs::resource<CppQueryScale>().set(CppQueryScale{ .value = 2.0f });
 
     auto base =
-        ecs::entity::create().set(CppQueryPosition{ .x = 3.0f }).set(CppQueryMass{ .value = 4.0f });
+        ecs::spawn().set(CppQueryPosition{ .x = 3.0f }).set(CppQueryMass{ .value = 4.0f });
     ecs_add(base.id(), Abstract);
 
-    auto a = ecs::entity::create().is_a(base).set(CppQueryVelocity{ .x = 1.0f });
-    auto b = ecs::entity::create().is_a(base).set(CppQueryVelocity{ .x = 2.0f });
+    auto a = ecs::spawn().is_a(base).set(CppQueryVelocity{ .x = 1.0f });
+    auto b = ecs::spawn().is_a(base).set(CppQueryVelocity{ .x = 2.0f });
     int calls = 0;
 
     ecs::system("CppSharedFields")
@@ -322,7 +322,7 @@ void query_system_reads_shared_fields_with_interleaved_resource(void) {
 void query_system_each_receives_entity(void) {
     ecs_test_scope _ecs_scope;
 
-    auto target = ecs::entity::create().set(CppQueryPosition{ .x = 1.0f });
+    auto target = ecs::spawn().set(CppQueryPosition{ .x = 1.0f });
     int calls = 0;
     bool saw_target = false;
 

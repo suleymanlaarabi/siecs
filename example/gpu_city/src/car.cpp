@@ -29,7 +29,7 @@ void wheel(ecs::entity prefab, float x, float z) {
 } // namespace
 
 ecs::entity car_prefab() {
-    auto car = ecs::entity::create().set(
+    auto car = ecs::spawn().set(
         Car{ CarLength * CarScale, CarWidth * CarScale },
         Scale3d{ CarScale, CarScale, CarScale }
     );

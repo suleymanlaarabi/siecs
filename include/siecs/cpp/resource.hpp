@@ -1,7 +1,7 @@
 #pragma once
 #include "siecs/cpp/component.hpp"
-#include "siecs/cpp/type.hpp"
 #include "siecs/cpp/system_param.hpp"
+#include "siecs/cpp/type.hpp"
 #include <cassert>
 #include <string>
 #include <tuple>
@@ -16,40 +16,6 @@ template <typename T> struct resource_hooks {
 
     on_set_t on_set = nullptr;
     on_remove_t on_remove = nullptr;
-};
-
-/** Non-owning, typed handle to one per-world resource value. */
-template <typename T> class resource_ref {
-    using value_type = std::remove_cv_t<T>;
-    ecs_resource_t _id;
-
-  public:
-    /** Adopt a registered resource id; the world owns the storage. */
-    explicit resource_ref(ecs_resource_t id) noexcept : _id(id) {}
-
-    template <typename U>
-        requires(!std::is_const_v<T> && std::is_same_v<std::remove_cvref_t<U>, value_type>)
-    /** Copy an lvalue or move an rvalue into this resource. */
-    void set(U &&value) const {
-        if constexpr (std::is_lvalue_reference_v<U>)
-            ecs_set_resource_rid(_id, &value);
-        else
-            ecs_move_resource_rid(_id, &value);
-    }
-
-    /** Return storage or null when the resource is absent. */
-    [[nodiscard]] T *try_get() const noexcept {
-        return static_cast<T *>(ecs_try_resource_rid(_id));
-    }
-
-    /** Return storage; calling this when absent is invalid. */
-    [[nodiscard]] T &get() const { return *static_cast<T *>(ecs_resource_rid(_id)); }
-    /** Return whether the resource currently exists. */
-    [[nodiscard]] bool has() const { return ecs_has_resource_rid(_id); }
-    /** Remove the resource if present. */
-    void remove() const { ecs_remove_resource_rid(_id); }
-    /** Return the underlying resource id. */
-    [[nodiscard]] ecs_resource_t id() const noexcept { return _id; }
 };
 
 /** Borrowed resource argument passed to typed system/observer callbacks. */
@@ -130,24 +96,63 @@ ecs_cpp_resource_id(const resource_hooks<std::remove_cv_t<T>> *hooks = nullptr) 
     return rid;
 }
 
-/** Create a typed resource handle and lazily register its descriptor. */
-template <typename T> resource_ref<T> resource_handle() {
-    return resource_ref<T>(ecs_cpp_resource_id<T>());
-}
-
-/** Create a typed resource handle with lifecycle hooks. */
-template <typename T>
-    requires(!detail::c_declared_resource<T>)
-resource_ref<T> resource_handle(const resource_hooks<std::remove_cv_t<T>> &hooks) {
-    return resource_ref<T>(ecs_cpp_resource_id<T>(&hooks));
-}
-
 template <typename T> static ecs_resource_t ecs_cpp_try_resource_id() {
     using type = std::remove_cv_t<T>;
     if constexpr (detail::c_declared_resource<type>) {
         return *detail::c_resource_traits<type>::id_storage();
     }
     return detail::typed_id<type, detail::id_kind::resource>();
+}
+
+/** Non-owning resource handle; presence checks never register an absent type. */
+template <typename T> class resource_ref {
+    using value_type = std::remove_cv_t<T>;
+
+  public:
+    [[nodiscard]] ecs_resource_t id() const { return ecs_cpp_resource_id<value_type>(); }
+    template <typename U>
+        requires(!std::is_const_v<T> && std::is_same_v<std::remove_cvref_t<U>, value_type>)
+    void set(U &&value) const {
+        if constexpr (std::is_lvalue_reference_v<U>)
+            ecs_set_resource_rid(id(), &value);
+        else
+            ecs_move_resource_rid(id(), &value);
+    }
+    [[nodiscard]] const value_type *try_get() const {
+        auto rid = ecs_cpp_try_resource_id<value_type>();
+        return rid ? static_cast<const value_type *>(ecs_try_resource_rid(rid)) : nullptr;
+    }
+    [[nodiscard]] const value_type &get() const {
+        return *static_cast<const value_type *>(ecs_resource_rid(id()));
+    }
+    [[nodiscard]] value_type *try_edit() const
+        requires(!std::is_const_v<T>)
+    {
+        return const_cast<value_type *>(try_get());
+    }
+    [[nodiscard]] value_type &edit() const
+        requires(!std::is_const_v<T>)
+    {
+        return const_cast<value_type &>(get());
+    }
+    [[nodiscard]] bool has() const { return try_get() != nullptr; }
+    void remove() const
+        requires(!std::is_const_v<T>)
+    {
+        auto rid = ecs_cpp_try_resource_id<value_type>();
+        if (rid)
+            ecs_remove_resource_rid(rid);
+    }
+};
+
+/** Access a resource without registering its type until storage or id is needed. */
+template <typename T> resource_ref<T> resource() { return {}; }
+/** Install resource lifecycle hooks before the first registration. */
+template <typename T>
+    requires(!detail::c_declared_resource<T>)
+resource_ref<T> resource(const resource_hooks<std::remove_cv_t<T>> &hooks) {
+    (void)ecs_cpp_resource_id<T>(&hooks);
+    return {};
 }
 
 template <typename T> void res<T>::world(ecs_world_t *world) noexcept {

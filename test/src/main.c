@@ -267,6 +267,7 @@ void observer_target_entity_kill(void);
 void observer_target_index_reuse(void);
 void observer_target_on_remove(void);
 void observer_target_many(void);
+void observer_user_data_lifetime(void);
 
 // Testsuite 'module'
 void module_import_registers_runtime(void);
@@ -1253,6 +1254,10 @@ bake_test_case observer_testcases[] = {
     {
         "target_many",
         observer_target_many
+    },
+    {
+        "user_data_lifetime",
+        observer_user_data_lifetime
     }
 };
 
@@ -1393,7 +1398,7 @@ static bake_test_suite suites[] = {
         "observer",
         NULL,
         NULL,
-        21,
+        22,
         observer_testcases
     },
     {

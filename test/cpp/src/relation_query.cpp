@@ -30,9 +30,9 @@ static void rq_group() {
 void relation_query_target_dense_is_inferred(void) {
     ecs_test_scope scope;
     rq_dense();
-    auto x = ecs::entity::create(), y = ecs::entity::create();
-    auto a = ecs::entity::create().relate<RqDense>(x);
-    auto b = ecs::entity::create().relate<RqDense>(y);
+    auto x = ecs::spawn(), y = ecs::spawn();
+    auto a = ecs::spawn().relate<RqDense>(x);
+    auto b = ecs::spawn().relate<RqDense>(y);
     int calls = 0;
     ecs::query().each([&](ecs::entity e, ecs::target<RqDense> target) {
         if (e.id() == a.id())
@@ -49,12 +49,12 @@ void relation_query_target_dense_is_inferred(void) {
 void relation_query_target_bytarget_is_inferred(void) {
     ecs_test_scope scope;
     rq_group();
-    auto red = ecs::entity::create(), blue = ecs::entity::create();
-    auto a = ecs::entity::create().relate<RqGroup>(red);
-    auto b = ecs::entity::create().relate<RqGroup>(red);
-    (void)ecs::entity::create().relate<RqGroup>(blue);
+    auto red = ecs::spawn(), blue = ecs::spawn();
+    auto a = ecs::spawn().relate<RqGroup>(red);
+    auto b = ecs::spawn().relate<RqGroup>(red);
+    (void)ecs::spawn().relate<RqGroup>(blue);
     int calls = 0;
-    ecs::query().where<RqGroup>(red).each([&](ecs::entity e, ecs::target<RqGroup> group) {
+    ecs::query().with<RqGroup>(red).each([&](ecs::entity e, ecs::target<RqGroup> group) {
         test_true(e.id() == a.id() || e.id() == b.id());
         test_uint(group.id(), red.id());
         calls++;
@@ -64,8 +64,8 @@ void relation_query_target_bytarget_is_inferred(void) {
 
 void relation_query_target_isa_is_inferred(void) {
     ecs_test_scope scope;
-    auto base = ecs::entity::create();
-    auto instance = ecs::entity::create().is_a(base);
+    auto base = ecs::spawn();
+    auto instance = ecs::spawn().is_a(base);
     int calls = 0;
     ecs::query().each([&](ecs::entity e, ecs::target<ecs::IsA> actual) {
         test_uint(e.id(), instance.id());
@@ -77,8 +77,8 @@ void relation_query_target_isa_is_inferred(void) {
 
 void relation_query_target_childof_is_inferred(void) {
     ecs_test_scope scope;
-    auto parent = ecs::entity::create();
-    auto child = ecs::entity::create().child_of(parent);
+    auto parent = ecs::spawn();
+    auto child = ecs::spawn().child_of(parent);
     int calls = 0;
     ecs::query().each([&](ecs::entity e, ecs::target<ecs::ChildOf> actual) {
         test_uint(e.id(), child.id());
@@ -92,8 +92,8 @@ void relation_query_target_does_not_shift_component_fields(void) {
     ecs_test_scope scope;
     rq_dense();
     rq_group();
-    auto parent = ecs::entity::create(), group = ecs::entity::create();
-    (void)ecs::entity::create()
+    auto parent = ecs::spawn(), group = ecs::spawn();
+    (void)ecs::spawn()
         .set(RqPosition{ 1 })
         .set(RqVelocity{ 2 })
         .relate<RqDense>(parent)
@@ -117,10 +117,10 @@ void relation_query_target_does_not_shift_component_fields(void) {
 void relation_query_target_with_explicit_required_is_deduplicated(void) {
     ecs_test_scope scope;
     rq_dense();
-    auto parent = ecs::entity::create();
-    (void)ecs::entity::create().relate<RqDense>(parent);
+    auto parent = ecs::spawn();
+    (void)ecs::spawn().relate<RqDense>(parent);
     int calls = 0;
-    ecs::query().where<RqDense>().each([&](ecs::target<RqDense> actual) {
+    ecs::query().with_relation<RqDense>().each([&](ecs::target<RqDense> actual) {
         test_uint(actual.id(), parent.id());
         calls++;
     });
@@ -134,10 +134,10 @@ void relation_query_target_with_explicit_target_filter_is_deduplicated(void) {
 void relation_query_target_query_handle_rebuilds_signature(void) {
     ecs_test_scope scope;
     rq_dense();
-    auto parent = ecs::entity::create();
-    (void)ecs::entity::create().set(RqPosition{ 1 }).relate<RqDense>(parent);
-    (void)ecs::entity::create().set(RqPosition{ 2 });
-    auto q = ecs::query().build_handle();
+    auto parent = ecs::spawn();
+    (void)ecs::spawn().set(RqPosition{ 1 }).relate<RqDense>(parent);
+    (void)ecs::spawn().set(RqPosition{ 2 });
+    auto q = ecs::query().build();
     int all = 0, related = 0;
     q.each([&](RqPosition &) { all++; });
     q.each([&](RqPosition &, ecs::target<RqDense> actual) {
@@ -154,8 +154,8 @@ void relation_query_target_query_handle_rebuilds_signature(void) {
 void relation_query_target_system_infers_relation(void) {
     ecs_test_scope scope;
     rq_dense();
-    auto parent = ecs::entity::create();
-    auto child = ecs::entity::create().relate<RqDense>(parent);
+    auto parent = ecs::spawn();
+    auto child = ecs::spawn().relate<RqDense>(parent);
     int calls = 0;
     ecs::system("RelationTargetSystem").each([&](ecs::entity e, ecs::target<RqDense> actual) {
         test_uint(e.id(), child.id());

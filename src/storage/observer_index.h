@@ -8,6 +8,7 @@
 typedef struct {
     ecs_observer_callback_t callback;
     uintptr_t user_data;
+    void (*user_data_dtor)(uintptr_t user_data);
 
     ecs_observer_id_t next_module;
     uint32_t target_entity;

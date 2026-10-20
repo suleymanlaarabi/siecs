@@ -53,7 +53,7 @@ struct cpp_physics_with_props {
 };
 
 inline ecs::entity create_module_entity(int position, int velocity) {
-    return ecs::entity::create().set(ModulePosition{ position }).set(ModuleVelocity{ velocity });
+    return ecs::spawn().set(ModulePosition{ position }).set(ModuleVelocity{ velocity });
 }
 
 inline ModulePosition *get_module_position(ecs::entity entity) {

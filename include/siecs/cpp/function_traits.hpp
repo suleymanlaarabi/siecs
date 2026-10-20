@@ -5,7 +5,14 @@
 
 namespace ecs {
 
-template <typename T> struct function_traits;
+template <typename T, typename = void> struct function_traits {
+    static_assert(
+        sizeof(T) == 0,
+        "Cannot infer callback arguments: use explicitly typed parameters or ecs::query<Args...>() "
+        "for a generic lambda"
+    );
+    using args_tuple = std::tuple<>;
+};
 
 // function pointer
 template <typename R, typename... Args> struct function_traits<R (*)(Args...)> {
@@ -34,7 +41,23 @@ template <typename C, typename R, typename... Args> struct function_traits<R (C:
 
 // lambda / functor
 template <typename F>
-struct function_traits : function_traits<decltype(&std::remove_reference_t<F>::operator())> {};
+struct function_traits<F, std::void_t<decltype(&F::operator())>>
+    : function_traits<decltype(&F::operator())> {};
+
+namespace detail {
+template <typename Callback, typename... Signature> struct callback_args {
+    static_assert(
+        std::is_invocable_v<Callback &, Signature...>,
+        "Callback does not accept the declared query signature"
+    );
+    using type = std::tuple<Signature...>;
+};
+template <typename Callback> struct callback_args<Callback> {
+    using type = typename function_traits<Callback>::args_tuple;
+};
+template <typename Callback, typename... Signature>
+using callback_args_t = typename callback_args<Callback, Signature...>::type;
+} // namespace detail
 
 template <typename Tuple, typename Fn, std::size_t... I>
 constexpr void for_each_type_impl(Fn &&fn, std::index_sequence<I...>) {

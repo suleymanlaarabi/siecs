@@ -47,7 +47,7 @@ ecs_abstract(enemy);
 <TabItem label="C++">
 
 ```cpp
-auto enemy = ecs::entity::create()
+auto enemy = ecs::spawn()
     .set(Health{100}, Speed{2.5f})
     .abstract();
 ```
@@ -196,7 +196,7 @@ ecs_query_id_t q = ecs_query({
 <TabItem label="C++">
 
 ```cpp
-auto q = ecs::query().build_handle();
+auto q = ecs::query().build();
 q.each([](const Material &material) {});
 ```
 
@@ -236,7 +236,7 @@ ecs_query_id_t enemies = ecs_query({
 ```cpp
 auto enemies = ecs::query()
     .is_a(enemy_base)
-    .build_handle();
+    .build();
 enemies.each([](const Health &health) {});
 ```
 
@@ -318,11 +318,11 @@ ecs::component<Material>(ecs::component_options<Material>{
     .inheritance = EcsInheritShared,
 });
 
-auto enemy = ecs::entity::create()
+auto enemy = ecs::spawn()
     .set(Health{100}, Material{ .kind = Steel })
     .abstract();
 
-auto boss = ecs::entity::create()
+auto boss = ecs::spawn()
     .is_a(enemy)
     .set(Health{500});
 ```

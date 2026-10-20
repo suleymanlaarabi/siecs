@@ -59,7 +59,7 @@ ecs_entity_t e = ecs_new();
 <TabItem label="C++">
 
 ```cpp
-auto e = ecs::entity::create();
+auto e = ecs::spawn();
 ```
 
 </TabItem>
@@ -83,7 +83,7 @@ ecs_entity_t e = ecs_new_no_reuse();
 <TabItem label="C++">
 
 ```cpp
-auto e = ecs::entity::create_no_reuse();
+auto e = ecs::spawn_no_reuse();
 ```
 
 </TabItem>
@@ -191,8 +191,8 @@ free(path);
 <TabItem label="C++">
 
 ```cpp
-auto scene = ecs::entity::create("SceneA");
-auto player = ecs::entity::create(scene, "Player");
+auto scene = ecs::ensure("SceneA");
+auto player = ecs::ensure(scene, "Player");
 auto same = ecs::entity::lookup("SceneA::Player");
 auto relative = ecs::entity::lookup(scene, "Player");
 auto path = player.path(); // std::string("::SceneA::Player")
@@ -326,7 +326,7 @@ e.add<Position>();
 e.set(Position{10, 20});
 
 if (e.has<Position>()) {
-    e.get_mut<Position>().x += 1;
+    e.edit<Position>().x += 1;
 }
 
 e.remove<Position>();
@@ -354,7 +354,7 @@ if (p) {
 <TabItem label="C++">
 
 ```cpp
-if (Position *p = e.try_get_mut<Position>()) {
+if (Position *p = e.try_edit<Position>()) {
     p->x += 1;
 }
 ```
@@ -544,7 +544,7 @@ Position *p = ecs_get_cid(e, position);
 
 ```cpp
 e.set(Position{10, 20});
-Position &p = e.get_mut<Position>();
+Position &p = e.edit<Position>();
 ```
 
 </TabItem>
@@ -647,7 +647,7 @@ ecs_set_resource(Time, { .dt = 0.016f });
 
 ```cpp
 struct Time { float dt; };
-ecs::resource_handle<Time>().set(Time{ .dt = 0.016f });
+ecs::resource<Time>().set(Time{ .dt = 0.016f });
 ```
 
 </TabItem>

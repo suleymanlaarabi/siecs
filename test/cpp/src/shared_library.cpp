@@ -19,7 +19,7 @@ void shared_library_type_slots_survive_growth(void) {
     test_int(id, *slot);
     test_int(id, cpp_plugin_component_id());
     test_int(id, ecs_component_lookup("CppPluginValue"));
-    auto entity = ecs::entity::create();
+    auto entity = ecs::spawn();
     cpp_plugin_set(entity.id(), 83);
     test_int(83, entity.get<CppPluginValue>().value);
 }
@@ -50,12 +50,12 @@ void shared_library_concurrent_type_slots(void) {
 void shared_library_event_ids_match(void) {
     ecs_test_scope _ecs_scope;
 
-    test_int(cpp_plugin_event_id(), ecs::event<CppPluginEvent>());
+    test_int(cpp_plugin_event_id(), ecs::event_id<CppPluginEvent>());
 }
 
 void shared_library_component_ids_match(void) {
     ecs_test_scope _ecs_scope;
-    auto entity = ecs::entity::create();
+    auto entity = ecs::spawn();
 
     cpp_plugin_set(entity.id(), 7);
 
@@ -67,7 +67,7 @@ void shared_library_plugin_trigger_reaches_app_observer(void) {
     ecs_test_scope _ecs_scope;
     shared_library_calls = 0;
     ecs::observe<CppPluginEvent>().each([](ecs::entity) { shared_library_calls++; });
-    auto entity = ecs::entity::create();
+    auto entity = ecs::spawn();
 
     cpp_plugin_trigger(entity.id());
 

@@ -32,7 +32,7 @@ struct custom_time {
     const ParamTime *value = nullptr;
     static custom_time init() noexcept { return {}; }
     static void query(ecs::system_param_query &query) { query.read_resource<ParamTime>(); }
-    void world(ecs_world_t *) noexcept { value = &ecs::resource<const ParamTime>(); }
+    void world(ecs_world_t *) noexcept { value = &ecs::resource<const ParamTime>().get(); }
 };
 
 static_assert(ecs::SystemParam<custom_param>);
@@ -48,8 +48,8 @@ static_assert(!ecs::SystemParam<ParamPosition &>);
 
 void system_param_custom_query_phases(void) {
     ecs_test_scope scope;
-    auto a = ecs::entity::create().set(ParamPosition{1});
-    auto b = ecs::entity::create().set(ParamPosition{2});
+    auto a = ecs::spawn().set(ParamPosition{1});
+    auto b = ecs::spawn().set(ParamPosition{2});
     world_calls = table_calls = row_calls = 0;
     int calls = 0;
     ecs::query().each([&](custom_param first, custom_param second, ecs::entity e,
@@ -72,9 +72,9 @@ void system_param_custom_query_phases(void) {
 
 void system_param_custom_system_phases(void) {
     ecs_test_scope scope;
-    auto a = ecs::entity::create().set(ParamPosition{3});
-    auto b = ecs::entity::create().set(ParamPosition{4});
-    auto c = ecs::entity::create().set(ParamPosition{5}).set(ParamOther{1});
+    auto a = ecs::spawn().set(ParamPosition{3});
+    auto b = ecs::spawn().set(ParamPosition{4});
+    auto c = ecs::spawn().set(ParamPosition{5}).set(ParamOther{1});
     world_calls = table_calls = row_calls = 0;
     int calls = 0;
     auto id = ecs::system("custom param").each([&](custom_param value, ParamPosition &position) {
@@ -82,12 +82,12 @@ void system_param_custom_system_phases(void) {
         position.value += value.batch_size;
         ++calls;
     });
-    ecs::run_system(id);
+    id.run();
     test_int(3, calls);
     test_int(1, world_calls);
     test_int(2, table_calls);
     test_int(3, row_calls);
-    ecs::run_system(id);
+    id.run();
     test_int(6, calls);
     test_int(2, world_calls);
     test_int(4, table_calls);
@@ -99,8 +99,8 @@ void system_param_custom_system_phases(void) {
 
 void system_param_resource_and_component(void) {
     ecs_test_scope scope;
-    ecs::resource_handle<ParamTime>().set(ParamTime{5});
-    auto entity = ecs::entity::create().set(ParamPosition{2});
+    ecs::resource<ParamTime>().set(ParamTime{5});
+    auto entity = ecs::spawn().set(ParamPosition{2});
     int calls = 0;
     ecs::query().each([&](ecs::res<const ParamTime> time, custom_time custom,
                           ParamPosition &position) {
@@ -114,7 +114,7 @@ void system_param_resource_and_component(void) {
 
 void system_param_custom_observer(void) {
     ecs_test_scope scope;
-    auto entity = ecs::entity::create().set(ParamPosition{0});
+    auto entity = ecs::spawn().set(ParamPosition{0});
     world_calls = table_calls = row_calls = 0;
     ecs::observe<ecs::OnSet>().each([](custom_param value, const ParamPosition &position) {
         test_true(value.current != 0);

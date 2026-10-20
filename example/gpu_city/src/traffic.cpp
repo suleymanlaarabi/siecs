@@ -245,7 +245,7 @@ void register_components() {
     ecs::relation<ToJunction>();
     ecs::relation<Crossing>();
     ecs::relation<NextLane>();
-    ecs::set_resource(Clock{});
+    ecs::resource<Clock>().set(Clock{});
 }
 
 ecs::entity junction(int column, int row) {
@@ -275,7 +275,7 @@ void build_network() {
             const bool roundabout =
                 (column == center && row == center) || (column == center - 2 && row == center) ||
                 (column == center + 2 && row == center) || (column == center && row == center + 2);
-            ecs::entity::create(name).set(
+            ecs::ensure(name).set(
                 Junction{ uint8_t(column), uint8_t(row), roundabout, !roundabout, 0 }
             );
         }
@@ -288,7 +288,7 @@ void build_network() {
                 const int next_column = column + dx(d), next_row = row + dz(d);
                 if (next_column < 0 || next_column >= Grid || next_row < 0 || next_row >= Grid)
                     continue;
-                ecs::entity::create()
+                ecs::spawn()
                     .set(Lane{ uint8_t(d) })
                     .relate<FromJunction>(from)
                     .relate<ToJunction>(junction(next_column, next_row));
@@ -355,7 +355,7 @@ void seed_cars(ecs::entity prefab, int count) {
         }
         if (!lane)
             break;
-        auto car = ecs::entity::create();
+        auto car = ecs::spawn();
         if (prefab)
             car.is_a(prefab);
         place_car(car, lane, progress);
@@ -380,7 +380,7 @@ void register_systems() {
     ecs::system("Traffic lane snapshot")
         .phase(EcsPreUpdate)
         .interval(StepSeconds)
-        .require<Driving>()
+        .with<Driving>()
         .each([](Motion &motion) { motion.prior_progress = motion.progress; });
 
     ecs::system("Traffic junction grants")
@@ -423,7 +423,7 @@ void register_systems() {
     ecs::system("Traffic leaving city")
         .phase(EcsOnUpdate)
         .interval(StepSeconds)
-        .require<Leaving>()
+        .with<Leaving>()
         .each([](ecs::entity car, Motion &motion, Position3d &position) {
             motion.previous = motion.current;
             motion.progress += CruiseSpeed * StepSeconds;
@@ -439,7 +439,7 @@ void register_systems() {
     ecs::system("Traffic through junctions")
         .phase(EcsOnUpdate)
         .interval(StepSeconds)
-        .require<Turning>()
+        .with<Turning>()
         .with_relation<Crossing>()
         .each([](ecs::entity car, Motion &motion) {
             motion.previous = motion.current;
@@ -469,7 +469,7 @@ void register_systems() {
     ecs::system("Traffic on lanes")
         .phase(EcsOnUpdate)
         .interval(StepSeconds)
-        .require<Driving>()
+        .with<Driving>()
         .with_relation<OnLane>()
         .each([](ecs::entity car, Motion &motion) {
             motion.previous = motion.current;
@@ -511,7 +511,7 @@ void register_systems() {
     ecs::system("Traffic border entries")
         .phase(EcsPostUpdate)
         .interval(StepSeconds)
-        .require<Waiting>()
+        .with<Waiting>()
         .each([](ecs::entity car, ecs::res<Clock> clock) {
             if (!clock->spawned)
                 clock->spawned = try_border_entry(car, *clock);
@@ -525,7 +525,7 @@ void register_systems() {
 
     ecs::system("Traffic render interpolation")
         .phase(EcsPreRender)
-        .exclude<Waiting>()
+        .without<Waiting>()
         .each([](const Motion &motion,
                  Position3d &position,
                  Rotation3d &rotation,

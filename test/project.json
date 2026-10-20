@@ -9,7 +9,10 @@
   },
   "lang.c": {
     "c-standard": "c17",
-    "include": ["../src", "../include"]
+    "include": ["../src", "../include"],
+    "${os windows}": {
+      "cflags": ["/experimental:c11atomics"]
+    }
   },
   "bundle": {
     "repositories": {
@@ -316,7 +319,8 @@
           "target_entity_kill",
           "target_index_reuse",
           "target_on_remove",
-          "target_many"
+          "target_many",
+          "user_data_lifetime"
         ]
       },
       {

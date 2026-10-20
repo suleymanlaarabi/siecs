@@ -7,7 +7,7 @@ static void done() { ecs::fini(); }
 
 void ecs_components(void) {
     start();
-    auto panel = ecs::entity::create()
+    auto panel = ecs::spawn()
         .set(ui::vstack().wpx(200).padding_px(8).gap_px(6))
         .set(UiPaint{ .background = {20, 20, 20, 255} })
         .set(UiText{ .text = "Hello" });
@@ -22,8 +22,8 @@ void ecs_components(void) {
 
 void ecs_child_of(void) {
     start();
-    auto parent = ecs::entity::create().set(ui::hstack().wpx(200).hpx(100));
-    auto child = ecs::entity::create()
+    auto parent = ecs::spawn().set(ui::hstack().wpx(200).hpx(100));
+    auto child = ecs::spawn()
         .set(UiNode{ .width = siui_percent(100), .height = siui_px(20) }.column().row())
         .relate<ecs::ChildOf>(parent);
     siui_layout_update(800, 600);
@@ -33,7 +33,7 @@ void ecs_child_of(void) {
 
 void ecs_text_component(void) {
     start();
-    auto label = ecs::entity::create()
+    auto label = ecs::spawn()
         .set(UiNode{})
         .set(UiText{ .text = "First" });
     siui_layout_update(800, 600);
@@ -46,7 +46,7 @@ void ecs_text_component(void) {
 
 void ecs_component_updates(void) {
     start();
-    auto node = ecs::entity::create().set(UiNode{ .width = siui_px(40) });
+    auto node = ecs::spawn().set(UiNode{ .width = siui_px(40) });
     siui_layout_update(800, 600);
     test_true(std::fabs(siui_layout(node.id())->width - 40) < 0.01f);
     node.set(UiNode{ .width = siui_px(20) });
