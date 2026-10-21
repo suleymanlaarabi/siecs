@@ -13,7 +13,7 @@
 _Static_assert(sizeof(ecs_type_t) == 16);
 _Static_assert(offsetof(ecs_type_t, pair_count) == 10);
 _Static_assert(offsetof(ecs_type_t, hash) == 12);
-_Static_assert(sizeof(ecs_table_t) == 88);
+_Static_assert(sizeof(ecs_table_t) == 96);
 #endif
 
 ECS_COMPONENT_DECLARE(Position, {

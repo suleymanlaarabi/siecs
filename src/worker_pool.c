@@ -82,16 +82,29 @@ static void ecs_worker_complete(ecs_worker_pool_t *pool, uint32_t index) {
     if (!node->exhausted || node->running)
         return;
     node->complete = true;
+    const ecs_system_t *sys = ecs_system_index_get(node->system);
+    if (sys->enabled && sys->iterates_query)
+        ecs_query_cache(sys->qid)->last_run = node->tick;
     if (!node->commands.size)
         ecs_worker_release(pool, index);
     ecs_worker_advance(pool);
 }
 
+/* Advance to the next table with rows left that passes the change filter, so no
+ * portion is claimed for a table the iterator would skip. */
 static void ecs_worker_skip_empty_tables(ecs_worker_node_t *node, const ecs_system_t *sys) {
     const ecs_query_cache_t *cache = ecs_query_cache(sys->qid);
+    const ecs_query_t *query = cache->query;
     while (node->next_table < cache->table_count) {
         const ecs_table_t *table = ecs_get_table(ecs_query_table_id(cache, node->next_table));
-        if (node->next_row < table->entity_count)
+        if (node->next_row < table->entity_count &&
+            (!query->changed_mask || node->next_row ||
+             ecs_query_table_changed(
+                 query,
+                 table,
+                 ecs_query_table_at(cache, node->next_table)->field_kind_bits,
+                 cache->last_run
+             )))
             return;
         node->next_table++;
         node->next_row = 0;
@@ -123,6 +136,8 @@ ecs_worker_take(ecs_worker_pool_t *pool, bool calling_thread, ecs_worker_batch_t
             node->queued = true;
             continue;
         }
+        if (!node->started)
+            node->tick = ecs_change_tick_take();
         node->started = true;
         if (!sys->enabled)
             node->exhausted = true;
@@ -200,7 +215,8 @@ static void ecs_worker_execute(ecs_worker_t *worker, ecs_worker_batch_t *batch) 
             system,
             batch->portions[i].table,
             batch->portions[i].offset,
-            batch->portions[i].count
+            batch->portions[i].count,
+            pool->nodes[batch->node].tick
         );
         if (job->context.commands.commands.size)
             batch->portions[i].commands = job;

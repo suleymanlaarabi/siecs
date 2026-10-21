@@ -453,6 +453,18 @@ typedef struct {
 #define ecs_in_optional(cname) SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsInOptional)
 /* Optional read/write field. */
 #define ecs_inout_optional(cname) SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsInOutOptional)
+/*
+ * Change filter flag for a field term. The table is returned only when one of
+ * its flagged columns, or its rows, changed since this query last ran: see
+ * ecs_in_changed. Not valid on filter, not or up terms.
+ */
+#define ECS_TERM_CHANGED (UINT32_C(1) << 24)
+/* Read-only field; the table is skipped unless the component changed. */
+#define ecs_in_changed(cname)                                                                      \
+    SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsIn | ECS_TERM_CHANGED)
+/* Read/write field; the table is skipped unless the component changed. */
+#define ecs_inout_changed(cname)                                                                   \
+    SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsInOut | ECS_TERM_CHANGED)
 /* Filter-only required component. */
 #define ecs_filter(cname) SIECS_LITERAL(ecs_access_term_t, ecs_id(cname), EcsFilter)
 /* Excluded component. */
@@ -1136,17 +1148,17 @@ SIECS_API void ecs_kill(ecs_entity_t entity);
  *   }
  */
 #define ecs_query_each(it, i, ...)                                                                 \
-    for (ecs_query_id_t _q = ecs_query({ .components = { __VA_ARGS__ } }); _q;                     \
-         ecs_query_fini(_q), _q = 0)                                                               \
+    for (ecs_query_id_t _q = ecs_query({ .components = { __VA_ARGS__ } }), _once = 1; _once;       \
+         ecs_query_fini(_q), _once = 0)                                                            \
         for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)                              \
             for (uint32_t i = 0; i < it.count; i++)
 
 /* Iterate entity ids instead of exposing component fields. */
 #define ecs_query_entities(entity, ...)                                                            \
-    for (ecs_query_id_t _q = ecs_query({ .components = { __VA_ARGS__ } }); _q;                     \
-         ecs_query_fini(_q), _q = 0)                                                               \
+    for (ecs_query_id_t _q = ecs_query({ .components = { __VA_ARGS__ } }), _once = 1; _once;       \
+         ecs_query_fini(_q), _once = 0)                                                            \
         for (ecs_iter_t it = ecs_query_iter(_q); ecs_iter_next(&it);)                              \
-            for (uint64_t i = 0, entity = *it.entities; i < it.count; i++, entity = it.entities[i])
+            for (uint64_t i = 0, entity = 0; i < it.count && ((entity = it.entities[i]), true); i++)
 /*
  * Create a query. A query may contain components, resources, relations, is_a,
  * or order_by. A query without a table criterion matches every ordinary table.
@@ -1425,7 +1437,7 @@ ecs_with_relation_id(ecs_component_t component, ecs_relation_id_t relation, ecs_
 
 /* Builtin observer events. */
 #define EcsOnAdd 0
-/* Fired after a component is removed. */
+/* Fired before a component is removed, while its value is still readable. */
 #define EcsOnRemove 1
 /* Fired when a component is set or replaced. */
 #define EcsOnSet 2
@@ -1552,6 +1564,11 @@ typedef struct {
     uint32_t row_offset;
     uint32_t row_limit;
     bool bounded;
+    /* Change detection: tick stamped on written columns, last run of this
+     * query, and whether the end of iteration records the run. */
+    bool commit;
+    uint64_t tick;
+    uint64_t last_run;
     void *field_storage[ECS_QUERY_TERM_CAPACITY + ECS_QUERY_RELATION_CAPACITY + 2];
 } ecs_iter_t;
 
@@ -1576,6 +1593,22 @@ SIECS_API uint32_t ecs_query_count(ecs_query_id_t query_id);
  * in the current batch.
  */
 SIECS_API bool ecs_iter_next(ecs_iter_t *it);
+/*
+ * Return the id of the table behind the current batch. The id is the same in
+ * every query and stays valid for the world's lifetime, unlike it->table_idx,
+ * which is a position in this query. it->row_offset is the table row of
+ * it->entities[0].
+ */
+SIECS_API uint16_t ecs_iter_table_id(const ecs_iter_t *it);
+/*
+ * True when a field of the current batch changed since this query last ran:
+ * its column was written, or rows of the table were added, removed or moved.
+ * A field the query itself writes always reports a change.
+ */
+SIECS_API bool ecs_iter_changed(const ecs_iter_t *it, uint16_t field_index);
+/* True when rows of the current batch's table were added, removed or moved
+ * since this query last ran. */
+SIECS_API bool ecs_iter_structure_changed(const ecs_iter_t *it);
 /* Return contiguous relation target records for a Dense or ByDepth batch. */
 SIECS_API const ecs_relation_target_t *
 ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation);

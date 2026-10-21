@@ -1,6 +1,7 @@
 #include "siecs.h"
 #include "storage/observer_index.h"
 #include "storage/query_index.h"
+#include "world_internal.h"
 #include <siecs_test.h>
 
 ECS_COMPONENT_DECLARE(ObserverValue, { int value; });
@@ -677,5 +678,40 @@ void observer_kill_runs_on_remove_hook_of_tag(void) {
     test_uint(0, observer_tag_removed);
     ecs_kill(entity);
     test_uint(1, observer_tag_removed);
+    ecs_fini();
+}
+
+static bool observer_table_observes(ecs_entity_t entity, ecs_event_t event) {
+    const ecs_entity_record_t *record = ecs_get_record(entity);
+    return ecs_table_observed(ecs_get_table(ecs_entity_record_table(record)), event);
+}
+
+void observer_target_event_keeps_other_events_unobserved(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(ObserverValue);
+    ecs_entity_t target = ecs_new(), entity = ecs_new();
+    ecs_set(entity, ObserverValue, { 1 });
+    test_assert(!observer_table_observes(entity, EcsOnSet));
+
+    ecs_observer_id_t custom =
+        ecs_observer({ .on = ecs_event(), .entity = target, .callback = observer_ignore_event });
+    test_assert(!observer_table_observes(entity, EcsOnSet));
+    test_assert(!observer_table_observes(entity, EcsOnAdd));
+
+    uint32_t calls = 0;
+    ecs_observer_id_t on_set = ecs_observer(
+        { .on = EcsOnSet,
+          .entity = target,
+          .query = { .components = { ecs_in(ObserverValue) } },
+          .callback = observer_count_event,
+          .user_data = (uintptr_t)&calls }
+    );
+    test_assert(observer_table_observes(entity, EcsOnSet));
+    ecs_set(target, ObserverValue, { 2 });
+    test_uint(1, calls);
+
+    ecs_observer_fini(on_set);
+    test_assert(!observer_table_observes(entity, EcsOnSet));
+    ecs_observer_fini(custom);
     ecs_fini();
 }

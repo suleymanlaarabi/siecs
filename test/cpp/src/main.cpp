@@ -85,6 +85,8 @@ void query_each_defers_structural_mutation(void);
 void query_ordered_filter_build_is_aligned(void);
 void query_system_each_receives_entity(void);
 void query_system_reads_shared_fields_with_interleaved_resource(void);
+void query_system_changed_filter_skips_unchanged_tables(void);
+void query_changed_filter_tracks_persistent_query_runs(void);
 
 // Testsuite 'observer'
 void observer_custom_event(void);
@@ -412,6 +414,14 @@ bake_test_case query_testcases[] = {
     {
         "system_reads_shared_fields_with_interleaved_resource",
         query_system_reads_shared_fields_with_interleaved_resource
+    },
+    {
+        "system_changed_filter_skips_unchanged_tables",
+        query_system_changed_filter_skips_unchanged_tables
+    },
+    {
+        "changed_filter_tracks_persistent_query_runs",
+        query_changed_filter_tracks_persistent_query_runs
     }
 };
 
@@ -641,7 +651,7 @@ static bake_test_suite suites[] = {
         "query",
         NULL,
         NULL,
-        13,
+        15,
         query_testcases
     },
     {

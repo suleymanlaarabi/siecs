@@ -6,8 +6,6 @@
 #include "world_internal.h"
 #include <string.h>
 
-#define ECS_BUILTIN_EVENT_COUNT 5
-
 ecs_observer_index_t observer_index;
 
 void ecs_observer_index_init(void) {
@@ -62,6 +60,7 @@ ecs_observer_target_insert(uint32_t entity_id, ecs_event_t event, ecs_observer_i
     ecs_observer_id_t *ids = observer_index.target_observers.data;
     memmove(&ids[at + 1], &ids[at], (old_size - at) * sizeof(*ids));
     ids[at] = observer;
+    (*ecs_observer_target_count(event))++;
 }
 
 static void
@@ -77,6 +76,7 @@ ecs_observer_target_remove(uint32_t entity_id, ecs_event_t event, ecs_observer_i
             memmove(&ids[at], &ids[at + 1], (count - at - 1) * sizeof(*ids));
             observer_index.target_keys.size--;
             observer_index.target_observers.size--;
+            (*ecs_observer_target_count(event))--;
             return;
         }
         at++;
@@ -240,7 +240,7 @@ void ecs_emit_observers(
         }
     }
 
-    if (observer_index.target_keys.size == 0) {
+    if (!ecs_observer_has_targets(event)) {
         return;
     }
 

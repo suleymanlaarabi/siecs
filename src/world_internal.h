@@ -28,9 +28,30 @@ struct ecs_world_s {
     double delta_time;
     double last_time;
     ecs_arena_t scene_strings;
+    _Atomic uint64_t change_tick;
 };
 
 extern ecs_world_t ecs_world;
+
+/* Change detection clock. Every query run takes a tick of its own; any other
+ * write carries the current value, which is newer than every tick taken. */
+static inline uint64_t ecs_change_tick(void) {
+    return atomic_load_explicit(&ecs_world.change_tick, memory_order_relaxed);
+}
+
+static inline uint64_t ecs_change_tick_take(void) {
+    return atomic_fetch_add_explicit(&ecs_world.change_tick, 1, memory_order_relaxed);
+}
+
+/* Parallel portions of one system store the same tick, so relaxed stores are
+ * enough. */
+static inline void ecs_table_column_changed(ecs_table_t *table, uint16_t column, uint64_t tick) {
+    atomic_store_explicit(&table->cls[column].tick, tick, memory_order_relaxed);
+}
+
+static inline uint64_t ecs_table_column_tick(const ecs_table_t *table, uint16_t column) {
+    return atomic_load_explicit(&table->cls[column].tick, memory_order_relaxed);
+}
 
 static inline ecs_execution_context_t *ecs_execution_context_current(void) {
     ecs_execution_context_t *context = ecs_tls_context;
@@ -92,7 +113,7 @@ static inline void ecs_emit_target_observers(
 
 /* True when emitting `event` on this table could run an observer. */
 static inline bool ecs_table_observed(const ecs_table_t *table, ecs_event_t event) {
-    if (observer_index.target_keys.size != 0)
+    if (ecs_observer_has_targets(event))
         return true;
     return table->observers_by_event.size > event &&
            sicore_vec_get(&table->observers_by_event, event, sicore_vec_t)->size != 0;
@@ -134,7 +155,13 @@ static inline void ecs_assert_not_scheduler_parallel(const char *operation) {
     );
 }
 
-void ecs_system_run_job(ecs_system_id_t system, uint16_t table, uint32_t offset, uint32_t count);
+void ecs_system_run_job(
+    ecs_system_id_t system,
+    uint16_t table,
+    uint32_t offset,
+    uint32_t count,
+    uint64_t tick
+);
 
 void ecs_type_slots_reset(void);
 void ecs_bootstrap(void);
