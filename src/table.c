@@ -23,6 +23,7 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
                               ? ecs_no_data_columns
                               : malloc(sizeof(ecs_data_column_t) * type.component_count);
     table->bloom = ecs_type_bloom(&type);
+    table->structure_tick = ecs_change_tick();
 
     sicore_vec_init(&table->observers_by_event, sizeof(sicore_vec_t));
     ecs_id_map_init(&table->add_edge);
@@ -38,6 +39,7 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
         table->cls[i].flags = 0;
+        atomic_init(&table->cls[i].tick, table->structure_tick);
         if (rec->info->size == 0 || (!rec->ops.move_ctor && !rec->ops.copy_ctor)) {
             table->cls[i].flags |= EcsColumnTrivialMove;
         }
@@ -105,6 +107,7 @@ uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
     }
     uint32_t row = table->entity_count++;
     table->entities[row] = entity;
+    table->structure_tick = ecs_change_tick();
     return row;
 }
 
@@ -113,6 +116,7 @@ uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
 ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) {
     ecs_entity_t removed_entity = table->entities[row];
     uint32_t last_row = table->entity_count - 1;
+    table->structure_tick = ecs_change_tick();
     const ecs_data_column_t *columns = table->data_columns;
     const uint16_t column_count = table->add_edge.aux;
     if (row_values_live) {

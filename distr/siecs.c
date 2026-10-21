@@ -5070,6 +5070,7 @@ static inline int ecs_type_equals(const ecs_type_t *a, const ecs_type_t *b) {
 
 #endif
 
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -5091,6 +5092,7 @@ typedef struct {
     uint16_t remove_edge; // the table that has the component removed or UINT16_MAX if the edge is
                           // not set
     uint16_t flags;
+    _Atomic uint64_t tick; // change tick of the last write to the column
 } ecs_column_t;
 
 /* Data (non-tag) columns in type order, carrying everything a row operation
@@ -5114,6 +5116,7 @@ struct ecs_table_s {
     ecs_data_column_t *data_columns; // add_edge.aux entries
     ecs_type_t type;
     uint64_t bloom;
+    uint64_t structure_tick;         // change tick of the last row insertion, removal or move
     sicore_vec_t observers_by_event; // sicore_vec_t per event id; each holds uint16_t observer ids.
 };
 
@@ -5899,6 +5902,7 @@ typedef struct {
     ecs_entity_t is_a;
     ecs_query_order_t order_by;
     uint16_t up_mask, stride;
+    uint16_t write_mask, changed_mask; // field bits: written fields, change-filtered fields
     uint8_t field_count, match_count, resource_count, filter_count;
 } ecs_query_t;
 
@@ -5924,7 +5928,7 @@ static inline ecs_access_t ecs_access_term_access(ecs_access_term_t term) {
     return (ecs_access_t)(term.access & UINT32_C(0xff));
 }
 static inline ecs_relation_id_t ecs_access_term_source_relation(ecs_access_term_t term) {
-    return (ecs_relation_id_t)(term.access >> 8);
+    return (ecs_relation_id_t)((term.access >> 8) & UINT32_C(0xffff));
 }
 
 typedef struct {
@@ -5941,6 +5945,7 @@ typedef struct ecs_query_cache_s {
     ecs_observer_id_t observer;
     uint16_t table_count, next_free;
     bool alive;
+    uint64_t last_run; // change tick of the last completed run
 } ecs_query_cache_t;
 
 _Static_assert(sizeof(ecs_query_cache_t) <= 64, "query cache must fit a cache line");
@@ -5985,6 +5990,17 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc);
 void ecs_query_index_activate(ecs_query_id_t id, const uint16_t *tables, uint16_t count);
 void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id);
 void ecs_query_index_refresh_table_fields(const ecs_table_t *table);
+/* Iterator stamping writes with `tick`; `commit` records the run as the query's
+ * last one when iteration ends. Systems commit once per run instead. */
+ecs_iter_t ecs_query_iter_at(ecs_query_id_t query_id, uint64_t tick, bool commit);
+/* True when the table passes the query's change filter for a run after
+ * `last_run`. */
+bool ecs_query_table_changed(
+    const ecs_query_t *query,
+    const ecs_table_t *table,
+    uint32_t field_kind_bits,
+    uint64_t last_run
+);
 bool ecs_query_resolve_up_fields(
     const ecs_query_t *query,
     const ecs_table_t *table,
@@ -6011,12 +6027,17 @@ typedef struct {
 } ecs_observer_t;
 
 #define ECS_OBSERVER_GLOBAL_ENTITY UINT32_MAX
+#define ECS_BUILTIN_EVENT_COUNT 5
 #define ECS_OBSERVER_NO_QUERY UINT16_MAX
 
 typedef struct {
     sicore_vec_t observers;        // ecs_observer_t
     sicore_vec_t target_keys;      // uint64_t
     sicore_vec_t target_observers; // ecs_observer_id_t
+
+    // Targeted observers per builtin event; the last slot counts every custom
+    // event. Lets emitters skip the target lookup for events nobody targets.
+    uint32_t target_counts[ECS_BUILTIN_EVENT_COUNT + 1];
 
     ecs_observer_id_t first_free;
     uint16_t event_count;
@@ -6026,6 +6047,15 @@ extern ecs_observer_index_t observer_index;
 
 static inline uint64_t ecs_observer_target_key(uint32_t entity_id, ecs_event_t event) {
     return ((uint64_t)entity_id << 16) | event;
+}
+
+static inline uint32_t *ecs_observer_target_count(ecs_event_t event) {
+    uint16_t slot = event < ECS_BUILTIN_EVENT_COUNT ? event : ECS_BUILTIN_EVENT_COUNT;
+    return &observer_index.target_counts[slot];
+}
+
+static inline bool ecs_observer_has_targets(ecs_event_t event) {
+    return *ecs_observer_target_count(event) != 0;
 }
 
 static inline uint32_t ecs_observer_target_lower_bound(uint64_t key) {
@@ -6134,6 +6164,7 @@ typedef struct {
     uint32_t pending, running, next_row;
     uint16_t next_table;
     uint32_t next_ordinal;
+    uint64_t tick; // change tick of this run, taken when the system starts
     bool started, exhausted, complete, released, queued;
 } ecs_worker_node_t;
 
@@ -6177,9 +6208,30 @@ struct ecs_world_s {
     double delta_time;
     double last_time;
     ecs_arena_t scene_strings;
+    _Atomic uint64_t change_tick;
 };
 
 extern ecs_world_t ecs_world;
+
+/* Change detection clock. Every query run takes a tick of its own; any other
+ * write carries the current value, which is newer than every tick taken. */
+static inline uint64_t ecs_change_tick(void) {
+    return atomic_load_explicit(&ecs_world.change_tick, memory_order_relaxed);
+}
+
+static inline uint64_t ecs_change_tick_take(void) {
+    return atomic_fetch_add_explicit(&ecs_world.change_tick, 1, memory_order_relaxed);
+}
+
+/* Parallel portions of one system store the same tick, so relaxed stores are
+ * enough. */
+static inline void ecs_table_column_changed(ecs_table_t *table, uint16_t column, uint64_t tick) {
+    atomic_store_explicit(&table->cls[column].tick, tick, memory_order_relaxed);
+}
+
+static inline uint64_t ecs_table_column_tick(const ecs_table_t *table, uint16_t column) {
+    return atomic_load_explicit(&table->cls[column].tick, memory_order_relaxed);
+}
 
 static inline ecs_execution_context_t *ecs_execution_context_current(void) {
     ecs_execution_context_t *context = ecs_tls_context;
@@ -6241,7 +6293,7 @@ static inline void ecs_emit_target_observers(
 
 /* True when emitting `event` on this table could run an observer. */
 static inline bool ecs_table_observed(const ecs_table_t *table, ecs_event_t event) {
-    if (observer_index.target_keys.size != 0)
+    if (ecs_observer_has_targets(event))
         return true;
     return table->observers_by_event.size > event &&
            sicore_vec_get(&table->observers_by_event, event, sicore_vec_t)->size != 0;
@@ -6283,7 +6335,13 @@ static inline void ecs_assert_not_scheduler_parallel(const char *operation) {
     );
 }
 
-void ecs_system_run_job(ecs_system_id_t system, uint16_t table, uint32_t offset, uint32_t count);
+void ecs_system_run_job(
+    ecs_system_id_t system,
+    uint16_t table,
+    uint32_t offset,
+    uint32_t count,
+    uint64_t tick
+);
 
 void ecs_type_slots_reset(void);
 void ecs_bootstrap(void);
@@ -6437,8 +6495,10 @@ static inline bool ecs_component_write(
             return false;
         const ecs_entity_record_t *record = ecs_get_record(entity);
         table = ecs_get_table(ecs_entity_record_table(record));
-        dst = ecs_table_get_component(table, id, record->table_row);
+        column = ecs_table_get_column_index(table, id);
+        dst = ecs_table_component_at_column(table, column, record->table_row);
     }
+    ecs_table_column_changed(table, column, ecs_change_tick());
     if (flags & EcsWriteNotify)
         ecs_emit(table, entity, EcsOnSet, id, data);
     if (flags & EcsWriteRelationTarget)
@@ -7995,6 +8055,7 @@ static inline bool ecs_store_plain_now(ecs_entity_t entity, ecs_component_t cid,
             data,
             crec->size
         );
+        ecs_table_column_changed(table, edge, ecs_change_tick());
         return true;
     }
     if (edge == UINT16_MAX)
@@ -8138,6 +8199,7 @@ bool ecs_set_plain_many(
         return false;
     if (to_id != from_id)
         ecs_migrate(record, entity, ecs_get_table(from_id), to_id, 0);
+    uint64_t tick = ecs_change_tick();
     for (uint32_t i = 0; i < count; i++) {
         uint16_t column = ecs_table_get_column_index(to_table, ids[i]);
         ecs_bytes_copy(
@@ -8145,6 +8207,7 @@ bool ecs_set_plain_many(
             values[i],
             ecs_component_index_get(ids[i])->size
         );
+        ecs_table_column_changed(to_table, column, tick);
     }
     return true;
 }
@@ -8162,7 +8225,9 @@ void ecs_modified_cid(ecs_entity_t entity, ecs_component_t cid) {
 #endif
     ecs_assert_component_access(entity, cid);
     entity_edit(entity, table, record);
-    void *data = ecs_table_get_component(table, cid, record->table_row);
+    uint16_t column = ecs_table_get_column_index(table, cid);
+    void *data = ecs_table_component_at_column(table, column, record->table_row);
+    ecs_table_column_changed(table, column, ecs_change_tick());
     ecs_emit(table, entity, EcsOnSet, cid, data);
 }
 
@@ -9429,8 +9494,6 @@ char *ecs_entity_path(ecs_entity_t entity) {
     return path;
 }
 
-#define ECS_BUILTIN_EVENT_COUNT 5
-
 ecs_observer_index_t observer_index;
 
 void ecs_observer_index_init(void) {
@@ -9485,6 +9548,7 @@ ecs_observer_target_insert(uint32_t entity_id, ecs_event_t event, ecs_observer_i
     ecs_observer_id_t *ids = observer_index.target_observers.data;
     memmove(&ids[at + 1], &ids[at], (old_size - at) * sizeof(*ids));
     ids[at] = observer;
+    (*ecs_observer_target_count(event))++;
 }
 
 static void
@@ -9500,6 +9564,7 @@ ecs_observer_target_remove(uint32_t entity_id, ecs_event_t event, ecs_observer_i
             memmove(&ids[at], &ids[at + 1], (count - at - 1) * sizeof(*ids));
             observer_index.target_keys.size--;
             observer_index.target_observers.size--;
+            (*ecs_observer_target_count(event))--;
             return;
         }
         at++;
@@ -9663,7 +9728,7 @@ void ecs_emit_observers(
         }
     }
 
-    if (observer_index.target_keys.size == 0) {
+    if (!ecs_observer_has_targets(event)) {
         return;
     }
 
@@ -9821,27 +9886,85 @@ ecs_query_id_t ecs_query_init(const ecs_query_desc_t *desc) {
     return ecs_query_index_create(desc);
 }
 
-ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
+ecs_iter_t ecs_query_iter_at(ecs_query_id_t query_id, uint64_t tick, bool commit) {
     ecs_query_cache_t *cache = ecs_query_cache(query_id);
     return (ecs_iter_t){
         .cache = cache,
         .table_idx = UINT16_MAX,
         .table_count = cache->table_count,
         .count = 0,
+        .commit = commit,
+        .tick = tick,
+        .last_run = cache->last_run,
     };
 }
+ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
+    return ecs_query_iter_at(query_id, ecs_change_tick_take(), true);
+}
 uint32_t ecs_query_count(ecs_query_id_t query_id) {
-    ecs_iter_t it = ecs_query_iter(query_id);
+    // Counts every match: no change filter, no write stamps, no recorded run.
+    ecs_iter_t it = ecs_query_iter_at(query_id, 0, false);
+    it.last_run = 0;
     uint32_t count = 0;
     while (ecs_iter_next(&it))
         count += it.count;
     return count;
 }
+static bool ecs_query_field_changed(
+    const ecs_query_t *query,
+    const ecs_table_t *table,
+    uint16_t field,
+    uint32_t field_kind_bits,
+    uint64_t last_run
+) {
+    ecs_field_kind_t kind = (ecs_field_kind_t)((field_kind_bits >> (2 * field)) & 3);
+    if (kind == EcsFieldNone)
+        return false;
+    ecs_component_location_t source =
+        ecs_component_locate(table, 0, ecs_query_fields(query)[field].id, false);
+    if (!source.table)
+        return false;
+    // A shared value also changes when its base moves to another table.
+    return ecs_table_column_tick(source.table, source.column) > last_run ||
+           (source.shared && source.table->structure_tick > last_run);
+}
+
+bool ecs_query_table_changed(
+    const ecs_query_t *query,
+    const ecs_table_t *table,
+    uint32_t field_kind_bits,
+    uint64_t last_run
+) {
+    if (table->structure_tick > last_run)
+        return true;
+    for (uint16_t mask = query->changed_mask; mask; mask &= (uint16_t)(mask - 1)) {
+        if (ecs_query_field_changed(query, table, ECS_CTZ(mask), field_kind_bits, last_run))
+            return true;
+    }
+    return false;
+}
+
+static void ecs_query_stamp_writes(
+    const ecs_query_t *query,
+    ecs_table_t *table,
+    uint32_t field_kind_bits,
+    uint64_t tick
+) {
+    for (uint16_t mask = query->write_mask; mask; mask &= (uint16_t)(mask - 1)) {
+        uint16_t field = (uint16_t)ECS_CTZ(mask);
+        if (((field_kind_bits >> (2 * field)) & 3) != EcsFieldOwned)
+            continue;
+        uint16_t column = ecs_table_column_or_invalid(table, ecs_query_fields(query)[field].id);
+        if (column != UINT16_MAX)
+            ecs_table_column_changed(table, column, tick);
+    }
+}
+
 bool ecs_iter_next(ecs_iter_t *it) {
     ecs_query_cache_t *cache = it->cache;
     const ecs_query_t *query = cache->query;
     while (++it->table_idx < it->table_count) {
-        const ecs_table_t *table = ecs_get_table(ecs_query_table_id(cache, it->table_idx));
+        ecs_table_t *table = ecs_get_table(ecs_query_table_id(cache, it->table_idx));
         if (table->entity_count <= it->row_offset)
             continue;
         it->count = table->entity_count - it->row_offset;
@@ -9871,10 +9994,30 @@ bool ecs_iter_next(ecs_iter_t *it) {
                 }
             }
         }
+        if (query->changed_mask &&
+            !ecs_query_table_changed(query, table, it->field_kind_bits, it->last_run))
+            continue;
+        if (query->write_mask && it->tick)
+            ecs_query_stamp_writes(query, table, it->field_kind_bits, it->tick);
         it->entities = table->entities + it->row_offset;
         return true;
     }
+    if (it->commit)
+        cache->last_run = it->tick;
     return false;
+}
+uint16_t ecs_iter_table_id(const ecs_iter_t *it) {
+    return ecs_query_table_id(it->cache, it->table_idx);
+}
+bool ecs_iter_changed(const ecs_iter_t *it, uint16_t field_index) {
+    const ecs_table_t *table = ecs_get_table(ecs_iter_table_id(it));
+    if (table->structure_tick > it->last_run)
+        return true;
+    const ecs_query_t *query = it->cache->query;
+    return ecs_query_field_changed(query, table, field_index, it->field_kind_bits, it->last_run);
+}
+bool ecs_iter_structure_changed(const ecs_iter_t *it) {
+    return ecs_get_table(ecs_iter_table_id(it))->structure_tick > it->last_run;
 }
 const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
@@ -9882,23 +10025,20 @@ const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_i
         record->info.desc.storage != EcsRelationByTarget,
         "ecs_targets requires Dense or ByDepth\n"
     );
-    const uint16_t table_id = ecs_query_table_id(it->cache, it->table_idx);
-    const ecs_table_t *table = ecs_get_table(table_id);
+    const ecs_table_t *table = ecs_get_table(ecs_iter_table_id(it));
     uint16_t column = ecs_table_column_or_invalid(table, record->component);
     return column == UINT16_MAX
                ? NULL
                : (const ecs_relation_target_t *)table->cls[column].data + it->row_offset;
 }
 ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
-    const uint16_t table_id = ecs_query_table_id(it->cache, it->table_idx);
-    const ecs_table_t *table = ecs_get_table(table_id);
+    const ecs_table_t *table = ecs_get_table(ecs_iter_table_id(it));
     return ecs_table_target_id(table, relation);
 }
 
 ecs_relation_batch_t ecs_relation_batch_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
-    const uint16_t table_id = ecs_query_table_id(it->cache, it->table_idx);
-    const ecs_table_t *table = ecs_get_table(table_id);
+    const ecs_table_t *table = ecs_get_table(ecs_iter_table_id(it));
     if (record->component == 0 || record->info.desc.storage == EcsRelationByTarget) {
         return (ecs_relation_batch_t){
             .shared_target = ecs_type_pair_get(&table->type, relation),
@@ -11846,14 +11986,22 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
 
 const char *ecs_system_name(ecs_system_id_t system) { return ecs_system_index_get(system)->name; }
 
-void ecs_system_run_job(ecs_system_id_t system, uint16_t table, uint32_t offset, uint32_t count) {
+void ecs_system_run_job(
+    ecs_system_id_t system,
+    uint16_t table,
+    uint32_t offset,
+    uint32_t count,
+    uint64_t tick
+) {
     // Registration may grow the index from an exclusive callback.
     ecs_system_t sys = *ecs_system_index_get(system);
     if (!sys.enabled)
         return;
     if (!sys.no_defer)
         ecs_defer_begin();
-    ecs_iter_t it = sys.iterates_query ? ecs_query_iter(sys.qid) : (ecs_iter_t){ .count = 1 };
+    // The scheduler records the run once every portion completed.
+    ecs_iter_t it =
+        sys.iterates_query ? ecs_query_iter_at(sys.qid, tick, false) : (ecs_iter_t){ .count = 1 };
     it.user_data = sys.user_data;
     it.delta_time = sys.prepared_delta_time;
     if (sys.parallel) {
@@ -12014,6 +12162,7 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
                               ? ecs_no_data_columns
                               : malloc(sizeof(ecs_data_column_t) * type.component_count);
     table->bloom = ecs_type_bloom(&type);
+    table->structure_tick = ecs_change_tick();
 
     sicore_vec_init(&table->observers_by_event, sizeof(sicore_vec_t));
     ecs_id_map_init(&table->add_edge);
@@ -12029,6 +12178,7 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
         table->cls[i].flags = 0;
+        atomic_init(&table->cls[i].tick, table->structure_tick);
         if (rec->info->size == 0 || (!rec->ops.move_ctor && !rec->ops.copy_ctor)) {
             table->cls[i].flags |= EcsColumnTrivialMove;
         }
@@ -12096,6 +12246,7 @@ uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
     }
     uint32_t row = table->entity_count++;
     table->entities[row] = entity;
+    table->structure_tick = ecs_change_tick();
     return row;
 }
 
@@ -12104,6 +12255,7 @@ uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity) {
 ecs_entity_t ecs_table_remove_entity(ecs_table_t *table, uint32_t row, bool row_values_live) {
     ecs_entity_t removed_entity = table->entities[row];
     uint32_t last_row = table->entity_count - 1;
+    table->structure_tick = ecs_change_tick();
     const ecs_data_column_t *columns = table->data_columns;
     const uint16_t column_count = table->add_edge.aux;
     if (row_values_live) {
@@ -12311,6 +12463,7 @@ static inline void *ecs_migrate_impl(
         ecs_get_record(moved)->table_row = old_row;
     }
     from_table->entity_count = last_row;
+    from_table->structure_tick = ecs_change_tick();
     atomic_store_explicit(&record->table_id, to_table_id, memory_order_relaxed);
     record->table_row = new_row;
 
@@ -12646,16 +12799,29 @@ static void ecs_worker_complete(ecs_worker_pool_t *pool, uint32_t index) {
     if (!node->exhausted || node->running)
         return;
     node->complete = true;
+    const ecs_system_t *sys = ecs_system_index_get(node->system);
+    if (sys->enabled && sys->iterates_query)
+        ecs_query_cache(sys->qid)->last_run = node->tick;
     if (!node->commands.size)
         ecs_worker_release(pool, index);
     ecs_worker_advance(pool);
 }
 
+/* Advance to the next table with rows left that passes the change filter, so no
+ * portion is claimed for a table the iterator would skip. */
 static void ecs_worker_skip_empty_tables(ecs_worker_node_t *node, const ecs_system_t *sys) {
     const ecs_query_cache_t *cache = ecs_query_cache(sys->qid);
+    const ecs_query_t *query = cache->query;
     while (node->next_table < cache->table_count) {
         const ecs_table_t *table = ecs_get_table(ecs_query_table_id(cache, node->next_table));
-        if (node->next_row < table->entity_count)
+        if (node->next_row < table->entity_count &&
+            (!query->changed_mask || node->next_row ||
+             ecs_query_table_changed(
+                 query,
+                 table,
+                 ecs_query_table_at(cache, node->next_table)->field_kind_bits,
+                 cache->last_run
+             )))
             return;
         node->next_table++;
         node->next_row = 0;
@@ -12687,6 +12853,8 @@ ecs_worker_take(ecs_worker_pool_t *pool, bool calling_thread, ecs_worker_batch_t
             node->queued = true;
             continue;
         }
+        if (!node->started)
+            node->tick = ecs_change_tick_take();
         node->started = true;
         if (!sys->enabled)
             node->exhausted = true;
@@ -12764,7 +12932,8 @@ static void ecs_worker_execute(ecs_worker_t *worker, ecs_worker_batch_t *batch) 
             system,
             batch->portions[i].table,
             batch->portions[i].offset,
-            batch->portions[i].count
+            batch->portions[i].count,
+            pool->nodes[batch->node].tick
         );
         if (job->context.commands.commands.size)
             batch->portions[i].commands = job;
@@ -13035,6 +13204,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
 #ifndef NDEBUG
     ecs_world_started = true;
 #endif
+    atomic_init(&ecs_world.change_tick, 1);
     sireflect_init();
     ecs_entity_index_init();
     ecs_component_index_init();
@@ -13465,12 +13635,21 @@ static void ecs_query_compile_term(ecs_query_builder_t *b, ecs_component_term_t 
         );
     }
 #endif
+    bool changed = term.access & ECS_TERM_CHANGED;
+    ecs_assert(
+        !changed || (access != EcsFilter && access != EcsNot && !source),
+        "ECS_TERM_CHANGED requires a field term without up traversal\n"
+    );
     if (access == EcsFilter || access == EcsNot) {
         b->terms[ECS_COMPILED_TERMS - ++q->match_count] = term;
     } else {
         uint16_t bit = (uint16_t)(1u << q->field_count);
         if (source)
             q->up_mask |= bit;
+        if (access == EcsOut || access == EcsInOut || access == EcsInOutOptional)
+            q->write_mask |= bit;
+        if (changed)
+            q->changed_mask |= bit;
         b->terms[q->field_count++] = term;
     }
     if (access <= EcsInOut || access == EcsFilter) {
@@ -13564,6 +13743,7 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
     ecs_query_cache_t *cache = sicore_vec_get_mut(&query_index.queries, id, ecs_query_cache_t);
     *cache = (ecs_query_cache_t){ .query = compiled,
                                   .alive = true,
+                                  .last_run = 0,
                                   .active_index = UINT32_MAX,
                                   .observer = UINT32_MAX,
                                   .next_free = UINT16_MAX };

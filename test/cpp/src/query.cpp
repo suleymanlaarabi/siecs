@@ -338,3 +338,49 @@ void query_system_each_receives_entity(void) {
     test_true(saw_target);
     test_assert(cpp_query_position(target)->x == 2.0f);
 }
+
+void query_system_changed_filter_skips_unchanged_tables(void) {
+    ecs_test_scope _ecs_scope;
+
+    auto moving = ecs::spawn().set(CppQueryPosition{ .x = 1.0f });
+    (void)ecs::spawn().set(CppQueryPosition{ .x = 2.0f }).set(CppQueryMass{ .value = 1.0f });
+
+    int calls = 0;
+    (void)ecs::system("changed positions")
+        .changed<CppQueryPosition>()
+        .each([&](const CppQueryPosition &) { ++calls; });
+
+    ecs::progress();
+    test_int(2, calls);
+
+    calls = 0;
+    ecs::progress();
+    test_int(0, calls);
+
+    moving.set(CppQueryPosition{ .x = 3.0f });
+    ecs::progress();
+    test_int(1, calls);
+}
+
+void query_changed_filter_tracks_persistent_query_runs(void) {
+    ecs_test_scope _ecs_scope;
+
+    auto entity =
+        ecs::spawn().set(CppQueryPosition{ .x = 1.0f }).set(CppQueryVelocity{ .x = 0.0f });
+    auto query = ecs::query<const CppQueryVelocity &>().changed<CppQueryVelocity>().build();
+
+    int calls = 0;
+    auto count = [&](const CppQueryVelocity &) { ++calls; };
+    query.each(count);
+    test_int(1, calls);
+    query.each(count);
+    test_int(1, calls);
+
+    entity.set(CppQueryPosition{ .x = 2.0f });
+    query.each(count);
+    test_int(1, calls);
+
+    entity.set(CppQueryVelocity{ .x = 5.0f });
+    query.each(count);
+    test_int(2, calls);
+}

@@ -21,6 +21,7 @@ typedef struct {
     uint32_t pending, running, next_row;
     uint16_t next_table;
     uint32_t next_ordinal;
+    uint64_t tick; // change tick of this run, taken when the system starts
     bool started, exhausted, complete, released, queued;
 } ecs_worker_node_t;
 

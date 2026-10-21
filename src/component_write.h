@@ -31,8 +31,10 @@ static inline bool ecs_component_write(
             return false;
         const ecs_entity_record_t *record = ecs_get_record(entity);
         table = ecs_get_table(ecs_entity_record_table(record));
-        dst = ecs_table_get_component(table, id, record->table_row);
+        column = ecs_table_get_column_index(table, id);
+        dst = ecs_table_component_at_column(table, column, record->table_row);
     }
+    ecs_table_column_changed(table, column, ecs_change_tick());
     if (flags & EcsWriteNotify)
         ecs_emit(table, entity, EcsOnSet, id, data);
     if (flags & EcsWriteRelationTarget)

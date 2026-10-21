@@ -10,6 +10,7 @@ typedef struct {
     ecs_entity_t is_a;
     ecs_query_order_t order_by;
     uint16_t up_mask, stride;
+    uint16_t write_mask, changed_mask; // field bits: written fields, change-filtered fields
     uint8_t field_count, match_count, resource_count, filter_count;
 } ecs_query_t;
 
@@ -35,7 +36,7 @@ static inline ecs_access_t ecs_access_term_access(ecs_access_term_t term) {
     return (ecs_access_t)(term.access & UINT32_C(0xff));
 }
 static inline ecs_relation_id_t ecs_access_term_source_relation(ecs_access_term_t term) {
-    return (ecs_relation_id_t)(term.access >> 8);
+    return (ecs_relation_id_t)((term.access >> 8) & UINT32_C(0xffff));
 }
 
 typedef struct {
@@ -52,6 +53,7 @@ typedef struct ecs_query_cache_s {
     ecs_observer_id_t observer;
     uint16_t table_count, next_free;
     bool alive;
+    uint64_t last_run; // change tick of the last completed run
 } ecs_query_cache_t;
 
 _Static_assert(sizeof(ecs_query_cache_t) <= 64, "query cache must fit a cache line");
@@ -96,6 +98,17 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc);
 void ecs_query_index_activate(ecs_query_id_t id, const uint16_t *tables, uint16_t count);
 void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id);
 void ecs_query_index_refresh_table_fields(const ecs_table_t *table);
+/* Iterator stamping writes with `tick`; `commit` records the run as the query's
+ * last one when iteration ends. Systems commit once per run instead. */
+ecs_iter_t ecs_query_iter_at(ecs_query_id_t query_id, uint64_t tick, bool commit);
+/* True when the table passes the query's change filter for a run after
+ * `last_run`. */
+bool ecs_query_table_changed(
+    const ecs_query_t *query,
+    const ecs_table_t *table,
+    uint32_t field_kind_bits,
+    uint64_t last_run
+);
 bool ecs_query_resolve_up_fields(
     const ecs_query_t *query,
     const ecs_table_t *table,

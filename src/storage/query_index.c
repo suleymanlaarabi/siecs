@@ -66,12 +66,21 @@ static void ecs_query_compile_term(ecs_query_builder_t *b, ecs_component_term_t 
         );
     }
 #endif
+    bool changed = term.access & ECS_TERM_CHANGED;
+    ecs_assert(
+        !changed || (access != EcsFilter && access != EcsNot && !source),
+        "ECS_TERM_CHANGED requires a field term without up traversal\n"
+    );
     if (access == EcsFilter || access == EcsNot) {
         b->terms[ECS_COMPILED_TERMS - ++q->match_count] = term;
     } else {
         uint16_t bit = (uint16_t)(1u << q->field_count);
         if (source)
             q->up_mask |= bit;
+        if (access == EcsOut || access == EcsInOut || access == EcsInOutOptional)
+            q->write_mask |= bit;
+        if (changed)
+            q->changed_mask |= bit;
         b->terms[q->field_count++] = term;
     }
     if (access <= EcsInOut || access == EcsFilter) {
@@ -165,6 +174,7 @@ ecs_query_id_t ecs_query_index_create(const ecs_query_desc_t *desc) {
     ecs_query_cache_t *cache = sicore_vec_get_mut(&query_index.queries, id, ecs_query_cache_t);
     *cache = (ecs_query_cache_t){ .query = compiled,
                                   .alive = true,
+                                  .last_run = 0,
                                   .active_index = UINT32_MAX,
                                   .observer = UINT32_MAX,
                                   .next_free = UINT16_MAX };

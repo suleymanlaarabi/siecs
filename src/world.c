@@ -29,6 +29,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
 #ifndef NDEBUG
     ecs_world_started = true;
 #endif
+    atomic_init(&ecs_world.change_tick, 1);
     sireflect_init();
     ecs_entity_index_init();
     ecs_component_index_init();

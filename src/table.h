@@ -4,6 +4,7 @@
 #include "helper.h"
 #include "siecs.h"
 #include "type.h"
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -25,6 +26,7 @@ typedef struct {
     uint16_t remove_edge; // the table that has the component removed or UINT16_MAX if the edge is
                           // not set
     uint16_t flags;
+    _Atomic uint64_t tick; // change tick of the last write to the column
 } ecs_column_t;
 
 /* Data (non-tag) columns in type order, carrying everything a row operation
@@ -48,6 +50,7 @@ struct ecs_table_s {
     ecs_data_column_t *data_columns; // add_edge.aux entries
     ecs_type_t type;
     uint64_t bloom;
+    uint64_t structure_tick;         // change tick of the last row insertion, removal or move
     sicore_vec_t observers_by_event; // sicore_vec_t per event id; each holds uint16_t observer ids.
 };
 

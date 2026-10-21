@@ -211,6 +211,8 @@ void query_is_a_with_component_terms(void);
 void query_ids_stay_valid_after_temporary_query_fini(void);
 void query_fields_refresh_after_table_growth(void);
 void query_inherited_fields_refresh_after_base_table_growth(void);
+void query_entities_macro_visits_each_row_once(void);
+void query_iter_table_id_survives_ordered_insert(void);
 
 // Testsuite 'system'
 void system_run(void);
@@ -275,6 +277,18 @@ void system_parallel_returns_unused_fresh_ids(void);
 void system_parallel_reservations_suspend_for_exclusive_callbacks(void);
 void system_parallel_batched_commands_keep_logical_order(void);
 
+// Testsuite 'change'
+void change_filter_skips_unchanged_tables(void);
+void change_filter_ignores_own_writes(void);
+void change_skipped_table_does_not_stamp_writes(void);
+void change_filter_sees_deferred_writes(void);
+void change_filter_sees_structure_changes(void);
+void change_filter_sees_shared_base_writes(void);
+void change_iter_reports_changed_fields(void);
+void change_adhoc_query_records_completed_runs(void);
+void change_parallel_skips_unchanged_tables(void);
+void change_disabled_system_keeps_changes(void);
+
 // Testsuite 'observer'
 void observer_global_registration_does_not_duplicate_queries(void);
 void observer_enable(void);
@@ -300,6 +314,7 @@ void observer_target_index_reuse(void);
 void observer_target_on_remove(void);
 void observer_target_many(void);
 void observer_user_data_lifetime(void);
+void observer_target_event_keeps_other_events_unobserved(void);
 
 // Testsuite 'module'
 void module_import_registers_runtime(void);
@@ -1072,6 +1087,14 @@ bake_test_case query_testcases[] = {
     {
         "inherited_fields_refresh_after_base_table_growth",
         query_inherited_fields_refresh_after_base_table_growth
+    },
+    {
+        "entities_macro_visits_each_row_once",
+        query_entities_macro_visits_each_row_once
+    },
+    {
+        "iter_table_id_survives_ordered_insert",
+        query_iter_table_id_survives_ordered_insert
     }
 };
 
@@ -1322,6 +1345,49 @@ bake_test_case system_testcases[] = {
     }
 };
 
+bake_test_case change_testcases[] = {
+    {
+        "filter_skips_unchanged_tables",
+        change_filter_skips_unchanged_tables
+    },
+    {
+        "filter_ignores_own_writes",
+        change_filter_ignores_own_writes
+    },
+    {
+        "skipped_table_does_not_stamp_writes",
+        change_skipped_table_does_not_stamp_writes
+    },
+    {
+        "filter_sees_deferred_writes",
+        change_filter_sees_deferred_writes
+    },
+    {
+        "filter_sees_structure_changes",
+        change_filter_sees_structure_changes
+    },
+    {
+        "filter_sees_shared_base_writes",
+        change_filter_sees_shared_base_writes
+    },
+    {
+        "iter_reports_changed_fields",
+        change_iter_reports_changed_fields
+    },
+    {
+        "adhoc_query_records_completed_runs",
+        change_adhoc_query_records_completed_runs
+    },
+    {
+        "parallel_skips_unchanged_tables",
+        change_parallel_skips_unchanged_tables
+    },
+    {
+        "disabled_system_keeps_changes",
+        change_disabled_system_keeps_changes
+    }
+};
+
 bake_test_case observer_testcases[] = {
     {
         "global_registration_does_not_duplicate_queries",
@@ -1418,6 +1484,10 @@ bake_test_case observer_testcases[] = {
     {
         "user_data_lifetime",
         observer_user_data_lifetime
+    },
+    {
+        "target_event_keeps_other_events_unobserved",
+        observer_target_event_keeps_other_events_unobserved
     }
 };
 
@@ -1544,7 +1614,7 @@ static bake_test_suite suites[] = {
         "query",
         NULL,
         NULL,
-        27,
+        29,
         query_testcases
     },
     {
@@ -1555,10 +1625,17 @@ static bake_test_suite suites[] = {
         system_testcases
     },
     {
+        "change",
+        NULL,
+        NULL,
+        10,
+        change_testcases
+    },
+    {
         "observer",
         NULL,
         NULL,
-        24,
+        25,
         observer_testcases
     },
     {
@@ -1571,5 +1648,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 14);
+    return bake_test_run("siecs.test", argc, argv, suites, 15);
 }

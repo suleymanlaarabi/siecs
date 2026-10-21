@@ -861,3 +861,68 @@ void query_inherited_fields_refresh_after_base_table_growth(void) {
     ecs_query_fini(query);
     ecs_fini();
 }
+
+void query_entities_macro_visits_each_row_once(void) {
+    query_test_world();
+    ecs_entity_t expected[5];
+    for (uint32_t i = 0; i < 5; i++) {
+        expected[i] = ecs_new();
+        ecs_set(expected[i], QueryMass, { (int)i });
+    }
+    uint32_t visited = 0;
+    ecs_query_entities(entity, ecs_filter(QueryMass)) {
+        test_assert(entity == expected[visited]);
+        visited++;
+    }
+    test_uint(5, visited);
+
+    visited = 0;
+    ecs_query_entities(entity, ecs_filter(QueryMass)) {
+        if (visited == 2)
+            break;
+        visited++;
+    }
+    test_uint(2, visited);
+    ecs_fini();
+}
+
+void query_iter_table_id_survives_ordered_insert(void) {
+    query_test_world();
+    ecs_relation_id_t relation = ecs_relation_init(
+        NULL,
+        &(ecs_relation_desc_t){ .storage = EcsRelationByTarget,
+                                .on_delete_target = EcsRemoveRelation }
+    );
+    ecs_entity_t first_target = ecs_new(), last_target = ecs_new();
+    ecs_entity_t late = ecs_new();
+    ecs_set(late, QueryMass, { 1 });
+    ecs_relate_id(late, relation, last_target);
+    ecs_query_id_t query = ecs_query(
+        { .components = { ecs_in(QueryMass) }, .order_by = ecs_order_by_target_id(relation) }
+    );
+
+    uint16_t late_table = UINT16_MAX, late_position = UINT16_MAX;
+    for (ecs_iter_t it = ecs_query_iter(query); ecs_iter_next(&it);) {
+        if (it.entities[0] == late) {
+            late_table = ecs_iter_table_id(&it);
+            late_position = it.table_idx;
+        }
+    }
+    test_uint(ecs_entity_record_table(ecs_get_record(late)), late_table);
+
+    ecs_entity_t early = ecs_new();
+    ecs_set(early, QueryMass, { 2 });
+    ecs_relate_id(early, relation, first_target);
+    uint32_t seen = 0;
+    for (ecs_iter_t it = ecs_query_iter(query); ecs_iter_next(&it);) {
+        test_uint(ecs_entity_record_table(ecs_get_record(it.entities[0])), ecs_iter_table_id(&it));
+        if (it.entities[0] == late) {
+            test_uint(late_table, ecs_iter_table_id(&it));
+            test_uint(late_position + 1, it.table_idx);
+            seen++;
+        }
+    }
+    test_uint(1, seen);
+    ecs_query_fini(query);
+    ecs_fini();
+}

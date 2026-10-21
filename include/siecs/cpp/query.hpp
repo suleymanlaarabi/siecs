@@ -280,6 +280,7 @@ inline void append_callback_component_term(
     ecs_access_t access
 ) {
     ecs_relation_id_t up_relation = 0;
+    bool changed = false;
     uint32_t encoded_access = static_cast<uint32_t>(access);
     for (uint16_t i = 0; i < component_index; i++) {
         ecs_access_t existing_access = static_cast<ecs_access_t>(desc.components[i].access & 0xffu);
@@ -288,7 +289,8 @@ inline void append_callback_component_term(
              existing_access != EcsInUpOptional)) {
             continue;
         }
-        up_relation = static_cast<ecs_relation_id_t>(desc.components[i].access >> 8);
+        up_relation = static_cast<ecs_relation_id_t>((desc.components[i].access >> 8) & 0xffffu);
+        changed = desc.components[i].access & ECS_TERM_CHANGED;
         std::memmove(
             desc.components + i,
             desc.components + i + 1,
@@ -301,6 +303,8 @@ inline void append_callback_component_term(
         encoded_access =
             ECS_QUERY_UP_ACCESS(access == EcsInOptional ? EcsInUpOptional : EcsInUp, up_relation);
     }
+    if (changed)
+        encoded_access |= ECS_TERM_CHANGED;
     append_component_term(desc, component_index, id, encoded_access);
 }
 
@@ -600,6 +604,21 @@ template <typename Derived> class query_filter {
 
     /** Add terms that must be absent from matching tables. */
     template <typename... T> Derived &without() { return components<EcsNot, T...>(); }
+
+    /**
+     * Skip tables where none of these components changed since the query last
+     * ran. Each component must also be a callback argument.
+     */
+    template <typename... T> Derived &changed() {
+        (detail::append_component_term(
+             desc,
+             component_index,
+             detail::ecs_cpp_component_id<T>(),
+             EcsFilter | ECS_TERM_CHANGED
+         ),
+         ...);
+        return static_cast<Derived &>(*this);
+    }
 
     /** Restrict matches to entities inheriting from `target`. */
     Derived &is_a(ecs_entity_t target) {

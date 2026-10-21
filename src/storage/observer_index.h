@@ -21,12 +21,17 @@ typedef struct {
 } ecs_observer_t;
 
 #define ECS_OBSERVER_GLOBAL_ENTITY UINT32_MAX
+#define ECS_BUILTIN_EVENT_COUNT 5
 #define ECS_OBSERVER_NO_QUERY UINT16_MAX
 
 typedef struct {
     sicore_vec_t observers;        // ecs_observer_t
     sicore_vec_t target_keys;      // uint64_t
     sicore_vec_t target_observers; // ecs_observer_id_t
+
+    // Targeted observers per builtin event; the last slot counts every custom
+    // event. Lets emitters skip the target lookup for events nobody targets.
+    uint32_t target_counts[ECS_BUILTIN_EVENT_COUNT + 1];
 
     ecs_observer_id_t first_free;
     uint16_t event_count;
@@ -36,6 +41,15 @@ extern ecs_observer_index_t observer_index;
 
 static inline uint64_t ecs_observer_target_key(uint32_t entity_id, ecs_event_t event) {
     return ((uint64_t)entity_id << 16) | event;
+}
+
+static inline uint32_t *ecs_observer_target_count(ecs_event_t event) {
+    uint16_t slot = event < ECS_BUILTIN_EVENT_COUNT ? event : ECS_BUILTIN_EVENT_COUNT;
+    return &observer_index.target_counts[slot];
+}
+
+static inline bool ecs_observer_has_targets(ecs_event_t event) {
+    return *ecs_observer_target_count(event) != 0;
 }
 
 static inline uint32_t ecs_observer_target_lower_bound(uint64_t key) {

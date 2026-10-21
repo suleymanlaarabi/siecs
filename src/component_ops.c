@@ -191,6 +191,7 @@ static inline bool ecs_store_plain_now(ecs_entity_t entity, ecs_component_t cid,
             data,
             crec->size
         );
+        ecs_table_column_changed(table, edge, ecs_change_tick());
         return true;
     }
     if (edge == UINT16_MAX)
@@ -334,6 +335,7 @@ bool ecs_set_plain_many(
         return false;
     if (to_id != from_id)
         ecs_migrate(record, entity, ecs_get_table(from_id), to_id, 0);
+    uint64_t tick = ecs_change_tick();
     for (uint32_t i = 0; i < count; i++) {
         uint16_t column = ecs_table_get_column_index(to_table, ids[i]);
         ecs_bytes_copy(
@@ -341,6 +343,7 @@ bool ecs_set_plain_many(
             values[i],
             ecs_component_index_get(ids[i])->size
         );
+        ecs_table_column_changed(to_table, column, tick);
     }
     return true;
 }
@@ -358,7 +361,9 @@ void ecs_modified_cid(ecs_entity_t entity, ecs_component_t cid) {
 #endif
     ecs_assert_component_access(entity, cid);
     entity_edit(entity, table, record);
-    void *data = ecs_table_get_component(table, cid, record->table_row);
+    uint16_t column = ecs_table_get_column_index(table, cid);
+    void *data = ecs_table_component_at_column(table, column, record->table_row);
+    ecs_table_column_changed(table, column, ecs_change_tick());
     ecs_emit(table, entity, EcsOnSet, cid, data);
 }
 

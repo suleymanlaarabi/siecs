@@ -64,14 +64,22 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
 
 const char *ecs_system_name(ecs_system_id_t system) { return ecs_system_index_get(system)->name; }
 
-void ecs_system_run_job(ecs_system_id_t system, uint16_t table, uint32_t offset, uint32_t count) {
+void ecs_system_run_job(
+    ecs_system_id_t system,
+    uint16_t table,
+    uint32_t offset,
+    uint32_t count,
+    uint64_t tick
+) {
     // Registration may grow the index from an exclusive callback.
     ecs_system_t sys = *ecs_system_index_get(system);
     if (!sys.enabled)
         return;
     if (!sys.no_defer)
         ecs_defer_begin();
-    ecs_iter_t it = sys.iterates_query ? ecs_query_iter(sys.qid) : (ecs_iter_t){ .count = 1 };
+    // The scheduler records the run once every portion completed.
+    ecs_iter_t it =
+        sys.iterates_query ? ecs_query_iter_at(sys.qid, tick, false) : (ecs_iter_t){ .count = 1 };
     it.user_data = sys.user_data;
     it.delta_time = sys.prepared_delta_time;
     if (sys.parallel) {

@@ -60,6 +60,7 @@ static inline void *ecs_migrate_impl(
         ecs_get_record(moved)->table_row = old_row;
     }
     from_table->entity_count = last_row;
+    from_table->structure_tick = ecs_change_tick();
     atomic_store_explicit(&record->table_id, to_table_id, memory_order_relaxed);
     record->table_row = new_row;
 

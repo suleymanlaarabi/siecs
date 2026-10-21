@@ -110,7 +110,9 @@
           "each_defers_structural_mutation",
           "ordered_filter_build_is_aligned",
           "system_each_receives_entity",
-          "system_reads_shared_fields_with_interleaved_resource"
+          "system_reads_shared_fields_with_interleaved_resource",
+          "system_changed_filter_skips_unchanged_tables",
+          "changed_filter_tracks_persistent_query_runs"
         ]
       },
       {

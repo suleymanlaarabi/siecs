@@ -256,7 +256,9 @@
           "is_a_with_component_terms",
           "ids_stay_valid_after_temporary_query_fini",
           "fields_refresh_after_table_growth",
-          "inherited_fields_refresh_after_base_table_growth"
+          "inherited_fields_refresh_after_base_table_growth",
+          "entities_macro_visits_each_row_once",
+          "iter_table_id_survives_ordered_insert"
         ]
       },
       {
@@ -327,6 +329,21 @@
       },
 
       {
+        "id": "change",
+        "testcases": [
+          "filter_skips_unchanged_tables",
+          "filter_ignores_own_writes",
+          "skipped_table_does_not_stamp_writes",
+          "filter_sees_deferred_writes",
+          "filter_sees_structure_changes",
+          "filter_sees_shared_base_writes",
+          "iter_reports_changed_fields",
+          "adhoc_query_records_completed_runs",
+          "parallel_skips_unchanged_tables",
+          "disabled_system_keeps_changes"
+        ]
+      },
+      {
         "id": "observer",
         "testcases": [
           "global_registration_does_not_duplicate_queries",
@@ -352,7 +369,8 @@
           "target_index_reuse",
           "target_on_remove",
           "target_many",
-          "user_data_lifetime"
+          "user_data_lifetime",
+          "target_event_keeps_other_events_unobserved"
         ]
       },
       {
