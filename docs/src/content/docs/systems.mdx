@@ -343,6 +343,58 @@ the scheduler does not execute them.
 
 Modules use the same mechanism when a module is disabled.
 
+## Change-filtered systems
+
+A system whose query has change-filtered terms only visits tables that changed
+since its last run. The rules are those of
+[change detection](../queries/#change-detection); this section covers when a
+system has "seen" a change.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_system({
+    .name = "PropagateRoots",
+    .phase = EcsPostUpdate,
+    .query = {
+        .components = { ecs_in_changed(Position), ecs_out(GlobalPosition) },
+        .relations = { ecs_not_rel(ChildOf) },
+    },
+    .callback = PropagateRoots,
+});
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("PropagateRoots")
+    .phase(EcsPostUpdate)
+    .changed<Position>()
+    .each([](const Position &local, GlobalPosition &global) {
+        global.x = local.x;
+        global.y = local.y;
+    });
+```
+
+</TabItem>
+</Tabs>
+
+- Each run takes a new tick when it starts. Writes through its `EcsOut` and
+  `EcsInOut` fields carry that tick.
+- The run is committed once, after every batch and every parallel portion
+  finished. All portions of a run share the same baseline.
+- A system does not retrigger on its own field writes. Its deferred commands
+  are applied after the run, so it sees them at its next run.
+- A disabled system, or a run skipped by its interval or rate, commits
+  nothing: changes accumulate until the system runs again.
+- A parallel system claims no portion for a table that did not change.
+
+Systems without change-filtered terms behave as before and visit every
+matching table. They pay one store per written field and per batch to mark
+their writes.
+
 ## Deferred operations
 
 Structural mutation changes tables. Performing it immediately while a system is
@@ -505,7 +557,9 @@ ecs::system("Move")
 Zero selects 1,024 rows per portion. Portions stay within a single table and each
 matching row is processed exactly once. A short final portion is expected.
 The iterator's entities, owned fields and dense/depth relation views all start
-at that portion's first row. Shared fields keep their shared pointer.
+at that portion's first row; `it.row_offset` is that row in the table and
+`ecs_iter_table_id(&it)` identifies the table. Shared fields keep their shared
+pointer.
 
 Callbacks for different portions can execute simultaneously. Captures, user data,
 custom parameter hooks and component lifecycle operations used by callbacks must

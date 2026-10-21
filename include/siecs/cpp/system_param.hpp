@@ -35,6 +35,7 @@ concept IsSystemParamRow = SystemParam<T> &&
 
 class system_param_query;
 template <typename T> class optional;
+template <typename T> class changed;
 
 template <typename T>
 concept HasSystemParamQuery = SystemParam<T> &&
@@ -54,7 +55,9 @@ class system_param_query {
           relation_index_(relation_index) {}
     friend struct detail::system_param_query_access;
     template <typename T> friend class optional;
+    template <typename T> friend class changed;
     template <typename T> void optional_component();
+    template <typename T> void changed_component();
 
   public:
     template <typename T> void read_resource();

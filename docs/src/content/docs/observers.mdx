@@ -211,10 +211,10 @@ instances.
 
 ## OnRemove Events
 
-`EcsOnRemove` fires when a component is removed.
+`EcsOnRemove` fires before a component is removed.
 
-The removed value is available during the callback, before its storage is fully
-discarded.
+The entity still has the component during the callback, so the value can be
+read.
 
 This makes the event suitable for releasing associated external objects,
 removing registrations or recording final state.
@@ -289,6 +289,11 @@ documented by the API.
 
 Targeted observers are useful for watching one prototype/base or one important
 runtime entity without scanning all world events manually.
+
+A targeted observer only affects the event it listens to. `ecs_set` writes
+plain components without looking for observers while no observer can see the
+change; a targeted observer on a custom event, or on `EcsOnAdd`, does not take
+`ecs_set` off that fast path for `EcsOnSet`.
 
 ## Custom Events
 
@@ -689,6 +694,12 @@ For bulk initialization:
 - defer/batch structural work;
 - keep hooks/observers small;
 - consider a post-load system for derived bulk processing.
+
+Writes through query and system fields do not emit `EcsOnSet`. To react to
+value changes made by systems, or to process many changes at once, use a
+system with a [change filter](../queries/#change-detection) instead of an
+`EcsOnSet` observer: an unchanged table costs one comparison and the work is
+done per table instead of per entity.
 
 ## Observer ordering guidance
 

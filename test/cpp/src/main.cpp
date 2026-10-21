@@ -24,6 +24,9 @@ void system_param_parallel_spawn_visible_after_dependency(void);
 void system_param_parallel_rejects_mutable_resource(void);
 void system_param_parallel_rejects_main_thread(void);
 void system_param_parallel_builtin_relation_targets(void);
+void system_param_changed_reports_field_changes(void);
+void system_param_changed_writes_do_not_retrigger(void);
+void system_param_table_info_reports_table_rows(void);
 
 // Testsuite 'relation_query'
 void relation_query_target_dense_is_inferred(void);
@@ -195,6 +198,18 @@ bake_test_case system_param_testcases[] = {
     {
         "parallel_builtin_relation_targets",
         system_param_parallel_builtin_relation_targets
+    },
+    {
+        "changed_reports_field_changes",
+        system_param_changed_reports_field_changes
+    },
+    {
+        "changed_writes_do_not_retrigger",
+        system_param_changed_writes_do_not_retrigger
+    },
+    {
+        "table_info_reports_table_rows",
+        system_param_table_info_reports_table_rows
     }
 };
 
@@ -616,7 +631,7 @@ static bake_test_suite suites[] = {
         "system_param",
         NULL,
         NULL,
-        9,
+        12,
         system_param_testcases
     },
     {

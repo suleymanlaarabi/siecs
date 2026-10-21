@@ -13,12 +13,12 @@
 int main() {
     ecs::init();
 
-    static_cast<void>(ecs::import<sigpu>(sigpu::props_t{
+    ecs::import<sigpu>({
         .title = "SIECS + sigpu",
         .width = 1280,
         .height = 720,
         .samples = 4,
-    }));
+    });
 
     ecs::resource<Sky>().set(Sky{ Color{ 12, 18, 34 } });
     ecs::resource<Sun>().set(Sun{ -0.45f, -1.0f, 0.35f, Color{ 255, 232, 196 }, 1.5f });

@@ -33,7 +33,10 @@
           "parallel_spawn_visible_after_dependency",
           "parallel_rejects_mutable_resource",
           "parallel_rejects_main_thread",
-          "parallel_builtin_relation_targets"
+          "parallel_builtin_relation_targets",
+          "changed_reports_field_changes",
+          "changed_writes_do_not_retrigger",
+          "table_info_reports_table_rows"
         ]
       },
       {

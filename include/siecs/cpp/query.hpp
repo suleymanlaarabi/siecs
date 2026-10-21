@@ -50,6 +50,69 @@ template <typename T> class optional {
     [[nodiscard]] T &operator*() const noexcept { return *_ptr; }
 };
 
+/**
+ * Required query field with a change filter: tables where `T` did not change
+ * since the query last ran are skipped. `const T` reads, `T` reads and writes.
+ */
+template <typename T> class changed {
+    T *_ptr = nullptr;
+    T *_column = nullptr;
+    std::ptrdiff_t _step = 1;
+    uint16_t _field = 0;
+    bool _changed = false;
+
+  public:
+    static changed init() noexcept { return {}; }
+    static void query(system_param_query &query) { query.changed_component<T>(); }
+    void field(uint16_t index) noexcept { _field = index; }
+    void table(ecs_iter_t *it) noexcept {
+        _column = static_cast<T *>(ecs_field(it, _field));
+        _step = std::is_const_v<T> && ecs_field_is_shared(it, _field) ? 0 : 1;
+        _changed = ecs_iter_changed(it, _field);
+    }
+    void row(ecs_iter_t *, uint32_t row) noexcept { _ptr = _column + row * _step; }
+
+    /**
+     * Return true when this field's column was written, or rows of the table
+     * moved, since the query last ran. Another filtered field may be the one
+     * that let this table through.
+     */
+    [[nodiscard]] bool has_changed() const noexcept { return _changed; }
+    /** Return the field value of the current row. */
+    [[nodiscard]] T *get() const noexcept { return _ptr; }
+    [[nodiscard]] T *operator->() const noexcept { return _ptr; }
+    [[nodiscard]] T &operator*() const noexcept { return *_ptr; }
+};
+
+/**
+ * Table of the current batch. The id is the same in every query and stays
+ * valid for the world's lifetime; rows are positions in that table, also inside
+ * the portions of a parallel system.
+ */
+class table_info {
+    uint16_t _id = 0;
+    uint32_t _row_offset = 0;
+    uint32_t _row = 0;
+    bool _structure_changed = false;
+
+  public:
+    static table_info init() noexcept { return {}; }
+    void table(ecs_iter_t *it) noexcept {
+        _id = ecs_iter_table_id(it);
+        _row_offset = it->row_offset;
+        _structure_changed = ecs_iter_structure_changed(it);
+    }
+    void row(ecs_iter_t *, uint32_t row) noexcept { _row = _row_offset + row; }
+
+    [[nodiscard]] uint16_t id() const noexcept { return _id; }
+    /** Table row of the first entity of this batch. */
+    [[nodiscard]] uint32_t row_offset() const noexcept { return _row_offset; }
+    /** Table row of the current entity. */
+    [[nodiscard]] uint32_t row() const noexcept { return _row; }
+    /** True when rows were added, removed or moved since the query last ran. */
+    [[nodiscard]] bool structure_changed() const noexcept { return _structure_changed; }
+};
+
 namespace detail {
 
 struct no_param {};
@@ -449,6 +512,15 @@ template <typename T> inline void system_param_query::optional_component() {
         detail::ecs_cpp_component_id<std::remove_cv_t<T>>(),
         std::is_const_v<T> ? EcsInOptional : EcsInOutOptional
     );
+}
+template <typename T> inline void system_param_query::changed_component() {
+    detail::append_callback_component_term(
+        desc_,
+        component_index_,
+        detail::ecs_cpp_component_id<std::remove_cv_t<T>>(),
+        std::is_const_v<T> ? EcsIn : EcsInOut
+    );
+    desc_.components[component_index_ - 1].access |= ECS_TERM_CHANGED;
 }
 
 namespace detail {

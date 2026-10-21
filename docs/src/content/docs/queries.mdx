@@ -335,6 +335,139 @@ Use `ecs_field_kind()` to determine whether a field is `EcsFieldOwned`,
 Shared fields usually come from inherited data and must be treated as read-only
 for that batch.
 
+## Change detection
+
+A change filter skips tables whose data did not change since the query last
+ran. Mark a field term with `ecs_in_changed` or `ecs_inout_changed`:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_query_id_t q = ecs_query({
+    .components = {
+        ecs_in_changed(Position),
+        ecs_out(GlobalPosition),
+    },
+});
+
+ecs_iter_t it = ecs_query_iter(q);
+while (ecs_iter_next(&it)) {
+    /* Only tables where Position, or the table rows, changed. */
+}
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+auto q = ecs::query<const Position &, GlobalPosition &>()
+    .changed<Position>()
+    .build();
+
+q.each([](const Position &local, GlobalPosition &global) {
+    /* Only tables where Position, or the table rows, changed. */
+});
+```
+
+</TabItem>
+</Tabs>
+
+In C++, every component passed to `.changed<T...>()` must also be a callback
+argument. Systems use the same builder method.
+
+### What counts as a change
+
+Changes are tracked per table and per component: a write marks the whole
+column of a table, not a row.
+
+| Write | Seen by a change filter |
+|---|---|
+| `ecs_set`, `ecs_set_plain_many`, commands applied at a flush | yes |
+| `ecs_modified` | yes |
+| A field declared `EcsOut` or `EcsInOut` in a query or system | yes, for the whole table, even if the callback wrote one row |
+| Adding or removing entities, components or relations in the table | yes, as a structural change |
+| A write through a pointer from `ecs_get` | no, call `ecs_modified` after it |
+
+A write access counts as a write whether or not the callback stores anything.
+Declare fields you only read with `EcsIn`.
+
+### When a query has "seen" a change
+
+Each query remembers the tick of its last completed run. A table matches when
+one of its change-filtered columns, or its row set, was stamped after that
+tick. Several change-filtered terms combine with OR.
+
+- A persistent query run with `ecs_query_iter` commits its run when
+  `ecs_iter_next` returns `false`. If the loop exits early with `break`, the
+  changes stay visible to the next run.
+- `ecs_query_count` ignores change filters and commits nothing.
+- A system commits once per run, after all of its batches and portions
+  finished (see [Systems](../systems/)).
+
+A query does not see its own writes: the writes of a run carry that run's tick,
+which is not newer than the run itself.
+
+A skipped table is skipped before any write is stamped. With
+`ecs_in_changed(Position)` and `ecs_out(GlobalPosition)`, a table whose
+`Position` did not change is not visited, so its `GlobalPosition` column is
+not marked either. "Nothing changed" propagates down a chain of systems.
+
+### Inspecting changes in a batch
+
+A batch is returned when at least one filtered term changed. The iterator
+tells which:
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_query_id_t q = ecs_query({
+    .components = { ecs_in_changed(Position), ecs_in_changed(Velocity) },
+});
+
+ecs_iter_t it = ecs_query_iter(q);
+while (ecs_iter_next(&it)) {
+    if (ecs_iter_structure_changed(&it)) {
+        /* rows were added, removed or moved: rebuild this table */
+    } else if (ecs_iter_changed(&it, 0)) {
+        /* Position values changed */
+    }
+}
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("Extract")
+    .each([](ecs::changed<const Position> position,
+             ecs::changed<const Velocity> velocity,
+             ecs::table_info table) {
+        if (table.structure_changed()) {
+            /* rows were added, removed or moved: rebuild this table */
+        } else if (position.has_changed()) {
+            /* Position values changed */
+        }
+    });
+```
+
+</TabItem>
+</Tabs>
+
+`ecs::changed<const T>` is a required field with a change filter;
+`ecs::changed<T>` also writes. Read the value with `->` or `*`. A field reports
+a change after a structural change too, and always when the query itself
+writes it.
+
+### Restrictions
+
+- A change filter applies to field terms only: not to `EcsFilter`, `EcsNot`
+  or `EcsInUp` terms.
+- For a shared (inherited) field, the base's column is compared.
+- The granularity is the table column. Code that needs to know which rows
+  changed keeps its own data, typically indexed by table id.
+
 ## Reference
 
 ### Components
@@ -375,6 +508,9 @@ Optional versions preserve the same access intent when the component exists.
 
 Correct access declarations allow independent systems to run in parallel while
 preventing unsafe overlap between writers and readers.
+
+`ecs_in_changed` and `ecs_inout_changed` add a change filter to `EcsIn` and
+`EcsInOut`; see [Change detection](#change-detection).
 
 ### Not Operator
 
@@ -957,6 +1093,45 @@ Use it when a callback needs identity, relation operations or deferred
 structural commands.
 
 Do not infer identity from row index.
+
+### Table identity
+
+`it.table_idx` is the position of the current table in this query's cache. A
+query sorted with `order_by` inserts new tables in the middle, so this position
+can change between runs.
+
+`ecs_iter_table_id(&it)` returns the id of the table itself. It is the same in
+every query and stays valid for the lifetime of the world, which makes it a
+suitable key for data derived per table (for example a GPU buffer range).
+`it.row_offset` is the table row of `it.entities[0]`, also inside the portions
+of a parallel system.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+while (ecs_iter_next(&it)) {
+    uint16_t table = ecs_iter_table_id(&it);
+    const Position *p = ecs_field(&it, 0);
+    for (uint32_t i = 0; i < it.count; i++)
+        cache_write(table, it.row_offset + i, &p[i]);
+}
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+q.each([](const Position &p, ecs::table_info table) {
+    cache_write(table.id(), table.row(), &p);
+});
+```
+
+</TabItem>
+</Tabs>
+
+`ecs::table_info` is a system parameter: `id()`, `row_offset()` for the first
+row of the batch, `row()` for the current entity, and `structure_changed()`.
 
 ### Owned arrays
 

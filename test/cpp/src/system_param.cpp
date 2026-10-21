@@ -279,3 +279,91 @@ void system_param_parallel_builtin_relation_targets(void) {
     test_uint(0, parallel_errors.load());
     ecs::fini();
 }
+
+void system_param_changed_reports_field_changes(void) {
+    ecs_test_scope _ecs_scope;
+    auto entity = ecs::spawn().set(ParamPosition{1}).set(ParamTime{1});
+    (void)ecs::spawn().set(ParamPosition{2}).set(ParamTime{2}).set(ParamOther{0});
+
+    int calls = 0, position_changes = 0, time_changes = 0;
+    (void)ecs::system("changed params")
+        .each([&](ecs::changed<const ParamPosition> position, ecs::changed<const ParamTime> time) {
+            ++calls;
+            position_changes += position.has_changed();
+            time_changes += time.has_changed();
+            test_true(position->value == time->value || position->value == 1);
+        });
+
+    ecs::progress();
+    test_int(2, calls);
+    test_int(2, position_changes);
+    test_int(2, time_changes);
+
+    calls = position_changes = time_changes = 0;
+    ecs::progress();
+    test_int(0, calls);
+
+    entity.set(ParamTime{5});
+    ecs::progress();
+    test_int(1, calls);
+    test_int(0, position_changes);
+    test_int(1, time_changes);
+}
+
+void system_param_changed_writes_do_not_retrigger(void) {
+    ecs_test_scope _ecs_scope;
+    auto entity = ecs::spawn().set(ParamPosition{1});
+
+    int writes = 0, reads = 0;
+    (void)ecs::system("changed writer").each([&](ecs::changed<ParamPosition> position) {
+        ++writes;
+        position->value += 10;
+    });
+    (void)ecs::system("changed reader")
+        .changed<ParamPosition>()
+        .each([&](const ParamPosition &) { ++reads; });
+
+    ecs::progress();
+    test_int(1, writes);
+    test_int(1, reads);
+    test_int(11, entity.get<ParamPosition>().value);
+
+    ecs::progress();
+    test_int(1, writes);
+    test_int(1, reads);
+}
+
+void system_param_table_info_reports_table_rows(void) {
+    for (uint16_t workers = 0; workers <= 2; workers++) {
+        ecs::init({ .worker_threads = workers });
+        for (int i = 0; i < 7; i++) (void)ecs::spawn().set(ParamPosition{i});
+        auto other = ecs::spawn().set(ParamPosition{0}).set(ParamOther{0});
+
+        std::atomic<unsigned> rows_seen{ 0 }, errors{ 0 }, structure_changes{ 0 };
+        std::atomic<uint32_t> position_table{ UINT32_MAX }, other_table{ UINT32_MAX };
+        auto system = ecs::system("table rows").parallel(3).each(
+            [&](ecs::entity entity, const ParamPosition &position, ecs::table_info table) {
+                bool is_other = entity.id() == other.id();
+                std::atomic<uint32_t> &id = is_other ? other_table : position_table;
+                uint32_t expected = UINT32_MAX;
+                if (!id.compare_exchange_strong(expected, table.id()) && expected != table.id())
+                    errors++;
+                if (!is_other && table.row() != uint32_t(position.value)) errors++;
+                if (table.row() < table.row_offset()) errors++;
+                rows_seen.fetch_or(is_other ? 0x80u : 1u << table.row());
+                structure_changes += table.structure_changed();
+            });
+
+        ecs::progress();
+        test_uint(0, errors.load());
+        test_uint(0xffu, rows_seen.load());
+        test_uint(8, structure_changes.load());
+        test_true(position_table.load() != other_table.load());
+
+        structure_changes = 0;
+        system.run();
+        test_uint(0, structure_changes.load());
+        test_uint(0, errors.load());
+        ecs::fini();
+    }
+}
