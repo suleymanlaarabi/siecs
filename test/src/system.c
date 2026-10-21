@@ -355,7 +355,8 @@ void system_parallel_worker_context_is_deferred(void) {
     ecs_progress();
 
     test_uint(2, atomic_load(&parallel_context_entered));
-    test_assert(!atomic_load(&parallel_context_invalid));
+    const bool parallel_context_is_valid = !atomic_load(&parallel_context_invalid);
+    test_assert(parallel_context_is_valid);
 
     ecs_fini();
 }
@@ -1489,7 +1490,11 @@ void system_parallel_portions_cover_rows(void) {
         test_uint(4, atomic_load(&portion_calls));
         test_uint(2053, atomic_load(&portion_rows));
         test_uint(0, atomic_load(&portion_errors));
-        if (workers) test_assert(atomic_load(&portion_threads[0]) != atomic_load(&portion_threads[1]));
+        if (workers) {
+            const uintptr_t first_thread = atomic_load(&portion_threads[0]);
+            const uintptr_t second_thread = atomic_load(&portion_threads[1]);
+            test_assert(first_thread != second_thread);
+        }
         for (int i = 0; i < 2053; i++) {
             test_uint(1, atomic_load(&portion_seen[i]));
             test_int(i + 10, ecs_get(entities[i], SystemPosition)->value);
