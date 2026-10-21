@@ -23,7 +23,7 @@ typedef struct {
 #define sigpu_rgba(r, g, b, a) ((sigpu_color_t){ r, g, b, a })
 #define sigpu_rgb(r, g, b) sigpu_rgba(r, g, b, 255)
 
-void sigpu_init(const char *title, int width, int height, int samples);
+void sigpu_init(int samples);
 void sigpu_fini(void);
 
 bool sigpu_begin_frame(void);

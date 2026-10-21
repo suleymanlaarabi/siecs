@@ -333,6 +333,7 @@
         "testcases": [
           "filter_skips_unchanged_tables",
           "filter_ignores_own_writes",
+          "filter_sees_own_commands",
           "skipped_table_does_not_stamp_writes",
           "filter_sees_deferred_writes",
           "filter_sees_structure_changes",

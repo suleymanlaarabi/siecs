@@ -32,12 +32,14 @@ void report_frames(ecs_iter_t *) {
 
 int main() {
     ecs::init({ .target_fps = 120, .worker_threads = 0 });
-    static_cast<void>(ecs::import<sigpu>(sigpu::props_t{
+    ecs::import<siwindow>();
+    ecs::ensure("Window").set(Window{
+        .slot = "main",
         .title = "SIECS GPU City",
         .width = 1280,
         .height = 720,
-        .samples = 1,
-    }));
+    });
+    static_cast<void>(ecs::import<sigpu>(sigpu::props_t{ .samples = 1 }));
     ecs::resource<AmbientLight>().set(AmbientLight{ Color{ 180, 195, 230 }, 0.45f });
     ecs::resource<Shadows>().set(Shadows{ false, 200.0f });
     ecs::resource<CameraClip>().set(CameraClip{ 0.5f, 4000.0f });
@@ -52,7 +54,7 @@ int main() {
         .each([](const FreeCameraController &,
                  Position3d &position,
                  Rotation3d &rotation,
-                 ecs::res<const Keyboard> keyboard,
+                 ecs::res<const KeyboardState> keyboard,
                  ecs::res<const DeltaTime> delta) {
             constexpr float move_speed = 8.0f;
             constexpr float rotation_speed = 1.5f;

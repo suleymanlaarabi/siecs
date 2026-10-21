@@ -86,7 +86,7 @@ ecs_system_id_t sigpu_static_chunks_register(ecs_system_id_t camera_system);
 void sigpu_static_chunks_invalidate(ecs_observer_event_t *event);
 void sigpu_bounds_register(ecs_system_id_t static_cache_system);
 ecs_system_id_t sigpu_primitives_register(void);
-void sigpu_render_schedule_register(ecs_system_id_t input_system);
+void sigpu_render_schedule_register(void);
 void sigpu_render_schedule_set_shadows(bool enabled);
 void sigpu_render_schedule_set_bloom(bool enabled);
 void sigpu_bounds_set_enabled(bool enabled);

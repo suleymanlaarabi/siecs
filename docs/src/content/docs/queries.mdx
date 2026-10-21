@@ -406,7 +406,12 @@ tick. Several change-filtered terms combine with OR.
   finished (see [Systems](../systems/)).
 
 A query does not see its own writes: the writes of a run carry that run's tick,
-which is not newer than the run itself.
+which is not newer than the run itself. This covers only writes through the
+query's fields. `ecs_set`, `ecs_modified` and commands are stamped when they are
+applied, which is after the run started, so every query sees them, including the
+writer's own on its next run. A system with `ecs_in_changed(Position)` that calls
+`ecs_set(e, Position, ...)` therefore runs again each frame; write through an
+`ecs_inout_changed(Position)` field instead.
 
 A skipped table is skipped before any write is stamped. With
 `ecs_in_changed(Position)` and `ecs_out(GlobalPosition)`, a table whose

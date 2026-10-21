@@ -1,6 +1,6 @@
 #ifndef SIECS_SIGPU_INTERACTION_H
 #define SIECS_SIGPU_INTERACTION_H
-#include "sigpu/input.h"
+#include <siwindow.h>
 ECS_COMPONENT_DECLARE_CPP(
     PointerEvents,
     ECS_CPP_FIELDS(uint32_t mask;),

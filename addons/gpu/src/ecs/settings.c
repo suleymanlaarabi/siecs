@@ -1,4 +1,3 @@
-#include "input/input.h"
 #include "render/render_internal.h"
 
 static sigpu_color_t to_sigpu(Color color) {
@@ -106,7 +105,6 @@ ECS_COMPONENT_DEFINE(Cylinder, .inheritance = EcsInheritShared);
 ECS_COMPONENT_DEFINE(Sphere, .inheritance = EcsInheritShared);
 ECS_COMPONENT_DEFINE(Bloom, .inheritance = EcsInheritShared);
 ECS_COMPONENT_DEFINE(Camera);
-ECS_RESOURCE_DEFINE(WindowConfig);
 ECS_RESOURCE_DEFINE(Sky, .on_set = set_sky);
 ECS_RESOURCE_DEFINE(Sun, .on_set = set_sun);
 ECS_RESOURCE_DEFINE(AmbientLight, .on_set = set_ambient);
@@ -123,7 +121,7 @@ typedef struct {
 } rendering_resource;
 #define RESOURCE_ENTRY(name) { #name, &ecs_id(name), &ecs_id(name##_desc) }
 static rendering_resource rendering_resources[] = {
-    RESOURCE_ENTRY(WindowConfig),  RESOURCE_ENTRY(Sky),           RESOURCE_ENTRY(Sun),
+    RESOURCE_ENTRY(Sky),           RESOURCE_ENTRY(Sun),
     RESOURCE_ENTRY(AmbientLight),  RESOURCE_ENTRY(Fog),           RESOURCE_ENTRY(Shadows),
     RESOURCE_ENTRY(Multisampling), RESOURCE_ENTRY(BloomSettings), RESOURCE_ENTRY(CameraClip),
 };
@@ -136,13 +134,22 @@ void sigpu_settings_register(void) {
         ecs_resource_register(resource->id, resource->desc);
     }
 }
+/* Input moved to siwindow; the names sigpu used before still resolve. */
+static uint16_t input_resource_id(const char *name) {
+    if (strcmp(name, "Keyboard") == 0 || strcmp(name, "KeyboardState") == 0)
+        return ecs_id(KeyboardState);
+    if (strcmp(name, "Pointer") == 0 || strcmp(name, "PointerState") == 0)
+        return ecs_id(PointerState);
+    return 0;
+}
+
 uint16_t sigpu_resource_id(const char *name) {
     for (size_t index = 0; index < sizeof(rendering_resources) / sizeof(*rendering_resources);
          index++) {
         if (strcmp(name, rendering_resources[index].name) == 0)
             return *rendering_resources[index].id;
     }
-    return sigpu_input_resource_id(name);
+    return input_resource_id(name);
 }
 
 sireflect_handle_t sigpu_resource_type(const char *name) {
@@ -151,5 +158,6 @@ sireflect_handle_t sigpu_resource_type(const char *name) {
         if (strcmp(name, rendering_resources[index].name) == 0)
             return ecs_resource_info(*rendering_resources[index].id)->type;
     }
-    return sigpu_input_resource_type(name);
+    const uint16_t input = input_resource_id(name);
+    return input ? ecs_resource_info(input)->type : 0;
 }

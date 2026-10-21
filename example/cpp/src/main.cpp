@@ -13,12 +13,14 @@
 int main() {
     ecs::init();
 
-    ecs::import<sigpu>({
+    ecs::import<siwindow>();
+    ecs::ensure("Window").set(Window{
+        .slot = "main",
         .title = "SIECS + sigpu",
         .width = 1280,
         .height = 720,
-        .samples = 4,
     });
+    ecs::import<sigpu>({ .samples = 4 });
 
     ecs::resource<Sky>().set(Sky{ Color{ 12, 18, 34 } });
     ecs::resource<Sun>().set(Sun{ -0.45f, -1.0f, 0.35f, Color{ 255, 232, 196 }, 1.5f });

@@ -19,6 +19,7 @@
 
 /* Headers of public dependencies */
 #include <siecs.h>
+#include <siwindow.h>
 #include <sigpu.h>
 
 /* Convenience macro for exporting symbols */

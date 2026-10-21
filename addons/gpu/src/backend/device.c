@@ -1,4 +1,5 @@
 #include "backend/backend.h"
+#include <siwindow/native.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,19 +65,28 @@ static void profile_frame(void) {
     SDL_memset(profile_shadow_reuses, 0, sizeof(profile_shadow_reuses));
 }
 
-void sigpu_init(const char *title, int width, int height, int samples) {
+/* The window can go away before the world ends; frames then render nothing. */
+static void release_window(ecs_entity_t window, void *native) {
+    (void)window;
+    if (native != SIGPU_GPUCONTEXT->window)
+        return;
+    SDL_WaitForGPUIdle(SIGPU_GPUCONTEXT->device);
+    SDL_ReleaseWindowFromGPUDevice(SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->window);
+    SIGPU_GPUCONTEXT->window = NULL;
+}
+
+void sigpu_init(int samples) {
     const char *profile = getenv("SIGPU_PROFILE");
     SIGPU_RENDERSTATS->profile_enabled = profile && profile[0] && profile[0] != '0';
     profile_count = profile_warmup = 0;
-    SDL_Init(SDL_INIT_VIDEO);
+    SIGPU_GPUCONTEXT->window = siwindow_native(siwindow_find("main"));
+    if (!SIGPU_GPUCONTEXT->window) {
+        fprintf(stderr, "sigpu: no window with slot \"main\"; set a Window before importing sigpu\n");
+        abort();
+    }
     SIGPU_GPUCONTEXT->device = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, false, NULL);
-    SIGPU_GPUCONTEXT->window = SDL_CreateWindow(
-        title,
-        width,
-        height,
-        SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY
-    );
     SDL_ClaimWindowForGPUDevice(SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->window);
+    siwindow_on_destroy(release_window);
     SIGPU_GPUCONTEXT->linear_swapchain = SDL_WindowSupportsGPUSwapchainComposition(
         SIGPU_GPUCONTEXT->device,
         SIGPU_GPUCONTEXT->window,
@@ -105,13 +115,14 @@ bool sigpu_begin_frame(void) {
     SIGPU_FRAMECONTEXT->command_buffer = SDL_AcquireGPUCommandBuffer(SIGPU_GPUCONTEXT->device);
     SIGPU_FRAMECONTEXT->swapchain = NULL;
     Uint64 acquire_start = SIGPU_RENDERSTATS->profile_enabled ? SDL_GetTicksNS() : 0;
-    SDL_WaitAndAcquireGPUSwapchainTexture(
-        SIGPU_FRAMECONTEXT->command_buffer,
-        SIGPU_GPUCONTEXT->window,
-        &SIGPU_FRAMECONTEXT->swapchain,
-        &SIGPU_FRAMECONTEXT->frame_width,
-        &SIGPU_FRAMECONTEXT->frame_height
-    );
+    if (SIGPU_GPUCONTEXT->window)
+        SDL_WaitAndAcquireGPUSwapchainTexture(
+            SIGPU_FRAMECONTEXT->command_buffer,
+            SIGPU_GPUCONTEXT->window,
+            &SIGPU_FRAMECONTEXT->swapchain,
+            &SIGPU_FRAMECONTEXT->frame_width,
+            &SIGPU_FRAMECONTEXT->frame_height
+        );
     if (SIGPU_RENDERSTATS->profile_enabled)
         SIGPU_RENDERSTATS->acquire_ns = SDL_GetTicksNS() - acquire_start;
     SIGPU_RENDERQUEUE->axis_mapped =
@@ -150,12 +161,8 @@ void sigpu_end_frame(void) {
 void sigpu_fini(void) {
     SDL_WaitForGPUIdle(SIGPU_GPUCONTEXT->device);
     sigpu_resources_destroy();
-    SDL_ReleaseWindowFromGPUDevice(SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->window);
-    SDL_DestroyWindow(SIGPU_GPUCONTEXT->window);
+    if (SIGPU_GPUCONTEXT->window)
+        SDL_ReleaseWindowFromGPUDevice(SIGPU_GPUCONTEXT->device, SIGPU_GPUCONTEXT->window);
+    SIGPU_GPUCONTEXT->window = NULL;
     SDL_DestroyGPUDevice(SIGPU_GPUCONTEXT->device);
-    SDL_Quit();
-}
-
-bool sigpu_set_fullscreen(bool enabled) {
-    return SDL_SetWindowFullscreen(SIGPU_GPUCONTEXT->window, enabled);
 }

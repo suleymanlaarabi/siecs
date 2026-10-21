@@ -103,12 +103,11 @@ void sigpu_render_schedule_set_bloom(bool enabled) {
         ecs_system_disable(bloom_pass_system);
 }
 
-void sigpu_render_schedule_register(ecs_system_id_t input_system) {
+void sigpu_render_schedule_register(void) {
     ecs_system(
         {
             .name = "BeginGpuFrame",
             .phase = EcsPreUpdate,
-            .after = { input_system },
             .callback = begin_gpu_frame,
             .main_thread_only = true,
             .no_defer = true,

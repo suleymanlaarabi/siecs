@@ -21,6 +21,7 @@
 #include <siecs.h>
 #include <siecs_spatial.h>
 #include <siecs_rest.h>
+#include <siwindow.h>
 #include <sigpu.h>
 
 #endif

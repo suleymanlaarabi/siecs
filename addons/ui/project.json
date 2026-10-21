@@ -3,7 +3,7 @@
   "type": "package",
   "value": {
     "description": "Retained UI layout and SDL GPU overlay for SIECS",
-    "use": ["siecs", "sigpu"],
+    "use": ["siecs", "siwindow", "sigpu"],
     "clangd": true
   },
   "lang.c": {

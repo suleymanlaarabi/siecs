@@ -6,12 +6,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-ECS_MODULE_DECLARE(sigpu, {
-    const char *title;
-    int width;
-    int height;
-    int samples;
-});
+/* Renders into the siwindow window of slot "main", which must exist at import. */
+ECS_MODULE_DECLARE(sigpu, { int samples; });
 
 ECS_COMPONENT_DECLARE_CPP(
     Color,
@@ -95,12 +91,6 @@ ECS_COMPONENT_DECLARE_CPP(
     ECS_CPP_METHODS(Camera() : fov(60.0f) {} explicit Camera(float value) : fov(value){})
 );
 
-ECS_RESOURCE_DECLARE(WindowConfig, {
-    int width;
-    int height;
-    const char *title;
-});
-
 ECS_RESOURCE_DECLARE(Sky, { Color color; });
 
 ECS_RESOURCE_DECLARE(Sun, {
@@ -139,11 +129,4 @@ ECS_RESOURCE_DECLARE(BloomSettings, {
     float threshold;
     float intensity;
 });
-#ifdef __cplusplus
-extern "C" {
-#endif
-SIECS_PUBLIC_API bool sigpu_set_fullscreen(bool enabled);
-#ifdef __cplusplus
-}
-#endif
 #endif

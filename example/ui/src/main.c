@@ -4,7 +4,9 @@
 #include <string.h>
 int main(void) {
     ecs_init();
-    ECS_MODULE_IMPORT(sigpu,{.title="SIUI example",.width=960,.height=640,.samples=1});
+    ECS_MODULE_IMPORT(siwindow,{0});
+    ecs_set(ecs_new(),Window,{.slot="main",.title="SIUI example",.width=960,.height=640});
+    ECS_MODULE_IMPORT(sigpu,{.samples=1});
     ECS_MODULE_IMPORT(siui,{.gpu=true});
     ecs_entity_t root=ecs_new();
     ecs_set(root,UiNode,{

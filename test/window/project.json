@@ -1,0 +1,33 @@
+{
+  "id": "siwindow.test",
+  "type": "application",
+  "value": { "use": ["siwindow", "siecs"], "public": false },
+  "lang.c": {
+    "c-standard": "c17",
+    "lib": ["SDL3"],
+    "include": ["../include", "../../addons/window/include"]
+  },
+  "test": {
+    "testsuites": [{ "id": "window", "testcases": [
+      "created_on_set",
+      "update_applies_title_and_size",
+      "duplicate_slot_rejected",
+      "remove_destroys_window",
+      "remove_clears_state",
+      "destroy_callback_sees_live_window",
+      "slot_rename",
+      "quit_event_quits_when_kept_open",
+      "pointer_ignores_other_window",
+      "close_request_quits",
+      "close_request_keeps_open",
+      "escape_requests_close",
+      "escape_kept_open_is_a_key",
+      "key_edges_last_one_frame",
+      "key_repeat_is_not_a_press",
+      "focus_lost_releases_input",
+      "pointer_motion_accumulates",
+      "pointer_edges_overflow",
+      "text_input_event"
+    ]}]
+  }
+}

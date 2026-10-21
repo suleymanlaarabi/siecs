@@ -1,6 +1,6 @@
 #ifndef SIECS_SIGPU_H
 #define SIECS_SIGPU_H
-#include "sigpu/input.h"
+#include <siwindow.h>
 #include "sigpu/interaction.h"
 #include "sigpu/overlay.h"
 #include "sigpu/rendering.h"

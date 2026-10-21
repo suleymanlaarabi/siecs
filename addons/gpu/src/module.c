@@ -1,4 +1,3 @@
-#include "input/input.h"
 #include "interaction/interaction.h"
 #include "render/render_internal.h"
 #include <stdlib.h>
@@ -26,23 +25,12 @@ static void fini_rendering(void *data) {
     sigpu_render_schedule_reset();
 }
 void sigpu_import(const sigpu_props_t *props) {
-    const sigpu_props_t defaults = {
-        .title = "SIECS",
-        .width = 1280,
-        .height = 800,
-        .samples = default_multisampling,
-    };
-    sigpu_props_t config = props ? *props : defaults;
-    if (!config.title || !config.title[0])
-        config.title = defaults.title;
-    if (config.width <= 0)
-        config.width = defaults.width;
-    if (config.height <= 0)
-        config.height = defaults.height;
+    sigpu_props_t config = props ? *props : (sigpu_props_t){ 0 };
     if (config.samples <= 0)
-        config.samples = defaults.samples;
+        config.samples = default_multisampling;
 
     ECS_MODULE_IMPORT(sispatial, { 0 });
+    ECS_MODULE_IMPORT(siwindow, { 0 });
     ECS_COMPONENT_REGISTER(Color, Cuboid, Cylinder, Sphere, Bloom, Camera);
     sigpu_settings_register();
     ECS_RESOURCE_REGISTER(GpuContext);
@@ -63,15 +51,9 @@ void sigpu_import(const sigpu_props_t *props) {
     ecs_set_resource(RenderView, { 0 });
     ECS_RESOURCE_REGISTER(RenderSettings);
     ecs_set_resource(RenderSettings, { 0 });
-    ecs_set_resource(
-        WindowConfig,
-        { .width = config.width, .height = config.height, .title = config.title }
-    );
-    const WindowConfig *window = ecs_get_resource_read(WindowConfig);
     sigpu_materials_init();
-    sigpu_init(window->title, window->width, window->height, config.samples);
+    sigpu_init(config.samples);
     sigpu_camera(0.0f, 2.0f, -6.0f, 0.0f, 0.0f, 0.0f, 60.0f);
-    sigpu_input_init();
     ecs_set_resource(Sky, { .color = { 13, 13, 20, 255 } });
     ecs_set_resource(
         Sun,
@@ -83,13 +65,12 @@ void sigpu_import(const sigpu_props_t *props) {
     ecs_set_resource(Multisampling, { .samples = config.samples });
     ecs_set_resource(CameraClip, { .near_plane = 0.1f, .far_plane = 1000.0f });
     ecs_set_resource(BloomSettings, { .enabled = true, .threshold = 0.0f, .intensity = 1.0f });
-    const ecs_system_id_t input_system = sigpu_input_system();
     const ecs_system_id_t camera_system = sigpu_camera_register();
     sigpu_interaction_init(camera_system);
     const ecs_system_id_t static_cache_system = sigpu_static_chunks_register(camera_system);
     sigpu_bounds_register(static_cache_system);
     sigpu_primitives_register();
-    sigpu_render_schedule_register(input_system);
+    sigpu_render_schedule_register();
     ecs_at_fini({ .callback = fini_rendering });
 }
 

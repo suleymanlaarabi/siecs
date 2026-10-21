@@ -280,6 +280,7 @@ void system_parallel_batched_commands_keep_logical_order(void);
 // Testsuite 'change'
 void change_filter_skips_unchanged_tables(void);
 void change_filter_ignores_own_writes(void);
+void change_filter_sees_own_commands(void);
 void change_skipped_table_does_not_stamp_writes(void);
 void change_filter_sees_deferred_writes(void);
 void change_filter_sees_structure_changes(void);
@@ -1355,6 +1356,10 @@ bake_test_case change_testcases[] = {
         change_filter_ignores_own_writes
     },
     {
+        "filter_sees_own_commands",
+        change_filter_sees_own_commands
+    },
+    {
         "skipped_table_does_not_stamp_writes",
         change_skipped_table_does_not_stamp_writes
     },
@@ -1628,7 +1633,7 @@ static bake_test_suite suites[] = {
         "change",
         NULL,
         NULL,
-        10,
+        11,
         change_testcases
     },
     {

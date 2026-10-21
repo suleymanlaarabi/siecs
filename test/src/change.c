@@ -56,6 +56,13 @@ static void change_copy_to_velocity(ecs_iter_t *it) {
         v[i].value = p[i].value;
 }
 
+static void change_set_position(ecs_iter_t *it) {
+    const ChangePosition *p = ecs_field(it, 0);
+    for (uint32_t i = 0; i < it->count; i++)
+        ecs_set(it->entities[i], ChangePosition, { p[i].value + 1 });
+    change_count(it);
+}
+
 static void change_parallel_count(ecs_iter_t *it) {
     atomic_fetch_add(&change_parallel_rows, it->count);
     atomic_fetch_add(&change_parallel_calls, 1);
@@ -111,6 +118,26 @@ void change_filter_ignores_own_writes(void) {
     test_uint(1, change_batches);
     test_int(1, ecs_get(entity, ChangePosition)->value);
     ecs_fini();
+}
+
+/* Commands are stamped when applied, after the writer's run started: the
+ * writer sees them on its next run, unlike writes through its fields. */
+void change_filter_sees_own_commands(void) {
+    const uint16_t workers[] = { 0, 2 };
+    for (uint32_t w = 0; w < 2; w++) {
+        change_world(workers[w]);
+        ecs_entity_t entity = change_entity(0);
+        ecs_system(
+            { .query.components = { ecs_in_changed(ChangePosition) },
+              .callback = change_set_position }
+        );
+        change_reset();
+        ecs_progress();
+        ecs_progress();
+        test_uint(2, change_batches);
+        test_int(2, ecs_get(entity, ChangePosition)->value);
+        ecs_fini();
+    }
 }
 
 void change_skipped_table_does_not_stamp_writes(void) {

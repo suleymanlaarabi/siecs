@@ -6,7 +6,8 @@
         "description": "On demand country music for air travel",
         "use": [
             "siecs",
-            "siecs_spatial"
+            "siecs_spatial",
+            "siwindow"
         ],
         "clangd": true
     },

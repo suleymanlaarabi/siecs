@@ -1,5 +1,5 @@
 #include "interaction.h"
-#include "../input/input.h"
+#include <SDL3/SDL.h>
 #include "backend/api.h"
 #include "picking.h"
 #include <float.h>
@@ -110,8 +110,8 @@ static void fill_payload(
     ecs_entity_t target,
     ecs_entity_t related,
     const pick_result_t *pick,
-    const siinput_pointer_edge_t *edge,
-    const Pointer *pointer
+    const SiPointerEdge *edge,
+    const PointerState *pointer
 ) {
     const float x = edge ? edge->x : pointer->x;
     const float y = edge ? edge->y : pointer->y;
@@ -124,7 +124,7 @@ static void fill_payload(
     payload->timestamp_ns = timestamp;
     payload->pointer_id = pointer_id;
     payload->buttons = buttons;
-    payload->modifiers = sigpu_input_modifiers();
+    payload->modifiers = ecs_get_resource_read(KeyboardState)->modifiers;
     payload->pointer_type = edge ? edge->pointer_type : pointer->pointer_type;
     payload->button = edge ? edge->button : 0;
     payload->clicks = edge ? edge->clicks : 0;
@@ -158,8 +158,8 @@ static void emit_if(
     uint32_t event,
     ecs_entity_t related,
     const pick_result_t *pick,
-    const siinput_pointer_edge_t *edge,
-    const Pointer *pointer
+    const SiPointerEdge *edge,
+    const PointerState *pointer
 ) {
     if (!target || !ecs_is_alive(target) || !(mask & wanted))
         return;
@@ -173,7 +173,7 @@ static uint32_t target_mask(ecs_entity_t entity) {
     return events ? events->mask : 0;
 }
 
-static void cancel_down(const siinput_pointer_edge_t *edge, const Pointer *pointer) {
+static void cancel_down(const SiPointerEdge *edge, const PointerState *pointer) {
     pick_result_t pick_result = pick(edge ? edge->x : pointer->x, edge ? edge->y : pointer->y);
     for (uint32_t button = 1; button < 6; button++) {
         ecs_entity_t target = down_targets[button];
@@ -194,7 +194,7 @@ static void cancel_down(const siinput_pointer_edge_t *edge, const Pointer *point
 }
 
 static void pointer_interaction(ecs_iter_t *it) {
-    const Pointer *pointer = ecs_get_resource_read(Pointer);
+    const PointerState *pointer = ecs_get_resource_read(PointerState);
     if (hovered && !ecs_is_alive(hovered))
         hovered = 0;
     const pick_result_t hover = pick(pointer->x, pointer->y);
@@ -224,20 +224,20 @@ static void pointer_interaction(ecs_iter_t *it) {
             );
         hovered = next;
     }
-    if (sigpu_input_had_motion() && next)
+    if (pointer->moved && next)
         emit_if(next, hover.mask, SiPointerMoveMask, SiPointerMove, 0, &hover, NULL, pointer);
 
-    uint32_t count;
-    const siinput_pointer_edge_t *edges = sigpu_input_pointer_edges(&count);
+    const uint32_t count = pointer->edge_count;
+    const SiPointerEdge *edges = pointer->edges;
     for (uint32_t i = 0; i < count; i++) {
-        const siinput_pointer_edge_t *edge = &edges[i];
-        if (edge->kind == SiInputEdgeCancel) {
+        const SiPointerEdge *edge = &edges[i];
+        if (edge->kind == SiPointerEdgeCancel) {
             cancel_down(edge, pointer);
             continue;
         }
         const pick_result_t hit = pick(edge->x, edge->y);
         const ecs_entity_t target = hit.hit_any ? hit.entity : 0;
-        if (edge->kind == SiInputEdgeDown) {
+        if (edge->kind == SiPointerEdgeDown) {
             if (edge->button < 6) {
                 down_targets[edge->button] = target;
                 down_x[edge->button] = edge->x;
@@ -245,7 +245,7 @@ static void pointer_interaction(ecs_iter_t *it) {
             }
             if (target)
                 emit_if(target, hit.mask, SiPointerDownMask, SiPointerDown, 0, &hit, edge, pointer);
-        } else if (edge->kind == SiInputEdgeUp) {
+        } else if (edge->kind == SiPointerEdgeUp) {
             if (target)
                 emit_if(target, hit.mask, SiPointerUpMask, SiPointerUp, 0, &hit, edge, pointer);
             if (edge->button < 6) {
@@ -260,7 +260,7 @@ static void pointer_interaction(ecs_iter_t *it) {
                 }
                 down_targets[edge->button] = 0;
             }
-        } else if (edge->kind == SiInputEdgeWheel && target) {
+        } else if (edge->kind == SiPointerEdgeWheel && target) {
             emit_if(target, hit.mask, SiWheelMask, SiPointerWheel, 0, &hit, edge, pointer);
         }
     }
@@ -286,6 +286,8 @@ void sigpu_interaction_init(ecs_system_id_t after) {
         { .name = "PointerInteraction",
           .phase = EcsPreRender,
           .after = { after },
+          .query.resources = { { .id = ecs_id(PointerState), .access = EcsIn },
+                               { .id = ecs_id(KeyboardState), .access = EcsIn } },
           .callback = pointer_interaction,
           .main_thread_only = true }
     );

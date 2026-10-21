@@ -5,7 +5,7 @@
     "public": false,
     "clangd": true,
     "language": "cpp",
-    "use": ["siecs", "siecs_spatial", "sigpu"]
+    "use": ["siecs", "siecs_spatial", "siwindow", "sigpu"]
   },
   "lang.cpp": {
     "cpp-standard": "c++20",

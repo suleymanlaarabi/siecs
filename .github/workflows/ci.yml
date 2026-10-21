@@ -170,7 +170,7 @@ jobs:
           }
           $manifest | ConvertTo-Json -Depth 30 | Set-Content $manifestPath -Encoding utf8
           # GUI tests are exercised by the SDL-equipped Linux and macOS jobs.
-          Remove-Item "$core/test/ui", "$core/test/ui_cpp" -Recurse -Force
+          Remove-Item "$core/test/ui", "$core/test/ui_cpp", "$core/test/window" -Recurse -Force
           New-Item -ItemType Directory -Path "$core/addons" -Force | Out-Null
           Copy-Item addons/rest, addons/spatial -Destination "$core/addons" -Recurse
           New-Item -ItemType Directory -Path "$core/example/gpu_city/src" -Force | Out-Null

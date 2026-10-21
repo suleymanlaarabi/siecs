@@ -1,0 +1,16 @@
+{
+    "id": "siwindow",
+    "type": "package",
+    "value": {
+        "author": "Suleyman Laarabi",
+        "description": "Windows and input for SIECS",
+        "use": ["siecs"],
+        "clangd": true
+    },
+    "lang.c": {
+        "c-standard": "c17",
+        "lib": ["SDL3"],
+        "include": ["include", "src"],
+        "export-symbols": true
+    }
+}
