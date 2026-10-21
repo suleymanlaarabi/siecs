@@ -7,7 +7,7 @@ WASM_NODE ?= node
 BENCH_CPU ?= 0
 VEC_ARCH_FLAGS ?=
 
-.PHONY: clean bench bench-naming bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-contracts test-cpp-release test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release build-wasm-debug build-wasm-release test-wasm test-wasm-browser vec-cpp act-ci act-docs act
+.PHONY: clean bench bench-naming bench-query bench-relation bench-migrate bench-remove bench-add bench-create bench-compare check-api-docs test test-c test-c-release test-cpp test-cpp-contracts test-cpp-release test-leaks distr check-distr check-distr-standalone check-distr-cpp-standalone build-c build-c-release build-test build-test-release build-wasm-debug build-wasm-release test-wasm test-wasm-browser vec-cpp act-ci act-docs act gpushader shaders
 
 ACT ?= act
 ACT_PLATFORM ?= ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
@@ -159,3 +159,19 @@ act-docs:
 	@$(ACT) push -W .github/workflows/docs.yml -P $(ACT_PLATFORM)
 
 act: act-ci act-docs
+
+# Shader packs (sigpu v2, RFC section 10). Needs the Slang compiler
+# (shader-slang); the packs are committed, so builds do not.
+GPUSHADER = addons/gpu/tools/gpushader/bin/gpushader
+SLANG_INCLUDE ?= /usr/include/shader-slang
+SLANG_LIB ?= slang-compiler
+
+$(GPUSHADER): addons/gpu/tools/gpushader/main.cpp addons/gpu/src/backend/gpushader_format.h
+	@mkdir -p $(dir $@)
+	$(CXX) -std=c++20 -O2 -Wall -Wextra -Iaddons/gpu/src -I$(SLANG_INCLUDE) $< -l$(SLANG_LIB) -o $@
+
+gpushader: $(GPUSHADER)
+
+shaders: $(GPUSHADER)
+	$(GPUSHADER) example/gpu_proof/shaders/proof.slang -o example/gpu_proof/shaders/proof.gpushader
+	sh addons/gpu/tools/embed_pack.sh example/gpu_proof/shaders/proof.gpushader proof_gpushader > example/gpu_proof/src/proof_pack.generated.h

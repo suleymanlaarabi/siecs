@@ -1,0 +1,14 @@
+{
+  "id": "siecs.example.gpu_proof",
+  "type": "application",
+  "value": {
+    "public": false,
+    "clangd": true,
+    "use": ["siecs", "siwindow", "sigpu"]
+  },
+  "lang.c": {
+    "c-standard": "c17",
+    "lib": ["SDL3"],
+    "include": ["../../addons/gpu/src"]
+  }
+}
