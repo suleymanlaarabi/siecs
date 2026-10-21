@@ -55,6 +55,15 @@ class system : public query_filter<system> {
         return *this;
     }
 
+    /** Opt in to concurrent portions of an unordered entity query.
+     * Zero selects 1024 rows per portion. Captures and external state must
+     * support concurrent invocation; writable resources are rejected. */
+    system &parallel(uint32_t chunk_size = 0) {
+        _system.parallel = true;
+        _system.chunk_size = chunk_size;
+        return *this;
+    }
+
     /** Set whether the system is only run on the main thread. */
     system &main_thread() {
         _system.main_thread_only = true;

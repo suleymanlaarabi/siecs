@@ -147,6 +147,7 @@ ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
 }
 
 void ecs_observer_fini(ecs_observer_id_t id) {
+    ecs_assert_not_scheduler_parallel("observer configuration");
     ecs_observer_t *observer = sicore_vec_get_mut(&observer_index.observers, id, ecs_observer_t);
     ecs_assert(observer->callback != NULL, "Observer is not alive");
     uint32_t target_entity = observer->target_entity;
@@ -194,10 +195,12 @@ void ecs_observer_fini_entity(ecs_entity_t entity) {
 }
 
 void ecs_observer_enable(ecs_observer_id_t id) {
+    ecs_assert_not_scheduler_parallel("observer configuration");
     sicore_vec_get_mut(&observer_index.observers, id, ecs_observer_t)->enabled = true;
 }
 
 void ecs_observer_disable(ecs_observer_id_t id) {
+    ecs_assert_not_scheduler_parallel("observer configuration");
     sicore_vec_get_mut(&observer_index.observers, id, ecs_observer_t)->enabled = false;
 }
 
@@ -205,7 +208,7 @@ void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *tr
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
     ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_table_t *table = ecs_get_table(record->table_id);
+    ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
     ecs_emit(table, entity, event, 0, trigger_data);
 }
 

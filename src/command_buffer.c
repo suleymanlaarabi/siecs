@@ -226,8 +226,8 @@ static inline void command_fini(ecs_entity_command_t *command) {
 void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena) {
     sicore_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
     sicore_vec_init(&buffer->relations, sizeof(ecs_deferred_relation_t));
-    buffer->entity_to_command = NULL;
-    buffer->entity_capacity = 0;
+    buffer->command_slots = NULL;
+    buffer->slot_capacity = 0;
     buffer->arena = arena;
     buffer->pending_names = (ecs_name_index_t){ 0 };
 }
@@ -239,7 +239,7 @@ void ecs_command_buffer_fini(ecs_command_buffer_t *buffer) {
     }
     sicore_vec_fini(&buffer->commands);
     sicore_vec_fini(&buffer->relations);
-    free(buffer->entity_to_command);
+    free(buffer->command_slots);
     ecs_name_index_fini(&buffer->pending_names);
 }
 
@@ -254,38 +254,43 @@ void ecs_execution_context_fini(ecs_execution_context_t *context) {
     ecs_arena_fini(&context->arena);
 }
 
-static void command_buffer_ensure_entity(ecs_command_buffer_t *buffer, uint32_t entity_id) {
-    if (entity_id < buffer->entity_capacity) {
-        return;
-    }
-
-    uint32_t new_capacity = buffer->entity_capacity ? buffer->entity_capacity : 256;
-    while (new_capacity <= entity_id) {
-        new_capacity *= 2;
-    }
-
-    buffer->entity_to_command = realloc(buffer->entity_to_command, sizeof(uint32_t) * new_capacity);
-    for (uint32_t i = buffer->entity_capacity; i < new_capacity; i++) {
-        buffer->entity_to_command[i] = ECS_COMMAND_NONE;
-    }
-    buffer->entity_capacity = new_capacity;
+static uint32_t command_slot(const ecs_command_buffer_t *buffer, ecs_entity_t entity) {
+    uint32_t slot = (ecs_first(entity) * UINT32_C(2654435761) ^ ecs_second(entity)) &
+                    (buffer->slot_capacity - 1);
+    const ecs_entity_command_t *commands = buffer->commands.data;
+    while (buffer->command_slots[slot] &&
+           commands[buffer->command_slots[slot] - 1].entity != entity)
+        slot = (slot + 1) & (buffer->slot_capacity - 1);
+    return slot;
 }
 
 static ecs_entity_command_t *command_for_entity(ecs_command_buffer_t *buffer, ecs_entity_t entity) {
-    uint32_t entity_id = ecs_first(entity);
-    command_buffer_ensure_entity(buffer, entity_id);
-
-    uint32_t command_index = buffer->entity_to_command[entity_id];
-    if (command_index != ECS_COMMAND_NONE) {
-        return sicore_vec_get_mut(&buffer->commands, command_index, ecs_entity_command_t);
+    if ((buffer->commands.size + 1) * 2 > buffer->slot_capacity) {
+        uint32_t capacity = buffer->slot_capacity ? buffer->slot_capacity * 2 : 16;
+        uint32_t *slots = calloc(capacity, sizeof *slots);
+        ecs_fatal_if(!slots, "command index allocation failed\n");
+        free(buffer->command_slots);
+        buffer->command_slots = slots;
+        buffer->slot_capacity = capacity;
+        const ecs_entity_command_t *commands = buffer->commands.data;
+        for (uint32_t i = 0; i < buffer->commands.size; i++)
+            slots[command_slot(buffer, commands[i].entity)] = i + 1;
     }
-
-    command_index = buffer->commands.size;
-    ecs_entity_command_t *command =
-        sicore_vec_push_empty(&buffer->commands, sizeof(ecs_entity_command_t));
+    uint32_t slot = command_slot(buffer, entity);
+    if (buffer->command_slots[slot])
+        return sicore_vec_get_mut(
+            &buffer->commands,
+            buffer->command_slots[slot] - 1,
+            ecs_entity_command_t
+        );
+    ecs_entity_command_t *command = sicore_vec_push_empty(&buffer->commands, sizeof *command);
     command_init(command, entity);
-    buffer->entity_to_command[entity_id] = command_index;
+    buffer->command_slots[slot] = buffer->commands.size;
     return command;
+}
+
+void ecs_command_buffer_create(ecs_entity_t entity) {
+    command_for_entity(&ecs_execution_context_current()->commands, entity);
 }
 
 static inline void
@@ -347,8 +352,12 @@ void ecs_command_buffer_kill(ecs_entity_t entity) {
     ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
     if (command->identity && command->identity->reservation) {
-        ecs_name_index_remove(&buffer->pending_names, command->identity->reserved_parent,
-            command->identity->reservation, entity);
+        ecs_name_index_remove(
+            &buffer->pending_names,
+            command->identity->reserved_parent,
+            command->identity->reservation,
+            entity
+        );
         free(command->identity->reservation);
         command->identity->reservation = NULL;
     }
@@ -400,12 +409,18 @@ void ecs_command_buffer_relate(
 }
 
 void ecs_command_buffer_identity(
-    ecs_entity_t entity, const char *name, bool set_name, ecs_entity_t parent, bool set_parent
+    ecs_entity_t entity,
+    const char *name,
+    bool set_name,
+    ecs_entity_t parent,
+    bool set_parent
 ) {
-    if (set_name && !ecs_name_valid(name)) return;
+    if (set_name && !ecs_name_valid(name))
+        return;
     ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
-    if (command->kill) return;
+    if (command->kill)
+        return;
     if (!command->identity) {
         command->identity = ecs_arena_alloc(buffer->arena, sizeof *command->identity);
         *command->identity = (ecs_deferred_identity_t){ 0 };
@@ -414,8 +429,12 @@ void ecs_command_buffer_identity(
     /* Input may be the current reservation; copy it before invalidating either string. */
     char *copy = set_name && name && name[0] ? strdup(name) : NULL;
     if (identity->reservation) {
-        ecs_name_index_remove(&buffer->pending_names, identity->reserved_parent,
-            identity->reservation, entity);
+        ecs_name_index_remove(
+            &buffer->pending_names,
+            identity->reserved_parent,
+            identity->reservation,
+            entity
+        );
         free(identity->reservation);
         identity->reservation = NULL;
     }
@@ -431,31 +450,42 @@ void ecs_command_buffer_identity(
     const char *effective = identity->set_name ? identity->name : ecs_name_local(entity);
     if (effective) {
         identity->reservation = strdup(effective);
-        identity->reserved_parent = identity->set_parent ? identity->parent : ecs_name_parent(entity);
-        ecs_name_index_insert(&buffer->pending_names, identity->reserved_parent,
-            identity->reservation, entity);
+        identity->reserved_parent =
+            identity->set_parent ? identity->parent : ecs_name_parent(entity);
+        ecs_name_index_insert(
+            &buffer->pending_names,
+            identity->reserved_parent,
+            identity->reservation,
+            entity
+        );
     }
 }
 
-ecs_entity_t ecs_command_buffer_lookup_name(
-    ecs_entity_t parent, const char *name, size_t length
-) {
+ecs_entity_t ecs_command_buffer_lookup_name(ecs_entity_t parent, const char *name, size_t length) {
     ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
     ecs_entity_t entity = ecs_name_index_find(&buffer->pending_names, parent, name, length);
-    if (entity && ecs_name_entity_alive(entity)) return entity;
+    if (entity && ecs_name_entity_alive(entity))
+        return entity;
     entity = ecs_name_lookup_segment(parent, name, length);
-    if (!entity) return 0;
-    uint32_t id = ecs_first(entity);
-    if (id < buffer->entity_capacity && buffer->entity_to_command[id] != ECS_COMMAND_NONE) {
-        const ecs_entity_command_t *command = sicore_vec_get(&buffer->commands,
-            buffer->entity_to_command[id], ecs_entity_command_t);
-        if (command->entity != entity || command->kill) return 0;
+    if (!entity)
+        return 0;
+    uint32_t slot = buffer->slot_capacity ? command_slot(buffer, entity) : 0;
+    if (buffer->slot_capacity && buffer->command_slots[slot]) {
+        const ecs_entity_command_t *command = sicore_vec_get(
+            &buffer->commands,
+            buffer->command_slots[slot] - 1,
+            ecs_entity_command_t
+        );
+        if (command->entity != entity || command->kill)
+            return 0;
         const ecs_deferred_identity_t *identity = command->identity;
         if (identity) {
             const char *effective = identity->set_name ? identity->name : ecs_name_local(entity);
-            ecs_entity_t effective_parent = identity->set_parent ? identity->parent : ecs_name_parent(entity);
+            ecs_entity_t effective_parent =
+                identity->set_parent ? identity->parent : ecs_name_parent(entity);
             if (!effective || effective_parent != parent || strlen(effective) != length ||
-                memcmp(effective, name, length) != 0) return 0;
+                memcmp(effective, name, length) != 0)
+                return 0;
         }
     }
     return entity;
@@ -536,7 +566,7 @@ static void command_apply_changes(ecs_entity_command_t *command) {
         ecs_component_t id = changes[i].id;
         const ecs_component_record_t *record = ecs_component_index_get(id);
         ecs_entity_record_t *entity_record = ecs_get_record(command->entity);
-        ecs_table_t *table = ecs_get_table(entity_record->table_id);
+        ecs_table_t *table = ecs_get_table(ecs_entity_record_table(entity_record));
         uint16_t column = ecs_table_get_column_index(table, id);
         if (!ecs_component_write(
                 command->entity,
@@ -594,6 +624,8 @@ static void command_apply(
         return;
     }
 
+    ecs_entity_materialize(command->entity);
+
     if (command->kill) {
         ecs_kill_now(command->entity);
         return;
@@ -601,13 +633,19 @@ static void command_apply(
 
     if (command->identity) {
         const ecs_deferred_identity_t *identity = command->identity;
-        ecs_name_update_now(command->entity, identity->name, identity->set_name,
-            identity->parent, identity->set_parent);
-        if (!ecs_name_entity_alive(command->entity)) return;
+        ecs_name_update_now(
+            command->entity,
+            identity->name,
+            identity->set_name,
+            identity->parent,
+            identity->set_parent
+        );
+        if (!ecs_name_entity_alive(command->entity))
+            return;
     }
 
     ecs_entity_record_t *record = ecs_get_record(command->entity);
-    uint16_t old_table_id = record->table_id;
+    uint16_t old_table_id = ecs_entity_record_table(record);
     ecs_table_t *old_table = ecs_get_table(old_table_id);
     ecs_entity_t old_base = ecs_type_isa_target(&old_table->type);
     if (command_type_unchanged(old_table, command)) {
@@ -661,7 +699,7 @@ static void command_apply(
             final_type = (ecs_type_t){ 0 };
             if (command->change_count <= ECS_COMMAND_TRANSITION_CHANGE_CAPACITY && next &&
                 command_shape_equals(command, next) && ecs_is_alive(next->entity) &&
-                ecs_get_record(next->entity)->table_id == old_table_id) {
+                ecs_entity_record_table(ecs_get_record(next->entity)) == old_table_id) {
                 command_transition_set(
                     transition,
                     command,
@@ -675,7 +713,7 @@ static void command_apply(
         old_table = ecs_get_table(old_table_id);
         ecs_migrate(record, command->entity, old_table, new_table_id, 0);
         record = ecs_get_record(command->entity);
-        ecs_table_t *new_table = ecs_get_table(record->table_id);
+        ecs_table_t *new_table = ecs_get_table(ecs_entity_record_table(record));
         if (base_changed) {
             if (transition_hit) {
                 command_transition_copy_inherited(transition, new_table, record->table_row);
@@ -712,15 +750,16 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
         sicore_vec_init(&buffer->relations, sizeof(ecs_deferred_relation_t));
 
         ecs_entity_command_t *items = sicore_vec_data(&commands, ecs_entity_command_t);
-        for (uint32_t i = 0; i < commands.size; i++) {
-            uint32_t entity_id = ecs_first(items[i].entity);
-            buffer->entity_to_command[entity_id] = ECS_COMMAND_NONE;
-        }
+        memset(buffer->command_slots, 0, buffer->slot_capacity * sizeof(uint32_t));
 
         for (uint32_t i = 0; i < commands.size; i++) {
             if (items[i].identity && items[i].identity->reservation) {
-                ecs_name_index_remove(&buffer->pending_names, items[i].identity->reserved_parent,
-                    items[i].identity->reservation, items[i].entity);
+                ecs_name_index_remove(
+                    &buffer->pending_names,
+                    items[i].identity->reserved_parent,
+                    items[i].identity->reservation,
+                    items[i].entity
+                );
             }
             command_apply(
                 buffer,
@@ -731,8 +770,18 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
             );
             command_fini(&items[i]);
         }
-        sicore_vec_fini(&commands);
-        sicore_vec_fini(&relations);
+        if (!buffer->commands.size) {
+            // Keep the detached storage when hooks did not enqueue another batch.
+            sicore_vec_fini(&buffer->commands);
+            sicore_vec_fini(&buffer->relations);
+            buffer->commands = commands;
+            buffer->relations = relations;
+            sicore_vec_clear(&buffer->commands);
+            sicore_vec_clear(&buffer->relations);
+        } else {
+            sicore_vec_fini(&commands);
+            sicore_vec_fini(&relations);
+        }
     }
     command_transition_fini(&transition);
     ecs_arena_reset(buffer->arena);
@@ -740,7 +789,8 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
 
 void ecs_command_buffer_flush() {
     ecs_execution_context_t *context = ecs_execution_context_current();
-    if (context->flushing_commands) return;
+    if (context->flushing_commands)
+        return;
     context->flushing_commands = true;
     ecs_command_buffer_flush_buffer(&context->commands);
     context->flushing_commands = false;

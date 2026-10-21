@@ -20,6 +20,7 @@ static bool ecs_world_started;
 static bool ecs_world_finished;
 
 void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
+    ecs_assert_not_scheduler_parallel("world initialization");
     ecs_assert(!ecs_world_started, "ecs_init called while ECS is already running\n");
     if (ecs_world_finished) {
         memset(&ecs_world, 0, sizeof ecs_world);
@@ -29,8 +30,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world_started = true;
 #endif
     sireflect_init();
-    sicore_vec_init_w_size(&entity_index.entities, sizeof(ecs_entity_record_t), 256);
-    entity_index.first_available = UINT32_MAX;
+    ecs_entity_index_init();
     ecs_component_index_init();
     ecs_relation_index_init();
     ecs_table_index_init();
@@ -45,7 +45,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world.active_module = 0;
     ecs_world.features = *features;
     ecs_world.did_start = false;
-    ecs_world.exit = false;
+    atomic_init(&ecs_world.exit, false);
     ecs_world.delta_time = 0;
     ecs_world.last_time = 0;
     ecs_bootstrap();
@@ -76,6 +76,7 @@ static void ecs_fini_callbacks_run(void) {
 }
 
 void ecs_fini(void) {
+    ecs_assert_not_scheduler_parallel("world destruction");
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
     ecs_world_finished = true;
 
@@ -89,8 +90,7 @@ void ecs_fini(void) {
     ecs_query_index_fini();
     ecs_resource_storage_fini();
     ecs_arena_fini(&ecs_world.scene_strings);
-    sicore_vec_fini(&entity_index.entities);
-    entity_index = (ecs_entity_index_t){ 0 };
+    ecs_entity_index_fini();
     ecs_execution_context_fini(&ecs_world.main_context);
     ecs_component_index_fini();
     ecs_relation_index_fini();
@@ -98,6 +98,7 @@ void ecs_fini(void) {
     sireflect_fini();
     ecs_names_fini();
     ecs_module_storage_fini();
+    ecs_type_slots_reset();
 #ifndef NDEBUG
     ecs_world_started = false;
 #endif

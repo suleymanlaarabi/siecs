@@ -28,7 +28,12 @@
           "custom_query_phases",
           "custom_system_phases",
           "resource_and_component",
-          "custom_observer"
+          "custom_observer",
+          "parallel_params_are_local",
+          "parallel_spawn_visible_after_dependency",
+          "parallel_rejects_mutable_resource",
+          "parallel_rejects_main_thread",
+          "parallel_builtin_relation_targets"
         ]
       },
       {

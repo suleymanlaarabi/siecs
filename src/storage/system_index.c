@@ -65,6 +65,7 @@ ecs_phase_t ecs_phase_register(const ecs_phase_desc_t *desc) {
         .name = desc && desc->name ? desc->name : "unnamed",
     };
     sicore_vec_init(&info.systems, sizeof(ecs_system_id_t));
+    sicore_vec_init(&info.dependencies, sizeof(ecs_system_edge_t));
     sicore_vec_push(&index->phases, &info, sizeof info);
     uint32_t old_count = index->phase_order.size;
     sicore_vec_push(&index->phase_order, &id, sizeof id);
@@ -127,6 +128,8 @@ ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query_id_t qid, bool 
         .enabled = !desc->disabled,
         .main_thread_only = desc->main_thread_only,
         .no_defer = desc->no_defer,
+        .parallel = desc->parallel,
+        .chunk_size = desc->chunk_size ? desc->chunk_size : 1024,
     };
     for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY && desc->after[i]; i++) {
 #ifndef NDEBUG
@@ -140,9 +143,9 @@ ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query_id_t qid, bool 
             "system dependency must be in the same phase\n"
         );
 #endif
-        if (desc->after[i] > system.after)
-            system.after = desc->after[i];
+        system.after[i] = desc->after[i];
     }
+    sicore_vec_init(&system.successors, sizeof(ecs_system_id_t));
     sicore_vec_push(&index->systems, &system, sizeof system);
     ecs_system_id_t id = index->systems.size - 1;
     sicore_vec_push_u16(&ecs_system_index_get_phase(system.phase)->systems, id);
@@ -204,41 +207,57 @@ static bool ecs_system_conflict(const ecs_system_t *a, const ecs_system_t *b) {
         )) {
         return true;
     }
-    return ecs_query_terms_conflict(
-               ecs_query_fields(aq),
-               aq->field_count,
-               ecs_query_fields(bq),
-               bq->field_count
-           ) &&
-           ecs_query_tables_overlap(a_cache, b_cache);
+    if (!ecs_query_terms_conflict(
+            ecs_query_fields(aq),
+            aq->field_count,
+            ecs_query_fields(bq),
+            bq->field_count
+        ))
+        return false;
+    // Shared fields may point into tables outside either query's matching set.
+    if (aq->up_mask || bq->up_mask)
+        return true;
+    const ecs_query_cache_t *caches[] = { a_cache, b_cache };
+    for (uint8_t c = 0; c < 2; c++) {
+        for (uint16_t t = 0; t < caches[c]->table_count; t++) {
+            const ecs_query_table_t *entry = ecs_query_table_at(caches[c], t);
+            for (uint8_t f = 0; f < caches[c]->query->field_count; f++)
+                if (((entry->field_kind_bits >> (2 * f)) & 3) == EcsFieldShared)
+                    return true;
+        }
+    }
+    return ecs_query_tables_overlap(a_cache, b_cache);
 }
 
 void ecs_system_index_build_plan(void) {
     ecs_system_index_t *index = &system_index;
     sicore_vec_clear(&index->execution_order);
+    for (uint32_t i = 1; i < index->systems.size; i++)
+        sicore_vec_clear(&ecs_system_get_unchecked(i)->successors);
     for (uint32_t p = 0; p < index->phase_order.size; p++) {
         ecs_phase_info_t *phase =
             ecs_system_index_get_phase(*sicore_vec_get(&index->phase_order, p, ecs_phase_t));
         phase->plan_first = index->execution_order.size;
-        uint32_t batch_first = phase->plan_first;
+        sicore_vec_clear(&phase->dependencies);
         const ecs_system_id_t *systems = phase->systems.data;
         for (uint32_t i = 0; i < phase->systems.size; i++) {
-            ecs_system_id_t id = systems[i];
-            ecs_system_t *current = ecs_system_index_get(id);
+            ecs_system_t *current = ecs_system_index_get(systems[i]);
             if (!current->enabled)
                 continue;
-            bool blocked = false;
-            const ecs_system_id_t *order = index->execution_order.data;
-            for (uint32_t j = batch_first; j < index->execution_order.size && !blocked; j++) {
-                ecs_system_id_t previous_id = order[j];
-                blocked |= current->after == previous_id;
-                blocked |= ecs_system_conflict(current, ecs_system_index_get(previous_id));
+            for (uint32_t j = 0; j < i; j++) {
+                ecs_system_t *previous = ecs_system_index_get(systems[j]);
+                if (!previous->enabled)
+                    continue;
+                bool dependent = ecs_system_conflict(previous, current);
+                for (uint16_t k = 0; k < ECS_SYSTEM_AFTER_CAPACITY && current->after[k]; k++)
+                    dependent |= current->after[k] == systems[j];
+                if (dependent) {
+                    ecs_system_edge_t edge = { systems[j], systems[i] };
+                    sicore_vec_push(&phase->dependencies, &edge, sizeof edge);
+                    sicore_vec_push_u16(&previous->successors, systems[i]);
+                }
             }
-            if (blocked) {
-                sicore_vec_push_u16(&index->execution_order, 0);
-                batch_first = index->execution_order.size;
-            }
-            sicore_vec_push_u16(&index->execution_order, id);
+            sicore_vec_push_u16(&index->execution_order, systems[i]);
         }
         phase->plan_count = index->execution_order.size - phase->plan_first;
     }
@@ -248,12 +267,15 @@ void ecs_system_index_build_plan(void) {
 void ecs_system_index_fini(void) {
     ecs_system_index_t *index = &system_index;
     ecs_system_t *systems = index->systems.data;
-    for (uint32_t i = 1; i < index->systems.size; i++)
+    for (uint32_t i = 1; i < index->systems.size; i++) {
         if (systems[i].user_data_dtor)
             systems[i].user_data_dtor(systems[i].user_data);
+        sicore_vec_fini(&systems[i].successors);
+    }
     for (uint32_t i = 0; i < index->phases.size; i++) {
         ecs_phase_info_t *phase = sicore_vec_get_mut(&index->phases, i, ecs_phase_info_t);
         sicore_vec_fini(&phase->systems);
+        sicore_vec_fini(&phase->dependencies);
     }
     sicore_vec_fini(&index->execution_order);
     sicore_vec_fini(&index->phase_order);

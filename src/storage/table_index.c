@@ -214,7 +214,7 @@ static bool ecs_table_index_inherits_component_before(
     ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0 && base != stop_base) {
         const ecs_entity_record_t *record = ecs_get_record(base);
-        const ecs_table_t *base_table = ecs_get_table(record->table_id);
+        const ecs_table_t *base_table = ecs_get_table(ecs_entity_record_table(record));
         if (ecs_table_column_or_invalid(base_table, component) != UINT16_MAX) {
             return true;
         }
@@ -227,7 +227,7 @@ static void ecs_table_index_register_inherited_components(ecs_table_t *table, ui
     ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
-        const ecs_table_t *base_table = ecs_get_table(record->table_id);
+        const ecs_table_t *base_table = ecs_get_table(ecs_entity_record_table(record));
 
         for (uint16_t i = 0; i < base_table->type.component_count; i++) {
             ecs_component_t component = base_table->type.ids[i];

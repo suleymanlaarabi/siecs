@@ -10,7 +10,8 @@ typedef struct {
     uintptr_t user_data;
     void (*user_data_dtor)(uintptr_t user_data);
     ecs_phase_t phase;
-    ecs_system_id_t after;
+    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
+    sicore_vec_t successors;
     double interval;
     double interval_elapsed;
     float prepared_delta_time;
@@ -20,11 +21,18 @@ typedef struct {
     bool enabled;
     bool main_thread_only;
     bool no_defer;
+    bool parallel;
+    uint32_t chunk_size;
 } ecs_system_t;
+
+typedef struct {
+    ecs_system_id_t before, after;
+} ecs_system_edge_t;
 
 typedef struct {
     const char *name;
     sicore_vec_t systems;
+    sicore_vec_t dependencies;
     uint32_t plan_first;
     uint32_t plan_count;
 } ecs_phase_info_t;

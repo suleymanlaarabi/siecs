@@ -5406,6 +5406,74 @@ void ecs_emit_relation_event(
 
 #endif
 
+#ifndef SIECS_STORAGE_ENTITY_INDEX_H
+#define SIECS_STORAGE_ENTITY_INDEX_H
+#include <stdatomic.h>
+#include <stdint.h>
+
+#define ECS_ENTITY_PAGE_BITS 16
+#define ECS_ENTITY_PAGE_SIZE (UINT32_C(1) << ECS_ENTITY_PAGE_BITS)
+#define ECS_ENTITY_PAGE_COUNT (UINT32_C(1) << (32 - ECS_ENTITY_PAGE_BITS))
+#define ECS_ENTITY_RESERVATION_SIZE 256
+
+typedef struct {
+    uint16_t generation;
+    _Atomic uint16_t table_id;
+    // Reserved entities have table 0 and row UINT32_MAX until publication.
+    uint32_t table_row;
+} ecs_entity_record_t;
+
+_Static_assert(sizeof(ecs_entity_record_t) == 8, "entity records must remain compact");
+
+typedef struct {
+    uint32_t next, end;
+    uint32_t recycled_begin, recycled_end;
+    bool recycled_exhausted;
+} ecs_entity_reservation_t;
+
+typedef struct {
+    _Atomic(ecs_entity_record_t *) *pages;
+    sicore_vec_t available;
+    uint32_t available_snapshot;
+    _Alignas(64) atomic_uint count;
+    _Alignas(64) atomic_int_fast64_t available_cursor;
+} ecs_entity_index_t;
+
+extern ecs_entity_index_t entity_index;
+
+void ecs_entity_index_init(void);
+void ecs_entity_index_fini(void);
+ecs_entity_t ecs_entity_index_reserve(bool reuse, ecs_entity_reservation_t *reservation);
+void ecs_entity_index_begin_parallel(void);
+void ecs_entity_index_end_parallel(void);
+void ecs_entity_index_return(ecs_entity_reservation_t *reservation);
+void ecs_entity_materialize(ecs_entity_t entity);
+
+static inline uint32_t ecs_entity_index_count(void) {
+    return atomic_load_explicit(&entity_index.count, memory_order_relaxed);
+}
+
+static inline ecs_entity_record_t *ecs_entity_index_get_record(uint32_t id) {
+    ecs_entity_record_t *page =
+        atomic_load_explicit(&entity_index.pages[id >> ECS_ENTITY_PAGE_BITS], memory_order_acquire);
+    return page ? page + (id & (ECS_ENTITY_PAGE_SIZE - 1)) : NULL;
+}
+
+static inline uint16_t ecs_entity_record_table(const ecs_entity_record_t *record) {
+    return atomic_load_explicit(&record->table_id, memory_order_relaxed);
+}
+
+static inline bool ecs_entity_index_is_alive(ecs_entity_t entity) {
+    uint32_t id = ecs_first(entity);
+    if (!id || id >= ecs_entity_index_count())
+        return false;
+    const ecs_entity_record_t *record = ecs_entity_index_get_record(id);
+    return record && atomic_load_explicit(&record->table_id, memory_order_acquire) != UINT16_MAX &&
+           record->generation == ecs_second(entity);
+}
+
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -5454,8 +5522,8 @@ typedef struct {
 typedef struct ecs_command_buffer_s {
     sicore_vec_t commands;
     sicore_vec_t relations;
-    uint32_t *entity_to_command;
-    uint32_t entity_capacity;
+    uint32_t *command_slots;
+    uint32_t slot_capacity;
     ecs_arena_t *arena;
     ecs_name_index_t pending_names;
 } ecs_command_buffer_t;
@@ -5463,6 +5531,7 @@ typedef struct ecs_command_buffer_s {
 typedef struct ecs_execution_context_s {
     ecs_command_buffer_t commands;
     ecs_arena_t arena;
+    ecs_entity_reservation_t *entity_reservation;
     uint32_t defer_depth;
     bool flushing_commands;
     bool scheduler_parallel;
@@ -5489,6 +5558,7 @@ void ecs_execution_context_set(ecs_execution_context_t *context);
 void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena);
 void ecs_command_buffer_fini(ecs_command_buffer_t *buffer);
 
+void ecs_command_buffer_create(ecs_entity_t entity);
 void ecs_command_buffer_add(ecs_entity_t entity, ecs_component_t id);
 void ecs_command_buffer_remove(ecs_entity_t entity, ecs_component_t id);
 void ecs_command_buffer_set(ecs_entity_t entity, ecs_component_t id, const void *data);
@@ -5496,11 +5566,13 @@ void ecs_command_buffer_move(ecs_entity_t entity, ecs_component_t id, void *data
 void ecs_command_buffer_kill(ecs_entity_t entity);
 void ecs_command_buffer_set_base(ecs_entity_t entity, ecs_entity_t target);
 void ecs_command_buffer_identity(
-    ecs_entity_t entity, const char *name, bool set_name, ecs_entity_t parent, bool set_parent
+    ecs_entity_t entity,
+    const char *name,
+    bool set_name,
+    ecs_entity_t parent,
+    bool set_parent
 );
-ecs_entity_t ecs_command_buffer_lookup_name(
-    ecs_entity_t parent, const char *name, size_t length
-);
+ecs_entity_t ecs_command_buffer_lookup_name(ecs_entity_t parent, const char *name, size_t length);
 void ecs_command_buffer_relate(
     ecs_entity_t entity,
     ecs_relation_id_t relation,
@@ -5817,34 +5889,6 @@ ecs_component_default_relations(ecs_component_t component) {
 
 #endif
 
-#ifndef SIECS_STORAGE_ENTITY_INDEX_H
-#define SIECS_STORAGE_ENTITY_INDEX_H
-#include <stdint.h>
-
-typedef struct {
-    uint16_t generation;
-    uint16_t table_id;
-    // Alive records store the row in their table. Dead records reuse this field
-    // as the next entity id in the free list headed by first_available.
-    uint32_t table_row;
-} ecs_entity_record_t;
-
-typedef struct {
-    sicore_vec_t entities;    // ecs_entity_record_t
-    uint32_t first_available; // UINT32_MAX when no dead entity can be reused
-} ecs_entity_index_t;
-
-extern ecs_entity_index_t entity_index;
-
-#define ecs_entity_index_get_record(entity_id)                                                     \
-    sicore_vec_get_mut(&entity_index.entities, entity_id, ecs_entity_record_t)
-
-static inline bool ecs_entity_index_is_alive(ecs_entity_t entity) {
-    return ecs_entity_index_get_record(ecs_first(entity))->generation == ecs_second(entity);
-}
-
-#endif
-
 #ifndef SIECS_STORAGE_OBSERVER_INDEX_H
 #define SIECS_STORAGE_OBSERVER_INDEX_H
 #ifndef SIECS_STORAGE_QUERY_INDEX_H
@@ -5942,9 +5986,10 @@ void ecs_query_index_activate(ecs_query_id_t id, const uint16_t *tables, uint16_
 void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id);
 void ecs_query_index_refresh_table_fields(const ecs_table_t *table);
 bool ecs_query_resolve_up_fields(
-    ecs_query_cache_t *cache,
+    const ecs_query_t *query,
     const ecs_table_t *table,
-    ecs_query_table_t *entry
+    void **fields,
+    uint32_t *field_kind_bits
 );
 #endif
 
@@ -6017,7 +6062,8 @@ typedef struct {
     uintptr_t user_data;
     void (*user_data_dtor)(uintptr_t user_data);
     ecs_phase_t phase;
-    ecs_system_id_t after;
+    ecs_system_id_t after[ECS_SYSTEM_AFTER_CAPACITY];
+    sicore_vec_t successors;
     double interval;
     double interval_elapsed;
     float prepared_delta_time;
@@ -6027,11 +6073,18 @@ typedef struct {
     bool enabled;
     bool main_thread_only;
     bool no_defer;
+    bool parallel;
+    uint32_t chunk_size;
 } ecs_system_t;
+
+typedef struct {
+    ecs_system_id_t before, after;
+} ecs_system_edge_t;
 
 typedef struct {
     const char *name;
     sicore_vec_t systems;
+    sicore_vec_t dependencies;
     uint32_t plan_first;
     uint32_t plan_count;
 } ecs_phase_info_t;
@@ -6063,31 +6116,37 @@ void ecs_system_index_build_plan(void);
 #ifndef SIECS_WORKER_POOL_H
 #define SIECS_WORKER_POOL_H
 
-#include <stdatomic.h>
 #include <stdint.h>
+
+typedef struct ecs_worker_pool_s ecs_worker_pool_t;
+typedef struct ecs_worker_job_s ecs_worker_job_t;
+
+typedef struct {
+    _Alignas(64) ecs_platform_thread_t thread;
+    ecs_worker_pool_t *pool;
+    ecs_entity_reservation_t reservation;
+    ecs_worker_job_t *jobs, *free_jobs;
+} ecs_worker_t;
 
 typedef struct {
     ecs_system_id_t system;
-} ecs_worker_job_t;
-
-typedef struct ecs_worker_pool_s ecs_worker_pool_t;
-
-typedef struct {
-    ecs_platform_thread_t thread;
-    ecs_execution_context_t context;
-    ecs_worker_pool_t *pool;
-} ecs_worker_t;
+    sicore_vec_t commands;
+    uint32_t pending, running, next_row;
+    uint16_t next_table;
+    uint32_t next_ordinal;
+    bool started, exhausted, complete, released, queued;
+} ecs_worker_node_t;
 
 struct ecs_worker_pool_s {
     uint16_t worker_count;
     ecs_worker_t *workers;
-    ecs_worker_job_t *jobs;
-    uint32_t job_capacity;
-    uint32_t job_count;
-    _Alignas(64) atomic_uint next_job;
-    _Alignas(64) atomic_uint completed_jobs;
-    atomic_uint epoch;
-    atomic_bool stop;
+    void *worker_storage;
+    ecs_worker_node_t *nodes;
+    uint32_t node_count, node_capacity;
+    uint32_t *ready, ready_head, ready_count;
+    uint32_t *system_to_node, system_capacity;
+    uint32_t active, cursor;
+    bool stop, in_run, draining, publishing, forced, allocating;
     ecs_platform_mutex_t mutex;
     ecs_platform_condition_t work_condition;
     ecs_platform_condition_t completion_condition;
@@ -6095,14 +6154,13 @@ struct ecs_worker_pool_s {
 
 void ecs_worker_pool_init(ecs_worker_pool_t *pool, uint16_t requested_workers);
 void ecs_worker_pool_fini(ecs_worker_pool_t *pool);
-bool ecs_worker_pool_enabled(const ecs_worker_pool_t *pool);
-void ecs_worker_pool_run_prepared_systems(
+void ecs_worker_pool_run(
     ecs_worker_pool_t *pool,
     const ecs_system_id_t *systems,
-    uint32_t system_count,
-    uint32_t runnable_count
+    uint32_t count,
+    ecs_phase_t phase,
+    bool forced
 );
-void ecs_worker_pool_flush(ecs_worker_pool_t *pool);
 
 #endif
 
@@ -6115,7 +6173,7 @@ struct ecs_world_s {
     ecs_worker_pool_t worker_pool;
     sicore_vec_t fini_callbacks;
     bool did_start;
-    bool exit;
+    atomic_bool exit;
     double delta_time;
     double last_time;
     ecs_arena_t scene_strings;
@@ -6139,8 +6197,7 @@ typedef struct {
     sicore_vec_t entities;
 } RelationSource;
 
-#define ecs_get_record(entity)                                                                     \
-    sicore_vec_get_mut(&entity_index.entities, ecs_first(entity), ecs_entity_record_t)
+#define ecs_get_record(entity) ecs_entity_index_get_record(ecs_first(entity))
 #define ecs_get_table(tid) ecs_table_index_at(tid)
 
 static inline void ecs_emit_target_observers(
@@ -6219,15 +6276,16 @@ static inline bool ecs_is_deferred(void) {
 }
 
 static inline void ecs_assert_not_scheduler_parallel(const char *operation) {
-    ecs_assert(
-        !ecs_execution_context_current()->scheduler_parallel,
-        "%s is not allowed from a parallel system wave\n",
+    ecs_fatal_if(
+        ecs_execution_context_current()->scheduler_parallel,
+        "%s is not allowed from a parallel system execution\n",
         operation
     );
 }
 
-void ecs_system_run_prepared(ecs_system_id_t system);
+void ecs_system_run_job(ecs_system_id_t system, uint16_t table, uint32_t offset, uint32_t count);
 
+void ecs_type_slots_reset(void);
 void ecs_bootstrap(void);
 
 #endif
@@ -6326,7 +6384,6 @@ void ecs_bootstrap() {
     ecs_names_init();
     // Reserve identifiers used to represent false return values.
     ecs_table_index_get_or_create((ecs_type_t){ 0 });
-    sicore_vec_push_u64(&entity_index.entities, 0);
     ecs_component({ .name = "Invalid" });
 
     // Register the ecs_entity_t struct reflection.
@@ -6379,7 +6436,7 @@ static inline bool ecs_component_write(
         if ((flags & EcsWriteCheckAlive) && !ecs_is_alive(entity))
             return false;
         const ecs_entity_record_t *record = ecs_get_record(entity);
-        table = ecs_get_table(record->table_id);
+        table = ecs_get_table(ecs_entity_record_table(record));
         dst = ecs_table_get_component(table, id, record->table_row);
     }
     if (flags & EcsWriteNotify)
@@ -6553,7 +6610,7 @@ ecs_component_locate(const ecs_table_t *table, uint32_t row, ecs_component_t id,
     ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base) {
         const ecs_entity_record_t *record = ecs_get_record(base);
-        table = ecs_get_table(record->table_id);
+        table = ecs_get_table(ecs_entity_record_table(record));
         column = ecs_table_column_or_invalid(table, id);
         if (column != UINT16_MAX)
             return (ecs_component_location_t){ table, record->table_row, column, true };
@@ -6621,7 +6678,7 @@ static inline void ecs_table_finish_migration(
     uint32_t new_row
 ) {
     ecs_table_remove_entity_update_record(from_table, entity, old_row, false);
-    record->table_id = to_table_id;
+    atomic_store_explicit(&record->table_id, to_table_id, memory_order_relaxed);
     record->table_row = new_row;
 }
 
@@ -6677,7 +6734,7 @@ static inline ecs_table_t *ecs_table_change_type(
     ecs_type_t type,
     bool same_layout
 ) {
-    uint16_t from_id = record->table_id;
+    uint16_t from_id = ecs_entity_record_table(record);
     uint16_t to_id = ecs_table_index_get_or_create(type);
     if (to_id != from_id) {
         ecs_table_t *from = ecs_get_table(from_id);
@@ -6686,7 +6743,7 @@ static inline ecs_table_t *ecs_table_change_type(
         else
             ecs_migrate(record, entity, from, to_id, 0);
     }
-    return ecs_get_table(record->table_id);
+    return ecs_get_table(ecs_entity_record_table(record));
 }
 
 #endif
@@ -6903,8 +6960,8 @@ static inline void command_fini(ecs_entity_command_t *command) {
 void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena) {
     sicore_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
     sicore_vec_init(&buffer->relations, sizeof(ecs_deferred_relation_t));
-    buffer->entity_to_command = NULL;
-    buffer->entity_capacity = 0;
+    buffer->command_slots = NULL;
+    buffer->slot_capacity = 0;
     buffer->arena = arena;
     buffer->pending_names = (ecs_name_index_t){ 0 };
 }
@@ -6916,7 +6973,7 @@ void ecs_command_buffer_fini(ecs_command_buffer_t *buffer) {
     }
     sicore_vec_fini(&buffer->commands);
     sicore_vec_fini(&buffer->relations);
-    free(buffer->entity_to_command);
+    free(buffer->command_slots);
     ecs_name_index_fini(&buffer->pending_names);
 }
 
@@ -6931,38 +6988,43 @@ void ecs_execution_context_fini(ecs_execution_context_t *context) {
     ecs_arena_fini(&context->arena);
 }
 
-static void command_buffer_ensure_entity(ecs_command_buffer_t *buffer, uint32_t entity_id) {
-    if (entity_id < buffer->entity_capacity) {
-        return;
-    }
-
-    uint32_t new_capacity = buffer->entity_capacity ? buffer->entity_capacity : 256;
-    while (new_capacity <= entity_id) {
-        new_capacity *= 2;
-    }
-
-    buffer->entity_to_command = realloc(buffer->entity_to_command, sizeof(uint32_t) * new_capacity);
-    for (uint32_t i = buffer->entity_capacity; i < new_capacity; i++) {
-        buffer->entity_to_command[i] = ECS_COMMAND_NONE;
-    }
-    buffer->entity_capacity = new_capacity;
+static uint32_t command_slot(const ecs_command_buffer_t *buffer, ecs_entity_t entity) {
+    uint32_t slot = (ecs_first(entity) * UINT32_C(2654435761) ^ ecs_second(entity)) &
+                    (buffer->slot_capacity - 1);
+    const ecs_entity_command_t *commands = buffer->commands.data;
+    while (buffer->command_slots[slot] &&
+           commands[buffer->command_slots[slot] - 1].entity != entity)
+        slot = (slot + 1) & (buffer->slot_capacity - 1);
+    return slot;
 }
 
 static ecs_entity_command_t *command_for_entity(ecs_command_buffer_t *buffer, ecs_entity_t entity) {
-    uint32_t entity_id = ecs_first(entity);
-    command_buffer_ensure_entity(buffer, entity_id);
-
-    uint32_t command_index = buffer->entity_to_command[entity_id];
-    if (command_index != ECS_COMMAND_NONE) {
-        return sicore_vec_get_mut(&buffer->commands, command_index, ecs_entity_command_t);
+    if ((buffer->commands.size + 1) * 2 > buffer->slot_capacity) {
+        uint32_t capacity = buffer->slot_capacity ? buffer->slot_capacity * 2 : 16;
+        uint32_t *slots = calloc(capacity, sizeof *slots);
+        ecs_fatal_if(!slots, "command index allocation failed\n");
+        free(buffer->command_slots);
+        buffer->command_slots = slots;
+        buffer->slot_capacity = capacity;
+        const ecs_entity_command_t *commands = buffer->commands.data;
+        for (uint32_t i = 0; i < buffer->commands.size; i++)
+            slots[command_slot(buffer, commands[i].entity)] = i + 1;
     }
-
-    command_index = buffer->commands.size;
-    ecs_entity_command_t *command =
-        sicore_vec_push_empty(&buffer->commands, sizeof(ecs_entity_command_t));
+    uint32_t slot = command_slot(buffer, entity);
+    if (buffer->command_slots[slot])
+        return sicore_vec_get_mut(
+            &buffer->commands,
+            buffer->command_slots[slot] - 1,
+            ecs_entity_command_t
+        );
+    ecs_entity_command_t *command = sicore_vec_push_empty(&buffer->commands, sizeof *command);
     command_init(command, entity);
-    buffer->entity_to_command[entity_id] = command_index;
+    buffer->command_slots[slot] = buffer->commands.size;
     return command;
+}
+
+void ecs_command_buffer_create(ecs_entity_t entity) {
+    command_for_entity(&ecs_execution_context_current()->commands, entity);
 }
 
 static inline void
@@ -7024,8 +7086,12 @@ void ecs_command_buffer_kill(ecs_entity_t entity) {
     ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
     if (command->identity && command->identity->reservation) {
-        ecs_name_index_remove(&buffer->pending_names, command->identity->reserved_parent,
-            command->identity->reservation, entity);
+        ecs_name_index_remove(
+            &buffer->pending_names,
+            command->identity->reserved_parent,
+            command->identity->reservation,
+            entity
+        );
         free(command->identity->reservation);
         command->identity->reservation = NULL;
     }
@@ -7077,12 +7143,18 @@ void ecs_command_buffer_relate(
 }
 
 void ecs_command_buffer_identity(
-    ecs_entity_t entity, const char *name, bool set_name, ecs_entity_t parent, bool set_parent
+    ecs_entity_t entity,
+    const char *name,
+    bool set_name,
+    ecs_entity_t parent,
+    bool set_parent
 ) {
-    if (set_name && !ecs_name_valid(name)) return;
+    if (set_name && !ecs_name_valid(name))
+        return;
     ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
     ecs_entity_command_t *command = command_for_entity(buffer, entity);
-    if (command->kill) return;
+    if (command->kill)
+        return;
     if (!command->identity) {
         command->identity = ecs_arena_alloc(buffer->arena, sizeof *command->identity);
         *command->identity = (ecs_deferred_identity_t){ 0 };
@@ -7091,8 +7163,12 @@ void ecs_command_buffer_identity(
     /* Input may be the current reservation; copy it before invalidating either string. */
     char *copy = set_name && name && name[0] ? strdup(name) : NULL;
     if (identity->reservation) {
-        ecs_name_index_remove(&buffer->pending_names, identity->reserved_parent,
-            identity->reservation, entity);
+        ecs_name_index_remove(
+            &buffer->pending_names,
+            identity->reserved_parent,
+            identity->reservation,
+            entity
+        );
         free(identity->reservation);
         identity->reservation = NULL;
     }
@@ -7108,31 +7184,42 @@ void ecs_command_buffer_identity(
     const char *effective = identity->set_name ? identity->name : ecs_name_local(entity);
     if (effective) {
         identity->reservation = strdup(effective);
-        identity->reserved_parent = identity->set_parent ? identity->parent : ecs_name_parent(entity);
-        ecs_name_index_insert(&buffer->pending_names, identity->reserved_parent,
-            identity->reservation, entity);
+        identity->reserved_parent =
+            identity->set_parent ? identity->parent : ecs_name_parent(entity);
+        ecs_name_index_insert(
+            &buffer->pending_names,
+            identity->reserved_parent,
+            identity->reservation,
+            entity
+        );
     }
 }
 
-ecs_entity_t ecs_command_buffer_lookup_name(
-    ecs_entity_t parent, const char *name, size_t length
-) {
+ecs_entity_t ecs_command_buffer_lookup_name(ecs_entity_t parent, const char *name, size_t length) {
     ecs_command_buffer_t *buffer = &ecs_execution_context_current()->commands;
     ecs_entity_t entity = ecs_name_index_find(&buffer->pending_names, parent, name, length);
-    if (entity && ecs_name_entity_alive(entity)) return entity;
+    if (entity && ecs_name_entity_alive(entity))
+        return entity;
     entity = ecs_name_lookup_segment(parent, name, length);
-    if (!entity) return 0;
-    uint32_t id = ecs_first(entity);
-    if (id < buffer->entity_capacity && buffer->entity_to_command[id] != ECS_COMMAND_NONE) {
-        const ecs_entity_command_t *command = sicore_vec_get(&buffer->commands,
-            buffer->entity_to_command[id], ecs_entity_command_t);
-        if (command->entity != entity || command->kill) return 0;
+    if (!entity)
+        return 0;
+    uint32_t slot = buffer->slot_capacity ? command_slot(buffer, entity) : 0;
+    if (buffer->slot_capacity && buffer->command_slots[slot]) {
+        const ecs_entity_command_t *command = sicore_vec_get(
+            &buffer->commands,
+            buffer->command_slots[slot] - 1,
+            ecs_entity_command_t
+        );
+        if (command->entity != entity || command->kill)
+            return 0;
         const ecs_deferred_identity_t *identity = command->identity;
         if (identity) {
             const char *effective = identity->set_name ? identity->name : ecs_name_local(entity);
-            ecs_entity_t effective_parent = identity->set_parent ? identity->parent : ecs_name_parent(entity);
+            ecs_entity_t effective_parent =
+                identity->set_parent ? identity->parent : ecs_name_parent(entity);
             if (!effective || effective_parent != parent || strlen(effective) != length ||
-                memcmp(effective, name, length) != 0) return 0;
+                memcmp(effective, name, length) != 0)
+                return 0;
         }
     }
     return entity;
@@ -7213,7 +7300,7 @@ static void command_apply_changes(ecs_entity_command_t *command) {
         ecs_component_t id = changes[i].id;
         const ecs_component_record_t *record = ecs_component_index_get(id);
         ecs_entity_record_t *entity_record = ecs_get_record(command->entity);
-        ecs_table_t *table = ecs_get_table(entity_record->table_id);
+        ecs_table_t *table = ecs_get_table(ecs_entity_record_table(entity_record));
         uint16_t column = ecs_table_get_column_index(table, id);
         if (!ecs_component_write(
                 command->entity,
@@ -7271,6 +7358,8 @@ static void command_apply(
         return;
     }
 
+    ecs_entity_materialize(command->entity);
+
     if (command->kill) {
         ecs_kill_now(command->entity);
         return;
@@ -7278,13 +7367,19 @@ static void command_apply(
 
     if (command->identity) {
         const ecs_deferred_identity_t *identity = command->identity;
-        ecs_name_update_now(command->entity, identity->name, identity->set_name,
-            identity->parent, identity->set_parent);
-        if (!ecs_name_entity_alive(command->entity)) return;
+        ecs_name_update_now(
+            command->entity,
+            identity->name,
+            identity->set_name,
+            identity->parent,
+            identity->set_parent
+        );
+        if (!ecs_name_entity_alive(command->entity))
+            return;
     }
 
     ecs_entity_record_t *record = ecs_get_record(command->entity);
-    uint16_t old_table_id = record->table_id;
+    uint16_t old_table_id = ecs_entity_record_table(record);
     ecs_table_t *old_table = ecs_get_table(old_table_id);
     ecs_entity_t old_base = ecs_type_isa_target(&old_table->type);
     if (command_type_unchanged(old_table, command)) {
@@ -7338,7 +7433,7 @@ static void command_apply(
             final_type = (ecs_type_t){ 0 };
             if (command->change_count <= ECS_COMMAND_TRANSITION_CHANGE_CAPACITY && next &&
                 command_shape_equals(command, next) && ecs_is_alive(next->entity) &&
-                ecs_get_record(next->entity)->table_id == old_table_id) {
+                ecs_entity_record_table(ecs_get_record(next->entity)) == old_table_id) {
                 command_transition_set(
                     transition,
                     command,
@@ -7352,7 +7447,7 @@ static void command_apply(
         old_table = ecs_get_table(old_table_id);
         ecs_migrate(record, command->entity, old_table, new_table_id, 0);
         record = ecs_get_record(command->entity);
-        ecs_table_t *new_table = ecs_get_table(record->table_id);
+        ecs_table_t *new_table = ecs_get_table(ecs_entity_record_table(record));
         if (base_changed) {
             if (transition_hit) {
                 command_transition_copy_inherited(transition, new_table, record->table_row);
@@ -7389,15 +7484,16 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
         sicore_vec_init(&buffer->relations, sizeof(ecs_deferred_relation_t));
 
         ecs_entity_command_t *items = sicore_vec_data(&commands, ecs_entity_command_t);
-        for (uint32_t i = 0; i < commands.size; i++) {
-            uint32_t entity_id = ecs_first(items[i].entity);
-            buffer->entity_to_command[entity_id] = ECS_COMMAND_NONE;
-        }
+        memset(buffer->command_slots, 0, buffer->slot_capacity * sizeof(uint32_t));
 
         for (uint32_t i = 0; i < commands.size; i++) {
             if (items[i].identity && items[i].identity->reservation) {
-                ecs_name_index_remove(&buffer->pending_names, items[i].identity->reserved_parent,
-                    items[i].identity->reservation, items[i].entity);
+                ecs_name_index_remove(
+                    &buffer->pending_names,
+                    items[i].identity->reserved_parent,
+                    items[i].identity->reservation,
+                    items[i].entity
+                );
             }
             command_apply(
                 buffer,
@@ -7408,8 +7504,18 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
             );
             command_fini(&items[i]);
         }
-        sicore_vec_fini(&commands);
-        sicore_vec_fini(&relations);
+        if (!buffer->commands.size) {
+            // Keep the detached storage when hooks did not enqueue another batch.
+            sicore_vec_fini(&buffer->commands);
+            sicore_vec_fini(&buffer->relations);
+            buffer->commands = commands;
+            buffer->relations = relations;
+            sicore_vec_clear(&buffer->commands);
+            sicore_vec_clear(&buffer->relations);
+        } else {
+            sicore_vec_fini(&commands);
+            sicore_vec_fini(&relations);
+        }
     }
     command_transition_fini(&transition);
     ecs_arena_reset(buffer->arena);
@@ -7417,7 +7523,8 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
 
 void ecs_command_buffer_flush() {
     ecs_execution_context_t *context = ecs_execution_context_current();
-    if (context->flushing_commands) return;
+    if (context->flushing_commands)
+        return;
     context->flushing_commands = true;
     ecs_command_buffer_flush_buffer(&context->commands);
     context->flushing_commands = false;
@@ -7722,11 +7829,11 @@ const char *ecs_component_name(ecs_component_t component) {
 
 #define entity_edit(entity, table, record)                                                         \
     ecs_entity_record_t *record = ecs_get_record(entity);                                          \
-    ecs_table_t *table = ecs_get_table(record->table_id);
+    ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
 
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_entity_record_t *record = ecs_get_record(entity);
-    uint16_t from_id = record->table_id;
+    uint16_t from_id = ecs_entity_record_table(record);
     ecs_table_t *table = ecs_get_table(from_id);
     uint16_t edge = ecs_table_get_add_edge(table, cid);
 
@@ -7797,7 +7904,7 @@ void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
 static ECS_NOINLINE void
 ecs_remove_cid_notify(ecs_entity_t entity, ecs_component_t cid, uint16_t col_idx) {
     ecs_entity_record_t *record = ecs_get_record(entity);
-    uint16_t from_id = record->table_id;
+    uint16_t from_id = ecs_entity_record_table(record);
     ecs_table_t *table = ecs_get_table(from_id);
 
     uint16_t new_table_id = table->cls[col_idx].remove_edge;
@@ -7821,7 +7928,7 @@ ecs_remove_cid_notify(ecs_entity_t entity, ecs_component_t cid, uint16_t col_idx
 
 void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_table_t *table = ecs_get_table(record->table_id);
+    ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
 
     uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
 
@@ -7854,8 +7961,12 @@ void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
 void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_component_access(entity, cid);
     const ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_component_location_t location =
-        ecs_component_locate(ecs_get_table(record->table_id), record->table_row, cid, false);
+    ecs_component_location_t location = ecs_component_locate(
+        ecs_get_table(ecs_entity_record_table(record)),
+        record->table_row,
+        cid,
+        false
+    );
     return location.table
                ? ecs_table_component_at_column(location.table, location.column, location.row)
                : NULL;
@@ -7874,7 +7985,7 @@ static inline bool ecs_store_plain_now(ecs_entity_t entity, ecs_component_t cid,
     if (!crec->plain || crec->default_relation_count)
         return false;
     ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_table_t *table = ecs_get_table(record->table_id);
+    ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
     uint16_t edge = ecs_table_get_add_edge(table, cid);
     if (edge < table->type.component_count && table->type.ids[edge] == cid) {
         if (ecs_table_observed(table, EcsOnSet))
@@ -7927,7 +8038,10 @@ static inline void
 ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     if (ECS_UNLIKELY(cid == ecs_id(Name))) {
         ecs_name_update_now(entity, ((const Name *)data)->value, true, 0, false);
-        if (move) { free(((Name *)data)->value); ((Name *)data)->value = NULL; }
+        if (move) {
+            free(((Name *)data)->value);
+            ((Name *)data)->value = NULL;
+        }
         return;
     }
     if (ecs_store_plain_now(entity, cid, data))
@@ -7941,7 +8055,8 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
 
 static ECS_NOINLINE void
 ecs_store_cid_slow(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
-    if (ECS_UNLIKELY(move && cid == ecs_id(Name)) && data == ecs_get_cid(entity, cid)) return;
+    if (ECS_UNLIKELY(move && cid == ecs_id(Name)) && data == ecs_get_cid(entity, cid))
+        return;
     if (ecs_is_deferred()) {
         if (move)
             ecs_command_buffer_move(entity, cid, data);
@@ -7978,9 +8093,8 @@ static uint16_t ecs_plain_add_edge(uint16_t from_id, ecs_component_t cid) {
     if (edge == UINT16_MAX) {
         if (ecs_component_index_get(cid)->required_count)
             return UINT16_MAX;
-        edge = ecs_table_index_get_or_create(
-            ecs_type_with(&table->type, cid, (ecs_type_pair_t){ 0 })
-        );
+        edge =
+            ecs_table_index_get_or_create(ecs_type_with(&table->type, cid, (ecs_type_pair_t){ 0 }));
         ecs_id_map_set(&ecs_get_table(from_id)->add_edge, cid, edge);
     }
     return edge;
@@ -8004,7 +8118,7 @@ bool ecs_set_plain_many(
     /* Follow the cached single-component edges to the final table: one move
      * replaces `count` migrations or a command buffer round trip. */
     ecs_entity_record_t *record = ecs_get_record(entity);
-    const uint16_t from_id = record->table_id;
+    const uint16_t from_id = ecs_entity_record_table(record);
     uint16_t to_id = from_id;
     for (uint32_t i = 0; i < count; i++) {
         uint16_t edge = ecs_plain_add_edge(to_id, ids[i]);
@@ -8059,14 +8173,14 @@ void ecs_move_cid(ecs_entity_t entity, ecs_component_t cid, void *data) {
 bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id) {
     ecs_assert_entity_alive(entity);
 
-    uint16_t tid = ecs_get_record(entity)->table_id;
+    uint16_t tid = ecs_entity_record_table(ecs_get_record(entity));
     return ecs_table_has(ecs_get_table(tid), id);
 }
 
 bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id) {
     ecs_assert_entity_alive(entity);
 
-    uint16_t tid = ecs_get_record(entity)->table_id;
+    uint16_t tid = ecs_entity_record_table(ecs_get_record(entity));
     return ecs_table_has_owned(ecs_get_table(tid), id);
 }
 
@@ -8170,59 +8284,41 @@ void ecs_with_many(ecs_component_t component, ...) {
 #pragma clang diagnostic pop
 #endif
 
-static inline ecs_entity_t ecs_entity_index_create(uint32_t row, bool reuse) {
-    ecs_entity_index_t *index = &entity_index;
-    uint32_t entity_id;
-    uint32_t generation;
-    if (reuse && index->first_available != UINT32_MAX) {
-        entity_id = index->first_available;
-        ecs_entity_record_t *record = ecs_entity_index_get_record(entity_id);
-        index->first_available = record->table_row;
-        generation = record->generation;
-        record->table_id = 0;
-        record->table_row = row;
+void ecs_entity_materialize(ecs_entity_t entity) {
+    ecs_entity_record_t *record = ecs_get_record(entity);
+    if (record->table_row != UINT32_MAX || ecs_entity_record_table(record) != 0)
+        return;
+    ecs_table_t *table = ecs_get_table(0);
+    record->table_row = table->entity_count;
+    ecs_table_add_entity(table, entity);
+}
+
+static ecs_entity_t ecs_entity_create(bool reuse) {
+    ecs_entity_t entity =
+        ecs_entity_index_reserve(reuse, ecs_execution_context_current()->entity_reservation);
+    if (ecs_execution_context_current()->scheduler_parallel) {
+        ecs_command_buffer_create(entity);
     } else {
-        entity_id = index->entities.size;
-        generation = 0;
-        ecs_entity_record_t *record =
-            sicore_vec_push_empty(&index->entities, sizeof(ecs_entity_record_t));
-        *record = (ecs_entity_record_t){ .generation = 0, .table_row = row, .table_id = 0 };
+        ecs_entity_materialize(entity);
     }
-    return ecs_entity(entity_id, generation);
-}
-
-ecs_entity_t ecs_new(void) {
-    ecs_table_t *table = ecs_get_table(0);
-
-    ecs_entity_t entity = ecs_entity_index_create(table->entity_count, true);
-    ecs_table_add_entity(table, entity);
-
     return entity;
 }
 
-ecs_entity_t ecs_new_no_reuse(void) {
-    ecs_table_t *table = ecs_get_table(0);
+ecs_entity_t ecs_new(void) { return ecs_entity_create(true); }
 
-    ecs_entity_t entity = ecs_entity_index_create(table->entity_count, false);
-    ecs_table_add_entity(table, entity);
-
-    return entity;
-}
+ecs_entity_t ecs_new_no_reuse(void) { return ecs_entity_create(false); }
 
 bool ecs_is_alive(const ecs_entity_t entity) { return ecs_entity_index_is_alive(entity); }
 
 ecs_entity_t ecs_entity_from_index(uint32_t index) {
-    if (index == 0 || index >= entity_index.entities.size) {
+    if (index == 0 || index >= ecs_entity_index_count()) {
         return 0;
     }
 
-    const ecs_entity_record_t *record =
-        sicore_vec_get(&entity_index.entities, index, ecs_entity_record_t);
-    if (record->table_id == UINT16_MAX) {
-        return 0;
-    }
-
-    return ecs_entity(index, record->generation);
+    const ecs_entity_record_t *record = ecs_entity_index_get_record(index);
+    return record && atomic_load_explicit(&record->table_id, memory_order_acquire) != UINT16_MAX
+               ? ecs_entity(index, record->generation)
+               : 0;
 }
 
 static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_entity_t target) {
@@ -8231,14 +8327,15 @@ static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_en
             return true;
         }
         const ecs_entity_record_t *target_record = ecs_get_record(target);
-        const ecs_table_t *target_table = ecs_get_table(target_record->table_id);
+        const ecs_table_t *target_table = ecs_get_table(ecs_entity_record_table(target_record));
         target = ecs_type_isa_target(&target_table->type);
     }
     return false;
 }
 
 bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
-    ecs_entity_t base = ecs_type_isa_target(&ecs_get_table(ecs_get_record(entity)->table_id)->type);
+    ecs_entity_t base =
+        ecs_type_isa_target(&ecs_get_table(ecs_entity_record_table(ecs_get_record(entity)))->type);
     if (base == target) {
         return true;
     }
@@ -8250,7 +8347,9 @@ bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
 
 ecs_entity_t ecs_entity_base_raw(ecs_entity_t entity) {
     ecs_assert_is_alive(entity);
-    return ecs_type_isa_target(&ecs_get_table(ecs_get_record(entity)->table_id)->type);
+    return ecs_type_isa_target(
+        &ecs_get_table(ecs_entity_record_table(ecs_get_record(entity)))->type
+    );
 }
 
 ecs_entity_t ecs_entity_base(ecs_entity_t entity) { return ecs_target_id(entity, ecs_rid(IsA)); }
@@ -8267,7 +8366,7 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     }
 
     ecs_entity_record_t *record = ecs_get_record(entity);
-    uint16_t from_table_id = record->table_id;
+    uint16_t from_table_id = ecs_entity_record_table(record);
     ecs_table_t *from_table = ecs_get_table(from_table_id);
     if (ecs_type_isa_target(&from_table->type) == target) {
         return;
@@ -8305,12 +8404,11 @@ void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
 }
 
 static inline void ecs_entity_index_kill(uint32_t entity_id) {
-    ecs_entity_index_t *index = &entity_index;
     ecs_entity_record_t *record = ecs_entity_index_get_record(entity_id);
     record->generation += 1;
-    record->table_row = index->first_available;
-    record->table_id = UINT16_MAX;
-    index->first_available = entity_id;
+    record->table_row = UINT32_MAX;
+    atomic_store_explicit(&record->table_id, UINT16_MAX, memory_order_relaxed);
+    sicore_vec_push(&entity_index.available, &entity_id, sizeof entity_id);
 }
 
 void ecs_kill_now(ecs_entity_t entity) {
@@ -8321,7 +8419,7 @@ void ecs_kill_now(ecs_entity_t entity) {
     }
 
     ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_table_t *initial_table = ecs_get_table(record->table_id);
+    ecs_table_t *initial_table = ecs_get_table(ecs_entity_record_table(record));
     const ecs_component_t *components = initial_table->type.ids;
     uint16_t component_count = initial_table->type.component_count;
     ecs_table_t *table = initial_table;
@@ -8335,7 +8433,7 @@ void ecs_kill_now(ecs_entity_t entity) {
     for (uint16_t i = 0; i < component_count && ecs_is_alive(entity); i++) {
         ecs_component_t component = components[i];
         record = ecs_get_record(entity);
-        table = ecs_get_table(record->table_id);
+        table = ecs_get_table(ecs_entity_record_table(record));
 
         uint16_t col_idx = ecs_table_column_or_invalid(table, component);
         if (col_idx == UINT16_MAX) {
@@ -8351,7 +8449,7 @@ void ecs_kill_now(ecs_entity_t entity) {
                 break;
             }
             record = ecs_get_record(entity);
-            table = ecs_get_table(record->table_id);
+            table = ecs_get_table(ecs_entity_record_table(record));
             col_idx = ecs_table_column_or_invalid(table, component);
             if (col_idx == UINT16_MAX) {
                 continue;
@@ -8366,7 +8464,7 @@ void ecs_kill_now(ecs_entity_t entity) {
     }
 
     record = ecs_get_record(entity);
-    table = ecs_get_table(record->table_id);
+    table = ecs_get_table(ecs_entity_record_table(record));
 
     // Remove from table
     ecs_table_remove_entity_update_record(table, entity, record->table_row, true);
@@ -8393,9 +8491,11 @@ const char *ecs_entity_name(ecs_entity_t entity) {
 #else
     static _Thread_local char buff[32];
 #endif
-    if (!ecs_name_entity_alive(entity)) return NULL;
+    if (!ecs_name_entity_alive(entity))
+        return NULL;
     const char *name = ecs_name_local(entity);
-    if (name) return name;
+    if (name)
+        return name;
     snprintf(buff, sizeof buff, "(%u, %u)", ecs_first(entity), ecs_second(entity));
     return buff;
 }
@@ -8404,7 +8504,7 @@ static uint16_t ecs_inheritance_base_component_capacity(ecs_entity_t base) {
     uint32_t capacity = 0;
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
-        const ecs_table_t *table = ecs_get_table(record->table_id);
+        const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
         capacity += table->type.component_count;
         base = ecs_type_isa_target(&table->type);
     }
@@ -8449,7 +8549,7 @@ static void ecs_inheritance_plan_build(
     uint16_t count = 0;
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
-        const ecs_table_t *table = ecs_get_table(record->table_id);
+        const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
         for (uint16_t i = 0; i < table->type.component_count; i++) {
             ecs_component_t component = table->type.ids[i];
             if (!ecs_inheritance_component_is_owned(component))
@@ -8552,7 +8652,8 @@ void ecs_inheritance_instantiate_children(ecs_entity_t entity, ecs_entity_t base
 
         ecs_relate_id_now(child, ecs_rid(ChildOf), entity);
         const char *child_name = ecs_name_local(base_child);
-        if (child_name) ecs_name_update_now(child, child_name, true, 0, false);
+        if (child_name)
+            ecs_name_update_now(child, child_name, true, 0, false);
 
         ecs_relate_id_now(child, ecs_rid(IsA), base_child);
     }
@@ -9011,13 +9112,7 @@ void ecs_names_fini(void) {
     sicore_map_fini(&root_names);
 }
 
-bool ecs_name_entity_alive(ecs_entity_t entity) {
-    uint32_t index = ecs_first(entity);
-    if (!index || index >= entity_index.entities.size)
-        return false;
-    const ecs_entity_record_t *record = ecs_entity_index_get_record(index);
-    return record->table_id != UINT16_MAX && record->generation == ecs_second(entity);
-}
+bool ecs_name_entity_alive(ecs_entity_t entity) { return ecs_is_alive(entity); }
 
 bool ecs_name_valid(const char *name) {
     if (!name || !name[0])
@@ -9029,7 +9124,7 @@ bool ecs_name_valid(const char *name) {
 
 const char *ecs_name_local(ecs_entity_t entity) {
     const ecs_entity_record_t *record = ecs_get_record(entity);
-    const ecs_table_t *table = ecs_get_table(record->table_id);
+    const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
     uint16_t column = ecs_table_column_or_invalid(table, ecs_id(Name));
     if (column == UINT16_MAX)
         return NULL;
@@ -9141,7 +9236,7 @@ bool ecs_name_update_now(
     }
     if (rename && name) {
         ecs_entity_record_t *record = ecs_get_record(entity);
-        ecs_table_t *table = ecs_get_table(record->table_id);
+        ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
         const Name *value = ecs_get_cid(entity, ecs_id(Name));
         ecs_emit(table, entity, EcsOnSet, ecs_id(Name), value);
     }
@@ -9475,6 +9570,7 @@ ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
 }
 
 void ecs_observer_fini(ecs_observer_id_t id) {
+    ecs_assert_not_scheduler_parallel("observer configuration");
     ecs_observer_t *observer = sicore_vec_get_mut(&observer_index.observers, id, ecs_observer_t);
     ecs_assert(observer->callback != NULL, "Observer is not alive");
     uint32_t target_entity = observer->target_entity;
@@ -9522,10 +9618,12 @@ void ecs_observer_fini_entity(ecs_entity_t entity) {
 }
 
 void ecs_observer_enable(ecs_observer_id_t id) {
+    ecs_assert_not_scheduler_parallel("observer configuration");
     sicore_vec_get_mut(&observer_index.observers, id, ecs_observer_t)->enabled = true;
 }
 
 void ecs_observer_disable(ecs_observer_id_t id) {
+    ecs_assert_not_scheduler_parallel("observer configuration");
     sicore_vec_get_mut(&observer_index.observers, id, ecs_observer_t)->enabled = false;
 }
 
@@ -9533,7 +9631,7 @@ void ecs_observer_trigger(ecs_entity_t entity, ecs_event_t event, const void *tr
     ecs_assert_entity_valid(entity);
     ecs_assert_is_alive(entity);
     ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_table_t *table = ecs_get_table(record->table_id);
+    ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
     ecs_emit(table, entity, event, 0, trigger_data);
 }
 
@@ -9733,45 +9831,50 @@ ecs_iter_t ecs_query_iter(ecs_query_id_t query_id) {
     };
 }
 uint32_t ecs_query_count(ecs_query_id_t query_id) {
-    ecs_query_cache_t *cache = ecs_query_cache(query_id);
+    ecs_iter_t it = ecs_query_iter(query_id);
     uint32_t count = 0;
-    for (uint16_t i = 0; i < cache->table_count; i++) {
-        const uint16_t table_id = ecs_query_table_id(cache, i);
-        const ecs_table_t *table = ecs_get_table(table_id);
-        if (!table->entity_count)
-            continue;
-        if (ECS_UNLIKELY(cache->query->up_mask) &&
-            !ecs_query_resolve_up_fields(cache, table, ecs_query_table_at(cache, i))) {
-            continue;
-        }
-        count += table->entity_count;
-    }
+    while (ecs_iter_next(&it))
+        count += it.count;
     return count;
 }
 bool ecs_iter_next(ecs_iter_t *it) {
     ecs_query_cache_t *cache = it->cache;
-    ecs_table_t *table;
-    do {
-        if (++it->table_idx >= it->table_count)
-            return false;
-        const uint16_t table_id = ecs_query_table_id(cache, it->table_idx);
-        table = &table_index.tables[table_id];
-        it->count = table->entity_count;
-        if (it->count && ECS_UNLIKELY(cache->query->up_mask) &&
-            !ecs_query_resolve_up_fields(cache, table, ecs_query_table_at(cache, it->table_idx))) {
-            it->count = 0;
-        }
-    } while (it->count == 0);
-    if (cache->query->field_count == 0) {
-        it->ptrs = NULL;
+    const ecs_query_t *query = cache->query;
+    while (++it->table_idx < it->table_count) {
+        const ecs_table_t *table = ecs_get_table(ecs_query_table_id(cache, it->table_idx));
+        if (table->entity_count <= it->row_offset)
+            continue;
+        it->count = table->entity_count - it->row_offset;
+        if (it->bounded && it->count > it->row_limit)
+            it->count = it->row_limit;
+        if (!it->count)
+            continue;
         it->field_kind_bits = 0;
-    } else {
-        ecs_query_table_t *query_table = ecs_query_table_at(cache, it->table_idx);
-        it->ptrs = query_table->fields;
-        it->field_kind_bits = query_table->field_kind_bits;
+        it->ptrs = NULL;
+        if (query->field_count) {
+            ecs_query_table_t *entry = ecs_query_table_at(cache, it->table_idx);
+            it->field_kind_bits = entry->field_kind_bits;
+            it->ptrs = entry->fields;
+            if (query->up_mask || it->bounded) {
+                memcpy(it->field_storage, entry->fields, query->field_count * sizeof(void *));
+                it->ptrs = it->field_storage;
+                if (query->up_mask &&
+                    !ecs_query_resolve_up_fields(query, table, it->ptrs, &it->field_kind_bits))
+                    continue;
+                for (uint8_t i = 0; it->row_offset && i < query->field_count; i++) {
+                    if (((it->field_kind_bits >> (2 * i)) & 3) == EcsFieldOwned) {
+                        size_t size =
+                            ecs_component_index_get(ecs_query_fields(query)[i].id)->info->size;
+                        if (size)
+                            it->ptrs[i] = (uint8_t *)it->ptrs[i] + size * it->row_offset;
+                    }
+                }
+            }
+        }
+        it->entities = table->entities + it->row_offset;
+        return true;
     }
-    it->entities = table->entities;
-    return true;
+    return false;
 }
 const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
@@ -9782,7 +9885,9 @@ const ecs_relation_target_t *ecs_targets_id(const ecs_iter_t *it, ecs_relation_i
     const uint16_t table_id = ecs_query_table_id(it->cache, it->table_idx);
     const ecs_table_t *table = ecs_get_table(table_id);
     uint16_t column = ecs_table_column_or_invalid(table, record->component);
-    return column == UINT16_MAX ? NULL : table->cls[column].data;
+    return column == UINT16_MAX
+               ? NULL
+               : (const ecs_relation_target_t *)table->cls[column].data + it->row_offset;
 }
 ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relation) {
     const uint16_t table_id = ecs_query_table_id(it->cache, it->table_idx);
@@ -9802,12 +9907,15 @@ ecs_relation_batch_t ecs_relation_batch_id(const ecs_iter_t *it, ecs_relation_id
     }
     const uint16_t column = ecs_table_column_or_invalid(table, record->component);
     return (ecs_relation_batch_t){
-        .targets = column == UINT16_MAX ? NULL : table->cls[column].data,
+        .targets = column == UINT16_MAX
+                       ? NULL
+                       : (const ecs_relation_target_t *)table->cls[column].data + it->row_offset,
         .shared = false,
     };
 }
 
 void ecs_query_fini(ecs_query_id_t qid) {
+    ecs_assert_not_scheduler_parallel("query destruction");
     ecs_query_cache_t *cache = ecs_query_cache(qid);
     if (cache->active_index != UINT32_MAX) {
         ecs_query_id_t *ids = query_index.active_ids.data;
@@ -9933,7 +10041,7 @@ static void ecs_propagate_add_id_internal(
         }
 
         ecs_entity_record_t *current_record = ecs_get_record(current);
-        ecs_table_t *current_table = ecs_get_table(current_record->table_id);
+        ecs_table_t *current_table = ecs_get_table(ecs_entity_record_table(current_record));
         uint16_t column = ecs_table_column_or_invalid(current_table, source_component);
         if (column == UINT16_MAX) {
             continue;
@@ -10027,7 +10135,6 @@ static ecs_relation_id_t ecs_relation_register_with_ops(
     const ecs_relation_ops_t *ops,
     bool virtual_relation
 ) {
-    ecs_assert_not_scheduler_parallel("relation registration");
     ecs_assert_not_null(id);
     ecs_assert_not_null(desc);
     ecs_assert(
@@ -10040,20 +10147,15 @@ static ecs_relation_id_t ecs_relation_register_with_ops(
         "ByDepth relation must be acyclic\n"
     );
 
-    if (*id) {
-        sicore_vec_ensure(
-            &relation_index.records,
-            (uint32_t)*id + 1,
-            sizeof(ecs_relation_record_t)
-        );
-        ecs_relation_record_t *existing =
-            sicore_vec_get_mut(&relation_index.records, *id, ecs_relation_record_t);
-        if (existing->info.name || existing->component || existing->ops) {
+    if (*id && *id < relation_index.records.size) {
+        const ecs_relation_record_t *existing =
+            sicore_vec_get(&relation_index.records, *id, ecs_relation_record_t);
+        if (existing->info.name || existing->component || existing->ops)
             return *id;
-        }
-    } else {
-        *id = (ecs_relation_id_t)relation_index.records.size;
     }
+    ecs_assert_not_scheduler_parallel("relation registration");
+    if (!*id)
+        *id = (ecs_relation_id_t)relation_index.records.size;
 
     sicore_vec_ensure(&relation_index.records, (uint32_t)*id + 1, sizeof(ecs_relation_record_t));
     ecs_component_t component = virtual_relation ? 0
@@ -10158,7 +10260,7 @@ void ecs_emit_relation_event(
     ecs_entity_t new_target
 ) {
     ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_table_t *table = ecs_get_table(record->table_id);
+    ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
     ecs_relation_event_t relation_event = {
         .relation = relation,
         .old_target = old_target,
@@ -10209,7 +10311,7 @@ static ecs_table_t *ecs_relation_set_pair(
     uint64_t value
 ) {
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    const ecs_table_t *from = ecs_get_table(entity_record->table_id);
+    const ecs_table_t *from = ecs_get_table(ecs_entity_record_table(entity_record));
     ecs_type_t type =
         ecs_type_with(&from->type, component, (ecs_type_pair_t){ .key = key, .value = value });
     return ecs_table_change_type(entity_record, entity, type, component == 0);
@@ -10217,7 +10319,7 @@ static ecs_table_t *ecs_relation_set_pair(
 
 static void ecs_relation_remove_pair(ecs_entity_t entity, uint16_t component_at, uint16_t key) {
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    const ecs_table_t *from = ecs_get_table(entity_record->table_id);
+    const ecs_table_t *from = ecs_get_table(ecs_entity_record_table(entity_record));
     ecs_type_t type = ecs_type_without(&from->type, component_at, key);
     ecs_table_change_type(entity_record, entity, type, component_at == UINT16_MAX);
 }
@@ -10248,8 +10350,11 @@ static void ecs_relation_set_depth(
     bool had_relation
 ) {
     const ecs_entity_record_t *target_record = ecs_get_record(target);
-    uint32_t depth =
-        (uint32_t)ecs_type_pair_get(&ecs_get_table(target_record->table_id)->type, relation) + 1;
+    uint32_t depth = (uint32_t)ecs_type_pair_get(
+                         &ecs_get_table(ecs_entity_record_table(target_record))->type,
+                         relation
+                     ) +
+                     1;
     ecs_table_t *table = ecs_relation_set_pair(
         entity,
         had_relation ? 0 : relation_record->component,
@@ -10281,7 +10386,7 @@ ecs_relation_default_set_now(ecs_entity_t entity, ecs_relation_id_t relation, ec
     uint16_t relation_column = UINT16_MAX;
     if (record->info.desc.storage == EcsRelationDense) {
         entity_record = ecs_get_record(entity);
-        entity_table = ecs_get_table(entity_record->table_id);
+        entity_table = ecs_get_table(ecs_entity_record_table(entity_record));
         relation_column = ecs_table_column_or_invalid(entity_table, record->component);
     }
 
@@ -10318,12 +10423,12 @@ static void ecs_relation_isa_remove_now(ecs_entity_t entity, ecs_relation_id_t r
 }
 
 static bool ecs_relation_isa_has(ecs_entity_t entity, ecs_relation_id_t relation) {
-    const ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
+    const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(ecs_get_record(entity)));
     return ecs_type_pair_index(&table->type, relation) != UINT16_MAX;
 }
 
 static ecs_entity_t ecs_relation_isa_target(ecs_entity_t entity, ecs_relation_id_t relation) {
-    const ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
+    const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(ecs_get_record(entity)));
     return ecs_type_pair_get(&table->type, relation);
 }
 
@@ -10384,7 +10489,7 @@ static void ecs_relation_remove_depth(
     const ecs_relation_record_t *relation_record
 ) {
     ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    uint16_t from_id = entity_record->table_id;
+    uint16_t from_id = ecs_entity_record_table(entity_record);
     ecs_table_t *from = ecs_get_table(from_id);
     uint16_t column = ecs_table_column_or_invalid(from, relation_record->component);
     RelationTarget *value = ecs_table_component_at_column(from, column, entity_record->table_row);
@@ -10392,7 +10497,7 @@ static void ecs_relation_remove_depth(
         ->on_remove(entity, relation_record->component, value);
 
     entity_record = ecs_get_record(entity);
-    from_id = entity_record->table_id;
+    from_id = ecs_entity_record_table(entity_record);
     from = ecs_get_table(from_id);
     column = ecs_table_column_or_invalid(from, relation_record->component);
     ecs_relation_remove_pair(entity, column, relation);
@@ -10432,7 +10537,8 @@ void ecs_unrelate_id_now(ecs_entity_t entity, ecs_relation_id_t relation) {
 void ecs_childof_update_now(ecs_entity_t entity, ecs_entity_t parent) {
     if (parent) {
         ecs_relation_default_set_now(entity, ecs_rid(ChildOf), parent);
-        if (ecs_has_cid_owned(parent, ecs_id(Abstract))) ecs_abstract_now(entity);
+        if (ecs_has_cid_owned(parent, ecs_id(Abstract)))
+            ecs_abstract_now(entity);
     } else {
         ecs_relation_default_remove_now(entity, ecs_rid(ChildOf));
     }
@@ -10449,7 +10555,7 @@ void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation) {
 
 static bool ecs_relation_default_has(ecs_entity_t entity, ecs_relation_id_t relation) {
     const ecs_relation_record_t *record = ecs_relation_record(relation);
-    const ecs_table_t *table = ecs_get_table(ecs_get_record(entity)->table_id);
+    const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(ecs_get_record(entity)));
     if (record->info.desc.storage != EcsRelationByTarget) {
         return ecs_table_column_or_invalid(table, record->component) != UINT16_MAX;
     }
@@ -10458,7 +10564,7 @@ static bool ecs_relation_default_has(ecs_entity_t entity, ecs_relation_id_t rela
 
 static ecs_entity_t ecs_relation_default_target(ecs_entity_t entity, ecs_relation_id_t relation) {
     const ecs_entity_record_t *entity_record = ecs_get_record(entity);
-    const ecs_table_t *table = ecs_get_table(entity_record->table_id);
+    const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(entity_record));
     return ecs_relation_target_at_table(table, relation, entity_record->table_row);
 }
 
@@ -10530,7 +10636,7 @@ void ecs_relation_virtual_target_on_remove(ecs_entity_t target) {
             continue;
         }
 
-        for (uint32_t entity_id = 1; entity_id < entity_index.entities.size; entity_id++) {
+        for (uint32_t entity_id = 1; entity_id < ecs_entity_index_count(); entity_id++) {
             ecs_entity_t source = ecs_entity_from_index(entity_id);
             if (!source || source == target || ecs_target_id(source, relation) != target) {
                 continue;
@@ -11155,7 +11261,7 @@ static bool ecs_scene_build_entity_map(
     uint32_t *entity_count,
     uint32_t *table_count
 ) {
-    uint32_t map_count = entity_index.entities.size;
+    uint32_t map_count = ecs_entity_index_count();
     uint32_t *map = malloc((size_t)map_count * sizeof(uint32_t));
     if (!map && map_count)
         return false;
@@ -11309,6 +11415,7 @@ static bool ecs_scene_write_relations(
 SIECS_API void ecs_scene_free(void *data) { free(data); }
 
 SIECS_API bool ecs_save_memory(void **data_out, size_t *size_out) {
+    ecs_assert_not_scheduler_parallel("scene serialization");
     if (!data_out || !size_out)
         return false;
 
@@ -11354,6 +11461,7 @@ SIECS_API bool ecs_save_memory(void **data_out, size_t *size_out) {
 }
 
 SIECS_API bool ecs_save(const char *path) {
+    ecs_assert_not_scheduler_parallel("scene serialization");
     if (!path)
         return false;
 
@@ -11465,7 +11573,8 @@ static bool ecs_scene_read_payload(
                 return false;
             bool ok = ecs_scene_load_value(payload, record->info->type, temp, &component_ctx);
             if (ok && component == ecs_id(Name)) {
-                if (!ecs_name_valid(((Name *)temp)->value)) ok = false;
+                if (!ecs_name_valid(((Name *)temp)->value))
+                    ok = false;
                 else {
                     ctx->names[entities - ctx->local_to_entity + row] = *(Name *)temp;
                     ((Name *)temp)->value = NULL;
@@ -11516,7 +11625,13 @@ static bool ecs_scene_read_tables(
                 ecs_entity_t entity = ecs_new();
                 if (table_id) {
                     ecs_entity_record_t *record = ecs_get_record(entity);
-                    ecs_migrate(record, entity, ecs_get_table(record->table_id), table_id, 0);
+                    ecs_migrate(
+                        record,
+                        entity,
+                        ecs_get_table(ecs_entity_record_table(record)),
+                        table_id,
+                        0
+                    );
                 }
                 entities[row] = entity;
             }
@@ -11617,6 +11732,7 @@ SIECS_API bool ecs_scene_validate(const void *input, size_t size) {
 }
 
 SIECS_API bool ecs_load_memory(const void *input, size_t size) {
+    ecs_assert_not_scheduler_parallel("scene serialization");
     ecs_scene_document_t document;
     if (!ecs_scene_parse(input, size, &document))
         return false;
@@ -11661,6 +11777,7 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
 }
 
 SIECS_API bool ecs_load(const char *path) {
+    ecs_assert_not_scheduler_parallel("scene serialization");
     if (!path)
         return false;
 
@@ -11699,10 +11816,24 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
 
     const bool iterates_query = desc->query.components[0].id || desc->query.relations[0].id ||
                                 desc->query.order_by.func || desc->query.is_a;
-    ecs_assert(
-        !desc->no_defer || !iterates_query,
-        "no_defer systems cannot iterate entity queries"
+    ecs_fatal_if(
+        desc->no_defer && iterates_query,
+        "no_defer systems cannot iterate entity queries\n"
     );
+    ecs_fatal_if(
+        desc->parallel && (!iterates_query || desc->main_thread_only || desc->no_defer ||
+                           desc->query.order_by.func),
+        "parallel requires an unordered entity query without main_thread_only or no_defer\n"
+    );
+    for (uint8_t i = 0;
+         desc->parallel && i < ECS_QUERY_RESOURCE_CAPACITY && desc->query.resources[i].id;
+         i++) {
+        ecs_access_t access = ecs_access_term_access(desc->query.resources[i]);
+        ecs_fatal_if(
+            access == EcsOut || access == EcsInOut || access == EcsInOutOptional,
+            "parallel systems cannot write resources\n"
+        );
+    }
     const bool has_query = iterates_query || desc->query.resources[0].id;
     ecs_system_id_t system = ecs_system_index_create(
         desc,
@@ -11715,47 +11846,42 @@ ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc) {
 
 const char *ecs_system_name(ecs_system_id_t system) { return ecs_system_index_get(system)->name; }
 
-static void ecs_system_run_with_delta(ecs_system_t *sys, float delta_time) {
-    if (!sys->enabled) {
+void ecs_system_run_job(ecs_system_id_t system, uint16_t table, uint32_t offset, uint32_t count) {
+    // Registration may grow the index from an exclusive callback.
+    ecs_system_t sys = *ecs_system_index_get(system);
+    if (!sys.enabled)
         return;
-    }
-
-    if (!sys->no_defer) {
+    if (!sys.no_defer)
         ecs_defer_begin();
+    ecs_iter_t it = sys.iterates_query ? ecs_query_iter(sys.qid) : (ecs_iter_t){ .count = 1 };
+    it.user_data = sys.user_data;
+    it.delta_time = sys.prepared_delta_time;
+    if (sys.parallel) {
+        it.table_idx = table - 1;
+        it.table_count = table + 1;
+        it.row_offset = offset;
+        it.row_limit = count;
+        it.bounded = true;
     }
-    if (sys->iterates_query) {
-        ecs_iter_t it = ecs_query_iter(sys->qid);
-        it.user_data = sys->user_data;
-        it.delta_time = delta_time;
-
-        if (sys->callback_iterates_query) {
-            sys->callback(&it);
-        } else {
-            while (ecs_iter_next(&it)) sys->callback(&it);
-        }
+    if (!sys.iterates_query || sys.callback_iterates_query) {
+        sys.callback(&it);
     } else {
-        ecs_iter_t it = {
-            .count = 1,
-            .user_data = sys->user_data,
-            .delta_time = delta_time,
-        };
-
-        sys->callback(&it);
+        while (ecs_iter_next(&it))
+            sys.callback(&it);
     }
-
-    if (!sys->no_defer) {
+    if (!sys.no_defer)
         ecs_defer_end();
-    }
-}
-
-void ecs_system_run_prepared(ecs_system_id_t system) {
-    ecs_system_t *sys = ecs_system_index_get(system);
-    ecs_system_run_with_delta(sys, sys->prepared_delta_time);
 }
 
 void ecs_run_system(ecs_system_id_t system) {
+    ecs_assert_not_scheduler_parallel("manual system execution");
     ecs_system_t *sys = ecs_system_index_get(system);
-    ecs_system_run_with_delta(sys, (float)ecs_world.delta_time);
+    if (!sys->enabled)
+        return;
+    float previous_delta = sys->prepared_delta_time;
+    sys->prepared_delta_time = (float)ecs_world.delta_time;
+    ecs_worker_pool_run(&ecs_world.worker_pool, &system, 1, sys->phase, true);
+    ecs_system_index_get(system)->prepared_delta_time = previous_delta;
 }
 
 static bool ecs_system_prepare_scheduled(ecs_system_t *sys) {
@@ -11777,6 +11903,7 @@ static bool ecs_system_prepare_scheduled(ecs_system_t *sys) {
 }
 
 static void ecs_run_phase_internal(ecs_phase_t phase, bool respect_interval) {
+    ecs_assert_not_scheduler_parallel("phase execution");
     ecs_system_index_t *index = &system_index;
     ecs_phase_info_t *pinfo = ecs_system_index_get_phase(phase);
 
@@ -11789,66 +11916,26 @@ static void ecs_run_phase_internal(ecs_phase_t phase, bool respect_interval) {
     }
 
     const ecs_system_id_t *order = index->execution_order.data;
-    uint32_t at = pinfo->plan_first;
-    uint32_t end = at + pinfo->plan_count;
-
-    while (at < end) {
-        uint32_t first = at;
-
-        while (at < end && order[at]) {
-            at++;
-        }
-
-        uint32_t count = at - first;
-        const ecs_system_id_t *systems = order + first;
-        uint32_t runnable_count = 0;
-
-        for (uint32_t j = 0; j < count; j++) {
-            ecs_system_t *sys = ecs_system_index_get(systems[j]);
-
-            if (!sys->enabled) {
-                sys->prepared_delta_time = -1.0f;
-                continue;
-            }
-
-            if (respect_interval) {
-                runnable_count += ecs_system_prepare_scheduled(sys);
-            } else {
-                sys->prepared_delta_time = (float)ecs_world.delta_time;
-                runnable_count++;
-            }
-        }
-
-        if (runnable_count != 0) {
-            if (!ecs_worker_pool_enabled(&ecs_world.worker_pool) || runnable_count == 1) {
-                ecs_world.main_context.scheduler_parallel = false;
-                ecs_execution_context_set(&ecs_world.main_context);
-
-                for (uint32_t j = 0; j < count; j++) {
-                    ecs_system_t *sys = ecs_system_index_get(systems[j]);
-
-                    if (sys->prepared_delta_time >= 0.0f) {
-                        ecs_system_run_prepared(systems[j]);
-                    }
-                }
-            } else {
-                ecs_worker_pool_run_prepared_systems(
-                    &ecs_world.worker_pool,
-                    systems,
-                    count,
-                    runnable_count
-                );
-                ecs_worker_pool_flush(&ecs_world.worker_pool);
-            }
-        }
-
-        at++;
+    for (uint32_t i = 0; i < pinfo->plan_count; i++) {
+        ecs_system_t *sys = ecs_system_index_get(order[pinfo->plan_first + i]);
+        if (respect_interval)
+            ecs_system_prepare_scheduled(sys);
+        else
+            sys->prepared_delta_time = (float)ecs_world.delta_time;
     }
+    ecs_worker_pool_run(
+        &ecs_world.worker_pool,
+        order + pinfo->plan_first,
+        pinfo->plan_count,
+        phase,
+        false
+    );
 }
 
 void ecs_run_phase(ecs_phase_t phase) { ecs_run_phase_internal(phase, false); }
 
 bool ecs_progress(void) {
+    ecs_assert_not_scheduler_parallel("world progression");
     double frame_start = ecs_platform_time_now_sec();
 
     if (ecs_world.last_time == 0.0) {
@@ -11899,6 +11986,7 @@ void ecs_run(void) {
 }
 
 static void ecs_system_set_enabled(ecs_system_id_t system, bool enabled) {
+    ecs_assert_not_scheduler_parallel("system enable/disable");
     ecs_system_t *sys = ecs_system_index_get(system);
     if (sys->enabled != enabled) {
         sys->enabled = enabled;
@@ -12129,7 +12217,7 @@ bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
         }
 
         const ecs_entity_record_t *record = ecs_get_record(current);
-        const ecs_table_t *base_table = ecs_get_table(record->table_id);
+        const ecs_table_t *base_table = ecs_get_table(ecs_entity_record_table(record));
         current = ecs_type_isa_target(&base_table->type);
     }
 
@@ -12223,7 +12311,7 @@ static inline void *ecs_migrate_impl(
         ecs_get_record(moved)->table_row = old_row;
     }
     from_table->entity_count = last_row;
-    record->table_id = to_table_id;
+    atomic_store_explicit(&record->table_id, to_table_id, memory_order_relaxed);
     record->table_row = new_row;
 
     if (!requested_id) {
@@ -12470,56 +12558,241 @@ uint16_t *ecs_type_slot(const char *key, uint16_t initial) {
     return &slot->value;
 }
 
-#ifdef _WIN32
-#include <malloc.h>
-#endif
-
-#define ECS_WORKER_ALIGNMENT 64
-
-static void *ecs_worker_alloc(size_t size) {
-#ifdef _WIN32
-    void *memory = _aligned_malloc(size, ECS_WORKER_ALIGNMENT);
-    if (memory) {
-        memset(memory, 0, size);
+/* Cached references remain valid; their values belong to one world lifetime. */
+void ecs_type_slots_reset(void) {
+    while (atomic_flag_test_and_set_explicit(&type_slots_lock, memory_order_acquire)) {
     }
-    return memory;
-#else
-    void *memory = NULL;
-    if (posix_memalign(&memory, ECS_WORKER_ALIGNMENT, size) != 0) {
-        return NULL;
-    }
-    memset(memory, 0, size);
-    return memory;
-#endif
+    ecs_typed_id_slot_t *const *slots = type_slots.data;
+    for (uint32_t i = 0; i < type_slots.size; i++)
+        slots[i]->value = 0;
+    atomic_flag_clear_explicit(&type_slots_lock, memory_order_release);
 }
 
-static void ecs_worker_free(void *memory) {
-#ifdef _WIN32
-    _aligned_free(memory);
-#else
-    free(memory);
-#endif
+#define ECS_WORKER_BATCH_SIZE 4
+
+struct ecs_worker_job_s {
+    ecs_execution_context_t context;
+    ecs_worker_job_t *allocated_next, *next;
+    ecs_worker_t *owner;
+};
+
+typedef struct {
+    uint32_t node, count;
+    struct {
+        uint16_t table;
+        uint32_t offset, count, ordinal;
+        ecs_worker_job_t *commands;
+    } portions[ECS_WORKER_BATCH_SIZE];
+} ecs_worker_batch_t;
+
+static void ecs_worker_reservations(ecs_worker_pool_t *pool, bool begin) {
+    if (!pool->worker_count || pool->forced)
+        return;
+    if (begin) {
+        ecs_entity_index_begin_parallel();
+    } else {
+        for (uint32_t i = 0; i <= pool->worker_count; i++)
+            ecs_entity_index_return(&pool->workers[i].reservation);
+        ecs_entity_index_end_parallel();
+    }
+    pool->allocating = begin;
 }
 
-static void ecs_worker_run_job(ecs_worker_pool_t *pool, uint32_t job_index) {
-    ecs_worker_job_t *job = &pool->jobs[job_index];
-    ecs_system_run_prepared(job->system);
-    uint32_t completed =
-        atomic_fetch_add_explicit(&pool->completed_jobs, 1, memory_order_release) + 1;
-    if (completed == pool->job_count) {
-        ecs_platform_mutex_lock(&pool->mutex);
-        ecs_platform_condition_signal(&pool->completion_condition);
-        ecs_platform_mutex_unlock(&pool->mutex);
+static void ecs_worker_recycle(ecs_worker_job_t *job) {
+    ecs_arena_reset(&job->context.arena);
+    job->next = job->owner->free_jobs;
+    job->owner->free_jobs = job;
+}
+
+static void ecs_worker_enqueue(ecs_worker_pool_t *pool, uint32_t index) {
+    ecs_worker_node_t *node = &pool->nodes[index];
+    if (!pool->worker_count || node->queued || node->pending || node->exhausted)
+        return;
+    pool->ready[(pool->ready_head + pool->ready_count++) % pool->node_capacity] = index;
+    node->queued = true;
+    ecs_platform_condition_signal(&pool->work_condition);
+}
+
+static void ecs_worker_release(ecs_worker_pool_t *pool, uint32_t index) {
+    ecs_worker_node_t *node = &pool->nodes[index];
+    node->released = true;
+    const sicore_vec_t *successors = &ecs_system_index_get(node->system)->successors;
+    const ecs_system_id_t *ids = successors->data;
+    for (uint32_t i = 0; i < successors->size; i++) {
+        uint32_t successor = pool->system_to_node[ids[i]];
+        if (successor == UINT32_MAX)
+            continue;
+        ecs_worker_node_t *next = &pool->nodes[successor];
+        if (!next->started && next->pending) {
+            next->pending--;
+            ecs_worker_enqueue(pool, successor);
+        }
     }
 }
 
-static inline void ecs_worker_run_jobs(ecs_worker_pool_t *pool) {
-    for (;;) {
-        uint32_t job = atomic_fetch_add_explicit(&pool->next_job, 1, memory_order_relaxed);
-        if (job >= pool->job_count)
+static void ecs_worker_advance(ecs_worker_pool_t *pool) {
+    while (pool->cursor < pool->node_count && pool->nodes[pool->cursor].complete) {
+        if (pool->nodes[pool->cursor].commands.size) {
+            pool->draining = true;
+            break;
+        }
+        pool->cursor++;
+    }
+    ecs_platform_condition_signal(&pool->completion_condition);
+}
+
+static void ecs_worker_complete(ecs_worker_pool_t *pool, uint32_t index) {
+    ecs_worker_node_t *node = &pool->nodes[index];
+    if (!node->exhausted || node->running)
+        return;
+    node->complete = true;
+    if (!node->commands.size)
+        ecs_worker_release(pool, index);
+    ecs_worker_advance(pool);
+}
+
+static void ecs_worker_skip_empty_tables(ecs_worker_node_t *node, const ecs_system_t *sys) {
+    const ecs_query_cache_t *cache = ecs_query_cache(sys->qid);
+    while (node->next_table < cache->table_count) {
+        const ecs_table_t *table = ecs_get_table(ecs_query_table_id(cache, node->next_table));
+        if (node->next_row < table->entity_count)
             return;
-        ecs_worker_run_job(pool, job);
+        node->next_table++;
+        node->next_row = 0;
     }
+    node->exhausted = true;
+}
+
+/* Claim several portions under one scheduler lock. Small tables keep one
+ * portion per claim so all available workers can participate. Contexts and
+ * command storage belong to the executing worker and are reused locally. */
+static bool
+ecs_worker_take(ecs_worker_pool_t *pool, bool calling_thread, ecs_worker_batch_t *batch) {
+    if (!pool->in_run || pool->publishing || (!calling_thread && pool->forced))
+        return false;
+    // Serial callbacks can flush inline, so keep their registration order.
+    uint32_t candidates = pool->worker_count ? pool->ready_count : pool->cursor < pool->node_count;
+    while (candidates--) {
+        uint32_t index = pool->cursor;
+        if (pool->worker_count) {
+            index = pool->ready[pool->ready_head];
+            pool->ready_head = (pool->ready_head + 1) % pool->node_capacity;
+            pool->ready_count--;
+        }
+        ecs_worker_node_t *node = &pool->nodes[index];
+        node->queued = false;
+        const ecs_system_t *sys = ecs_system_index_get(node->system);
+        if ((pool->draining && !node->started) || (sys->main_thread_only && !calling_thread)) {
+            pool->ready[(pool->ready_head + pool->ready_count++) % pool->node_capacity] = index;
+            node->queued = true;
+            continue;
+        }
+        node->started = true;
+        if (!sys->enabled)
+            node->exhausted = true;
+        if (sys->parallel && !node->exhausted)
+            ecs_worker_skip_empty_tables(node, sys);
+        if (node->exhausted) {
+            ecs_worker_complete(pool, index);
+            // An empty query may have readied a calling-thread-only successor.
+            candidates = pool->worker_count ? pool->ready_count : pool->cursor < pool->node_count;
+            continue;
+        }
+        *batch = (ecs_worker_batch_t){ .node = index };
+        uint32_t limit = 1;
+        if (sys->parallel) {
+            const ecs_query_cache_t *cache = ecs_query_cache(sys->qid);
+            const ecs_table_t *table = ecs_get_table(ecs_query_table_id(cache, node->next_table));
+            uint32_t rows = table->entity_count - node->next_row;
+            uint32_t chunks = 1 + (rows - 1) / sys->chunk_size;
+            limit = chunks / (2 * (pool->worker_count + 1));
+            if (!limit)
+                limit = 1;
+            if (limit > ECS_WORKER_BATCH_SIZE)
+                limit = ECS_WORKER_BATCH_SIZE;
+        }
+        do {
+            uint32_t at = batch->count++;
+            batch->portions[at].table = node->next_table;
+            batch->portions[at].offset = node->next_row;
+            batch->portions[at].ordinal = node->next_ordinal++;
+            if (sys->parallel) {
+                const ecs_query_cache_t *cache = ecs_query_cache(sys->qid);
+                const ecs_table_t *table =
+                    ecs_get_table(ecs_query_table_id(cache, node->next_table));
+                uint32_t rows = table->entity_count - node->next_row;
+                batch->portions[at].count = rows < sys->chunk_size ? rows : sys->chunk_size;
+                node->next_row += batch->portions[at].count;
+                ecs_worker_skip_empty_tables(node, sys);
+            } else {
+                node->exhausted = true;
+            }
+        } while (batch->count < limit && !node->exhausted);
+        node->running++;
+        pool->active++;
+        ecs_worker_enqueue(pool, index);
+        return true;
+    }
+    return false;
+}
+
+static void ecs_worker_execute(ecs_worker_t *worker, ecs_worker_batch_t *batch) {
+    ecs_worker_pool_t *pool = worker->pool;
+    ecs_system_id_t system = pool->nodes[batch->node].system;
+    const ecs_system_t *sys = ecs_system_index_get(system);
+    bool exclusive = sys->main_thread_only;
+    bool parallel = !exclusive && (sys->parallel || (pool->worker_count && !pool->forced));
+    if (exclusive && pool->allocating)
+        ecs_worker_reservations(pool, false);
+    ecs_execution_context_t *previous = ecs_tls_context;
+    for (uint32_t i = 0; i < batch->count; i++) {
+        ecs_worker_job_t *job = worker->free_jobs;
+        if (job) {
+            worker->free_jobs = job->next;
+        } else {
+            job = calloc(1, sizeof *job);
+            ecs_fatal_if(!job, "worker task allocation failed\n");
+            ecs_execution_context_init(&job->context);
+            job->owner = worker;
+            job->allocated_next = worker->jobs;
+            worker->jobs = job;
+        }
+        job->context.scheduler_parallel = parallel;
+        job->context.entity_reservation = pool->allocating ? &worker->reservation : NULL;
+        ecs_execution_context_set(&job->context);
+        ecs_system_run_job(
+            system,
+            batch->portions[i].table,
+            batch->portions[i].offset,
+            batch->portions[i].count
+        );
+        if (job->context.commands.commands.size)
+            batch->portions[i].commands = job;
+        else
+            ecs_worker_recycle(job);
+    }
+    ecs_execution_context_set(previous);
+    if (exclusive)
+        ecs_worker_reservations(pool, true);
+
+    ecs_platform_mutex_lock(&pool->mutex);
+    ecs_worker_node_t *node = &pool->nodes[batch->node];
+    for (uint32_t i = 0; i < batch->count; i++) {
+        ecs_worker_job_t *job = batch->portions[i].commands;
+        if (job) {
+            uint32_t ordinal = batch->portions[i].ordinal;
+            sicore_vec_ensure(&node->commands, ordinal + 1, sizeof job);
+            ((ecs_worker_job_t **)node->commands.data)[ordinal] = job;
+        }
+    }
+    node->running--;
+    pool->active--;
+    if (exclusive && system_index.plan_dirty)
+        pool->draining = true;
+    ecs_worker_complete(pool, batch->node);
+    ecs_platform_condition_signal(&pool->completion_condition);
+    ecs_platform_mutex_unlock(&pool->mutex);
+    /* No job access after unlocking: publication may now recycle it. */
 }
 
 #ifdef _WIN32
@@ -12530,26 +12803,18 @@ static void *ecs_worker_loop(void *argument)
 {
     ecs_worker_t *worker = argument;
     ecs_worker_pool_t *pool = worker->pool;
-    uint32_t seen_epoch = 0;
-    ecs_execution_context_set(&worker->context);
-
-    for (;;) {
-        ecs_platform_mutex_lock(&pool->mutex);
-        while (!atomic_load_explicit(&pool->stop, memory_order_acquire) &&
-               atomic_load_explicit(&pool->epoch, memory_order_acquire) == seen_epoch) {
+    ecs_platform_mutex_lock(&pool->mutex);
+    while (!pool->stop) {
+        ecs_worker_batch_t batch;
+        if (!ecs_worker_take(pool, false, &batch)) {
             ecs_platform_condition_wait(&pool->work_condition, &pool->mutex);
+            continue;
         }
-        if (atomic_load_explicit(&pool->stop, memory_order_acquire)) {
-            ecs_platform_mutex_unlock(&pool->mutex);
-            break;
-        }
-        seen_epoch = atomic_load_explicit(&pool->epoch, memory_order_relaxed);
         ecs_platform_mutex_unlock(&pool->mutex);
-
-        ecs_worker_run_jobs(pool);
+        ecs_worker_execute(worker, &batch);
+        ecs_platform_mutex_lock(&pool->mutex);
     }
-
-    ecs_execution_context_set(NULL);
+    ecs_platform_mutex_unlock(&pool->mutex);
 #ifdef _WIN32
     return 0;
 #else
@@ -12560,128 +12825,194 @@ static void *ecs_worker_loop(void *argument)
 void ecs_worker_pool_init(ecs_worker_pool_t *pool, uint16_t requested_workers) {
     *pool = (ecs_worker_pool_t){ 0 };
     if (requested_workers == ECS_WORKERS_AUTO) {
-        uint32_t cpu_count = ecs_platform_hardware_thread_count();
-        requested_workers = cpu_count > 1 ? (uint16_t)(cpu_count - 1) : 0;
+        uint32_t cpus = ecs_platform_hardware_thread_count();
+        requested_workers = cpus > 1 ? (uint16_t)(cpus - 1) : 0;
     }
-    if (requested_workers == 0) {
-        return;
-    }
-
     pool->worker_count = requested_workers;
-    pool->workers = ecs_worker_alloc(requested_workers * sizeof(ecs_worker_t));
-    ecs_assert_not_null(pool->workers);
     ecs_platform_mutex_init(&pool->mutex);
     ecs_platform_condition_init(&pool->work_condition);
     ecs_platform_condition_init(&pool->completion_condition);
-    atomic_init(&pool->next_job, 0);
-    atomic_init(&pool->completed_jobs, 0);
-    atomic_init(&pool->epoch, 0);
-    atomic_init(&pool->stop, false);
-
+    size_t alignment = _Alignof(ecs_worker_t);
+    pool->worker_storage =
+        calloc(1, ((size_t)requested_workers + 1) * sizeof *pool->workers + alignment - 1);
+    ecs_fatal_if(!pool->worker_storage, "worker allocation failed\n");
+    pool->workers = (ecs_worker_t *)(((uintptr_t)pool->worker_storage + alignment - 1) &
+                                     ~(uintptr_t)(alignment - 1));
+    for (uint32_t i = 0; i <= requested_workers; i++)
+        pool->workers[i].pool = pool;
     for (uint16_t i = 0; i < requested_workers; i++) {
-        ecs_worker_t *worker = &pool->workers[i];
-        worker->pool = pool;
-        ecs_execution_context_init(&worker->context);
-        bool created = ecs_platform_thread_create(&worker->thread, ecs_worker_loop, worker);
-        ecs_assert(created, "failed to create ECS worker thread\n");
-        (void)created;
+        bool created = ecs_platform_thread_create(
+            &pool->workers[i].thread,
+            ecs_worker_loop,
+            &pool->workers[i]
+        );
+        ecs_fatal_if(!created, "failed to create ECS worker thread\n");
     }
 }
 
 void ecs_worker_pool_fini(ecs_worker_pool_t *pool) {
-    if (!pool->worker_count) {
-        return;
-    }
-
-    atomic_store_explicit(&pool->stop, true, memory_order_release);
     ecs_platform_mutex_lock(&pool->mutex);
+    ecs_fatal_if(pool->in_run, "cannot destroy workers during system execution\n");
+    pool->stop = true;
     ecs_platform_condition_broadcast(&pool->work_condition);
     ecs_platform_mutex_unlock(&pool->mutex);
-
-    for (uint16_t i = 0; i < pool->worker_count; i++) {
+    for (uint16_t i = 0; i < pool->worker_count; i++)
         ecs_platform_thread_join(&pool->workers[i].thread);
-        ecs_execution_context_fini(&pool->workers[i].context);
+    for (uint32_t i = 0; i < pool->node_capacity; i++)
+        sicore_vec_fini(&pool->nodes[i].commands);
+    for (uint32_t i = 0; i <= pool->worker_count; i++) {
+        ecs_worker_job_t *job = pool->workers[i].jobs;
+        while (job) {
+            ecs_worker_job_t *next = job->allocated_next;
+            ecs_execution_context_fini(&job->context);
+            free(job);
+            job = next;
+        }
     }
+    free(pool->nodes);
+    free(pool->ready);
+    free(pool->system_to_node);
+    free(pool->worker_storage);
     ecs_platform_condition_fini(&pool->completion_condition);
     ecs_platform_condition_fini(&pool->work_condition);
     ecs_platform_mutex_fini(&pool->mutex);
-    free(pool->jobs);
-    ecs_worker_free(pool->workers);
     *pool = (ecs_worker_pool_t){ 0 };
 }
 
-bool ecs_worker_pool_enabled(const ecs_worker_pool_t *pool) { return pool->worker_count != 0; }
-
-void ecs_worker_pool_run_prepared_systems(
-    ecs_worker_pool_t *pool,
-    const ecs_system_id_t *systems,
-    uint32_t system_count,
-    uint32_t runnable_count
-) {
-    if (runnable_count > pool->job_capacity) {
-        uint32_t capacity = pool->job_capacity ? pool->job_capacity : 4;
-        while (capacity < runnable_count) {
-            capacity *= 2;
-        }
-        pool->jobs = realloc(pool->jobs, capacity * sizeof(ecs_worker_job_t));
-        ecs_assert_not_null(pool->jobs);
-        pool->job_capacity = capacity;
+static void ecs_worker_dependencies(ecs_worker_pool_t *pool, ecs_phase_t phase) {
+    if (system_index.plan_dirty)
+        ecs_system_index_build_plan();
+    uint32_t system_count = system_index.systems.size;
+    if (pool->system_capacity < system_count) {
+        pool->system_to_node = realloc(pool->system_to_node, system_count * sizeof(uint32_t));
+        ecs_fatal_if(!pool->system_to_node, "scheduler mapping allocation failed\n");
+        pool->system_capacity = system_count;
     }
-    uint32_t job_count = 0;
-
-    for (uint32_t i = 0; i < system_count; i++) {
-        ecs_system_t *sys = ecs_system_index_get(systems[i]);
-
-        if (sys->prepared_delta_time < 0.0f) {
+    memset(pool->system_to_node, 0xff, system_count * sizeof(uint32_t));
+    pool->ready_count = pool->ready_head = 0;
+    for (uint32_t i = 0; i < pool->node_count; i++) {
+        ecs_worker_node_t *node = &pool->nodes[i];
+        pool->system_to_node[node->system] = i;
+        node->pending = 0;
+        node->queued = false;
+    }
+    const ecs_phase_info_t *info = ecs_system_index_get_phase(phase);
+    const ecs_system_edge_t *edges = info->dependencies.data;
+    for (uint32_t e = 0; e < info->dependencies.size; e++) {
+        uint32_t before = pool->system_to_node[edges[e].before];
+        uint32_t after = pool->system_to_node[edges[e].after];
+        if (before == UINT32_MAX || after == UINT32_MAX || pool->nodes[before].released ||
+            pool->nodes[after].started)
             continue;
-        }
-
-        pool->jobs[job_count++].system = systems[i];
+        pool->nodes[after].pending++;
     }
-
-    pool->job_count = job_count;
-    atomic_store_explicit(&pool->next_job, 0, memory_order_relaxed);
-    atomic_store_explicit(&pool->completed_jobs, 0, memory_order_relaxed);
-    ecs_world.main_context.scheduler_parallel = true;
-    for (uint16_t i = 0; i < pool->worker_count; i++) {
-        pool->workers[i].context.scheduler_parallel = true;
-    }
-    ecs_execution_context_set(&ecs_world.main_context);
-    ecs_platform_mutex_lock(&pool->mutex);
-    atomic_store_explicit(
-        &pool->epoch,
-        atomic_load_explicit(&pool->epoch, memory_order_relaxed) + 1,
-        memory_order_release
-    );
-    ecs_platform_condition_broadcast(&pool->work_condition);
-    ecs_platform_mutex_unlock(&pool->mutex);
-
-    ecs_worker_run_jobs(pool);
-
-    while (atomic_load_explicit(&pool->completed_jobs, memory_order_acquire) < pool->job_count) {
-        ecs_platform_mutex_lock(&pool->mutex);
-        if (atomic_load_explicit(&pool->completed_jobs, memory_order_acquire) < pool->job_count) {
-            ecs_platform_condition_wait(&pool->completion_condition, &pool->mutex);
-        }
-        ecs_platform_mutex_unlock(&pool->mutex);
-    }
+    for (uint32_t i = 0; i < pool->node_count; i++)
+        ecs_worker_enqueue(pool, i);
 }
 
-void ecs_worker_pool_flush(ecs_worker_pool_t *pool) {
-    ecs_execution_context_t *main_context = &ecs_world.main_context;
-    main_context->flushing_commands = true;
-    ecs_command_buffer_flush_buffer(&main_context->commands);
-    for (uint16_t i = 0; i < pool->worker_count; i++) {
-        ecs_command_buffer_flush_buffer(&pool->workers[i].context.commands);
+static bool ecs_worker_quiescent(const ecs_worker_pool_t *pool) {
+    if (pool->active)
+        return false;
+    for (uint32_t i = 0; i < pool->node_count; i++)
+        if (pool->nodes[i].started && !pool->nodes[i].complete)
+            return false;
+    return true;
+}
+
+/* Only the calling thread publishes, after all started systems have finished
+ * their portions. Commands retain their logical order even when workers finish
+ * in a different order. Later completed systems wait for this prefix. */
+static void ecs_worker_publish(ecs_worker_pool_t *pool) {
+    ecs_execution_context_t *main = &ecs_world.main_context;
+    ecs_execution_context_set(main);
+    main->flushing_commands = true;
+    while (pool->cursor < pool->node_count && pool->nodes[pool->cursor].complete) {
+        ecs_worker_node_t *node = &pool->nodes[pool->cursor];
+        ecs_worker_job_t **commands = node->commands.data;
+        for (uint32_t i = 0; i < node->commands.size; i++) {
+            ecs_worker_job_t *job = commands[i];
+            if (job) {
+                ecs_command_buffer_flush_buffer(&job->context.commands);
+                ecs_worker_recycle(job);
+            }
+        }
+        // Hooks can enqueue main-context work; finish that tail before the next system.
+        ecs_command_buffer_flush_buffer(&main->commands);
+        sicore_vec_clear(&node->commands);
+        node->released = true;
+        pool->cursor++;
     }
-    /* Hooks/observers during worker-buffer application can enqueue main-thread
-     * commands. Apply that deterministic tail before releasing the barrier. */
-    ecs_command_buffer_flush_buffer(&main_context->commands);
-    main_context->flushing_commands = false;
-    main_context->scheduler_parallel = false;
-    for (uint16_t i = 0; i < pool->worker_count; i++) {
-        pool->workers[i].context.scheduler_parallel = false;
+    main->flushing_commands = false;
+}
+
+void ecs_worker_pool_run(
+    ecs_worker_pool_t *pool,
+    const ecs_system_id_t *systems,
+    uint32_t count,
+    ecs_phase_t phase,
+    bool forced
+) {
+    if (!count)
+        return;
+    ecs_platform_mutex_lock(&pool->mutex);
+    ecs_fatal_if(pool->in_run, "nested scheduler execution is not supported\n");
+    if (count > pool->node_capacity) {
+        uint32_t old_capacity = pool->node_capacity;
+        pool->node_capacity = count;
+        pool->nodes = realloc(pool->nodes, count * sizeof *pool->nodes);
+        pool->ready = realloc(pool->ready, count * sizeof *pool->ready);
+        ecs_fatal_if(!pool->nodes || !pool->ready, "scheduler allocation failed\n");
+        memset(pool->nodes + old_capacity, 0, (count - old_capacity) * sizeof *pool->nodes);
+        for (uint32_t i = old_capacity; i < count; i++)
+            sicore_vec_init(&pool->nodes[i].commands, sizeof(ecs_worker_job_t *));
     }
+    pool->node_count = count;
+    pool->cursor = 0;
+    pool->forced = forced;
+    pool->draining = false;
+    for (uint32_t i = 0; i < count; i++) {
+        sicore_vec_t commands = pool->nodes[i].commands;
+        pool->nodes[i] = (ecs_worker_node_t){ .system = systems[i], .commands = commands };
+        ecs_system_t *sys = ecs_system_index_get(systems[i]);
+        if (!sys->enabled || sys->prepared_delta_time < 0.0f) {
+            pool->nodes[i].exhausted = pool->nodes[i].complete = pool->nodes[i].released = true;
+        }
+    }
+    ecs_worker_dependencies(pool, phase);
+    ecs_worker_reservations(pool, true);
+    pool->in_run = true;
+    ecs_worker_advance(pool);
+    ecs_platform_condition_broadcast(&pool->work_condition);
+    while (pool->cursor < count) {
+        if (pool->draining && ecs_worker_quiescent(pool)) {
+            // Draining prevents workers from starting any remaining system.
+            pool->publishing = true;
+            ecs_platform_mutex_unlock(&pool->mutex);
+            ecs_worker_reservations(pool, false);
+            ecs_worker_publish(pool);
+            ecs_worker_reservations(pool, true);
+            ecs_platform_mutex_lock(&pool->mutex);
+            pool->publishing = false;
+            ecs_worker_dependencies(pool, phase);
+            pool->draining = false;
+            ecs_worker_advance(pool);
+            ecs_platform_condition_broadcast(&pool->work_condition);
+            continue;
+        }
+        ecs_worker_batch_t batch;
+        if (ecs_worker_take(pool, true, &batch)) {
+            ecs_platform_mutex_unlock(&pool->mutex);
+            ecs_worker_execute(&pool->workers[pool->worker_count], &batch);
+            ecs_platform_mutex_lock(&pool->mutex);
+        } else if (pool->cursor < count && !(pool->draining && ecs_worker_quiescent(pool))) {
+            ecs_platform_condition_wait(&pool->completion_condition, &pool->mutex);
+        }
+    }
+    ecs_fatal_if(pool->active, "scheduler completed with callbacks still running\n");
+    ecs_worker_reservations(pool, false);
+    pool->in_run = false;
+    ecs_platform_mutex_unlock(&pool->mutex);
+    ecs_execution_context_set(&ecs_world.main_context);
 }
 
 void ecs_scene_type_cache_fini(void);
@@ -12695,6 +13026,7 @@ static bool ecs_world_started;
 static bool ecs_world_finished;
 
 void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
+    ecs_assert_not_scheduler_parallel("world initialization");
     ecs_assert(!ecs_world_started, "ecs_init called while ECS is already running\n");
     if (ecs_world_finished) {
         memset(&ecs_world, 0, sizeof ecs_world);
@@ -12704,8 +13036,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world_started = true;
 #endif
     sireflect_init();
-    sicore_vec_init_w_size(&entity_index.entities, sizeof(ecs_entity_record_t), 256);
-    entity_index.first_available = UINT32_MAX;
+    ecs_entity_index_init();
     ecs_component_index_init();
     ecs_relation_index_init();
     ecs_table_index_init();
@@ -12720,7 +13051,7 @@ void ecs_init_w_features(const ecs_world_feat_desc_t *features) {
     ecs_world.active_module = 0;
     ecs_world.features = *features;
     ecs_world.did_start = false;
-    ecs_world.exit = false;
+    atomic_init(&ecs_world.exit, false);
     ecs_world.delta_time = 0;
     ecs_world.last_time = 0;
     ecs_bootstrap();
@@ -12751,6 +13082,7 @@ static void ecs_fini_callbacks_run(void) {
 }
 
 void ecs_fini(void) {
+    ecs_assert_not_scheduler_parallel("world destruction");
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
     ecs_world_finished = true;
 
@@ -12764,8 +13096,7 @@ void ecs_fini(void) {
     ecs_query_index_fini();
     ecs_resource_storage_fini();
     ecs_arena_fini(&ecs_world.scene_strings);
-    sicore_vec_fini(&entity_index.entities);
-    entity_index = (ecs_entity_index_t){ 0 };
+    ecs_entity_index_fini();
     ecs_execution_context_fini(&ecs_world.main_context);
     ecs_component_index_fini();
     ecs_relation_index_fini();
@@ -12773,6 +13104,7 @@ void ecs_fini(void) {
     sireflect_fini();
     ecs_names_fini();
     ecs_module_storage_fini();
+    ecs_type_slots_reset();
 #ifndef NDEBUG
     ecs_world_started = false;
 #endif
@@ -12942,6 +13274,133 @@ void ecs_component_index_fini() {
     }
     sicore_vec_fini(&component_index.components);
     component_index = (ecs_component_index_t){ 0 };
+}
+
+static ecs_entity_record_t *ecs_entity_index_ensure(uint32_t id) {
+    _Atomic(ecs_entity_record_t *) *slot = &entity_index.pages[id >> ECS_ENTITY_PAGE_BITS];
+    ecs_entity_record_t *page = atomic_load_explicit(slot, memory_order_acquire);
+    if (!page) {
+        ecs_entity_record_t *allocated = malloc(ECS_ENTITY_PAGE_SIZE * sizeof *allocated);
+        ecs_fatal_if(!allocated, "entity page allocation failed\n");
+        for (uint32_t i = 0; i < ECS_ENTITY_PAGE_SIZE; i++) {
+            allocated[i].generation = 0;
+            atomic_init(&allocated[i].table_id, UINT16_MAX);
+            allocated[i].table_row = UINT32_MAX;
+        }
+        if (atomic_compare_exchange_strong_explicit(
+                slot,
+                &page,
+                allocated,
+                memory_order_acq_rel,
+                memory_order_acquire
+            ))
+            page = allocated;
+        else
+            free(allocated);
+    }
+    return page + (id & (ECS_ENTITY_PAGE_SIZE - 1));
+}
+
+void ecs_entity_index_init(void) {
+    entity_index.pages = malloc(ECS_ENTITY_PAGE_COUNT * sizeof *entity_index.pages);
+    ecs_fatal_if(!entity_index.pages, "entity page directory allocation failed\n");
+    for (uint32_t i = 0; i < ECS_ENTITY_PAGE_COUNT; i++)
+        atomic_init(&entity_index.pages[i], NULL);
+    sicore_vec_init(&entity_index.available, sizeof(uint32_t));
+    atomic_init(&entity_index.count, 1);
+    atomic_init(&entity_index.available_cursor, 0);
+    ecs_entity_index_ensure(0);
+}
+
+void ecs_entity_index_fini(void) {
+    for (uint32_t i = 0; i < ECS_ENTITY_PAGE_COUNT; i++)
+        free(atomic_load_explicit(&entity_index.pages[i], memory_order_relaxed));
+    free(entity_index.pages);
+    sicore_vec_fini(&entity_index.available);
+}
+
+void ecs_entity_index_begin_parallel(void) {
+    entity_index.available_snapshot = entity_index.available.size;
+    atomic_store_explicit(
+        &entity_index.available_cursor,
+        entity_index.available.size,
+        memory_order_relaxed
+    );
+}
+
+void ecs_entity_index_end_parallel(void) {
+    int64_t remaining = atomic_load_explicit(&entity_index.available_cursor, memory_order_relaxed);
+    uint32_t prefix = remaining > 0 ? (uint32_t)remaining : 0;
+    uint32_t returned = entity_index.available.size - entity_index.available_snapshot;
+    if (returned) {
+        uint32_t *ids = entity_index.available.data;
+        memmove(ids + prefix, ids + entity_index.available_snapshot, returned * sizeof *ids);
+    }
+    entity_index.available.size = prefix + returned;
+}
+
+void ecs_entity_index_return(ecs_entity_reservation_t *reservation) {
+    // Return unissued IDs only while every worker is quiescent. Returned IDs
+    // never became alive and retain their generation.
+    while (reservation->recycled_begin < reservation->recycled_end) {
+        uint32_t id = ((uint32_t *)entity_index.available.data)[reservation->recycled_begin++];
+        sicore_vec_push(&entity_index.available, &id, sizeof id);
+    }
+    while (reservation->next < reservation->end) {
+        uint32_t id = reservation->next++;
+        sicore_vec_push(&entity_index.available, &id, sizeof id);
+    }
+    *reservation = (ecs_entity_reservation_t){ 0 };
+}
+
+ecs_entity_t ecs_entity_index_reserve(bool reuse, ecs_entity_reservation_t *reservation) {
+    uint32_t id;
+    if (reservation) {
+        if (reuse && !reservation->recycled_exhausted &&
+            reservation->recycled_begin == reservation->recycled_end) {
+            int64_t end = atomic_fetch_sub_explicit(
+                &entity_index.available_cursor,
+                ECS_ENTITY_RESERVATION_SIZE,
+                memory_order_relaxed
+            );
+            reservation->recycled_exhausted = end <= 0;
+            if (end > 0) {
+                reservation->recycled_end = (uint32_t)end;
+                reservation->recycled_begin = end > ECS_ENTITY_RESERVATION_SIZE
+                                                  ? (uint32_t)end - ECS_ENTITY_RESERVATION_SIZE
+                                                  : 0;
+            }
+        }
+        if (reuse && reservation->recycled_begin < reservation->recycled_end) {
+            id = ((const uint32_t *)entity_index.available.data)[--reservation->recycled_end];
+        } else {
+            if (reservation->next == reservation->end) {
+                uint32_t next = atomic_fetch_add_explicit(
+                    &entity_index.count,
+                    ECS_ENTITY_RESERVATION_SIZE,
+                    memory_order_relaxed
+                );
+                ecs_fatal_if(
+                    next > UINT32_MAX - ECS_ENTITY_RESERVATION_SIZE,
+                    "entity index exhausted\n"
+                );
+                reservation->next = next;
+                reservation->end = next + ECS_ENTITY_RESERVATION_SIZE;
+            }
+            id = reservation->next++;
+        }
+    } else if (reuse && entity_index.available.size) {
+        id = ((const uint32_t *)entity_index.available.data)[--entity_index.available.size];
+    } else {
+        id = ecs_entity_index_count();
+        ecs_fatal_if(id == UINT32_MAX, "entity index exhausted\n");
+        atomic_store_explicit(&entity_index.count, id + 1, memory_order_relaxed);
+    }
+    ecs_entity_record_t *record = ecs_entity_index_ensure(id);
+    // Generation and row are immutable during parallel reservations. Publishing
+    // only table_id makes liveness lookup independent of the allocation cursor.
+    atomic_store_explicit(&record->table_id, 0, memory_order_release);
+    return ecs_entity(id, record->generation);
 }
 
 #define ECS_COMPILED_TERMS (ECS_QUERY_TERM_CAPACITY + ECS_QUERY_RELATION_CAPACITY + 2)
@@ -13142,23 +13601,24 @@ ecs_query_bind(const ecs_query_t *q, const ecs_table_t *table, ecs_query_table_t
     return true;
 }
 bool ecs_query_resolve_up_fields(
-    ecs_query_cache_t *cache,
+    const ecs_query_t *query,
     const ecs_table_t *table,
-    ecs_query_table_t *entry
+    void **fields,
+    uint32_t *field_kind_bits
 ) {
-    uint16_t mask = cache->query->up_mask;
+    uint16_t mask = query->up_mask;
     while (mask) {
         uint8_t i = (uint8_t)ECS_CTZ(mask);
         mask &= (uint16_t)(mask - 1);
-        ecs_component_term_t term = ecs_query_fields(cache->query)[i];
+        ecs_component_term_t term = ecs_query_fields(query)[i];
         ecs_relation_id_t relation = ecs_access_term_source_relation(term);
         ecs_entity_t target = ecs_relation_target_at_table(table, relation, 0);
         void *ptr = NULL;
         while (target && !(ptr = ecs_try_get_cid(target, term.id)))
             target = ecs_target_id(target, relation);
-        entry->fields[i] = ptr;
-        entry->field_kind_bits = (entry->field_kind_bits & ~(3u << (i * 2))) |
-                                 (uint32_t)(ptr ? EcsFieldShared : EcsFieldNone) << (i * 2);
+        fields[i] = ptr;
+        (*field_kind_bits) = ((*field_kind_bits) & ~(3u << (i * 2))) |
+                             (uint32_t)(ptr ? EcsFieldShared : EcsFieldNone) << (i * 2);
         if (!ptr && ecs_access_term_access(term) == EcsInUp)
             return false;
     }
@@ -13321,12 +13781,22 @@ void ecs_query_index_add_table(const ecs_table_t *table, uint16_t id) {
 
 static bool ecs_query_table_inherits_from(const ecs_table_t *table, const ecs_table_t *base) {
     for (ecs_entity_t entity = ecs_type_isa_target(&table->type); entity != 0;) {
-        table = ecs_get_table(ecs_get_record(entity)->table_id);
+        table = ecs_get_table(ecs_entity_record_table(ecs_get_record(entity)));
         if (table == base)
             return true;
         entity = ecs_type_isa_target(&table->type);
     }
     return false;
+}
+
+static void ecs_query_rebind(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t at) {
+    ecs_query_table_t *entry = ecs_query_table_at(cache, at);
+    uint32_t kinds = entry->field_kind_bits;
+    ecs_query_bind(cache->query, table, entry);
+    // Pointer refresh alone leaves the access graph valid. Ownership changes
+    // can introduce shared reads from outside the matching table set.
+    if (kinds != entry->field_kind_bits)
+        system_index.plan_dirty = true;
 }
 
 void ecs_query_index_refresh_table_fields(const ecs_table_t *table) {
@@ -13345,13 +13815,13 @@ void ecs_query_index_refresh_table_fields(const ecs_table_t *table) {
             continue;
         uint16_t direct = ecs_query_table_position(cache, table_id);
         if (direct != UINT16_MAX)
-            ecs_query_bind(cache->query, table, ecs_query_table_at(cache, direct));
+            ecs_query_rebind(cache, table, direct);
         if (!has_inheritors)
             continue;
         for (uint16_t at = 0; at < cache->table_count; at++) {
             const ecs_table_t *entry_table = ecs_get_table(ecs_query_table_id(cache, at));
             if (entry_table != table && ecs_query_table_inherits_from(entry_table, table))
-                ecs_query_bind(cache->query, entry_table, ecs_query_table_at(cache, at));
+                ecs_query_rebind(cache, entry_table, at);
         }
     }
 }
@@ -13415,6 +13885,7 @@ ecs_phase_t ecs_phase_register(const ecs_phase_desc_t *desc) {
         .name = desc && desc->name ? desc->name : "unnamed",
     };
     sicore_vec_init(&info.systems, sizeof(ecs_system_id_t));
+    sicore_vec_init(&info.dependencies, sizeof(ecs_system_edge_t));
     sicore_vec_push(&index->phases, &info, sizeof info);
     uint32_t old_count = index->phase_order.size;
     sicore_vec_push(&index->phase_order, &id, sizeof id);
@@ -13477,6 +13948,8 @@ ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query_id_t qid, bool 
         .enabled = !desc->disabled,
         .main_thread_only = desc->main_thread_only,
         .no_defer = desc->no_defer,
+        .parallel = desc->parallel,
+        .chunk_size = desc->chunk_size ? desc->chunk_size : 1024,
     };
     for (uint16_t i = 0; i < ECS_SYSTEM_AFTER_CAPACITY && desc->after[i]; i++) {
 #ifndef NDEBUG
@@ -13490,9 +13963,9 @@ ecs_system_index_create(const ecs_system_desc_t *desc, ecs_query_id_t qid, bool 
             "system dependency must be in the same phase\n"
         );
 #endif
-        if (desc->after[i] > system.after)
-            system.after = desc->after[i];
+        system.after[i] = desc->after[i];
     }
+    sicore_vec_init(&system.successors, sizeof(ecs_system_id_t));
     sicore_vec_push(&index->systems, &system, sizeof system);
     ecs_system_id_t id = index->systems.size - 1;
     sicore_vec_push_u16(&ecs_system_index_get_phase(system.phase)->systems, id);
@@ -13554,41 +14027,57 @@ static bool ecs_system_conflict(const ecs_system_t *a, const ecs_system_t *b) {
         )) {
         return true;
     }
-    return ecs_query_terms_conflict(
-               ecs_query_fields(aq),
-               aq->field_count,
-               ecs_query_fields(bq),
-               bq->field_count
-           ) &&
-           ecs_query_tables_overlap(a_cache, b_cache);
+    if (!ecs_query_terms_conflict(
+            ecs_query_fields(aq),
+            aq->field_count,
+            ecs_query_fields(bq),
+            bq->field_count
+        ))
+        return false;
+    // Shared fields may point into tables outside either query's matching set.
+    if (aq->up_mask || bq->up_mask)
+        return true;
+    const ecs_query_cache_t *caches[] = { a_cache, b_cache };
+    for (uint8_t c = 0; c < 2; c++) {
+        for (uint16_t t = 0; t < caches[c]->table_count; t++) {
+            const ecs_query_table_t *entry = ecs_query_table_at(caches[c], t);
+            for (uint8_t f = 0; f < caches[c]->query->field_count; f++)
+                if (((entry->field_kind_bits >> (2 * f)) & 3) == EcsFieldShared)
+                    return true;
+        }
+    }
+    return ecs_query_tables_overlap(a_cache, b_cache);
 }
 
 void ecs_system_index_build_plan(void) {
     ecs_system_index_t *index = &system_index;
     sicore_vec_clear(&index->execution_order);
+    for (uint32_t i = 1; i < index->systems.size; i++)
+        sicore_vec_clear(&ecs_system_get_unchecked(i)->successors);
     for (uint32_t p = 0; p < index->phase_order.size; p++) {
         ecs_phase_info_t *phase =
             ecs_system_index_get_phase(*sicore_vec_get(&index->phase_order, p, ecs_phase_t));
         phase->plan_first = index->execution_order.size;
-        uint32_t batch_first = phase->plan_first;
+        sicore_vec_clear(&phase->dependencies);
         const ecs_system_id_t *systems = phase->systems.data;
         for (uint32_t i = 0; i < phase->systems.size; i++) {
-            ecs_system_id_t id = systems[i];
-            ecs_system_t *current = ecs_system_index_get(id);
+            ecs_system_t *current = ecs_system_index_get(systems[i]);
             if (!current->enabled)
                 continue;
-            bool blocked = false;
-            const ecs_system_id_t *order = index->execution_order.data;
-            for (uint32_t j = batch_first; j < index->execution_order.size && !blocked; j++) {
-                ecs_system_id_t previous_id = order[j];
-                blocked |= current->after == previous_id;
-                blocked |= ecs_system_conflict(current, ecs_system_index_get(previous_id));
+            for (uint32_t j = 0; j < i; j++) {
+                ecs_system_t *previous = ecs_system_index_get(systems[j]);
+                if (!previous->enabled)
+                    continue;
+                bool dependent = ecs_system_conflict(previous, current);
+                for (uint16_t k = 0; k < ECS_SYSTEM_AFTER_CAPACITY && current->after[k]; k++)
+                    dependent |= current->after[k] == systems[j];
+                if (dependent) {
+                    ecs_system_edge_t edge = { systems[j], systems[i] };
+                    sicore_vec_push(&phase->dependencies, &edge, sizeof edge);
+                    sicore_vec_push_u16(&previous->successors, systems[i]);
+                }
             }
-            if (blocked) {
-                sicore_vec_push_u16(&index->execution_order, 0);
-                batch_first = index->execution_order.size;
-            }
-            sicore_vec_push_u16(&index->execution_order, id);
+            sicore_vec_push_u16(&index->execution_order, systems[i]);
         }
         phase->plan_count = index->execution_order.size - phase->plan_first;
     }
@@ -13598,12 +14087,15 @@ void ecs_system_index_build_plan(void) {
 void ecs_system_index_fini(void) {
     ecs_system_index_t *index = &system_index;
     ecs_system_t *systems = index->systems.data;
-    for (uint32_t i = 1; i < index->systems.size; i++)
+    for (uint32_t i = 1; i < index->systems.size; i++) {
         if (systems[i].user_data_dtor)
             systems[i].user_data_dtor(systems[i].user_data);
+        sicore_vec_fini(&systems[i].successors);
+    }
     for (uint32_t i = 0; i < index->phases.size; i++) {
         ecs_phase_info_t *phase = sicore_vec_get_mut(&index->phases, i, ecs_phase_info_t);
         sicore_vec_fini(&phase->systems);
+        sicore_vec_fini(&phase->dependencies);
     }
     sicore_vec_fini(&index->execution_order);
     sicore_vec_fini(&index->phase_order);
@@ -13819,7 +14311,7 @@ static bool ecs_table_index_inherits_component_before(
     ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0 && base != stop_base) {
         const ecs_entity_record_t *record = ecs_get_record(base);
-        const ecs_table_t *base_table = ecs_get_table(record->table_id);
+        const ecs_table_t *base_table = ecs_get_table(ecs_entity_record_table(record));
         if (ecs_table_column_or_invalid(base_table, component) != UINT16_MAX) {
             return true;
         }
@@ -13832,7 +14324,7 @@ static void ecs_table_index_register_inherited_components(ecs_table_t *table, ui
     ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
-        const ecs_table_t *base_table = ecs_get_table(record->table_id);
+        const ecs_table_t *base_table = ecs_get_table(ecs_entity_record_table(record));
 
         for (uint16_t i = 0; i < base_table->type.component_count; i++) {
             ecs_component_t component = base_table->type.ids[i];

@@ -1008,7 +1008,9 @@ SIECS_API char *ecs_entity_path(ecs_entity_t entity);
 /* Return the current live handle for an entity index, or 0 when unavailable. */
 SIECS_API ecs_entity_t ecs_entity_from_index(uint32_t index);
 
-/* Create a new alive entity in world. world must not be NULL. */
+/* Create a new alive entity. During parallel system execution the handle is
+ * reserved immediately; insertion into query-visible tables occurs when the
+ * scheduler publishes commands. Components added before publication are deferred. */
 SIECS_API ecs_entity_t ecs_new(void);
 
 /* Create a new alive entity without reusing a previously freed entity index.
@@ -1472,7 +1474,8 @@ SIECS_API ecs_event_t ecs_event(void);
  * Return the process-wide id slot for `key`, created with `initial` on first
  * use. Every binary of the process (executable, shared libraries, plugins)
  * gets the same stable pointer, so typed C++ ids registered in one binary are
- * visible from the others. Keys are copied; the slot lives until exit.
+ * visible from the others. Keys are copied; the pointer lives until exit.
+ * ecs_fini resets slot values to zero so a new world registers its own ids.
  */
 SIECS_API uint16_t *ecs_type_slot(const char *key, uint16_t initial);
 
@@ -1546,6 +1549,10 @@ typedef struct {
     uintptr_t user_data;
     uint16_t table_idx;
     uint16_t table_count;
+    uint32_t row_offset;
+    uint32_t row_limit;
+    bool bounded;
+    void *field_storage[ECS_QUERY_TERM_CAPACITY + ECS_QUERY_RELATION_CAPACITY + 2];
 } ecs_iter_t;
 
 /*
@@ -1652,7 +1659,12 @@ SIECS_API const char *ecs_phase_name(ecs_phase_t phase);
  * an omitted phase (ECS_PHASE_NONE) defaults to EcsOnUpdate.
  * after contains system ids that must run before this system in the same phase.
  * Scheduler data dependencies come from query.components and query.resources.
- * main_thread_only prevents worker dispatch.
+ * main_thread_only runs exclusively on the calling thread.
+ * parallel opts in to concurrent callbacks over portions of at most chunk_size
+ * rows from one table (zero selects 1024). It requires an unordered entity query,
+ * read-only resources, and neither main_thread_only nor no_defer. Captures,
+ * user_data, lifecycle callbacks and external state must support concurrency.
+ * Systems without parallel have at most one active callback each.
  * no_defer runs the system without deferring ECS mutations. It cannot be used
  * with entity query iteration.
  *
@@ -1682,6 +1694,10 @@ typedef struct {
     bool no_defer;
     /* Callback consumes the query iterator itself instead of one batch at a time. */
     bool callback_iterates_query;
+    /* Opt in to concurrent callbacks over disjoint query portions. */
+    bool parallel;
+    /* Rows per portion, within one table. Zero selects 1024. */
+    uint32_t chunk_size;
     double interval;
 } ecs_system_desc_t;
 
@@ -1710,10 +1726,15 @@ SIECS_API ecs_system_id_t ecs_system_init(const ecs_system_desc_t *desc);
 SIECS_API const char *ecs_system_name(ecs_system_id_t system);
 
 /*
- * Run all enabled systems in phase order. With workers enabled, independent
- * systems in one batch may run simultaneously and have no happens-before
- * relationship. Use ecs_system_desc_t.after when a later system must observe
- * an earlier system's structural changes in the same phase.
+ * Run all enabled systems in phase order. With workers enabled, ready systems
+ * may run simultaneously without a happens-before relationship. Dependencies
+ * wait for all predecessor portions and their deferred commands. Use after for
+ * semantic ordering, including visibility of structural changes in this phase.
+ * Commands publish on the calling thread in system registration order, then
+ * query table/portion order. Reserved entity handles can vary with scheduling.
+ * Global registration, query/observer configuration, serialization and nested
+ * scheduling are forbidden during parallel callbacks. Use exclusive main-thread
+ * systems for global operations. External threads cannot access the active world.
  */
 SIECS_API bool ecs_progress(void);
 

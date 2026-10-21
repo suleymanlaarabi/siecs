@@ -30,7 +30,7 @@ static inline bool ecs_component_write(
         if ((flags & EcsWriteCheckAlive) && !ecs_is_alive(entity))
             return false;
         const ecs_entity_record_t *record = ecs_get_record(entity);
-        table = ecs_get_table(record->table_id);
+        table = ecs_get_table(ecs_entity_record_table(record));
         dst = ecs_table_get_component(table, id, record->table_row);
     }
     if (flags & EcsWriteNotify)

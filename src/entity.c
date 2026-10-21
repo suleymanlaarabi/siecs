@@ -15,59 +15,41 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static inline ecs_entity_t ecs_entity_index_create(uint32_t row, bool reuse) {
-    ecs_entity_index_t *index = &entity_index;
-    uint32_t entity_id;
-    uint32_t generation;
-    if (reuse && index->first_available != UINT32_MAX) {
-        entity_id = index->first_available;
-        ecs_entity_record_t *record = ecs_entity_index_get_record(entity_id);
-        index->first_available = record->table_row;
-        generation = record->generation;
-        record->table_id = 0;
-        record->table_row = row;
+void ecs_entity_materialize(ecs_entity_t entity) {
+    ecs_entity_record_t *record = ecs_get_record(entity);
+    if (record->table_row != UINT32_MAX || ecs_entity_record_table(record) != 0)
+        return;
+    ecs_table_t *table = ecs_get_table(0);
+    record->table_row = table->entity_count;
+    ecs_table_add_entity(table, entity);
+}
+
+static ecs_entity_t ecs_entity_create(bool reuse) {
+    ecs_entity_t entity =
+        ecs_entity_index_reserve(reuse, ecs_execution_context_current()->entity_reservation);
+    if (ecs_execution_context_current()->scheduler_parallel) {
+        ecs_command_buffer_create(entity);
     } else {
-        entity_id = index->entities.size;
-        generation = 0;
-        ecs_entity_record_t *record =
-            sicore_vec_push_empty(&index->entities, sizeof(ecs_entity_record_t));
-        *record = (ecs_entity_record_t){ .generation = 0, .table_row = row, .table_id = 0 };
+        ecs_entity_materialize(entity);
     }
-    return ecs_entity(entity_id, generation);
-}
-
-ecs_entity_t ecs_new(void) {
-    ecs_table_t *table = ecs_get_table(0);
-
-    ecs_entity_t entity = ecs_entity_index_create(table->entity_count, true);
-    ecs_table_add_entity(table, entity);
-
     return entity;
 }
 
-ecs_entity_t ecs_new_no_reuse(void) {
-    ecs_table_t *table = ecs_get_table(0);
+ecs_entity_t ecs_new(void) { return ecs_entity_create(true); }
 
-    ecs_entity_t entity = ecs_entity_index_create(table->entity_count, false);
-    ecs_table_add_entity(table, entity);
-
-    return entity;
-}
+ecs_entity_t ecs_new_no_reuse(void) { return ecs_entity_create(false); }
 
 bool ecs_is_alive(const ecs_entity_t entity) { return ecs_entity_index_is_alive(entity); }
 
 ecs_entity_t ecs_entity_from_index(uint32_t index) {
-    if (index == 0 || index >= entity_index.entities.size) {
+    if (index == 0 || index >= ecs_entity_index_count()) {
         return 0;
     }
 
-    const ecs_entity_record_t *record =
-        sicore_vec_get(&entity_index.entities, index, ecs_entity_record_t);
-    if (record->table_id == UINT16_MAX) {
-        return 0;
-    }
-
-    return ecs_entity(index, record->generation);
+    const ecs_entity_record_t *record = ecs_entity_index_get_record(index);
+    return record && atomic_load_explicit(&record->table_id, memory_order_acquire) != UINT16_MAX
+               ? ecs_entity(index, record->generation)
+               : 0;
 }
 
 static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_entity_t target) {
@@ -76,14 +58,15 @@ static inline bool ecs_would_create_base_cycle(const ecs_entity_t entity, ecs_en
             return true;
         }
         const ecs_entity_record_t *target_record = ecs_get_record(target);
-        const ecs_table_t *target_table = ecs_get_table(target_record->table_id);
+        const ecs_table_t *target_table = ecs_get_table(ecs_entity_record_table(target_record));
         target = ecs_type_isa_target(&target_table->type);
     }
     return false;
 }
 
 bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
-    ecs_entity_t base = ecs_type_isa_target(&ecs_get_table(ecs_get_record(entity)->table_id)->type);
+    ecs_entity_t base =
+        ecs_type_isa_target(&ecs_get_table(ecs_entity_record_table(ecs_get_record(entity)))->type);
     if (base == target) {
         return true;
     }
@@ -95,7 +78,9 @@ bool ecs_is(ecs_entity_t entity, ecs_entity_t target) {
 
 ecs_entity_t ecs_entity_base_raw(ecs_entity_t entity) {
     ecs_assert_is_alive(entity);
-    return ecs_type_isa_target(&ecs_get_table(ecs_get_record(entity)->table_id)->type);
+    return ecs_type_isa_target(
+        &ecs_get_table(ecs_entity_record_table(ecs_get_record(entity)))->type
+    );
 }
 
 ecs_entity_t ecs_entity_base(ecs_entity_t entity) { return ecs_target_id(entity, ecs_rid(IsA)); }
@@ -112,7 +97,7 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     }
 
     ecs_entity_record_t *record = ecs_get_record(entity);
-    uint16_t from_table_id = record->table_id;
+    uint16_t from_table_id = ecs_entity_record_table(record);
     ecs_table_t *from_table = ecs_get_table(from_table_id);
     if (ecs_type_isa_target(&from_table->type) == target) {
         return;
@@ -150,12 +135,11 @@ void ecs_is_a(ecs_entity_t entity, ecs_entity_t target) {
 }
 
 static inline void ecs_entity_index_kill(uint32_t entity_id) {
-    ecs_entity_index_t *index = &entity_index;
     ecs_entity_record_t *record = ecs_entity_index_get_record(entity_id);
     record->generation += 1;
-    record->table_row = index->first_available;
-    record->table_id = UINT16_MAX;
-    index->first_available = entity_id;
+    record->table_row = UINT32_MAX;
+    atomic_store_explicit(&record->table_id, UINT16_MAX, memory_order_relaxed);
+    sicore_vec_push(&entity_index.available, &entity_id, sizeof entity_id);
 }
 
 void ecs_kill_now(ecs_entity_t entity) {
@@ -166,7 +150,7 @@ void ecs_kill_now(ecs_entity_t entity) {
     }
 
     ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_table_t *initial_table = ecs_get_table(record->table_id);
+    ecs_table_t *initial_table = ecs_get_table(ecs_entity_record_table(record));
     const ecs_component_t *components = initial_table->type.ids;
     uint16_t component_count = initial_table->type.component_count;
     ecs_table_t *table = initial_table;
@@ -180,7 +164,7 @@ void ecs_kill_now(ecs_entity_t entity) {
     for (uint16_t i = 0; i < component_count && ecs_is_alive(entity); i++) {
         ecs_component_t component = components[i];
         record = ecs_get_record(entity);
-        table = ecs_get_table(record->table_id);
+        table = ecs_get_table(ecs_entity_record_table(record));
 
         uint16_t col_idx = ecs_table_column_or_invalid(table, component);
         if (col_idx == UINT16_MAX) {
@@ -196,7 +180,7 @@ void ecs_kill_now(ecs_entity_t entity) {
                 break;
             }
             record = ecs_get_record(entity);
-            table = ecs_get_table(record->table_id);
+            table = ecs_get_table(ecs_entity_record_table(record));
             col_idx = ecs_table_column_or_invalid(table, component);
             if (col_idx == UINT16_MAX) {
                 continue;
@@ -211,7 +195,7 @@ void ecs_kill_now(ecs_entity_t entity) {
     }
 
     record = ecs_get_record(entity);
-    table = ecs_get_table(record->table_id);
+    table = ecs_get_table(ecs_entity_record_table(record));
 
     // Remove from table
     ecs_table_remove_entity_update_record(table, entity, record->table_row, true);
@@ -238,9 +222,11 @@ const char *ecs_entity_name(ecs_entity_t entity) {
 #else
     static _Thread_local char buff[32];
 #endif
-    if (!ecs_name_entity_alive(entity)) return NULL;
+    if (!ecs_name_entity_alive(entity))
+        return NULL;
     const char *name = ecs_name_local(entity);
-    if (name) return name;
+    if (name)
+        return name;
     snprintf(buff, sizeof buff, "(%u, %u)", ecs_first(entity), ecs_second(entity));
     return buff;
 }

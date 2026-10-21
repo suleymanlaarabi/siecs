@@ -202,23 +202,24 @@ ecs_query_bind(const ecs_query_t *q, const ecs_table_t *table, ecs_query_table_t
     return true;
 }
 bool ecs_query_resolve_up_fields(
-    ecs_query_cache_t *cache,
+    const ecs_query_t *query,
     const ecs_table_t *table,
-    ecs_query_table_t *entry
+    void **fields,
+    uint32_t *field_kind_bits
 ) {
-    uint16_t mask = cache->query->up_mask;
+    uint16_t mask = query->up_mask;
     while (mask) {
         uint8_t i = (uint8_t)ECS_CTZ(mask);
         mask &= (uint16_t)(mask - 1);
-        ecs_component_term_t term = ecs_query_fields(cache->query)[i];
+        ecs_component_term_t term = ecs_query_fields(query)[i];
         ecs_relation_id_t relation = ecs_access_term_source_relation(term);
         ecs_entity_t target = ecs_relation_target_at_table(table, relation, 0);
         void *ptr = NULL;
         while (target && !(ptr = ecs_try_get_cid(target, term.id)))
             target = ecs_target_id(target, relation);
-        entry->fields[i] = ptr;
-        entry->field_kind_bits = (entry->field_kind_bits & ~(3u << (i * 2))) |
-                                 (uint32_t)(ptr ? EcsFieldShared : EcsFieldNone) << (i * 2);
+        fields[i] = ptr;
+        (*field_kind_bits) = ((*field_kind_bits) & ~(3u << (i * 2))) |
+                             (uint32_t)(ptr ? EcsFieldShared : EcsFieldNone) << (i * 2);
         if (!ptr && ecs_access_term_access(term) == EcsInUp)
             return false;
     }
@@ -381,12 +382,22 @@ void ecs_query_index_add_table(const ecs_table_t *table, uint16_t id) {
 
 static bool ecs_query_table_inherits_from(const ecs_table_t *table, const ecs_table_t *base) {
     for (ecs_entity_t entity = ecs_type_isa_target(&table->type); entity != 0;) {
-        table = ecs_get_table(ecs_get_record(entity)->table_id);
+        table = ecs_get_table(ecs_entity_record_table(ecs_get_record(entity)));
         if (table == base)
             return true;
         entity = ecs_type_isa_target(&table->type);
     }
     return false;
+}
+
+static void ecs_query_rebind(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t at) {
+    ecs_query_table_t *entry = ecs_query_table_at(cache, at);
+    uint32_t kinds = entry->field_kind_bits;
+    ecs_query_bind(cache->query, table, entry);
+    // Pointer refresh alone leaves the access graph valid. Ownership changes
+    // can introduce shared reads from outside the matching table set.
+    if (kinds != entry->field_kind_bits)
+        system_index.plan_dirty = true;
 }
 
 void ecs_query_index_refresh_table_fields(const ecs_table_t *table) {
@@ -405,13 +416,13 @@ void ecs_query_index_refresh_table_fields(const ecs_table_t *table) {
             continue;
         uint16_t direct = ecs_query_table_position(cache, table_id);
         if (direct != UINT16_MAX)
-            ecs_query_bind(cache->query, table, ecs_query_table_at(cache, direct));
+            ecs_query_rebind(cache, table, direct);
         if (!has_inheritors)
             continue;
         for (uint16_t at = 0; at < cache->table_count; at++) {
             const ecs_table_t *entry_table = ecs_get_table(ecs_query_table_id(cache, at));
             if (entry_table != table && ecs_query_table_inherits_from(entry_table, table))
-                ecs_query_bind(cache->query, entry_table, ecs_query_table_at(cache, at));
+                ecs_query_rebind(cache, entry_table, at);
         }
     }
 }

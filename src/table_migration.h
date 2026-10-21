@@ -56,7 +56,7 @@ static inline ecs_table_t *ecs_table_change_type(
     ecs_type_t type,
     bool same_layout
 ) {
-    uint16_t from_id = record->table_id;
+    uint16_t from_id = ecs_entity_record_table(record);
     uint16_t to_id = ecs_table_index_get_or_create(type);
     if (to_id != from_id) {
         ecs_table_t *from = ecs_get_table(from_id);
@@ -65,7 +65,7 @@ static inline ecs_table_t *ecs_table_change_type(
         else
             ecs_migrate(record, entity, from, to_id, 0);
     }
-    return ecs_get_table(record->table_id);
+    return ecs_get_table(ecs_entity_record_table(record));
 }
 
 #endif

@@ -97,8 +97,9 @@ void ecs_query_index_activate(ecs_query_id_t id, const uint16_t *tables, uint16_
 void ecs_query_index_add_table(const ecs_table_t *table, uint16_t table_id);
 void ecs_query_index_refresh_table_fields(const ecs_table_t *table);
 bool ecs_query_resolve_up_fields(
-    ecs_query_cache_t *cache,
+    const ecs_query_t *query,
     const ecs_table_t *table,
-    ecs_query_table_t *entry
+    void **fields,
+    uint32_t *field_kind_bits
 );
 #endif

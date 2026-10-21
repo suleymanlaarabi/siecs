@@ -24,7 +24,7 @@ struct ecs_world_s {
     ecs_worker_pool_t worker_pool;
     sicore_vec_t fini_callbacks;
     bool did_start;
-    bool exit;
+    atomic_bool exit;
     double delta_time;
     double last_time;
     ecs_arena_t scene_strings;
@@ -48,8 +48,7 @@ typedef struct {
     sicore_vec_t entities;
 } RelationSource;
 
-#define ecs_get_record(entity)                                                                     \
-    sicore_vec_get_mut(&entity_index.entities, ecs_first(entity), ecs_entity_record_t)
+#define ecs_get_record(entity) ecs_entity_index_get_record(ecs_first(entity))
 #define ecs_get_table(tid) ecs_table_index_at(tid)
 
 static inline void ecs_emit_target_observers(
@@ -128,15 +127,16 @@ static inline bool ecs_is_deferred(void) {
 }
 
 static inline void ecs_assert_not_scheduler_parallel(const char *operation) {
-    ecs_assert(
-        !ecs_execution_context_current()->scheduler_parallel,
-        "%s is not allowed from a parallel system wave\n",
+    ecs_fatal_if(
+        ecs_execution_context_current()->scheduler_parallel,
+        "%s is not allowed from a parallel system execution\n",
         operation
     );
 }
 
-void ecs_system_run_prepared(ecs_system_id_t system);
+void ecs_system_run_job(ecs_system_id_t system, uint16_t table, uint32_t offset, uint32_t count);
 
+void ecs_type_slots_reset(void);
 void ecs_bootstrap(void);
 
 #endif

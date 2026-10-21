@@ -226,7 +226,7 @@ bool ecs_table_is_a(const ecs_table_t *table, ecs_entity_t base) {
         }
 
         const ecs_entity_record_t *record = ecs_get_record(current);
-        const ecs_table_t *base_table = ecs_get_table(record->table_id);
+        const ecs_table_t *base_table = ecs_get_table(ecs_entity_record_table(record));
         current = ecs_type_isa_target(&base_table->type);
     }
 

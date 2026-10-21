@@ -28,6 +28,11 @@ void check(ecs::entity target) {
         [state=std::make_unique<int>(1)](ecs::event<Damage> event) {(void)state; (void)event->amount;});
     o.remove();
 }'''),
+    'parallel_system_builder': (True, '', '''
+void check() {
+    ecs::system("parallel").parallel().each([](Position& p){++p.value;});
+    ecs::system("portions").parallel(128).each([](const Position&){});
+}'''),
     'generic_lambda_needs_signature': (False, 'use explicitly typed parameters', '''
 void check(){ecs::query().with<Position>().each([](auto& p){(void)p;});}'''),
     'generic_signature_mismatch': (False, 'declared query signature', '''

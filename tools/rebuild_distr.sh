@@ -12,7 +12,10 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$work_dir/distr"
-cp -R "$repo_root/project.json" "$repo_root/include" "$repo_root/src" "$work_dir/"
+cp -R "$repo_root/include" "$repo_root/src" "$work_dir/"
+# Generation must not replace installed headers/metadata with links into a
+# temporary checkout that is removed on exit.
+sed 's/"public":[[:space:]]*true/"public": false/' "$repo_root/project.json" > "$work_dir/project.json"
 
 cd "$work_dir"
 "$bake_bin" . -r >/dev/null

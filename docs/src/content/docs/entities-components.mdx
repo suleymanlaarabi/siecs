@@ -938,7 +938,9 @@ world is finalized; register types again after initializing a new world.
 
 Typed C++ IDs also use a process-wide hash map on first access. Their slots have
 stable addresses shared with plugins and survive world finalization. Subsequent
-typed accesses reuse the cached slot without looking up the name again.
+typed accesses reuse the cached slot without looking up the name again. The slot
+address survives world teardown; its id value resets to zero at `ecs_fini()` so
+the next world registers the type again.
 
 ## Dynamic reflected components
 
