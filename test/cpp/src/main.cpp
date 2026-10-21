@@ -19,6 +19,11 @@ void system_param_custom_query_phases(void);
 void system_param_custom_system_phases(void);
 void system_param_resource_and_component(void);
 void system_param_custom_observer(void);
+void system_param_parallel_params_are_local(void);
+void system_param_parallel_spawn_visible_after_dependency(void);
+void system_param_parallel_rejects_mutable_resource(void);
+void system_param_parallel_rejects_main_thread(void);
+void system_param_parallel_builtin_relation_targets(void);
 
 // Testsuite 'relation_query'
 void relation_query_target_dense_is_inferred(void);
@@ -168,6 +173,26 @@ bake_test_case system_param_testcases[] = {
     {
         "custom_observer",
         system_param_custom_observer
+    },
+    {
+        "parallel_params_are_local",
+        system_param_parallel_params_are_local
+    },
+    {
+        "parallel_spawn_visible_after_dependency",
+        system_param_parallel_spawn_visible_after_dependency
+    },
+    {
+        "parallel_rejects_mutable_resource",
+        system_param_parallel_rejects_mutable_resource
+    },
+    {
+        "parallel_rejects_main_thread",
+        system_param_parallel_rejects_main_thread
+    },
+    {
+        "parallel_builtin_relation_targets",
+        system_param_parallel_builtin_relation_targets
     }
 };
 
@@ -581,7 +606,7 @@ static bake_test_suite suites[] = {
         "system_param",
         NULL,
         NULL,
-        4,
+        9,
         system_param_testcases
     },
     {

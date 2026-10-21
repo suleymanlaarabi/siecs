@@ -23,6 +23,14 @@
       "coverage": false,
       "strict": false,
       "sanitize-memory": true
+    },
+    "tsan": {
+      "symbols": true,
+      "debug": true,
+      "optimizations": false,
+      "coverage": false,
+      "strict": false,
+      "sanitize-thread": true
     }
   }
 }

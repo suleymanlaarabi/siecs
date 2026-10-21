@@ -41,3 +41,13 @@ uint16_t *ecs_type_slot(const char *key, uint16_t initial) {
     atomic_flag_clear_explicit(&type_slots_lock, memory_order_release);
     return &slot->value;
 }
+
+/* Cached references remain valid; their values belong to one world lifetime. */
+void ecs_type_slots_reset(void) {
+    while (atomic_flag_test_and_set_explicit(&type_slots_lock, memory_order_acquire)) {
+    }
+    ecs_typed_id_slot_t *const *slots = type_slots.data;
+    for (uint32_t i = 0; i < type_slots.size; i++)
+        slots[i]->value = 0;
+    atomic_flag_clear_explicit(&type_slots_lock, memory_order_release);
+}

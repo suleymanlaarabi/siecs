@@ -3,31 +3,37 @@
 
 #include "command_buffer.h"
 #include "platform.h"
-#include <stdatomic.h>
 #include <stdint.h>
+
+typedef struct ecs_worker_pool_s ecs_worker_pool_t;
+typedef struct ecs_worker_job_s ecs_worker_job_t;
+
+typedef struct {
+    _Alignas(64) ecs_platform_thread_t thread;
+    ecs_worker_pool_t *pool;
+    ecs_entity_reservation_t reservation;
+    ecs_worker_job_t *jobs, *free_jobs;
+} ecs_worker_t;
 
 typedef struct {
     ecs_system_id_t system;
-} ecs_worker_job_t;
-
-typedef struct ecs_worker_pool_s ecs_worker_pool_t;
-
-typedef struct {
-    ecs_platform_thread_t thread;
-    ecs_execution_context_t context;
-    ecs_worker_pool_t *pool;
-} ecs_worker_t;
+    sicore_vec_t commands;
+    uint32_t pending, running, next_row;
+    uint16_t next_table;
+    uint32_t next_ordinal;
+    bool started, exhausted, complete, released, queued;
+} ecs_worker_node_t;
 
 struct ecs_worker_pool_s {
     uint16_t worker_count;
     ecs_worker_t *workers;
-    ecs_worker_job_t *jobs;
-    uint32_t job_capacity;
-    uint32_t job_count;
-    _Alignas(64) atomic_uint next_job;
-    _Alignas(64) atomic_uint completed_jobs;
-    atomic_uint epoch;
-    atomic_bool stop;
+    void *worker_storage;
+    ecs_worker_node_t *nodes;
+    uint32_t node_count, node_capacity;
+    uint32_t *ready, ready_head, ready_count;
+    uint32_t *system_to_node, system_capacity;
+    uint32_t active, cursor;
+    bool stop, in_run, draining, publishing, forced, allocating;
     ecs_platform_mutex_t mutex;
     ecs_platform_condition_t work_condition;
     ecs_platform_condition_t completion_condition;
@@ -35,13 +41,12 @@ struct ecs_worker_pool_s {
 
 void ecs_worker_pool_init(ecs_worker_pool_t *pool, uint16_t requested_workers);
 void ecs_worker_pool_fini(ecs_worker_pool_t *pool);
-bool ecs_worker_pool_enabled(const ecs_worker_pool_t *pool);
-void ecs_worker_pool_run_prepared_systems(
+void ecs_worker_pool_run(
     ecs_worker_pool_t *pool,
     const ecs_system_id_t *systems,
-    uint32_t system_count,
-    uint32_t runnable_count
+    uint32_t count,
+    ecs_phase_t phase,
+    bool forced
 );
-void ecs_worker_pool_flush(ecs_worker_pool_t *pool);
 
 #endif

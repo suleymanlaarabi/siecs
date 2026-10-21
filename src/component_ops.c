@@ -25,11 +25,11 @@
 
 #define entity_edit(entity, table, record)                                                         \
     ecs_entity_record_t *record = ecs_get_record(entity);                                          \
-    ecs_table_t *table = ecs_get_table(record->table_id);
+    ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
 
 void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_entity_record_t *record = ecs_get_record(entity);
-    uint16_t from_id = record->table_id;
+    uint16_t from_id = ecs_entity_record_table(record);
     ecs_table_t *table = ecs_get_table(from_id);
     uint16_t edge = ecs_table_get_add_edge(table, cid);
 
@@ -100,7 +100,7 @@ void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
 static ECS_NOINLINE void
 ecs_remove_cid_notify(ecs_entity_t entity, ecs_component_t cid, uint16_t col_idx) {
     ecs_entity_record_t *record = ecs_get_record(entity);
-    uint16_t from_id = record->table_id;
+    uint16_t from_id = ecs_entity_record_table(record);
     ecs_table_t *table = ecs_get_table(from_id);
 
     uint16_t new_table_id = table->cls[col_idx].remove_edge;
@@ -124,7 +124,7 @@ ecs_remove_cid_notify(ecs_entity_t entity, ecs_component_t cid, uint16_t col_idx
 
 void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_table_t *table = ecs_get_table(record->table_id);
+    ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
 
     uint16_t col_idx = ecs_table_column_or_invalid(table, cid);
 
@@ -157,8 +157,12 @@ void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
 void *ecs_get_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_component_access(entity, cid);
     const ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_component_location_t location =
-        ecs_component_locate(ecs_get_table(record->table_id), record->table_row, cid, false);
+    ecs_component_location_t location = ecs_component_locate(
+        ecs_get_table(ecs_entity_record_table(record)),
+        record->table_row,
+        cid,
+        false
+    );
     return location.table
                ? ecs_table_component_at_column(location.table, location.column, location.row)
                : NULL;
@@ -177,7 +181,7 @@ static inline bool ecs_store_plain_now(ecs_entity_t entity, ecs_component_t cid,
     if (!crec->plain || crec->default_relation_count)
         return false;
     ecs_entity_record_t *record = ecs_get_record(entity);
-    ecs_table_t *table = ecs_get_table(record->table_id);
+    ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
     uint16_t edge = ecs_table_get_add_edge(table, cid);
     if (edge < table->type.component_count && table->type.ids[edge] == cid) {
         if (ecs_table_observed(table, EcsOnSet))
@@ -230,7 +234,10 @@ static inline void
 ecs_store_cid_now(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
     if (ECS_UNLIKELY(cid == ecs_id(Name))) {
         ecs_name_update_now(entity, ((const Name *)data)->value, true, 0, false);
-        if (move) { free(((Name *)data)->value); ((Name *)data)->value = NULL; }
+        if (move) {
+            free(((Name *)data)->value);
+            ((Name *)data)->value = NULL;
+        }
         return;
     }
     if (ecs_store_plain_now(entity, cid, data))
@@ -244,7 +251,8 @@ void ecs_set_cid_now(ecs_entity_t entity, ecs_component_t cid, const void *data)
 
 static ECS_NOINLINE void
 ecs_store_cid_slow(ecs_entity_t entity, ecs_component_t cid, void *data, bool move) {
-    if (ECS_UNLIKELY(move && cid == ecs_id(Name)) && data == ecs_get_cid(entity, cid)) return;
+    if (ECS_UNLIKELY(move && cid == ecs_id(Name)) && data == ecs_get_cid(entity, cid))
+        return;
     if (ecs_is_deferred()) {
         if (move)
             ecs_command_buffer_move(entity, cid, data);
@@ -281,9 +289,8 @@ static uint16_t ecs_plain_add_edge(uint16_t from_id, ecs_component_t cid) {
     if (edge == UINT16_MAX) {
         if (ecs_component_index_get(cid)->required_count)
             return UINT16_MAX;
-        edge = ecs_table_index_get_or_create(
-            ecs_type_with(&table->type, cid, (ecs_type_pair_t){ 0 })
-        );
+        edge =
+            ecs_table_index_get_or_create(ecs_type_with(&table->type, cid, (ecs_type_pair_t){ 0 }));
         ecs_id_map_set(&ecs_get_table(from_id)->add_edge, cid, edge);
     }
     return edge;
@@ -307,7 +314,7 @@ bool ecs_set_plain_many(
     /* Follow the cached single-component edges to the final table: one move
      * replaces `count` migrations or a command buffer round trip. */
     ecs_entity_record_t *record = ecs_get_record(entity);
-    const uint16_t from_id = record->table_id;
+    const uint16_t from_id = ecs_entity_record_table(record);
     uint16_t to_id = from_id;
     for (uint32_t i = 0; i < count; i++) {
         uint16_t edge = ecs_plain_add_edge(to_id, ids[i]);
@@ -362,14 +369,14 @@ void ecs_move_cid(ecs_entity_t entity, ecs_component_t cid, void *data) {
 bool ecs_has_cid(const ecs_entity_t entity, ecs_component_t id) {
     ecs_assert_entity_alive(entity);
 
-    uint16_t tid = ecs_get_record(entity)->table_id;
+    uint16_t tid = ecs_entity_record_table(ecs_get_record(entity));
     return ecs_table_has(ecs_get_table(tid), id);
 }
 
 bool ecs_has_cid_owned(const ecs_entity_t entity, ecs_component_t id) {
     ecs_assert_entity_alive(entity);
 
-    uint16_t tid = ecs_get_record(entity)->table_id;
+    uint16_t tid = ecs_entity_record_table(ecs_get_record(entity));
     return ecs_table_has_owned(ecs_get_table(tid), id);
 }
 

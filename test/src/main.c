@@ -251,6 +251,29 @@ void system_custom_phase(void);
 void system_default_phase_is_on_update(void);
 void system_custom_phase_after_only(void);
 void system_custom_phase_unconstrained(void);
+void system_parallel_portions_cover_rows(void);
+void system_parallel_portions_empty_and_manual(void);
+void system_dependency_releases_without_group_barrier(void);
+void system_parallel_creation_grows_stable_index(void);
+void system_parallel_commands_have_logical_order(void);
+void system_publication_rechecks_same_phase_conflicts(void);
+void system_parallel_shared_and_up_fields(void);
+void system_parallel_relation_views_follow_portions(void);
+void system_graph_keeps_all_after_dependencies(void);
+void system_parallel_rejects_tasks(void);
+void system_parallel_rejects_resource_writes(void);
+void system_parallel_rejects_main_thread(void);
+void system_parallel_rejects_no_defer(void);
+void system_parallel_rejects_ordered_queries(void);
+void system_parallel_rejects_query_destruction(void);
+void system_shared_reads_conflict_across_tables(void);
+void system_serial_commands_keep_registration_order(void);
+void system_empty_portion_releases_main_thread_successor(void);
+void system_parallel_creation_crosses_page_boundary(void);
+void system_parallel_returns_unused_recycled_ids(void);
+void system_parallel_returns_unused_fresh_ids(void);
+void system_parallel_reservations_suspend_for_exclusive_callbacks(void);
+void system_parallel_batched_commands_keep_logical_order(void);
 
 // Testsuite 'observer'
 void observer_global_registration_does_not_duplicate_queries(void);
@@ -1204,6 +1227,98 @@ bake_test_case system_testcases[] = {
     {
         "custom_phase_unconstrained",
         system_custom_phase_unconstrained
+    },
+    {
+        "parallel_portions_cover_rows",
+        system_parallel_portions_cover_rows
+    },
+    {
+        "parallel_portions_empty_and_manual",
+        system_parallel_portions_empty_and_manual
+    },
+    {
+        "dependency_releases_without_group_barrier",
+        system_dependency_releases_without_group_barrier
+    },
+    {
+        "parallel_creation_grows_stable_index",
+        system_parallel_creation_grows_stable_index
+    },
+    {
+        "parallel_commands_have_logical_order",
+        system_parallel_commands_have_logical_order
+    },
+    {
+        "publication_rechecks_same_phase_conflicts",
+        system_publication_rechecks_same_phase_conflicts
+    },
+    {
+        "parallel_shared_and_up_fields",
+        system_parallel_shared_and_up_fields
+    },
+    {
+        "parallel_relation_views_follow_portions",
+        system_parallel_relation_views_follow_portions
+    },
+    {
+        "graph_keeps_all_after_dependencies",
+        system_graph_keeps_all_after_dependencies
+    },
+    {
+        "parallel_rejects_tasks",
+        system_parallel_rejects_tasks
+    },
+    {
+        "parallel_rejects_resource_writes",
+        system_parallel_rejects_resource_writes
+    },
+    {
+        "parallel_rejects_main_thread",
+        system_parallel_rejects_main_thread
+    },
+    {
+        "parallel_rejects_no_defer",
+        system_parallel_rejects_no_defer
+    },
+    {
+        "parallel_rejects_ordered_queries",
+        system_parallel_rejects_ordered_queries
+    },
+    {
+        "parallel_rejects_query_destruction",
+        system_parallel_rejects_query_destruction
+    },
+    {
+        "shared_reads_conflict_across_tables",
+        system_shared_reads_conflict_across_tables
+    },
+    {
+        "serial_commands_keep_registration_order",
+        system_serial_commands_keep_registration_order
+    },
+    {
+        "empty_portion_releases_main_thread_successor",
+        system_empty_portion_releases_main_thread_successor
+    },
+    {
+        "parallel_creation_crosses_page_boundary",
+        system_parallel_creation_crosses_page_boundary
+    },
+    {
+        "parallel_returns_unused_recycled_ids",
+        system_parallel_returns_unused_recycled_ids
+    },
+    {
+        "parallel_returns_unused_fresh_ids",
+        system_parallel_returns_unused_fresh_ids
+    },
+    {
+        "parallel_reservations_suspend_for_exclusive_callbacks",
+        system_parallel_reservations_suspend_for_exclusive_callbacks
+    },
+    {
+        "parallel_batched_commands_keep_logical_order",
+        system_parallel_batched_commands_keep_logical_order
     }
 };
 
@@ -1436,7 +1551,7 @@ static bake_test_suite suites[] = {
         "system",
         NULL,
         NULL,
-        38,
+        61,
         system_testcases
     },
     {

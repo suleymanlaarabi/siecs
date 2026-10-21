@@ -133,6 +133,7 @@ void registry_type_slots_preserve_pointers(void) {
     ecs_fini();
     ecs_init();
     test_ptr(stable, ecs_type_slot("component:RegistryStable", 0));
-    test_int(91, *stable);
+    test_int(0, *stable);
+    test_int(0, *relation);
     ecs_fini();
 }

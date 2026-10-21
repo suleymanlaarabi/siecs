@@ -24,6 +24,7 @@ static ecs_entity_t system_entity;
 static uint32_t system_user_data_dtor_calls;
 static atomic_uint parallel_entered;
 static atomic_uint parallel_context_entered;
+static atomic_bool parallel_context_invalid;
 static atomic_uintptr_t parallel_stacks[2];
 static atomic_uint manual_system_calls;
 static atomic_uint after_stage;
@@ -93,7 +94,8 @@ static void parallel_system_b(ecs_iter_t *it) {
 static void parallel_context_system(ecs_iter_t *it) {
     (void)it;
 
-    test_assert(ecs_execution_context_current()->scheduler_parallel);
+    if (!ecs_execution_context_current()->scheduler_parallel)
+        atomic_store(&parallel_context_invalid, true);
 
     atomic_fetch_add_explicit(&parallel_context_entered, 1, memory_order_release);
 
@@ -319,6 +321,7 @@ void system_parallel_independent_callbacks(void) {
 
 void system_parallel_worker_context_is_deferred(void) {
     atomic_store(&parallel_context_entered, 0);
+    atomic_store(&parallel_context_invalid, false);
 
     ecs_with_features({ .worker_threads = 1 });
 
@@ -352,6 +355,7 @@ void system_parallel_worker_context_is_deferred(void) {
     ecs_progress();
 
     test_uint(2, atomic_load(&parallel_context_entered));
+    test_assert(!atomic_load(&parallel_context_invalid));
 
     ecs_fini();
 }
@@ -438,7 +442,8 @@ void system_batches_invalidate_after_table_creation(void) {
 
     ecs_add(ecs_new(), SystemBatchC);
     ecs_progress();
-    test_int(3, phase->plan_count);
+    test_int(2, phase->plan_count);
+    test_int(1, phase->dependencies.size);
     ecs_fini();
 }
 
@@ -468,7 +473,8 @@ void system_indexed_queries_detect_late_overlap(void) {
     ecs_add_cid(shared, groups[1]);
     ecs_set(shared, SystemPosition, { 0 });
     ecs_system_index_build_plan();
-    test_uint(3, phase->plan_count);
+    test_uint(2, phase->plan_count);
+    test_uint(1, phase->dependencies.size);
     ecs_fini();
 }
 
@@ -1433,4 +1439,625 @@ void system_custom_phase_unconstrained(void) {
     custom_phase_expect_frames(2);
 
     ecs_fini();
+}
+
+static atomic_uint portion_calls, portion_rows, portion_errors;
+static atomic_uint portion_seen[2053];
+static atomic_uintptr_t portion_threads[2];
+
+static void portion_system(ecs_iter_t *it) {
+    SystemPosition *positions = ecs_field(it, 0);
+    uint32_t call = atomic_fetch_add(&portion_calls, 1);
+    if (it->count > 1024) atomic_fetch_add(&portion_errors, 1);
+    if (it->user_data && call < 2) {
+        atomic_store(&portion_threads[call], (uintptr_t)&system_thread_marker);
+        while (atomic_load(&portion_calls) < 2) {}
+    }
+    for (uint32_t i = 0; i < it->count; i++) {
+        int value = positions[i].value;
+        if (value < 0 || value >= 2053 || !ecs_is_alive(it->entities[i])) {
+            atomic_fetch_add(&portion_errors, 1);
+            continue;
+        }
+        atomic_fetch_add(&portion_seen[value], 1);
+        positions[i].value += 10;
+    }
+    atomic_fetch_add(&portion_rows, it->count);
+}
+
+static void reset_portions(void) {
+    atomic_store(&portion_calls, 0);
+    atomic_store(&portion_rows, 0);
+    atomic_store(&portion_errors, 0);
+    for (uint32_t i = 0; i < 2053; i++) atomic_store(&portion_seen[i], 0);
+}
+
+void system_parallel_portions_cover_rows(void) {
+    for (uint16_t workers = 0; workers <= 2; workers++) {
+        ecs_with_features({ .worker_threads = workers });
+        ECS_COMPONENT_REGISTER(SystemPosition);
+        ECS_COMPONENT_REGISTER(SystemTag);
+        reset_portions();
+        ecs_entity_t entities[2053];
+        for (int i = 0; i < 2053; i++) {
+            entities[i] = create_system_entity(i);
+            if (i >= 2050) ecs_add(entities[i], SystemTag);
+        }
+        ecs_system({ .query.components = { ecs_inout(SystemPosition) },
+                     .callback = portion_system, .parallel = true, .user_data = workers != 0 });
+        ecs_progress();
+        test_uint(4, atomic_load(&portion_calls));
+        test_uint(2053, atomic_load(&portion_rows));
+        test_uint(0, atomic_load(&portion_errors));
+        if (workers) test_assert(atomic_load(&portion_threads[0]) != atomic_load(&portion_threads[1]));
+        for (int i = 0; i < 2053; i++) {
+            test_uint(1, atomic_load(&portion_seen[i]));
+            test_int(i + 10, ecs_get(entities[i], SystemPosition)->value);
+        }
+        ecs_fini();
+    }
+}
+
+void system_parallel_portions_empty_and_manual(void) {
+    ecs_with_features({ .worker_threads = 2 });
+    ECS_COMPONENT_REGISTER(SystemPosition);
+    reset_portions();
+    ecs_system_id_t sys = ecs_system({ .query.components = { ecs_inout(SystemPosition) },
+                            .callback = portion_system, .parallel = true, .chunk_size = 2 });
+    ecs_progress();
+    test_uint(0, atomic_load(&portion_calls));
+    ecs_entity_t entities[5];
+    for (int i = 0; i < 5; i++) entities[i] = create_system_entity(i);
+    ecs_run_system(sys);
+    test_uint(3, atomic_load(&portion_calls));
+    test_uint(5, atomic_load(&portion_rows));
+    test_uint(0, atomic_load(&portion_errors));
+    for (int i = 0; i < 5; i++) test_int(i + 10, ecs_get(entities[i], SystemPosition)->value);
+    ecs_fini();
+}
+
+static atomic_uint dag_ready, dag_done;
+static void dag_long(ecs_iter_t *it) {
+    (void)it;
+    atomic_store(&dag_ready, 1);
+    while (!atomic_load(&dag_done)) {}
+}
+static void dag_short(ecs_iter_t *it) {
+    (void)it;
+    while (!atomic_load(&dag_ready)) {}
+}
+static void dag_successor(ecs_iter_t *it) {
+    (void)it;
+    atomic_store(&dag_done, 1);
+}
+
+void system_dependency_releases_without_group_barrier(void) {
+    ecs_with_features({ .worker_threads = 1 });
+    atomic_store(&dag_ready, 0);
+    atomic_store(&dag_done, 0);
+    ecs_system({ .callback = dag_long });
+    ecs_system_id_t short_system = ecs_system({ .callback = dag_short });
+    ecs_system({ .callback = dag_successor, .after = { short_system } });
+    ecs_progress();
+    test_uint(1, atomic_load(&dag_done));
+    ecs_fini();
+}
+
+static ecs_entity_t created_entities[2][1100];
+static ecs_entity_t recycled_entities[16];
+static atomic_uint creation_entered, creation_errors;
+static void concurrent_creator(ecs_iter_t *it) {
+    uint32_t group = (uint32_t)it->user_data;
+    atomic_fetch_add(&creation_entered, 1);
+    while (atomic_load(&creation_entered) < 2) {}
+    for (uint32_t i = 0; i < 1100; i++) {
+        ecs_entity_t entity = i & 1 ? ecs_new_no_reuse() : ecs_new();
+        created_entities[group][i] = entity;
+        for (uint32_t j = 0; j < 16; j++) {
+            ecs_entity_t current = ecs_entity_from_index(ecs_entity_id(recycled_entities[j]));
+            if (ecs_is_alive(recycled_entities[j]) || (current && !ecs_is_alive(current)))
+                atomic_fetch_add(&creation_errors, 1);
+        }
+        if (!ecs_is_alive(entity) || ecs_has(entity, SystemPosition) ||
+            ecs_get(system_entity, SystemPosition)->value != 73)
+            atomic_fetch_add(&creation_errors, 1);
+        if (i % 3 == 0) ecs_set(entity, SystemPosition, { (int)(group * 1100 + i) });
+        if (i % 3 == 1) ecs_kill(entity);
+    }
+}
+
+static void check_concurrent_creation(bool cross_page) {
+    ecs_with_features({ .worker_threads = 1 });
+    ECS_COMPONENT_REGISTER(SystemPosition);
+    system_entity = create_system_entity(73);
+    ecs_entity_record_t *original = ecs_get_record(system_entity);
+    if (cross_page) {
+        while (ecs_entity_index_count() < ECS_ENTITY_PAGE_SIZE - 64)
+            ecs_new_no_reuse();
+    }
+    for (uint32_t i = 0; i < 16; i++) recycled_entities[i] = ecs_new();
+    for (uint32_t i = 0; i < 16; i++) ecs_kill(recycled_entities[i]);
+    atomic_store(&creation_entered, 0);
+    atomic_store(&creation_errors, 0);
+    for (uint32_t group = 0; group < 2; group++)
+        ecs_system({ .callback = concurrent_creator, .user_data = group });
+    ecs_progress();
+    test_uint(0, atomic_load(&creation_errors));
+    test_assert(original == ecs_get_record(system_entity));
+    for (uint32_t group = 0; group < 2; group++) {
+        for (uint32_t i = 0; i < 1100; i++) {
+            ecs_entity_t entity = created_entities[group][i];
+            test_assert(ecs_is_alive(entity) == (i % 3 != 1));
+            if (i % 3 == 0) test_int(group * 1100 + i, ecs_get(entity, SystemPosition)->value);
+            if (i % 3 == 2) test_assert(!ecs_has(entity, SystemPosition));
+        }
+    }
+    ecs_entity_t dead = created_entities[0][1];
+    ecs_entity_t reused = ecs_new();
+    test_assert(reused != dead);
+    test_assert(!ecs_is_alive(dead));
+    ecs_fini();
+}
+
+void system_parallel_creation_grows_stable_index(void) {
+    check_concurrent_creation(false);
+}
+
+void system_parallel_creation_crosses_page_boundary(void) {
+    check_concurrent_creation(true);
+}
+
+static int publication_values[512];
+static ecs_entity_t publication_entities[512];
+static uint32_t publication_count;
+static void publication_observer(ecs_observer_event_t *event) {
+    if (publication_count < 512) {
+        publication_entities[publication_count] = event->entity;
+        publication_values[publication_count++] = ((const SystemTag *)event->trigger_data)->value;
+    }
+}
+static void portion_commands(ecs_iter_t *it) {
+    const SystemPosition *positions = ecs_field(it, 0);
+    for (uint32_t i = 0; i < it->count; i++)
+        ecs_set(it->entities[i], SystemTag, { (int)it->user_data + positions[i].value });
+}
+void system_parallel_commands_have_logical_order(void) {
+    for (uint16_t workers = 0; workers <= 2; workers++) {
+        ecs_with_features({ .worker_threads = workers });
+        ECS_COMPONENT_REGISTER(SystemPosition);
+        ECS_COMPONENT_REGISTER(SystemTag);
+        ecs_entity_t entities[9];
+        for (int i = 0; i < 9; i++) entities[i] = create_system_entity(i);
+        publication_count = 0;
+        ecs_observer({ .on = EcsOnSet, .query.components = { ecs_in(SystemTag) },
+                       .callback = publication_observer });
+        for (int group = 0; group < 2; group++)
+            ecs_system({ .query.components = { ecs_in(SystemPosition) },
+                         .callback = portion_commands, .parallel = true,
+                         .chunk_size = 2, .user_data = group * 100 });
+        for (int frame = 0; frame < 2; frame++) {
+            publication_count = 0;
+            ecs_progress();
+            test_uint(18, publication_count);
+            for (uint32_t i = 0; i < 18; i++) {
+                test_uint(entities[i % 9], publication_entities[i]);
+                test_int((i / 9) * 100 + i % 9, publication_values[i]);
+            }
+        }
+        ecs_fini();
+    }
+}
+
+static void create_overlapping_table(ecs_iter_t *it) {
+    (void)it;
+    ecs_entity_t entity = ecs_new();
+    system_entity = entity;
+    ecs_set(entity, SystemPosition, { 0 });
+    ecs_add(entity, SystemBatchA);
+    ecs_add(entity, SystemBatchB);
+}
+static void ordered_overlap_writer(ecs_iter_t *it) {
+    SystemPosition *positions = ecs_field(it, 0);
+    for (uint32_t i = 0; i < it->count; i++) {
+        if (positions[i].value != (int)it->user_data) atomic_fetch_add(&portion_errors, 1);
+        positions[i].value++;
+        atomic_fetch_add(&portion_rows, 1);
+    }
+}
+void system_publication_rechecks_same_phase_conflicts(void) {
+    for (uint32_t exclusive = 0; exclusive < 2; exclusive++) {
+        ecs_with_features({ .worker_threads = 2 });
+        ECS_COMPONENT_REGISTER(SystemPosition, SystemBatchA, SystemBatchB);
+        reset_portions();
+        ecs_system_id_t creator = ecs_system({ .callback = create_overlapping_table, .main_thread_only = exclusive != 0 });
+        ecs_system({ .after = { creator }, .callback = ordered_overlap_writer,
+                     .query.components = { ecs_inout(SystemPosition), ecs_filter(SystemBatchA) } });
+        ecs_system({ .after = { creator }, .callback = ordered_overlap_writer, .user_data = 1,
+                     .query.components = { ecs_inout(SystemPosition), ecs_filter(SystemBatchB) } });
+        ecs_progress();
+        test_uint(3, ecs_system_index_get_phase(EcsOnUpdate)->dependencies.size);
+        test_uint(2, atomic_load(&portion_rows));
+        test_uint(0, atomic_load(&portion_errors));
+        test_int(2, ecs_get(system_entity, SystemPosition)->value);
+        ecs_fini();
+    }
+}
+
+ECS_COMPONENT_DECLARE(SystemShared, { int value; });
+ECS_COMPONENT_DEFINE(SystemShared, .inheritance = EcsInheritShared);
+ECS_RELATION_DECLARE(SystemDense);
+ECS_RELATION_DEFINE(SystemDense, { .storage = EcsRelationDense, .on_delete_target = EcsRemoveRelation });
+
+static void shared_portion(ecs_iter_t *it) {
+    SystemPosition *positions = ecs_field(it, 0);
+    const SystemShared *shared = ecs_field(it, 1);
+    if (!shared || !ecs_field_is_shared(it, 1) || shared->value != 81)
+        atomic_fetch_add(&portion_errors, 1);
+    for (uint32_t i = 0; i < it->count; i++) {
+        if (ecs_get(it->entities[i], SystemPosition)->value != positions[i].value)
+            atomic_fetch_add(&portion_errors, 1);
+        positions[i].value += shared ? shared->value : 0;
+    }
+    atomic_fetch_add(&portion_calls, 1);
+    atomic_fetch_add(&portion_rows, it->count);
+}
+void system_parallel_shared_and_up_fields(void) {
+    for (uint32_t up = 0; up < 2; up++) {
+        ecs_with_features({ .worker_threads = 2 });
+        ECS_COMPONENT_REGISTER(SystemPosition, SystemShared);
+        reset_portions();
+        ecs_entity_t base = ecs_new();
+        ecs_set(base, SystemShared, { 81 });
+        ecs_add(base, Abstract);
+        ecs_entity_t entities[7];
+        for (int i = 0; i < 7; i++) {
+            entities[i] = create_system_entity(i);
+            ecs_is_a(entities[i], base);
+        }
+        ecs_component_term_t shared = up ? ecs_up(SystemShared, IsA) : ecs_in(SystemShared);
+        ecs_system({ .parallel = true, .chunk_size = 2, .callback = shared_portion,
+                     .query.components = { ecs_inout(SystemPosition), shared } });
+        ecs_progress();
+        test_uint(4, atomic_load(&portion_calls));
+        test_uint(7, atomic_load(&portion_rows));
+        test_uint(0, atomic_load(&portion_errors));
+        for (int i = 0; i < 7; i++) test_int(i + 81, ecs_get(entities[i], SystemPosition)->value);
+        ecs_fini();
+    }
+}
+
+static ecs_entity_t relation_targets[9];
+static void relation_portion(ecs_iter_t *it) {
+    const SystemPosition *positions = ecs_field(it, 0);
+    const ecs_relation_target_t *targets = ecs_targets(it, SystemDense);
+    const ecs_relation_target_t *parents = ecs_targets(it, ChildOf);
+    ecs_relation_batch_t batch = ecs_relation_batch(it, SystemDense);
+    ecs_relation_batch_t shared = ecs_relation_batch(it, IsA);
+    for (uint32_t i = 0; i < it->count; i++) {
+        int row = positions[i].value;
+        if (row < 0 || row >= 9 || !targets || !parents || batch.shared ||
+            targets[i].entity != relation_targets[row] || batch.targets != targets ||
+            parents[i].entity != relation_targets[0] || !shared.shared ||
+            shared.shared_target != relation_targets[1]) atomic_fetch_add(&portion_errors, 1);
+    }
+    atomic_fetch_add(&portion_rows, it->count);
+    atomic_fetch_add(&portion_calls, 1);
+}
+void system_parallel_relation_views_follow_portions(void) {
+    ecs_with_features({ .worker_threads = 2 });
+    ECS_COMPONENT_REGISTER(SystemPosition);
+    ECS_RELATION_REGISTER(SystemDense);
+    reset_portions();
+    for (int i = 0; i < 9; i++) relation_targets[i] = ecs_new();
+    for (int i = 0; i < 9; i++) {
+        ecs_entity_t entity = create_system_entity(i);
+        ecs_relate(entity, SystemDense, relation_targets[i]);
+        ecs_relate(entity, ChildOf, relation_targets[0]);
+        ecs_is_a(entity, relation_targets[1]);
+    }
+    ecs_system({ .parallel = true, .chunk_size = 2, .callback = relation_portion,
+                 .query.components = { ecs_in(SystemPosition) },
+                 .query.relations = { ecs_rel(SystemDense), ecs_rel(ChildOf), ecs_rel(IsA) } });
+    ecs_progress();
+    test_uint(9, atomic_load(&portion_rows));
+    test_uint(5, atomic_load(&portion_calls));
+    test_uint(0, atomic_load(&portion_errors));
+    ecs_fini();
+}
+
+void system_graph_keeps_all_after_dependencies(void) {
+    ecs_init();
+    ecs_system_id_t first = ecs_system({ .callback = manual_system });
+    ecs_system_id_t second = ecs_system({ .callback = manual_system });
+    ecs_system_id_t third = ecs_system({ .callback = manual_system, .after = { first, second } });
+    ecs_system_index_build_plan();
+    const ecs_phase_info_t *phase = ecs_system_index_get_phase(EcsOnUpdate);
+    const ecs_system_edge_t *edges = phase->dependencies.data;
+    test_uint(2, phase->dependencies.size);
+    test_uint(first, edges[0].before);
+    test_uint(second, edges[1].before);
+    test_uint(third, edges[0].after);
+    test_uint(third, edges[1].after);
+    ecs_fini();
+}
+
+#ifdef _WIN32
+#include <process.h>
+#include <string.h>
+#include <windows.h>
+#endif
+static bool system_invalid_contract(const char *testcase) {
+#ifdef _WIN32
+    const char *child = getenv("SIECS_SYSTEM_ABORT_TEST");
+    if (child && strcmp(child, testcase) == 0) {
+        _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+        return false;
+    }
+    char executable[MAX_PATH];
+    DWORD length = GetModuleFileNameA(NULL, executable, sizeof executable);
+    test_assert(length > 0 && length < sizeof executable);
+    test_int(0, _putenv_s("SIECS_SYSTEM_ABORT_TEST", testcase));
+    const char *arguments[] = { executable, testcase, NULL };
+    intptr_t status = _spawnv(_P_WAIT, executable, arguments);
+    test_int(0, _putenv_s("SIECS_SYSTEM_ABORT_TEST", ""));
+    test_int(3, status);
+    return true;
+#else
+    (void)testcase;
+    test_expect_abort();
+    return false;
+#endif
+}
+void system_parallel_rejects_tasks(void) {
+    if (system_invalid_contract("system.parallel_rejects_tasks")) return;
+    ecs_init();
+    ecs_system({ .parallel = true, .callback = manual_system });
+}
+void system_parallel_rejects_resource_writes(void) {
+    if (system_invalid_contract("system.parallel_rejects_resource_writes")) return;
+    ecs_init();
+    ECS_COMPONENT_REGISTER(SystemPosition);
+    ecs_system({ .parallel = true, .callback = manual_system,
+                 .query.components = { ecs_in(SystemPosition) },
+                 .query.resources = { ecs_inout(DeltaTime) } });
+}
+void system_parallel_rejects_main_thread(void) {
+    if (system_invalid_contract("system.parallel_rejects_main_thread")) return;
+    ecs_init();
+    ECS_COMPONENT_REGISTER(SystemPosition);
+    ecs_system({ .parallel = true, .main_thread_only = true, .callback = manual_system,
+                 .query.components = { ecs_in(SystemPosition) } });
+}
+void system_parallel_rejects_no_defer(void) {
+    if (system_invalid_contract("system.parallel_rejects_no_defer")) return;
+    ecs_init();
+    ECS_COMPONENT_REGISTER(SystemPosition);
+    ecs_system({ .parallel = true, .no_defer = true, .callback = manual_system,
+                 .query.components = { ecs_in(SystemPosition) } });
+}
+void system_parallel_rejects_ordered_queries(void) {
+    if (system_invalid_contract("system.parallel_rejects_ordered_queries")) return;
+    ecs_init();
+    ECS_COMPONENT_REGISTER(SystemPosition);
+    ecs_system({ .parallel = true, .callback = manual_system,
+                 .query.components = { ecs_in(SystemPosition) },
+                 .query.order_by = ecs_order_by_target(IsA) });
+}
+void system_parallel_rejects_query_destruction(void) {
+    if (system_invalid_contract("system.parallel_rejects_query_destruction")) return;
+    ecs_init();
+    ecs_query_id_t query = ecs_query({ 0 });
+    ecs_world.main_context.scheduler_parallel = true;
+    ecs_query_fini(query);
+}
+
+static void shared_base_writer(ecs_iter_t *it) {
+    SystemShared *shared = ecs_field(it, 0);
+    for (uint32_t i = 0; i < it->count; i++) shared[i].value = 81;
+}
+void system_shared_reads_conflict_across_tables(void) {
+    for (uint32_t up = 0; up < 2; up++) {
+        ecs_with_features({ .worker_threads = 2 });
+        ECS_COMPONENT_REGISTER(SystemPosition, SystemShared);
+        reset_portions();
+        ecs_entity_t base = ecs_new();
+        ecs_set(base, SystemShared, { 0 });
+        ecs_add(base, Abstract);
+        ecs_entity_t entity = create_system_entity(5);
+        ecs_is_a(entity, base);
+        ecs_system({ .query.components = { ecs_inout(SystemShared), ecs_filter(Abstract) },
+                     .callback = shared_base_writer });
+        ecs_component_term_t field = up ? ecs_up(SystemShared, IsA) : ecs_in(SystemShared);
+        ecs_system({ .query.components = { ecs_inout(SystemPosition), field },
+                     .callback = shared_portion, .parallel = true });
+        ecs_system_index_build_plan();
+        test_uint(1, ecs_system_index_get_phase(EcsOnUpdate)->dependencies.size);
+        ecs_progress();
+        test_uint(1, atomic_load(&portion_rows));
+        test_uint(0, atomic_load(&portion_errors));
+        test_int(86, ecs_get(entity, SystemPosition)->value);
+        ecs_fini();
+    }
+}
+
+void system_serial_commands_keep_registration_order(void) {
+    ecs_init();
+    ECS_COMPONENT_REGISTER(SystemPosition, SystemTag);
+    ecs_entity_t entities[9];
+    for (int i = 0; i < 9; i++) entities[i] = create_system_entity(i);
+    publication_count = 0;
+    ecs_observer({ .on = EcsOnSet, .query.components = { ecs_in(SystemTag) },
+                   .callback = publication_observer });
+    ecs_system_id_t prerequisite = ecs_system({ .callback = manual_system });
+    ecs_system({ .query.components = { ecs_in(SystemPosition) },
+                 .callback = portion_commands, .after = { prerequisite } });
+    ecs_system({ .query.components = { ecs_in(SystemPosition) },
+                 .callback = portion_commands, .user_data = 100 });
+    ecs_progress();
+    test_uint(18, publication_count);
+    for (uint32_t i = 0; i < 18; i++) {
+        test_uint(entities[i % 9], publication_entities[i]);
+        test_int((i / 9) * 100 + i % 9, publication_values[i]);
+    }
+    ecs_fini();
+}
+
+void system_empty_portion_releases_main_thread_successor(void) {
+    for (uint16_t workers = 0; workers < 2; workers++) {
+        ecs_with_features({ .worker_threads = workers });
+        ECS_COMPONENT_REGISTER(SystemPosition);
+        atomic_store(&manual_system_calls, 0);
+        ecs_system_id_t empty = ecs_system({ .parallel = true,
+            .query.components = { ecs_in(SystemPosition) }, .callback = portion_system });
+        ecs_system({ .main_thread_only = true, .after = { empty }, .callback = manual_system });
+        ecs_progress();
+        test_uint(1, atomic_load(&manual_system_calls));
+        ecs_fini();
+    }
+}
+
+static atomic_uint reservation_calls, reservation_errors;
+static ecs_entity_t reservation_entities[2][2];
+static bool reservation_fresh;
+
+static void reserve_small_batch(ecs_iter_t *it) {
+    uint32_t group = (uint32_t)it->user_data;
+    atomic_fetch_add(&reservation_calls, 1);
+    while (atomic_load(&reservation_calls) < 2) {}
+    reservation_entities[group][0] = ecs_new();
+    if (reservation_fresh)
+        reservation_entities[group][1] = ecs_new_no_reuse();
+    for (uint32_t i = 0; i < (reservation_fresh ? 2u : 1u); i++) {
+        ecs_entity_t entity = reservation_entities[group][i];
+        if (!ecs_is_alive(entity) || ecs_entity_from_index(ecs_entity_id(entity)) != entity)
+            atomic_fetch_add(&reservation_errors, 1);
+    }
+}
+
+static void check_reservation_returns(bool fresh) {
+    ecs_with_features({ .worker_threads = 1 });
+    uint32_t initial_count = ecs_entity_index_count();
+    if (!fresh) {
+        ecs_entity_t entities[600];
+        for (uint32_t i = 0; i < 600; i++) entities[i] = ecs_new();
+        for (uint32_t i = 0; i < 600; i++) ecs_kill(entities[i]);
+        initial_count = ecs_entity_index_count();
+    }
+    reservation_fresh = fresh;
+    atomic_store(&reservation_calls, 0);
+    atomic_store(&reservation_errors, 0);
+    for (uint32_t group = 0; group < 2; group++)
+        ecs_system({ .callback = reserve_small_batch, .user_data = group });
+    ecs_progress();
+    test_uint(2, atomic_load(&reservation_calls));
+    test_uint(0, atomic_load(&reservation_errors));
+    uint32_t end = ecs_entity_index_count();
+    test_uint(fresh ? initial_count + 2 * ECS_ENTITY_RESERVATION_SIZE : initial_count, end);
+    uint32_t expected = fresh ? 2 * ECS_ENTITY_RESERVATION_SIZE - 4 : 598;
+    test_uint(expected, entity_index.available.size);
+    for (uint32_t i = 0; i < expected; i++) {
+        uint32_t id = ((const uint32_t *)entity_index.available.data)[i];
+        test_uint(0, ecs_entity_from_index(id));
+        test_assert(!ecs_is_alive(ecs_entity(id, ecs_get_record(ecs_entity(id, 0))->generation)));
+    }
+    // Every returned slot must be issued once, with no fresh high-water growth.
+    uint8_t *seen = calloc(end, sizeof *seen);
+    for (uint32_t group = 0; group < 2; group++) {
+        for (uint32_t i = 0; i < (fresh ? 2u : 1u); i++) {
+            ecs_entity_t entity = reservation_entities[group][i];
+            seen[ecs_entity_id(entity)]++;
+            test_assert(ecs_is_alive(entity));
+        }
+    }
+    for (uint32_t i = 0; i < expected; i++) {
+        ecs_entity_t entity = ecs_new();
+        test_uint(0, seen[ecs_entity_id(entity)]++);
+        test_assert(ecs_is_alive(entity));
+        test_uint(entity, ecs_entity_from_index(ecs_entity_id(entity)));
+    }
+    free(seen);
+    test_uint(end, ecs_entity_index_count());
+    test_uint(0, entity_index.available.size);
+    ecs_entity_t no_reuse = ecs_new_no_reuse();
+    test_uint(end, ecs_entity_id(no_reuse));
+    ecs_fini();
+}
+
+void system_parallel_returns_unused_recycled_ids(void) {
+    check_reservation_returns(false);
+}
+
+void system_parallel_returns_unused_fresh_ids(void) {
+    check_reservation_returns(true);
+}
+
+static ecs_entity_t exclusive_reserved_entity;
+static atomic_uint exclusive_reservation_calls;
+
+static void reserve_before_exclusive(ecs_iter_t *it) {
+    (void)it;
+    exclusive_reserved_entity = ecs_new();
+}
+
+static void change_exclusive_reservations(ecs_iter_t *it) {
+    (void)it;
+    atomic_fetch_add(&exclusive_reservation_calls, 1);
+    ecs_entity_t entity = ecs_new();
+    ecs_kill(entity);
+    ecs_entity_t recycled = ecs_new();
+    if (ecs_entity_id(entity) != ecs_entity_id(recycled) || ecs_is_alive(entity) ||
+        !ecs_is_alive(recycled) || !ecs_is_alive(exclusive_reserved_entity))
+        atomic_fetch_add(&reservation_errors, 1);
+}
+
+void system_parallel_reservations_suspend_for_exclusive_callbacks(void) {
+    ecs_with_features({ .worker_threads = 2 });
+    atomic_store(&reservation_errors, 0);
+    atomic_store(&exclusive_reservation_calls, 0);
+    ecs_system({ .callback = reserve_before_exclusive });
+    ecs_system({ .callback = change_exclusive_reservations,
+                 .main_thread_only = true, .no_defer = true });
+    ecs_system({ .callback = reserve_before_exclusive });
+    for (uint32_t frame = 0; frame < 3; frame++) ecs_progress();
+    test_uint(3, atomic_load(&exclusive_reservation_calls));
+    test_uint(0, atomic_load(&reservation_errors));
+    test_assert(ecs_is_alive(exclusive_reserved_entity));
+    ecs_fini();
+}
+
+static atomic_bool later_batch_ready;
+static void batch_order_commands(ecs_iter_t *it) {
+    const SystemPosition *positions = ecs_field(it, 0);
+    if (it->user_data && positions[0].value == 0) {
+        while (!atomic_load(&later_batch_ready)) {}
+    } else if (positions[0].value >= 4) {
+        atomic_store(&later_batch_ready, true);
+    }
+    portion_commands(it);
+}
+
+void system_parallel_batched_commands_keep_logical_order(void) {
+    for (uint16_t workers = 0; workers <= 3; workers++) {
+        ecs_with_features({ .worker_threads = workers });
+        ECS_COMPONENT_REGISTER(SystemPosition, SystemTag);
+        ecs_entity_t entities[193];
+        for (int i = 0; i < 193; i++) entities[i] = create_system_entity(i);
+        ecs_observer({ .on = EcsOnSet, .query.components = { ecs_in(SystemTag) },
+                       .callback = publication_observer });
+        for (uint32_t group = 0; group < 2; group++)
+            ecs_system({ .query.components = { ecs_in(SystemPosition) },
+                         .callback = batch_order_commands, .parallel = true,
+                         .chunk_size = 1, .user_data = group * 100 });
+        for (uint32_t frame = 0; frame < 3; frame++) {
+            atomic_store(&later_batch_ready, workers == 0);
+            publication_count = 0;
+            ecs_progress();
+            test_uint(386, publication_count);
+            for (uint32_t i = 0; i < 386; i++) {
+                test_uint(entities[i % 193], publication_entities[i]);
+                test_int((i / 193) * 100 + i % 193, publication_values[i]);
+            }
+        }
+        ecs_fini();
+    }
 }

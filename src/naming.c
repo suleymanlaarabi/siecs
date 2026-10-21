@@ -193,13 +193,7 @@ void ecs_names_fini(void) {
     sicore_map_fini(&root_names);
 }
 
-bool ecs_name_entity_alive(ecs_entity_t entity) {
-    uint32_t index = ecs_first(entity);
-    if (!index || index >= entity_index.entities.size)
-        return false;
-    const ecs_entity_record_t *record = ecs_entity_index_get_record(index);
-    return record->table_id != UINT16_MAX && record->generation == ecs_second(entity);
-}
+bool ecs_name_entity_alive(ecs_entity_t entity) { return ecs_is_alive(entity); }
 
 bool ecs_name_valid(const char *name) {
     if (!name || !name[0])
@@ -211,7 +205,7 @@ bool ecs_name_valid(const char *name) {
 
 const char *ecs_name_local(ecs_entity_t entity) {
     const ecs_entity_record_t *record = ecs_get_record(entity);
-    const ecs_table_t *table = ecs_get_table(record->table_id);
+    const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
     uint16_t column = ecs_table_column_or_invalid(table, ecs_id(Name));
     if (column == UINT16_MAX)
         return NULL;
@@ -323,7 +317,7 @@ bool ecs_name_update_now(
     }
     if (rename && name) {
         ecs_entity_record_t *record = ecs_get_record(entity);
-        ecs_table_t *table = ecs_get_table(record->table_id);
+        ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
         const Name *value = ecs_get_cid(entity, ecs_id(Name));
         ecs_emit(table, entity, EcsOnSet, ecs_id(Name), value);
     }

@@ -411,7 +411,7 @@ static bool ecs_scene_build_entity_map(
     uint32_t *entity_count,
     uint32_t *table_count
 ) {
-    uint32_t map_count = entity_index.entities.size;
+    uint32_t map_count = ecs_entity_index_count();
     uint32_t *map = malloc((size_t)map_count * sizeof(uint32_t));
     if (!map && map_count)
         return false;
@@ -565,6 +565,7 @@ static bool ecs_scene_write_relations(
 SIECS_API void ecs_scene_free(void *data) { free(data); }
 
 SIECS_API bool ecs_save_memory(void **data_out, size_t *size_out) {
+    ecs_assert_not_scheduler_parallel("scene serialization");
     if (!data_out || !size_out)
         return false;
 
@@ -610,6 +611,7 @@ SIECS_API bool ecs_save_memory(void **data_out, size_t *size_out) {
 }
 
 SIECS_API bool ecs_save(const char *path) {
+    ecs_assert_not_scheduler_parallel("scene serialization");
     if (!path)
         return false;
 
@@ -721,7 +723,8 @@ static bool ecs_scene_read_payload(
                 return false;
             bool ok = ecs_scene_load_value(payload, record->info->type, temp, &component_ctx);
             if (ok && component == ecs_id(Name)) {
-                if (!ecs_name_valid(((Name *)temp)->value)) ok = false;
+                if (!ecs_name_valid(((Name *)temp)->value))
+                    ok = false;
                 else {
                     ctx->names[entities - ctx->local_to_entity + row] = *(Name *)temp;
                     ((Name *)temp)->value = NULL;
@@ -772,7 +775,13 @@ static bool ecs_scene_read_tables(
                 ecs_entity_t entity = ecs_new();
                 if (table_id) {
                     ecs_entity_record_t *record = ecs_get_record(entity);
-                    ecs_migrate(record, entity, ecs_get_table(record->table_id), table_id, 0);
+                    ecs_migrate(
+                        record,
+                        entity,
+                        ecs_get_table(ecs_entity_record_table(record)),
+                        table_id,
+                        0
+                    );
                 }
                 entities[row] = entity;
             }
@@ -873,6 +882,7 @@ SIECS_API bool ecs_scene_validate(const void *input, size_t size) {
 }
 
 SIECS_API bool ecs_load_memory(const void *input, size_t size) {
+    ecs_assert_not_scheduler_parallel("scene serialization");
     ecs_scene_document_t document;
     if (!ecs_scene_parse(input, size, &document))
         return false;
@@ -917,6 +927,7 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
 }
 
 SIECS_API bool ecs_load(const char *path) {
+    ecs_assert_not_scheduler_parallel("scene serialization");
     if (!path)
         return false;
 

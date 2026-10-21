@@ -103,7 +103,6 @@ void ecs_bootstrap() {
     ecs_names_init();
     // Reserve identifiers used to represent false return values.
     ecs_table_index_get_or_create((ecs_type_t){ 0 });
-    sicore_vec_push_u64(&entity_index.entities, 0);
     ecs_component({ .name = "Invalid" });
 
     // Register the ecs_entity_t struct reflection.

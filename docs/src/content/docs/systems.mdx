@@ -281,8 +281,9 @@ ecs::system("Gameplay")
 The dependency states that `Gameplay` must observe work from `Input` before it
 runs in that phase.
 
-SIECS also analyzes component/resource read-write access to build parallel-safe
-batches.
+SIECS also analyzes component/resource read-write access to build a dependency
+graph. A ready system can start as soon as its prerequisites finish; it does not
+wait for unrelated systems unless a command-publication boundary requires it.
 
 Explicit `.after` is for semantic ordering that cannot be inferred only from
 data hazards.
@@ -468,6 +469,99 @@ A writer conflicts with readers/writers of the same accessed component/resource.
 Correct access declarations are therefore part of correctness, not only
 documentation.
 
+### Splitting one system across threads
+
+A system has at most one active callback unless it explicitly enables parallel
+portions. Other independent systems may still execute at the same time.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+ecs_system({
+    .name = "Move",
+    .query.components = { ecs_inout(Position), ecs_in(Velocity) },
+    .callback = Move,
+    .parallel = true,
+    .chunk_size = 1024,
+});
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+ecs::system("Move")
+    .parallel(1024)
+    .each([](Position &p, const Velocity &v) {
+        p.x += v.x;
+        p.y += v.y;
+    });
+```
+
+</TabItem>
+</Tabs>
+
+Zero selects 1,024 rows per portion. Portions stay within a single table and each
+matching row is processed exactly once. A short final portion is expected.
+The iterator's entities, owned fields and dense/depth relation views all start
+at that portion's first row. Shared fields keep their shared pointer.
+
+Callbacks for different portions can execute simultaneously. Captures, user data,
+custom parameter hooks and component lifecycle operations used by callbacks must
+support that concurrency. Register all component, resource and relation types
+before starting parallel work. Accesses outside the declared query/resource set
+remain the application's responsibility.
+
+Parallel portions require an entity query with read-only resources. Combining
+them with ordered queries, `main_thread_only`, or `no_defer` is rejected. Writable
+global resources need a separate system; there is no automatic reduction.
+
+With no workers, the same logical portions execute sequentially. Manual
+`ecs_run_system` / `system_ref::run()` executes synchronously on the calling
+thread, using those same portions.
+
+### Dependencies and publication
+
+Data conflicts preserve registration order. Every `.after` dependency is retained,
+and a successor waits for all portions of each prerequisite. A prerequisite with
+no pending commands can release its successors immediately, including from a
+worker while the calling thread is busy with another system.
+
+Deferred commands are published in system registration order, then query table
+order and portion order, independently of which worker ran them. Publication
+waits for all already-started systems to finish their portions; new systems pause
+during that drain. Hooks and observers produced by publication run on the calling
+thread, and their deferred tail finishes before the next system is published.
+An earlier unfinished system can therefore delay publication of a later one.
+
+After publication, dependencies for systems that have not started are rechecked.
+The access graph is cached and rebuilt when registration, matching tables or
+field ownership changes. Systems already executed are not
+repeated. Exclusive main-thread systems also trigger revalidation when their
+immediate mutations change the plan. Independent systems have no structural
+visibility guarantee before a
+publication boundary; use `.after` when that visibility matters.
+
+`ecs_new()` and `ecs_new_no_reuse()` reserve live handles during parallel callbacks.
+Those entities enter query-visible tables at publication. Adding components,
+relating or destroying a reserved entity records deferred commands. Entity handle
+allocation can vary between runs even though command-publication order is stable.
+Workers reserve IDs in blocks of 256 and consume them locally. Unissued IDs stay
+dead and are returned at synchronization. Entity lookup and reservation use no
+index mutex; allocating a new record page can still enter the memory allocator.
+Records occupy 8 bytes in stable pages of 65,536 records, with a single page
+directory (512 KiB on a 64-bit target). Scheduler claims can group up to four
+portions while retaining separate callbacks and command buffers for each portion.
+This is not a guarantee of deterministic external side effects or undeclared
+writes from callbacks.
+
+Global registration, query/observer configuration, serialization, and nested
+scheduler execution are forbidden in parallel callbacks. Nested scheduler execution
+is also rejected in exclusive callbacks. Run global operations in exclusive
+main-thread systems or outside scheduled work. Access to the world
+from unrelated external threads is unsupported.
+
 ### Main-thread-only systems
 
 Some work must stay on the calling thread:
@@ -597,8 +691,7 @@ The most important dependency inputs are:
 Two systems that only read the same component/resource do not create a data
 hazard through that item.
 
-They may be placed in the same parallel batch if no other dependency prevents
-it.
+They can run concurrently if no other dependency prevents it.
 
 ### Read/write
 
@@ -610,8 +703,11 @@ The scheduler creates an ordering/synchronization boundary.
 
 Two writers to the same component/resource conflict.
 
-Ordering is required even if application code believes they "probably touch
-different entities", because the declared access is system-wide.
+For owned component fields, the scheduler checks whether the queries match any
+of the same tables. Writers on disjoint tables can run concurrently. Shared
+inherited and `up` reads are treated conservatively against writers of the same
+component because their source may lie outside the matching tables. Resource
+writes conflict regardless of query tables.
 
 If two systems truly operate on disjoint structural populations, the scheduler
 still reasons conservatively from declared access/query overlap and its internal
@@ -790,8 +886,10 @@ inside an iterating system or whether a task/no-defer path is more appropriate.
 
 ## Worker execution context
 
-Each worker needs safe command/defer context for mutations generated by its
-systems.
+Each logical system portion owns its command/defer context independently of the
+worker that executes it. C++ SystemParam initialization and `world` hooks run once
+per portion; `table` and `row` hooks receive its bounded view. A system without
+`.parallel()` keeps one parameter state for its whole query execution.
 
 Do not share mutable callback-local scratch buffers between systems/workers
 without synchronization.

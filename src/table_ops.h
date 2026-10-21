@@ -26,7 +26,7 @@ ecs_component_locate(const ecs_table_t *table, uint32_t row, ecs_component_t id,
     ecs_entity_t base = ecs_type_isa_target(&table->type);
     while (base) {
         const ecs_entity_record_t *record = ecs_get_record(base);
-        table = ecs_get_table(record->table_id);
+        table = ecs_get_table(ecs_entity_record_table(record));
         column = ecs_table_column_or_invalid(table, id);
         if (column != UINT16_MAX)
             return (ecs_component_location_t){ table, record->table_row, column, true };
@@ -94,7 +94,7 @@ static inline void ecs_table_finish_migration(
     uint32_t new_row
 ) {
     ecs_table_remove_entity_update_record(from_table, entity, old_row, false);
-    record->table_id = to_table_id;
+    atomic_store_explicit(&record->table_id, to_table_id, memory_order_relaxed);
     record->table_row = new_row;
 }
 

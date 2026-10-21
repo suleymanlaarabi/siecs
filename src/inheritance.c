@@ -12,7 +12,7 @@ static uint16_t ecs_inheritance_base_component_capacity(ecs_entity_t base) {
     uint32_t capacity = 0;
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
-        const ecs_table_t *table = ecs_get_table(record->table_id);
+        const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
         capacity += table->type.component_count;
         base = ecs_type_isa_target(&table->type);
     }
@@ -57,7 +57,7 @@ static void ecs_inheritance_plan_build(
     uint16_t count = 0;
     while (base != 0) {
         const ecs_entity_record_t *record = ecs_get_record(base);
-        const ecs_table_t *table = ecs_get_table(record->table_id);
+        const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
         for (uint16_t i = 0; i < table->type.component_count; i++) {
             ecs_component_t component = table->type.ids[i];
             if (!ecs_inheritance_component_is_owned(component))
@@ -160,7 +160,8 @@ void ecs_inheritance_instantiate_children(ecs_entity_t entity, ecs_entity_t base
 
         ecs_relate_id_now(child, ecs_rid(ChildOf), entity);
         const char *child_name = ecs_name_local(base_child);
-        if (child_name) ecs_name_update_now(child, child_name, true, 0, false);
+        if (child_name)
+            ecs_name_update_now(child, child_name, true, 0, false);
 
         ecs_relate_id_now(child, ecs_rid(IsA), base_child);
     }
