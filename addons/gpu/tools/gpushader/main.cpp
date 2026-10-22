@@ -1,6 +1,6 @@
 /*
  * gpushader: compiles a Slang file into a .gpushader pack (format in
- * src/backend/gpushader_format.h). Each entry point is compiled on its own,
+ * src/pack/gpushader_format.h). Each entry point is compiled on its own,
  * its resources are lowered to the SDL GPU binding convention, and the
  * reflected interface is stored next to the code.
  *
@@ -15,7 +15,7 @@
  *        gpushader --dump <pack.gpushader>
  */
 
-#include "backend/gpushader_format.h"
+#include "pack/gpushader_format.h"
 
 #include <slang-com-ptr.h>
 #include <slang.h>

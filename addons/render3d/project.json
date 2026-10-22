@@ -1,0 +1,16 @@
+{
+    "id": "sirender3d",
+    "type": "package",
+    "value": {
+        "author": "Suleyman Laarabi",
+        "description": "3D rendering on sigpu draw features: primitives, meshes, shadows, bloom, picking",
+        "use": ["siecs", "siecs_spatial", "siwindow", "sigpu"],
+        "clangd": true
+    },
+    "lang.c": {
+        "c-standard": "c17",
+        "lib": ["SDL3", "m"],
+        "include": ["include", "src"],
+        "export-symbols": true
+    }
+}

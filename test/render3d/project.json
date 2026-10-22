@@ -1,0 +1,30 @@
+{
+  "id": "sirender3d.test",
+  "type": "application",
+  "value": { "use": ["sirender3d", "sigpu", "siwindow", "siecs_spatial", "siecs"], "public": false },
+  "lang.c": {
+    "c-standard": "c17",
+    "lib": ["SDL3"],
+    "include": ["../include", "../../addons/gpu/src", "../../addons/render3d/src"]
+  },
+  "test": {
+    "testsuites": [
+      { "id": "render", "testcases": [
+        "primitives_drawn",
+        "camera_order_split_screen",
+        "msaa_resolves",
+        "bloom_glows",
+        "shadows_darken",
+        "shadow_cascades_cached",
+        "graph_regenerated_on_settings",
+        "still_scene_invariants",
+        "mesh_with_material"
+      ]},
+      { "id": "picking", "testcases": [
+        "ray_hits_nearest",
+        "click_events",
+        "dpi_independent"
+      ]}
+    ]
+  }
+}

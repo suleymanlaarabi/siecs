@@ -2,11 +2,10 @@
     "id": "sigpu",
     "type": "package",
     "value": {
-        "author": "John Doe",
-        "description": "On demand country music for air travel",
+        "author": "Suleyman Laarabi",
+        "description": "ECS-native rendering on SDL3 GPU: resources, render graphs, draw features",
         "use": [
             "siecs",
-            "siecs_spatial",
             "siwindow"
         ],
         "clangd": true

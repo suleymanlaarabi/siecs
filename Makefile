@@ -163,15 +163,24 @@ act: act-ci act-docs
 # Shader packs (sigpu v2, RFC section 10). Needs the Slang compiler
 # (shader-slang); the packs are committed, so builds do not.
 GPUSHADER = addons/gpu/tools/gpushader/bin/gpushader
+EMBED_PACK = sh addons/gpu/tools/embed_pack.sh
 SLANG_INCLUDE ?= /usr/include/shader-slang
 SLANG_LIB ?= slang-compiler
 
-$(GPUSHADER): addons/gpu/tools/gpushader/main.cpp addons/gpu/src/backend/gpushader_format.h
+$(GPUSHADER): addons/gpu/tools/gpushader/main.cpp addons/gpu/src/pack/gpushader_format.h
 	@mkdir -p $(dir $@)
 	$(CXX) -std=c++20 -O2 -Wall -Wextra -Iaddons/gpu/src -I$(SLANG_INCLUDE) $< -l$(SLANG_LIB) -o $@
 
 gpushader: $(GPUSHADER)
 
 shaders: $(GPUSHADER)
+	$(GPUSHADER) addons/gpu/src/shaders/sigpu.slang -o addons/gpu/src/shaders/sigpu.gpushader
+	$(EMBED_PACK) addons/gpu/src/shaders/sigpu.gpushader sigpu_gpushader > addons/gpu/src/shaders/sigpu_pack.generated.h
+	$(GPUSHADER) addons/render3d/src/shaders/render3d.slang -o addons/render3d/src/shaders/render3d.gpushader
+	$(EMBED_PACK) addons/render3d/src/shaders/render3d.gpushader render3d_gpushader > addons/render3d/src/shaders/render3d_pack.generated.h
+	$(GPUSHADER) addons/ui/src/render/shaders/ui.slang -o addons/ui/src/render/shaders/ui.gpushader
+	$(EMBED_PACK) addons/ui/src/render/shaders/ui.gpushader ui_gpushader > addons/ui/src/render/shaders/ui_pack.generated.h
 	$(GPUSHADER) example/gpu_proof/shaders/proof.slang -o example/gpu_proof/shaders/proof.gpushader
-	sh addons/gpu/tools/embed_pack.sh example/gpu_proof/shaders/proof.gpushader proof_gpushader > example/gpu_proof/src/proof_pack.generated.h
+	$(EMBED_PACK) example/gpu_proof/shaders/proof.gpushader proof_gpushader > example/gpu_proof/src/proof_pack.generated.h
+	$(GPUSHADER) test/gpu/shaders/test.slang -o test/gpu/shaders/test.gpushader
+	$(EMBED_PACK) test/gpu/shaders/test.gpushader test_gpushader > test/gpu/src/test_pack.generated.h

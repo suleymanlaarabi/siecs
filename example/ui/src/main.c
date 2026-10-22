@@ -1,12 +1,15 @@
 #include <siui.h>
 #include <sigpu.h>
+#include <siwindow.h>
 #include <stdlib.h>
 #include <string.h>
 int main(void) {
     ecs_init();
     ECS_MODULE_IMPORT(siwindow,{0});
     ecs_set(ecs_new(),Window,{.slot="main",.title="SIUI example",.width=960,.height=640});
-    ECS_MODULE_IMPORT(sigpu,{.samples=1});
+    ECS_MODULE_IMPORT(sigpu,{0});
+    ecs_set(ecs_new(),GpuDevice,{0});
+    ecs_set(ecs_new(),GpuSurface,{.window_slot="main",.clear={0.03f,0.04f,0.07f,1}});
     ECS_MODULE_IMPORT(siui,{.gpu=true});
     ecs_entity_t root=ecs_new();
     ecs_set(root,UiNode,{

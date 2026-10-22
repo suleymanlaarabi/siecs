@@ -2,14 +2,25 @@
   "id": "siui",
   "type": "package",
   "value": {
-    "description": "Retained UI layout and SDL GPU overlay for SIECS",
-    "use": ["siecs", "siwindow", "sigpu"],
+    "description": "Retained UI layout, drawn with sigpu draw features",
+    "use": [
+      "siecs",
+      "siwindow",
+      "sigpu"
+    ],
     "clangd": true
   },
   "lang.c": {
     "c-standard": "c17",
-    "lib": ["SDL3", "SDL3_ttf", "m"],
-    "include": ["include", "src"],
+    "lib": [
+      "SDL3",
+      "SDL3_ttf",
+      "m"
+    ],
+    "include": [
+      "include",
+      "src"
+    ],
     "export-symbols": true
   }
 }

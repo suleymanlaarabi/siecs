@@ -24,13 +24,24 @@ ECS_CTOR(GlobalScale3d, { 1.0f, 1.0f, 1.0f });
 ECS_COMPONENT_DEFINE(GlobalScale3d, .ops = { .ctor = ecs_ctor_id(GlobalScale3d) });
 
 ECS_TAG_DEFINE(Static);
-ECS_TAG_DEFINE(Static3dReady);
 ECS_MODULE_DEFINE(sispatial);
 
-static ecs_query_id_t static_3d_candidates;
-static ecs_query_id_t static_3d_ready;
-static bool static_3d_classification_dirty = true;
-static bool static_3d_transform_dirty = true;
+/*
+ * Propagation (RFC section 12.5) runs level by level of the ChildOf
+ * hierarchy: roots, then depth 1, 2... A level only visits the tables whose
+ * local transform changed, unless a level above it changed, in which case
+ * the whole level is recomputed (conservative invalidation). Tables that are
+ * not visited do not mark their global transform, so a still hierarchy
+ * produces no change the renderer sees.
+ */
+#define SPATIAL_MAX_DEPTH 32
+
+typedef struct {
+    ecs_query_id_t changed[SPATIAL_MAX_DEPTH];
+    ecs_query_id_t all[SPATIAL_MAX_DEPTH];
+} spatial_levels_t;
+
+static spatial_levels_t levels_2d, levels_3d;
 
 static inline GlobalOrientation3d spatial_3d_orientation_from_rotation(const Rotation3d *rotation) {
     const float half_pitch = rotation->pitch * 0.5f;
@@ -86,343 +97,27 @@ Direction3d sispatial_forward_3d(const GlobalOrientation3d *orientation) {
     return spatial_3d_rotate_direction(orientation, (Direction3d){ 0.0f, 0.0f, -1.0f });
 }
 
-static inline void spatial_2d_compute_static(
-    ecs_entity_t entity,
-    const Position2d *restrict position,
-    const Rotation2d *restrict rotation,
-    const Scale2d *restrict scale
-) {
-    GlobalPosition2d *restrict global_position = ecs_get(entity, GlobalPosition2d);
-    GlobalRotation2d *restrict global_rotation = ecs_get(entity, GlobalRotation2d);
-    GlobalScale2d *restrict global_scale = ecs_get(entity, GlobalScale2d);
-
-    const ecs_entity_t parent = ecs_target(entity, ChildOf);
-
-    if (parent == 0) {
-        global_position->x = position->x;
-        global_position->y = position->y;
-
-        global_rotation->value = rotation->value;
-
-        global_scale->x = scale->x;
-        global_scale->y = scale->y;
-        return;
-    }
-
-    const GlobalPosition2d *parent_position = ecs_try_get(parent, GlobalPosition2d);
-    const GlobalRotation2d *parent_rotation = ecs_try_get(parent, GlobalRotation2d);
-    const GlobalScale2d *parent_scale = ecs_try_get(parent, GlobalScale2d);
-
-    const float px = parent_position != NULL ? parent_position->x : 0.0f;
-    const float py = parent_position != NULL ? parent_position->y : 0.0f;
-
-    const float pr = parent_rotation != NULL ? parent_rotation->value : 0.0f;
-
-    const float sx = parent_scale != NULL ? parent_scale->x : 1.0f;
-    const float sy = parent_scale != NULL ? parent_scale->y : 1.0f;
-
-    const float x = position->x * sx;
-    const float y = position->y * sy;
-
-    const float cos_r = cosf(pr);
-    const float sin_r = sinf(pr);
-
-    global_position->x = px + cos_r * x - sin_r * y;
-    global_position->y = py + sin_r * x + cos_r * y;
-
-    global_rotation->value = pr + rotation->value;
-
-    global_scale->x = sx * scale->x;
-    global_scale->y = sy * scale->y;
-}
 
 static ecs_entity_t spatial_3d_transform_parent(ecs_entity_t entity) {
     ecs_entity_t parent = ecs_target(entity, ChildOf);
-
     while (parent != 0) {
         if (ecs_has(parent, Position3d)) {
             return parent;
         }
-
         parent = ecs_target(parent, ChildOf);
     }
-
     return 0;
 }
 
-static inline void spatial_3d_compute_static(
-    ecs_entity_t entity,
-    const Position3d *restrict position,
-    const Rotation3d *restrict rotation,
-    const Scale3d *restrict scale
-);
-
-static bool spatial_3d_can_be_static(ecs_entity_t entity) {
-    bool inside_static_subtree = false;
-    bool dynamic_ancestor = false;
-    for (ecs_entity_t current = entity; current != 0;
-         current = ecs_target(current, ChildOf)) {
-        if (ecs_has(current, Static)) {
-            inside_static_subtree = true;
-            dynamic_ancestor = false;
-        } else if (inside_static_subtree && ecs_has(current, Position3d)) {
-            dynamic_ancestor = true;
+static ecs_entity_t spatial_2d_transform_parent(ecs_entity_t entity) {
+    ecs_entity_t parent = ecs_target(entity, ChildOf);
+    while (parent != 0) {
+        if (ecs_has(parent, Position2d)) {
+            return parent;
         }
+        parent = ecs_target(parent, ChildOf);
     }
-    return inside_static_subtree && !dynamic_ancestor;
-}
-
-static void spatial_3d_static_classification_event(ecs_observer_event_t *event) {
-    if (event->component == ecs_id(Static) || event->component == ecs_id(Position3d)) {
-        static_3d_classification_dirty = true;
-        static_3d_transform_dirty = true;
-    }
-}
-
-static void spatial_3d_ready_on_set(ecs_observer_event_t *event) {
-    if (event->component == ecs_id(Position3d) ||
-        event->component == ecs_id(Rotation3d) ||
-        event->component == ecs_id(Scale3d)) {
-        static_3d_transform_dirty = true;
-    }
-}
-
-static void spatial_3d_static_relation_event(ecs_observer_event_t *event) {
-    const ecs_relation_event_t *relation = event->trigger_data;
-    if (relation->relation == ecs_rid(ChildOf)) {
-        static_3d_classification_dirty = true;
-        static_3d_transform_dirty = true;
-    }
-}
-
-static void spatial_3d_classify_statics(ecs_iter_t *it) {
-    (void)it;
-    if (!static_3d_classification_dirty)
-        return;
-    static_3d_classification_dirty = false;
-    ecs_defer_begin();
-    for (ecs_iter_t candidates = ecs_query_iter(static_3d_candidates);
-         ecs_iter_next(&candidates);) {
-        for (uint32_t i = 0; i < candidates.count; i++) {
-            ecs_entity_t entity = candidates.entities[i];
-            bool ready = spatial_3d_can_be_static(entity);
-            bool was_ready = ecs_has(entity, Static3dReady);
-            if (ready && !was_ready)
-                ecs_add(entity, Static3dReady);
-            else if (!ready && was_ready)
-                ecs_remove(entity, Static3dReady);
-        }
-    }
-    ecs_defer_end();
-}
-
-static void spatial_3d_propagate_ready(ecs_iter_t *it) {
-    (void)it;
-    if (!static_3d_transform_dirty)
-        return;
-    static_3d_transform_dirty = false;
-    for (ecs_iter_t ready = ecs_query_iter(static_3d_ready); ecs_iter_next(&ready);) {
-        for (uint32_t i = 0; i < ready.count; i++) {
-            ecs_entity_t entity = ready.entities[i];
-            spatial_3d_compute_static(
-                entity,
-                ecs_get(entity, Position3d),
-                ecs_get(entity, Rotation3d),
-                ecs_get(entity, Scale3d)
-            );
-        }
-    }
-}
-
-static inline void spatial_3d_compute_static(
-    ecs_entity_t entity,
-    const Position3d *restrict position,
-    const Rotation3d *restrict rotation,
-    const Scale3d *restrict scale
-) {
-    GlobalPosition3d *restrict global_position = ecs_get(entity, GlobalPosition3d);
-    GlobalOrientation3d *restrict global_orientation = ecs_get(entity, GlobalOrientation3d);
-    GlobalScale3d *restrict global_scale = ecs_get(entity, GlobalScale3d);
-
-    const ecs_entity_t parent = spatial_3d_transform_parent(entity);
-
-    if (parent == 0) {
-        global_position->x = position->x;
-        global_position->y = position->y;
-        global_position->z = position->z;
-
-        *global_orientation = spatial_3d_orientation_from_rotation(rotation);
-
-        global_scale->x = scale->x;
-        global_scale->y = scale->y;
-        global_scale->z = scale->z;
-        return;
-    }
-
-    const GlobalPosition3d *parent_position = ecs_try_get(parent, GlobalPosition3d);
-    const GlobalOrientation3d *parent_orientation = ecs_try_get(parent, GlobalOrientation3d);
-    const GlobalScale3d *parent_scale = ecs_try_get(parent, GlobalScale3d);
-
-    const float px = parent_position != NULL ? parent_position->x : 0.0f;
-    const float py = parent_position != NULL ? parent_position->y : 0.0f;
-    const float pz = parent_position != NULL ? parent_position->z : 0.0f;
-
-    const GlobalOrientation3d identity = { .x = 0.0f, .y = 0.0f, .z = 0.0f, .w = 1.0f };
-    const GlobalOrientation3d *orientation =
-        parent_orientation != NULL ? parent_orientation : &identity;
-
-    const float sx = parent_scale != NULL ? parent_scale->x : 1.0f;
-    const float sy = parent_scale != NULL ? parent_scale->y : 1.0f;
-    const float sz = parent_scale != NULL ? parent_scale->z : 1.0f;
-
-    const float x = position->x * sx;
-    const float y = position->y * sy;
-    const float z = position->z * sz;
-
-    const Direction3d offset = spatial_3d_rotate_direction(orientation, (Direction3d){ x, y, z });
-
-    global_position->x = px + offset.x;
-    global_position->y = py + offset.y;
-    global_position->z = pz + offset.z;
-
-    const GlobalOrientation3d local_orientation = spatial_3d_orientation_from_rotation(rotation);
-    *global_orientation = spatial_3d_orientation_multiply(orientation, &local_orientation);
-
-    global_scale->x = sx * scale->x;
-    global_scale->y = sy * scale->y;
-    global_scale->z = sz * scale->z;
-}
-
-static void spatial_2d_static_propagate_subtree(ecs_entity_t entity);
-static void spatial_3d_static_propagate_subtree(ecs_entity_t entity);
-
-static void spatial_2d_static_propagate_children(ecs_entity_t entity) {
-    const ecs_relation_sources_t children = ecs_relation_sources(entity, ecs_rid(ChildOf));
-
-    for (uint32_t i = 0; i < children.count; i++) {
-        const ecs_entity_t child = children.entities[i];
-        if (ecs_has(child, Static) && ecs_has(child, Position2d)) {
-            spatial_2d_static_propagate_subtree(child);
-        }
-    }
-}
-
-static void spatial_3d_static_propagate_children(ecs_entity_t entity) {
-    const ecs_relation_sources_t children = ecs_relation_sources(entity, ecs_rid(ChildOf));
-
-    for (uint32_t i = 0; i < children.count; i++) {
-        const ecs_entity_t child = children.entities[i];
-
-        if (!ecs_has(child, Position3d)) {
-            spatial_3d_static_propagate_children(child);
-        } else if (ecs_has(child, Static)) {
-            spatial_3d_static_propagate_subtree(child);
-        }
-    }
-}
-
-static void spatial_2d_static_propagate_subtree(ecs_entity_t entity) {
-    spatial_2d_compute_static(
-        entity,
-        ecs_get(entity, Position2d),
-        ecs_get(entity, Rotation2d),
-        ecs_get(entity, Scale2d)
-    );
-    spatial_2d_static_propagate_children(entity);
-}
-
-static void spatial_3d_static_propagate_subtree(ecs_entity_t entity) {
-    spatial_3d_compute_static(
-        entity,
-        ecs_get(entity, Position3d),
-        ecs_get(entity, Rotation3d),
-        ecs_get(entity, Scale3d)
-    );
-    spatial_3d_static_propagate_children(entity);
-}
-
-static void spatial_2d_static_on_set(ecs_observer_event_t *event) {
-    const ecs_component_t component = event->component;
-
-    if (component != ecs_id(Position2d) && component != ecs_id(Rotation2d) &&
-        component != ecs_id(Scale2d)) {
-        return;
-    }
-
-    const ecs_entity_t entity = event->entity;
-
-    const Position2d *position = ecs_get(entity, Position2d);
-    const Rotation2d *rotation = ecs_get(entity, Rotation2d);
-    const Scale2d *scale = ecs_get(entity, Scale2d);
-
-    /*
-     * EcsOnSet is emitted before the incoming value is copied into component
-     * storage. Use trigger_data for the component currently being set.
-     */
-    if (component == ecs_id(Position2d)) {
-        position = (const Position2d *)event->trigger_data;
-    } else if (component == ecs_id(Rotation2d)) {
-        rotation = (const Rotation2d *)event->trigger_data;
-    } else {
-        scale = (const Scale2d *)event->trigger_data;
-    }
-
-    spatial_2d_compute_static(entity, position, rotation, scale);
-    spatial_2d_static_propagate_children(entity);
-}
-
-static void spatial_3d_static_on_set(ecs_observer_event_t *event) {
-    const ecs_component_t component = event->component;
-
-    if (component != ecs_id(Position3d) && component != ecs_id(Rotation3d) &&
-        component != ecs_id(Scale3d)) {
-        return;
-    }
-
-    static_3d_transform_dirty = true;
-
-    const ecs_entity_t entity = event->entity;
-
-    const Position3d *position = ecs_get(entity, Position3d);
-    const Rotation3d *rotation = ecs_get(entity, Rotation3d);
-    const Scale3d *scale = ecs_get(entity, Scale3d);
-
-    if (component == ecs_id(Position3d)) {
-        position = (const Position3d *)event->trigger_data;
-    } else if (component == ecs_id(Rotation3d)) {
-        rotation = (const Rotation3d *)event->trigger_data;
-    } else {
-        scale = (const Scale3d *)event->trigger_data;
-    }
-
-    spatial_3d_compute_static(entity, position, rotation, scale);
-    spatial_3d_static_propagate_children(entity);
-}
-
-static void spatial_2d_static_on_add(ecs_observer_event_t *event) {
-    if (event->component == ecs_id(Position2d) || event->component == ecs_id(Static)) {
-        spatial_2d_static_propagate_subtree(event->entity);
-    }
-}
-
-static void spatial_3d_static_on_add(ecs_observer_event_t *event) {
-    if (event->component == ecs_id(Position3d) || event->component == ecs_id(Static)) {
-        spatial_3d_static_propagate_subtree(event->entity);
-    }
-}
-
-static void spatial_2d_static_on_relation_set(ecs_observer_event_t *event) {
-    const ecs_relation_event_t *relation = event->trigger_data;
-    if (relation->relation == ecs_rid(ChildOf)) {
-        spatial_2d_static_propagate_subtree(event->entity);
-    }
-}
-
-static void spatial_3d_static_on_relation_set(ecs_observer_event_t *event) {
-    const ecs_relation_event_t *relation = event->trigger_data;
-    if (relation->relation == ecs_rid(ChildOf)) {
-        spatial_3d_static_propagate_subtree(event->entity);
-    }
+    return 0;
 }
 
 static void spatial_2d_propagate(ecs_iter_t *it) {
@@ -432,65 +127,39 @@ static void spatial_2d_propagate(ecs_iter_t *it) {
     GlobalPosition2d *restrict global_position = ecs_field(it, 3);
     GlobalRotation2d *restrict global_rotation = ecs_field(it, 4);
     GlobalScale2d *restrict global_scale = ecs_field(it, 5);
-
     const ecs_relation_target_t *parents = ecs_targets(it, ChildOf);
-
     if (parents == NULL) {
         memcpy(global_position, position, sizeof(*global_position) * it->count);
         memcpy(global_rotation, rotation, sizeof(*global_rotation) * it->count);
         memcpy(global_scale, scale, sizeof(*global_scale) * it->count);
         return;
     }
-
     ecs_entity_t cached_parent = 0;
-
-    float px = 0.0f;
-    float py = 0.0f;
-
-    float parent_rotation = 0.0f;
-
-    float sx = 1.0f;
-    float sy = 1.0f;
-
-    float cos_r = 1.0f;
-    float sin_r = 0.0f;
-
-    const uint32_t count = it->count;
-
-    for (uint32_t i = 0; i < count; i++) {
-        const ecs_entity_t parent_entity = parents[i].entity;
-
-        if (parent_entity != cached_parent) {
-            const GlobalPosition2d *parent_position = ecs_try_get(parent_entity, GlobalPosition2d);
-
-            const GlobalRotation2d *parent_rotation_component =
-                ecs_try_get(parent_entity, GlobalRotation2d);
-
-            const GlobalScale2d *parent_scale = ecs_try_get(parent_entity, GlobalScale2d);
-
-            px = parent_position != NULL ? parent_position->x : 0.0f;
-            py = parent_position != NULL ? parent_position->y : 0.0f;
-
-            parent_rotation =
-                parent_rotation_component != NULL ? parent_rotation_component->value : 0.0f;
-
-            sx = parent_scale != NULL ? parent_scale->x : 1.0f;
-            sy = parent_scale != NULL ? parent_scale->y : 1.0f;
-
+    float px = 0.0f, py = 0.0f, parent_rotation = 0.0f, sx = 1.0f, sy = 1.0f;
+    float cos_r = 1.0f, sin_r = 0.0f;
+    for (uint32_t i = 0; i < it->count; i++) {
+        const ecs_entity_t direct_parent = parents[i].entity;
+        if (direct_parent != cached_parent) {
+            const ecs_entity_t parent = ecs_has(direct_parent, Position2d)
+                                            ? direct_parent
+                                            : spatial_2d_transform_parent(it->entities[i]);
+            const GlobalPosition2d *p = parent ? ecs_try_get(parent, GlobalPosition2d) : NULL;
+            const GlobalRotation2d *r = parent ? ecs_try_get(parent, GlobalRotation2d) : NULL;
+            const GlobalScale2d *s = parent ? ecs_try_get(parent, GlobalScale2d) : NULL;
+            px = p ? p->x : 0.0f;
+            py = p ? p->y : 0.0f;
+            parent_rotation = r ? r->value : 0.0f;
+            sx = s ? s->x : 1.0f;
+            sy = s ? s->y : 1.0f;
             cos_r = cosf(parent_rotation);
             sin_r = sinf(parent_rotation);
-
-            cached_parent = parent_entity;
+            cached_parent = direct_parent;
         }
-
         const float x = position[i].x * sx;
         const float y = position[i].y * sy;
-
         global_position[i].x = px + cos_r * x - sin_r * y;
         global_position[i].y = py + sin_r * x + cos_r * y;
-
         global_rotation[i].value = parent_rotation + rotation[i].value;
-
         global_scale[i].x = sx * scale[i].x;
         global_scale[i].y = sy * scale[i].y;
     }
@@ -503,9 +172,7 @@ static void spatial_3d_propagate(ecs_iter_t *it) {
     GlobalPosition3d *restrict global_position = ecs_field(it, 3);
     GlobalOrientation3d *restrict global_orientation = ecs_field(it, 4);
     GlobalScale3d *restrict global_scale = ecs_field(it, 5);
-
     const ecs_relation_target_t *parents = ecs_targets(it, ChildOf);
-
     if (parents == NULL) {
         memcpy(global_position, position, sizeof(*global_position) * it->count);
         for (uint32_t i = 0; i < it->count; i++) {
@@ -514,111 +181,133 @@ static void spatial_3d_propagate(ecs_iter_t *it) {
         memcpy(global_scale, scale, sizeof(*global_scale) * it->count);
         return;
     }
-
     ecs_entity_t cached_parent = 0;
-
-    float px = 0.0f;
-    float py = 0.0f;
-    float pz = 0.0f;
-
+    float px = 0.0f, py = 0.0f, pz = 0.0f, sx = 1.0f, sy = 1.0f, sz = 1.0f;
     GlobalOrientation3d parent_orientation = { .x = 0.0f, .y = 0.0f, .z = 0.0f, .w = 1.0f };
-
-    float sx = 1.0f;
-    float sy = 1.0f;
-    float sz = 1.0f;
-
-    const uint32_t count = it->count;
-
-    for (uint32_t i = 0; i < count; i++) {
+    for (uint32_t i = 0; i < it->count; i++) {
         const ecs_entity_t direct_parent = parents[i].entity;
-
         if (direct_parent != cached_parent) {
-            const ecs_entity_t parent_entity = ecs_has(direct_parent, Position3d)
-                ? direct_parent : spatial_3d_transform_parent(it->entities[i]);
-            const GlobalPosition3d *parent_position =
-                parent_entity ? ecs_try_get(parent_entity, GlobalPosition3d) : NULL;
-
-            const GlobalOrientation3d *parent_global_orientation =
-                parent_entity ? ecs_try_get(parent_entity, GlobalOrientation3d) : NULL;
-
-            const GlobalScale3d *parent_scale =
-                parent_entity ? ecs_try_get(parent_entity, GlobalScale3d) : NULL;
-
-            px = parent_position != NULL ? parent_position->x : 0.0f;
-            py = parent_position != NULL ? parent_position->y : 0.0f;
-            pz = parent_position != NULL ? parent_position->z : 0.0f;
-
-            parent_orientation = parent_global_orientation != NULL ? *parent_global_orientation
-                                                                   : (GlobalOrientation3d){
-                                                                         .x = 0.0f,
-                                                                         .y = 0.0f,
-                                                                         .z = 0.0f,
-                                                                         .w = 1.0f,
-                                                                     };
-
-            sx = parent_scale != NULL ? parent_scale->x : 1.0f;
-            sy = parent_scale != NULL ? parent_scale->y : 1.0f;
-            sz = parent_scale != NULL ? parent_scale->z : 1.0f;
-
+            const ecs_entity_t parent = ecs_has(direct_parent, Position3d)
+                                            ? direct_parent
+                                            : spatial_3d_transform_parent(it->entities[i]);
+            const GlobalPosition3d *p = parent ? ecs_try_get(parent, GlobalPosition3d) : NULL;
+            const GlobalOrientation3d *o = parent ? ecs_try_get(parent, GlobalOrientation3d) : NULL;
+            const GlobalScale3d *s = parent ? ecs_try_get(parent, GlobalScale3d) : NULL;
+            px = p ? p->x : 0.0f;
+            py = p ? p->y : 0.0f;
+            pz = p ? p->z : 0.0f;
+            parent_orientation = o ? *o : (GlobalOrientation3d){ .w = 1.0f };
+            sx = s ? s->x : 1.0f;
+            sy = s ? s->y : 1.0f;
+            sz = s ? s->z : 1.0f;
             cached_parent = direct_parent;
         }
-
-        const float x = position[i].x * sx;
-        const float y = position[i].y * sy;
-        const float z = position[i].z * sz;
-
-        const Direction3d offset =
-            spatial_3d_rotate_direction(&parent_orientation, (Direction3d){ x, y, z });
-
+        const Direction3d offset = spatial_3d_rotate_direction(
+            &parent_orientation,
+            (Direction3d){ position[i].x * sx, position[i].y * sy, position[i].z * sz }
+        );
         global_position[i].x = px + offset.x;
-
         global_position[i].y = py + offset.y;
-
         global_position[i].z = pz + offset.z;
-
-        const GlobalOrientation3d local_orientation =
-            spatial_3d_orientation_from_rotation(&rotation[i]);
-        global_orientation[i] =
-            spatial_3d_orientation_multiply(&parent_orientation, &local_orientation);
-
+        const GlobalOrientation3d local = spatial_3d_orientation_from_rotation(&rotation[i]);
+        global_orientation[i] = spatial_3d_orientation_multiply(&parent_orientation, &local);
         global_scale[i].x = sx * scale[i].x;
-
         global_scale[i].y = sy * scale[i].y;
-
         global_scale[i].z = sz * scale[i].z;
     }
+}
+
+/* The queries of one level: changed tables only, or every table. Depth 0
+ * holds the entities without ChildOf. */
+static void level_queries(spatial_levels_t *levels, uint32_t depth, const ecs_component_t ids[6]) {
+    ecs_query_desc_t desc = { 0 };
+    for (uint32_t i = 0; i < 3; i++) {
+        desc.components[i] = (ecs_access_term_t){ ids[i], EcsIn };
+        desc.components[i + 3] = (ecs_access_term_t){ ids[i + 3], EcsInOut };
+    }
+    desc.relations[0] =
+        depth ? (ecs_query_relation_term_t){ (ecs_entity_t)depth, ecs_rid(ChildOf),
+                                              EcsRelationDepth }
+              : (ecs_query_relation_term_t){ 0, ecs_rid(ChildOf), EcsRelationExcluded };
+    levels->all[depth] = ecs_query_init(&desc);
+    for (uint32_t i = 0; i < 3; i++) {
+        desc.components[i].access |= ECS_TERM_CHANGED;
+    }
+    levels->changed[depth] = ecs_query_init(&desc);
+}
+
+static void propagate_levels(spatial_levels_t *levels, const ecs_component_t ids[6],
+                             void (*compute)(ecs_iter_t *)) {
+    bool above_changed = false;
+    for (uint32_t depth = 0; depth < SPATIAL_MAX_DEPTH; depth++) {
+        if (!levels->all[depth]) {
+            level_queries(levels, depth, ids);
+        }
+        /* No entity at this depth: none deeper either. */
+        if (depth && !ecs_query_count(levels->all[depth])) {
+            return;
+        }
+        bool level_changed = false;
+        ecs_iter_t it = ecs_query_iter(above_changed ? levels->all[depth] : levels->changed[depth]);
+        while (ecs_iter_next(&it)) {
+            compute(&it);
+            level_changed = true;
+        }
+        if (above_changed) {
+            /* The change query records this run too: these changes are done. */
+            ecs_iter_t skipped = ecs_query_iter(levels->changed[depth]);
+            while (ecs_iter_next(&skipped)) {
+            }
+        }
+        above_changed = above_changed || level_changed;
+    }
+}
+
+static void spatial_3d_propagation(ecs_iter_t *it) {
+    (void)it;
+    const ecs_component_t ids[6] = {
+        ecs_id(Position3d),       ecs_id(Rotation3d),          ecs_id(Scale3d),
+        ecs_id(GlobalPosition3d), ecs_id(GlobalOrientation3d), ecs_id(GlobalScale3d),
+    };
+    propagate_levels(&levels_3d, ids, spatial_3d_propagate);
+}
+
+static void spatial_2d_propagation(ecs_iter_t *it) {
+    (void)it;
+    const ecs_component_t ids[6] = {
+        ecs_id(Position2d),       ecs_id(Rotation2d),       ecs_id(Scale2d),
+        ecs_id(GlobalPosition2d), ecs_id(GlobalRotation2d), ecs_id(GlobalScale2d),
+    };
+    propagate_levels(&levels_2d, ids, spatial_2d_propagate);
 }
 
 void spatial_2d_integrate(ecs_iter_t *it) {
     Position2d *restrict position = ecs_field(it, 0);
     const Velocity2d *restrict velocity = ecs_field(it, 1);
-
-    const uint32_t count = it->count;
-    const float delta_time = it->delta_time;
-
-    for (uint32_t i = 0; i < count; i++) {
-        position[i].x += velocity[i].x * delta_time;
-        position[i].y += velocity[i].y * delta_time;
+    for (uint32_t i = 0; i < it->count; i++) {
+        position[i].x += velocity[i].x * it->delta_time;
+        position[i].y += velocity[i].y * it->delta_time;
     }
 }
 
 void spatial_3d_integrate(ecs_iter_t *it) {
     Position3d *restrict position = ecs_field(it, 0);
     const Velocity3d *restrict velocity = ecs_field(it, 1);
-
-    const uint32_t count = it->count;
-    const float delta_time = it->delta_time;
-
-    for (uint32_t i = 0; i < count; i++) {
-        position[i].x += velocity[i].x * delta_time;
-        position[i].y += velocity[i].y * delta_time;
-        position[i].z += velocity[i].z * delta_time;
+    for (uint32_t i = 0; i < it->count; i++) {
+        position[i].x += velocity[i].x * it->delta_time;
+        position[i].y += velocity[i].y * it->delta_time;
+        position[i].z += velocity[i].z * it->delta_time;
     }
+}
+
+static void spatial_fini(void *data) {
+    (void)data;
+    levels_2d = (spatial_levels_t){ 0 };
+    levels_3d = (spatial_levels_t){ 0 };
 }
 
 void sispatial_import(const sispatial_props_t *props) {
     (void)props;
-
     ECS_COMPONENT_REGISTER(
         Position2d,
         Velocity2d,
@@ -627,7 +316,6 @@ void sispatial_import(const sispatial_props_t *props) {
         GlobalRotation2d,
         Scale2d,
         GlobalScale2d,
-
         Position3d,
         GlobalPosition3d,
         Velocity3d,
@@ -635,221 +323,27 @@ void sispatial_import(const sispatial_props_t *props) {
         GlobalOrientation3d,
         Scale3d,
         GlobalScale3d,
-
-        Static,
-        Static3dReady
+        Static
     );
-
     ecs_with(Position2d, Rotation2d, Scale2d, GlobalPosition2d, GlobalRotation2d, GlobalScale2d);
-
     ecs_with(Position3d, Rotation3d, Scale3d, GlobalPosition3d, GlobalOrientation3d, GlobalScale3d);
-
-    static_3d_classification_dirty = true;
-    static_3d_transform_dirty = true;
-    static_3d_candidates = ecs_query({ .components = { ecs_filter(Position3d) } });
-    static_3d_ready = ecs_query({
-        .components = { ecs_filter(Position3d), ecs_filter(Static3dReady) },
-        .order_by = ecs_order_by_depth(ChildOf),
-    });
-
-    ecs_observer({ .on = EcsOnAdd, .callback = spatial_3d_static_classification_event });
-    ecs_observer({ .on = EcsOnRemove, .callback = spatial_3d_static_classification_event });
-    ecs_observer({ .on = EcsOnRelationSet, .callback = spatial_3d_static_relation_event });
-    ecs_observer({ .on = EcsOnRelationRemove, .callback = spatial_3d_static_relation_event });
-
-    ecs_observer(
-        {
-            .on = EcsOnSet,
-            .query = {
-                .components = {
-                    ecs_filter(Position3d),
-                    ecs_filter(Static3dReady),
-                    ecs_in_optional(Abstract),
-                },
-            },
-            .callback = spatial_3d_ready_on_set,
-        }
-    );
-
+    levels_2d = (spatial_levels_t){ 0 };
+    levels_3d = (spatial_levels_t){ 0 };
+    ecs_system({ .name = "Spatial2dPropagation", .callback = spatial_2d_propagation,
+                 .phase = EcsPostUpdate, .main_thread_only = true, .no_defer = true });
+    ecs_system({ .name = "Spatial3dPropagation", .callback = spatial_3d_propagation,
+                 .phase = EcsPostUpdate, .main_thread_only = true, .no_defer = true });
     ecs_system({
-        .name = "Spatial3dClassifyStatic",
-        .callback = spatial_3d_classify_statics,
-        .phase = EcsPreUpdate,
-        .main_thread_only = true,
+        .name = "Spatial2dIntegrate",
+        .query = { .components = { ecs_inout(Position2d), ecs_in(Velocity2d) } },
+        .callback = spatial_2d_integrate,
+        .phase = EcsOnUpdate,
     });
-
-    /*
-     * Static transforms are excluded from the per-frame propagation systems.
-     * Recompute them when Position / Rotation / Scale receives OnSet, or when
-     * Static is added to an entity that already has a local transform.
-     *
-     * Position2d/3d is enough as a transform marker because ecs_with()
-     * guarantees the other transform components.
-     *
-     * SIECS observers are indexed by event + matching table, not by the
-     * component which caused EcsOnSet. Therefore one observer per transform
-     * type plus the early component check in the callback is cheaper than
-     * registering three observers.
-     */
-    ecs_observer(
-        {
-            .on = EcsOnSet,
-            .query = {
-                .components = {
-                    ecs_filter(Position2d),
-                    ecs_filter(Static),
-                    ecs_in_optional(Abstract),
-                },
-            },
-            .callback = spatial_2d_static_on_set,
-        }
-    );
-
-    ecs_observer(
-        {
-            .on = EcsOnSet,
-            .query = {
-                .components = {
-                    ecs_filter(Position3d),
-                    ecs_filter(Static),
-                    ecs_in_optional(Abstract),
-                },
-            },
-            .callback = spatial_3d_static_on_set,
-        }
-    );
-
-    ecs_observer(
-        {
-            .on = EcsOnAdd,
-            .query = {
-                .components = {
-                    ecs_filter(Position2d),
-                    ecs_filter(Static),
-                    ecs_in_optional(Abstract),
-                },
-            },
-            .callback = spatial_2d_static_on_add,
-        }
-    );
-
-    ecs_observer(
-        {
-            .on = EcsOnAdd,
-            .query = {
-                .components = {
-                    ecs_filter(Position3d),
-                    ecs_filter(Static),
-                    ecs_in_optional(Abstract),
-                },
-            },
-            .callback = spatial_3d_static_on_add,
-        }
-    );
-
-    ecs_observer(
-        {
-            .on = EcsOnRelationSet,
-            .query = {
-                .components = {
-                    ecs_filter(Position2d),
-                    ecs_filter(Static),
-                    ecs_in_optional(Abstract),
-                },
-            },
-            .callback = spatial_2d_static_on_relation_set,
-        }
-    );
-
-    ecs_observer(
-        {
-            .on = EcsOnRelationSet,
-            .query = {
-                .components = {
-                    ecs_filter(Position3d),
-                    ecs_filter(Static),
-                    ecs_in_optional(Abstract),
-                },
-            },
-            .callback = spatial_3d_static_on_relation_set,
-        }
-    );
-
-    ecs_system(
-        {
-            .name = "Spatial2dPropagation",
-            .query = {
-                .components = {
-                    ecs_in(Position2d),
-                    ecs_in(Rotation2d),
-                    ecs_in(Scale2d),
-                    ecs_inout(GlobalPosition2d),
-                    ecs_inout(GlobalRotation2d),
-                    ecs_inout(GlobalScale2d),
-                    ecs_not(Static),
-                },
-                .order_by = ecs_order_by_depth(ChildOf),
-            },
-            .callback = spatial_2d_propagate,
-            .phase = EcsPostUpdate,
-        }
-    );
-
-    const ecs_system_id_t static_3d_system = ecs_system(
-        {
-            .name = "Spatial3dStaticPropagation",
-            .callback = spatial_3d_propagate_ready,
-            .phase = EcsPostUpdate,
-            .main_thread_only = true,
-        }
-    );
-
-    ecs_system(
-        {
-            .name = "Spatial3dPropagation",
-            .query = {
-                .components = {
-                    ecs_in(Position3d),
-                    ecs_in(Rotation3d),
-                    ecs_in(Scale3d),
-                    ecs_inout(GlobalPosition3d),
-                    ecs_inout(GlobalOrientation3d),
-                    ecs_inout(GlobalScale3d),
-                    ecs_not(Static3dReady),
-                },
-                .order_by = ecs_order_by_depth(ChildOf),
-            },
-            .callback = spatial_3d_propagate,
-            .phase = EcsPostUpdate,
-            .after = { static_3d_system },
-        }
-    );
-
-    ecs_system(
-        {
-            .name = "Spatial2dIntegrate",
-            .query = {
-                .components = {
-                    ecs_inout(Position2d),
-                    ecs_in(Velocity2d),
-                },
-            },
-            .callback = spatial_2d_integrate,
-            .phase = EcsOnUpdate,
-        }
-    );
-
-    ecs_system(
-        {
-            .name = "Spatial3dIntegrate",
-            .query = {
-                .components = {
-                    ecs_inout(Position3d),
-                    ecs_in(Velocity3d),
-                },
-            },
-            .callback = spatial_3d_integrate,
-            .phase = EcsOnUpdate,
-        }
-    );
+    ecs_system({
+        .name = "Spatial3dIntegrate",
+        .query = { .components = { ecs_inout(Position3d), ecs_in(Velocity3d) } },
+        .callback = spatial_3d_integrate,
+        .phase = EcsOnUpdate,
+    });
+    ecs_at_fini({ .callback = spatial_fini });
 }

@@ -1,0 +1,150 @@
+{
+  "id": "sigpu.test",
+  "type": "application",
+  "value": {
+    "use": [
+      "sigpu",
+      "siecs",
+      "siwindow"
+    ],
+    "public": false
+  },
+  "lang.c": {
+    "c-standard": "c17",
+    "lib": [
+      "SDL3"
+    ],
+    "include": [
+      "../include",
+      "../../addons/gpu/src"
+    ]
+  },
+  "test": {
+    "testsuites": [
+      {
+        "id": "state",
+        "testcases": [
+          "descriptor_adds_state",
+          "ready_after_frame",
+          "isa_instance_starts_pending",
+          "isa_objects_released_once",
+          "migration_keeps_gpu_objects",
+          "observer_sees_transitions"
+        ]
+      },
+      {
+        "id": "lifecycle",
+        "testcases": [
+          "created_out_of_order",
+          "sets_coalesce",
+          "waiting_is_not_retried",
+          "failure_then_fix",
+          "invalid_then_corrected",
+          "removed_before_ready",
+          "removed_after_ready",
+          "resize_replaces_object",
+          "size_from_follows_source",
+          "size_from_cycle_fails",
+          "dependency_killed_fails",
+          "entry_missing_fails",
+          "budget_defers",
+          "no_device_stays_pending",
+          "second_device_waits",
+          "state_before_device_opens",
+          "device_recreated"
+        ]
+      },
+      {
+        "id": "upload",
+        "testcases": [
+          "buffer_upload_lands",
+          "upload_waits_for_ready",
+          "upload_out_of_range_rejected",
+          "texture_upload_pitch",
+          "upload_dropped_with_buffer"
+        ]
+      },
+      {
+        "id": "frame",
+        "testcases": [
+          "upload_every_frame",
+          "uploads_share_one_submission"
+        ]
+      },
+      {
+        "id": "pack",
+        "testcases": [
+          "truncated_pack_fails",
+          "fingerprint_mismatch_fails"
+        ]
+      },
+      {
+        "id": "graph",
+        "testcases": [
+          "order_deduced",
+          "clear_load_store",
+          "uninitialized_read_rejected",
+          "sampled_attachment_rejected",
+          "unused_pass_culled",
+          "compiles_once",
+          "resize_without_compile",
+          "waits_for_resource",
+          "compute_pass",
+          "copy_pass",
+          "callback_destroyed_once"
+        ]
+      },
+      {
+        "id": "window",
+        "testcases": [
+          "surface_waits_for_window",
+          "surface_presents",
+          "resize_reallocates",
+          "minimized_suspends",
+          "closed_waits_again",
+          "two_windows",
+          "split_screen"
+        ]
+      },
+      {
+        "id": "feature",
+        "testcases": [
+          "draws_instances",
+          "unchanged_table_not_extracted",
+          "change_reextracts",
+          "swap_remove_reextracts",
+          "range_by_table",
+          "empty_range_released",
+          "parallel_portions",
+          "material_retarget"
+        ]
+      },
+      {
+        "id": "culling",
+        "testcases": [
+          "all_or_none_visible",
+          "partition_on_change_only",
+          "lod_without_mutation",
+          "merge_materials_same_textures",
+          "layered_order"
+        ]
+      },
+      {
+        "id": "material",
+        "testcases": [
+          "isa_override",
+          "dead_texture_waits",
+          "packing",
+          "mismatch_fails"
+        ]
+      },
+      {
+        "id": "invariant",
+        "testcases": [
+          "still_scene",
+          "moving_view"
+        ]
+      }
+    ]
+  }
+}

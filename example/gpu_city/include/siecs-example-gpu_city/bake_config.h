@@ -22,6 +22,7 @@
 #include <siecs_spatial.h>
 #include <siwindow.h>
 #include <sigpu.h>
+#include <sirender3d.h>
 
 #endif
 

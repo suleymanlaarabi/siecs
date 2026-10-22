@@ -8,7 +8,7 @@
 #include <execution>
 #include <siecs/cpp/entity.hpp>
 #include <siecs/cpp/world.hpp>
-#include <sigpu.h>
+#include <sirender3d.h>
 
 int main() {
     ecs::init();
@@ -20,17 +20,22 @@ int main() {
         .width = 1280,
         .height = 720,
     });
-    ecs::import<sigpu>({ .samples = 4 });
+    ecs::import<sigpu>();
+    ecs::import<sirender3d>();
+    ecs::ensure("Device").set(GpuDevice{});
+    auto surface = ecs::ensure("Surface").set(GpuSurface{ .window_slot = "main" });
 
-    ecs::resource<Sky>().set(Sky{ Color{ 12, 18, 34 } });
-    ecs::resource<Sun>().set(Sun{ -0.45f, -1.0f, 0.35f, Color{ 255, 232, 196 }, 1.5f });
-    ecs::resource<AmbientLight>().set(AmbientLight{ Color{ 155, 180, 255 }, 0.24f });
-    ecs::resource<Fog>().set(Fog{ Color{ 12, 18, 34 }, 24.0f, 65.0f });
-    ecs::resource<Shadows>().set(Shadows{ true, 50.0f });
-    ecs::resource<BloomSettings>().set(BloomSettings{ true, 0.85f, 0.7f });
-
+    ecs::ensure("Sun").set(DirectionalLight{ -0.45f, -1.0f, 0.35f, Color{ 255, 232, 196 }, 1.5f });
     ecs::ensure("Camera")
-        .set(Position3d{ 0.0f, 3.5f, 14.0f }, Rotation3d{ -0.24f, 0.0f, 0.0f }, Camera{ 58.0f });
+        .set(Position3d{ 0.0f, 3.5f, 14.0f }, Rotation3d{ -0.24f, 0.0f, 0.0f }, Camera3d{ 58.0f })
+        .set(
+            Sky{ Color{ 12, 18, 34 } },
+            AmbientLight{ Color{ 155, 180, 255 }, 0.24f },
+            Fog{ Color{ 12, 18, 34 }, 24.0f, 65.0f },
+            Shadows{ true, 50.0f }
+        )
+        .set(BloomSettings{ true, 0.85f, 0.7f }, Multisampling{ 4 })
+        .relate<RendersTo>(surface);
 
     ecs::ensure("Ground")
         .set(Position3d{ 0.0f, -1.2f, 0.0f }, Cuboid{ 22.0f, 0.25f, 18.0f }, Color{ 30, 41, 64 })

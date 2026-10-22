@@ -20,6 +20,8 @@
 /* Headers of public dependencies */
 #include <siui.h>
 #include <siecs.h>
+#include <sigpu.h>
+#include <siwindow.h>
 #include <bake_test.h>
 
 #endif

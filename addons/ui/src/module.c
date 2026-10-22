@@ -1,5 +1,4 @@
 #include "ui_internal.h"
-#include <sigpu.h>
 ECS_COMPONENT_DEFINE(UiNode, ECS_SET_ONLY);
 ECS_COMPONENT_DEFINE(UiPaint, ECS_SET_ONLY);
 ECS_COMPONENT_DEFINE(UiText, ECS_SET_ONLY);
@@ -42,6 +41,10 @@ static void component_set(ecs_observer_event_t *event) {
 }
 
 static void component_add_remove(ecs_observer_event_t *event) {
+    if (event->event == EcsOnRemove &&
+        (event->component == ecs_id(UiNode) || event->component == ecs_id(UiPaint) ||
+         event->component == ecs_id(UiText)))
+        ui_render_forget(event->entity);
     if (event->component == ecs_id(UiNode))
         ui_mark(event->entity, TREE_DIRTY);
     else if (event->component == ecs_id(UiText))
@@ -112,15 +115,8 @@ void siui_import(const siui_props_t *props) {
           .query.components = { ecs_filter(UiNode) },
           .callback = relation_changed }
     );
-    if (props && props->gpu) {
-        if (ecs_module_find(&ecs_id(sigpu)))
-            ui_render_register();
-        else
-            SDL_LogError(
-                SDL_LOG_CATEGORY_APPLICATION,
-                "siui: import sigpu before enabling GPU rendering"
-            );
-    }
+    if (props && props->gpu)
+        ui_render_register(props->window_slot);
     ecs_at_fini({ .callback = fini_ui });
 }
 

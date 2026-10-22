@@ -2,8 +2,6 @@
 
 static TTF_TextEngine *engine;
 
-static bool gpu_engine;
-
 bool ui_text_init(void) {
     if (!TTF_Init())
         return false;
@@ -12,29 +10,6 @@ bool ui_text_init(void) {
 }
 
 TTF_TextEngine *ui_text_engine(void) { return engine; }
-
-void ui_text_gpu_engine(SDL_GPUDevice *device) {
-    if (gpu_engine)
-        return;
-    TTF_TextEngine *gpu = TTF_CreateGPUTextEngine(device);
-    if (!gpu)
-        return;
-    uint32_t i = 0;
-    for (; i < ui_cache.count; i++)
-        if (ui_cache.entries[i].ttf_text && !TTF_SetTextEngine(ui_cache.entries[i].ttf_text, gpu))
-            break;
-    if (i < ui_cache.count) {
-        for (uint32_t j = 0; j < i; j++)
-            if (ui_cache.entries[j].ttf_text)
-                TTF_SetTextEngine(ui_cache.entries[j].ttf_text, engine);
-        TTF_DestroyGPUTextEngine(gpu);
-        return;
-    }
-    TTF_DestroySurfaceTextEngine(engine);
-    engine = gpu;
-    gpu_engine = true;
-    ui_cache.paint_dirty = true;
-}
 
 void ui_text_dispose(ui_entry_t *entry) {
     if (entry->ttf_text) {
@@ -69,10 +44,12 @@ bool ui_text_measure(
         entry->line_height = style->line_height;
         entry->text_value = string;
         entry->text_wrap_width = -1;
+        entry->raster_dirty = true;
     } else if (entry->flags & TEXT_DIRTY || entry->text_value != string) {
         if (!TTF_SetTextString(entry->ttf_text, string, 0))
             return false;
         entry->text_value = string;
+        entry->raster_dirty = true;
     }
     if (!entry->ttf_text)
         return false;
@@ -81,6 +58,7 @@ bool ui_text_measure(
         if (!TTF_SetTextWrapWidth(entry->ttf_text, wrap))
             return false;
         entry->text_wrap_width = wrap;
+        entry->raster_dirty = true;
     }
     int w = 0, h = 0;
     if (!TTF_GetTextSize(entry->ttf_text, &w, &h))
@@ -116,12 +94,8 @@ void ui_text_fini(void) {
     for (uint32_t i = 0; i < ui_cache.count; i++)
         ui_text_dispose(&ui_cache.entries[i]);
     if (engine) {
-        if (gpu_engine)
-            TTF_DestroyGPUTextEngine(engine);
-        else
-            TTF_DestroySurfaceTextEngine(engine);
+        TTF_DestroySurfaceTextEngine(engine);
         engine = NULL;
-        gpu_engine = false;
     }
     ui_fonts_fini();
     TTF_Quit();

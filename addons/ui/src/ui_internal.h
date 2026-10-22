@@ -25,6 +25,10 @@ typedef struct {
     siui_font_handle_t font_handle;
     float font_size;
     float line_height;
+    /* The text changed since it was last drawn into the glyph atlas. */
+    bool raster_dirty;
+    uint32_t atlas_x, atlas_y, atlas_width, atlas_height;
+    uint32_t atlas_generation;
 } ui_entry_t;
 
 ECS_RESOURCE_DECLARE(UiLayoutCache, {
@@ -67,12 +71,12 @@ void ui_fonts_fini(void);
 void ui_fonts_init_default(void);
 bool ui_text_init(void);
 void ui_text_fini(void);
-void ui_text_gpu_engine(SDL_GPUDevice *device);
 TTF_TextEngine *ui_text_engine(void);
 float ui_resolve(siui_length_t value, float reference, float fallback);
 float ui_clamp(float value, siui_length_t minimum, siui_length_t maximum, float reference);
 float ui_edge(siui_length_t value, float reference);
-void ui_render_register(void);
+void ui_render_register(const char *window_slot);
 void ui_render_fini(void);
+void ui_render_forget(ecs_entity_t entity);
 
 #endif

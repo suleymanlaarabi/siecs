@@ -39,11 +39,10 @@ int main() {
         .width = 1280,
         .height = 720,
     });
-    static_cast<void>(ecs::import<sigpu>(sigpu::props_t{ .samples = 1 }));
-    ecs::resource<AmbientLight>().set(AmbientLight{ Color{ 180, 195, 230 }, 0.45f });
-    ecs::resource<Shadows>().set(Shadows{ false, 200.0f });
-    ecs::resource<CameraClip>().set(CameraClip{ 0.5f, 4000.0f });
-    ecs::resource<Multisampling>().set(Multisampling{ 2 });
+    ecs::import<sigpu>();
+    ecs::import<sirender3d>();
+    ecs::ensure("Device").set(GpuDevice{});
+    auto surface = ecs::ensure("Surface").set(GpuSurface{ .window_slot = "main" });
 
     ecs::component<FreeCameraController>();
     ecs::component<gpu_city::Car>();
@@ -76,8 +75,12 @@ int main() {
     ecs::ensure("Camera").add<FreeCameraController>().set(
         aerial ? Position3d{ 9.0f, 70.0f, 35.0f } : Position3d{ 17.0f, 23.0f, 43.0f },
         aerial ? Rotation3d{ -1.45f, 0.0f, 0.0f } : Rotation3d{ -0.4f, 0.35f, 0.0f },
-        Camera{ 70.0f }
-    );
+        Camera3d{ 70.0f, 0.5f, 4000.0f }
+    ).set(
+        AmbientLight{ Color{ 180, 195, 230 }, 0.45f },
+        Shadows{ false, 200.0f },
+        Multisampling{ 2 }
+    ).relate<RendersTo>(surface);
 
     const auto start = std::chrono::steady_clock::now();
     gpu_city::traffic::build_network();

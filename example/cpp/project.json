@@ -5,11 +5,20 @@
     "public": false,
     "clangd": true,
     "language": "cpp",
-    "use": ["siecs", "siecs_spatial", "siecs_rest", "siwindow", "sigpu"]
+    "use": [
+      "siecs",
+      "siecs_spatial",
+      "siecs_rest",
+      "siwindow",
+      "sigpu",
+      "sirender3d"
+    ]
   },
   "lang.cpp": {
     "cpp-standard": "c++20",
-    "include": ["../../include"]
+    "include": [
+      "../../include"
+    ]
   },
   "bundle": {
     "repositories": {

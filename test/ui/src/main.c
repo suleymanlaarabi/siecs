@@ -50,6 +50,12 @@ void layout_overflow_runtime(void);
 void layout_node_after_table_move(void);
 void layout_text_before_node(void);
 
+// Testsuite 'gpu'
+void gpu_background_drawn(void);
+void gpu_children_over_parents(void);
+void gpu_text_drawn(void);
+void gpu_still_ui_uploads_nothing(void);
+
 bake_test_case layout_testcases[] = {
     {
         "auto_empty",
@@ -213,6 +219,25 @@ bake_test_case layout_testcases[] = {
     }
 };
 
+bake_test_case gpu_testcases[] = {
+    {
+        "background_drawn",
+        gpu_background_drawn
+    },
+    {
+        "children_over_parents",
+        gpu_children_over_parents
+    },
+    {
+        "text_drawn",
+        gpu_text_drawn
+    },
+    {
+        "still_ui_uploads_nothing",
+        gpu_still_ui_uploads_nothing
+    }
+};
+
 
 static bake_test_suite suites[] = {
     {
@@ -221,9 +246,16 @@ static bake_test_suite suites[] = {
         NULL,
         40,
         layout_testcases
+    },
+    {
+        "gpu",
+        NULL,
+        NULL,
+        4,
+        gpu_testcases
     }
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siui.test", argc, argv, suites, 1);
+    return bake_test_run("siui.test", argc, argv, suites, 2);
 }

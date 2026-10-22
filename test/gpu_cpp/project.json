@@ -1,0 +1,33 @@
+{
+  "id": "sigpu.cpp.test",
+  "type": "application",
+  "value": {
+    "use": [
+      "sigpu",
+      "siecs"
+    ],
+    "public": false,
+    "language": "cpp"
+  },
+  "lang.cpp": {
+    "cpp-standard": "c++20",
+    "lib": [
+      "SDL3"
+    ],
+    "include": [
+      "../cpp/include",
+      "../../include"
+    ]
+  },
+  "test": {
+    "testsuites": [
+      {
+        "id": "feature",
+        "testcases": [
+          "extract_draws",
+          "unchanged_not_extracted"
+        ]
+      }
+    ]
+  }
+}

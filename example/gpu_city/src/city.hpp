@@ -3,7 +3,7 @@
 #include "traffic.hpp"
 #include <cstdint>
 #include <siecs/cpp/entity.hpp>
-#include <sigpu.h>
+#include <sirender3d.h>
 
 namespace gpu_city {
 
