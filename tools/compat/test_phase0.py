@@ -73,8 +73,8 @@ class ManifestTests(unittest.TestCase):
 
 
 class ComparatorTests(unittest.TestCase):
-    def test_unimplemented_candidate_cannot_pass_even_empty_source(self):
-        code, candidate = invoke("siecs_script_candidate", {"source": ""})
+    def test_unimplemented_managed_candidate_cannot_pass_even_empty_source(self):
+        code, candidate = invoke("siecs_script_candidate", {"source": "", "mode": "managed"})
         self.assertEqual(code, 2)
         self.assertEqual(candidate["status"], "TODO")
         self.assertFalse(candidate["success"])

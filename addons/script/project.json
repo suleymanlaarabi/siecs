@@ -1,0 +1,16 @@
+{
+  "id": "siecs_script",
+  "type": "package",
+  "value": {
+    "author": "Suleyman Laarabi",
+    "description": "Flecs Script frontend and native SiECS backend",
+    "public": true,
+    "use": ["siecs", "sicore", "sireflect"]
+  },
+  "lang.c": {
+    "c-standard": "c17",
+    "export-symbols": true,
+    "include": ["src", "include"],
+    "lib": ["m"]
+  }
+}

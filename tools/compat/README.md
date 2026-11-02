@@ -1,8 +1,7 @@
 # Flecs Script compatibility tools
 
-This is Phase 0 infrastructure. The SiECS runtime is not implemented. The
-candidate endpoint deliberately returns `TODO` with exit status 2 for every
-valid request. It does not evaluate scripts, call Flecs, or claim compatibility.
+The SiECS candidate evaluates the initial one-shot subset with the native addon.
+Managed/reactive/reload evaluation, host events and IR remain explicit gaps.
 No test status in the upstream backlog is automatically promoted by these tools.
 
 Freeze and inspect upstream outside the repository:
@@ -13,7 +12,9 @@ git -C /tmp/flecs-script-reference checkout --detach fa788c60c87b4effc1124027db8
 python3 tools/sync_flecs_script_tests.py /tmp/flecs-script-reference
 python3 tools/sync_flecs_script_tests.py /tmp/flecs-script-reference --check
 python3 tools/compat/build_oracle.py /tmp/flecs-script-reference
+bake build tools/compat/candidate
 python3 tools/compat/test_phase0.py
+python3 tools/compat/test_candidate.py
 ```
 
 The Linux oracle build uses upstream CMake sources, a static library, and `CC`
@@ -30,7 +31,7 @@ echo '{"source":"Root { Child {} }", "mode":"run", "events":[]}' | python3 tools
 ```
 
 The comparison exits 0 for equal complete results, 1 for a mismatch/runner
-error, and 2 for a compatibility gap. Its expected current result is 2.
+error, and 2 for a compatibility gap. The hierarchy example returns 0.
 `ir` and `skip_unknown` are optional booleans. The oracle currently supports
 `run` and `parse`; managed/reactive/reload requests and mutation events return
 an explicit gap. These capabilities must be added before differential coverage

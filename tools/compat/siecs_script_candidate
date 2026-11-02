@@ -1,17 +1,57 @@
 #!/usr/bin/env python3
-"""Reserved candidate endpoint. Unimplemented execution is always a visible gap."""
+"""Evaluate scripts in the separately linked native SiECS candidate."""
 
+import json
+import os
+import subprocess
 import sys
+import tempfile
+from pathlib import Path
+
 from protocol import emit, fail, gap, read_request
 
 
 def main():
     try:
-        read_request()
-    except (ValueError, KeyError) as error:
+        request = read_request()
+        if request["mode"] not in {"run", "parse"} or request["events"]:
+            emit(gap("siecs", "Managed/reactive/reload evaluation and host events are not implemented"))
+            return 2
+        if request.get("ir") and request["mode"] != "parse":
+            emit(gap("siecs", "IR evaluation is not implemented"))
+            return 2
+        root = Path(__file__).resolve().parents[2]
+        default = root / "tools/compat/candidate/bin/x64-Linux-debug/siecs_script_candidate"
+        binary = Path(os.environ.get("SIECS_SCRIPT_CANDIDATE", default))
+        if not binary.is_file():
+            raise ValueError("build candidate first: bake build tools/compat/candidate")
+        environment = os.environ.copy()
+        if not environment.get("BAKE_TARGET"):
+            bake = subprocess.run(["bake", "env"], cwd=root, capture_output=True,
+                                  text=True, check=True, timeout=10)
+            for line in bake.stdout.splitlines():
+                key, separator, value = line.partition("=")
+                if separator and key in {"BAKE_HOME", "BAKE_TARGET"}:
+                    environment[key] = value
+        library_path = str(Path(environment["BAKE_TARGET"]) / "lib")
+        environment["LD_LIBRARY_PATH"] = library_path + os.pathsep + environment.get("LD_LIBRARY_PATH", "")
+        with tempfile.TemporaryDirectory(prefix="siecs-script-candidate-") as directory:
+            source = Path(directory) / "compat.flecs"
+            source.write_bytes(request["source"].encode())
+            result = subprocess.run([str(binary), str(source),
+                                     str(int(request.get("ir", False))),
+                                     str(int(request.get("skip_unknown", False))), request["mode"]],
+                                    capture_output=True, text=True, timeout=30, env=environment)
+        if result.returncode:
+            raise ValueError(f"candidate exited {result.returncode}: {result.stderr[-2000:]}")
+        output = json.loads(result.stdout)
+        output["entities"].sort(key=lambda entity: entity["path"])
+        for entity in output["entities"]:
+            entity["relations"].sort(key=lambda relation: (relation["relation"], relation["target"]))
+        emit(output)
+        return 0
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         return fail(str(error))
-    emit(gap("siecs", "SiECS Script frontend/backend not implemented; no script was evaluated"))
-    return 2
 
 
 if __name__ == "__main__":

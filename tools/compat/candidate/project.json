@@ -1,0 +1,6 @@
+{
+  "id": "siecs_script_candidate",
+  "type": "application",
+  "value": {"public": false, "use": ["siecs_script", "siecs", "sijson"]},
+  "lang.c": {"c-standard": "c17", "include": ["../../../addons/script/include"]}
+}

@@ -1,0 +1,53 @@
+{
+  "id": "siecs_script.test",
+  "type": "application",
+  "value": {
+    "public": false,
+    "use": [
+      "siecs_script",
+      "siecs"
+    ]
+  },
+  "lang.c": {
+    "c-standard": "c17",
+    "include": [
+      "../../src",
+      "../../include"
+    ]
+  },
+  "test": {
+    "testsuites": [
+      {
+        "id": "Parser",
+        "testcases": [
+          "entity_scope",
+          "expression_precedence",
+          "template_and_async",
+          "diagnostics",
+          "depth_limit",
+          "repeated_parse",
+          "nested_script"
+        ]
+      },
+      {
+        "id": "Eval",
+        "testcases": [
+          "native_entities",
+          "native_component_values",
+          "script_struct",
+          "native_tags",
+          "conditions_loops",
+          "registered_relation",
+          "parse_error_does_not_mutate",
+          "unknown_component_is_error",
+          "interpolated_names",
+          "reusable_runtime",
+          "component_member_reads",
+          "native_lifecycle_and_observers",
+          "value_snapshot_and_runtime_error_recovery",
+          "owned_component_copy"
+        ]
+      }
+    ]
+  }
+}

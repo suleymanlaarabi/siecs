@@ -1,0 +1,317 @@
+{
+  "upstream_commit": "fa788c60c87b4effc1124027db86ef0f30a778d4",
+  "upstream_file": "test/script/src/Eval.c",
+  "upstream_blob": "f135bd84088afd9e5c25e3aa4e3c683134eb1134",
+  "cases": [
+    {
+      "id": "Eval.empty",
+      "upstream_line": 52,
+      "source": ""
+    },
+    {
+      "id": "Eval.space",
+      "upstream_line": 60,
+      "source": " "
+    },
+    {
+      "id": "Eval.space_newline",
+      "upstream_line": 68,
+      "source": " \n \n"
+    },
+    {
+      "id": "Eval.two_empty_newlines",
+      "upstream_line": 76,
+      "source": "\n\n"
+    },
+    {
+      "id": "Eval.three_empty_newlines",
+      "upstream_line": 84,
+      "source": "\n\n\n"
+    },
+    {
+      "id": "Eval.newline_trailing_space",
+      "upstream_line": 92,
+      "source": "\n "
+    },
+    {
+      "id": "Eval.newline_trailing_spaces",
+      "upstream_line": 100,
+      "source": "\n   "
+    },
+    {
+      "id": "Eval.multiple_trailing_newlines",
+      "upstream_line": 108,
+      "source": "Foo{}\n\n\n"
+    },
+    {
+      "id": "Eval.space_crlf",
+      "upstream_line": 121,
+      "source": " \r\n \r\n"
+    },
+    {
+      "id": "Eval.two_empty_crlfs",
+      "upstream_line": 129,
+      "source": "\r\n\r\n"
+    },
+    {
+      "id": "Eval.three_empty_crlfs",
+      "upstream_line": 137,
+      "source": "\r\n\r\n\r\n"
+    },
+    {
+      "id": "Eval.crlf_trailing_space",
+      "upstream_line": 145,
+      "source": "\r\n "
+    },
+    {
+      "id": "Eval.crlf_trailing_spaces",
+      "upstream_line": 153,
+      "source": "\r\n   "
+    },
+    {
+      "id": "Eval.multiple_trailing_crlfs",
+      "upstream_line": 161,
+      "source": "Foo{}\r\n\r\n\r\n"
+    },
+    {
+      "id": "Eval.entity",
+      "upstream_line": 174,
+      "source": "Foo{}"
+    },
+    {
+      "id": "Eval.entity_newline",
+      "upstream_line": 187,
+      "source": "Foo{}\n"
+    },
+    {
+      "id": "Eval.entity_crlf",
+      "upstream_line": 200,
+      "source": "Foo{}\r\n"
+    },
+    {
+      "id": "Eval.entity_w_core_name",
+      "upstream_line": 213,
+      "source": "World{}"
+    },
+    {
+      "id": "Eval.2_entities",
+      "upstream_line": 227,
+      "source": "Foo{}\nBar{}\n"
+    },
+    {
+      "id": "Eval.2_entities_crlf",
+      "upstream_line": 239,
+      "source": "Foo{}\r\nBar{}\r\n"
+    },
+    {
+      "id": "Eval.line_comment",
+      "upstream_line": 251,
+      "source": "// Foo{}\n"
+    },
+    {
+      "id": "Eval.line_comment_before_stmt",
+      "upstream_line": 261,
+      "source": "// Hello\nFoo {}\n"
+    },
+    {
+      "id": "Eval.line_comment_after_stmt",
+      "upstream_line": 272,
+      "source": "Foo{}\n// Hello\n"
+    },
+    {
+      "id": "Eval.line_comment_between_stmt",
+      "upstream_line": 283,
+      "source": "Foo{}\n// Hello\nBar{}\n"
+    },
+    {
+      "id": "Eval.multiple_line_comment",
+      "upstream_line": 295,
+      "source": "// Hello\n// World\nFoo{}"
+    },
+    {
+      "id": "Eval.multiple_line_comment_w_newlines",
+      "upstream_line": 307,
+      "source": "// Hello\n\n// World\n\nFoo{}"
+    },
+    {
+      "id": "Eval.line_comment_after_stmt_same_line",
+      "upstream_line": 319,
+      "source": "Foo{} // Hello\nBar{}\n"
+    },
+    {
+      "id": "Eval.line_comment_before_scope_open",
+      "upstream_line": 331,
+      "source": "Parent // Some Comment()\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.line_comment_after_newline_before_scope_open",
+      "upstream_line": 359,
+      "source": "Parent\n// Some Comment()\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.line_comment_after_newline_before_newline_scope_open",
+      "upstream_line": 388,
+      "source": "Parent\n// Some Comment()\n\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.line_comment_multiple_before_newline_scope_open",
+      "upstream_line": 418,
+      "source": "Parent\n// Comment A\n// Comment B\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.line_comment_after_newline_before_whitespace_newline_scope_open",
+      "upstream_line": 445,
+      "source": "Parent\n// Some Comment()\n   \n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.line_comment_after_newline_before_newline_scope_open_crlf",
+      "upstream_line": 472,
+      "source": "Parent\r\n// Some Comment()\r\n\r\n{\r\n Child{}\r\n}\r\nFoo{}\r\n"
+    },
+    {
+      "id": "Eval.line_comment_before_multi_line_comment_before_scope_open",
+      "upstream_line": 499,
+      "source": "Parent\n// Some line comment\n/* Some multi line comment */\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.line_comment_after_newline_before_3_newline_scope_open",
+      "upstream_line": 526,
+      "source": "Parent\n// Some Comment()\n\n\n\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.line_comment_after_newline_before_mixed_comment_newline_scope_open",
+      "upstream_line": 555,
+      "source": "Parent\n// Comment A\n\n/* Comment B */\n\n// Comment C\n\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.multi_line_comment_after_newline_before_mixed_comment_newline_scope_open",
+      "upstream_line": 586,
+      "source": "Parent\n/* Comment A */\n// Comment B\n\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.multi_line_comment_after_newline_before_mixed_comment_newline_scope_open_crlf",
+      "upstream_line": 614,
+      "source": "Parent\r\n/* Comment A */\r\n// Comment B\r\n\r\n{\r\n Child{}\r\n}\r\nFoo{}\r\n"
+    },
+    {
+      "id": "Eval.line_comment_after_newline_before_mixed_line_endings_scope_open",
+      "upstream_line": 642,
+      "source": "Parent\n// Comment A\r\n\r\n/* Comment B */\n\n{\r\n Child{}\n}\r\nFoo{}\n"
+    },
+    {
+      "id": "Eval.line_comment_after_newline_before_multiple_multi_line_comments_scope_open",
+      "upstream_line": 671,
+      "source": "Parent\n// Comment A\n/* Comment B */\n\n/* Comment C */\n\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.multi_line_comment",
+      "upstream_line": 701,
+      "source": "/* Foo{} */"
+    },
+    {
+      "id": "Eval.multi_line_comment_before_stmt",
+      "upstream_line": 711,
+      "source": "/* Hello */\nFoo {}"
+    },
+    {
+      "id": "Eval.multi_line_comment_after_stmt",
+      "upstream_line": 722,
+      "source": "Foo{}\n/* Hello */"
+    },
+    {
+      "id": "Eval.multi_line_comment_between_stmt",
+      "upstream_line": 733,
+      "source": "Foo{}\n /* Hello */ Bar{}\n"
+    },
+    {
+      "id": "Eval.multiple_multi_line_comment",
+      "upstream_line": 745,
+      "source": "/* Hello *//* World*/ Foo{}"
+    },
+    {
+      "id": "Eval.multiple_multi_line_comment_w_newlines",
+      "upstream_line": 757,
+      "source": "/* Hello */\n/* World */ Foo{}"
+    },
+    {
+      "id": "Eval.multi_line_comment_after_stmt_same_line",
+      "upstream_line": 769,
+      "source": "Foo{} /* Hello */\nBar{}\n"
+    },
+    {
+      "id": "Eval.multi_line_comment_before_scope_open",
+      "upstream_line": 781,
+      "source": "Parent /* Some Comment() */\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.multi_line_comment_after_newline_before_scope_open",
+      "upstream_line": 809,
+      "source": "Parent\n/* Some Comment() */\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.multi_line_comment_multiple_lines",
+      "upstream_line": 838,
+      "source": "Foo {}\n/* Some{}\n * Multi Line{}\n * Comment{}\n */\n\nBar {}"
+    },
+    {
+      "id": "Eval.hierarchy_1_child",
+      "upstream_line": 863,
+      "source": "Parent {\n Child {}\n}"
+    },
+    {
+      "id": "Eval.hierarchy_2_children",
+      "upstream_line": 886,
+      "source": "Parent {\n ChildA{}\n ChildB{}\n}"
+    },
+    {
+      "id": "Eval.hierarchy_1_child_same_line",
+      "upstream_line": 914,
+      "source": "Parent { Child{} }"
+    },
+    {
+      "id": "Eval.entity_after_hierarchy",
+      "upstream_line": 935,
+      "source": "Parent {\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.newline_before_scope_open",
+      "upstream_line": 963,
+      "source": "Parent\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.newline_w_whitespace_before_scope_open",
+      "upstream_line": 988,
+      "source": "Parent\n  {\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.2_newline_before_scope_open",
+      "upstream_line": 1013,
+      "source": "Parent\n\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.2_newline_w_whitespace_before_scope_open",
+      "upstream_line": 1039,
+      "source": "Parent\n  \n {\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.3_newline_before_scope_open",
+      "upstream_line": 1065,
+      "source": "Parent\n\n\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.3_newline_w_comment_before_scope_open",
+      "upstream_line": 1092,
+      "source": "Parent\n\n// Some Comment()\n\n{\n Child{}\n}\nFoo{}"
+    },
+    {
+      "id": "Eval.hierarchy_2_levels",
+      "upstream_line": 1122,
+      "source": "Parent {\n Child {\n  GrandChild {}\n }\n}"
+    },
+    {
+      "id": "Eval.hierarchy_2_levels_2_subtrees",
+      "upstream_line": 1151,
+      "source": "Parent {\n ChildA {\n  GrandChild {}\n }\n ChildB {\n  GrandChild {}\n }\n}"
+    }
+  ]
+}
