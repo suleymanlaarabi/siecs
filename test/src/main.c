@@ -26,6 +26,11 @@ void registry_duplicate_names_keep_first(void);
 void registry_world_restart(void);
 void registry_type_slots_preserve_pointers(void);
 
+// Testsuite 'script_host'
+void script_host_single_target_relations_and_dynamic_ids(void);
+void script_host_dynamic_struct_is_native_component(void);
+void script_host_runtime_enum_lookup_and_mask_gap(void);
+
 // Testsuite 'naming'
 void naming_paths_and_scopes(void);
 void naming_rename_updates_descendant_paths(void);
@@ -388,6 +393,21 @@ bake_test_case registry_testcases[] = {
     {
         "type_slots_preserve_pointers",
         registry_type_slots_preserve_pointers
+    }
+};
+
+bake_test_case script_host_testcases[] = {
+    {
+        "single_target_relations_and_dynamic_ids",
+        script_host_single_target_relations_and_dynamic_ids
+    },
+    {
+        "dynamic_struct_is_native_component",
+        script_host_dynamic_struct_is_native_component
+    },
+    {
+        "runtime_enum_lookup_and_mask_gap",
+        script_host_runtime_enum_lookup_and_mask_gap
     }
 };
 
@@ -1555,6 +1575,13 @@ static bake_test_suite suites[] = {
         registry_testcases
     },
     {
+        "script_host",
+        NULL,
+        NULL,
+        3,
+        script_host_testcases
+    },
+    {
         "naming",
         NULL,
         NULL,
@@ -1648,5 +1675,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 15);
+    return bake_test_run("siecs.test", argc, argv, suites, 16);
 }

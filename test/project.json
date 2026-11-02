@@ -47,6 +47,14 @@
         ]
       },
       {
+        "id": "script_host",
+        "testcases": [
+          "single_target_relations_and_dynamic_ids",
+          "dynamic_struct_is_native_component",
+          "runtime_enum_lookup_and_mask_gap"
+        ]
+      },
+      {
         "id": "naming",
         "testcases": [
           "paths_and_scopes",
