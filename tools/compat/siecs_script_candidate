@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+"""Reserved candidate endpoint. Unimplemented execution is always a visible gap."""
+
+import sys
+from protocol import emit, fail, gap, read_request
+
+
+def main():
+    try:
+        read_request()
+    except (ValueError, KeyError) as error:
+        return fail(str(error))
+    emit(gap("siecs", "SiECS Script frontend/backend not implemented; no script was evaluated"))
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

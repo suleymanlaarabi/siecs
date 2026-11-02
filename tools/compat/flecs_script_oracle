@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""Read one JSON request and run the separately linked, frozen Flecs oracle."""
+
+import json
+import hashlib
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+from protocol import FLECS_COMMIT, emit, fail, gap, normalize, read_request
+
+
+def main():
+    try:
+        request = read_request()
+        if request["mode"] not in {"run", "parse"} or request["events"]:
+            emit(gap("flecs", "Phase 0 oracle implements run/parse without host mutation events"))
+            return 2
+        default = Path(__file__).resolve().parents[2] / ".cache/flecs-script-oracle/oracle"
+        binary = Path(os.environ.get("FLECS_SCRIPT_ORACLE", default))
+        provenance = json.loads(binary.with_name("provenance.json").read_text())
+        if provenance["commit"] != FLECS_COMMIT or provenance["dirty"]:
+            raise ValueError("oracle provenance does not match the frozen baseline")
+        source_file = Path(__file__).resolve().with_name("oracle.c")
+        if (provenance["source_sha256"] != hashlib.sha256(source_file.read_bytes()).hexdigest()
+                or provenance["binary_sha256"] != hashlib.sha256(binary.read_bytes()).hexdigest()):
+            raise ValueError("oracle source or binary changed; rebuild the oracle")
+        with tempfile.TemporaryDirectory(prefix="siecs-script-request-") as directory:
+            source = Path(directory) / "compat.flecs"
+            source.write_bytes(request["source"].encode())
+            result = subprocess.run([str(binary), str(source),
+                                     str(int(request.get("ir", False))),
+                                     str(int(request.get("skip_unknown", False))),
+                                     request["mode"]], capture_output=True, text=True, timeout=30)
+        if result.returncode:
+            raise ValueError(f"oracle exited {result.returncode}: {result.stderr[-2000:]}")
+        emit(normalize(json.loads(result.stdout)))
+        return 0
+    except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as error:
+        return fail(str(error))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

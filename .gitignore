@@ -1,5 +1,6 @@
 .bake_cache
 .cache/
+__pycache__/
 bin/
 build-wasm/
 compile_commands.json
