@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <siecs/cpp/resource.hpp>
 #include <siecs/cpp/system.hpp>
 #include <siecs/cpp/world.hpp>
@@ -30,7 +31,7 @@ void report_frames(ecs_iter_t *) {
 
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
     ecs::init({ .target_fps = 120, .worker_threads = 0 });
     static_cast<void>(ecs::import<sigpu>(sigpu::props_t{
         .title = "SIECS GPU City",
@@ -79,7 +80,16 @@ int main() {
 
     const auto start = std::chrono::steady_clock::now();
     gpu_city::traffic::build_network();
-    gpu_city::build_city();
+    const char *script = "city.si";
+    if (argc > 1)
+        script = argv[1];
+    else if (!std::filesystem::exists(script))
+        script = "example/gpu_city/city.si";
+    if (!gpu_city::build_city(script)) {
+        ecs::fini();
+        return 1;
+    }
+    gpu_city::build_traffic_lights();
     gpu_city::traffic::seed_cars(gpu_city::car_prefab());
     const double seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();

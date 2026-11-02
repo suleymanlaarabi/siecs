@@ -1,0 +1,18 @@
+{
+  "id": "siecs.example.gpu_city.test",
+  "type": "application",
+  "value": {
+    "language": "cpp",
+    "public": false,
+    "use": ["siecs", "siecs_spatial", "sigpu", "siecs_script"]
+  },
+  "lang.cpp": {
+    "cpp-standard": "c++20",
+    "include": ["../src", "../../../include"]
+  },
+  "test": {
+    "testsuites": [
+      {"id": "City", "testcases": ["small_grid", "full_grid"]}
+    ]
+  }
+}

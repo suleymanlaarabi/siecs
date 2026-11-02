@@ -1,0 +1,188 @@
+// Static city models and layout. Traffic and animated signals live in C++.
+const layout = CitySettings[CityLayout]
+const size = $layout.size
+const spacing = $layout.spacing
+const street = $layout.street_width
+const road_y = $layout.road_y
+const pavement_y = $layout.pavement_y
+const half = ($size - 1) / 2.0
+const center: i32 = $size / 2
+
+// Shared unit meshes and materials.
+prefab Asphalt { Cuboid: {1, 1, 1}; Color: {43, 47, 52, 255} }
+prefab Paving { Cuboid: {1, 1, 1}; Color: {151, 153, 149, 255} }
+prefab White { Cuboid: {1, 1, 1}; Color: {233, 230, 216, 255} }
+prefab Yellow { Cuboid: {1, 1, 1}; Color: {237, 205, 111, 255} }
+prefab Grass { Cuboid: {1, 1, 1}; Color: {74, 126, 69, 255} }
+prefab Path { Cuboid: {1, 1, 1}; Color: {181, 172, 151, 255} }
+prefab Wood { Cuboid: {1, 1, 1}; Color: {132, 83, 43, 255} }
+prefab Metal { Cuboid: {1, 1, 1}; Color: {55, 59, 58, 255} }
+prefab Frame { Cuboid: {1, 1, 1}; Color: {205, 194, 172, 255} }
+prefab Glass { Cuboid: {1, 1, 1}; Color: {63, 145, 174, 255} }
+prefab DoorFrame { Cuboid: {1, 1, 1}; Color: {211, 194, 163, 255} }
+prefab DoorWood { Cuboid: {1, 1, 1}; Color: {150, 75, 0, 255} }
+prefab DoorPanel { Cuboid: {1, 1, 1}; Color: {112, 57, 26, 255} }
+prefab Black { Cuboid: {1, 1, 1}; Color: {0, 0, 0, 255} }
+prefab Ground { Cuboid: {1, 1, 1}; Color: {70, 80, 105, 255} }
+prefab Trunk { Cylinder: {1, 1}; Color: {104, 68, 39, 255} }
+prefab Leaves { Sphere: {1}; Color: {47, 119, 61, 255} }
+prefab LeavesLeft { Sphere: {1}; Color: {58, 137, 69, 255} }
+prefab LeavesRight { Sphere: {1}; Color: {52, 128, 64, 255} }
+prefab AsphaltRing { Cylinder: {1, 1}; Color: {43, 47, 52, 255} }
+prefab IslandPaving { Cylinder: {1, 1}; Color: {151, 153, 149, 255} }
+prefab IslandGrass { Cylinder: {1, 1}; Color: {75, 127, 68, 255} }
+prefab Monument { Cylinder: {1, 1}; Color: {176, 166, 144, 255} }
+prefab MonumentTop { Sphere: {1}; Color: {96, 157, 181, 255} }
+
+// Instances reuse native prefab hierarchies, transforms and shared materials.
+template Model {
+    prop model: entity = Asphalt
+    prop position: Position3d = {0, 0, 0}
+    prop scale: Scale3d = {1, 1, 1}
+    prop yaw: f32 = 0
+    (IsA, $model)
+    Position3d: $position
+    Rotation3d: {0, $yaw, 0}
+    Scale3d: $scale
+    Static
+}
+
+prefab Facade_0_0 { Cuboid: {1, 1, 1}; Color: {155, 133, 108, 255} }
+prefab Facade_1_0 { Cuboid: {1, 1, 1}; Color: {178, 163, 136, 255} }
+prefab Facade_2_0 { Cuboid: {1, 1, 1}; Color: {130, 145, 154, 255} }
+prefab Facade_3_0 { Cuboid: {1, 1, 1}; Color: {184, 145, 121, 255} }
+prefab Facade_4_0 { Cuboid: {1, 1, 1}; Color: {147, 154, 129, 255} }
+for facade in 0..5 {
+    const model: entity = "Facade_{$facade}_0"
+    const color = $model[Color]
+    for shade in 1..3 {
+        const factor = 0.9 - 0.1 * $shade
+        prefab "Facade_{$facade}_{$shade}" {
+            Cuboid: {1, 1, 1}
+            Color: {$color.r * $factor + 0.5, $color.g * $factor + 0.5, $color.b * $factor + 0.5, 255}
+        }
+    }
+}
+for variant in 0..2 {
+    const width = 0.82 - 0.04 * $variant
+    prefab "Window_$variant" {
+        Model(Frame, {0, 0, 0}, {$width, 1.05, 0.1})
+        Model(Glass, {0, 0, 0.06}, {$width - 0.2, 0.85, 0.035})
+        Model(Frame, {0, 0, 0.09}, {0.055, 0.85, 0.04})
+        Model(Frame, {0, 0, 0.09}, {$width - 0.2, 0.055, 0.04})
+    }
+}
+prefab Door {
+    Model(DoorFrame, {0, 0, 0}, {1.4, 2.24, 0.16})
+    Model(DoorWood, {0, 0, 0.07}, {1.2, 2.1, 0.12})
+    Model(DoorPanel, {0, 0.504, 0.14}, {0.864, 0.63, 0.035})
+    Model(Black, {0.432, 0, 0.14}, {0.1, 0.16, 0.1})
+}
+prefab Tree {
+    Model(Trunk, {0, 0.72, 0}, {0.14, 1.35, 0.14})
+    Model(Leaves, {0, 1.72, 0}, {0.68, 0.68, 0.68})
+    Model(LeavesLeft, {-0.36, 1.53, 0.08}, {0.43, 0.43, 0.43})
+    Model(LeavesRight, {0.35, 1.55, -0.06}, {0.44, 0.44, 0.44})
+}
+prefab Bench {
+    Model(Wood, {0, 0.26, 0}, {0.9, 0.08, 0.3})
+    Model(Wood, {0, 0.4, -0.12}, {0.9, 0.34, 0.08})
+    for side in 0..2 { Model(Metal, {(2 * $side - 1) * 0.32, 0.13, 0}, {0.08, 0.26, 0.22}) }
+}
+prefab Road {
+    Model(Asphalt, {0, 0, 0}, {$spacing - $street, 0.08, $street})
+    for dash in 0..3 { Model(Yellow, {($dash - 1) * 4, 0.052, 0}, {1.45, 0.018, 0.09}) }
+    for side in 0..2 { Model(White, {0, 0.052, (2 * $side - 1) * 2.42}, {$spacing - $street - 0.3, 0.018, 0.065}) }
+}
+prefab Crossing {
+    for stripe in 0..8 { Model(White, {0, 0.055, ($stripe - 3.5) * 0.55}, {0.72, 0.02, 0.34}) }
+}
+prefab Roundabout {
+    Model(AsphaltRing, {0, 0, 0}, {3, 0.08, 3})
+    Model(IslandPaving, {0, 0.13, 0}, {1.24, 0.18, 1.24})
+    Model(IslandGrass, {0, 0.245, 0}, {1.12, 0.05, 1.12})
+    Model(Monument, {0, 0.53, 0}, {0.43, 0.54, 0.43})
+    Model(MonumentTop, {0, 0.91, 0}, {0.32, 0.32, 0.32})
+}
+prefab Park {
+    Model(Grass, {0, 0.04, 0}, {10.2, 0.08, 10.2})
+    Model(Path, {0, 0.095, 0}, {1.05, 0.035, 9.9})
+    Model(Path, {0, 0.1, 0}, {9.9, 0.035, 0.9})
+    for x in 0..2 {
+        for z in 0..2 { Model(Tree, {(2 * $x - 1) * 2.12, 0, (2 * $z - 1) * 2.15}) }
+    }
+    Model(Bench, {0, 0, 2.1})
+}
+
+template Building {
+    prop position: Position3d = {0, 0, 0}
+    prop floors: i32 = 2
+    prop facade: i32 = 0
+    prop yaw: f32 = 0
+    Position3d: $position
+    Rotation3d: {0, $yaw, 0}
+    Static
+    const height = $floors * 2.55
+    Model("Facade_{$facade}_0", {0, $height / 2, 0}, {4.2, $height, 2.6})
+    Model(Door, {0, 1.05, 1.36})
+    for floor in 0..$floors {
+        for side in 0..2 {
+            const width = 1.15 + 0.27 * ($floor == 0)
+            Model("Window_{1 * ($floor == 0)}", {(2 * $side - 1) * $width, $floor * 2.55 + 1.38, 1.36})
+        }
+        Model("Facade_{$facade}_1", {0, ($floor + 1) * 2.55, 0}, {4.32, 0.12, 2.72})
+    }
+    Model("Facade_{$facade}_2", {0, $height + 0.12, 0}, {4.56, 0.24, 2.96})
+}
+
+City {
+    for axis in 0..2 {
+        for row in 0..$size - $axis {
+            for column in 0..$size - (1 - $axis) {
+                const x = ($column + 0.5 * (1 - $axis) - $half) * $spacing
+                const z = ($row + 0.5 * $axis - $half) * $spacing
+                Model(Road, {$x, $road_y, $z}, yaw: $axis * 1.57079633)
+            }
+        }
+    }
+    for row in 0..$size {
+        for column in 0..$size {
+            const x = ($column - $half) * $spacing
+            const z = ($row - $half) * $spacing
+            Model(Asphalt, {$x, $road_y, $z}, {$street, 0.08, $street})
+            if ($row == $center && ($column == $center || $column == $center - 2 || $column == $center + 2)) || ($column == $center && $row == $center + 2) {
+                Model(Roundabout, {$x, $road_y, $z})
+            } else {
+                if $column % 2 == 1 && $row % 2 == 1 {
+                    for side in 0..2 {
+                        const offset = (2 * $side - 1) * ($street / 2 + 0.72)
+                        Model(Crossing, {$x + $offset, $road_y, $z})
+                        Model(Crossing, {$x, $road_y, $z + $offset}, yaw: 1.57079633)
+                    }
+                }
+            }
+        }
+    }
+    for row in 0..$size - 1 {
+        for column in 0..$size - 1 {
+            const x = ($column + 0.5 - $half) * $spacing
+            const z = ($row + 0.5 - $half) * $spacing
+            Model(Paving, {$x, $pavement_y - 0.09, $z}, {$spacing - $street, 0.18, $spacing - $street})
+            if ($column * 5 + $row * 7) % 11 == 0 { Model(Park, {$x, $pavement_y, $z}); continue }
+            const abs_x = $x * (1 - 2 * ($x < 0))
+            const abs_z = $z * (1 - 2 * ($z < 0))
+            const distance: i32 = ($abs_x * ($abs_x >= $abs_z) + $abs_z * ($abs_z > $abs_x)) / $spacing
+            const downtown = (3 - $distance) * ($distance < 3)
+            for plot in 0..3 + (($column + $row) % 3 == 0) {
+                const px = $x + (2 * (($plot & 1) != 0) - 1) * 3.2
+                const pz = $z + (2 * (($plot & 2) != 0) - 1) * 3.35
+                const floors = $downtown + ($column * 7 + $row * 3 + $plot * 5) % 3 + 2
+                const facade = ($column * 3 + $row * 5 + $plot) % 5
+                const yaw = 3.14159265 * (($plot & 2) == 0)
+                Building({$px, $pavement_y, $pz}, $floors, $facade, $yaw)
+            }
+        }
+    }
+    const ground_size = ($size - 1) * $spacing + $street + 70
+    Model GroundPlane(Ground, {0, -1.5, 0}, {$ground_size, 0.3, $ground_size})
+}

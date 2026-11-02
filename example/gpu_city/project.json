@@ -5,10 +5,17 @@
     "public": false,
     "clangd": true,
     "language": "cpp",
-    "use": ["siecs", "siecs_spatial", "sigpu"]
+    "use": [
+      "siecs",
+      "siecs_spatial",
+      "sigpu",
+      "siecs_script"
+    ]
   },
   "lang.cpp": {
     "cpp-standard": "c++20",
-    "include": ["../../include"]
+    "include": [
+      "../../include"
+    ]
   }
 }
