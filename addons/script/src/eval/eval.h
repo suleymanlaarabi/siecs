@@ -23,6 +23,14 @@ typedef struct script_variable_t {
     script_value_t value;
 } script_variable_t;
 
+typedef struct script_template_t {
+    struct script_template_t *next;
+    const ecs_script_template_node_t *node;
+    ecs_component_t component;
+    script_variable_t *captures;
+    uint32_t capture_count;
+} script_template_t;
+
 struct ecs_script_runtime_t {
     sicore_vec_t variables;
     sicore_vec_t owned_values;
@@ -40,6 +48,11 @@ typedef struct script_eval_t {
     ecs_entity_t entity;
     bool skip_unknown;
     int32_t loop_depth;
+    uint32_t variable_base;
+    const script_variable_t *captures;
+    uint32_t capture_count;
+    script_template_t *templates;
+    uint32_t template_depth;
 } script_eval_t;
 
 int script_eval_error(script_eval_t *ctx, const char *pos, const char *format, ...);
@@ -53,4 +66,9 @@ int script_operator_uint64_t(const void *left, const void *right, void *out, ecs
 int script_operator_double(const void *left, const void *right, void *out, ecs_token_kind_t operator);
 int script_operator_bool(const void *left, const void *right, void *out, ecs_token_kind_t operator);
 int script_eval_scope(script_eval_t *ctx, ecs_script_scope_t *scope);
+const script_variable_t *script_find_variable(script_eval_t *ctx, const char *name);
+script_template_t *script_template_lookup(script_eval_t *ctx, const char *name);
+int script_template_declare(script_eval_t *ctx, const ecs_script_template_node_t *node);
+int script_template_eval(script_eval_t *ctx, script_template_t *template,
+    const ecs_expr_node_t *arguments);
 #endif

@@ -32,6 +32,17 @@ void Eval_component_member_reads(void);
 void Eval_native_lifecycle_and_observers(void);
 void Eval_value_snapshot_and_runtime_error_recovery(void);
 void Eval_owned_component_copy(void);
+void Eval_interpolated_ids(void);
+
+// Testsuite 'File'
+void File_run_and_errors(void);
+
+// Testsuite 'Template'
+void Template_defaults_and_arguments(void);
+void Template_lexical_scope_and_nesting(void);
+void Template_models_and_entity_props(void);
+void Template_errors_and_recursion(void);
+void Template_prefab_hierarchy(void);
 
 bake_test_case Parser_testcases[] = {
     {
@@ -120,6 +131,40 @@ bake_test_case Eval_testcases[] = {
     {
         "owned_component_copy",
         Eval_owned_component_copy
+    },
+    {
+        "interpolated_ids",
+        Eval_interpolated_ids
+    }
+};
+
+bake_test_case File_testcases[] = {
+    {
+        "run_and_errors",
+        File_run_and_errors
+    }
+};
+
+bake_test_case Template_testcases[] = {
+    {
+        "defaults_and_arguments",
+        Template_defaults_and_arguments
+    },
+    {
+        "lexical_scope_and_nesting",
+        Template_lexical_scope_and_nesting
+    },
+    {
+        "models_and_entity_props",
+        Template_models_and_entity_props
+    },
+    {
+        "errors_and_recursion",
+        Template_errors_and_recursion
+    },
+    {
+        "prefab_hierarchy",
+        Template_prefab_hierarchy
     }
 };
 
@@ -136,11 +181,25 @@ static bake_test_suite suites[] = {
         "Eval",
         NULL,
         NULL,
-        14,
+        15,
         Eval_testcases
+    },
+    {
+        "File",
+        NULL,
+        NULL,
+        1,
+        File_testcases
+    },
+    {
+        "Template",
+        NULL,
+        NULL,
+        5,
+        Template_testcases
     }
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs_script.test", argc, argv, suites, 2);
+    return bake_test_run("siecs_script.test", argc, argv, suites, 4);
 }

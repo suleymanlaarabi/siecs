@@ -45,7 +45,24 @@
           "component_member_reads",
           "native_lifecycle_and_observers",
           "value_snapshot_and_runtime_error_recovery",
-          "owned_component_copy"
+          "owned_component_copy",
+          "interpolated_ids"
+        ]
+      },
+      {
+        "id": "File",
+        "testcases": [
+          "run_and_errors"
+        ]
+      },
+      {
+        "id": "Template",
+        "testcases": [
+          "defaults_and_arguments",
+          "lexical_scope_and_nesting",
+          "models_and_entity_props",
+          "errors_and_recursion",
+          "prefab_hierarchy"
         ]
       }
     ]

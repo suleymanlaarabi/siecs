@@ -77,6 +77,33 @@ void Eval_registered_relation(void) {
     ecs_fini();
 }
 
+void Eval_interpolated_ids(void) {
+    ecs_init();
+    ecs_component_t position = ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
+        .name = "Position", .fields = "{ float x; float y; }",
+    });
+    test_int(run(
+        "for i in 0..2 { prefab \"Shape_$i\" { Position: {$i, 20} } }\n"
+        "for i in 0..2 { \"Item_$i\" { (IsA, \"Shape_$i\") } }\n"), 0);
+    for (int i = 0; i < 2; i++) {
+        char name[32], base[32];
+        snprintf(name, sizeof name, "Item_%d", i);
+        snprintf(base, sizeof base, "Shape_%d", i);
+        ecs_entity_t entity = ecs_lookup(name);
+        test_uint(ecs_target_id(entity, ecs_rid(IsA)), ecs_lookup(base));
+        const float *value = ecs_get_cid(entity, position);
+        test_true(value != NULL);
+        test_flt(value[0], i);
+        test_flt(value[1], 20);
+    }
+    test_int(run("Bad { (IsA, \"Missing_{42}\") }"), -1);
+    test_uint(ecs_target_id(ecs_lookup("Bad"), ecs_rid(IsA)), 0);
+    ecs_relation_id_t follows = ecs_relation_init("Follows", &(ecs_relation_desc_t){.storage = EcsRelationDense});
+    test_int(run("const relation = \"Follows\"\nTarget {}\nSource { (\"$relation\", Target) }"), 0);
+    test_uint(ecs_target_id(ecs_lookup("Source"), follows), ecs_lookup("Target"));
+    ecs_fini();
+}
+
 void Eval_parse_error_does_not_mutate(void) {
     ecs_init();
     ecs_script_eval_result_t result = {0};

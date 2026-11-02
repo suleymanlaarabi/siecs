@@ -45,6 +45,10 @@ SIECS_SCRIPT_API int ecs_script_run(const char *name, const char *code,
     ecs_script_eval_result_t *result);
 SIECS_SCRIPT_API int ecs_script_run_w_desc(const char *name, const char *code,
     const ecs_script_eval_desc_t *desc, ecs_script_eval_result_t *result);
+SIECS_SCRIPT_API int ecs_script_run_file(const char *filename,
+    ecs_script_eval_result_t *result);
+SIECS_SCRIPT_API int ecs_script_run_file_w_desc(const char *filename,
+    const ecs_script_eval_desc_t *desc, ecs_script_eval_result_t *result);
 
 #ifdef __cplusplus
 }

@@ -1,29 +1,51 @@
 #include "eval.h"
 
+static int eval_id_name(script_eval_t *ctx, const ecs_expr_node_t *expr,
+    const char **name) {
+    if (!expr) return 0;
+    script_value_t value;
+    if (script_eval_expr(ctx, expr, &value)) return -1;
+    if (!sireflect_type_is_cstring(value.type))
+        return script_eval_error(ctx, expr->pos, "expected string identifier");
+    *name = *(const char *const*)script_value_data(&value);
+    return 0;
+}
+
 static int eval_id(script_eval_t *ctx, const ecs_script_id_t *id,
     const ecs_expr_node_t *value, bool partial) {
     if (!ctx->entity) return script_eval_error(ctx, NULL, "component outside entity scope");
-    if (id->flag || id->first_expr || id->second_expr || id->index_expr)
-        return script_eval_error(ctx, NULL, "dynamic or flagged component id not implemented");
-    script_symbol_t symbol = script_backend_symbol_lookup(id->first, ctx->parent);
-    if (id->second) {
+    if (id->flag || id->index_expr)
+        return script_eval_error(ctx, NULL, "flagged or indexed component id not implemented");
+    const char *first = id->first, *second = id->second;
+    ecs_entity_t target = 0;
+    if (second && second[0] == '$') {
+        const script_variable_t *variable = script_find_variable(ctx, second + 1);
+        if (variable && variable->value.type == script_backend_type_lookup("entity"))
+            memcpy(&target, script_value_data(&variable->value), sizeof target);
+    }
+    if (eval_id_name(ctx, id->first_expr, &first) ||
+        (!target && eval_id_name(ctx, id->second_expr, &second))) return -1;
+    script_template_t *template = script_template_lookup(ctx, first);
+    if (template && !second) return script_template_eval(ctx, template, value);
+    script_symbol_t symbol = script_backend_symbol_lookup(first, ctx->parent);
+    if (second) {
         if (value) return script_eval_error(ctx, value->pos, "typed pair payload requires native core support");
         if (symbol.kind != ScriptSymbolRelation)
-            return script_eval_error(ctx, NULL, "unresolved relation '%s'", id->first);
-        ecs_entity_t target = script_backend_entity_lookup(id->second, ctx->parent);
-        if (!target) return script_eval_error(ctx, NULL, "unresolved target '%s'", id->second);
-        if (!strcmp(id->first, "IsA")) { script_backend_isa_add(ctx->entity, target); return 0; }
+            return script_eval_error(ctx, NULL, "unresolved relation '%s'", first);
+        if (!target) target = script_backend_entity_lookup(second, ctx->parent);
+        if (!target) return script_eval_error(ctx, NULL, "unresolved target '%s'", second);
+        if (!strcmp(first, "IsA")) { script_backend_isa_add(ctx->entity, target); return 0; }
         if (script_backend_relation_add(ctx->entity, symbol.id.relation, target))
             return script_eval_error(ctx, NULL, "multiple relation targets require native typed pair support");
         return 0;
     }
     if (symbol.kind == ScriptSymbolNone && ctx->skip_unknown) {
-        script_backend_entity_ensure(id->first, ctx->parent);
+        script_backend_entity_ensure(first, ctx->parent);
         symbol.kind = ScriptSymbolEntity;
     }
     if (symbol.kind == ScriptSymbolEntity) {
         /* An entity used as a tag maps to a real native zero-size component. */
-        ecs_entity_t entity = script_backend_entity_lookup(id->first, ctx->parent);
+        ecs_entity_t entity = script_backend_entity_lookup(first, ctx->parent);
         char *path = script_backend_entity_path(entity);
         if (!path) return script_eval_error(ctx, NULL, "could not resolve tag path");
         const char *name = path;
@@ -34,7 +56,7 @@ static int eval_id(script_eval_t *ctx, const ecs_script_id_t *id,
         symbol = (script_symbol_t){ScriptSymbolComponent, {.component = component}};
     }
     if (symbol.kind != ScriptSymbolComponent)
-        return script_eval_error(ctx, NULL, "unresolved component '%s'", id->first);
+        return script_eval_error(ctx, NULL, "unresolved component '%s'", first);
     ecs_component_t component = symbol.id.component;
     if (!value) {
         script_backend_component_add(ctx->entity, component);
@@ -125,9 +147,9 @@ static int eval_entity(script_eval_t *ctx, ecs_script_entity_t *entity) {
     }
     ecs_entity_t output = script_backend_entity_ensure(name, ctx->parent);
     if (!output) return script_eval_error(ctx, entity->node.pos, "invalid entity name");
+    bool prefab = entity->kind && !strcmp(entity->kind, "prefab");
     if (entity->kind && !entity->kind_w_expr) {
-        if (!strcmp(entity->kind, "prefab")) script_backend_prefab(output);
-        else {
+        if (!prefab) {
             ecs_script_id_t id = { .first = entity->kind };
             ecs_entity_t previous = ctx->entity;
             ctx->entity = output;
@@ -139,6 +161,8 @@ static int eval_entity(script_eval_t *ctx, ecs_script_entity_t *entity) {
     ecs_entity_t previous_entity = ctx->entity, previous_parent = ctx->parent;
     ctx->entity = ctx->parent = output;
     int result = script_eval_scope(ctx, entity->scope);
+    /* Finish authoring the hierarchy before native abstraction locks additions. */
+    if (!result && prefab) script_backend_prefab(output);
     ctx->entity = previous_entity;
     ctx->parent = previous_parent;
     return result;
@@ -181,6 +205,7 @@ static int eval_for(script_eval_t *ctx, ecs_script_for_t *node) {
 
 int script_eval_scope(script_eval_t *ctx, ecs_script_scope_t *scope) {
     uint32_t variable_count = ctx->variables.size;
+    script_template_t *templates = ctx->templates;
     ecs_script_node_t **statements = scope->stmts.data;
     int result = 0;
     for (uint32_t i = 0; i < scope->stmts.size && !result; i++) {
@@ -197,6 +222,11 @@ int script_eval_scope(script_eval_t *ctx, ecs_script_scope_t *scope) {
             result = eval_id(ctx, &component->id, component->expr, component->is_partial); break;
         }
         case EcsAstConst: result = eval_var(ctx, (ecs_script_var_node_t*)node); break;
+        case EcsAstTemplate:
+            result = script_template_declare(ctx, (ecs_script_template_node_t*)node); break;
+        case EcsAstProp:
+            if (!ctx->template_depth) result = script_eval_error(ctx, node->pos, "prop outside template");
+            break;
         case EcsAstIf: {
             ecs_script_if_t *condition = (ecs_script_if_t*)node;
             bool value;
@@ -217,6 +247,7 @@ int script_eval_scope(script_eval_t *ctx, ecs_script_scope_t *scope) {
         }
     }
     ctx->variables.size = variable_count;
+    ctx->templates = templates;
     return result;
 }
 

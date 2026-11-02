@@ -102,11 +102,13 @@ static int value_store_number(script_eval_t *ctx, const char *pos,
     return 0;
 }
 
-static script_variable_t *find_variable(script_eval_t *ctx, const char *name) {
+const script_variable_t *script_find_variable(script_eval_t *ctx, const char *name) {
     script_variable_t *variables = ctx->variables.data;
-    for (uint32_t i = ctx->variables.size; i; i--) {
+    for (uint32_t i = ctx->variables.size; i > ctx->variable_base; i--) {
         if (!strcmp(variables[i - 1].name, name)) return &variables[i - 1];
     }
+    for (uint32_t i = ctx->capture_count; i; i--)
+        if (!strcmp(ctx->captures[i - 1].name, name)) return &ctx->captures[i - 1];
     return NULL;
 }
 
@@ -159,7 +161,7 @@ int script_eval_expr(script_eval_t *ctx, const ecs_expr_node_t *expr, script_val
     case EcsExprVariable: {
         const char *name = expr->kind == EcsExprVariable ?
             ((const ecs_expr_variable_t*)expr)->name : ((const ecs_expr_identifier_t*)expr)->value;
-        script_variable_t *variable = find_variable(ctx, name);
+        const script_variable_t *variable = script_find_variable(ctx, name);
         if (variable) { *out = variable->value; return 0; }
         ecs_entity_t entity = script_backend_entity_lookup(name, ctx->parent);
         if (entity) {
@@ -307,7 +309,7 @@ int script_value_write(script_eval_t *ctx, const ecs_expr_node_t *expr,
         const ecs_expr_initializer_t *init = (const ecs_expr_initializer_t*)expr;
         const ecs_expr_initializer_element_t *elements = init->elements.data;
         const sireflect_fields_t *fields = sireflect_type_fields(type);
-        if (!sireflect_type_is_struct(info)) {
+        if (!sireflect_type_is_struct(info) || type == script_backend_type_lookup("entity")) {
             if (init->elements.size == 1 && !elements[0].member)
                 return script_value_write(ctx, elements[0].value, type, destination);
             return script_eval_error(ctx, expr->pos, "expected scalar initializer for '%s'", info->name);
@@ -337,6 +339,13 @@ int script_value_write(script_eval_t *ctx, const ecs_expr_node_t *expr,
 int script_value_convert(script_eval_t *ctx, const char *position,
     const script_value_t *value, sireflect_handle_t type, void *destination) {
     const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (type == script_backend_type_lookup("entity") && sireflect_type_is_cstring(value->type)) {
+        const char *name = *(const char *const*)script_value_data(value);
+        ecs_entity_t entity = script_backend_entity_lookup(name, ctx->parent);
+        if (!entity) return script_eval_error(ctx, position, "unresolved entity '%s'", name);
+        memcpy(destination, &entity, sizeof entity);
+        return 0;
+    }
     if (sireflect_type_is_cstring(type))
         return script_eval_error(ctx, position, "string component lifecycle not implemented");
     if (value->type == type) {
