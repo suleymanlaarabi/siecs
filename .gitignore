@@ -20,4 +20,5 @@ package_crates.sh
 release_crates.sh
 intro/
 addons/script/test/unit/include/siecs_script-test/
+addons/script/test/cpp/include/siecs_script-cpp-test/
 example/gpu_city/test/include/siecs-example-gpu_city-test/

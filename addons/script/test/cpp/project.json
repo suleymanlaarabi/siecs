@@ -1,0 +1,29 @@
+{
+  "id": "siecs_script.cpp.test",
+  "type": "application",
+  "value": {
+    "language": "cpp",
+    "public": false,
+    "use": ["siecs_script", "siecs"]
+  },
+  "lang.cpp": {
+    "cpp-standard": "c++20",
+    "include": ["../../include"]
+  },
+  "test": {
+    "testsuites": [
+      {
+        "id": "Script",
+        "testcases": [
+          "parse_without_world",
+          "typed_components_and_templates",
+          "reusable_runtime_and_moves",
+          "owned_diagnostics",
+          "options_and_recovery",
+          "string_views_and_null_bytes",
+          "files"
+        ]
+      }
+    ]
+  }
+}

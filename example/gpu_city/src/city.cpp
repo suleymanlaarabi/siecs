@@ -1,8 +1,7 @@
 #include "city.hpp"
 
 #include <cstdio>
-#include <cstdlib>
-#include <siecs_script.h>
+#include <siecs_script/cpp.hpp>
 
 namespace gpu_city {
 
@@ -17,20 +16,19 @@ bool build_city(const char *filename) {
                 PavementY,
             }
         );
-    ecs_script_eval_result_t result = {};
-    const int status = ecs_script_run_file(filename, &result);
-    if (status) {
+    const auto result = ecs::script::run_file(filename);
+    if (!result) {
+        const auto &error = result.error();
         std::fprintf(
             stderr,
             "%s:%d:%d: %s\n",
             filename,
-            result.line,
-            result.column,
-            result.error ? result.error : "city script failed"
+            error.line,
+            error.column,
+            error.message.c_str()
         );
     }
-    std::free(result.error);
-    return status == 0;
+    return bool(result);
 }
 
 } // namespace gpu_city

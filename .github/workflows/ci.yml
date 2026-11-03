@@ -109,6 +109,8 @@ jobs:
         run: |
           bake rebuild test -r --cfg "${{ matrix.config }}"
           bake rebuild test/cpp -r --cfg "${{ matrix.config }}"
+          bake rebuild addons/script/test/unit -r --cfg "${{ matrix.config }}"
+          bake rebuild addons/script/test/cpp -r --cfg "${{ matrix.config }}"
 
       - name: Check C++ compile contracts
         if: matrix.config == 'debug'
@@ -119,6 +121,8 @@ jobs:
         run: |
           bake run test --cfg "${{ matrix.config }}"
           bake run test/cpp --cfg "${{ matrix.config }}"
+          bake run addons/script/test/unit --cfg "${{ matrix.config }}"
+          bake run addons/script/test/cpp --cfg "${{ matrix.config }}"
 
       - name: Run tests with LeakSanitizer
         if: matrix.config == 'lsan'
@@ -128,6 +132,8 @@ jobs:
         run: |
           bake run test --cfg lsan
           bake run test/cpp --cfg lsan
+          bake run addons/script/test/unit --cfg lsan
+          bake run addons/script/test/cpp --cfg lsan
 
   windows:
     name: bake Windows MSVC

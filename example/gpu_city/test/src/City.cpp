@@ -1,9 +1,8 @@
 #include "city.hpp"
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
 #include <siecs/cpp/query.hpp>
-#include <siecs_script.h>
+#include <siecs_script/cpp.hpp>
 #include <test.h>
 
 namespace {
@@ -21,12 +20,10 @@ void check_city(int size, uint32_t expected_shapes) {
                 gpu_city::PavementY,
             }
         );
-    ecs_script_eval_result_t result = {};
-    const int status = ecs_script_run_file("../city.si", &result);
-    if (result.error)
-        std::fprintf(stderr, "%s\n", result.error);
-    std::free(result.error);
-    test_int(status, 0);
+    const auto result = ecs::script::run_file("../city.si");
+    if (!result)
+        std::fprintf(stderr, "%s\n", result.error().message.c_str());
+    test_true(bool(result));
     const auto city = ecs::entity::lookup("City");
     test_true(city);
     const auto ground = ecs::entity::lookup("City::GroundPlane");
