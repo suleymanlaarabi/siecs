@@ -1,7 +1,7 @@
 #include "siecs_backend.h"
 #include "../../../../src/storage/component_index.h"
 
-/* Flecs paths use dots; native naming stores the same hierarchy with ::. */
+/* Script paths use dots; native naming stores the same hierarchy with ::. */
 static char *script_backend_path(const char *path) {
     size_t len = strlen(path);
     if (len > (SIZE_MAX - 1) / 2) return NULL;

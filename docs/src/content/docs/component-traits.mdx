@@ -4,7 +4,7 @@ description: "The SIECS equivalents of component traits: inheritance policy, req
 ---
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-SIECS does not use a single generic trait system like Flecs. The same kinds of
+SIECS does not use a single generic trait system. Component
 constraints are expressed through component descriptors, requirement APIs,
 built-in tags and relation descriptors.
 
@@ -108,7 +108,7 @@ Choose it based on the dominant query/traversal pattern.
 
 ## What SIECS does not expose
 
-There are no direct SIECS equivalents for a number of Flecs traits such as
+SIECS does not expose traits named
 `Sparse`, `DontFragment`, `Symmetric`, `Transitive`, `Reflexive`, `OneOf`,
 `PairIsTag` or generic `CanToggle`.
 

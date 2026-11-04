@@ -1,11 +1,3 @@
-/* Derived from Flecs. Copyright (c) 2025 Sander Mertens.
- * Portions Copyright (c) Meta Platforms, Inc. and affiliates.
- * Distributed under the MIT license in addons/script/LICENSE.flecs. */
-/**
- * @file addons/script/ast.h
- * @brief Script AST.
- */
-
 #ifndef SIECS_SCRIPT_AST_H
 #define SIECS_SCRIPT_AST_H
 
@@ -58,6 +50,7 @@ typedef struct ecs_script_node_t {
 struct ecs_script_scope_t {
     ecs_script_node_t node;
     ecs_vec_t stmts;
+    struct script_instruction_t *instructions;
     ecs_script_scope_t *parent;
     ecs_script_scope_t *alternative;
     const char *open;
@@ -180,7 +173,7 @@ typedef struct ecs_script_template_node_t {
     ecs_entity_t eval_base;
     const char *parent;
     ecs_entity_t eval_parent;
-    ecs_script_scope_t* scope;
+    ecs_script_scope_t *scope;
     int32_t symbol;
     int32_t symbol_offset;
     int32_t symbol_count;
@@ -293,98 +286,58 @@ typedef struct ecs_script_function_node_t {
     int32_t symbol;
 } ecs_script_function_node_t;
 
-bool siecs_scope_is_empty(
-    ecs_script_scope_t *scope);
+bool siecs_scope_is_empty(ecs_script_scope_t *scope);
 
-const char* siecs_script_node_kind_str(
-    const ecs_script_node_t *node);
+const char *siecs_script_node_kind_str(const ecs_script_node_t *node);
 
-ecs_script_entity_t* siecs_script_insert_entity(
-    ecs_parser_t *parser,
-    const char *name);
+ecs_script_entity_t *siecs_script_insert_entity(ecs_parser_t *parser, const char *name);
 
-ecs_script_pair_scope_t* siecs_script_insert_pair_scope(
-    ecs_parser_t *parser,
-    const char *first,
-    const char *second);
+ecs_script_pair_scope_t *
+siecs_script_insert_pair_scope(ecs_parser_t *parser, const char *first, const char *second);
 
-ecs_script_with_t* siecs_script_insert_with(
-    ecs_parser_t *parser);
+ecs_script_with_t *siecs_script_insert_with(ecs_parser_t *parser);
 
-ecs_script_using_t* siecs_script_insert_using(
-    ecs_parser_t *parser,
-    const char *name);
+ecs_script_using_t *siecs_script_insert_using(ecs_parser_t *parser, const char *name);
 
-ecs_script_module_t* siecs_script_insert_module(
-    ecs_parser_t *parser,
-    const char *name);
+ecs_script_module_t *siecs_script_insert_module(ecs_parser_t *parser, const char *name);
 
-ecs_script_template_node_t* siecs_script_insert_template(
-    ecs_parser_t *parser,
-    const char *name);
+ecs_script_template_node_t *siecs_script_insert_template(ecs_parser_t *parser, const char *name);
 
-ecs_script_annot_t* siecs_script_insert_annot(
-    ecs_parser_t *parser,
-    const char *name,
-    const char *expr);
+ecs_script_annot_t *
+siecs_script_insert_annot(ecs_parser_t *parser, const char *name, const char *expr);
 
-ecs_script_var_node_t* siecs_script_insert_var(
-    ecs_parser_t *parser,
-    const char *name);
+ecs_script_var_node_t *siecs_script_insert_var(ecs_parser_t *parser, const char *name);
 
-ecs_script_await_t* siecs_script_insert_await(
-    ecs_parser_t *parser);
+ecs_script_await_t *siecs_script_insert_await(ecs_parser_t *parser);
 
-ecs_script_continue_t* siecs_script_insert_continue(
-    ecs_parser_t *parser);
+ecs_script_continue_t *siecs_script_insert_continue(ecs_parser_t *parser);
 
-ecs_script_try_t* siecs_script_insert_try(
-    ecs_parser_t *parser);
+ecs_script_try_t *siecs_script_insert_try(ecs_parser_t *parser);
 
-ecs_script_catch_t* siecs_script_try_add_catch(
-    ecs_parser_t *parser,
-    ecs_script_try_t *stmt);
+ecs_script_catch_t *siecs_script_try_add_catch(ecs_parser_t *parser, ecs_script_try_t *stmt);
 
-ecs_script_tag_t* siecs_script_insert_tag(
-    ecs_parser_t *parser,
-    const char *name);
+ecs_script_tag_t *siecs_script_insert_tag(ecs_parser_t *parser, const char *name);
 
-ecs_script_tag_t* siecs_script_insert_pair_tag(
-    ecs_parser_t *parser,
-    const char *first,
-    const char *second);
+ecs_script_tag_t *
+siecs_script_insert_pair_tag(ecs_parser_t *parser, const char *first, const char *second);
 
-ecs_script_component_t* siecs_script_insert_component(
-    ecs_parser_t *parser,
-    const char *name);
+ecs_script_component_t *siecs_script_insert_component(ecs_parser_t *parser, const char *name);
 
-ecs_script_component_t* siecs_script_insert_pair_component(
-    ecs_parser_t *parser,
-    const char *first,
-    const char *second);
+ecs_script_component_t *
+siecs_script_insert_pair_component(ecs_parser_t *parser, const char *first, const char *second);
 
-ecs_script_if_t* siecs_script_insert_if(
-    ecs_parser_t *parser);
+ecs_script_if_t *siecs_script_insert_if(ecs_parser_t *parser);
 
-ecs_script_async_t* siecs_script_insert_async(
-    ecs_parser_t *parser);
+ecs_script_async_t *siecs_script_insert_async(ecs_parser_t *parser);
 
-ecs_script_while_t* siecs_script_insert_while(
-    ecs_parser_t *parser);
+ecs_script_while_t *siecs_script_insert_while(ecs_parser_t *parser);
 
-ecs_script_assign_t* siecs_script_insert_assign(
-    ecs_parser_t *parser,
-    const char *name);
+ecs_script_assign_t *siecs_script_insert_assign(ecs_parser_t *parser, const char *name);
 
-ecs_script_for_t* siecs_script_insert_for(
-    ecs_parser_t *parser);
+ecs_script_for_t *siecs_script_insert_for(ecs_parser_t *parser);
 
-ecs_script_include_t* siecs_script_insert_include(
-    ecs_parser_t *parser,
-    const char *filename);
+ecs_script_include_t *siecs_script_insert_include(ecs_parser_t *parser, const char *filename);
 
-ecs_script_function_node_t* siecs_script_insert_function(
-    ecs_parser_t *parser,
-    const char *name);
+ecs_script_function_node_t *siecs_script_insert_function(ecs_parser_t *parser, const char *name);
 
 #endif

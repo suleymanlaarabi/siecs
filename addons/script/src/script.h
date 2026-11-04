@@ -48,6 +48,7 @@ struct ecs_script_impl_t {
 #define siecs_script_impl(script) ((ecs_script_impl_t*)(script))
 
 ecs_script_t *siecs_script_new(void);
+int script_ir_compile(ecs_script_t *script);
 void script_adopt_nested(ecs_script_impl_t *parent, ecs_script_t *child);
 ecs_script_scope_t *siecs_script_scope_new(ecs_parser_t *parser);
 int siecs_script_visit_scopes(ecs_script_node_t *node,

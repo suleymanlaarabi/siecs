@@ -10,6 +10,7 @@
 #include <siecs/cpp/resource.hpp>
 #include <siecs/cpp/system.hpp>
 #include <siecs/cpp/world.hpp>
+#include <siecs_script/cpp.hpp>
 
 namespace {
 

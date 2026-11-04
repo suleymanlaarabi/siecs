@@ -33,6 +33,8 @@ void Eval_native_lifecycle_and_observers(void);
 void Eval_value_snapshot_and_runtime_error_recovery(void);
 void Eval_owned_component_copy(void);
 void Eval_interpolated_ids(void);
+void Eval_ir_execution(void);
+void Eval_native_namespace(void);
 
 // Testsuite 'File'
 void File_run_and_errors(void);
@@ -43,6 +45,12 @@ void Template_lexical_scope_and_nesting(void);
 void Template_models_and_entity_props(void);
 void Template_errors_and_recursion(void);
 void Template_prefab_hierarchy(void);
+
+// Testsuite 'Document'
+void Document_source_history(void);
+void Document_failed_edit_preserves_history(void);
+void Document_save_and_evaluate(void);
+void Document_invalid_arguments(void);
 
 bake_test_case Parser_testcases[] = {
     {
@@ -135,6 +143,14 @@ bake_test_case Eval_testcases[] = {
     {
         "interpolated_ids",
         Eval_interpolated_ids
+    },
+    {
+        "ir_execution",
+        Eval_ir_execution
+    },
+    {
+        "native_namespace",
+        Eval_native_namespace
     }
 };
 
@@ -168,6 +184,25 @@ bake_test_case Template_testcases[] = {
     }
 };
 
+bake_test_case Document_testcases[] = {
+    {
+        "source_history",
+        Document_source_history
+    },
+    {
+        "failed_edit_preserves_history",
+        Document_failed_edit_preserves_history
+    },
+    {
+        "save_and_evaluate",
+        Document_save_and_evaluate
+    },
+    {
+        "invalid_arguments",
+        Document_invalid_arguments
+    }
+};
+
 
 static bake_test_suite suites[] = {
     {
@@ -181,7 +216,7 @@ static bake_test_suite suites[] = {
         "Eval",
         NULL,
         NULL,
-        15,
+        17,
         Eval_testcases
     },
     {
@@ -197,9 +232,16 @@ static bake_test_suite suites[] = {
         NULL,
         5,
         Template_testcases
+    },
+    {
+        "Document",
+        NULL,
+        NULL,
+        4,
+        Document_testcases
     }
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs_script.test", argc, argv, suites, 4);
+    return bake_test_run("siecs_script.test", argc, argv, suites, 5);
 }

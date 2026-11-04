@@ -47,6 +47,7 @@ typedef struct script_eval_t {
     ecs_entity_t parent;
     ecs_entity_t entity;
     bool skip_unknown;
+    bool ir;
     int32_t loop_depth;
     uint32_t variable_base;
     const script_variable_t *captures;

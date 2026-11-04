@@ -3,7 +3,7 @@
   "type": "package",
   "value": {
     "author": "Suleyman Laarabi",
-    "description": "Flecs Script frontend and native SiECS backend",
+    "description": "Native SiECS scripting language",
     "public": true,
     "use": ["siecs", "sicore", "sireflect"]
   },

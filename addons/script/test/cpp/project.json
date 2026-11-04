@@ -4,11 +4,16 @@
   "value": {
     "language": "cpp",
     "public": false,
-    "use": ["siecs_script", "siecs"]
+    "use": [
+      "siecs_script",
+      "siecs"
+    ]
   },
   "lang.cpp": {
     "cpp-standard": "c++20",
-    "include": ["../../include"]
+    "include": [
+      "../../include"
+    ]
   },
   "test": {
     "testsuites": [
@@ -21,7 +26,8 @@
           "owned_diagnostics",
           "options_and_recovery",
           "string_views_and_null_bytes",
-          "files"
+          "files",
+          "source_documents"
         ]
       }
     ]

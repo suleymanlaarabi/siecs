@@ -52,6 +52,7 @@ prefab Facade_1_0 { Cuboid: {1, 1, 1}; Color: {178, 163, 136, 255} }
 prefab Facade_2_0 { Cuboid: {1, 1, 1}; Color: {130, 145, 154, 255} }
 prefab Facade_3_0 { Cuboid: {1, 1, 1}; Color: {184, 145, 121, 255} }
 prefab Facade_4_0 { Cuboid: {1, 1, 1}; Color: {147, 154, 129, 255} }
+
 for facade in 0..5 {
     const model: entity = "Facade_{$facade}_0"
     const color = $model[Color]
@@ -63,6 +64,7 @@ for facade in 0..5 {
         }
     }
 }
+
 for variant in 0..2 {
     const width = 0.82 - 0.04 * $variant
     prefab "Window_$variant" {
@@ -72,31 +74,37 @@ for variant in 0..2 {
         Model(Frame, {0, 0, 0.09}, {$width - 0.2, 0.055, 0.04})
     }
 }
+
 prefab Door {
     Model(DoorFrame, {0, 0, 0}, {1.4, 2.24, 0.16})
     Model(DoorWood, {0, 0, 0.07}, {1.2, 2.1, 0.12})
     Model(DoorPanel, {0, 0.504, 0.14}, {0.864, 0.63, 0.035})
     Model(Black, {0.432, 0, 0.14}, {0.1, 0.16, 0.1})
 }
+
 prefab Tree {
     Model(Trunk, {0, 0.72, 0}, {0.14, 1.35, 0.14})
     Model(Leaves, {0, 1.72, 0}, {0.68, 0.68, 0.68})
     Model(LeavesLeft, {-0.36, 1.53, 0.08}, {0.43, 0.43, 0.43})
     Model(LeavesRight, {0.35, 1.55, -0.06}, {0.44, 0.44, 0.44})
 }
+
 prefab Bench {
     Model(Wood, {0, 0.26, 0}, {0.9, 0.08, 0.3})
     Model(Wood, {0, 0.4, -0.12}, {0.9, 0.34, 0.08})
     for side in 0..2 { Model(Metal, {(2 * $side - 1) * 0.32, 0.13, 0}, {0.08, 0.26, 0.22}) }
 }
+
 prefab Road {
     Model(Asphalt, {0, 0, 0}, {$spacing - $street, 0.08, $street})
     for dash in 0..3 { Model(Yellow, {($dash - 1) * 4, 0.052, 0}, {1.45, 0.018, 0.09}) }
     for side in 0..2 { Model(White, {0, 0.052, (2 * $side - 1) * 2.42}, {$spacing - $street - 0.3, 0.018, 0.065}) }
 }
+
 prefab Crossing {
     for stripe in 0..8 { Model(White, {0, 0.055, ($stripe - 3.5) * 0.55}, {0.72, 0.02, 0.34}) }
 }
+
 prefab Roundabout {
     Model(AsphaltRing, {0, 0, 0}, {3, 0.08, 3})
     Model(IslandPaving, {0, 0.13, 0}, {1.24, 0.18, 1.24})
@@ -104,6 +112,7 @@ prefab Roundabout {
     Model(Monument, {0, 0.53, 0}, {0.43, 0.54, 0.43})
     Model(MonumentTop, {0, 0.91, 0}, {0.32, 0.32, 0.32})
 }
+
 prefab Park {
     Model(Grass, {0, 0.04, 0}, {10.2, 0.08, 10.2})
     Model(Path, {0, 0.095, 0}, {1.05, 0.035, 9.9})

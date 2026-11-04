@@ -203,47 +203,115 @@ static int eval_for(script_eval_t *ctx, ecs_script_for_t *node) {
     return result;
 }
 
+typedef int (*script_execute_t)(script_eval_t *ctx, const ecs_script_node_t *node);
+
+typedef struct script_instruction_t {
+    script_execute_t execute;
+    const ecs_script_node_t *operand;
+} script_instruction_t;
+
+static int execute_entity(script_eval_t *ctx, const ecs_script_node_t *node) {
+    return eval_entity(ctx, (ecs_script_entity_t*)node);
+}
+
+static int execute_tag(script_eval_t *ctx, const ecs_script_node_t *node) {
+    const ecs_script_tag_t *tag = (const ecs_script_tag_t*)node;
+    return eval_id(ctx, &tag->id, NULL, false);
+}
+
+static int execute_component(script_eval_t *ctx, const ecs_script_node_t *node) {
+    const ecs_script_component_t *component = (const ecs_script_component_t*)node;
+    return eval_id(ctx, &component->id, component->expr, component->is_partial);
+}
+
+static int execute_const(script_eval_t *ctx, const ecs_script_node_t *node) {
+    return eval_var(ctx, (ecs_script_var_node_t*)node);
+}
+
+static int execute_template(script_eval_t *ctx, const ecs_script_node_t *node) {
+    return script_template_declare(ctx, (const ecs_script_template_node_t*)node);
+}
+
+static int execute_prop(script_eval_t *ctx, const ecs_script_node_t *node) {
+    return ctx->template_depth ? 0 : script_eval_error(ctx, node->pos, "prop outside template");
+}
+
+static int execute_if(script_eval_t *ctx, const ecs_script_node_t *node) {
+    const ecs_script_if_t *condition = (const ecs_script_if_t*)node;
+    bool value;
+    if (script_value_write(ctx, condition->expr, script_backend_type_lookup("bool"), &value))
+        return -1;
+    return script_eval_scope(ctx, value ? condition->if_true : condition->if_false);
+}
+
+static int execute_for(script_eval_t *ctx, const ecs_script_node_t *node) {
+    return eval_for(ctx, (ecs_script_for_t*)node);
+}
+
+static int execute_continue(script_eval_t *ctx, const ecs_script_node_t *node) {
+    return ctx->loop_depth ? 1 : script_eval_error(ctx, node->pos, "continue outside loop");
+}
+
+static int execute_using(script_eval_t *ctx, const ecs_script_node_t *node) {
+    const char *name = ((const ecs_script_using_t*)node)->name;
+    if (strcmp(name, "siecs.meta") && strcmp(name, "siecs"))
+        return script_eval_error(ctx, node->pos, "using namespace '%s' not implemented", name);
+    return 0;
+}
+
+static int execute_unsupported(script_eval_t *ctx, const ecs_script_node_t *node) {
+    return script_eval_error(ctx, node->pos, "statement kind %d not implemented", node->kind);
+}
+
+static script_execute_t instruction_handler(ecs_script_node_kind_t kind) {
+    switch (kind) {
+    case EcsAstEntity: return execute_entity;
+    case EcsAstTag: return execute_tag;
+    case EcsAstComponent: return execute_component;
+    case EcsAstConst: return execute_const;
+    case EcsAstTemplate: return execute_template;
+    case EcsAstProp: return execute_prop;
+    case EcsAstIf: return execute_if;
+    case EcsAstFor: return execute_for;
+    case EcsAstContinue: return execute_continue;
+    case EcsAstUsing: return execute_using;
+    default: return execute_unsupported;
+    }
+}
+
+static int compile_scope(ecs_script_scope_t *scope, void *data) {
+    if (scope->instructions) return 0;
+    ecs_script_impl_t *impl = data;
+    if (!scope->stmts.size) return 0;
+    scope->instructions = script_alloc(&impl->allocator,
+        scope->stmts.size * sizeof(script_instruction_t));
+    if (!scope->instructions) return -1;
+    ecs_script_node_t **nodes = scope->stmts.data;
+    for (uint32_t i = 0; i < scope->stmts.size; i++) {
+        scope->instructions[i] = (script_instruction_t){instruction_handler(nodes[i]->kind), nodes[i]};
+        if (siecs_script_visit_scopes(nodes[i], compile_scope, impl)) return -1;
+    }
+    return 0;
+}
+
+int script_ir_compile(ecs_script_t *script) {
+    ecs_script_impl_t *impl = siecs_script_impl(script);
+    return compile_scope(impl->root, impl);
+}
+
 int script_eval_scope(script_eval_t *ctx, ecs_script_scope_t *scope) {
     uint32_t variable_count = ctx->variables.size;
     script_template_t *templates = ctx->templates;
     ecs_script_node_t **statements = scope->stmts.data;
     int result = 0;
     for (uint32_t i = 0; i < scope->stmts.size && !result; i++) {
-        ecs_script_node_t *node = statements[i];
+        const ecs_script_node_t *node = statements[i];
         ctx->position = node->pos;
-        switch (node->kind) {
-        case EcsAstEntity: result = eval_entity(ctx, (ecs_script_entity_t*)node); break;
-        case EcsAstTag: {
-            ecs_script_tag_t *tag = (ecs_script_tag_t*)node;
-            result = eval_id(ctx, &tag->id, NULL, false); break;
-        }
-        case EcsAstComponent: {
-            ecs_script_component_t *component = (ecs_script_component_t*)node;
-            result = eval_id(ctx, &component->id, component->expr, component->is_partial); break;
-        }
-        case EcsAstConst: result = eval_var(ctx, (ecs_script_var_node_t*)node); break;
-        case EcsAstTemplate:
-            result = script_template_declare(ctx, (ecs_script_template_node_t*)node); break;
-        case EcsAstProp:
-            if (!ctx->template_depth) result = script_eval_error(ctx, node->pos, "prop outside template");
-            break;
-        case EcsAstIf: {
-            ecs_script_if_t *condition = (ecs_script_if_t*)node;
-            bool value;
-            result = script_value_write(ctx, condition->expr, script_backend_type_lookup("bool"), &value);
-            if (!result) result = script_eval_scope(ctx, value ? condition->if_true : condition->if_false);
-            break;
-        }
-        case EcsAstFor: result = eval_for(ctx, (ecs_script_for_t*)node); break;
-        case EcsAstContinue:
-            result = ctx->loop_depth ? 1 : script_eval_error(ctx, node->pos, "continue outside loop"); break;
-        case EcsAstUsing: {
-            const char *name = ((ecs_script_using_t*)node)->name;
-            if (strcmp(name, "flecs.meta") && strcmp(name, "flecs"))
-                result = script_eval_error(ctx, node->pos, "using namespace '%s' not implemented", name);
-            break;
-        }
-        default: result = script_eval_error(ctx, node->pos, "statement kind %d not implemented", node->kind); break;
+        if (ctx->ir) {
+            const script_instruction_t *instruction = &scope->instructions[i];
+            result = instruction->execute(ctx, instruction->operand);
+        } else {
+            result = instruction_handler(node->kind)(ctx, node);
         }
     }
     ctx->variables.size = variable_count;
@@ -280,9 +348,8 @@ int ecs_script_eval(const ecs_script_t *script, const ecs_script_eval_desc_t *de
     if (!script) {
         ecs_parser_error(NULL, NULL, 0, "script must not be null");
         status = -1;
-    } else if ((desc && desc->ir) || impl->ir_enabled) {
-        status = script_eval_error(&ctx, NULL, "IR evaluation not implemented");
     } else {
+        ctx.ir = (desc && desc->ir) || impl->ir_enabled;
         status = script_eval_scope(&ctx, impl->root);
     }
     script_owned_value_t *owned = ctx.owned_values.data;

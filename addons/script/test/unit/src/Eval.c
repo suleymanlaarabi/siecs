@@ -39,7 +39,7 @@ void Eval_native_component_values(void) {
 
 void Eval_script_struct(void) {
     ecs_init();
-    test_int(run("using flecs.meta\nstruct Position(x: f32, y: f32)\nShip { Position: {10, 20} }\n"), 0);
+    test_int(run("using siecs.meta\nstruct Position(x: f32, y: f32)\nShip { Position: {10, 20} }\n"), 0);
     ecs_component_t position = ecs_component_lookup("Position");
     test_true(position != 0);
     test_true(ecs_component_info(position)->type != 0);
@@ -323,4 +323,61 @@ void Eval_owned_component_copy(void) {
     test_int(owned_payloads, 2);
     ecs_fini();
     test_int(owned_payloads, 0);
+}
+
+void Eval_ir_execution(void) {
+    const char *source =
+        "using siecs.meta\n"
+        "struct Position(x: f32, y: f32)\n"
+        "template Point { prop x: f32 = 10\n Position: {$x, 20} }\n"
+        "const count = 3\n"
+        "if $count > 2 { Point ship(42) } else { Unwanted {} }\n"
+        "for i in 0..3 { \"Node_$i\" {} }\n";
+    /* Both parse-time and evaluation-time selection must execute the program. */
+    for (int mode = 0; mode < 3; mode++) {
+        ecs_init();
+        ecs_script_eval_desc_t parse_desc = {.ir = mode == 1};
+        ecs_script_eval_desc_t eval_desc = {.ir = mode == 2};
+        ecs_script_eval_result_t result = {0};
+        ecs_script_t *script = ecs_script_parse("ir.si", source, &parse_desc, &result);
+        test_true(script != NULL);
+        test_true(result.error == NULL);
+        ecs_script_runtime_t *runtime = ecs_script_runtime_new();
+        eval_desc.runtime = runtime;
+        for (int i = 0; i < 2; i++) {
+            test_int(ecs_script_eval(script, &eval_desc, &result), 0);
+            test_true(result.error == NULL);
+            const float *data = ecs_get_cid(ecs_lookup("ship"), ecs_component_lookup("Position"));
+            test_true(data != NULL);
+            test_flt(data[0], 42);
+            test_flt(data[1], 20);
+            test_uint(ecs_lookup("Unwanted"), 0);
+            test_true(ecs_lookup("Node_0") != 0);
+            test_true(ecs_lookup("Node_2") != 0);
+            test_uint(ecs_lookup("Node_3"), 0);
+        }
+        eval_desc.ir = true;
+        test_int(ecs_script_run_w_desc("invalid.si", "Item { MissingComponent }",
+            &eval_desc, &result), -1);
+        test_true(result.error != NULL);
+        test_true(strstr(result.error, "MissingComponent") != NULL);
+        free(result.error);
+        test_int(ecs_script_eval(script, &eval_desc, &result), 0);
+        test_true(result.error == NULL);
+        ecs_script_runtime_free(runtime);
+        ecs_script_free(script);
+        ecs_fini();
+    }
+}
+
+void Eval_native_namespace(void) {
+    ecs_init();
+    test_int(run("using siecs\nusing siecs.meta\nNative {}"), 0);
+    test_true(ecs_lookup("Native") != 0);
+    ecs_script_eval_result_t result = {0};
+    test_int(ecs_script_run("namespace.si", "using unknown.meta\nHidden {}", &result), -1);
+    test_true(result.error != NULL);
+    test_uint(ecs_lookup("Hidden"), 0);
+    free(result.error);
+    ecs_fini();
 }

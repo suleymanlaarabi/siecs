@@ -813,7 +813,7 @@ using_stmt: {
         }
     }
 
-    // using flecs.meta\n
+    // using siecs.meta\n
     Parse_1(EcsTokIdentifier,
         siecs_script_insert_using(parser, Token(1));
         EndOfRule;
@@ -830,7 +830,7 @@ module_stmt: {
         Error("'module' must be the first statement of a script");
     }
 
-    // module flecs.meta\n
+    // module siecs.meta\n
     Parse_1(EcsTokIdentifier,
         siecs_script_insert_module(parser, Token(1));
         EndOfRule;
@@ -1120,7 +1120,7 @@ try_stmt: {
     })
 }
 
-// include foo.flecs
+// include foo.si
 include_stmt: {
     if (parser->scope != parser->script->root) {
         Error("'include' must be declared in the root scope of a script");
@@ -1553,6 +1553,7 @@ ecs_script_t* siecs_script_parse_nested(
         goto error;
     }
 
+    if (script_ir_compile(script)) goto error;
     script_adopt_nested(outer->script, script);
     *next = code + (pos - (open + 1));
     ECS_CONST_CAST(char*, open)[0] = ' ';
@@ -1611,6 +1612,10 @@ ecs_script_t* ecs_script_parse(
     } while (true);
 
     impl->token_remaining = parser.token_cur;
+    if (script_ir_compile(script)) {
+        ecs_parser_error(name, code, 0, "out of memory compiling script instructions");
+        goto error;
+    }
 
     if (result) {
         ecs_os_free(siecs_log_capture_pop());

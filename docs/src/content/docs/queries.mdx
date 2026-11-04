@@ -20,7 +20,7 @@ optional fields, filter-only and exclusion terms, relation filters, inherited
 upward reads, `IsA` restriction, table ordering and persistent table-match
 caches.
 
-SIECS does not implement Flecs Query Language, query variables, arbitrary
+SIECS does not implement a textual query language, query variables, arbitrary
 boolean expression trees or configurable cache kinds. Those features are
 therefore intentionally absent from this manual.
 
@@ -185,7 +185,7 @@ evaluated repeatedly: systems, repeated game-loop scans, tools and observers.
 
 Temporary query helpers are convenient for one-off setup or tests.
 
-The tradeoff is not a user-selectable cached-vs-uncached mode as in Flecs.
+Cache policy is fixed by the query implementation.
 SIECS query ids are backed by query cache structures. The meaningful lifetime
 choice is whether application code creates a short-lived query or keeps the id
 or C++ handle for repeated use.
@@ -587,8 +587,7 @@ ecs::query()
 </TabItem>
 </Tabs>
 
-This is intentionally narrower than Flecs's general traversal/query-variable
-system.
+Traversal is limited to the operations described above.
 
 ### Source
 

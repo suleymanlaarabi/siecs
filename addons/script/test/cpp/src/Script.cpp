@@ -175,3 +175,32 @@ void Script_files(void) {
     test_true(!missing.error().message.empty());
     ecs::fini();
 }
+
+void Script_source_documents(void) {
+    auto document = ecs::script_document::create("Root {}", "document.si");
+    test_true(bool(document));
+    test_true(bool(document.edit(0, 4, "Leaf")));
+    test_true(document.code() == "Leaf {}");
+    test_true(document.undo());
+    test_true(document.code() == "Root {}");
+    test_true(document.redo());
+    const auto failed = document.edit(6, 1, "");
+    test_false(bool(failed));
+    test_true(!failed.error().message.empty());
+    test_true(document.code() == "Leaf {}");
+    auto moved = std::move(document);
+    test_false(bool(document));
+    test_false(bool(document.edit(0, 0, "")));
+    test_true(bool(moved));
+    ecs::init();
+    test_true(bool(ecs::script::run(moved.code(), moved.name(), {.ir = true})));
+    test_true(bool(ecs::entity::lookup("Leaf")));
+    ecs::fini();
+    const char invalid[] = "Other\0ignored";
+    test_false(bool(moved.edit(0, 4, std::string_view(invalid, sizeof(invalid) - 1))));
+    const char *path = "cpp-script-document.si";
+    test_true(bool(moved.save(path)));
+    test_int(std::remove(path), 0);
+    test_true(moved.undo());
+    test_false(bool(ecs::script_document::create("Root {")));
+}

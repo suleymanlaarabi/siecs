@@ -16,6 +16,7 @@ void Script_owned_diagnostics(void);
 void Script_options_and_recovery(void);
 void Script_string_views_and_null_bytes(void);
 void Script_files(void);
+void Script_source_documents(void);
 
 bake_test_case Script_testcases[] = {
     {
@@ -45,6 +46,10 @@ bake_test_case Script_testcases[] = {
     {
         "files",
         Script_files
+    },
+    {
+        "source_documents",
+        Script_source_documents
     }
 };
 
@@ -54,7 +59,7 @@ static bake_test_suite suites[] = {
         "Script",
         NULL,
         NULL,
-        7,
+        8,
         Script_testcases
     }
 };

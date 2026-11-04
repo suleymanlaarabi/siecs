@@ -24,6 +24,7 @@ class [[nodiscard]] script_result {
     script_diagnostic _error;
 
     friend class script;
+    friend class script_document;
 
     script_result(int status, ecs_script_eval_result_t result, std::string_view source)
         : _status(status) {
@@ -69,6 +70,7 @@ class script_runtime {
 struct script_options {
     script_runtime *runtime = nullptr;
     bool skip_unknown = false;
+    bool ir = false;
 };
 
 /** Move-only parsed source. Parsing needs no world; evaluation uses the active world.
@@ -83,7 +85,7 @@ class [[nodiscard]] script {
     script() = default;
 
     static ecs_script_eval_desc_t descriptor(const script_options &options) noexcept {
-        return { options.runtime ? options.runtime->get() : nullptr, options.skip_unknown, false };
+        return { options.runtime ? options.runtime->get() : nullptr, options.skip_unknown, options.ir };
     }
 
     static bool contains_null(std::string_view text) noexcept {
@@ -146,6 +148,74 @@ class [[nodiscard]] script {
         const auto desc = descriptor(options);
         ecs_script_eval_result_t result{};
         const int status = ecs_script_run_file_w_desc(path.c_str(), &desc, &result);
+        return script_result(status, result, filename);
+    }
+};
+
+
+/** Editable source with parsed, undoable revisions; changes do not evaluate. */
+class [[nodiscard]] script_document {
+    struct deleter {
+        void operator()(ecs_script_document_t *value) const noexcept {
+            ecs_script_document_free(value);
+        }
+    };
+    std::unique_ptr<ecs_script_document_t, deleter> _document;
+    script_result _result;
+
+    script_document() = default;
+
+    static bool contains_null(std::string_view text) noexcept {
+        return text.find('\0') != std::string_view::npos;
+    }
+
+  public:
+    script_document(const script_document &) = delete;
+    script_document &operator=(const script_document &) = delete;
+    script_document(script_document &&) noexcept = default;
+    script_document &operator=(script_document &&) noexcept = default;
+
+    [[nodiscard]] static script_document
+    create(std::string_view source, std::string_view name = "<script>") {
+        script_document value;
+        if (contains_null(source) || contains_null(name)) {
+            value._result = script_result("source and name must not contain null bytes");
+            return value;
+        }
+        const std::string code(source), filename(name);
+        ecs_script_eval_result_t result{};
+        value._document.reset(ecs_script_document_new(filename.c_str(), code.c_str(), &result));
+        value._result = script_result(value._document ? 0 : -1, result, name);
+        return value;
+    }
+
+    [[nodiscard]] explicit operator bool() const noexcept { return bool(_document); }
+    [[nodiscard]] const script_diagnostic &error() const noexcept { return _result.error(); }
+    [[nodiscard]] const ecs_script_t *get() const noexcept {
+        return ecs_script_document_script(_document.get());
+    }
+    [[nodiscard]] std::string_view code() const noexcept { return get() ? get()->code : ""; }
+    [[nodiscard]] std::string_view name() const noexcept { return get() ? get()->name : ""; }
+
+    [[nodiscard]] script_result edit(size_t offset, size_t length, std::string_view replacement) {
+        if (contains_null(replacement))
+            return script_result("replacement must not contain null bytes");
+        const std::string text(replacement), filename(name());
+        ecs_script_eval_result_t result{};
+        const int status = ecs_script_document_edit(
+            _document.get(), offset, length, text.c_str(), &result);
+        return script_result(status, result, filename);
+    }
+
+    [[nodiscard]] bool undo() noexcept { return ecs_script_document_undo(_document.get()); }
+    [[nodiscard]] bool redo() noexcept { return ecs_script_document_redo(_document.get()); }
+
+    [[nodiscard]] script_result save(std::string_view filename) const {
+        if (contains_null(filename))
+            return script_result("filename must not contain null bytes");
+        const std::string path(filename);
+        ecs_script_eval_result_t result{};
+        const int status = ecs_script_document_save(_document.get(), path.c_str(), &result);
         return script_result(status, result, filename);
     }
 };

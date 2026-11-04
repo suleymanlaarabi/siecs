@@ -23,7 +23,7 @@ Key terms:
 | ByDepth | Dense relation with maintained depth information. |
 | ByTarget | Sources are grouped into tables per target; no per-target source list. |
 
-Unlike Flecs, SIECS relations are not general ids encoded as universal pairs.
+SIECS relations have a dedicated id space.
 The relation type and target are represented through SIECS's relation-specific
 API and table metadata.
 
@@ -521,7 +521,7 @@ Hierarchy traversal and depth ordering are documented in
 
 #### Namespacing
 
-SIECS names are world-level names rather than Flecs-style hierarchy-scoped path
+SIECS names are world-level names rather than hierarchy-scoped path
 names. `ChildOf` does not automatically create a hierarchical lookup namespace.
 
 Use hierarchy edges for ownership/spatial structure and the name API for global
@@ -688,7 +688,7 @@ independent `(R, target)` ids simultaneously.
 When an application needs many-to-many edges, represent them with explicit edge
 entities/components or another data structure depending on query requirements.
 
-Document this clearly so Flecs users do not assume pair multiplicity semantics.
+Each relation has one target per source entity.
 
 ## Relation operations
 
