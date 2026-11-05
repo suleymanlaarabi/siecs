@@ -37,6 +37,16 @@ static ECS_ALWAYS_INLINE void ecs_bytes_zero(void *dst, size_t size) {
     }
 }
 
+static inline void ecs_value_fini(const ecs_type_ops_t *ops, void *value, uint32_t count) {
+    if (ops->dtor)
+        ops->dtor(value, count);
+    else if (ops->reflected_type) {
+        size_t stride = sireflect_type_size(ops->reflected_type);
+        for (uint32_t i = 0; i < count; i++)
+            ecs_reflected_value_fini(ops->reflected_type, (char *)value + i * stride);
+    }
+}
+
 /* Copying an inherited owned tag still invokes its explicit copy hook. Normal
  * storage transfers skip zero-sized values before entering this primitive. */
 static inline bool ecs_value_copy(
@@ -50,6 +60,16 @@ static inline bool ecs_value_copy(
     ecs_type_copy_t copy = construct ? ops->copy_ctor : ops->copy;
     if (copy) {
         copy(dst, src, count);
+        return true;
+    }
+    if (ops->reflected_type) {
+        for (uint32_t i = 0; i < count; i++)
+            ecs_reflected_value_copy(
+                ops->reflected_type,
+                (char *)dst + i * size,
+                (const char *)src + i * size,
+                construct
+            );
         return true;
     }
     if (size)
@@ -75,8 +95,15 @@ static inline void ecs_value_transfer(
         move_op(dst, (void *)src, count);
         return;
     }
-    if (ecs_value_copy(ops, size, dst, src, count, construct) && move && ops->dtor)
-        ops->dtor((void *)src, count);
+    if (move && ops->reflected_type && !move_op) {
+        if (!construct)
+            ecs_value_fini(ops, dst, count);
+        memcpy(dst, src, size * count);
+        memset((void *)src, 0, size * count);
+        return;
+    }
+    if (ecs_value_copy(ops, size, dst, src, count, construct) && move)
+        ecs_value_fini(ops, (void *)src, count);
 }
 
 sireflect_struct_desc_t *ecs_reflection_desc_copy(const sireflect_struct_desc_t *desc);

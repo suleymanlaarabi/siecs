@@ -20,7 +20,10 @@ void check_city(int size, uint32_t expected_shapes) {
                 gpu_city::PavementY,
             }
         );
-    const auto result = ecs::script::run_file("../city.si");
+    const auto result = ecs::script::run_file(
+        "../city.si",
+        { .instruction_budget = gpu_city::ScriptInstructionBudget }
+    );
     if (!result)
         std::fprintf(stderr, "%s\n", result.error().message.c_str());
     test_true(bool(result));

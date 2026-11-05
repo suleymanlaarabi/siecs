@@ -1,135 +1,112 @@
-/* Derived from Flecs. Copyright (c) 2025 Sander Mertens.
- * Portions Copyright (c) Meta Platforms, Inc. and affiliates.
- * Distributed under the MIT license in addons/script/LICENSE.flecs. */
-/* Ported lexical fragmentation from Flecs expr/visit_type.c. */
 #include "../script.h"
 
-int script_prepare_interpolation(
-    ecs_script_t *script,
-    ecs_expr_interpolated_string_t *node)
-{
-    if (node->prepared) return 0;
-    ecs_allocator_t *a = &siecs_script_impl(script)->allocator;
-    char *ptr, *frag = NULL;
-    char ch;
+static const char *fragment_text(ecs_script_impl_t *impl, const char *begin, size_t length) {
+    char *text = script_alloc(&impl->allocator, length + 1);
+    memcpy(text, begin, length);
+    return siecs_string_escape(text) ? text : NULL;
+}
 
-    for (ptr = node->value; (ch = ptr[0]); ) {
-        if (ch == '\\') {
-            ptr ++;
-            if (ptr[0]) {
-                ptr ++;
-            }
-
-            continue;
-        }
-
-        if ((ch == '$') && (isspace((unsigned char)ptr[1]) || !ptr[1])) {
-            ptr ++;
-            continue;
-        }
-
-        if (ch == '$' || ch == '{') {
-            if (!frag) {
-                frag = node->value;
-            }
-
-            char *frag_end = ptr;
-
-            ecs_expr_fragment_t *fragment = ecs_vec_append_t(
-                a, &node->fragments, ecs_expr_fragment_t);
-            *fragment = (ecs_expr_fragment_t){.text = frag != ptr ? frag : NULL};
-            ecs_expr_node_t **result = &fragment->expr;
-
-            if (ch == '$') {
-                char *var_name = ++ ptr;
-                ptr = ECS_CONST_CAST(char*, siecs_tokenizer_identifier(
-                    NULL, ptr, NULL));
-                if (!ptr) {
-                    goto error;
-                }
-
-                ecs_size_t var_name_pos = siecs_ito(int32_t, var_name - node->value);
-                var_name = &node->buffer[var_name_pos];
-                ecs_size_t var_name_end = siecs_ito(int32_t, ptr - node->value);
-                node->buffer[var_name_end] = '\0';
-
-                ecs_expr_variable_t *var = siecs_expr_variable_from(
-                    script, (ecs_expr_node_t*)node, var_name);
-                if (!var) {
-                    goto error;
-                }
-
-                *result = (ecs_expr_node_t*)var;
-            } else {
-                ecs_script_impl_t *impl = siecs_script_impl(script);
-
-                ecs_parser_t parser = {
-                    .name = script->name,
-                    .code = script->code,
-                    .pos = node->node.pos,
-                    .fixed_pos = node->node.pos,
-                    .script = impl,
-                    .scope = impl->root,
-                    .significant_newline = false,
-                    .token_cur = impl->token_remaining,
-                    .token_end = &impl->token_buffer[impl->token_buffer_size]
-                };
-
-                ptr = ECS_CONST_CAST(char*, siecs_script_parse_expr(
-                    &parser, ptr + 1, 0, result));
-                if (!ptr) {
-                    goto error;
-                }
-
-                impl->token_remaining = parser.token_cur;
-
-                if (ptr[0] == ':') {
-                    ecs_parser_error(script->name, script->code,
-                        node->node.pos - script->code,
-                        "interpolation format specifiers not implemented");
-                    goto error;
-                }
-
-                if (ptr[0] != '}') {
-                    ecs_parser_error(script->name, script->code, node->node.pos - script->code,
-                        "expected '}' at end of interpolated expression");
-
-                    goto error;
-                }
-
-                ptr ++;
-            }
-
-            ecs_assert(*result != NULL, ECS_INTERNAL_ERROR, NULL);
-
-            frag_end[0] = '\0';
-
-            frag = ptr;
-            if (!ptr[0]) {
+static bool valid_format(const char *format) {
+    if (!format || strlen(format) > 24)
+        return false;
+    if (!*format)
+        return true;
+    const char *cursor = format;
+    const char *flag_names = "-+ #0";
+    uint32_t flags = 0;
+    while (*cursor && strchr(flag_names, *cursor)) {
+        uint32_t flag = 1u << (strchr(flag_names, *cursor) - flag_names);
+        if (flags & flag)
+            return false;
+        flags |= flag;
+        cursor++;
+    }
+    for (int part = 0; part < 2; part++) {
+        if (part == 1) {
+            if (*cursor != '.')
                 break;
+            cursor++;
+        }
+        uint32_t number = 0;
+        while (isdigit((unsigned char)*cursor)) {
+            number = number * 10 + (uint32_t)(*cursor++ - '0');
+            if (number > 1024)
+                return false;
+        }
+    }
+    /* A precision is optional, but every nonempty format ends in a type. */
+    const char *type = format + strlen(format) - 1;
+    if (cursor != type || !strchr("duxXofFeEgGs", *type))
+        return false;
+    return *type != 's' || !(flags & ~1u);
+}
+
+int script_prepare_interpolation(ecs_script_t *script, ecs_expr_interpolated_string_t *node) {
+    if (node->prepared)
+        return 0;
+    ecs_script_impl_t *impl = siecs_script_impl(script);
+    const char *cursor = node->value;
+    const char *literal = cursor;
+    while (*cursor) {
+        if (*cursor == '\\' && cursor[1]) {
+            cursor += 2;
+            continue;
+        }
+        bool variable = *cursor == '$' && (isalpha((unsigned char)cursor[1]) || cursor[1] == '_');
+        if (!variable && *cursor != '{') {
+            cursor++;
+            continue;
+        }
+        ecs_expr_fragment_t fragment = { 0 };
+        fragment.text = fragment_text(impl, literal, (size_t)(cursor - literal));
+        if (!fragment.text)
+            goto invalid;
+        ecs_parser_t parser = { .script = impl,
+                                .name = script->name,
+                                .code = node->value,
+                                .pos = variable ? cursor : cursor + 1 };
+        script_lex(&parser);
+        fragment.expr = script_parse_expression(&parser, variable ? 11 : 1);
+        if (!fragment.expr || parser.failed)
+            return -1;
+        cursor = parser.token.begin;
+        if (!variable) {
+            if (*cursor == ':') {
+                const char *format = cursor + 1;
+                cursor = strchr(format, '}');
+                if (!cursor)
+                    goto invalid;
+                fragment.format = fragment_text(impl, format, (size_t)(cursor - format));
+                if (!valid_format(fragment.format))
+                    goto invalid;
             }
-        } else {
-            ptr ++;
+            if (*cursor != '}')
+                goto invalid;
+            cursor++;
         }
+        *(
+            ecs_expr_fragment_t *
+        )script_vec_append(&impl->allocator, &node->fragments, sizeof(fragment)) = fragment;
+        literal = cursor;
     }
-
-    ecs_assert(frag != NULL, ECS_INTERNAL_ERROR, NULL);
-
-    if (frag != ptr) {
-        ecs_vec_append_t(a, &node->fragments, ecs_expr_fragment_t)[0] =
-            (ecs_expr_fragment_t){.text = frag};
+    if (cursor != literal) {
+        ecs_expr_fragment_t fragment = {
+            .text = fragment_text(impl, literal, (size_t)(cursor - literal))
+        };
+        if (!fragment.text)
+            goto invalid;
+        *(
+            ecs_expr_fragment_t *
+        )script_vec_append(&impl->allocator, &node->fragments, sizeof(fragment)) = fragment;
     }
-
-    ecs_expr_fragment_t *fragments = ecs_vec_first(&node->fragments);
-    int32_t i, count = ecs_vec_count(&node->fragments);
-    for (i = 0; i < count; i ++) {
-        if (fragments[i].text && !siecs_string_escape(fragments[i].text)) {
-            goto error;
-        }
-    }
-
     node->prepared = true;
     return 0;
-error:
+invalid:
+    ecs_parser_error(
+        script->name,
+        script->code,
+        node->node.pos ? node->node.pos - script->code : 0,
+        "invalid string interpolation"
+    );
     return -1;
 }

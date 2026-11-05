@@ -27,7 +27,14 @@
           "options_and_recovery",
           "string_views_and_null_bytes",
           "files",
-          "source_documents"
+          "source_documents",
+          "persistent_instances",
+          "document_applies_transactionally",
+          "typed_worker_task",
+          "cancels_worker_task",
+          "owned_worker_result",
+          "controlled_clock",
+          "scoped_budget"
         ]
       }
     ]

@@ -1,74 +1,49 @@
-/* Derived from Flecs. Copyright (c) 2025 Sander Mertens.
- * Portions Copyright (c) Meta Platforms, Inc. and affiliates.
- * Distributed under the MIT license in addons/script/LICENSE.flecs. */
-/* Ported from Flecs expr/util.c; see LICENSE.flecs. */
 #include "../script.h"
 
-bool siecs_string_is_interpolated(
-    const char *value)
-{
-    const char *ptr = value;
-
-    for (ptr = strchr(ptr, '$'); ptr; ptr = strchr(ptr + 1, '$')) {
-        if (ptr != value) {
-            if (ptr[-1] == '\\') {
-                continue; /* Escaped */
-            }
+bool siecs_string_is_interpolated(const char *value) {
+    for (size_t i = 0; value[i]; i++) {
+        if (value[i] == '\\' && value[i + 1]) {
+            i++;
+        } else if (
+            value[i] == '{' ||
+            (value[i] == '$' && (isalnum((unsigned char)value[i + 1]) || value[i + 1] == '_'))
+        ) {
+            return true;
         }
-
-        if (isspace((unsigned char)ptr[1]) || !ptr[1]) {
-            continue; /* $ by itself */
-        }
-
-        return true;
     }
-
-    ptr = value;
-
-    for (ptr = strchr(ptr, '{'); ptr; ptr = strchr(ptr + 1, '{')) {
-        if (ptr != value) {
-            if (ptr[-1] == '\\') {
-                continue; /* Escaped */
-            }
-        }
-
-        return true;
-    }
-
     return false;
 }
 
-char* siecs_string_escape(
-    char *str)
-{
-    const char *ptr;
-    char *out = str, ch;
-
-    for (ptr = str; ptr[0]; ) {
-        if (ptr[0] == '\\') {
-            if (ptr[1] == '{') { /* Escape string interpolation delimiter */
-                ch = '{';
-                ptr += 2;
-            } else if (ptr[1] == '$') { /* Escape string interpolation var */
-                ch = '$';
-                ptr += 2;
-            } else {
-                ptr = siecs_chrparse(ptr, &ch);
-                if (!ptr) {
-                    ecs_err("invalid escape sequence in string '%s'", str);
-                    return NULL;
-                }
+char *siecs_string_escape(char *str) {
+    char *write = str;
+    for (const char *read = str; *read; read++) {
+        char value = *read;
+        if (value == '\\') {
+            read++;
+            switch (*read) {
+            case 'n':
+                value = '\n';
+                break;
+            case 'r':
+                value = '\r';
+                break;
+            case 't':
+                value = '\t';
+                break;
+            case '\\':
+            case '"':
+            case '\'':
+            case '$':
+            case '{':
+            case '}':
+                value = *read;
+                break;
+            default:
+                return NULL;
             }
-        } else {
-            ch = ptr[0];
-            ptr ++;
         }
-
-        out[0] = ch;
-        out ++;
+        *write++ = value;
     }
-
-    out[0] = '\0';
-
-    return out + 1;
+    *write = '\0';
+    return write;
 }

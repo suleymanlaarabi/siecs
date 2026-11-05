@@ -12,12 +12,14 @@ typedef struct {
 
     ecs_observer_id_t next_module;
     uint32_t target_entity;
+    ecs_entity_t target_handle;
 
     ecs_event_t event;
     ecs_query_id_t query;
     ecs_module_id_t module;
 
     bool enabled;
+    uint64_t revision;
 } ecs_observer_t;
 
 #define ECS_OBSERVER_GLOBAL_ENTITY UINT32_MAX
@@ -35,6 +37,9 @@ typedef struct {
 
     ecs_observer_id_t first_free;
     uint16_t event_count;
+    uint32_t batch_depth;
+    sicore_vec_t pending;
+    sicore_vec_t pending_entities;
 } ecs_observer_index_t;
 
 extern ecs_observer_index_t observer_index;

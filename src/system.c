@@ -202,6 +202,7 @@ bool ecs_progress(void) {
         ecs_platform_time_sleep_sec(remaining);
     }
 
+    ecs_sync();
     return !ecs_world.exit;
 }
 

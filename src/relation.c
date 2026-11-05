@@ -484,7 +484,8 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
     ecs_emit_relation_event(entity, relation, EcsOnRelationSet, old_target, new_target);
 }
 
-void ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
+static void
+ecs_relate_id_apply(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
     ecs_assert_entity_alive(entity);
     ecs_assert_entity_alive(target);
     if (ecs_is_deferred()) {
@@ -559,7 +560,7 @@ void ecs_childof_update_now(ecs_entity_t entity, ecs_entity_t parent) {
     }
 }
 
-void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation) {
+static void ecs_unrelate_id_apply(ecs_entity_t entity, ecs_relation_id_t relation) {
     ecs_assert_entity_alive(entity);
     if (ecs_is_deferred()) {
         ecs_command_buffer_relate(entity, relation, 0);
@@ -694,4 +695,24 @@ void ecs_relation_target_on_remove(ecs_entity_t target, ecs_component_t componen
             }
         }
     }
+}
+
+void ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
+    if (!ecs_world.sync_callbacks.size) {
+        ecs_relate_id_apply(entity, relation, target);
+        return;
+    }
+    ecs_sync_begin();
+    ecs_relate_id_apply(entity, relation, target);
+    ecs_sync_end();
+}
+
+void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation) {
+    if (!ecs_world.sync_callbacks.size) {
+        ecs_unrelate_id_apply(entity, relation);
+        return;
+    }
+    ecs_sync_begin();
+    ecs_unrelate_id_apply(entity, relation);
+    ecs_sync_end();
 }

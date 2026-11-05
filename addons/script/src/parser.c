@@ -1,1635 +1,515 @@
-/* Derived from Flecs. Copyright (c) 2025 Sander Mertens.
- * Portions Copyright (c) Meta Platforms, Inc. and affiliates.
- * Distributed under the MIT license in addons/script/LICENSE.flecs. */
-/**
- * @file addons/script/parser.c
- * @brief Script grammar parser.
- */
-
 #include "script.h"
 
-#ifdef SIECS_SCRIPT
+#define statement(parser, T, kind) ((T *)script_node(parser, sizeof(T), kind, true))
 
-#include "parser/grammar.h"
-#include "script.h"
-
-#define EcsTokEndOfStatement\
-    case ';':\
-    case '\n':\
-    case '\0'
-
-/* Parse scope (statements inside {}) */
-static const char* siecs_script_scope(
-    ecs_parser_t *parser,
-    ecs_script_scope_t *scope,
-    const char *pos)
-{
-    ParserBegin;
-
-    ecs_assert(scope != NULL, ECS_INTERNAL_ERROR, NULL);
-    ecs_assert(pos[-1] == '{', ECS_INTERNAL_ERROR, NULL);
-
-    if (parser->scope_depth >= ECS_PARSER_MAX_RECURSION_DEPTH) {
-        ecs_parser_error(parser->name, parser->code,
-            siecs_parser_errpos(parser, pos),
-            "maximum scope nesting depth exceeded");
-        return NULL;
-    }
-
-    parser->scope_depth ++;
-
-    scope->open = pos - 1;
-
-    ecs_script_scope_t *prev = parser->scope;
-    parser->scope = scope;
-
-    Loop(
-        LookAhead(
-            case EcsTokScopeClose:
-                Consume();
-                goto scope_close;
-            case EcsTokEnd:
-                Error("unexpected end of script");
-        )
-
-        pos = siecs_script_stmt_w_separator(parser, pos);
-        if (!pos) {
-            goto error;
-        }
-    )
-
-scope_close:
-    parser->scope = prev;
-    parser->scope_depth --;
-
-    ecs_assert(pos[-1] == '}', ECS_INTERNAL_ERROR, NULL);
-    scope->node.end = pos;
-    return pos;
-
-error:
-    parser->scope = prev;
-    parser->scope_depth --;
-    return NULL;
+static bool keyword(ecs_parser_t *parser, const char *word) {
+    return parser->token.kind == EcsTokIdentifier && !strcmp(parser->token.value, word);
 }
 
-/* Parse scope of entity */
-static const char* siecs_script_entity_scope(
-    ecs_parser_t *parser,
-    ecs_script_entity_t *entity,
-    const char *pos)
-{
-    if (!entity) {
-        return NULL;
-    }
-
-    return siecs_script_scope(parser, entity->scope, pos);
+static bool consume_word(ecs_parser_t *parser, const char *word) {
+    if (!keyword(parser, word))
+        return false;
+    script_lex(parser);
+    return true;
 }
 
-static const char* siecs_script_entity_template(
-    ecs_parser_t *parser,
-    const char *pos)
-{
-    ecs_script_scope_t *scope = parser->scope;
-    ecs_script_scope_t *parent = scope->parent;
-    ecs_script_entity_t *entity = NULL;
+static ecs_expr_node_t *name_expression(ecs_parser_t *parser, const char *name) {
+    if (!name || !siecs_string_is_interpolated(name))
+        return NULL;
+    ecs_expr_interpolated_string_t *value =
+        script_node(parser, sizeof(*value), EcsExprInterpolatedString, false);
+    value->node.pos = parser->stmt_pos;
+    value->value = name;
+    if (script_prepare_interpolation(&parser->script->pub, value))
+        parser->failed = true;
+    return (ecs_expr_node_t *)value;
+}
 
-    if (parent) {
-        ecs_script_node_t **stmts = ecs_vec_first(&parent->stmts);
-        int32_t i = ecs_vec_count(&parent->stmts);
-        while (i --) {
-            if (stmts[i]->kind == EcsAstEntity &&
-                ((ecs_script_entity_t*)stmts[i])->scope == scope)
-            {
-                entity = (ecs_script_entity_t*)stmts[i];
-                break;
-            }
+static ecs_script_scope_t *body(ecs_parser_t *parser) {
+    ecs_script_scope_t *scope = siecs_script_scope_new(parser);
+    script_skip_lines(parser);
+    script_parse_scope(parser, scope, true);
+    return scope;
+}
+
+static void parse_statement(ecs_parser_t *parser);
+
+static const char *qualified_name(ecs_parser_t *parser) {
+    const char *name = script_parse_name(parser);
+    while (!parser->failed && (int)parser->token.kind == '.') {
+        script_lex(parser);
+        const char *part = script_parse_name(parser);
+        if (!part)
+            break;
+        size_t a = strlen(name), b = strlen(part);
+        char *joined = script_alloc(&parser->script->allocator, a + b + 2);
+        memcpy(joined, name, a);
+        joined[a] = '.';
+        memcpy(joined + a + 1, part, b + 1);
+        name = joined;
+    }
+    return name;
+}
+
+static void parse_variable(ecs_parser_t *parser, int kind) {
+    ecs_script_var_node_t *var = statement(parser, ecs_script_var_node_t, kind);
+    script_lex(parser);
+    var->name = script_parse_name(parser);
+    if (var->name && *var->name == '$')
+        var->name++;
+    if (script_take(parser, ':')) {
+        var->type = qualified_name(parser);
+        if (script_take(parser, '[')) {
+            var->type_is_vector = true;
+            script_expect(parser, ']');
         }
     }
-
-    if (!entity) {
-        ecs_parser_error(parser->name, parser->code,
-            siecs_parser_errpos(parser, pos - 1),
-            "template without a name must be declared in an entity scope");
-        return NULL;
+    if (script_take(parser, '=')) {
+        var->is_await = consume_word(parser, "await");
+        if (var->is_await && !parser->async_scope)
+            script_parse_error(parser, "await requires an async scope");
+        if (var->is_await)
+            parser->script->has_async = true;
+        var->expr = script_parse_expression(parser, 1);
+    } else if (!var->type) {
+        script_parse_error(parser, "untyped variable requires an initializer");
     }
-
-    if (!entity->name || entity->name_expr) {
-        ecs_parser_error(parser->name, parser->code,
-            siecs_parser_errpos(parser, pos - 1),
-            "template without a name must be declared in the scope of an "
-            "entity with a static name");
-        return NULL;
-    }
-
-    if (entity->base_count > 1) {
-        ecs_parser_error(parser->name, parser->code,
-            siecs_parser_errpos(parser, pos - 1),
-            "multiple template bases are not supported");
-        return NULL;
-    }
-
-    parser->scope = parent;
-    ecs_script_template_node_t *template = siecs_script_insert_template(
-        parser, entity->name);
-    parser->scope = scope;
-
-    if (entity->base_count) {
-        ecs_script_tag_t *base = ecs_vec_first_t(
-            &scope->stmts, ecs_script_tag_t*)[0];
-        template->base = base->id.second;
-    }
-
-    return siecs_script_scope(parser, template->scope, pos);
 }
 
-/* Parse base list (bases separated by ',') */
-static const char* siecs_script_base_list(
-    ecs_parser_t *parser,
-    ecs_script_entity_t *entity,
-    const char *base,
-    const char *pos)
-{
-    ParserBegin;
+static ecs_script_id_t parse_pair(ecs_parser_t *parser) {
+    ecs_script_id_t id = { 0 };
+    script_expect(parser, '(');
+    id.first = qualified_name(parser);
+    id.first_expr = name_expression(parser, id.first);
+    script_expect(parser, ',');
+    id.second = qualified_name(parser);
+    id.second_expr = name_expression(parser, id.second);
+    script_expect(parser, ')');
+    return id;
+}
 
-    ecs_script_scope_t *prev = parser->scope;
+static void parse_component(ecs_parser_t *parser, ecs_script_id_t id) {
+    int operation = parser->token.kind;
+    if (operation == ':' || operation == '=' || operation == '(') {
+        ecs_script_component_t *component =
+            statement(parser, ecs_script_component_t, EcsAstComponent);
+        component->id = id;
+        component->is_partial = operation == '=';
+        script_lex(parser);
+        if (operation == '(') {
+            component->expr = (ecs_expr_node_t *)script_parse_arguments(parser, ')');
+        } else {
+            component->expr = script_parse_expression(parser, 1);
+        }
+    } else {
+        ecs_script_tag_t *tag = statement(parser, ecs_script_tag_t, EcsAstTag);
+        tag->id = id;
+    }
+}
+
+static void parse_entity(ecs_parser_t *parser, const char *kind, const char *name) {
+    ecs_script_entity_t *entity = statement(parser, ecs_script_entity_t, EcsAstEntity);
+    entity->kind = kind;
+    entity->name = name && strcmp(name, "_") ? name : NULL;
+    if (!entity->name)
+        entity->anonymous_id = ++siecs_script_impl(parser->script)->anonymous_count;
+    entity->name_expr = name_expression(parser, entity->name);
+    entity->scope = siecs_script_scope_new(parser);
+    ecs_script_scope_t *previous = parser->scope;
     parser->scope = entity->scope;
-
-    siecs_script_insert_pair_tag(parser, "IsA", base);
-    entity->base_count ++;
-
-    Loop(
-        LookAhead_1(',',
-            Consume();
-            pos = siecs_parser_skip_newlines(parser, pos);
-
-            LookAhead_1(EcsTokIdentifier,
-                Consume();
-                siecs_script_insert_pair_tag(parser, "IsA", Token(1));
-                entity->base_count ++;
-                continue;
-            )
-        )
-
-        break;
-    )
-
-    parser->scope = prev;
-    return pos;
-error:
-    parser->scope = prev;
-    return NULL;
-}
-
-static const char* siecs_script_pair(
-    ecs_parser_t *parser,
-    const char *pos,
-    const char **first,
-    const char **second)
-{
-    ParserBegin;
-
-    Parse(
-        case EcsTokIdentifier:
-        case EcsTokString:
-            *first = Token(0);
-            Parse_1(',',
-                Parse(
-                    case EcsTokIdentifier:
-                    case EcsTokString:
-                        *second = Token(2);
-                        Parse_1(')',
-                            EndOfRule;
-                        )
-                )
-            )
-    )
-
-    ParserEnd;
-}
-
-/* Parse with expression (expression after 'with' keyword) */
-static const char* siecs_script_with_expr(
-    ecs_parser_t *parser,
-    const char *pos)
-{
-    ParserBegin;
-
-    const char *first = NULL, *second = NULL;
-
-    Parse(
-        // Position
-        case EcsTokIdentifier: {
-            first = Token(0);
-            goto with_id;
-        }
-
-        // (Eats, Apples)
-        case '(': {
-            pos = siecs_script_pair(parser, pos, &first, &second);
-            if (!pos) {
-                goto error;
-            }
-
-            goto with_id;
-        }
-    )
-
-with_id:
-    // Position (
-    // (Eats, Apples) (
-    LookAhead_1('(',
-        Consume();
-
-        // Position ( expr )
-        // (Eats, Apples) ( expr )
-        Initializer(')',
-            ecs_script_component_t *component =
-                siecs_script_insert_pair_component(parser, first, second);
-            component->node.kind = EcsAstWithComponent;
-            component->expr = INITIALIZER;
-            EndOfRule;
-        )
-    )
-
-    ecs_script_tag_t *tag = siecs_script_insert_pair_tag(parser, first, second);
-    tag->node.kind = EcsAstWithTag;
-    EndOfRule;
-
-    ParserEnd;
-}
-
-/* Parse with expression list (expression list after 'with' keyword) */
-static const char* siecs_script_with(
-    ecs_parser_t *parser,
-    ecs_script_with_t *with,
-    const char *pos)
-{
-    ParserBegin;
-
-    Loop(
-        Scope(with->expressions,
-            pos = siecs_script_with_expr(parser, pos);
-        )
-
-        if (!pos) {
-            goto error;
-        }
-
-        pos = siecs_parser_skip_newlines(parser, pos);
-
-        Parse(
-            case ',': {
-                pos = siecs_parser_skip_newlines(parser, pos);
-                continue;
-            }
-            case '{': {
-                return siecs_script_scope(parser, with->scope, pos);
-            }
-        )
-    )
-
-    ParserEnd;
-}
-
-/* Parenthesis expression */
-static const char* siecs_script_paren_expr(
-    ecs_parser_t *parser,
-    const char *kind,
-    ecs_script_entity_t *entity,
-    const char *pos)
-{
-    ParserBegin;
-
-    Initializer(')',
+    if (script_take(parser, '(')) {
         entity->kind_w_expr = true;
-
-        Scope(entity->scope,
-            ecs_script_component_t *component =
-                siecs_script_insert_component(parser, kind);
-            component->expr = INITIALIZER;
-        )
-
-        // Position spaceship (expr) {
-        // Position spaceship (expr)\n{
-        LookAheadSkipNewlines_1('{',
-            Consume();
-            return siecs_script_entity_scope(parser, entity, pos);
-        )
-
-        EndOfRule;
-    )
-
-    ParserEnd;
-}
-
-/* Parse a single statement */
-static const char* siecs_script_if_stmt(
-    ecs_parser_t *parser,
-    const char *pos)
-{
-    ParserBegin;
-
-    // if expr
-    Expr(
-        pos = siecs_parser_skip_newlines(parser, pos);
-
-        // if expr {
-        Parse_1('{', {
-            ecs_script_if_t *stmt = siecs_script_insert_if(parser);
-            stmt->expr = EXPR;
-            pos = siecs_script_scope(parser, stmt->if_true, pos);
-            if (!pos) {
-                goto error;
-            }
-
-            // if expr { }\n else
-            LookAheadSkipNewlines_1(EcsTokKeywordElse,
-                // if expr { } else\n
-                Consume();
-                pos = siecs_parser_skip_newlines(parser, pos);
-
-                Parse(
-                    // if expr { } else if
-                    case EcsTokKeywordIf: {
-                        parser->scope_depth ++;
-                        Scope(stmt->if_false,
-                            pos = siecs_script_if_stmt(parser, pos);
-                        )
-                        parser->scope_depth --;
-                        if (!pos) {
-                            goto error;
-                        }
-
-                        return pos;
-                    }
-
-                    // if expr { } else {
-                    case '{': {
-                        return siecs_script_scope(
-                            parser, stmt->if_false, pos);
-                    }
-                )
-            )
-
-            EndOfRule;
-        });
-    )
-
-    ParserEnd;
-}
-
-static const char* siecs_script_for_in(
-    ecs_parser_t *parser,
-    const char *pos,
-    ecs_script_for_t *stmt)
-{
-    ParserBegin;
-
-    Expr({
-        stmt->expr = EXPR;
-
-        pos = siecs_parser_skip_newlines(parser, pos);
-
-        Parse(
-            case EcsTokRange: {
-                stmt->from = EXPR;
-                stmt->expr = NULL;
-
-                Expr({
-                    stmt->to = EXPR;
-
-                    pos = siecs_parser_skip_newlines(parser, pos);
-
-                    Parse_1('{', {
-                        return siecs_script_scope(parser, stmt->scope, pos);
-                    })
-                })
-            }
-
-            case '{': {
-                if (EXPR->kind == EcsExprRange) {
-                    ecs_expr_range_t *range = (ecs_expr_range_t*)EXPR;
-                    stmt->from = range->from;
-                    stmt->to = range->to;
-                    range->from = NULL;
-                    range->to = NULL;
-                    stmt->expr = NULL;
-                    siecs_expr_visit_free(&parser->script->pub, EXPR);
-                }
-
-                return siecs_script_scope(parser, stmt->scope, pos);
-            }
-        )
-    })
-
-    ParserEnd;
-}
-
-static const char* siecs_script_parse_var(
-    ecs_parser_t *parser,
-    const char *pos,
-    ecs_script_node_kind_t kind)
-{
-    ParserBegin;
-
-    Parse_1(EcsTokIdentifier,
-        ecs_script_var_node_t *var = siecs_script_insert_var(
-            parser, Token(0));
-        var->node.kind = kind;
-
-        bool is_prop = kind == EcsAstProp;
-        bool is_mut = kind == EcsAstMut || kind == EcsAstExportMut;
-        const char *kind_str = is_prop ? "prop" : (is_mut ? "mut" : "const");
-
-        Parse(
-            // const color =
-            case '=': {
-                LookAhead_1(EcsTokKeywordAwait,
-                    Consume();
-                    Expr(
-                        var->is_await = true;
-                        var->expr = EXPR;
-                        EndOfRule;
-                    )
-                )
-
-                // const color = Color :
-                LookAhead_2(EcsTokIdentifier, ':',
-                    Error("'%s %s = %s: ...' is invalid, did you mean "
-                        "'%s %s: %s = ...' instead?",
-                        kind_str, var->name, Token(2),
-                        kind_str, var->name, Token(2));
-                )
-
-                // const PI = expr\n
-                Expr(
-                    var->expr = EXPR;
-                    EndOfRule;
-                )
-            }
-
-            case ':': {
-                LookAhead_1(EcsTokKeywordTemplate,
-                    if (!is_prop) {
-                        Error("'%s %s: template ...' is invalid, template "
-                            "types are only allowed for prop variables",
-                            kind_str, var->name);
-                    }
-
-                    Consume();
-                    var->type_is_template = true;
-
-                    LookAhead_1(EcsTokIdentifier,
-                        var->type = Token(3);
-                        Consume();
-                    )
-
-                    LookAhead_2('[', ']',
-                        Consume();
-                        var->type_is_vector = true;
-                    )
-
-                    goto var_type;
-                )
-
-                LookAhead_1(EcsTokIdentifier,
-                    Consume();
-
-                    var->type = Token(2);
-
-                    goto var_type;
-                )
-
-                goto var_type_error;
-            }
-        )
-
-    var_type: {
-        LookAhead(
-            case '=': {
-                Consume();
-
-                LookAhead_1(EcsTokKeywordAwait,
-                    Error("'%s %s: %s = await ...' is invalid, "
-                        "await variables derive their type from the "
-                        "awaited expression, use '%s %s = await ...' "
-                        "instead",
-                        kind_str, var->name, var->type,
-                        kind_str, var->name);
-                )
-
-                LookAhead(
-                    case '{':
-                    case '[':
-                    case EcsTokKeywordMatch:
-                        Expr(
-                            var->expr = EXPR;
-                            EndOfRule;
-                        )
-                )
-
-                LookAhead_2(EcsTokIdentifier, '(',
-                    Expr(
-                        var->expr = EXPR;
-                        EndOfRule;
-                    )
-                )
-
-                Initializer('\n',
-                    var->expr = INITIALIZER;
-                    EndOfRule;
-                )
-            }
-
-            // prop color: Color\n
-            EcsTokEndOfStatement:
-            case EcsTokScopeClose: {
-                if (is_prop) {
-                    EndOfRule;
-                }
-
-                break;
-            }
-        )
-
-    var_type_error:
-        Error("expected type name followed by '=', did you mean "
-            "'%s %s = ...' or '%s %s: type = ...' instead?",
-            kind_str, var->name, kind_str, var->name);
+        ecs_script_component_t *call = statement(parser, ecs_script_component_t, EcsAstComponent);
+        call->id.first = kind;
+        call->expr = (ecs_expr_node_t *)script_parse_arguments(parser, ')');
     }
-    )
-
-error:
-    return NULL;
-}
-
-static const char* siecs_script_fn_params(
-    ecs_parser_t *parser,
-    ecs_script_function_node_t *fn,
-    const char *pos)
-{
-    ParserBegin;
-
-    Loop(
-        LookAhead(
-            case EcsTokParenClose: {
-                Consume();
-                EndOfRule;
-            }
-            case EcsTokIdentifier: {
-                Consume();
-
-                Parse_2(EcsTokColon, EcsTokIdentifier, {
-                    ecs_script_fn_param_t *p = ecs_vec_append_t(
-                        &parser->script->allocator, &fn->params,
-                        ecs_script_fn_param_t);
-                    ecs_os_zeromem(p);
-                    p->node = (ecs_script_node_t){ .pos = parser->pos };
-                    p->sp = -1;
-                    p->name = Token(0);
-                    p->type = Token(2);
-
-                    LookAhead_1(EcsTokComma,
-                        Consume();
-                        continue;
-                    )
-
-                    LookAhead_1(EcsTokParenClose,
-                        Consume();
-                        EndOfRule;
-                    )
-
-                    Error("expected ',' or ')' after parameter");
-                })
-            }
-        )
-        Error("expected parameter or ')'");
-    )
-
-    ParserEnd;
-}
-
-static const char* siecs_script_fn_body(
-    ecs_parser_t *parser,
-    ecs_script_function_node_t *fn,
-    const char *pos)
-{
-    ParserBegin;
-
-    Loop(
-        pos = siecs_parser_skip_newlines(parser, pos);
-
-        LookAhead(
-            case EcsTokScopeClose: {
-                Error("function body must end with an expression");
-            }
-            case EcsTokSemiColon: {
-                Consume();
-                continue;
-            }
-            case EcsTokKeywordConst: {
-                parser->stmt_pos = pos;
-                Consume();
-                Scope(fn->body,
-                    pos = siecs_script_parse_var(parser, pos, EcsAstConst);
-                )
-                if (!pos) {
-                    goto error;
-                }
-                continue;
-            }
-        )
-        break;
-    )
-
-    Expr(
-        fn->return_expr = EXPR;
-    )
-
-    pos = siecs_parser_skip_newlines(parser, pos);
-
-    LookAhead_1(EcsTokScopeClose,
-        Consume();
-        return pos;
-    )
-
-    Error("expected '}' after function body");
-error:
-    return NULL;
-}
-
-static
-int32_t siecs_script_last_stmt_kind(
-    ecs_script_scope_t *scope)
-{
-    int32_t count = ecs_vec_count(&scope->stmts);
-    if (!count) {
-        return -1;
+    if (script_take(parser, ':')) {
+        ecs_script_tag_t *base = statement(parser, ecs_script_tag_t, EcsAstTag);
+        base->id.first = "IsA";
+        base->id.second = qualified_name(parser);
+        base->id.second_expr = name_expression(parser, base->id.second);
     }
-
-    return ecs_vec_last_t(&scope->stmts, ecs_script_node_t*)[0]->kind;
-}
-
-/* Parse a single statement */
-static const char* siecs_script_stmt_parse(
-    ecs_parser_t *parser,
-    const char *pos)
-{
-    ParserBegin;
-
-    const char *component_first = NULL, *component_second = NULL;
-    bool component_collection = false;
-    bool component_partial = false;
-    ecs_expr_node_t *component_index = NULL;
-
-    parser->stmt_pos = NULL;
-
-    LookAhead(
-        EcsTokEndOfStatement:
-            EndOfRule;
-    )
-
-    Parse(
-        case EcsTokIdentifier:        goto identifier;
-        case EcsTokString:            goto identifier;
-        case '{':                     goto anonymous_entity;
-        case '(':                     goto paren;
-        case '@':                     goto annotation;
-        case EcsTokKeywordWith:       goto with_stmt;
-        case EcsTokKeywordModule:     goto module_stmt;
-        case EcsTokKeywordUsing:      goto using_stmt;
-        case EcsTokKeywordTemplate:   goto template_stmt;
-        case EcsTokKeywordProp:       goto prop_var;
-        case EcsTokKeywordMut:        goto mut_var;
-        case EcsTokKeywordConst:      goto const_var;
-        case EcsTokKeywordExport:     goto export_var;
-        case EcsTokKeywordIf:         goto if_stmt;
-        case EcsTokKeywordFor:        goto for_stmt;
-        case EcsTokKeywordInclude:    goto include_stmt;
-        case EcsTokKeywordFn:         goto fn_stmt;
-        case EcsTokKeywordAwait:      goto await_stmt;
-        case EcsTokKeywordTry:        goto try_stmt;
-        case EcsTokKeywordContinue:   goto continue_stmt;
-        case EcsTokKeywordAsync:      goto async_stmt;
-        case EcsTokKeywordWhile:      goto while_stmt;
-    );
-
-anonymous_entity: {
-    return siecs_script_entity_scope(parser,
-        siecs_script_insert_entity(parser, "_"), pos);
-}
-
-identifier: {
-    LookAhead(
-        // auto_override |
-        case '|': {
-            Consume();
-            goto identifier_flag;
-        }
-
-        // Position:
-        case ':': {
-            Consume();
-            goto identifier_colon;
-        }
-
-        // facade[
-        case '[': {
-            Consume();
-            goto identifier_index;
-        }
-
-        // SpaceShip(
-        case '(': {
-            Consume();
-            goto identifier_paren;
-        }
-
-        // value =
-        case '=': {
-            Consume();
-            goto identifier_assign;
-        }
-
-        // Spaceship enterprise
-        // Spaceship "enterprise"
-        case EcsTokIdentifier:
-        case EcsTokString: {
-            Consume();
-            goto identifier_identifier;
-        }
-    )
-
-    // enterprise {
-    // Npc\n{
-    LookAheadSkipNewlines_1('{',
-        Consume();
-        return siecs_script_entity_scope(parser,
-            siecs_script_insert_entity(parser, Token(0)), pos);
-    )
-
-    goto insert_tag;
-}
-
-// Npc
-// facade[0]
-insert_tag: {
-    ecs_script_tag_t *tag = siecs_script_insert_tag(parser, Token(0));
-    tag->id.index_expr = component_index;
-    EndOfRule;
-}
-
-// @
-annotation: {
-    // @brief
-    Parse_1(EcsTokIdentifier, {
-        // @brief value
-        ecs_token_t value;
-        pos = siecs_tokenizer_line(parser, pos, &value, false);
-        siecs_script_insert_annot(parser, Token(1), value.value);
-        EndOfRule;
-    })
-}
-
-// with
-with_stmt: {
-    ecs_script_with_t *with = siecs_script_insert_with(parser);
-    pos = siecs_script_with(parser, with, pos);
-    EndOfRule;
-}
-
-// using
-using_stmt: {
-    if (parser->scope != parser->script->root) {
-        Error("'using' must be declared in the root scope of a script");
-    }
-
-    {
-        int32_t last = siecs_script_last_stmt_kind(parser->scope);
-        if (last != -1 && last != EcsAstModule && last != EcsAstInclude &&
-            last != EcsAstUsing)
-        {
-            Error("'using' must be declared before other statements");
-        }
-    }
-
-    // using siecs.meta\n
-    Parse_1(EcsTokIdentifier,
-        siecs_script_insert_using(parser, Token(1));
-        EndOfRule;
-    )
-}
-
-// module
-module_stmt: {
-    if (parser->scope != parser->script->root) {
-        Error("'module' must be declared in the root scope of a script");
-    }
-
-    if (ecs_vec_count(&parser->scope->stmts)) {
-        Error("'module' must be the first statement of a script");
-    }
-
-    // module siecs.meta\n
-    Parse_1(EcsTokIdentifier,
-        siecs_script_insert_module(parser, Token(1));
-        EndOfRule;
-    )
-}
-
-// template
-template_stmt: {
-    LookAheadSkipNewlines_1('{',
-        Consume();
-        return siecs_script_entity_template(parser, pos);
-    )
-
-    // template SpaceShip
-    Parse_1(EcsTokIdentifier,
-        ecs_script_template_node_t *template = siecs_script_insert_template(
-            parser, Token(1));
-
-        LookAhead_1(':',
-            Consume();
-            Loop(
-                pos = siecs_parser_skip_newlines(parser, pos);
-
-                Parse_1(EcsTokIdentifier,
-                    if (!ecs_os_strcmp(Token(3), "parent")) {
-                        if (template->parent) {
-                            Error("duplicate parent constraint");
-                        }
-
-                        Parse_1(EcsTokIdentifier,
-                            template->parent = Token(4);
-                        )
-                    } else {
-                        if (template->base) {
-                            Error("multiple template bases are not supported");
-                        }
-
-                        template->base = Token(3);
-                    }
-
-                    LookAhead_1(',',
-                        Consume();
-                        continue;
-                    )
-                )
-
-                goto template_scope;
-            )
-        )
-
-    template_scope:
-        pos = siecs_parser_skip_newlines(parser, pos);
-
-        // template SpaceShip {
-        Parse_1('{',
-            return siecs_script_scope(parser, template->scope, pos);
-        )
-    )
-}
-
-// prop
-prop_var: {
-    // prop color = Color:
-    return siecs_script_parse_var(parser, pos, EcsAstProp);
-}
-
-// mut
-mut_var: {
-    return siecs_script_parse_var(parser, pos, EcsAstMut);
-}
-
-// export
-export_var: {
-    Parse(
-        // export const
-        case EcsTokKeywordConst:
-            return siecs_script_parse_var(parser, pos, EcsAstExportConst);
-        // export mut
-        case EcsTokKeywordMut:
-            return siecs_script_parse_var(parser, pos, EcsAstExportMut);
-    )
-}
-
-// const
-const_var: {
-    // const color
-    return siecs_script_parse_var(parser, pos, EcsAstConst);
-}
-
-// if
-if_stmt: {
-    return siecs_script_if_stmt(parser, pos);
-}
-
-// for
-for_stmt: {
-    ecs_script_for_t *stmt = siecs_script_insert_for(parser);
-
-    Parse(
-        case EcsTokIdentifier: {
-            stmt->loop_vars[0] = Token(1);
-            stmt->loop_var_count = 1;
-            goto for_in_stmt;
-        }
-
-        case '(': {
-            Loop(
-                Parse_1(EcsTokIdentifier,
-                    stmt->loop_vars[stmt->loop_var_count ++] = Token(2);
-                )
-
-                if (stmt->loop_var_count == 1) {
-                    Parse_1(',', continue;)
-                } else if (stmt->loop_var_count == 2) {
-                    LookAhead_1(',',
-                        Consume();
-                        continue;
-                    )
-                }
-
-                Parse_1(')', goto for_in_stmt;)
-            )
-        }
-    )
-
-for_in_stmt:
-    Parse_1(EcsTokKeywordIn,
-        return siecs_script_for_in(parser, pos, stmt);
-    )
-}
-
-fn_stmt: {
-    Parse_2(EcsTokIdentifier, '(', {
-        ecs_script_function_node_t *fn = siecs_script_insert_function(
-            parser, Token(1));
-
-        bool significant_newline = parser->significant_newline;
-        parser->significant_newline = false;
-        pos = siecs_script_fn_params(parser, fn, pos);
-        parser->significant_newline = significant_newline;
-        if (!pos) {
-            goto error;
-        }
-
-        pos = siecs_parser_skip_newlines(parser, pos);
-
-        Parse_1(EcsTokArrow,
-            pos = siecs_parser_skip_newlines(parser, pos);
-
-            Parse_1(EcsTokIdentifier, {
-                fn->return_type = Token(4);
-                fn->return_type_node.pos = parser->pos;
-
-                pos = siecs_parser_skip_newlines(parser, pos);
-
-                Parse_1('{', {
-                    pos = siecs_script_fn_body(parser, fn, pos);
-                    if (!pos) {
-                        goto error;
-                    }
-
-                    EndOfRule;
-                })
-            })
-        )
-    })
-}
-
-continue_stmt: {
-    siecs_script_insert_continue(parser);
-    EndOfRule;
-}
-
-await_stmt: {
-    Expr({
-        ecs_script_await_t *await = siecs_script_insert_await(parser);
-        await->expr = EXPR;
-        EndOfRule;
-    })
-}
-
-// async
-async_stmt: {
-    // async {
-    Parse_1('{', {
-        ecs_script_async_t *stmt = siecs_script_insert_async(parser);
-        bool async_scope = parser->async_scope;
-        parser->async_scope = true;
-        pos = siecs_script_scope(parser, stmt->scope, pos);
-        parser->async_scope = async_scope;
-        return pos;
-    })
-}
-
-// while
-while_stmt: {
-    // while expr
-    Expr(
-        ecs_script_while_t *stmt = siecs_script_insert_while(parser);
-        stmt->expr = EXPR;
-        pos = siecs_parser_skip_newlines(parser, pos);
-
-        // while expr {
-        Parse_1('{', {
-            return siecs_script_scope(parser, stmt->scope, pos);
-        })
-    )
-}
-
-// value =
-// Position =
-identifier_assign: {
-    if (!parser->async_scope) {
-        component_first = Token(0);
-        component_partial = true;
-        goto component_assign;
-    }
-
-    ecs_script_assign_t *stmt = siecs_script_insert_assign(parser, Token(0));
-
-    // value = expr\n
-    Expr({
-        stmt->expr = EXPR;
-        EndOfRule;
-    })
-}
-
-// try
-try_stmt: {
-    // try {
-    Parse_1('{', {
-        ecs_script_try_t *stmt = siecs_script_insert_try(parser);
-        pos = siecs_script_scope(parser, stmt->try_scope, pos);
-        if (!pos) {
-            goto error;
-        }
-
-        Loop(
-            // try { } catch
-            LookAheadSkipNewlines_1(EcsTokKeywordCatch,
-                Consume();
-                ecs_script_catch_t *clause = siecs_script_try_add_catch(
-                    parser, stmt);
-
-                Parse(
-                    // try { } catch {
-                    case '{': {
-                        pos = siecs_script_scope(parser, clause->scope, pos);
-                        if (!pos) {
-                            goto error;
-                        }
-
-                        continue;
-                    }
-
-                    // try { } catch(
-                    case '(': {
-                        // try { } catch(Error)
-                        Parse_2(EcsTokIdentifier, ')', {
-                            if (Token(4)[0] == '$') {
-                                Error("variable not allowed as catch error");
-                            }
-
-                            clause->error = Token(4);
-
-                            // try { } catch(Error) {
-                            Parse_1('{', {
-                                pos = siecs_script_scope(
-                                    parser, clause->scope, pos);
-                                if (!pos) {
-                                    goto error;
-                                }
-
-                                continue;
-                            })
-                        })
-                    }
-                )
-            )
-
-            if (!ecs_vec_count(&stmt->catches)) {
-                Error("expected 'catch' after 'try' block");
-            }
-
-            EndOfRule;
-        )
-    })
-}
-
-// include foo.si
-include_stmt: {
-    if (parser->scope != parser->script->root) {
-        Error("'include' must be declared in the root scope of a script");
-    }
-
-    {
-        int32_t last = siecs_script_last_stmt_kind(parser->scope);
-        if (last != -1 && last != EcsAstModule && last != EcsAstInclude) {
-            Error(
-                "'include' must be declared before statements other than "
-                "'module'");
-        }
-    }
-
-    {
-        ecs_token_t filename;
-        pos = siecs_tokenizer_line(parser, pos, &filename, true);
-        if (!filename.value[0]) {
-            Error("expected filename after 'include'");
-        }
-
-        siecs_script_insert_include(parser, filename.value);
-        EndOfRule;
+    parser->scope = previous;
+    ecs_parser_t look = *parser;
+    script_skip_lines(&look);
+    if ((int)look.token.kind == '{') {
+        *parser = look;
+        script_parse_scope(parser, entity->scope, true);
     }
 }
 
-// (
-paren: {
-    pos = siecs_script_pair(
-        parser, pos, &component_first, &component_second);
-    if (!pos) {
-        goto error;
-    }
-
-    // (Likes, Apples):
-    LookAhead_1(':',
-        Consume();
-        goto component_expr;
-    )
-
-    // (Likes, Apples) =
-    LookAhead_1('=',
-        Consume();
-        component_partial = true;
-        goto component_assign;
-    )
-
-    // (IsA, Machine) {
-    LookAheadSkipNewlines_1('{',
-        Consume();
-        ecs_script_pair_scope_t *ps = siecs_script_insert_pair_scope(
-            parser, component_first, component_second);
-        return siecs_script_scope(parser, ps->scope, pos);
-    )
-
-    // (Likes, Apples)
-    siecs_script_insert_pair_tag(parser, component_first, component_second);
-    EndOfRule;
-}
-
-identifier_flag: {
-    if (ecs_os_strcmp(Token(0), "auto_override")) {
-        Error("invalid flag '%s'", Token(0));
-    }
-
-    Parse(
-        case '(':
-            pos = siecs_script_pair(
-                parser, pos, &component_first, &component_second);
-            if (!pos) {
-                goto error;
-            }
-
-            goto flagged_id;
-        case EcsTokIdentifier:
-            component_first = Token(2);
-            goto flagged_id;
-    )
-}
-
-flagged_id: {
-    ecs_script_tag_t *tag = siecs_script_insert_pair_tag(
-        parser, component_first, component_second);
-    tag->id.flag = ECS_AUTO_OVERRIDE;
-
-    // auto_override | Position: {
-    LookAhead_1(':',
-        Consume();
-        LookAhead_1('{',
-            goto component_expr;
-        )
-
-        Error("expected '{' after ':'");
-    )
-
-    EndOfRule;
-}
-
-// facade[0]
-identifier_index: {
-    component_first = Token(0);
-
-    LookAhead(
-        case '}':
-        case ']':
-        EcsTokEndOfStatement: {
-            Error("expected index expression after '%s['",
-                component_first);
-        }
-    )
-
-    Expr(
-        component_index = EXPR;
-    )
-
-    Parse_1(']',
-        // facade[0]:
-        LookAhead_1(':',
-            Consume();
-            goto component_expr;
-        )
-
-        goto insert_tag;
-    )
-}
-
-// Position:
-identifier_colon: {
-    component_first = Token(0);
-    LookAhead(
-        case '[':
-            component_collection = true;
-            goto component_expr;
-        case '{':
-        case EcsTokKeywordMatch:
-            goto component_expr;
-    )
-
-    bool is_inherit = tokenizer->tokens[0].kind == EcsTokString;
-    if (!is_inherit) {
-        LookAheadAny_2(case EcsTokIdentifier:, case '{': case ',':,
-            is_inherit = Token(2)[0] != '$';
-        )
-    }
-
-    if (!is_inherit) {
-        goto component_expr;
-    }
-
-    // enterprise : SpaceShip
-    Parse_1(EcsTokIdentifier, {
-        ecs_script_entity_t *entity = siecs_script_insert_entity(
-            parser, Token(0));
-        if (!entity) {
-            goto error;
-        }
-
-        if (!ecs_os_strcmp(Token(2), "Prefab")) {
-            Warning("'%s : Prefab' creates a live instance, not a "
-                "prefab; use 'prefab %s' instead", Token(0), Token(0));
-        }
-
-        pos = siecs_script_base_list(parser, entity, Token(2), pos);
-        if (!pos) {
-            goto error;
-        }
-
-        Parse(
-            // enterprise : SpaceShip {
-            case '{':
-                return siecs_script_entity_scope(parser, entity, pos);
-        )
-    })
-}
-
-// Spaceship enterprise
-identifier_identifier: {
-    ecs_script_entity_t *entity = siecs_script_insert_entity(
-        parser, Token(1));
-    if (!entity) {
-        goto error;
-    }
-
-    entity->kind = Token(0);
-
-    // Spaceship enterprise :
-    LookAhead_1(':',
-        Consume();
-
-        Parse_1(EcsTokIdentifier, {
-            pos = siecs_script_base_list(parser, entity, Token(3), pos);
-            if (!pos) {
-                goto error;
-            }
-
-            goto identifier_identifier_x;
-        })
-    )
-
-identifier_identifier_x:
-    // Spaceship enterprise(
-    LookAhead_1('(',
-        Consume();
-        return siecs_script_paren_expr(parser, Token(0), entity, pos);
-    )
-
-    // Spaceship enterprise {
-    // Spaceship enterprise\n{
-    LookAheadSkipNewlines_1('{',
-        Consume();
-        return siecs_script_entity_scope(parser, entity, pos);
-    )
-
-    EndOfRule;
-}
-
-// SpaceShip(
-identifier_paren: {
-    return siecs_script_paren_expr(parser, Token(0),
-        siecs_script_insert_entity(parser, NULL), pos);
-}
-
-component_assign: {
-    LookAhead_1('[',
-        component_collection = true;
-    )
-
-    goto component_expr;
-}
-
-component_expr: {
-    Expr({
-        ecs_script_component_t *comp = siecs_script_insert_pair_component(
-            parser, component_first, component_second);
-        comp->expr = EXPR;
-        comp->is_collection = component_collection;
-        comp->is_partial = component_partial;
-        comp->id.index_expr = component_index;
-        EndOfRule;
-    })
-}
-
-    ParserEnd;
-}
-
-const char* siecs_script_stmt(
-    ecs_parser_t *parser,
-    const char *pos)
-{
+ecs_script_entity_t *script_parse_new_entity(ecs_parser_t *parser) {
     ecs_script_scope_t *scope = parser->scope;
-    int32_t first = scope ? ecs_vec_count(&scope->stmts) : 0;
+    uint32_t count = scope->stmts.size;
+    const char *begin = parser->token.begin;
+    if ((int)parser->token.kind == '{')
+        parse_entity(parser, NULL, NULL);
+    else {
+        const char *first = script_parse_name(parser);
+        if ((int)parser->token.kind == '(')
+            parse_entity(parser, first, NULL);
+        else if (parser->token.kind == EcsTokIdentifier || parser->token.kind == EcsTokString)
+            parse_entity(parser, first, script_parse_name(parser));
+        else
+            parse_entity(parser, NULL, first);
+    }
+    if (parser->failed || scope->stmts.size != count + 1)
+        return NULL;
+    ecs_script_entity_t *entity = ((ecs_script_entity_t **)scope->stmts.data)[count];
+    scope->stmts.size = count;
+    entity->node.pos = begin;
+    entity->node.end = parser->token.begin;
+    return entity;
+}
 
-    pos = siecs_script_stmt_parse(parser, pos);
+static void parse_if(ecs_parser_t *parser) {
+    ecs_script_if_t *condition = statement(parser, ecs_script_if_t, EcsAstIf);
+    script_lex(parser);
+    condition->expr = script_parse_expression(parser, 1);
+    condition->if_true = body(parser);
+    condition->if_false = siecs_script_scope_new(parser);
+    ecs_parser_t look = *parser;
+    script_skip_lines(&look);
+    if (keyword(&look, "else")) {
+        *parser = look;
+        script_lex(parser);
+        if (keyword(parser, "if")) {
+            ecs_script_scope_t *previous = parser->scope;
+            parser->scope = condition->if_false;
+            parse_if(parser);
+            parser->scope = previous;
+        } else {
+            script_skip_lines(parser);
+            script_parse_scope(parser, condition->if_false, true);
+        }
+    }
+}
 
-    if (pos && scope) {
-        const char *end = siecs_parser_stmt_end(parser, pos);
-        ecs_script_node_t **stmts = ecs_vec_first_t(
-            &scope->stmts, ecs_script_node_t*);
-        int32_t i, count = ecs_vec_count(&scope->stmts);
-        for (i = first; i < count; i ++) {
-            if (!stmts[i]->end) {
-                stmts[i]->end = end;
+static void parse_function(ecs_parser_t *parser) {
+    ecs_script_function_node_t *function =
+        statement(parser, ecs_script_function_node_t, EcsAstFunction);
+    script_lex(parser);
+    function->name = script_parse_name(parser);
+    script_expect(parser, '(');
+    script_skip_lines(parser);
+    while (!parser->failed && (int)parser->token.kind != ')') {
+        ecs_script_fn_param_t param = { .name = script_parse_name(parser) };
+        script_expect(parser, ':');
+        param.type = qualified_name(parser);
+        *(
+            ecs_script_fn_param_t *
+        )script_vec_append(&parser->script->allocator, &function->params, sizeof(param)) = param;
+        if (!script_take(parser, ','))
+            break;
+        script_skip_lines(parser);
+    }
+    script_expect(parser, ')');
+    script_expect(parser, EcsTokArrow);
+    function->return_type = qualified_name(parser);
+    function->body = siecs_script_scope_new(parser);
+    ecs_script_scope_t *previous_scope = parser->scope;
+    bool previous_async = parser->async_scope;
+    parser->scope = function->body;
+    parser->async_scope = false;
+    script_skip_lines(parser);
+    script_expect(parser, '{');
+    script_skip_lines(parser);
+    while (!parser->failed && parser->token.kind && (int)parser->token.kind != '}') {
+        bool declaration = keyword(parser, "const") || keyword(parser, "mut") ||
+                           keyword(parser, "if") || keyword(parser, "for") ||
+                           keyword(parser, "while") || keyword(parser, "try") ||
+                           keyword(parser, "fn") || keyword(parser, "async");
+        ecs_parser_t look = *parser;
+        script_lex(&look);
+        if (declaration || (int)look.token.kind == '=') {
+            parse_statement(parser);
+        } else {
+            consume_word(parser, "return");
+            function->return_expr = script_parse_expression(parser, 1);
+            script_skip_lines(parser);
+            break;
+        }
+        script_skip_lines(parser);
+    }
+    script_expect(parser, '}');
+    parser->scope = previous_scope;
+    parser->async_scope = previous_async;
+}
+
+static void parse_statement(ecs_parser_t *parser) {
+    if (parser->failed)
+        return;
+    parser->stmt_pos = parser->token.begin;
+    if (keyword(parser, "const")) {
+        parse_variable(parser, EcsAstConst);
+    } else if (keyword(parser, "mut")) {
+        parse_variable(parser, EcsAstMut);
+    } else if (keyword(parser, "prop")) {
+        parse_variable(parser, EcsAstProp);
+    } else if (consume_word(parser, "export")) {
+        if (keyword(parser, "const"))
+            parse_variable(parser, EcsAstExportConst);
+        else if (keyword(parser, "mut"))
+            parse_variable(parser, EcsAstExportMut);
+        else
+            script_parse_error(parser, "export requires const or mut");
+    } else if (keyword(parser, "if")) {
+        parse_if(parser);
+    } else if (consume_word(parser, "for")) {
+        ecs_script_for_t *loop = statement(parser, ecs_script_for_t, EcsAstFor);
+        bool multiple = script_take(parser, '(');
+        do {
+            if (loop->loop_var_count == 3) {
+                script_parse_error(parser, "too many loop variables");
+                return;
+            }
+            loop->loop_vars[loop->loop_var_count++] = script_parse_name(parser);
+        } while (multiple && script_take(parser, ','));
+        if (multiple)
+            script_expect(parser, ')');
+        if (!consume_word(parser, "in"))
+            script_parse_error(parser, "expected in");
+        loop->expr = script_parse_expression(parser, 1);
+        if (loop->expr && loop->expr->kind == EcsExprRange) {
+            loop->from = ((ecs_expr_range_t *)loop->expr)->from;
+            loop->to = ((ecs_expr_range_t *)loop->expr)->to;
+        }
+        loop->scope = body(parser);
+    } else if (consume_word(parser, "template")) {
+        ecs_script_template_node_t *template =
+            statement(parser, ecs_script_template_node_t, EcsAstTemplate);
+        template->name = script_parse_name(parser);
+        if (script_take(parser, ':'))
+            template->base = qualified_name(parser);
+        template->scope = body(parser);
+    } else if (keyword(parser, "using") || keyword(parser, "module")) {
+        int kind = keyword(parser, "using") ? EcsAstUsing : EcsAstModule;
+        ecs_script_using_t *use = statement(parser, ecs_script_using_t, kind);
+        script_lex(parser);
+        use->name = qualified_name(parser);
+    } else if (consume_word(parser, "include")) {
+        ecs_script_include_t *include = statement(parser, ecs_script_include_t, EcsAstInclude);
+        const char *begin = parser->token.begin;
+        if (parser->token.kind == EcsTokString) {
+            include->filename = parser->token.value;
+            script_lex(parser);
+        } else {
+            while (parser->token.kind && (int)parser->token.kind != '\n' &&
+                   (int)parser->token.kind != ';')
+                script_lex(parser);
+            size_t length = (size_t)(parser->token.begin - begin);
+            while (length && isspace((unsigned char)begin[length - 1]))
+                length--;
+            char *name = script_alloc(&parser->script->allocator, length + 1);
+            memcpy(name, begin, length);
+            include->filename = name;
+        }
+        if (!*include->filename)
+            script_parse_error(parser, "expected include filename");
+        if (!parser->failed) {
+            if (parser->scope != parser->script->root)
+                script_parse_error(parser, "include must be declared in the root scope");
+            const char *slash = strrchr(parser->name, '/');
+            size_t prefix =
+                slash && include->filename[0] != '/' ? (size_t)(slash - parser->name + 1) : 0;
+            size_t length = strlen(include->filename);
+            char *path = malloc(prefix + length + 1);
+            if (!path) {
+                script_parse_error(parser, "out of memory");
+                return;
+            }
+            if (prefix)
+                memcpy(path, parser->name, prefix);
+            memcpy(path + prefix, include->filename, length + 1);
+            include->program = ecs_script_parse_file(path, NULL, NULL);
+            free(path);
+            if (!include->program)
+                parser->failed = true;
+            else {
+                script_adopt_nested(parser->script, include->program);
+                parser->script->has_async |= siecs_script_impl(include->program)->has_async;
             }
         }
-    }
-
-    return pos;
-}
-
-/* Parse a single statement, and verify that it is followed by a statement
- * separator (';', newline, end of scope or end of script). */
-const char* siecs_script_stmt_w_separator(
-    ecs_parser_t *parser,
-    const char *pos)
-{
-    pos = siecs_script_stmt(parser, pos);
-    if (!pos) {
-        return NULL;
-    }
-
-    ecs_token_t token;
-    const char *old_token_cur = parser->token_cur;
-    const char *lookahead = siecs_token(parser, pos, &token, true);
-    siecs_token_restore(parser, old_token_cur);
-
-    if (!lookahead) {
-        return NULL;
-    }
-
-    switch(token.kind) {
-    EcsTokEndOfStatement:
-        return lookahead;
-    case EcsTokScopeClose:
-        return pos;
-    default:
-        break;
-    }
-
-    ecs_parser_error(parser->name, parser->code,
-        siecs_parser_errpos(parser, lookahead - 1), "missing ; or newline");
-
-    return NULL;
-}
-
-ecs_script_t* siecs_script_parse_init(
-    const char *name,
-    const char *code,
-    ecs_parser_t *parser)
-{
-    if (!code) {
-        code = "";
-    }
-
-    ecs_script_t *script = siecs_script_new();
-    script->name = ecs_os_strdup(name);
-    script->code = ecs_os_strdup(code);
-
-    ecs_script_impl_t *impl = siecs_script_impl(script);
-
-    *parser = (ecs_parser_t){
-        .name = script->name,
-        .code = script->code,
-        .pos = script->code,
-        .script = impl,
-        .scope = impl->root,
-        .significant_newline = true
-    };
-
-    /* Allocate a buffer that is able to store all parsed tokens. Multiply the
-     * size of the script by two so that there is enough space to add \0
-     * terminators and expression delimiters ('""')
-     * The token buffer will exist for as long as the script object exists, and
-     * ensures that AST nodes don't need to do separate allocations for the data
-     * they contain. */
-    impl->token_buffer_size = ecs_os_strlen(code) * 2 + 1;
-    impl->token_buffer = siecs_alloc_w_dbg_info(
-        &impl->allocator, impl->token_buffer_size, "token buffer");
-    parser->token_cur = impl->token_buffer;
-    parser->token_end = &impl->token_buffer[impl->token_buffer_size];
-
-    return script;
-}
-
-static void siecs_script_append_using(
-    ecs_script_scope_t *scope,
-    ecs_strbuf_t *buf)
-{
-    if (scope->parent) {
-        siecs_script_append_using(scope->parent, buf);
-    }
-
-    int32_t i, count = ecs_vec_count(&scope->stmts);
-    ecs_script_node_t **stmts = ecs_vec_first(&scope->stmts);
-    for (i = 0; i < count; i ++) {
-        if (stmts[i]->kind == EcsAstUsing) {
-            ecs_script_using_t *using_node = (ecs_script_using_t*)stmts[i];
-            ecs_strbuf_appendlit(buf, "using ");
-            ecs_strbuf_appendstr(buf, using_node->name);
-            ecs_strbuf_appendch(buf, ';');
+    } else if (consume_word(parser, "async")) {
+        parser->script->has_async = true;
+        ecs_script_async_t *block = statement(parser, ecs_script_async_t, EcsAstAsync);
+        bool previous = parser->async_scope;
+        parser->async_scope = true;
+        block->scope = body(parser);
+        parser->async_scope = previous;
+    } else if (consume_word(parser, "await")) {
+        if (!parser->async_scope)
+            script_parse_error(parser, "await requires an async scope");
+        parser->script->has_async = true;
+        ecs_script_await_t *wait = statement(parser, ecs_script_await_t, EcsAstAwait);
+        wait->expr = script_parse_expression(parser, 1);
+    } else if (consume_word(parser, "while")) {
+        ecs_script_while_t *loop = statement(parser, ecs_script_while_t, EcsAstWhile);
+        loop->expr = script_parse_expression(parser, 1);
+        loop->scope = body(parser);
+    } else if (consume_word(parser, "continue")) {
+        statement(parser, ecs_script_node_t, EcsAstContinue);
+    } else if (keyword(parser, "fn")) {
+        parse_function(parser);
+    } else if (consume_word(parser, "try")) {
+        ecs_script_try_t *attempt = statement(parser, ecs_script_try_t, EcsAstTry);
+        attempt->try_scope = body(parser);
+        script_skip_lines(parser);
+        while (consume_word(parser, "catch")) {
+            ecs_script_catch_t clause = { 0 };
+            if (script_take(parser, '(')) {
+                clause.error = qualified_name(parser);
+                script_expect(parser, ')');
+            }
+            clause.scope = body(parser);
+            *(
+                ecs_script_catch_t *
+            )script_vec_append(&parser->script->allocator, &attempt->catches, sizeof(clause)) =
+                clause;
+            script_skip_lines(parser);
         }
+        if (!attempt->catches.size)
+            script_parse_error(parser, "expected catch");
+    } else if (consume_word(parser, "with")) {
+        ecs_script_with_t *with = statement(parser, ecs_script_with_t, EcsAstWith);
+        with->expressions = siecs_script_scope_new(parser);
+        ecs_script_scope_t *previous = parser->scope;
+        parser->scope = with->expressions;
+        do {
+            ecs_script_id_t id = { 0 };
+            if ((int)parser->token.kind == '(')
+                id = parse_pair(parser);
+            else
+                id.first = qualified_name(parser);
+            parse_component(parser, id);
+        } while (script_take(parser, ','));
+        parser->scope = previous;
+        with->scope = body(parser);
+    } else if (script_take(parser, '@')) {
+        ecs_script_annot_t *annotation = statement(parser, ecs_script_annot_t, EcsAstAnnotation);
+        annotation->name = script_parse_name(parser);
+        annotation->expr = parser->token.value;
+        while (parser->token.kind && (int)parser->token.kind != '\n')
+            script_lex(parser);
+    } else if ((int)parser->token.kind == '(') {
+        ecs_script_id_t id = parse_pair(parser);
+        if ((int)parser->token.kind == '{') {
+            ecs_script_pair_scope_t *pair =
+                statement(parser, ecs_script_pair_scope_t, EcsAstPairScope);
+            pair->id = id;
+            pair->scope = body(parser);
+        } else {
+            parse_component(parser, id);
+        }
+    } else if (parser->token.kind == EcsTokIdentifier || parser->token.kind == EcsTokString) {
+        const char *first = script_parse_name(parser);
+        if (!first)
+            return;
+        if ((int)parser->token.kind == '|' && !strcmp(first, "auto_override")) {
+            script_lex(parser);
+            ecs_script_id_t id = { 0 };
+            if ((int)parser->token.kind == '(')
+                id = parse_pair(parser);
+            else
+                id.first = qualified_name(parser);
+            id.flag = ECS_AUTO_OVERRIDE;
+            parse_component(parser, id);
+        } else if ((int)parser->token.kind == '=') {
+            script_lex(parser);
+            ecs_script_assign_t *assign = statement(parser, ecs_script_assign_t, EcsAstAssign);
+            assign->name = *first == '$' ? first + 1 : first;
+            assign->expr = script_parse_expression(parser, 1);
+        } else if (
+            (int)parser->token.kind == ':' || (int)parser->token.kind == '=' ||
+            (int)parser->token.kind == '('
+        ) {
+            ecs_script_id_t id = { .first = first, .first_expr = name_expression(parser, first) };
+            if ((int)parser->token.kind == '(') {
+                parse_entity(parser, first, NULL);
+            } else {
+                parse_component(parser, id);
+            }
+        } else if (parser->token.kind == EcsTokIdentifier || parser->token.kind == EcsTokString) {
+            const char *name = script_parse_name(parser);
+            parse_entity(parser, first, name);
+        } else if ((int)parser->token.kind == '{') {
+            parse_entity(parser, NULL, first);
+        } else {
+            parse_component(
+                parser,
+                (ecs_script_id_t){ .first = first, .first_expr = name_expression(parser, first) }
+            );
+        }
+    } else {
+        script_parse_error(parser, "expected statement");
     }
 }
 
-ecs_script_t* siecs_script_parse_nested(
-    const ecs_parser_t *outer,
-    const char *code,
-    const char **next)
-{
-    ecs_parser_t scan = *outer;
-    scan.significant_newline = false;
-    ecs_token_t token = { .kind = EcsTokUnknown };
-    const char *end = code;
-    for (int32_t depth = 1; depth && token.kind != EcsTokEnd;) {
-        if (!(end = siecs_token(&scan, end, &token, true))) {
-            return NULL;
+bool script_parse_scope(ecs_parser_t *parser, ecs_script_scope_t *scope, bool braces) {
+    if (++parser->depth > 64) {
+        script_parse_error(parser, "maximum scope nesting depth exceeded");
+        parser->depth--;
+        return false;
+    }
+    ecs_script_scope_t *previous = parser->scope;
+    parser->scope = scope;
+    if (braces)
+        script_expect(parser, '{');
+    script_skip_lines(parser);
+    while (!parser->failed && parser->token.kind && (int)parser->token.kind != '}') {
+        const char *before = parser->token.begin;
+        parse_statement(parser);
+        if (scope->stmts.size) {
+            ecs_script_node_t **nodes = scope->stmts.data;
+            nodes[scope->stmts.size - 1]->end = parser->token.begin;
         }
-
-        depth += (token.kind == '{') - (token.kind == '}');
-        scan.token_cur = outer->token_cur;
+        if (before == parser->token.begin)
+            script_parse_error(parser, "expected statement separator");
+        script_skip_lines(parser);
     }
-
-    ecs_strbuf_t buf = ECS_STRBUF_INIT;
-    siecs_script_append_using(outer->scope, &buf);
-
-    const char *outer_code = outer->code;
-    const char *outer_open = code - 1;
-    const char *line_start = outer_code;
-    const char *ptr;
-    for (ptr = outer_code; ptr < outer_open; ptr ++) {
-        if (ptr[0] == '\n') {
-            ecs_strbuf_appendch(&buf, '\n');
-            line_start = ptr + 1;
-        }
-    }
-
-    int32_t column = siecs_ito(int32_t, outer_open - line_start);
-    if (line_start == outer_code) {
-        column -= ecs_strbuf_written(&buf);
-    }
-
-    for (; column > 0; column --) {
-        ecs_strbuf_appendch(&buf, ' ');
-    }
-
-    int32_t open_offset = ecs_strbuf_written(&buf);
-    ecs_strbuf_appendch(&buf, '{');
-    ecs_strbuf_appendstrn(&buf, code, siecs_ito(int32_t, end - code));
-    char *nested_code = ecs_strbuf_get(&buf);
-
-    ecs_parser_t parser;
-    ecs_script_t *script = siecs_script_parse_init(
-        outer->name, nested_code, &parser);
-    ecs_os_free(nested_code);
-    ecs_script_impl_t *impl = siecs_script_impl(script);
-
-    const char *open = &script->code[open_offset];
-    const char *pos = siecs_parser_skip_newlines(&parser, script->code);
-    while (pos < open) {
-        pos = siecs_script_stmt_w_separator(&parser, pos);
-        if (!pos) {
-            goto error;
-        }
-
-        pos = siecs_parser_skip_newlines(&parser, pos);
-    }
-
-    ecs_assert(pos == open, ECS_INTERNAL_ERROR, NULL);
-    pos = siecs_script_scope(&parser, impl->root, open + 1);
-    if (!pos) {
-        goto error;
-    }
-
-    if (script_ir_compile(script)) goto error;
-    script_adopt_nested(outer->script, script);
-    *next = code + (pos - (open + 1));
-    ECS_CONST_CAST(char*, open)[0] = ' ';
-    ECS_CONST_CAST(char*, pos)[-1] = '\0';
-    impl->token_remaining = parser.token_cur;
-    return script;
-
-error:
-    ecs_script_free(script);
-    return NULL;
+    scope->node.end = parser->token.end;
+    if (braces)
+        script_expect(parser, '}');
+    else if (parser->token.kind)
+        script_parse_error(parser, "unexpected closing scope");
+    parser->scope = previous;
+    parser->depth--;
+    return !parser->failed;
 }
 
-ecs_script_t* ecs_script_parse(
+ecs_script_t *ecs_script_parse(
     const char *name,
     const char *code,
     const ecs_script_eval_desc_t *desc,
-    ecs_script_eval_result_t *result)
-{
+    ecs_script_eval_result_t *result
+) {
     if (result) {
-        *result = (ecs_script_eval_result_t){0};
+        *result = (ecs_script_eval_result_t){ 0 };
         siecs_log_capture_push(true);
     }
-    if (code && strlen(code) > (size_t)(INT32_MAX - 1) / 2) {
-        ecs_parser_error(name, NULL, 0, "script source exceeds parser size limit");
-        if (result) result->error = siecs_log_capture_pop();
-        return NULL;
-    }
-
-    ecs_parser_t parser;
-    ecs_script_t *script = siecs_script_parse_init(
-        name, code, &parser);
-    ecs_script_impl_t *impl = siecs_script_impl(script);
-
-    if (desc && desc->skip_unknown) {
-        impl->skip_unknown = true;
-    }
-
-    if (desc && desc->ir) {
-        impl->ir_enabled = true;
-    }
-
-    /* Start parsing code */
-    const char *pos = script->code;
-
-    do {
-        pos = siecs_script_stmt_w_separator(&parser, pos);
-        if (!pos) {
-            /* NULL means error */
-            goto error;
+    ecs_script_t *script = NULL;
+    if (!code || strlen(code) > (size_t)(INT32_MAX - 1) / 2) {
+        ecs_parser_error(name, NULL, 0, "invalid or oversized script source");
+    } else {
+        script = siecs_script_new();
+        ecs_script_impl_t *impl = siecs_script_impl(script);
+        impl->pub.name = script_strdup(name ? name : "<script>");
+        impl->pub.code = script_strdup(code);
+        impl->skip_unknown = desc && desc->skip_unknown;
+        impl->ir_enabled = desc && desc->ir;
+        ecs_parser_t parser = { .script = impl,
+                                .name = script->name,
+                                .code = script->code,
+                                .pos = script->code };
+        script_lex(&parser);
+        if (!script_parse_scope(&parser, impl->root, false) || script_ir_compile(script)) {
+            ecs_script_free(script);
+            script = NULL;
         }
-
-        if (!pos[0]) {
-            /* \0 means end of input */
-            break;
-        }
-    } while (true);
-
-    impl->token_remaining = parser.token_cur;
-    if (script_ir_compile(script)) {
-        ecs_parser_error(name, code, 0, "out of memory compiling script instructions");
-        goto error;
     }
-
-    if (result) {
-        ecs_os_free(siecs_log_capture_pop());
-    }
-
-    return script;
-error:
     if (result) {
         result->error = siecs_log_capture_pop();
         siecs_log_get_captured_error_pos(&result->line, &result->column);
     }
-
-    ecs_script_free(script);
-    return NULL;
+    return script;
 }
-
-#endif

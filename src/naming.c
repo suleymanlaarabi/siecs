@@ -326,7 +326,7 @@ bool ecs_name_update_now(
     return true;
 }
 
-bool ecs_set_name(ecs_entity_t entity, const char *name) {
+static bool ecs_set_name_apply(ecs_entity_t entity, const char *name) {
     ecs_assert_not_scheduler_parallel("entity naming");
     if (!ecs_name_entity_alive(entity) || !ecs_name_valid(name))
         return false;
@@ -456,7 +456,7 @@ ecs_entity_t ecs_lookup(const char *path) {
     return ecs_name_resolve(0, path, false);
 }
 
-ecs_entity_t ecs_new_named(ecs_entity_t parent, const char *path) {
+static ecs_entity_t ecs_new_named_apply(ecs_entity_t parent, const char *path) {
     ecs_assert_not_scheduler_parallel("named entity creation");
     if (path)
         return ecs_name_resolve(parent, path, true);
@@ -508,4 +508,22 @@ char *ecs_entity_path(ecs_entity_t entity) {
         *--out = ':';
     }
     return path;
+}
+
+bool ecs_set_name(ecs_entity_t entity, const char *name) {
+    if (!ecs_world.sync_callbacks.size)
+        return ecs_set_name_apply(entity, name);
+    ecs_sync_begin();
+    bool result = ecs_set_name_apply(entity, name);
+    ecs_sync_end();
+    return result;
+}
+
+ecs_entity_t ecs_new_named(ecs_entity_t parent, const char *path) {
+    if (!ecs_world.sync_callbacks.size)
+        return ecs_new_named_apply(parent, path);
+    ecs_sync_begin();
+    ecs_entity_t result = ecs_new_named_apply(parent, path);
+    ecs_sync_end();
+    return result;
 }

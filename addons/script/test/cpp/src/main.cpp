@@ -17,6 +17,13 @@ void Script_options_and_recovery(void);
 void Script_string_views_and_null_bytes(void);
 void Script_files(void);
 void Script_source_documents(void);
+void Script_persistent_instances(void);
+void Script_document_applies_transactionally(void);
+void Script_typed_worker_task(void);
+void Script_cancels_worker_task(void);
+void Script_owned_worker_result(void);
+void Script_controlled_clock(void);
+void Script_scoped_budget(void);
 
 bake_test_case Script_testcases[] = {
     {
@@ -50,6 +57,34 @@ bake_test_case Script_testcases[] = {
     {
         "source_documents",
         Script_source_documents
+    },
+    {
+        "persistent_instances",
+        Script_persistent_instances
+    },
+    {
+        "document_applies_transactionally",
+        Script_document_applies_transactionally
+    },
+    {
+        "typed_worker_task",
+        Script_typed_worker_task
+    },
+    {
+        "cancels_worker_task",
+        Script_cancels_worker_task
+    },
+    {
+        "owned_worker_result",
+        Script_owned_worker_result
+    },
+    {
+        "controlled_clock",
+        Script_controlled_clock
+    },
+    {
+        "scoped_budget",
+        Script_scoped_budget
     }
 };
 
@@ -59,7 +94,7 @@ static bake_test_suite suites[] = {
         "Script",
         NULL,
         NULL,
-        8,
+        15,
         Script_testcases
     }
 };

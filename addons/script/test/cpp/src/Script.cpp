@@ -1,6 +1,10 @@
 #include <test.h>
 
+#include <atomic>
 #include <cstdio>
+#include <cstring>
+#include <future>
+#include <thread>
 #include <type_traits>
 
 struct ScriptPosition {
@@ -193,7 +197,7 @@ void Script_source_documents(void) {
     test_false(bool(document.edit(0, 0, "")));
     test_true(bool(moved));
     ecs::init();
-    test_true(bool(ecs::script::run(moved.code(), moved.name(), {.ir = true})));
+    test_true(bool(ecs::script::run(moved.code(), moved.name(), { .ir = true })));
     test_true(bool(ecs::entity::lookup("Leaf")));
     ecs::fini();
     const char invalid[] = "Other\0ignored";
@@ -203,4 +207,203 @@ void Script_source_documents(void) {
     test_int(std::remove(path), 0);
     test_true(moved.undo());
     test_false(bool(ecs::script_document::create("Root {")));
+}
+
+void Script_persistent_instances(void) {
+    ecs::init();
+    {
+        auto instance = ecs::script_instance::create("Root {}", "instance.si");
+        test_true(bool(instance));
+        test_int(instance.state(), EcsScriptActive);
+        ecs_entity_t root = ecs_lookup("Root");
+        test_true(root != 0);
+        test_true(bool(instance.reload("Root { Child {} }")));
+        test_uint(ecs_lookup("Root"), root);
+        test_true(ecs_lookup("Root::Child") != 0);
+        auto failed = instance.reload("Broken { Missing }");
+        test_false(bool(failed));
+        test_true(!failed.error().message.empty());
+        test_uint(ecs_lookup("Broken"), 0);
+        auto moved = std::move(instance);
+        test_false(bool(instance));
+        test_true(bool(moved));
+        test_true(bool(ecs::script_instance::flush()));
+    }
+    ecs::fini();
+}
+
+void Script_document_applies_transactionally(void) {
+    ecs::init();
+    {
+        auto document = ecs::script_document::create("Root {}", "document.si");
+        auto instance = ecs::script_instance::create(document.code(), document.name());
+        test_true(bool(instance));
+        test_true(bool(document.edit(6, 0, " Child {} ")));
+        test_true(bool(instance.apply(document)));
+        test_true(ecs_lookup("Root::Child") != 0);
+        test_true(document.undo());
+        test_true(bool(instance.apply(document)));
+        test_uint(ecs_lookup("Root::Child"), 0);
+    }
+    ecs::fini();
+}
+
+void Script_typed_worker_task(void) {
+    ecs::init();
+    ecs::component<ScriptPosition>();
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    std::thread worker;
+    std::atomic<bool> accepted{ false }, duplicate{ true };
+    test_true((ecs::register_script_task<ScriptPosition, int64_t>(
+        "fetch_position",
+        [&](ecs::script_task<ScriptPosition> task, const int64_t &argument) {
+            const int64_t input = argument;
+            worker = std::thread([&, task, input] {
+                gate.wait();
+                const ScriptPosition result{ static_cast<float>(input), 12 };
+                accepted = task.complete(result);
+                duplicate = task.complete(result);
+            });
+        }
+    )));
+    {
+        auto instance = ecs::script_instance::create(
+            "async { const result = await fetch_position(42)\n"
+            "Output { ScriptPosition: {$result.x, $result.y} } }",
+            "worker.si"
+        );
+        test_true(bool(instance));
+        test_uint(ecs_lookup("Output"), 0);
+        release.set_value();
+        worker.join();
+        test_true(accepted.load());
+        test_false(duplicate.load());
+        test_uint(ecs_lookup("Output"), 0);
+        test_true(bool(ecs::script_instance::flush()));
+        const auto output = ecs::entity::lookup("Output").get<ScriptPosition>();
+        test_flt(output.x, 42);
+        test_flt(output.y, 12);
+    }
+    ecs::fini();
+}
+
+void Script_cancels_worker_task(void) {
+    ecs::init();
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    std::thread worker;
+    std::atomic<bool> accepted{ true };
+    unsigned cancellations = 0;
+    test_true((ecs::register_script_task<int64_t>(
+        "pending",
+        [&](ecs::script_task<int64_t> task) {
+            worker = std::thread([&, task] {
+                gate.wait();
+                accepted = task.complete(99);
+            });
+        },
+        [&](ecs::script_task<int64_t>) {
+            cancellations++;
+            release.set_value();
+            worker.join();
+        }
+    )));
+    {
+        auto instance = ecs::script_instance::create(
+            "async { const result = await pending()\nUnexpected {} }",
+            "cancel.si"
+        );
+        test_true(bool(instance));
+        test_uint(ecs_lookup("Unexpected"), 0);
+    }
+    test_uint(cancellations, 1);
+    test_false(accepted.load());
+    test_true(bool(ecs::script_instance::flush()));
+    test_uint(ecs_lookup("Unexpected"), 0);
+    ecs::fini();
+}
+
+struct ScriptWorkerText {
+    reflected(char *message;)
+};
+
+void Script_owned_worker_result(void) {
+    ecs::init();
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    std::thread worker;
+    std::atomic<bool> accepted{ false };
+    test_true((ecs::register_script_task<ScriptWorkerText>(
+        "fetch_text",
+        [&](ecs::script_task<ScriptWorkerText> task) {
+            worker = std::thread([&, task] {
+                gate.wait();
+                char message[] = "worker value";
+                const ScriptWorkerText result{ message };
+                accepted = task.complete(result);
+                std::memset(message, 'x', sizeof(message) - 1);
+            });
+        }
+    )));
+    {
+        auto instance = ecs::script_instance::create(
+            "struct Text(value: string)\n"
+            "async { const result = await fetch_text()\nOutput { Text: {$result.message} } }",
+            "owned-worker.si"
+        );
+        test_true(bool(instance));
+        release.set_value();
+        worker.join();
+        test_true(accepted.load());
+        test_true(bool(ecs::script_instance::flush()));
+        const auto component = ecs_component_lookup("Text");
+        const char *message =
+            *static_cast<const char *const *>(ecs_get_cid(ecs_lookup("Output"), component));
+        test_str(message, "worker value");
+    }
+    ecs::fini();
+}
+
+void Script_controlled_clock(void) {
+    ecs::init();
+    double now = 0;
+    test_true(
+        ecs::script_instance::set_clock(
+            [](void *context) { return *static_cast<double *>(context); },
+            &now
+        )
+    );
+    {
+        auto instance =
+            ecs::script_instance::create("async { await sleep(3)\nDone {} }", "clock.si");
+        test_true(bool(instance));
+        test_uint(ecs_lookup("Done"), 0);
+        now = 3;
+        test_true(bool(ecs::script_instance::flush()));
+        test_true(ecs_lookup("Done") != 0);
+    }
+    test_true(ecs::script_instance::set_clock(nullptr));
+    ecs::fini();
+}
+
+void Script_scoped_budget(void) {
+    ecs::init();
+    auto parent = ecs::ensure("Group");
+    test_true(
+        bool(ecs::script::run(
+            "Leaf {}",
+            "parent.si",
+            { .parent = parent.id(), .instruction_budget = 2 }
+        ))
+    );
+    test_true(ecs_lookup("Group::Leaf") != 0);
+    test_uint(ecs_lookup("Leaf"), 0);
+    auto exhausted = ecs::script::run("while true {}", "budget.si", { .instruction_budget = 10 });
+    test_false(bool(exhausted));
+    test_true(exhausted.error().message.find("instruction budget exhausted") != std::string::npos);
+    test_true(bool(ecs::script::run("Recovered {}")));
+    test_true(ecs_lookup("Recovered") != 0);
+    test_uint(ecs_lookup("Group::Recovered"), 0);
+    ecs::fini();
 }

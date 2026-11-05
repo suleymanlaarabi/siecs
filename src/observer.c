@@ -7,12 +7,93 @@
 #include <string.h>
 
 ecs_observer_index_t observer_index;
+static uint64_t observer_next_revision;
+
+typedef struct {
+    ecs_observer_event_t event;
+    ecs_observer_id_t observer;
+    uint64_t revision;
+    void *owned_payload;
+    ecs_type_ops_t ops;
+} ecs_pending_observer_t;
+
+void ecs_observer_batch_begin(void) {
+    ecs_assert_not_scheduler_parallel("observer batching");
+    observer_index.batch_depth++;
+}
+
+void ecs_observer_dispatch(ecs_observer_id_t id, const ecs_observer_event_t *event) {
+    ecs_observer_t *observer = sicore_vec_get_mut(&observer_index.observers, id, ecs_observer_t);
+    if (!observer_index.batch_depth) {
+        observer->callback((ecs_observer_event_t *)event);
+        return;
+    }
+    ecs_pending_observer_t pending = { .event = *event,
+                                       .observer = id,
+                                       .revision = observer->revision };
+    size_t size = 0;
+    if (event->component && event->trigger_data) {
+        const ecs_component_record_t *component = ecs_component_index_get(event->component);
+        size = component->size;
+        pending.ops = component->ops;
+    } else if (event->event == EcsOnRelationSet || event->event == EcsOnRelationRemove) {
+        size = sizeof(ecs_relation_event_t);
+    }
+    if (size) {
+        pending.owned_payload = malloc(size);
+        ecs_assert(pending.owned_payload != NULL, "out of memory retaining observer event");
+        ecs_type_copy_t snapshot =
+            pending.ops.snapshot ? pending.ops.snapshot : pending.ops.copy_ctor;
+        ecs_assert(
+            !pending.ops.dtor || snapshot || pending.ops.reflected_type,
+            "owning observer payload needs a snapshot copy"
+        );
+        if (snapshot)
+            snapshot(pending.owned_payload, event->trigger_data, 1);
+        else
+            ecs_value_copy(&pending.ops, size, pending.owned_payload, event->trigger_data, 1, true);
+        pending.event.trigger_data = pending.owned_payload;
+    }
+    sicore_vec_push(&observer_index.pending, &pending, sizeof pending);
+}
+
+void ecs_observer_batch_end(void) {
+    ecs_assert(observer_index.batch_depth != 0, "unbalanced observer batch");
+    if (--observer_index.batch_depth)
+        return;
+    /* Copy entries before callbacks: callbacks may create nested batches. */
+    sicore_vec_t events = observer_index.pending;
+    sicore_vec_init(&observer_index.pending, sizeof(ecs_pending_observer_t));
+    const ecs_pending_observer_t *entries = events.data;
+    for (uint32_t i = 0; i < events.size; i++) {
+        const ecs_pending_observer_t *entry = &entries[i];
+        ecs_observer_t *observer =
+            sicore_vec_get_mut(&observer_index.observers, entry->observer, ecs_observer_t);
+        if (observer->callback && observer->enabled && observer->revision == entry->revision)
+            observer->callback((ecs_observer_event_t *)&entry->event);
+        if (entry->owned_payload) {
+            ecs_value_fini(&entry->ops, entry->owned_payload, 1);
+            free(entry->owned_payload);
+        }
+    }
+    sicore_vec_fini(&events);
+    sicore_vec_t retired = observer_index.pending_entities;
+    sicore_vec_init(&observer_index.pending_entities, sizeof(ecs_entity_t));
+    const ecs_entity_t *entities = retired.data;
+    for (uint32_t i = 0; i < retired.size; i++) {
+        if (!ecs_is_alive(entities[i]))
+            ecs_observer_fini_entity(entities[i]);
+    }
+    sicore_vec_fini(&retired);
+}
 
 void ecs_observer_index_init(void) {
     sicore_vec_init(&observer_index.observers, sizeof(ecs_observer_t));
     sicore_vec_init(&observer_index.target_keys, sizeof(uint64_t));
     sicore_vec_init(&observer_index.target_observers, sizeof(ecs_observer_id_t));
     observer_index.first_free = UINT32_MAX;
+    sicore_vec_init(&observer_index.pending, sizeof(ecs_pending_observer_t));
+    sicore_vec_init(&observer_index.pending_entities, sizeof(ecs_entity_t));
     observer_index.event_count = ECS_BUILTIN_EVENT_COUNT;
 }
 
@@ -24,6 +105,8 @@ void ecs_observer_index_fini(void) {
         if (observers[i].user_data_dtor)
             observers[i].user_data_dtor(observers[i].user_data);
     }
+    sicore_vec_fini(&observer_index.pending);
+    sicore_vec_fini(&observer_index.pending_entities);
     sicore_vec_fini(&observer_index.target_observers);
     sicore_vec_fini(&observer_index.target_keys);
     sicore_vec_fini(&observer_index.observers);
@@ -119,10 +202,12 @@ ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
         .next_module = UINT32_MAX,
         .target_entity =
             desc->entity != 0 ? ecs_entity_id(desc->entity) : ECS_OBSERVER_GLOBAL_ENTITY,
+        .target_handle = desc->entity,
         .event = desc->on,
         .query = ECS_OBSERVER_NO_QUERY,
         .module = 0,
         .enabled = true,
+        .revision = ++observer_next_revision,
     };
 
     if (desc->entity == 0) {
@@ -180,6 +265,10 @@ void ecs_observer_fini(ecs_observer_id_t id) {
 }
 
 void ecs_observer_fini_entity(ecs_entity_t entity) {
+    if (observer_index.batch_depth) {
+        sicore_vec_push(&observer_index.pending_entities, &entity, sizeof entity);
+        return;
+    }
     if (!observer_index.target_keys.size)
         return;
     uint32_t entity_id = ecs_entity_id(entity);
@@ -190,6 +279,12 @@ void ecs_observer_fini_entity(ecs_entity_t entity) {
            ((const uint64_t *)observer_index.target_keys.data)[at] < after_key) {
         ecs_observer_id_t id =
             ((const ecs_observer_id_t *)observer_index.target_observers.data)[at];
+        const ecs_observer_t *observer =
+            sicore_vec_get(&observer_index.observers, id, ecs_observer_t);
+        if (observer->target_handle != entity) {
+            at++;
+            continue;
+        }
         ecs_observer_fini(id);
     }
 }
@@ -236,7 +331,7 @@ void ecs_emit_observers(
                 .user_data = obs->user_data,
                 .trigger_data = trigger_data,
             };
-            obs->callback(&observer_event);
+            ecs_observer_dispatch(oid, &observer_event);
         }
     }
 

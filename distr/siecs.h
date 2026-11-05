@@ -550,6 +550,18 @@ SIREFLECT_API void sireflect_init(void);
 /* Releases one initialization reference and destroys metadata at the final release. */
 SIREFLECT_API void sireflect_fini(void);
 
+/* Isolated, append-only type registration on the calling thread. Existing
+ * metadata is immutable during preparation. Only one transaction may be active
+ * per thread; callers serialize commits with other registry writers. Newly
+ * registered handles must not escape until commit succeeds. */
+typedef struct sireflect_transaction_t sireflect_transaction_t;
+SIREFLECT_API sireflect_transaction_t *sireflect_transaction_begin(void);
+/* Savepoints cover registrations added in the active transaction. */
+SIREFLECT_API uint32_t sireflect_transaction_mark(const sireflect_transaction_t *transaction);
+SIREFLECT_API bool sireflect_transaction_rewind(sireflect_transaction_t *transaction, uint32_t mark);
+SIREFLECT_API bool sireflect_transaction_commit(sireflect_transaction_t *transaction);
+SIREFLECT_API void sireflect_transaction_abort(sireflect_transaction_t *transaction);
+
 /*
  * Returns the current recoverable error message, or NULL if there is no error.
  * The returned pointer is owned by Sireflect and remains valid until the next
@@ -1180,7 +1192,21 @@ typedef struct {
     ecs_type_copy_t copy;
     ecs_type_move_t move_ctor;
     ecs_type_move_t move;
+    /* Optional owning copy for delayed observer payloads. Falls back to
+     * copy_ctor. A move-only owning type must supply this to be observed in a
+     * batch. The snapshot is released through dtor. */
+    ecs_type_copy_t snapshot;
+    /* Native recursive lifecycle for reflected strings/arrays/structures.
+     * Explicit callbacks take precedence. Non-string pointers stay borrowed. */
+    sireflect_handle_t reflected_type;
 } ecs_type_ops_t;
+
+/* Derive native owning string lifecycle without allocating a component id. */
+SIECS_API ecs_type_ops_t ecs_reflected_ops(sireflect_handle_t type);
+SIECS_API void ecs_reflected_value_copy(sireflect_handle_t type, void *destination,
+    const void *source, bool construct);
+SIECS_API bool ecs_reflected_value_equal(sireflect_handle_t type, const void *left, const void *right);
+SIECS_API void ecs_reflected_value_fini(sireflect_handle_t type, void *value);
 
 /*
  * Component registration descriptor.
@@ -1893,6 +1919,10 @@ SIECS_API ecs_relation_id_t ecs_relation_lookup(const char *name);
  */
 SIECS_API const ecs_relation_info_t *ecs_relation_info(ecs_relation_id_t relation);
 
+/* Borrowed owned component ids, valid until the entity changes archetype.
+ * Relations have their own namespace and are inspected through relation APIs. */
+SIECS_API const ecs_component_t *ecs_entity_component_ids(ecs_entity_t entity, uint32_t *count);
+
 /* Look up a live entity by its :: separated path from the root. No allocation.
  * Returns 0 when absent or malformed. A leading :: always selects the root. */
 SIECS_API ecs_entity_t ecs_lookup(const char *path);
@@ -1937,6 +1967,19 @@ SIECS_API void ecs_defer_begin(void);
 
 /* End a defer scope. The outermost end flushes the command buffer. */
 SIECS_API void ecs_defer_end(void);
+
+/* Main-thread synchronization callbacks run after complete immediate mutations,
+ * outer deferred flushes, and progression. They never run on scheduler workers.
+ * Begin/end groups immediate operations into one synchronization boundary; this
+ * does not defer storage writes or observers. Callbacks may mutate the world;
+ * nested synchronization is suppressed. Handles belong to the current world. */
+typedef uint64_t ecs_sync_id_t;
+typedef void (*ecs_sync_callback_t)(void *context);
+SIECS_API ecs_sync_id_t ecs_sync_register(ecs_sync_callback_t callback, void *context);
+SIECS_API void ecs_sync_unregister(ecs_sync_id_t callback);
+SIECS_API void ecs_sync_begin(void);
+SIECS_API void ecs_sync_end(void);
+SIECS_API void ecs_sync(void);
 
 /*
  * Return whether entity is alive in world.
@@ -2345,6 +2388,14 @@ ecs_with_relation_id(ecs_component_t component, ecs_relation_id_t relation, ecs_
 #define EcsOnRelationSet 3
 /* Fired before a relation is removed. */
 #define EcsOnRelationRemove 4
+
+/* Delay observer callbacks until the outer batch ends. Builtin event payloads
+ * are owned snapshots; observers match the table at emission time and read the
+ * final world when delivered. Custom event payloads remain borrowed and must
+ * outlive the batch. Explicitly removed observers do not receive queued events.
+ * This groups notifications only; it does not provide rollback. */
+SIECS_API void ecs_observer_batch_begin(void);
+SIECS_API void ecs_observer_batch_end(void);
 
 /*
  * Observer descriptor.

@@ -164,9 +164,7 @@ void ecs_remove_resource_id(ecs_resource_t id) {
     if (record->on_remove) {
         record->on_remove(data);
     }
-    if (record->ops.dtor) {
-        record->ops.dtor(data, 1);
-    }
+    ecs_value_fini(&record->ops, data, 1);
     free(data);
 }
 

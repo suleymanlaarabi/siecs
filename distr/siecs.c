@@ -612,6 +612,7 @@ sireflect_type_info_t *sireflect_registry_type_at(sireflect_handle_t handle);
 const sireflect_type_info_t *sireflect_registry_const_type_at(sireflect_handle_t handle);
 sireflect_type_entry_t *sireflect_registry_entry_at(sireflect_handle_t handle);
 void sireflect_registry_rollback(size_t count);
+bool sireflect_registry_type_is_writable(sireflect_handle_t handle);
 bool sireflect_registry_finish_struct(sireflect_handle_t handle,
     sireflect_field_info_t *fields, size_t field_count, size_t size, size_t align);
 
@@ -1007,6 +1008,9 @@ static sireflect_meta_store_t *field_store(sireflect_handle_t type, const char *
 
 bool sireflect_type_set_meta(sireflect_handle_t type, const sireflect_meta_t *meta) {
     sireflect_error_clear();
+    if (!sireflect_registry_type_is_writable(type)) {
+        sireflect_error_set("existing metadata is immutable during a transaction"); return false;
+    }
     sireflect_meta_store_t *store = type_store(type);
     if (store == NULL) { sireflect_error_set("invalid metadata type"); return false; }
     return set_meta(store, meta);
@@ -1027,6 +1031,9 @@ const sireflect_metas_t *sireflect_type_metas(sireflect_handle_t type) {
 bool sireflect_field_set_meta(sireflect_handle_t type, const char *field,
     const sireflect_meta_t *meta) {
     sireflect_error_clear();
+    if (!sireflect_registry_type_is_writable(type)) {
+        sireflect_error_set("existing metadata is immutable during a transaction"); return false;
+    }
     sireflect_meta_store_t *store = field_store(type, field);
     if (store == NULL) { sireflect_error_set("unknown metadata field or type"); return false; }
     return set_meta(store, meta);
@@ -2115,13 +2122,23 @@ static sireflect_registry_t sireflect_global_registry;
 static size_t sireflect_global_references;
 static sireflect_handle_t sireflect_next_handle = 1;
 
+struct sireflect_transaction_t {
+    sireflect_registry_t registry;
+    uint32_t base_count;
+};
+#if defined(_MSC_VER)
+static __declspec(thread) sireflect_transaction_t *sireflect_active_transaction;
+#else
+static _Thread_local sireflect_transaction_t *sireflect_active_transaction;
+#endif
+
 bool sireflect_registry_is_initialized(void) {
     return sireflect_global_references != 0;
 }
 
 sireflect_registry_t *sireflect_registry_current(void) {
     sireflect_assert(sireflect_registry_is_initialized(), "sireflect must be initialized");
-    return &sireflect_global_registry;
+    return sireflect_active_transaction ? &sireflect_active_transaction->registry : &sireflect_global_registry;
 }
 
 static char *sireflect_dup_cstr(const char *str) {
@@ -2166,12 +2183,7 @@ sireflect_format_array_type_name(const sireflect_type_info_t *element, size_t el
 }
 
 static sireflect_handle_t sireflect_handle_from_index(size_t index) {
-    return sireflect_global_registry.first_handle + (sireflect_handle_t)index;
-}
-
-static size_t sireflect_index_from_handle(sireflect_handle_t handle) {
-    sireflect_assert(handle >= sireflect_global_registry.first_handle, "type handle must be valid");
-    return (size_t)(handle - sireflect_global_registry.first_handle);
+    return sireflect_registry_current()->first_handle + (sireflect_handle_t)index;
 }
 
 sireflect_handle_t sireflect_registry_add_type(
@@ -2434,7 +2446,7 @@ static void sireflect_entry_clear(sireflect_type_entry_t *entry) {
 }
 
 void sireflect_registry_rollback(size_t count) {
-    sireflect_registry_t *reg = &sireflect_global_registry;
+    sireflect_registry_t *reg = sireflect_registry_current();
     while (reg->types.size > count) {
         const uint32_t index = reg->types.size - 1;
         sireflect_type_entry_t *entry = *sicore_vec_get_mut(&reg->types, index, sireflect_type_entry_t *);
@@ -2505,6 +2517,10 @@ sireflect_handle_t sireflect_registry_handle_by_name(const char *name) {
     const uint32_t index = sicore_map_get(&reg->types_by_name, name);
 
     if (index == UINT32_MAX) {
+        if (sireflect_active_transaction) {
+            uint32_t existing = sicore_map_get(&sireflect_global_registry.types_by_name, name);
+            if (existing != UINT32_MAX) return sireflect_global_registry.first_handle + existing;
+        }
         return SIREFLECT_INVALID_HANDLE;
     }
 
@@ -2513,8 +2529,10 @@ sireflect_handle_t sireflect_registry_handle_by_name(const char *name) {
 
 const sireflect_type_info_t *sireflect_registry_const_type_at(sireflect_handle_t handle) {
     const sireflect_registry_t *reg = sireflect_registry_current();
-
-    const size_t index = sireflect_index_from_handle(handle);
+    if (sireflect_active_transaction && handle < reg->first_handle) {
+        reg = &sireflect_global_registry;
+    }
+    const size_t index = (size_t)(handle - reg->first_handle);
     sireflect_assert(index < reg->types.size, "type handle is out of range");
 
     const sireflect_type_entry_t *entry = *sicore_vec_get(&reg->types, index, sireflect_type_entry_t *);
@@ -2522,13 +2540,73 @@ const sireflect_type_info_t *sireflect_registry_const_type_at(sireflect_handle_t
 }
 
 sireflect_type_entry_t *sireflect_registry_entry_at(sireflect_handle_t handle) {
-    if (!sireflect_registry_is_initialized() ||
-        handle < sireflect_global_registry.first_handle ||
-        handle - sireflect_global_registry.first_handle >= sireflect_global_registry.types.size) {
+    if (!sireflect_registry_is_initialized()) return NULL;
+    sireflect_registry_t *reg = sireflect_registry_current();
+    if (sireflect_active_transaction && handle < reg->first_handle) reg = &sireflect_global_registry;
+    if (handle < reg->first_handle || handle - reg->first_handle >= reg->types.size) return NULL;
+    return *sicore_vec_get_mut(&reg->types, (uint32_t)(handle - reg->first_handle), sireflect_type_entry_t *);
+}
+
+bool sireflect_registry_type_is_writable(sireflect_handle_t handle) {
+    return !sireflect_active_transaction || handle >= sireflect_active_transaction->registry.first_handle;
+}
+
+sireflect_transaction_t *sireflect_transaction_begin(void) {
+    sireflect_error_clear();
+    if (!sireflect_registry_is_initialized() || sireflect_active_transaction) {
+        sireflect_error_set("reflection transaction requires an initialized registry and no active transaction");
         return NULL;
     }
-    return *sicore_vec_get_mut(&sireflect_global_registry.types,
-        (uint32_t)(handle - sireflect_global_registry.first_handle), sireflect_type_entry_t *);
+    sireflect_transaction_t *transaction = calloc(1, sizeof(*transaction));
+    if (!transaction) { sireflect_error_set("out of memory"); return NULL; }
+    transaction->base_count = sireflect_global_registry.types.size;
+    transaction->registry.first_handle = sireflect_global_registry.first_handle + transaction->base_count;
+    sicore_vec_init(&transaction->registry.types, sizeof(sireflect_type_entry_t*));
+    sicore_map_init(&transaction->registry.types_by_name);
+    sireflect_active_transaction = transaction;
+    return transaction;
+}
+
+uint32_t sireflect_transaction_mark(const sireflect_transaction_t *transaction) {
+    sireflect_assert(transaction && transaction == sireflect_active_transaction, "inactive reflection transaction");
+    return transaction->registry.types.size;
+}
+
+bool sireflect_transaction_rewind(sireflect_transaction_t *transaction, uint32_t mark) {
+    if (!transaction || transaction != sireflect_active_transaction || mark > transaction->registry.types.size)
+        return false;
+    sireflect_registry_rollback(mark);
+    return true;
+}
+
+bool sireflect_transaction_commit(sireflect_transaction_t *transaction) {
+    sireflect_error_clear();
+    if (!transaction || transaction != sireflect_active_transaction ||
+        transaction->base_count != sireflect_global_registry.types.size) {
+        sireflect_error_set("invalid or conflicting reflection transaction");
+        return false;
+    }
+    sireflect_type_entry_t **entries = transaction->registry.types.data;
+    for (uint32_t i = 0; i < transaction->registry.types.size; i++) {
+        sicore_vec_push(&sireflect_global_registry.types, &entries[i], sizeof(*entries));
+        sicore_map_set(&sireflect_global_registry.types_by_name, entries[i]->info.name,
+            transaction->base_count + i);
+    }
+    sireflect_active_transaction = NULL;
+    sicore_vec_fini(&transaction->registry.types);
+    sicore_map_fini(&transaction->registry.types_by_name);
+    free(transaction);
+    return true;
+}
+
+void sireflect_transaction_abort(sireflect_transaction_t *transaction) {
+    if (!transaction) return;
+    sireflect_assert(transaction == sireflect_active_transaction, "transaction belongs to another thread");
+    sireflect_registry_rollback(0);
+    sireflect_active_transaction = NULL;
+    sicore_vec_fini(&transaction->registry.types);
+    sicore_map_fini(&transaction->registry.types_by_name);
+    free(transaction);
 }
 
 sireflect_type_info_t *sireflect_registry_type_at(sireflect_handle_t handle) {
@@ -5779,6 +5857,16 @@ static ECS_ALWAYS_INLINE void ecs_bytes_zero(void *dst, size_t size) {
     }
 }
 
+static inline void ecs_value_fini(const ecs_type_ops_t *ops, void *value, uint32_t count) {
+    if (ops->dtor)
+        ops->dtor(value, count);
+    else if (ops->reflected_type) {
+        size_t stride = sireflect_type_size(ops->reflected_type);
+        for (uint32_t i = 0; i < count; i++)
+            ecs_reflected_value_fini(ops->reflected_type, (char *)value + i * stride);
+    }
+}
+
 /* Copying an inherited owned tag still invokes its explicit copy hook. Normal
  * storage transfers skip zero-sized values before entering this primitive. */
 static inline bool ecs_value_copy(
@@ -5792,6 +5880,16 @@ static inline bool ecs_value_copy(
     ecs_type_copy_t copy = construct ? ops->copy_ctor : ops->copy;
     if (copy) {
         copy(dst, src, count);
+        return true;
+    }
+    if (ops->reflected_type) {
+        for (uint32_t i = 0; i < count; i++)
+            ecs_reflected_value_copy(
+                ops->reflected_type,
+                (char *)dst + i * size,
+                (const char *)src + i * size,
+                construct
+            );
         return true;
     }
     if (size)
@@ -5817,8 +5915,15 @@ static inline void ecs_value_transfer(
         move_op(dst, (void *)src, count);
         return;
     }
-    if (ecs_value_copy(ops, size, dst, src, count, construct) && move && ops->dtor)
-        ops->dtor((void *)src, count);
+    if (move && ops->reflected_type && !move_op) {
+        if (!construct)
+            ecs_value_fini(ops, dst, count);
+        memcpy(dst, src, size * count);
+        memset((void *)src, 0, size * count);
+        return;
+    }
+    if (ecs_value_copy(ops, size, dst, src, count, construct) && move)
+        ecs_value_fini(ops, (void *)src, count);
 }
 
 sireflect_struct_desc_t *ecs_reflection_desc_copy(const sireflect_struct_desc_t *desc);
@@ -6018,12 +6123,14 @@ typedef struct {
 
     ecs_observer_id_t next_module;
     uint32_t target_entity;
+    ecs_entity_t target_handle;
 
     ecs_event_t event;
     ecs_query_id_t query;
     ecs_module_id_t module;
 
     bool enabled;
+    uint64_t revision;
 } ecs_observer_t;
 
 #define ECS_OBSERVER_GLOBAL_ENTITY UINT32_MAX
@@ -6041,6 +6148,9 @@ typedef struct {
 
     ecs_observer_id_t first_free;
     uint16_t event_count;
+    uint32_t batch_depth;
+    sicore_vec_t pending;
+    sicore_vec_t pending_entities;
 } ecs_observer_index_t;
 
 extern ecs_observer_index_t observer_index;
@@ -6203,6 +6313,10 @@ struct ecs_world_s {
     ecs_execution_context_t main_context;
     ecs_worker_pool_t worker_pool;
     sicore_vec_t fini_callbacks;
+    sicore_vec_t sync_callbacks;
+    uint32_t sync_depth;
+    uint32_t sync_generation;
+    bool synchronizing;
     bool did_start;
     atomic_bool exit;
     double delta_time;
@@ -6238,6 +6352,7 @@ static inline ecs_execution_context_t *ecs_execution_context_current(void) {
     return context ? context : &ecs_world.main_context;
 }
 
+void ecs_sync_storage_fini(void);
 void ecs_resource_storage_init(void);
 void ecs_resource_storage_fini(void);
 void ecs_module_storage_init(void);
@@ -6251,6 +6366,10 @@ typedef struct {
 
 #define ecs_get_record(entity) ecs_entity_index_get_record(ecs_first(entity))
 #define ecs_get_table(tid) ecs_table_index_at(tid)
+
+void ecs_observer_batch_begin(void);
+void ecs_observer_batch_end(void);
+void ecs_observer_dispatch(ecs_observer_id_t id, const ecs_observer_event_t *event);
 
 static inline void ecs_emit_target_observers(
     ecs_table_t *table,
@@ -6273,8 +6392,7 @@ static inline void ecs_emit_target_observers(
         ecs_observer_id_t oid = ids[at++];
         ecs_observer_t *observer =
             sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
-        if (!observer->enabled)
-            continue;
+        if (!observer->enabled || observer->target_handle != observer_target) continue;
         if (observer->query != ECS_OBSERVER_NO_QUERY) {
             ecs_query_cache_t *cache = ecs_query_cache(observer->query);
             if (ecs_query_table_position(cache, table_id) == UINT16_MAX)
@@ -6287,7 +6405,7 @@ static inline void ecs_emit_target_observers(
             .user_data = observer->user_data,
             .trigger_data = trigger_data,
         };
-        observer->callback(&observer_event);
+        ecs_observer_dispatch(oid, &observer_event);
     }
 }
 
@@ -6840,9 +6958,8 @@ static inline void deferred_change_fini(ecs_deferred_change_t *change) {
         return;
     }
     const ecs_component_record_t *record = ecs_component_index_get(change->id);
-    if (record->info->size && record->ops.dtor) {
-        record->ops.dtor(change->data, 1);
-    }
+    if (!record->plain && record->size)
+        ecs_value_fini(&record->ops, change->data, 1);
     change->data = NULL;
 }
 
@@ -7104,11 +7221,19 @@ command_buffer_change(ecs_entity_t entity, ecs_component_t id, void *data, ecs_d
     if (op == EcsDeferredRemove || op == EcsDeferredAdd)
         return;
     const ecs_component_record_t *record = ecs_component_index_get(id);
-    change->data = ecs_arena_alloc(buffer->arena, record->info->size ? record->info->size : 1);
-    if (op == EcsDeferredMove) {
-        ecs_value_transfer(&record->ops, record->info->size, change->data, data, 1, true, true);
+    change->data = ecs_arena_alloc(buffer->arena, record->size ? record->size : 1);
+    if (record->plain) {
+        ecs_bytes_copy(change->data, data, record->size);
     } else {
-        ecs_value_transfer(&record->ops, record->info->size, change->data, data, 1, false, true);
+        ecs_value_transfer(
+            &record->ops,
+            record->size,
+            change->data,
+            data,
+            1,
+            op == EcsDeferredMove,
+            true
+        );
     }
 }
 
@@ -7588,6 +7713,7 @@ void ecs_command_buffer_flush() {
     context->flushing_commands = true;
     ecs_command_buffer_flush_buffer(&context->commands);
     context->flushing_commands = false;
+    ecs_sync();
 }
 
 void ecs_defer_begin(void) { ecs_execution_context_current()->defer_depth++; }
@@ -7599,7 +7725,9 @@ void ecs_defer_end(void) {
     if (context->defer_depth == 0 && !context->flushing_commands && !context->scheduler_parallel &&
         context->commands.commands.size != 0) {
         ecs_command_buffer_flush();
+        return;
     }
+    ecs_sync();
 }
 
 static ecs_component_t ecs_component_alloc_ids(uint16_t count) {
@@ -7717,6 +7845,21 @@ static void RelationSourceDtor(void *ptr, uint32_t count) {
     }
 }
 
+static void RelationSourceSnapshot(void *destination, const void *source, uint32_t count) {
+    RelationSource *copies = destination;
+    const RelationSource *values = source;
+    for (uint32_t i = 0; i < count; i++) {
+        sicore_vec_init(&copies[i].entities, sizeof(ecs_entity_t));
+        /* The remove hook marks a retiring reverse index with UINT32_MAX.
+         * Its edges have already been detached; retain an empty retired view. */
+        if (values[i].entities.size == UINT32_MAX)
+            continue;
+        const ecs_entity_t *entities = values[i].entities.data;
+        for (uint32_t j = 0; j < values[i].entities.size; j++)
+            sicore_vec_push_u64(&copies[i].entities, entities[j]);
+    }
+}
+
 void RelationSourceOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
     (void)entity;
     RelationSource *source_data = ptr;
@@ -7779,6 +7922,7 @@ ecs_component_t ecs_component_register_relation_internal(
     desc = (ecs_component_desc_t){
         .size = sizeof(RelationSource),
         .ops.dtor = RelationSourceDtor,
+        .ops.snapshot = RelationSourceSnapshot,
         .on_remove = RelationSourceOnRemove,
         .inheritance = EcsInheritShared,
     };
@@ -7853,6 +7997,7 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
     ecs_component_desc_t component = {
         .size = info->size,
         .struct_desc = &reflection,
+        .ops = ecs_reflected_ops(type),
         .inheritance = desc->inheritance,
         .mutation = desc->mutation,
     };
@@ -7949,7 +8094,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     }
 }
 
-void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
+static void ecs_add_cid_apply(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_component_access(entity, cid);
     ecs_assert_can_be_updated(entity);
 
@@ -8007,7 +8152,7 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_remove_cid_notify(entity, cid, col_idx);
 }
 
-void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
+static void ecs_remove_cid_apply(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_component_access(entity, cid);
 
     if (ecs_is_deferred()) {
@@ -8212,11 +8357,11 @@ bool ecs_set_plain_many(
     return true;
 }
 
-void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
+static void ecs_set_cid_apply(ecs_entity_t entity, ecs_component_t cid, const void *data) {
     ecs_store_cid(entity, cid, (void *)data, false);
 }
 
-void ecs_modified_cid(ecs_entity_t entity, ecs_component_t cid) {
+static void ecs_modified_cid_apply(ecs_entity_t entity, ecs_component_t cid) {
 #ifndef NDEBUG
     ecs_assert(
         ecs_component_info(cid)->mutation != EcsSetOnly,
@@ -8348,6 +8493,51 @@ void ecs_with_many(ecs_component_t component, ...) {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
+
+void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
+    if (!ecs_world.sync_callbacks.size) {
+        ecs_add_cid_apply(entity, cid);
+        return;
+    }
+    ecs_sync_begin();
+    ecs_add_cid_apply(entity, cid);
+    ecs_sync_end();
+}
+
+void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
+    if (!ecs_world.sync_callbacks.size) {
+        ecs_remove_cid_apply(entity, cid);
+        return;
+    }
+    ecs_sync_begin();
+    ecs_remove_cid_apply(entity, cid);
+    ecs_sync_end();
+}
+
+static ECS_NOINLINE void
+ecs_set_cid_synchronized(ecs_entity_t entity, ecs_component_t cid, const void *data) {
+    ecs_sync_begin();
+    ecs_set_cid_apply(entity, cid, data);
+    ecs_sync_end();
+}
+
+void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
+    if (ECS_UNLIKELY(ecs_world.sync_callbacks.size)) {
+        ecs_set_cid_synchronized(entity, cid, data);
+        return;
+    }
+    ecs_set_cid_apply(entity, cid, data);
+}
+
+void ecs_modified_cid(ecs_entity_t entity, ecs_component_t cid) {
+    if (!ecs_world.sync_callbacks.size) {
+        ecs_modified_cid_apply(entity, cid);
+        return;
+    }
+    ecs_sync_begin();
+    ecs_modified_cid_apply(entity, cid);
+    ecs_sync_end();
+}
 
 void ecs_entity_materialize(ecs_entity_t entity) {
     ecs_entity_record_t *record = ecs_get_record(entity);
@@ -8539,7 +8729,7 @@ void ecs_kill_now(ecs_entity_t entity) {
     ecs_entity_index_kill(ecs_first(entity));
 }
 
-void ecs_kill(ecs_entity_t entity) {
+static void ecs_kill_apply(ecs_entity_t entity) {
     ecs_assert_entity_alive(entity);
 
     if (ecs_is_deferred()) {
@@ -8563,6 +8753,24 @@ const char *ecs_entity_name(ecs_entity_t entity) {
         return name;
     snprintf(buff, sizeof buff, "(%u, %u)", ecs_first(entity), ecs_second(entity));
     return buff;
+}
+
+void ecs_kill(ecs_entity_t entity) {
+    if (!ecs_world.sync_callbacks.size) {
+        ecs_kill_apply(entity);
+        return;
+    }
+    ecs_sync_begin();
+    ecs_kill_apply(entity);
+    ecs_sync_end();
+}
+
+const ecs_component_t *ecs_entity_component_ids(ecs_entity_t entity, uint32_t *count) {
+    ecs_assert_is_alive(entity);
+    const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(ecs_get_record(entity)));
+    if (count)
+        *count = table->type.component_count;
+    return table->type.ids;
 }
 
 static uint16_t ecs_inheritance_base_component_capacity(ecs_entity_t base) {
@@ -9310,7 +9518,7 @@ bool ecs_name_update_now(
     return true;
 }
 
-bool ecs_set_name(ecs_entity_t entity, const char *name) {
+static bool ecs_set_name_apply(ecs_entity_t entity, const char *name) {
     ecs_assert_not_scheduler_parallel("entity naming");
     if (!ecs_name_entity_alive(entity) || !ecs_name_valid(name))
         return false;
@@ -9440,7 +9648,7 @@ ecs_entity_t ecs_lookup(const char *path) {
     return ecs_name_resolve(0, path, false);
 }
 
-ecs_entity_t ecs_new_named(ecs_entity_t parent, const char *path) {
+static ecs_entity_t ecs_new_named_apply(ecs_entity_t parent, const char *path) {
     ecs_assert_not_scheduler_parallel("named entity creation");
     if (path)
         return ecs_name_resolve(parent, path, true);
@@ -9494,13 +9702,112 @@ char *ecs_entity_path(ecs_entity_t entity) {
     return path;
 }
 
+bool ecs_set_name(ecs_entity_t entity, const char *name) {
+    if (!ecs_world.sync_callbacks.size)
+        return ecs_set_name_apply(entity, name);
+    ecs_sync_begin();
+    bool result = ecs_set_name_apply(entity, name);
+    ecs_sync_end();
+    return result;
+}
+
+ecs_entity_t ecs_new_named(ecs_entity_t parent, const char *path) {
+    if (!ecs_world.sync_callbacks.size)
+        return ecs_new_named_apply(parent, path);
+    ecs_sync_begin();
+    ecs_entity_t result = ecs_new_named_apply(parent, path);
+    ecs_sync_end();
+    return result;
+}
+
 ecs_observer_index_t observer_index;
+static uint64_t observer_next_revision;
+
+typedef struct {
+    ecs_observer_event_t event;
+    ecs_observer_id_t observer;
+    uint64_t revision;
+    void *owned_payload;
+    ecs_type_ops_t ops;
+} ecs_pending_observer_t;
+
+void ecs_observer_batch_begin(void) {
+    ecs_assert_not_scheduler_parallel("observer batching");
+    observer_index.batch_depth++;
+}
+
+void ecs_observer_dispatch(ecs_observer_id_t id, const ecs_observer_event_t *event) {
+    ecs_observer_t *observer = sicore_vec_get_mut(&observer_index.observers, id, ecs_observer_t);
+    if (!observer_index.batch_depth) {
+        observer->callback((ecs_observer_event_t *)event);
+        return;
+    }
+    ecs_pending_observer_t pending = { .event = *event,
+                                       .observer = id,
+                                       .revision = observer->revision };
+    size_t size = 0;
+    if (event->component && event->trigger_data) {
+        const ecs_component_record_t *component = ecs_component_index_get(event->component);
+        size = component->size;
+        pending.ops = component->ops;
+    } else if (event->event == EcsOnRelationSet || event->event == EcsOnRelationRemove) {
+        size = sizeof(ecs_relation_event_t);
+    }
+    if (size) {
+        pending.owned_payload = malloc(size);
+        ecs_assert(pending.owned_payload != NULL, "out of memory retaining observer event");
+        ecs_type_copy_t snapshot =
+            pending.ops.snapshot ? pending.ops.snapshot : pending.ops.copy_ctor;
+        ecs_assert(
+            !pending.ops.dtor || snapshot || pending.ops.reflected_type,
+            "owning observer payload needs a snapshot copy"
+        );
+        if (snapshot)
+            snapshot(pending.owned_payload, event->trigger_data, 1);
+        else
+            ecs_value_copy(&pending.ops, size, pending.owned_payload, event->trigger_data, 1, true);
+        pending.event.trigger_data = pending.owned_payload;
+    }
+    sicore_vec_push(&observer_index.pending, &pending, sizeof pending);
+}
+
+void ecs_observer_batch_end(void) {
+    ecs_assert(observer_index.batch_depth != 0, "unbalanced observer batch");
+    if (--observer_index.batch_depth)
+        return;
+    /* Copy entries before callbacks: callbacks may create nested batches. */
+    sicore_vec_t events = observer_index.pending;
+    sicore_vec_init(&observer_index.pending, sizeof(ecs_pending_observer_t));
+    const ecs_pending_observer_t *entries = events.data;
+    for (uint32_t i = 0; i < events.size; i++) {
+        const ecs_pending_observer_t *entry = &entries[i];
+        ecs_observer_t *observer =
+            sicore_vec_get_mut(&observer_index.observers, entry->observer, ecs_observer_t);
+        if (observer->callback && observer->enabled && observer->revision == entry->revision)
+            observer->callback((ecs_observer_event_t *)&entry->event);
+        if (entry->owned_payload) {
+            ecs_value_fini(&entry->ops, entry->owned_payload, 1);
+            free(entry->owned_payload);
+        }
+    }
+    sicore_vec_fini(&events);
+    sicore_vec_t retired = observer_index.pending_entities;
+    sicore_vec_init(&observer_index.pending_entities, sizeof(ecs_entity_t));
+    const ecs_entity_t *entities = retired.data;
+    for (uint32_t i = 0; i < retired.size; i++) {
+        if (!ecs_is_alive(entities[i]))
+            ecs_observer_fini_entity(entities[i]);
+    }
+    sicore_vec_fini(&retired);
+}
 
 void ecs_observer_index_init(void) {
     sicore_vec_init(&observer_index.observers, sizeof(ecs_observer_t));
     sicore_vec_init(&observer_index.target_keys, sizeof(uint64_t));
     sicore_vec_init(&observer_index.target_observers, sizeof(ecs_observer_id_t));
     observer_index.first_free = UINT32_MAX;
+    sicore_vec_init(&observer_index.pending, sizeof(ecs_pending_observer_t));
+    sicore_vec_init(&observer_index.pending_entities, sizeof(ecs_entity_t));
     observer_index.event_count = ECS_BUILTIN_EVENT_COUNT;
 }
 
@@ -9512,6 +9819,8 @@ void ecs_observer_index_fini(void) {
         if (observers[i].user_data_dtor)
             observers[i].user_data_dtor(observers[i].user_data);
     }
+    sicore_vec_fini(&observer_index.pending);
+    sicore_vec_fini(&observer_index.pending_entities);
     sicore_vec_fini(&observer_index.target_observers);
     sicore_vec_fini(&observer_index.target_keys);
     sicore_vec_fini(&observer_index.observers);
@@ -9607,10 +9916,12 @@ ecs_observer_id_t ecs_observer_init(const ecs_observer_desc_t *desc) {
         .next_module = UINT32_MAX,
         .target_entity =
             desc->entity != 0 ? ecs_entity_id(desc->entity) : ECS_OBSERVER_GLOBAL_ENTITY,
+        .target_handle = desc->entity,
         .event = desc->on,
         .query = ECS_OBSERVER_NO_QUERY,
         .module = 0,
         .enabled = true,
+        .revision = ++observer_next_revision,
     };
 
     if (desc->entity == 0) {
@@ -9668,6 +9979,10 @@ void ecs_observer_fini(ecs_observer_id_t id) {
 }
 
 void ecs_observer_fini_entity(ecs_entity_t entity) {
+    if (observer_index.batch_depth) {
+        sicore_vec_push(&observer_index.pending_entities, &entity, sizeof entity);
+        return;
+    }
     if (!observer_index.target_keys.size)
         return;
     uint32_t entity_id = ecs_entity_id(entity);
@@ -9678,6 +9993,12 @@ void ecs_observer_fini_entity(ecs_entity_t entity) {
            ((const uint64_t *)observer_index.target_keys.data)[at] < after_key) {
         ecs_observer_id_t id =
             ((const ecs_observer_id_t *)observer_index.target_observers.data)[at];
+        const ecs_observer_t *observer =
+            sicore_vec_get(&observer_index.observers, id, ecs_observer_t);
+        if (observer->target_handle != entity) {
+            at++;
+            continue;
+        }
         ecs_observer_fini(id);
     }
 }
@@ -9724,7 +10045,7 @@ void ecs_emit_observers(
                 .user_data = obs->user_data,
                 .trigger_data = trigger_data,
             };
-            obs->callback(&observer_event);
+            ecs_observer_dispatch(oid, &observer_event);
         }
     }
 
@@ -10609,7 +10930,8 @@ void ecs_relate_id_now(ecs_entity_t entity, ecs_relation_id_t relation, ecs_enti
     ecs_emit_relation_event(entity, relation, EcsOnRelationSet, old_target, new_target);
 }
 
-void ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
+static void
+ecs_relate_id_apply(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
     ecs_assert_entity_alive(entity);
     ecs_assert_entity_alive(target);
     if (ecs_is_deferred()) {
@@ -10684,7 +11006,7 @@ void ecs_childof_update_now(ecs_entity_t entity, ecs_entity_t parent) {
     }
 }
 
-void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation) {
+static void ecs_unrelate_id_apply(ecs_entity_t entity, ecs_relation_id_t relation) {
     ecs_assert_entity_alive(entity);
     if (ecs_is_deferred()) {
         ecs_command_buffer_relate(entity, relation, 0);
@@ -10819,6 +11141,26 @@ void ecs_relation_target_on_remove(ecs_entity_t target, ecs_component_t componen
             }
         }
     }
+}
+
+void ecs_relate_id(ecs_entity_t entity, ecs_relation_id_t relation, ecs_entity_t target) {
+    if (!ecs_world.sync_callbacks.size) {
+        ecs_relate_id_apply(entity, relation, target);
+        return;
+    }
+    ecs_sync_begin();
+    ecs_relate_id_apply(entity, relation, target);
+    ecs_sync_end();
+}
+
+void ecs_unrelate_id(ecs_entity_t entity, ecs_relation_id_t relation) {
+    if (!ecs_world.sync_callbacks.size) {
+        ecs_unrelate_id_apply(entity, relation);
+        return;
+    }
+    ecs_sync_begin();
+    ecs_unrelate_id_apply(entity, relation);
+    ecs_sync_end();
 }
 
 typedef struct {
@@ -10980,9 +11322,7 @@ void ecs_remove_resource_id(ecs_resource_t id) {
     if (record->on_remove) {
         record->on_remove(data);
     }
-    if (record->ops.dtor) {
-        record->ops.dtor(data, 1);
-    }
+    ecs_value_fini(&record->ops, data, 1);
     free(data);
 }
 
@@ -11701,7 +12041,8 @@ static bool ecs_scene_read_payload(
         if (record->info->type == SIREFLECT_INVALID_HANDLE)
             return false;
         ecs_scene_load_ctx_t component_ctx = *ctx;
-        component_ctx.component_owns_strings = record->ops.dtor != NULL;
+        component_ctx.component_owns_strings =
+            record->ops.dtor != NULL || record->ops.reflected_type;
         for (uint32_t row = 0; row < rows; row++) {
             if (!load) {
                 if (!ecs_scene_validate_value(payload, record->info->type, ctx->entity_count))
@@ -11722,8 +12063,7 @@ static bool ecs_scene_read_payload(
             } else if (ok) {
                 ecs_set_cid(entities[row], component, temp);
             }
-            if (record->ops.dtor)
-                record->ops.dtor(temp, 1);
+            ecs_value_fini(&record->ops, temp, 1);
             free(temp);
             if (!ok)
                 return false;
@@ -11931,6 +12271,77 @@ SIECS_API bool ecs_load(const char *path) {
     return ok;
 }
 
+typedef struct {
+    ecs_sync_callback_t callback;
+    void *context;
+    uint32_t generation;
+} ecs_sync_entry_t;
+
+/* A process-wide generation prevents an old-world handle from addressing a
+ * callback registered after init/fini. Registry writes are main-thread only. */
+static uint32_t sync_next_generation;
+
+ecs_sync_id_t ecs_sync_register(ecs_sync_callback_t callback, void *context) {
+    ecs_assert_not_scheduler_parallel("synchronization registration");
+    ecs_assert(callback != NULL, "synchronization callback is required");
+    if (!ecs_world.sync_callbacks.data)
+        sicore_vec_init(&ecs_world.sync_callbacks, sizeof(ecs_sync_entry_t));
+    ecs_sync_entry_t entry = { callback, context, ++sync_next_generation };
+    ecs_assert(entry.generation != 0, "synchronization handle space exhausted");
+    for (uint32_t i = 0; i < ecs_world.sync_callbacks.size; i++) {
+        ecs_sync_entry_t *slot = sicore_vec_get_mut(&ecs_world.sync_callbacks, i, ecs_sync_entry_t);
+        if (!slot->callback) {
+            *slot = entry;
+            return ((uint64_t)entry.generation << 32) | (i + 1);
+        }
+    }
+    sicore_vec_push(&ecs_world.sync_callbacks, &entry, sizeof entry);
+    return ((uint64_t)entry.generation << 32) | ecs_world.sync_callbacks.size;
+}
+
+void ecs_sync_unregister(ecs_sync_id_t id) {
+    ecs_assert_not_scheduler_parallel("synchronization removal");
+    uint32_t index = (uint32_t)id - 1;
+    if (index >= ecs_world.sync_callbacks.size)
+        return;
+    ecs_sync_entry_t *entry =
+        sicore_vec_get_mut(&ecs_world.sync_callbacks, index, ecs_sync_entry_t);
+    if (entry->generation == (uint32_t)(id >> 32))
+        entry->callback = NULL;
+}
+
+void ecs_sync(void) {
+    if (!ecs_world.sync_callbacks.size || ecs_world.sync_depth || ecs_world.synchronizing ||
+        ecs_is_deferred())
+        return;
+    ecs_assert_not_scheduler_parallel("world synchronization");
+    ecs_world.synchronizing = true;
+    uint32_t count = ecs_world.sync_callbacks.size;
+    for (uint32_t i = 0; i < count; i++) {
+        ecs_sync_entry_t entry = *sicore_vec_get(&ecs_world.sync_callbacks, i, ecs_sync_entry_t);
+        if (entry.callback)
+            entry.callback(entry.context);
+    }
+    ecs_world.synchronizing = false;
+}
+
+void ecs_sync_begin(void) {
+    ecs_execution_context_t *context = ecs_execution_context_current();
+    if (!context->scheduler_parallel)
+        ecs_world.sync_depth++;
+}
+
+void ecs_sync_end(void) {
+    ecs_execution_context_t *context = ecs_execution_context_current();
+    if (context->scheduler_parallel)
+        return;
+    ecs_assert(ecs_world.sync_depth != 0, "unbalanced synchronization boundary");
+    ecs_world.sync_depth--;
+    ecs_sync();
+}
+
+void ecs_sync_storage_fini(void) { sicore_vec_fini(&ecs_world.sync_callbacks); }
+
 #define ECS_SYSTEM_NO_QUERY UINT16_MAX
 
 ecs_phase_t ecs_phase_init(const ecs_phase_desc_t *desc) {
@@ -12124,6 +12535,7 @@ bool ecs_progress(void) {
         ecs_platform_time_sleep_sec(remaining);
     }
 
+    ecs_sync();
     return !ecs_world.exit;
 }
 
@@ -12182,7 +12594,7 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
         if (rec->info->size == 0 || (!rec->ops.move_ctor && !rec->ops.copy_ctor)) {
             table->cls[i].flags |= EcsColumnTrivialMove;
         }
-        if (rec->info->size == 0 || !rec->ops.dtor) {
+        if (rec->info->size == 0 || (!rec->ops.dtor && !rec->ops.reflected_type)) {
             table->cls[i].flags |= EcsColumnNoDtor;
         }
         if (rec->info->size == 0 || !rec->ops.ctor) {
@@ -12326,9 +12738,7 @@ static void ecs_table_fini_component_values(ecs_table_t *table) {
             if (on_remove) {
                 on_remove(table->entities[row], component, ptr);
             }
-            if (crec->ops.dtor) {
-                crec->ops.dtor(ptr, 1);
-            }
+            ecs_value_fini(&crec->ops, ptr, 1);
         }
     }
 }
@@ -12402,7 +12812,7 @@ void ecs_value_ctor_hooked(ecs_component_t id, void *dst) {
 }
 
 void ecs_value_dtor_hooked(ecs_component_t id, void *ptr) {
-    ecs_component_index_get(id)->ops.dtor(ptr, 1);
+    ecs_value_fini(&ecs_component_index_get(id)->ops, ptr, 1);
 }
 
 /* Leaves the source column's row `old_row` dead: its value was moved out or
@@ -12719,6 +13129,126 @@ void ecs_type_slots_reset(void) {
     for (uint32_t i = 0; i < type_slots.size; i++)
         slots[i]->value = 0;
     atomic_flag_clear_explicit(&type_slots_lock, memory_order_release);
+}
+
+static bool reflected_owns_strings(sireflect_handle_t type) {
+    if (sireflect_type_is_cstring(type))
+        return true;
+    const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (info->kind == sireflect_kind_array)
+        return reflected_owns_strings(info->element_type);
+    if (sireflect_type_is_struct(info)) {
+        for (size_t i = 0; i < info->fields.field_count; i++)
+            if (reflected_owns_strings(info->fields.fields[i].type))
+                return true;
+    }
+    return false;
+}
+
+ecs_type_ops_t ecs_reflected_ops(sireflect_handle_t type) {
+    return (ecs_type_ops_t){ .reflected_type = type && reflected_owns_strings(type) ? type : 0 };
+}
+
+void ecs_reflected_value_fini(sireflect_handle_t type, void *value) {
+    if (sireflect_type_is_cstring(type)) {
+        char **text = value;
+        free(*text);
+        *text = NULL;
+        return;
+    }
+    const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (info->kind == sireflect_kind_array) {
+        size_t stride = sireflect_type_size(info->element_type);
+        for (size_t i = 0; i < info->element_count; i++)
+            ecs_reflected_value_fini(info->element_type, (char *)value + i * stride);
+    } else if (sireflect_type_is_struct(info)) {
+        for (size_t i = 0; i < info->fields.field_count; i++) {
+            const sireflect_field_info_t *field = &info->fields.fields[i];
+            ecs_reflected_value_fini(field->type, (char *)value + field->offset);
+        }
+    }
+}
+
+void ecs_reflected_value_copy(
+    sireflect_handle_t type,
+    void *destination,
+    const void *source,
+    bool construct
+) {
+    if (destination == source)
+        return;
+    if (sireflect_type_is_cstring(type)) {
+        const char *text = *(const char *const *)source;
+        char *copy = NULL;
+        if (text) {
+            size_t length = strlen(text) + 1;
+            copy = malloc(length);
+            ecs_assert(copy != NULL, "out of memory copying reflected string");
+            memcpy(copy, text, length);
+        }
+        if (!construct)
+            free(*(char **)destination);
+        *(char **)destination = copy;
+        return;
+    }
+    const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (info->kind == sireflect_kind_array) {
+        size_t stride = sireflect_type_size(info->element_type);
+        for (size_t i = 0; i < info->element_count; i++)
+            ecs_reflected_value_copy(
+                info->element_type,
+                (char *)destination + i * stride,
+                (const char *)source + i * stride,
+                construct
+            );
+    } else if (sireflect_type_is_struct(info)) {
+        if (construct)
+            memset(destination, 0, info->size);
+        for (size_t i = 0; i < info->fields.field_count; i++) {
+            const sireflect_field_info_t *field = &info->fields.fields[i];
+            ecs_reflected_value_copy(
+                field->type,
+                (char *)destination + field->offset,
+                (const char *)source + field->offset,
+                construct
+            );
+        }
+    } else
+        memcpy(destination, source, info->size);
+}
+
+bool ecs_reflected_value_equal(sireflect_handle_t type, const void *left, const void *right) {
+    if (!left || !right)
+        return left == right;
+    if (sireflect_type_is_cstring(type)) {
+        const char *a = *(const char *const *)left, *b = *(const char *const *)right;
+        return a && b ? !strcmp(a, b) : a == b;
+    }
+    const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (info->kind == sireflect_kind_array) {
+        size_t stride = sireflect_type_size(info->element_type);
+        for (size_t i = 0; i < info->element_count; i++)
+            if (!ecs_reflected_value_equal(
+                    info->element_type,
+                    (const char *)left + i * stride,
+                    (const char *)right + i * stride
+                ))
+                return false;
+        return true;
+    }
+    if (sireflect_type_is_struct(info)) {
+        for (size_t i = 0; i < info->fields.field_count; i++) {
+            const sireflect_field_info_t *field = &info->fields.fields[i];
+            if (!ecs_reflected_value_equal(
+                    field->type,
+                    (const char *)left + field->offset,
+                    (const char *)right + field->offset
+                ))
+                return false;
+        }
+        return true;
+    }
+    return !memcmp(left, right, info->size);
 }
 
 #define ECS_WORKER_BATCH_SIZE 4
@@ -13255,9 +13785,11 @@ void ecs_fini(void) {
     ecs_assert_not_scheduler_parallel("world destruction");
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
     ecs_world_finished = true;
+    ecs_world.synchronizing = true;
 
     ecs_worker_pool_fini(&ecs_world.worker_pool);
     ecs_fini_callbacks_run();
+    ecs_sync_storage_fini();
 
     /* Live component teardown must finish while world resources are available. */
     ecs_table_index_fini();

@@ -85,7 +85,7 @@ void ecs_add_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     }
 }
 
-void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
+static void ecs_add_cid_apply(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_component_access(entity, cid);
     ecs_assert_can_be_updated(entity);
 
@@ -143,7 +143,7 @@ void ecs_remove_cid_now(ecs_entity_t entity, ecs_component_t cid) {
     ecs_remove_cid_notify(entity, cid, col_idx);
 }
 
-void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
+static void ecs_remove_cid_apply(ecs_entity_t entity, ecs_component_t cid) {
     ecs_assert_component_access(entity, cid);
 
     if (ecs_is_deferred()) {
@@ -348,11 +348,11 @@ bool ecs_set_plain_many(
     return true;
 }
 
-void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
+static void ecs_set_cid_apply(ecs_entity_t entity, ecs_component_t cid, const void *data) {
     ecs_store_cid(entity, cid, (void *)data, false);
 }
 
-void ecs_modified_cid(ecs_entity_t entity, ecs_component_t cid) {
+static void ecs_modified_cid_apply(ecs_entity_t entity, ecs_component_t cid) {
 #ifndef NDEBUG
     ecs_assert(
         ecs_component_info(cid)->mutation != EcsSetOnly,
@@ -484,3 +484,48 @@ void ecs_with_many(ecs_component_t component, ...) {
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
+
+void ecs_add_cid(ecs_entity_t entity, ecs_component_t cid) {
+    if (!ecs_world.sync_callbacks.size) {
+        ecs_add_cid_apply(entity, cid);
+        return;
+    }
+    ecs_sync_begin();
+    ecs_add_cid_apply(entity, cid);
+    ecs_sync_end();
+}
+
+void ecs_remove_cid(ecs_entity_t entity, ecs_component_t cid) {
+    if (!ecs_world.sync_callbacks.size) {
+        ecs_remove_cid_apply(entity, cid);
+        return;
+    }
+    ecs_sync_begin();
+    ecs_remove_cid_apply(entity, cid);
+    ecs_sync_end();
+}
+
+static ECS_NOINLINE void
+ecs_set_cid_synchronized(ecs_entity_t entity, ecs_component_t cid, const void *data) {
+    ecs_sync_begin();
+    ecs_set_cid_apply(entity, cid, data);
+    ecs_sync_end();
+}
+
+void ecs_set_cid(ecs_entity_t entity, ecs_component_t cid, const void *data) {
+    if (ECS_UNLIKELY(ecs_world.sync_callbacks.size)) {
+        ecs_set_cid_synchronized(entity, cid, data);
+        return;
+    }
+    ecs_set_cid_apply(entity, cid, data);
+}
+
+void ecs_modified_cid(ecs_entity_t entity, ecs_component_t cid) {
+    if (!ecs_world.sync_callbacks.size) {
+        ecs_modified_cid_apply(entity, cid);
+        return;
+    }
+    ecs_sync_begin();
+    ecs_modified_cid_apply(entity, cid);
+    ecs_sync_end();
+}

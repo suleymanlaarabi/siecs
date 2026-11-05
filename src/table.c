@@ -43,7 +43,7 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
         if (rec->info->size == 0 || (!rec->ops.move_ctor && !rec->ops.copy_ctor)) {
             table->cls[i].flags |= EcsColumnTrivialMove;
         }
-        if (rec->info->size == 0 || !rec->ops.dtor) {
+        if (rec->info->size == 0 || (!rec->ops.dtor && !rec->ops.reflected_type)) {
             table->cls[i].flags |= EcsColumnNoDtor;
         }
         if (rec->info->size == 0 || !rec->ops.ctor) {
@@ -187,9 +187,7 @@ static void ecs_table_fini_component_values(ecs_table_t *table) {
             if (on_remove) {
                 on_remove(table->entities[row], component, ptr);
             }
-            if (crec->ops.dtor) {
-                crec->ops.dtor(ptr, 1);
-            }
+            ecs_value_fini(&crec->ops, ptr, 1);
         }
     }
 }
@@ -263,5 +261,5 @@ void ecs_value_ctor_hooked(ecs_component_t id, void *dst) {
 }
 
 void ecs_value_dtor_hooked(ecs_component_t id, void *ptr) {
-    ecs_component_index_get(id)->ops.dtor(ptr, 1);
+    ecs_value_fini(&ecs_component_index_get(id)->ops, ptr, 1);
 }

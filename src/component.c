@@ -127,6 +127,21 @@ static void RelationSourceDtor(void *ptr, uint32_t count) {
     }
 }
 
+static void RelationSourceSnapshot(void *destination, const void *source, uint32_t count) {
+    RelationSource *copies = destination;
+    const RelationSource *values = source;
+    for (uint32_t i = 0; i < count; i++) {
+        sicore_vec_init(&copies[i].entities, sizeof(ecs_entity_t));
+        /* The remove hook marks a retiring reverse index with UINT32_MAX.
+         * Its edges have already been detached; retain an empty retired view. */
+        if (values[i].entities.size == UINT32_MAX)
+            continue;
+        const ecs_entity_t *entities = values[i].entities.data;
+        for (uint32_t j = 0; j < values[i].entities.size; j++)
+            sicore_vec_push_u64(&copies[i].entities, entities[j]);
+    }
+}
+
 void RelationSourceOnRemove(ecs_entity_t entity, ecs_component_t component, void *ptr) {
     (void)entity;
     RelationSource *source_data = ptr;
@@ -189,6 +204,7 @@ ecs_component_t ecs_component_register_relation_internal(
     desc = (ecs_component_desc_t){
         .size = sizeof(RelationSource),
         .ops.dtor = RelationSourceDtor,
+        .ops.snapshot = RelationSourceSnapshot,
         .on_remove = RelationSourceOnRemove,
         .inheritance = EcsInheritShared,
     };
@@ -263,6 +279,7 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
     ecs_component_desc_t component = {
         .size = info->size,
         .struct_desc = &reflection,
+        .ops = ecs_reflected_ops(type),
         .inheritance = desc->inheritance,
         .mutation = desc->mutation,
     };

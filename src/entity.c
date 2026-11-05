@@ -205,7 +205,7 @@ void ecs_kill_now(ecs_entity_t entity) {
     ecs_entity_index_kill(ecs_first(entity));
 }
 
-void ecs_kill(ecs_entity_t entity) {
+static void ecs_kill_apply(ecs_entity_t entity) {
     ecs_assert_entity_alive(entity);
 
     if (ecs_is_deferred()) {
@@ -229,4 +229,22 @@ const char *ecs_entity_name(ecs_entity_t entity) {
         return name;
     snprintf(buff, sizeof buff, "(%u, %u)", ecs_first(entity), ecs_second(entity));
     return buff;
+}
+
+void ecs_kill(ecs_entity_t entity) {
+    if (!ecs_world.sync_callbacks.size) {
+        ecs_kill_apply(entity);
+        return;
+    }
+    ecs_sync_begin();
+    ecs_kill_apply(entity);
+    ecs_sync_end();
+}
+
+const ecs_component_t *ecs_entity_component_ids(ecs_entity_t entity, uint32_t *count) {
+    ecs_assert_is_alive(entity);
+    const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(ecs_get_record(entity)));
+    if (count)
+        *count = table->type.component_count;
+    return table->type.ids;
 }

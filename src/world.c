@@ -80,9 +80,11 @@ void ecs_fini(void) {
     ecs_assert_not_scheduler_parallel("world destruction");
     ecs_assert(ecs_world_started && !ecs_world_finished, "ecs_fini called outside ECS lifetime\n");
     ecs_world_finished = true;
+    ecs_world.synchronizing = true;
 
     ecs_worker_pool_fini(&ecs_world.worker_pool);
     ecs_fini_callbacks_run();
+    ecs_sync_storage_fini();
 
     /* Live component teardown must finish while world resources are available. */
     ecs_table_index_fini();

@@ -46,9 +46,8 @@ static inline void deferred_change_fini(ecs_deferred_change_t *change) {
         return;
     }
     const ecs_component_record_t *record = ecs_component_index_get(change->id);
-    if (record->info->size && record->ops.dtor) {
-        record->ops.dtor(change->data, 1);
-    }
+    if (!record->plain && record->size)
+        ecs_value_fini(&record->ops, change->data, 1);
     change->data = NULL;
 }
 
@@ -310,11 +309,19 @@ command_buffer_change(ecs_entity_t entity, ecs_component_t id, void *data, ecs_d
     if (op == EcsDeferredRemove || op == EcsDeferredAdd)
         return;
     const ecs_component_record_t *record = ecs_component_index_get(id);
-    change->data = ecs_arena_alloc(buffer->arena, record->info->size ? record->info->size : 1);
-    if (op == EcsDeferredMove) {
-        ecs_value_transfer(&record->ops, record->info->size, change->data, data, 1, true, true);
+    change->data = ecs_arena_alloc(buffer->arena, record->size ? record->size : 1);
+    if (record->plain) {
+        ecs_bytes_copy(change->data, data, record->size);
     } else {
-        ecs_value_transfer(&record->ops, record->info->size, change->data, data, 1, false, true);
+        ecs_value_transfer(
+            &record->ops,
+            record->size,
+            change->data,
+            data,
+            1,
+            op == EcsDeferredMove,
+            true
+        );
     }
 }
 
@@ -794,6 +801,7 @@ void ecs_command_buffer_flush() {
     context->flushing_commands = true;
     ecs_command_buffer_flush_buffer(&context->commands);
     context->flushing_commands = false;
+    ecs_sync();
 }
 
 void ecs_defer_begin(void) { ecs_execution_context_current()->defer_depth++; }
@@ -805,5 +813,7 @@ void ecs_defer_end(void) {
     if (context->defer_depth == 0 && !context->flushing_commands && !context->scheduler_parallel &&
         context->commands.commands.size != 0) {
         ecs_command_buffer_flush();
+        return;
     }
+    ecs_sync();
 }

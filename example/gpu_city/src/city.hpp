@@ -12,6 +12,8 @@ struct CityLayout {
 namespace gpu_city {
 
 inline constexpr int CitySize = traffic::Grid;
+// The full layout expands to roughly half a million shape entities.
+inline constexpr uint32_t ScriptInstructionBudget = 16'000'000;
 inline constexpr float BlockSpacing = traffic::Spacing;
 inline constexpr float StreetWidth = 5.4f;
 inline constexpr float RoadY = -1.3f;

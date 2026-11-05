@@ -8,6 +8,13 @@
 
 #include <test.h>
 
+// Testsuite 'sync'
+void sync_immediate_and_grouped(void);
+void sync_deferred_boundary(void);
+void sync_reentrant_and_stale_handles(void);
+void sync_batched_observer_generation_reuse(void);
+void sync_batched_owning_snapshots(void);
+
 // Testsuite 'public'
 void public_metadata_and_entity_introspection(void);
 void public_scene_save_memory_roundtrip(void);
@@ -333,6 +340,29 @@ void module_owns_queries_created_during_import(void);
 void module_forgets_manually_destroyed_query(void);
 void module_query_id_reuse_does_not_keep_old_owner(void);
 void module_queries_survive_disable_enable(void);
+
+bake_test_case sync_testcases[] = {
+    {
+        "immediate_and_grouped",
+        sync_immediate_and_grouped
+    },
+    {
+        "deferred_boundary",
+        sync_deferred_boundary
+    },
+    {
+        "reentrant_and_stale_handles",
+        sync_reentrant_and_stale_handles
+    },
+    {
+        "batched_observer_generation_reuse",
+        sync_batched_observer_generation_reuse
+    },
+    {
+        "batched_owning_snapshots",
+        sync_batched_owning_snapshots
+    }
+};
 
 bake_test_case public_testcases[] = {
     {
@@ -1561,6 +1591,13 @@ bake_test_case module_testcases[] = {
 
 static bake_test_suite suites[] = {
     {
+        "sync",
+        NULL,
+        NULL,
+        5,
+        sync_testcases
+    },
+    {
         "public",
         NULL,
         NULL,
@@ -1675,5 +1712,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 16);
+    return bake_test_run("siecs.test", argc, argv, suites, 17);
 }

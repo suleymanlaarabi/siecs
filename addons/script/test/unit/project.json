@@ -64,7 +64,10 @@
           "lexical_scope_and_nesting",
           "models_and_entity_props",
           "errors_and_recursion",
-          "prefab_hierarchy"
+          "prefab_hierarchy",
+          "anonymous_calls_in_scopes",
+          "inheritance",
+          "lexical_functions"
         ]
       },
       {
@@ -74,6 +77,75 @@
           "failed_edit_preserves_history",
           "save_and_evaluate",
           "invalid_arguments"
+        ]
+      },
+      {
+        "id": "Transaction",
+        "testcases": [
+          "failed_prepare_is_invisible",
+          "commit_publishes_complete_state",
+          "prepared_reads_and_native_types"
+        ]
+      },
+      {
+        "id": "Instance",
+        "testcases": [
+          "automatic_reactivity",
+          "unrelated_and_grouped_changes",
+          "failed_reload_keeps_active_graph",
+          "reload_replaces_dependencies",
+          "shared_inputs_and_conflicting_outputs",
+          "restore_and_preserve_host_changes",
+          "missing_reference_recovers",
+          "watched_files_and_includes",
+          "member_ownership_and_restore",
+          "member_dependencies",
+          "anonymous_identity",
+          "reuses_unchanged_regions",
+          "disjoint_self_dependency",
+          "rejects_incompatible_schema",
+          "inherited_member_dependencies",
+          "preserves_reentrant_invalidation",
+          "captured_regions",
+          "loop_regions"
+        ]
+      },
+      {
+        "id": "Language",
+        "testcases": [
+          "typed_functions_and_captures",
+          "mutable_function_locals",
+          "collection_iteration_and_indexing",
+          "includes_keep_lexical_declarations",
+          "owning_strings_and_template_properties",
+          "try_catch_rolls_back_scope",
+          "native_expression_execution",
+          "methods_scripts_arrays_and_typed_collections",
+          "interpolation_formats",
+          "struct_bodies_and_arrays"
+        ]
+      },
+      {
+        "id": "Async",
+        "testcases": [
+          "wait_for_component_condition",
+          "typed_host_task",
+          "reload_keeps_identical_continuation",
+          "cancellation_and_late_result",
+          "loops_and_zero_delay",
+          "controlled_clock",
+          "clock_switch_preserves_remaining_delay",
+          "inherited_templates",
+          "environment_changes_restart_tasks",
+          "definition_functions",
+          "scoped_functions",
+          "typed_errors_and_catch",
+          "unhandled_error_is_inspectable",
+          "scopes_and_while_continue",
+          "repeated_world_lifetimes",
+          "member_outputs_across_suspensions",
+          "waits_on_inherited_value",
+          "stabilizes_reactive_consumers"
         ]
       }
     ]

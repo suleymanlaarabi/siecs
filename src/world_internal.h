@@ -23,6 +23,10 @@ struct ecs_world_s {
     ecs_execution_context_t main_context;
     ecs_worker_pool_t worker_pool;
     sicore_vec_t fini_callbacks;
+    sicore_vec_t sync_callbacks;
+    uint32_t sync_depth;
+    uint32_t sync_generation;
+    bool synchronizing;
     bool did_start;
     atomic_bool exit;
     double delta_time;
@@ -58,6 +62,7 @@ static inline ecs_execution_context_t *ecs_execution_context_current(void) {
     return context ? context : &ecs_world.main_context;
 }
 
+void ecs_sync_storage_fini(void);
 void ecs_resource_storage_init(void);
 void ecs_resource_storage_fini(void);
 void ecs_module_storage_init(void);
@@ -71,6 +76,10 @@ typedef struct {
 
 #define ecs_get_record(entity) ecs_entity_index_get_record(ecs_first(entity))
 #define ecs_get_table(tid) ecs_table_index_at(tid)
+
+void ecs_observer_batch_begin(void);
+void ecs_observer_batch_end(void);
+void ecs_observer_dispatch(ecs_observer_id_t id, const ecs_observer_event_t *event);
 
 static inline void ecs_emit_target_observers(
     ecs_table_t *table,
@@ -93,8 +102,7 @@ static inline void ecs_emit_target_observers(
         ecs_observer_id_t oid = ids[at++];
         ecs_observer_t *observer =
             sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
-        if (!observer->enabled)
-            continue;
+        if (!observer->enabled || observer->target_handle != observer_target) continue;
         if (observer->query != ECS_OBSERVER_NO_QUERY) {
             ecs_query_cache_t *cache = ecs_query_cache(observer->query);
             if (ecs_query_table_position(cache, table_id) == UINT16_MAX)
@@ -107,7 +115,7 @@ static inline void ecs_emit_target_observers(
             .user_data = observer->user_data,
             .trigger_data = trigger_data,
         };
-        observer->callback(&observer_event);
+        ecs_observer_dispatch(oid, &observer_event);
     }
 }
 

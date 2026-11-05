@@ -711,7 +711,8 @@ static bool ecs_scene_read_payload(
         if (record->info->type == SIREFLECT_INVALID_HANDLE)
             return false;
         ecs_scene_load_ctx_t component_ctx = *ctx;
-        component_ctx.component_owns_strings = record->ops.dtor != NULL;
+        component_ctx.component_owns_strings =
+            record->ops.dtor != NULL || record->ops.reflected_type;
         for (uint32_t row = 0; row < rows; row++) {
             if (!load) {
                 if (!ecs_scene_validate_value(payload, record->info->type, ctx->entity_count))
@@ -732,8 +733,7 @@ static bool ecs_scene_read_payload(
             } else if (ok) {
                 ecs_set_cid(entities[row], component, temp);
             }
-            if (record->ops.dtor)
-                record->ops.dtor(temp, 1);
+            ecs_value_fini(&record->ops, temp, 1);
             free(temp);
             if (!ok)
                 return false;

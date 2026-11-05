@@ -1,0 +1,165 @@
+---
+title: Scripting
+description: Native Script programs, reactive instances, transactional reload, asynchronous host tasks, and source documents.
+---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+Add `siecs_script` to the application's Bake dependencies. The addon uses native
+SiECS entities, components, relations, observers, and reflection. Parsing owns
+its source and needs no initialized world. Evaluation requires the current world.
+
+## Programs and instances
+
+A program is immutable and reference counted. One-shot evaluation executes its
+statements; a persistent instance also owns contributions, dependencies, and
+asynchronous continuations. Native writes trigger instance updates at the outer
+synchronization boundary. Use a synchronization scope to group several writes.
+
+<Tabs syncKey="language">
+<TabItem label="C">
+
+```c
+#include <siecs_script.h>
+
+ecs_init();
+ecs_script_instance_t *scene = ecs_script_instance_run(
+    "scene.si", "Root { Child {} }", NULL, NULL);
+/* Inspect the returned handle and diagnostic in production code. */
+ecs_script_instance_free(scene);
+ecs_fini();
+```
+
+</TabItem>
+<TabItem label="C++">
+
+```cpp
+#include <siecs_script/cpp.hpp>
+
+ecs::init();
+{
+    auto scene = ecs::script_instance::create("Root { Child {} }", "scene.si");
+    if (!scene) {
+        // scene.error() owns the diagnostic.
+    }
+}
+ecs::fini();
+```
+
+</TabItem>
+</Tabs>
+
+C++ `ecs::script_options` exposes `parent` and `instruction_budget` for one-shot
+evaluation, including `run_file`. A zero budget uses the default of one million
+statements and loop steps. Large generators can provide a larger explicit budget;
+exhaustion returns an evaluation diagnostic.
+
+Instance dependencies record the component members actually read. Changing an
+unread member does not evaluate the instance. Eligible named scopes of component
+writes reuse their results when their inputs, referenced lexical values, and
+entity lookups are unchanged. Capture plans are compiled with the program; an
+unrelated local does not invalidate a cached region. Interpolated names and loop
+iterations retain separate captures. Enclosing control flow and scopes using
+Script functions, templates, or scoped defaults still use the interpreter.
+
+Full component assignments own the complete value. Partial assignments, such as
+`Position = {x: 10}`, own the selected top-level fields. Different instances may
+produce disjoint fields; overlapping producers are rejected. Unloading restores
+prior values only where the published contribution still matches the world,
+preserving subsequent host edits. Named entities and authored anonymous entities
+retain their handles across reevaluation. Anonymous identity uses source,
+anonymous declaration order, parent, and occurrence within that declaration.
+
+## Reload and watched files
+
+`ecs_script_instance_reload` prepares a candidate before publishing its changes.
+Evaluation failures preserve the active program, subscriptions, contributions,
+and tasks. Observers receive committed state. A changed definition of an existing
+component schema is rejected; live schema replacement is not implemented.
+
+Enable `watch` in the instance descriptor to poll the root file and its includes.
+The default interval is 250 ms. Polling confirms file content before reloading;
+rewriting identical bytes does not evaluate the instance. A failed file reload
+keeps the active world and exposes a diagnostic for inspection.
+
+Native allocation failures are not recoverable throughout the commit path.
+The current transaction contract covers validation and evaluation failures;
+it does not guarantee rollback after allocator exhaustion or arbitrary host hooks.
+
+## Async execution
+
+An `async` scope runs cooperatively on the world thread. It can suspend on a
+component condition, a typed host future, or `sleep(seconds)`:
+
+```text
+async {
+    await Input[Ready].value
+    const result = await fetch(42)
+    Output { Value: {$result} }
+}
+```
+
+One-shot evaluation rejects async programs. Register host functions on the world
+thread with `ecs_script_function_register`, or use the typed C++
+`ecs::register_script_task<Result, Arguments...>` helper. Worker threads settle a
+future with `ecs_script_task_complete` / `ecs_script_task_fail`, or a typed
+`ecs::script_task<T>` endpoint. The runtime copies the result and resumes only
+at a synchronization boundary or explicit Script flush.
+
+Host callbacks receive borrowed argument views. Copy arguments before retaining
+them in a worker, or stop using those views before cancellation returns. Result
+lifecycle functions must support the completion thread. Cancellation invalidates
+the endpoint; late and duplicate completions return false. An unchanged async
+body with unchanged captures retains its existing continuation on reload. Changes
+to captured template definitions, functions, or scoped defaults restart the task;
+comment and whitespace edits preserve matching definitions.
+
+Use `ecs_script_clock_set(callback, context)` or
+`ecs::script_instance::set_clock` to drive `sleep` from simulation time. The
+callback returns seconds on the world thread. Changing clocks preserves pending
+timers' remaining delays; a null callback restores the monotonic system clock.
+Nonfinite or backward samples do not advance timers. File watching keeps its
+real-time polling clock. Flush after advancing simulation time to resume due tasks.
+
+A `script { ... }` expression evaluates to its owned program's source text.
+Method syntax `value.function(arguments)` passes the receiver as the first
+argument to the named function. Reflected native arrays support checked indexing;
+local declarations such as `mut values: i32[] = [1, 2]` convert each element and
+retain that element type on assignment.
+
+Reflected structs accept either `struct Position(x: f32, y: f32)` or a body such
+as `struct Position { x: f32; y: f32 }`. Fixed arrays use a positive literal
+length, for example `struct Samples { values: f32[3] }`. Nested structs and
+arrays use the same native reflection and owning value lifecycle as components.
+
+Templates may inherit with `template Derived: Base { ... }`. Inherited properties
+keep their order and type; a derived declaration can replace a default or append
+properties. An override without a type keeps the inherited type. Base bodies run
+before derived bodies and retain their original lexical captures. Instances carry
+each template's native component with its corresponding property values.
+Template defaults, template bodies, and `with` expressions keep the function
+definitions visible when they were declared. Functions can start cooperative
+`async` scopes when evaluated through a persistent instance; captured entity
+references remain valid across commit and suspension.
+
+Interpolations support formats such as `"{42:08x}"`, `"{3.125:.2f}"`, and
+`"{$name:-12.8s}"`. A format accepts the flags `-+ #0`, a width, an optional
+precision, and a type: `d`, `u`, `x`, `X`, `o`, `f`, `F`, `e`, `E`, `g`, `G`, or
+`s`. Width and precision are limited to 1024. String formats accept only the `-`
+flag. Invalid formats fail parsing; incompatible value types fail evaluation.
+
+## Editing source
+
+`ecs_script_document_t` and `ecs::script_document` preserve source revisions.
+Edits parse before replacing the current revision; undo and redo affect source.
+Saving replaces the destination through an exclusive sibling temporary file.
+Apply a C++ document with `instance.apply(document)`, or reload its borrowed
+program through the C API. Failed application leaves the active instance intact.
+
+## Current boundaries
+
+Typed pair payloads and multiple targets on an exclusive relation are unavailable.
+General region scheduling for lexical control flow, live component schema changes,
+and allocator-failure recovery remain incomplete. Annotations, `auto_override` flags, custom `using` imports,
+and collection properties on templates still return execution diagnostics.
+The native test suite covers the executable subset and does not establish a
+complete language implementation.

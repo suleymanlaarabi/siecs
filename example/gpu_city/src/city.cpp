@@ -16,7 +16,8 @@ bool build_city(const char *filename) {
                 PavementY,
             }
         );
-    const auto result = ecs::script::run_file(filename);
+    const auto result =
+        ecs::script::run_file(filename, { .instruction_budget = ScriptInstructionBudget });
     if (!result) {
         const auto &error = result.error();
         std::fprintf(

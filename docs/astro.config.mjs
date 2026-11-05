@@ -128,6 +128,7 @@ export default defineConfig({
             'hierarchies',
             'inheritance',
             'modules',
+            'scripting',
             'design-with-siecs',
             'scenes',
             'manual',

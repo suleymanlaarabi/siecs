@@ -1,641 +1,147 @@
-/* Derived from Flecs. Copyright (c) 2025 Sander Mertens.
- * Portions Copyright (c) Meta Platforms, Inc. and affiliates.
- * Distributed under the MIT license in addons/script/LICENSE.flecs. */
-/**
- * @file addons/parser/tokenizer.c
- * @brief Parser tokenizer.
- */
-
 #include "../script.h"
 
-#ifdef SIECS_PARSER
-
-#include "parser.h"
-
-int64_t siecs_parser_errpos(
-    const ecs_parser_t *parser,
-    const char *pos)
-{
-    if (parser->fixed_pos) {
-        return parser->fixed_pos - parser->code;
+void script_parse_error(ecs_parser_t *parser, const char *message) {
+    if (!parser->failed) {
+        const char *at = parser->token.begin ? parser->token.begin : parser->pos;
+        ecs_parser_error(parser->name, parser->code, at - parser->code, "%s", message);
     }
-
-    return pos - parser->code;
+    parser->failed = true;
 }
 
-static bool siecs_is_comment(
-    const char *pos)
-{
-    return pos[0] == '/' && (pos[1] == '/' || pos[1] == '*');
+static const char *token_text(ecs_parser_t *parser, const char *begin, const char *end) {
+    size_t length = (size_t)(end - begin);
+    char *text = script_alloc(&parser->script->allocator, length + 1);
+    memcpy(text, begin, length);
+    return text;
 }
 
-static const struct {
-    const char *spelling;
-    const char *description;
-} siecs_tokens[EcsTokLast] = {
-    [EcsTokUnknown] = {"unknown token", "unknown token "},
-    [EcsTokColon] = {":", ""},
-    [EcsTokScopeOpen] = {"{", ""},
-    [EcsTokScopeClose] = {"}", ""},
-    [EcsTokParenOpen] = {"(", ""},
-    [EcsTokParenClose] = {")", ""},
-    [EcsTokBracketOpen] = {"[", ""},
-    [EcsTokBracketClose] = {"]", ""},
-    [EcsTokAnnotation] = {"@", ""},
-    [EcsTokComma] = {",", ""},
-    [EcsTokSemiColon] = {";", ""},
-    [EcsTokAssign] = {"=", ""},
-    [EcsTokAdd] = {"+", ""},
-    [EcsTokSub] = {"-", ""},
-    [EcsTokMul] = {"*", ""},
-    [EcsTokDiv] = {"/", ""},
-    [EcsTokMod] = {"%", ""},
-    [EcsTokBitwiseOr] = {"|", ""},
-    [EcsTokBitwiseAnd] = {"&", ""},
-    [EcsTokNot] = {"!", ""},
-    [EcsTokOptional] = {"?", ""},
-    [EcsTokEq] = {"==", ""},
-    [EcsTokNeq] = {"!=", ""},
-    [EcsTokGt] = {">", ""},
-    [EcsTokGtEq] = {">=", ""},
-    [EcsTokLt] = {"<", ""},
-    [EcsTokLtEq] = {"<=", ""},
-    [EcsTokAnd] = {"&&", ""},
-    [EcsTokOr] = {"||", ""},
-    [EcsTokMatch] = {"~=", ""},
-    [EcsTokRange] = {"..", ""},
-    [EcsTokShiftLeft] = {"<<", ""},
-    [EcsTokShiftRight] = {">>", ""},
-    [EcsTokHasBracketOpen] = {"?[", ""},
-    [EcsTokKeywordWith] = {"with", "keyword "},
-    [EcsTokKeywordUsing] = {"using", "keyword "},
-    [EcsTokKeywordProp] = {"prop", "keyword "},
-    [EcsTokKeywordMut] = {"mut", "keyword "},
-    [EcsTokKeywordConst] = {"const", "keyword "},
-    [EcsTokKeywordMatch] = {"match", "keyword "},
-    [EcsTokKeywordNew] = {"new", "keyword "},
-    [EcsTokKeywordExport] = {"export", "keyword "},
-    [EcsTokKeywordIf] = {"if", "keyword "},
-    [EcsTokKeywordElse] = {"else", "keyword "},
-    [EcsTokKeywordFor] = {"for", "keyword "},
-    [EcsTokKeywordIn] = {"in", "keyword "},
-    [EcsTokKeywordTemplate] = {"template", "keyword "},
-    [EcsTokKeywordModule] = {"module", "keyword "},
-    [EcsTokKeywordInclude] = {"include", "keyword "},
-    [EcsTokKeywordFn] = {"fn", "keyword "},
-    [EcsTokKeywordAwait] = {"await", "keyword "},
-    [EcsTokKeywordTry] = {"try", "keyword "},
-    [EcsTokKeywordCatch] = {"catch", "keyword "},
-    [EcsTokKeywordContinue] = {"continue", "keyword "},
-    [EcsTokKeywordAsync] = {"async", "keyword "},
-    [EcsTokKeywordWhile] = {"while", "keyword "},
-    [EcsTokKeywordScript] = {"script", "keyword "},
-    [EcsTokArrow] = {"->", ""},
-    [EcsTokIdentifier] = {"identifier", "identifier "},
-    [EcsTokString] = {"string", "string "},
-    [EcsTokChar] = {"char", "char "},
-    [EcsTokNumber] = {"number", "number "},
-    [EcsTokNewline] = {"newline", "newline"},
-    [EcsTokMember] = {".", ""},
-    [EcsTokEnd] = {"end of script", "end of script"},
-};
-
-static const ecs_token_kind_t siecs_token_pairs[128][2] = {
-    ['-'] = {EcsTokArrow},
-    ['?'] = {EcsTokHasBracketOpen},
-    ['.'] = {EcsTokRange},
-    ['='] = {EcsTokEq},
-    ['!'] = {EcsTokNeq},
-    ['<'] = {EcsTokLtEq, EcsTokShiftLeft},
-    ['>'] = {EcsTokGtEq, EcsTokShiftRight},
-    ['&'] = {EcsTokAnd},
-    ['|'] = {EcsTokOr},
-    ['~'] = {EcsTokMatch}
-};
-
-static char* siecs_tokenizer_write(
-    ecs_parser_t *parser,
-    char *dst,
-    char ch)
-{
-    (void)parser;
-    ecs_assert(dst != NULL, ECS_INTERNAL_ERROR, NULL);
-
-    ecs_assert(!parser->token_end || dst < parser->token_end,
-        ECS_INVALID_OPERATION, "out of parser token storage");
-
-    dst[0] = ch;
-    return dst + 1;
-}
-
-const char* siecs_token_kind_str(
-    ecs_token_kind_t kind)
-{
-    if ((unsigned)kind < EcsTokLast && siecs_tokens[kind].description) {
-        return siecs_tokens[kind].description;
-    }
-
-    return "<corrupt>";
-}
-
-const char* siecs_token_str(
-    ecs_token_kind_t kind)
-{
-    if ((unsigned)kind < EcsTokLast && siecs_tokens[kind].spelling) {
-        return siecs_tokens[kind].spelling;
-    }
-
-    return "<corrupt>";
-}
-
-const char* siecs_scan_whitespace(
-    ecs_parser_t *parser,
-    const char *pos)
-{
-    ecs_assert(pos != NULL, ECS_INTERNAL_ERROR, NULL);
-
-    while (isspace((unsigned char)pos[0]) &&
-        (pos[0] != '\n' || !parser->significant_newline))
-    {
-        pos ++;
-    }
-
-    return pos;
-}
-
-static const char* siecs_scan_line_comment(
-    const char *pos)
-{
-    ecs_assert(pos[0] == '/' && pos[1] == '/', ECS_INTERNAL_ERROR, NULL);
-
-    for (pos = pos + 2; pos[0] && pos[0] != '\n'; pos ++) { }
-
-    return pos;
-}
-
-const char* siecs_scan_whitespace_and_comment(
-    ecs_parser_t *parser,
-    const char *pos,
-    bool *newline)
-{
+void script_lex(ecs_parser_t *parser) {
+    const char *cursor = parser->pos;
     for (;;) {
-        const char *start = pos;
-        pos = siecs_scan_whitespace(parser, pos);
-        if (newline && memchr(start, '\n', siecs_ito(size_t, pos - start))) {
-            *newline = true;
-        }
-
-        if (!siecs_is_comment(pos)) {
-            return pos;
-        }
-
-        if (pos[1] == '/') {
-            pos = siecs_scan_line_comment(pos);
-            continue;
-        }
-
-        const char *end = strstr(pos + 2, "*/");
-        if (!end) {
-            ecs_parser_error(parser->name, parser->code,
-                siecs_parser_errpos(parser, pos),
-                "missing */ for multiline comment");
-            return NULL;
-        }
-
-        pos = end + 2;
-    }
-}
-
-const char* siecs_parser_skip_newlines(
-    ecs_parser_t *parser,
-    const char *pos)
-{
-    bool significant_newline = parser->significant_newline;
-    parser->significant_newline = false;
-    pos = siecs_scan_whitespace_and_comment(parser, pos, NULL);
-    parser->significant_newline = significant_newline;
-    return pos;
-}
-
-static bool siecs_script_is_identifier(
-    char c)
-{
-    return isalpha((unsigned char)c) || (c == '_') || (c == '$') || (c == '#');
-}
-
-const char* siecs_tokenizer_identifier(
-    ecs_parser_t *parser,
-    const char *pos,
-    ecs_token_t *out)
-{
-    bool is_var = pos[0] == '$';
-    char *outpos = NULL;
-    const char *start = pos;
-    if (parser) {
-        outpos = parser->token_cur;
-        if (parser->merge_variable_members) {
-            is_var = false;
-        }
-    }
-
-    if (out) {
-        out->kind = EcsTokIdentifier;
-        out->value = outpos;
-    }
-
-    const char *name = parser ? parser->name : NULL;
-    const char *code = parser ? parser->code : pos;
-
-    if (!siecs_script_is_identifier(pos[0])) {
-        ecs_parser_error(name, code, pos - code,
-            "invalid start of identifier '%c'",
-                pos[0]);
-        return NULL;
-    }
-
-    do {
-        char c = pos[0];
-
-        if ((c == '.') && (pos[1] == '.')) {
-            break;
-        }
-
-        bool is_ident = siecs_script_is_identifier(c) || isdigit((unsigned char)c);
-
-        if (!is_var) {
-            is_ident = is_ident || (c == '.');
-        }
-
-        /* Retain \. for name lookup operation */
-        if (!is_ident && c == '\\' && pos[1] == '.') {
-            is_ident = true;
-        }
-
-        /* Retain .* for using wildcard expressions */
-        if (!is_ident && c == '*') {
-            if (pos != start && pos[-1] == '.') {
-                is_ident = true;
+        while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r')
+            cursor++;
+        if (cursor[0] == '/' && cursor[1] == '/') {
+            while (*cursor && *cursor != '\n')
+                cursor++;
+        } else if (cursor[0] == '/' && cursor[1] == '*') {
+            const char *close = strstr(cursor + 2, "*/");
+            if (!close) {
+                parser->token.begin = cursor;
+                script_parse_error(parser, "unterminated comment");
+                cursor += strlen(cursor);
+                break;
             }
-        }
-
-        if (!is_ident) {
-            if (c == '\\') {
-                pos ++;
-                if (!pos[0]) {
-                    goto done;
-                }
-            } else if (c == '<') {
-                int32_t indent = 0;
-                do {
-                    c = *pos;
-
-                    if (c == '<') {
-                        indent ++;
-                    } else if (c == '>') {
-                        indent --;
-                    } else if (!c) {
-                        ecs_parser_error(name, code, pos - code,
-                                    "< without > in identifier");
-                        return NULL;
-                    }
-
-                    if (outpos) {
-                        outpos = siecs_tokenizer_write(parser, outpos, c);
-                    }
-
-                    pos ++;
-
-                    if (!indent) {
-                        break;
-                    }
-                } while (true);
-
-                goto done;
-            } else if (c == '>') {
-                ecs_parser_error(name, code, pos - code,
-                    "> without < in identifier");
-                return NULL;
-            } else {
-                goto done;
-            }
-        }
-
-        if (outpos) {
-            outpos = siecs_tokenizer_write(parser, outpos, *pos);
-        }
-
-        pos ++;
-    } while (true);
-
-done:
-    if (outpos) {
-        parser->token_cur = siecs_tokenizer_write(parser, outpos, '\0');
-    }
-
-    return pos;
-}
-
-static char* siecs_tokenizer_copy(
-    ecs_parser_t *parser,
-    const char *start,
-    const char *end)
-{
-    ecs_size_t length = siecs_ito(ecs_size_t, end - start);
-    ecs_assert(!parser->token_end ||
-        parser->token_cur + length < parser->token_end,
-            ECS_INVALID_OPERATION, "out of parser token storage");
-
-    char *result = parser->token_cur;
-    ecs_os_memcpy(result, start, length);
-    result[length] = '\0';
-    parser->token_cur += length + 1;
-    return result;
-}
-
-static const char* siecs_script_digits(
-    const char *pos,
-    int base)
-{
-    while (base == 16 ? isxdigit((unsigned char)*pos) :
-        base == 2 ? (*pos == '0' || *pos == '1') : isdigit((unsigned char)*pos))
-    {
-        pos ++;
-    }
-    return pos;
-}
-
-static const char* siecs_script_number(
-    ecs_parser_t *parser,
-    const char *pos,
-    ecs_token_t *out)
-{
-    const char *start = pos;
-    int base = 10;
-
-    if (pos[0] == '0') {
-        if (pos[1] == 'x' || pos[1] == 'X') {
-            base = 16;
-        } else if (pos[1] == 'b' || pos[1] == 'B') {
-            base = 2;
-        }
-
-        pos += base != 10 ? 2 : 0;
-    }
-
-    const char *digits = pos;
-    pos = siecs_script_digits(pos, base);
-    bool has_digits = pos != digits;
-    if (base != 10 && *pos == '.' && isxdigit((unsigned char)pos[1])) {
-        ecs_parser_error(parser->name, parser->code,
-            siecs_parser_errpos(parser, start),
-            "fractional part not allowed in hexadecimal or binary literal");
-        return NULL;
-    }
-
-    if (*pos == '.' && isdigit((unsigned char)pos[1])) {
-        pos = siecs_script_digits(pos + 1, 10);
-    }
-
-    if (base == 10 && (*pos == 'e' || *pos == 'E')) {
-        digits = pos + 1;
-        digits += *digits == '+' || *digits == '-';
-        if (isdigit((unsigned char)*digits)) {
-            pos = siecs_script_digits(digits, 10);
-        }
-    }
-
-    if ((!has_digits && base != 10) || siecs_script_is_identifier(*pos) ||
-        isdigit((unsigned char)*pos))
-    {
-        ecs_parser_error(parser->name, parser->code,
-            siecs_parser_errpos(parser, start), "invalid number literal");
-        return NULL;
-    }
-
-    out->kind = EcsTokNumber;
-    out->value = siecs_tokenizer_copy(parser, start, pos);
-    return pos;
-}
-
-static const char* siecs_script_skip_string(
-    ecs_parser_t *parser,
-    const char *pos,
-    char delim)
-{
-    char ch;
-    const char *start = pos;
-    for (; (ch = pos[0]) && pos[0] != delim; pos ++) {
-        if (ch == '\\' && pos[1]) {
-            pos ++;
-        }
-    }
-
-    if (!pos[0]) {
-        ecs_parser_error(parser->name, parser->code,
-            siecs_parser_errpos(parser, start), "unterminated string");
-        return NULL;
-    }
-
-    return pos;
-}
-
-static const char* siecs_script_string(
-    ecs_parser_t *parser,
-    const char *pos,
-    ecs_token_t *out)
-{
-    const char *end = siecs_script_skip_string(parser, pos + 1, pos[0]);
-    if (!end) {
-        return NULL;
-    }
-
-    ecs_assert(end[0] == pos[0], ECS_INTERNAL_ERROR, NULL);
-
-    bool is_char = pos[0] == '\'';
-    int32_t len = siecs_ito(int32_t, end - (pos + 1));
-    if (is_char && len == 0) {
-        ecs_parser_error(parser->name, parser->code,
-            siecs_parser_errpos(parser, pos), "Empty char");
-        return NULL;
-    } else if (is_char && (len > 1) && !((len == 2) && (pos[1] == '\\'))) {
-        ecs_parser_error(parser->name, parser->code,
-            siecs_parser_errpos(parser, pos), "only one char allowed");
-        return NULL;
-    }
-
-    out->kind = is_char ? EcsTokChar : EcsTokString;
-    out->value = siecs_tokenizer_copy(parser, pos + 1, end);
-    return end + 1;
-}
-
-static void siecs_tokenizer_set_pos(
-    ecs_parser_t *parser,
-    const char *pos)
-{
-    parser->pos = parser->fixed_pos ? parser->fixed_pos : pos;
-    if (!parser->stmt_pos) {
-        parser->stmt_pos = parser->pos;
-    }
-}
-
-const char* siecs_tokenizer_line(
-    ecs_parser_t *parser,
-    const char *pos,
-    ecs_token_t *out,
-    bool stmt_end)
-{
-    const char *start = pos = siecs_scan_whitespace(parser, pos);
-    siecs_tokenizer_set_pos(parser, pos);
-
-    for (; pos[0] && pos[0] != '\n'; pos ++) {
-        if (stmt_end && (pos[0] == ';' || siecs_is_comment(pos))) {
+            cursor = close + 2;
+        } else {
             break;
         }
     }
-
-    const char *end = pos;
-    while (end != start && isspace((unsigned char)end[-1])) {
-        end --;
-    }
-
-    out->kind = EcsTokString;
-    out->value = siecs_tokenizer_copy(parser, start, end);
-    parser->token_keep = parser->token_cur;
-
-    return pos;
-}
-
-static const char* siecs_token_scan(
-    ecs_parser_t *parser,
-    const char *pos,
-    ecs_token_t *out,
-    bool is_lookahead)
-{
-    if (!pos) {
-        return NULL;
-    }
-
-    pos = siecs_scan_whitespace_and_comment(parser, pos, NULL);
-    if (!pos) {
-        return NULL;
-    }
-
-    if (!is_lookahead) {
-        siecs_tokenizer_set_pos(parser, pos);
-    }
-
-    out->kind = EcsTokUnknown;
-    out->value = NULL;
-
-    if (pos[0] == '\0') {
-        out->kind = EcsTokEnd;
-        return pos;
-    } else if (pos[0] == '\n') {
-        out->kind = EcsTokNewline;
-
-        do {
-            pos = siecs_scan_whitespace_and_comment(parser, pos + 1, NULL);
-        } while (pos && pos[0] == '\n');
-
-        return pos;
-
-    } else if (isdigit((unsigned char)pos[0])) {
-        return siecs_script_number(parser, pos, out);
-
-    }
-
-    unsigned char ch = (unsigned char)pos[0];
-    if (ch < 128) {
-        for (int32_t i = 0; i < 2; i ++) {
-            ecs_token_kind_t kind = siecs_token_pairs[ch][i];
-            if (kind && pos[1] == siecs_tokens[kind].spelling[1]) {
-                out->kind = kind;
-                out->value = siecs_tokens[kind].spelling;
-                return pos + 2;
+    const char *begin = cursor;
+    int kind = (unsigned char)*cursor;
+    if (*cursor)
+        cursor++;
+    if (isalpha((unsigned char)*begin) || *begin == '_' || *begin == '$') {
+        while (isalnum((unsigned char)*cursor) || *cursor == '_' || *cursor == '$')
+            cursor++;
+        kind = EcsTokIdentifier;
+    } else if (isdigit((unsigned char)*begin)) {
+        if (begin[0] == '0' && (cursor[0] == 'x' || cursor[0] == 'X')) {
+            cursor++;
+            while (isxdigit((unsigned char)*cursor))
+                cursor++;
+        } else {
+            while (isdigit((unsigned char)*cursor))
+                cursor++;
+            if (*cursor == '.' && cursor[1] != '.') {
+                cursor++;
+                while (isdigit((unsigned char)*cursor))
+                    cursor++;
+            }
+            if (*cursor == 'e' || *cursor == 'E') {
+                cursor++;
+                if (*cursor == '+' || *cursor == '-')
+                    cursor++;
+                while (isdigit((unsigned char)*cursor))
+                    cursor++;
             }
         }
-
-        if (siecs_tokens[ch].spelling && siecs_tokens[ch].spelling[0] == ch) {
-            out->kind = (ecs_token_kind_t)ch;
-            out->value = siecs_tokens[ch].spelling;
-            return pos + 1;
+        if (*cursor == 'u' || *cursor == 'f')
+            cursor++;
+        kind = EcsTokNumber;
+    } else if (*begin == '"' || *begin == '\'' || *begin == '`') {
+        char delimiter = *begin;
+        const char *contents = cursor;
+        while (*cursor && *cursor != delimiter) {
+            if (*cursor == '\\' && cursor[1])
+                cursor++;
+            cursor++;
         }
-    }
-
-    if (pos[0] == '\'' || pos[0] == '"' || pos[0] == '`') {
-        return siecs_script_string(parser, pos, out);
-
-    } else if (siecs_script_is_identifier(pos[0])) {
-        pos = siecs_tokenizer_identifier(parser, pos, out);
-        for (ecs_token_kind_t k = EcsTokKeywordWith;
-            pos && out->value && k < EcsTokLast; k ++)
-        {
-            if (!ecs_os_strcmp(out->value, siecs_tokens[k].spelling)) {
-                parser->token_cur = ECS_CONST_CAST(char*, out->value);
-                out->kind = k;
-                out->value = siecs_tokens[k].spelling;
-            }
-        }
-
-        return pos;
-    }
-
-    ecs_parser_error(parser->name, parser->code,
-        siecs_parser_errpos(parser, pos), "unknown token '%c'", pos[0]);
-
-    return NULL;
-}
-
-const char* siecs_token(
-    ecs_parser_t *parser,
-    const char *pos,
-    ecs_token_t *out,
-    bool is_lookahead)
-{
-    const char *result = siecs_token_scan(parser, pos, out, is_lookahead);
-
-    if (result && !is_lookahead) {
-        parser->token_keep = parser->token_cur;
-    }
-
-    if (result && out->kind != EcsTokNewline && out->kind != EcsTokEnd) {
-        parser->token_ends[parser->token_ends_i & 7] = result;
-        parser->token_ends_i ++;
-    }
-
-    return result;
-}
-
-void siecs_token_restore(
-    ecs_parser_t *parser,
-    const char *token_cur)
-{
-    if (token_cur > parser->token_keep) {
-        parser->token_cur = ECS_CONST_CAST(char*, token_cur);
+        parser->token = (ecs_token_t){ .begin = begin };
+        if (!*cursor)
+            script_parse_error(parser, "unterminated string");
+        const char *text = token_text(parser, contents, cursor);
+        if (*cursor)
+            cursor++;
+        parser->token =
+            (ecs_token_t){ delimiter == '\'' ? EcsTokChar : EcsTokString, text, begin, cursor };
+        parser->pos = cursor;
+        return;
     } else {
-        parser->token_cur = parser->token_keep;
-    }
-}
-
-const char* siecs_parser_stmt_end(
-    const ecs_parser_t *parser,
-    const char *pos)
-{
-    const char *end = NULL;
-    int32_t i;
-
-    for (i = 0; i < 8; i ++) {
-        const char *cur = parser->token_ends[i];
-        if (cur && cur <= pos && (!end || cur > end)) {
-            end = cur;
+        static const struct {
+            const char *text;
+            int kind;
+        } pairs[] = { { "==", EcsTokEq },         { "!=", EcsTokNeq },
+                      { ">=", EcsTokGtEq },       { "<=", EcsTokLtEq },
+                      { "&&", EcsTokAnd },        { "||", EcsTokOr },
+                      { "..", EcsTokRange },      { "<<", EcsTokShiftLeft },
+                      { ">>", EcsTokShiftRight }, { "->", EcsTokArrow },
+                      { "=>", EcsTokMatch },      { "?[", EcsTokHasBracketOpen } };
+        for (size_t i = 0; i < sizeof(pairs) / sizeof(pairs[0]); i++) {
+            if (begin[0] && begin[1] && begin[0] == pairs[i].text[0] &&
+                begin[1] == pairs[i].text[1]) {
+                cursor = begin + 2;
+                kind = pairs[i].kind;
+                break;
+            }
         }
     }
-
-    if (!end) {
-        end = pos;
-    }
-
-    return end;
+    parser->token =
+        (ecs_token_t){ (ecs_token_kind_t)kind, token_text(parser, begin, cursor), begin, cursor };
+    parser->pos = cursor;
 }
 
-#endif
+bool script_take(ecs_parser_t *parser, int token) {
+    if ((int)parser->token.kind != token || parser->failed)
+        return false;
+    script_lex(parser);
+    return true;
+}
+
+bool script_expect(ecs_parser_t *parser, int token) {
+    if (script_take(parser, token))
+        return true;
+    char error[96];
+    if (!parser->token.kind)
+        snprintf(error, sizeof error, "unexpected end of script");
+    else if (token < 128)
+        snprintf(error, sizeof error, "expected '%c'", token);
+    else
+        snprintf(error, sizeof error, "expected identifier or value");
+    script_parse_error(parser, error);
+    return false;
+}
+
+void script_skip_lines(ecs_parser_t *parser) {
+    while (script_take(parser, '\n') || script_take(parser, ';')) {
+    }
+}
+
+const char *script_parse_name(ecs_parser_t *parser) {
+    if (parser->token.kind != EcsTokIdentifier && parser->token.kind != EcsTokString) {
+        script_parse_error(parser, "expected name");
+        return NULL;
+    }
+    const char *name = parser->token.value;
+    script_lex(parser);
+    return name;
+}

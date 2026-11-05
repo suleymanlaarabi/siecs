@@ -1,4 +1,4 @@
-/* Host capability probes for the frozen Flecs Script port. No script runtime. */
+/* Native host contracts used by the Script runtime. */
 #include <siecs.h>
 #include <siecs_test.h>
 #include <stdint.h>
@@ -6,14 +6,19 @@
 void script_host_single_target_relations_and_dynamic_ids(void) {
     ecs_init();
     const ecs_relation_storage_t storages[] = {
-        EcsRelationDense, EcsRelationByDepth, EcsRelationByTarget,
+        EcsRelationDense,
+        EcsRelationByDepth,
+        EcsRelationByTarget,
     };
     const char *names[] = { "HostDense", "HostDepth", "HostTarget" };
     for (unsigned i = 0; i < sizeof storages / sizeof storages[0]; i++) {
-        ecs_relation_id_t relation = ecs_relation_init(names[i], &(ecs_relation_desc_t){
-            .storage = storages[i],
-            .acyclic = storages[i] == EcsRelationByDepth,
-        });
+        ecs_relation_id_t relation = ecs_relation_init(
+            names[i],
+            &(ecs_relation_desc_t){
+                .storage = storages[i],
+                .acyclic = storages[i] == EcsRelationByDepth,
+            }
+        );
         ecs_entity_t entity = ecs_new();
         ecs_entity_t pizza = ecs_new();
         ecs_entity_t salad = ecs_new();
@@ -26,8 +31,7 @@ void script_host_single_target_relations_and_dynamic_ids(void) {
         test_uint(salad, ecs_target_id(entity, relation));
         test_false(ecs_has_relation_to_id(entity, relation, pizza));
         test_true(ecs_has_relation_to_id(entity, relation, salad));
-        /* Flecs (Likes, Pizza) + (Likes, Salad) retains both edges. The
-         * current single-target relation API intentionally retargets here. */
+        /* Exclusive relations retain exactly one target. */
         ecs_unrelate_id(entity, relation);
         test_false(ecs_has_relation_id(entity, relation));
     }
@@ -45,7 +49,10 @@ void script_host_dynamic_struct_is_native_component(void) {
     const ecs_component_info_t *info = ecs_component_info(position);
     test_true(info != NULL);
     test_uint(sireflect_type_by_name("ScriptHostPosition"), info->type);
-    struct { float x; float y; } value = { 10, 20 };
+    struct {
+        float x;
+        float y;
+    } value = { 10, 20 };
     test_uint(sizeof value, info->size);
     ecs_entity_t entity = ecs_new();
     ecs_set_cid(entity, position, &value);
@@ -73,8 +80,7 @@ void script_host_runtime_enum_lookup_and_mask_gap(void) {
     test_str(blue->name, "Blue");
     test_true(sireflect_enum_value_by_name(type, "Missing") == NULL);
     test_true(sireflect_enum_value_valid(type, 1));
-    /* An enum accepts only its declared constants. Flecs bitmasks additionally
-     * accept combinations; a reflected bitmask capability is still required. */
+    /* An enum accepts only its declared constants, not arbitrary combinations. */
     test_false(sireflect_enum_value_valid(type, 3));
     ecs_fini();
 }
