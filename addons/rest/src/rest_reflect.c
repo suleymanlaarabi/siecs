@@ -84,9 +84,11 @@ static bool ecs_rest_validate_value(
         return true;
     }
     case EcsReflectValueArray:
-        if (sijson_type(value) != SIJSON_ARRAY || sijson_array_len(value) != info->element_count)
+    case EcsReflectValueVector:
+        if (sijson_type(value) != SIJSON_ARRAY ||
+            (info->kind == sireflect_kind_array && sijson_array_len(value) != info->element_count))
             return false;
-        for (size_t i = 0; i < info->element_count; i++) {
+        for (size_t i = 0; i < sijson_array_len(value); i++) {
             sijson_value_t previous = current ? sijson_array_get(current, i) : NULL;
             if (!ecs_rest_validate_value(
                     info->element_type,

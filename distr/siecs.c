@@ -530,7 +530,6 @@ void sicore_vec_remove_u64(sicore_vec_t *vec, uint64_t value) {
 }
 #endif
 
-#ifndef NDEBUG
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -547,7 +546,6 @@ void sireflect_assert_fail(
     fprintf(stderr, "  function: %s\n", function != NULL ? function : "(unknown)");
     abort();
 }
-#endif
 
 #ifndef SIREFLECT_ERROR_H
 #define SIREFLECT_ERROR_H
@@ -581,6 +579,7 @@ struct sireflect_registry_t {
 
 sireflect_registry_t *sireflect_registry_current(void);
 bool sireflect_registry_is_initialized(void);
+bool sireflect_registry_in_transaction(void);
 
 sireflect_handle_t sireflect_registry_add_type(
     const char *name,
@@ -621,7 +620,6 @@ bool sireflect_registry_finish_struct(sireflect_handle_t handle,
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
-#include <stdlib.h>
 #include <string.h>
 
 static void skip_space(const char **cursor) {
@@ -842,6 +840,7 @@ static sireflect_category_t category_of(sireflect_handle_t type) {
     case sireflect_kind_enum: return sireflect_category_enum;
     case sireflect_kind_struct: return sireflect_category_struct;
     case sireflect_kind_array: return sireflect_category_array;
+    case sireflect_kind_vector: return sireflect_category_vector;
     case sireflect_kind_function_pointer: return sireflect_category_function_pointer;
     case sireflect_kind_ptr: return sireflect_category_pointer;
     case sireflect_kind_pointer: {
@@ -1154,8 +1153,6 @@ bool sireflect_parse_struct_fields(
 
 #endif
 
-#include <stdio.h>
-
 #define SIREFLECT_MAX_ARRAY_DIMS 16
 
 typedef enum {
@@ -1380,7 +1377,7 @@ sireflect_parser_fail_at(sireflect_parser_t *parser, sireflect_token_t token, co
 
     parser->failed = true;
     if (parser->fail_fast) {
-        sireflect_assert(false, parser->message);
+        sireflect_require(false, parser->message);
     }
     sireflect_error_set(parser->message);
 }
@@ -1410,7 +1407,7 @@ static inline void sireflect_parser_unexpected(
 
     parser->failed = true;
     if (parser->fail_fast) {
-        sireflect_assert(false, parser->message);
+        sireflect_require(false, parser->message);
     }
     sireflect_error_set(parser->message);
 }
@@ -1445,7 +1442,14 @@ static inline void sireflect_parser_next(sireflect_parser_t *parser) {
 
     if (sireflect_is_ident_start(c)) {
         sireflect_parser_advance(parser);
-        while (sireflect_is_ident_char(src[parser->pos])) {
+        for (;;) {
+            while (sireflect_is_ident_char(src[parser->pos])) {
+                sireflect_parser_advance(parser);
+            }
+            if (src[parser->pos] != ':' || src[parser->pos + 1] != ':' ||
+                !sireflect_is_ident_start(src[parser->pos + 2]))
+                break;
+            sireflect_parser_advance(parser);
             sireflect_parser_advance(parser);
         }
 
@@ -1558,7 +1562,8 @@ sireflect_expect(sireflect_parser_t *parser, sireflect_token_kind_t kind, const 
 
 static inline sireflect_token_t sireflect_expect_field_name(sireflect_parser_t *parser) {
     sireflect_token_t token = parser->current;
-    if (token.kind != sireflect_token_ident || sireflect_token_is_qualifier(token)) {
+    if (token.kind != sireflect_token_ident || sireflect_token_is_qualifier(token) ||
+        memchr(token.start, ':', token.len)) {
         sireflect_parser_unexpected(parser, sireflect_token_ident, "field name");
         return token;
     }
@@ -1864,7 +1869,7 @@ static inline sireflect_handle_t sireflect_resolve_field_type(
         free(owned_name);
         parser->failed = true;
         if (parser->fail_fast) {
-            sireflect_assert(false, parser->message);
+            sireflect_require(false, parser->message);
         }
         sireflect_error_set(parser->message);
         return SIREFLECT_INVALID_HANDLE;
@@ -2132,6 +2137,10 @@ static __declspec(thread) sireflect_transaction_t *sireflect_active_transaction;
 static _Thread_local sireflect_transaction_t *sireflect_active_transaction;
 #endif
 
+bool sireflect_registry_in_transaction(void) {
+    return sireflect_active_transaction != NULL;
+}
+
 bool sireflect_registry_is_initialized(void) {
     return sireflect_global_references != 0;
 }
@@ -2249,7 +2258,8 @@ sireflect_registry_get_or_add_pointer_type(sireflect_handle_t pointee_type) {
     snprintf(name, (size_t)name_len + 1, "%s*", pointee->name);
 
     sireflect_handle_t existing = sireflect_registry_handle_by_name(name);
-    if (existing != SIREFLECT_INVALID_HANDLE) {
+    if (existing != SIREFLECT_INVALID_HANDLE &&
+        sireflect_type_info(existing)->element_type == pointee_type) {
         free(name);
         return existing;
     }
@@ -2288,7 +2298,8 @@ sireflect_handle_t sireflect_registry_get_or_add_function_pointer_type(
     snprintf(name, (size_t)name_len + 1, "%s(*)()", return_info->name);
 
     sireflect_handle_t existing = sireflect_registry_handle_by_name(name);
-    if (existing != SIREFLECT_INVALID_HANDLE) {
+    if (existing != SIREFLECT_INVALID_HANDLE &&
+        sireflect_type_info(existing)->element_type == return_type) {
         free(name);
         return existing;
     }
@@ -2326,7 +2337,9 @@ sireflect_handle_t sireflect_registry_get_or_add_array_type(
     char *name = sireflect_format_array_type_name(element, element_count);
 
     sireflect_handle_t existing = sireflect_registry_handle_by_name(name);
-    if (existing != SIREFLECT_INVALID_HANDLE) {
+    if (existing != SIREFLECT_INVALID_HANDLE &&
+        sireflect_type_info(existing)->element_type == element_type &&
+        sireflect_type_info(existing)->element_count == element_count) {
         free(name);
         return existing;
     }
@@ -2348,6 +2361,42 @@ sireflect_handle_t sireflect_registry_get_or_add_array_type(
     array_info->element_count = element_count;
 
     return array_type;
+}
+
+sireflect_handle_t sireflect_vector_type(sireflect_handle_t element_type) {
+    sireflect_error_clear();
+    sireflect_type_entry_t *element = sireflect_registry_entry_at(element_type);
+    if (!element || !element->info.size) {
+        sireflect_error_set("vector element must have a valid, nonzero size");
+        return 0;
+    }
+    /* Encode the full element name to keep interning unambiguous and the result
+     * usable as an identifier in reflected struct declarations. */
+    const char prefix[] = "sireflect_vector_";
+    size_t length = strlen(element->info.name);
+    if (length > (SIZE_MAX - sizeof prefix) / 2)
+        return 0;
+    char *name = malloc(sizeof prefix + length * 2);
+    if (!name) {
+        sireflect_error_set("out of memory naming vector type");
+        return 0;
+    }
+    memcpy(name, prefix, sizeof prefix - 1);
+    const char hex[] = "0123456789abcdef";
+    for (size_t i = 0; i < length; i++) {
+        unsigned char ch = (unsigned char)element->info.name[i];
+        name[sizeof prefix - 1 + i * 2] = hex[ch >> 4];
+        name[sizeof prefix + i * 2] = hex[ch & 15];
+    }
+    name[sizeof prefix - 1 + length * 2] = '\0';
+    sireflect_handle_t handle = sireflect_registry_handle_by_name(name);
+    if (!handle || sireflect_type_info(handle)->element_type != element_type) {
+        handle = sireflect_registry_add_type(name, sireflect_kind_vector,
+            sizeof(sireflect_vector_t), _Alignof(sireflect_vector_t), NULL, 0, NULL, 0);
+        sireflect_registry_type_at(handle)->element_type = element_type;
+    }
+    free(name);
+    return handle;
 }
 
 #define add_type(name, kind) \
@@ -2492,7 +2541,7 @@ static void sireflect_registry_clear(void) {
 void sireflect_fini(void) {
     sireflect_error_clear();
 
-    sireflect_assert(sireflect_global_references != 0, "sireflect is not initialized");
+    sireflect_require(sireflect_global_references != 0, "sireflect is not initialized");
     if (sireflect_global_references == 0) {
         return;
     }
@@ -2736,6 +2785,21 @@ sireflect_handle_t sireflect_try_register_dynamic_struct(
     return sireflect_register_new_struct(name, fields, 0, 1, false, false);
 }
 
+sireflect_handle_t sireflect_try_replace_dynamic_struct(const char *name, const char *fields) {
+    sireflect_error_clear();
+    if (!sireflect_registry_is_initialized() || !sireflect_registry_in_transaction() ||
+        !name || !fields) {
+        sireflect_error_set("struct replacement requires an active registration transaction");
+        return SIREFLECT_INVALID_HANDLE;
+    }
+    sireflect_handle_t existing = sireflect_type_by_name(name);
+    if (!existing || !sireflect_type_is_struct(sireflect_type_info(existing))) {
+        sireflect_error_set("struct replacement requires an existing struct");
+        return SIREFLECT_INVALID_HANDLE;
+    }
+    return sireflect_register_new_struct(name, fields, 0, 1, false, false);
+}
+
 const char *sireflect_kind_name(sireflect_kind_t kind) {
     sireflect_error_clear();
 
@@ -2778,6 +2842,8 @@ const char *sireflect_kind_name(sireflect_kind_t kind) {
         return "struct";
     case sireflect_kind_array:
         return "array";
+    case sireflect_kind_vector:
+        return "vector";
     case sireflect_kind_signed_char:
         return "signed char";
     case sireflect_kind_unsigned_char:
@@ -2834,6 +2900,7 @@ bool sireflect_is_numeric(sireflect_kind_t kind) {
     case sireflect_kind_array:
     case sireflect_kind_function_pointer:
     case sireflect_kind_enum:
+    case sireflect_kind_vector:
         return false;
     }
 
@@ -2870,7 +2937,7 @@ const char *sireflect_type_name(sireflect_handle_t ref) {
 bool sireflect_type_is_struct(const sireflect_type_info_t *info) {
     sireflect_error_clear();
 
-    sireflect_assert(info != NULL, "type metadata must not be NULL");
+    sireflect_require(info != NULL, "type metadata must not be NULL");
     return info->kind == sireflect_kind_struct;
 }
 
@@ -3027,7 +3094,8 @@ static bool walk_node(walk_state_t *state, sireflect_handle_t type,
     } else {
         sireflect_value_event_t event = SIREFLECT_VALUE_LEAF;
         if (info->kind == sireflect_kind_struct) event = SIREFLECT_VALUE_ENTER_STRUCT;
-        else if (info->kind == sireflect_kind_array) event = SIREFLECT_VALUE_ENTER_ARRAY;
+        else if (info->kind == sireflect_kind_array || info->kind == sireflect_kind_vector)
+            event = SIREFLECT_VALUE_ENTER_ARRAY;
         else if (info->kind == sireflect_kind_pointer || info->kind == sireflect_kind_ptr ||
             info->kind == sireflect_kind_function_pointer) event = SIREFLECT_VALUE_POINTER;
         else event = SIREFLECT_VALUE_LEAF;
@@ -3062,22 +3130,36 @@ static bool walk_node(walk_state_t *state, sireflect_handle_t type,
         if (state->mode != walk_types &&
             !emit_value(state, SIREFLECT_VALUE_LEAVE_STRUCT, type, info, field,
                 ptr, mut_ptr, index, depth)) return false;
-    } else if (info->kind == sireflect_kind_array) {
+    } else if (info->kind == sireflect_kind_array || info->kind == sireflect_kind_vector) {
+        bool vector = info->kind == sireflect_kind_vector;
         sireflect_type_entry_t *element = sireflect_registry_entry_at(info->element_type);
-        if (element == NULL || element->info.size == 0 || info->element_count == 0 ||
-            info->element_count > info->size / element->info.size) {
+        if (element == NULL || element->info.size == 0 || (!vector &&
+            (info->element_count == 0 || info->element_count > info->size / element->info.size))) {
             sireflect_error_set("invalid reflected array metadata");
             return false;
         }
         size_t count = state->mode == walk_types ? 1 : info->element_count;
+        const void *sequence_data = ptr;
+        void *sequence_mut_data = mut_ptr;
+        if (vector && state->mode != walk_types) {
+            const sireflect_vector_t *sequence = ptr ? ptr : mut_ptr;
+            if (!sequence || (sequence->count && !sequence->data) ||
+                sequence->count > SIZE_MAX / element->info.size) {
+                sireflect_error_set("invalid reflected vector storage");
+                return false;
+            }
+            count = sequence->count;
+            sequence_data = sequence->data;
+            sequence_mut_data = state->mode == walk_mut_values ? sequence->data : NULL;
+        }
         for (size_t i = 0; i < count; i++) {
             if (depth == SIREFLECT_WALK_MAX_DEPTH) {
                 sireflect_error_set("reflection walk depth limit exceeded");
                 return false;
             }
             size_t offset = i * element->info.size;
-            const void *child_ptr = ptr ? (const unsigned char *)ptr + offset : NULL;
-            void *child_mut_ptr = mut_ptr ? (unsigned char *)mut_ptr + offset : NULL;
+            const void *child_ptr = sequence_data ? (const unsigned char *)sequence_data + offset : NULL;
+            void *child_mut_ptr = sequence_mut_data ? (unsigned char *)sequence_mut_data + offset : NULL;
             if (state->mode != walk_types &&
                 !emit_value(state, SIREFLECT_VALUE_ARRAY_ELEMENT, info->element_type,
                     &element->info, NULL, child_ptr, child_mut_ptr, i, depth + 1)) return false;
@@ -3773,7 +3855,8 @@ static bool sijson_write_reflected_array(
     const sireflect_type_info_t *array_type,
     const void *array_ptr
 ) {
-    if (array_type == NULL || array_type->kind != sireflect_kind_array) {
+    if (array_type == NULL || (array_type->kind != sireflect_kind_array &&
+        array_type->kind != sireflect_kind_vector)) {
         return sijson_set_error("expected reflected array type");
     }
 
@@ -3787,7 +3870,15 @@ static bool sijson_write_reflected_array(
         return false;
     }
 
-    for (size_t i = 0; i < array_type->element_count; i++) {
+    size_t count = array_type->element_count;
+    if (array_type->kind == sireflect_kind_vector) {
+        const sireflect_vector_t *vector = array_ptr;
+        count = vector->count;
+        array_ptr = vector->data;
+        if ((count && !array_ptr) || count > SIZE_MAX / element_type->size)
+            return sijson_set_error("invalid reflected vector storage");
+    }
+    for (size_t i = 0; i < count; i++) {
         const void *element_ptr = (const unsigned char *)array_ptr + i * element_type->size;
 
         if (i != 0 && !sijson_writer_putc(writer, ',')) {
@@ -3906,6 +3997,7 @@ static bool sijson_write_reflected_field(
             field_ptr
         );
     case sireflect_kind_array:
+    case sireflect_kind_vector:
         return sijson_write_reflected_array(writer, field_type, field_ptr);
     case sireflect_kind_bool:
         break;
@@ -4117,13 +4209,14 @@ static bool sijson_assign_array(
     void *array_ptr,
     sijson_value_t value
 ) {
-    if (array_type == NULL || array_type->kind != sireflect_kind_array) {
+    if (array_type == NULL || (array_type->kind != sireflect_kind_array &&
+        array_type->kind != sireflect_kind_vector)) {
         return sijson_set_error("expected reflected array type");
     }
     if (value == NULL || value->type != SIJSON_ARRAY) {
         return sijson_set_error("expected JSON array");
     }
-    if (value->as.array.len != array_type->element_count) {
+    if (array_type->kind == sireflect_kind_array && value->as.array.len != array_type->element_count) {
         return sijson_set_error("JSON array length does not match reflected array");
     }
 
@@ -4133,7 +4226,19 @@ static bool sijson_assign_array(
         return sijson_set_error("missing reflected array element type");
     }
 
-    for (size_t i = 0; i < array_type->element_count; i++) {
+    size_t count = array_type->element_count;
+    if (array_type->kind == sireflect_kind_vector) {
+        sireflect_vector_t *vector = array_ptr;
+        count = value->as.array.len;
+        if (count > SIZE_MAX / element_type->size)
+            return sijson_set_error("reflected vector size overflow");
+        vector->data = count ? calloc(count, element_type->size) : NULL;
+        if (count && !vector->data)
+            return sijson_set_error("out of memory");
+        vector->count = count;
+        array_ptr = vector->data;
+    }
+    for (size_t i = 0; i < count; i++) {
         void *element_ptr = (unsigned char *)array_ptr + i * element_type->size;
         if (!sijson_assign_field(element_type, element_ptr, value->as.array.items[i])) {
             return false;
@@ -4213,6 +4318,7 @@ static bool sijson_assign_field(
             value
         );
     case sireflect_kind_array:
+    case sireflect_kind_vector:
         return sijson_assign_array(field_type, field_ptr, value);
     default:
         break;
@@ -4250,6 +4356,8 @@ static bool sijson_assign_reflected(sireflect_handle_t type, void *ptr, sijson_v
     return true;
 }
 
+static void sijson_free_reflected(sireflect_handle_t type, void *ptr);
+
 void *sijson_from_json_impl(
     sireflect_handle_t *ref,
     const sireflect_struct_desc_t *desc,
@@ -4285,6 +4393,7 @@ void *sijson_from_json_impl(
     }
 
     if (!sijson_assign_reflected(type, g_from_json_buffer, root)) {
+        sijson_free_reflected(type, g_from_json_buffer);
         memset(g_from_json_buffer, 0, info->size);
         return g_from_json_buffer;
     }
@@ -4335,15 +4444,27 @@ static void sijson_free_reflected_field(const sireflect_type_info_t *field_type,
             sijson_free_reflected(sireflect_type_by_name(field_type->name), field_ptr);
         }
         return;
-    case sireflect_kind_array: {
+    case sireflect_kind_array:
+    case sireflect_kind_vector: {
         const sireflect_type_info_t *element_type =
             sireflect_type_info(field_type->element_type);
         if (element_type == NULL || element_type->size == 0) {
             return;
         }
-        for (size_t i = 0; i < field_type->element_count; i++) {
-            void *element_ptr = (unsigned char *)field_ptr + i * element_type->size;
+        size_t count = field_type->element_count;
+        void *data = field_ptr;
+        if (field_type->kind == sireflect_kind_vector) {
+            sireflect_vector_t *vector = field_ptr;
+            count = vector->count;
+            data = vector->data;
+        }
+        for (size_t i = 0; i < count; i++) {
+            void *element_ptr = (unsigned char *)data + i * element_type->size;
             sijson_free_reflected_field(element_type, element_ptr);
+        }
+        if (field_type->kind == sireflect_kind_vector) {
+            free(data);
+            *(sireflect_vector_t *)field_ptr = (sireflect_vector_t){ 0 };
         }
         return;
     }
@@ -5198,6 +5319,15 @@ struct ecs_table_s {
     sicore_vec_t observers_by_event; // sicore_vec_t per event id; each holds uint16_t observer ids.
 };
 
+static inline uint16_t ecs_column_value_flags(size_t size, const ecs_type_ops_t *ops) {
+    return ((!size || (!ops->move_ctor && !ops->copy_ctor)) ? EcsColumnTrivialMove : 0) |
+           ((!size || (!ops->dtor && !ops->reflected_type)) ? EcsColumnNoDtor : 0) |
+           ((!size || !ops->ctor) ? EcsColumnZeroCtor : 0);
+}
+
+/* Adopt preallocated storage and rebuild from current column descriptors. */
+void ecs_table_rebind_data_columns(ecs_table_t *table, ecs_data_column_t *columns);
+
 void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id);
 void ecs_table_fini(ecs_table_t *table);
 uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity);
@@ -5487,6 +5617,27 @@ void ecs_emit_relation_event(
 
 #endif
 
+#ifndef SIECS_PAIR_H
+#define SIECS_PAIR_H
+
+typedef enum { EcsPairAdd, EcsPairSet, EcsPairRemove, EcsPairModified } ecs_pair_op_t;
+bool ecs_pair_apply(ecs_entity_t entity, ecs_pair_id_t pair, ecs_pair_op_t op, const void *value);
+void ecs_pair_entity_fini(ecs_entity_t entity);
+void ecs_pair_storage_fini(void);
+void ecs_pair_inherit(ecs_entity_t entity, ecs_entity_t base);
+typedef struct ecs_pair_schema_t ecs_pair_schema_t;
+bool ecs_pair_schema_prepare(
+    ecs_component_t component,
+    sireflect_handle_t type,
+    ecs_pair_schema_t **out
+);
+bool ecs_pair_schema_validate(const ecs_pair_schema_t *plan);
+void ecs_pair_schema_apply(ecs_pair_schema_t *plan);
+void ecs_pair_schema_notify(const ecs_pair_schema_t *plan);
+void ecs_pair_schema_free(ecs_pair_schema_t *plan);
+
+#endif
+
 #ifndef SIECS_STORAGE_ENTITY_INDEX_H
 #define SIECS_STORAGE_ENTITY_INDEX_H
 #include <stdatomic.h>
@@ -5603,11 +5754,19 @@ typedef struct {
 typedef struct ecs_command_buffer_s {
     sicore_vec_t commands;
     sicore_vec_t relations;
+    sicore_vec_t pairs;
     uint32_t *command_slots;
     uint32_t slot_capacity;
     ecs_arena_t *arena;
     ecs_name_index_t pending_names;
 } ecs_command_buffer_t;
+
+bool ecs_command_buffer_pair(
+    ecs_entity_t entity,
+    ecs_pair_id_t pair,
+    ecs_pair_op_t op,
+    const void *value
+);
 
 typedef struct ecs_execution_context_s {
     ecs_command_buffer_t commands;
@@ -5956,6 +6115,8 @@ typedef struct {
     // component: setting it is a plain byte copy no user code can observe
     // unless an observer is registered.
     bool plain;
+    bool dynamic;
+    ecs_component_t override_target;
     ecs_component_info_t *info;
     uint16_t *required;
     uint32_t required_count;
@@ -5971,7 +6132,7 @@ typedef struct {
 
 typedef struct ecs_component_index_s {
     sicore_vec_t components; // ecs_component_record_t
-    sicore_map_t names; // public component name -> id; borrowed metadata keys
+    sicore_map_t names;      // public component name -> id; borrowed metadata keys
 } ecs_component_index_t;
 
 extern ecs_component_index_t component_index;
@@ -6134,7 +6295,7 @@ typedef struct {
 } ecs_observer_t;
 
 #define ECS_OBSERVER_GLOBAL_ENTITY UINT32_MAX
-#define ECS_BUILTIN_EVENT_COUNT 5
+#define ECS_BUILTIN_EVENT_COUNT 7
 #define ECS_OBSERVER_NO_QUERY UINT16_MAX
 
 typedef struct {
@@ -6735,6 +6896,8 @@ static inline void ecs_emit_removed_components(
 
 #include <stdint.h>
 
+#define ECS_AUTO_OVERRIDE_PREFIX "siecs::auto_override::"
+
 typedef struct {
     ecs_component_t *ids;
     uint16_t count;
@@ -6951,6 +7114,44 @@ typedef struct {
 
 ECS_THREAD_LOCAL ecs_execution_context_t *ecs_tls_context;
 
+typedef struct {
+    ecs_entity_t entity;
+    ecs_pair_id_t pair;
+    ecs_pair_op_t op;
+    ecs_type_ops_t ops;
+    void *data;
+} ecs_deferred_pair_t;
+
+static void deferred_pair_fini(ecs_deferred_pair_t *pair) {
+    if (pair->data) {
+        ecs_value_fini(&pair->ops, pair->data, 1);
+        free(pair->data);
+    }
+}
+
+bool ecs_command_buffer_pair(
+    ecs_entity_t entity,
+    ecs_pair_id_t pair,
+    ecs_pair_op_t op,
+    const void *value
+) {
+    const ecs_pair_desc_t *desc = ecs_pair_info(pair);
+    if (!desc)
+        return false;
+    const ecs_component_record_t *record = ecs_component_index_get(desc->payload);
+    ecs_deferred_pair_t command = { .entity = entity, .pair = pair, .op = op, .ops = record->ops };
+    if (op == EcsPairSet && record->size) {
+        if (!value)
+            return false;
+        command.data = malloc(record->size);
+        if (!command.data)
+            return false;
+        ecs_value_copy(&record->ops, record->size, command.data, value, 1, true);
+    }
+    sicore_vec_push(&ecs_execution_context_current()->commands.pairs, &command, sizeof command);
+    return true;
+}
+
 void ecs_execution_context_set(ecs_execution_context_t *context) { ecs_tls_context = context; }
 
 static inline void deferred_change_fini(ecs_deferred_change_t *change) {
@@ -7137,6 +7338,7 @@ static inline void command_fini(ecs_entity_command_t *command) {
 void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena) {
     sicore_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
     sicore_vec_init(&buffer->relations, sizeof(ecs_deferred_relation_t));
+    sicore_vec_init(&buffer->pairs, sizeof(ecs_deferred_pair_t));
     buffer->command_slots = NULL;
     buffer->slot_capacity = 0;
     buffer->arena = arena;
@@ -7150,6 +7352,10 @@ void ecs_command_buffer_fini(ecs_command_buffer_t *buffer) {
     }
     sicore_vec_fini(&buffer->commands);
     sicore_vec_fini(&buffer->relations);
+    ecs_deferred_pair_t *pending_pairs = buffer->pairs.data;
+    for (uint32_t i = 0; i < buffer->pairs.size; i++)
+        deferred_pair_fini(&pending_pairs[i]);
+    sicore_vec_fini(&buffer->pairs);
     free(buffer->command_slots);
     ecs_name_index_fini(&buffer->pending_names);
 }
@@ -7651,25 +7857,29 @@ static void command_apply(
     command_apply_changes(command);
     command_apply_relations(command, relations);
     if (base_changed) {
+        ecs_pair_inherit(command->entity, command->base);
         command_finish_base_change(command, old_base);
     }
 }
 
 void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
-    if (buffer->commands.size == 0) {
+    if (buffer->commands.size == 0 && buffer->pairs.size == 0) {
         ecs_arena_reset(buffer->arena);
         return;
     }
 
     ecs_command_transition_t transition = { 0 };
-    while (buffer->commands.size != 0) {
+    while (buffer->commands.size != 0 || buffer->pairs.size != 0) {
         sicore_vec_t commands = buffer->commands;
         sicore_vec_t relations = buffer->relations;
+        sicore_vec_t pending_pairs = buffer->pairs;
         sicore_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
         sicore_vec_init(&buffer->relations, sizeof(ecs_deferred_relation_t));
+        sicore_vec_init(&buffer->pairs, sizeof(ecs_deferred_pair_t));
 
         ecs_entity_command_t *items = sicore_vec_data(&commands, ecs_entity_command_t);
-        memset(buffer->command_slots, 0, buffer->slot_capacity * sizeof(uint32_t));
+        if (buffer->slot_capacity)
+            memset(buffer->command_slots, 0, buffer->slot_capacity * sizeof(uint32_t));
 
         for (uint32_t i = 0; i < commands.size; i++) {
             if (items[i].identity && items[i].identity->reservation) {
@@ -7689,6 +7899,17 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
             );
             command_fini(&items[i]);
         }
+        ecs_deferred_pair_t *pair_commands = pending_pairs.data;
+        for (uint32_t i = 0; i < pending_pairs.size; i++) {
+            ecs_deferred_pair_t *pair = &pair_commands[i];
+            if (ecs_is_alive(pair->entity) && ecs_pair_info(pair->pair))
+                ecs_fatal_if(
+                    !ecs_pair_apply(pair->entity, pair->pair, pair->op, pair->data),
+                    "could not apply deferred pair"
+                );
+            deferred_pair_fini(pair);
+        }
+        sicore_vec_fini(&pending_pairs);
         if (!buffer->commands.size) {
             // Keep the detached storage when hooks did not enqueue another batch.
             sicore_vec_fini(&buffer->commands);
@@ -7723,7 +7944,7 @@ void ecs_defer_end(void) {
     ecs_assert(context->defer_depth > 0, "ecs_defer_end called without ecs_defer_begin\n");
     context->defer_depth--;
     if (context->defer_depth == 0 && !context->flushing_commands && !context->scheduler_parallel &&
-        context->commands.commands.size != 0) {
+        (context->commands.commands.size != 0 || context->commands.pairs.size != 0)) {
         ecs_command_buffer_flush();
         return;
     }
@@ -8005,7 +8226,9 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
     component.name = desc->name;
 
     ecs_component_t id = 0;
-    return ecs_component_register_type(&id, &component, type);
+    ecs_component_t registered = ecs_component_register_type(&id, &component, type);
+    ecs_component_index_get(registered)->dynamic = true;
+    return registered;
 }
 
 ecs_component_t ecs_tag_init(const char *name) {
@@ -8013,6 +8236,23 @@ ecs_component_t ecs_tag_init(const char *name) {
         .name = name,
         .fields = "{}",
     });
+}
+
+ecs_component_t ecs_component_override_tag(ecs_component_t component) {
+    const ecs_component_info_t *info = ecs_component_info(component);
+    if (!info || !info->name || component == ecs_id(Name) || component == ecs_id(Abstract) ||
+        ecs_component_index_get(component)->relation_flags)
+        return 0;
+    size_t size = sizeof(ECS_AUTO_OVERRIDE_PREFIX) + strlen(info->name);
+    char *name = malloc(size);
+    if (!name)
+        return 0;
+    snprintf(name, size, "%s%s", ECS_AUTO_OVERRIDE_PREFIX, info->name);
+    ecs_component_t tag = ecs_component_lookup(name);
+    if (!tag)
+        tag = ecs_tag_init(name);
+    free(name);
+    return tag;
 }
 
 const char *ecs_component_name(ecs_component_t component) {
@@ -8539,6 +8779,225 @@ void ecs_modified_cid(ecs_entity_t entity, ecs_component_t cid) {
     ecs_sync_end();
 }
 
+#ifndef SIECS_COMPONENT_SCHEMA_H
+#define SIECS_COMPONENT_SCHEMA_H
+
+typedef struct ecs_component_schema_t ecs_component_schema_t;
+/* Prepare all replacement columns without changing the registry or tables. */
+ecs_component_schema_t *ecs_component_schema_prepare(
+    ecs_component_t component,
+    sireflect_handle_t type,
+    const char *fields
+);
+bool ecs_component_schema_validate(const ecs_component_schema_t *schema);
+void ecs_component_schema_apply(ecs_component_schema_t *schema);
+void ecs_component_schema_notify(
+    const ecs_component_schema_t *schema,
+    bool (*already_written)(ecs_entity_t, ecs_component_t, void *),
+    void *context
+);
+void ecs_component_schema_free(ecs_component_schema_t *schema);
+#endif
+
+typedef struct ecs_schema_column_t {
+    uint16_t table;
+    uint16_t column;
+    uint32_t count;
+    uint32_t capacity;
+    void *previous;
+    void *data;
+    ecs_data_column_t *columns;
+} ecs_schema_column_t;
+
+struct ecs_component_schema_t {
+    ecs_component_t component;
+    sireflect_handle_t previous;
+    sireflect_handle_t type;
+    ecs_type_ops_t ops;
+    sireflect_struct_desc_t *reflection;
+    uint32_t count;
+    uint32_t registered_tables;
+    bool applied;
+    ecs_pair_schema_t *pairs;
+    ecs_schema_column_t columns[];
+};
+
+void ecs_component_schema_free(ecs_component_schema_t *schema) {
+    if (!schema)
+        return;
+    for (uint32_t i = 0; i < schema->count; i++) {
+        free(schema->columns[i].data);
+        free(schema->columns[i].columns);
+    }
+    ecs_reflection_desc_free(schema->reflection);
+    ecs_pair_schema_free(schema->pairs);
+    free(schema);
+}
+
+ecs_component_schema_t *ecs_component_schema_prepare(
+    ecs_component_t component,
+    sireflect_handle_t type,
+    const char *fields
+) {
+    if (!ecs_component_info(component) || !type || !fields || ecs_is_deferred())
+        return NULL;
+    const ecs_component_record_t *record = ecs_component_index_get(component);
+    const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (!record->dynamic || record->override_target || !sireflect_type_is_struct(info) ||
+        info->size > UINT32_MAX)
+        return NULL;
+    uint32_t count = record->tables.size;
+    ecs_component_schema_t *schema =
+        calloc(1, sizeof(*schema) + count * sizeof(ecs_schema_column_t));
+    if (!schema)
+        return NULL;
+    schema->component = component;
+    schema->registered_tables = count;
+    schema->previous = record->info->type;
+    schema->type = type;
+    schema->ops = ecs_reflected_ops(type);
+    if (!ecs_pair_schema_prepare(component, type, &schema->pairs)) {
+        ecs_component_schema_free(schema);
+        return NULL;
+    }
+    schema->reflection = calloc(1, sizeof(*schema->reflection));
+    if (!schema->reflection) {
+        ecs_component_schema_free(schema);
+        return NULL;
+    }
+    schema->reflection->name = strdup(record->info->name);
+    schema->reflection->fields = strdup(fields);
+    schema->reflection->size = info->size;
+    schema->reflection->align = info->align;
+    if (!schema->reflection->name || !schema->reflection->fields) {
+        ecs_component_schema_free(schema);
+        return NULL;
+    }
+    const uint16_t *tables = record->tables.data;
+    for (uint32_t i = 0; i < count; i++) {
+        const ecs_table_t *table = ecs_get_table(tables[i]);
+        uint16_t at = ecs_table_column_or_invalid(table, component);
+        if (at == UINT16_MAX)
+            continue;
+        ecs_schema_column_t *column = &schema->columns[schema->count++];
+        column->table = tables[i];
+        column->column = at;
+        column->count = table->entity_count;
+        column->capacity = table->entity_capacity;
+        column->previous = table->cls[column->column].data;
+        if (info->size && column->capacity > SIZE_MAX / info->size) {
+            ecs_component_schema_free(schema);
+            return NULL;
+        }
+        column->data = info->size ? calloc(column->capacity, info->size) : NULL;
+        column->columns = malloc(table->type.component_count * sizeof(ecs_data_column_t));
+        if ((info->size && !column->data) || !column->columns) {
+            ecs_component_schema_free(schema);
+            return NULL;
+        }
+    }
+    return schema;
+}
+
+bool ecs_component_schema_validate(const ecs_component_schema_t *schema) {
+    const ecs_component_record_t *record = ecs_component_index_get(schema->component);
+    if (schema->applied || !ecs_pair_schema_validate(schema->pairs) ||
+        record->info->type != schema->previous ||
+        record->tables.size != schema->registered_tables || ecs_is_deferred())
+        return false;
+    for (uint32_t i = 0; i < schema->count; i++) {
+        const ecs_schema_column_t *column = &schema->columns[i];
+        const ecs_table_t *table = ecs_get_table(column->table);
+        if (table->entity_count != column->count || table->entity_capacity != column->capacity ||
+            table->cls[column->column].data != column->previous)
+            return false;
+    }
+    return true;
+}
+
+void ecs_component_schema_apply(ecs_component_schema_t *schema) {
+    ecs_pair_schema_apply(schema->pairs);
+    ecs_component_record_t *record = ecs_component_index_get(schema->component);
+    uint32_t size = (uint32_t)sireflect_type_size(schema->type);
+    ecs_type_ops_t previous = record->ops;
+    for (uint32_t i = 0; i < schema->count; i++) {
+        ecs_schema_column_t *column = &schema->columns[i];
+        ecs_table_t *table = ecs_get_table(column->table);
+        ecs_value_fini(&previous, column->previous, column->count);
+        free(column->previous);
+        table->cls[column->column].data = column->data;
+        table->cls[column->column].size = size;
+        table->cls[column->column].flags = ecs_column_value_flags(size, &schema->ops);
+        ecs_table_column_changed(table, column->column, ecs_change_tick());
+        column->data = NULL;
+        ecs_table_rebind_data_columns(table, column->columns);
+        column->columns = NULL;
+    }
+    ecs_reflection_desc_free(record->info->reflection);
+    record->info->reflection = schema->reflection;
+    schema->reflection = NULL;
+    record->info->type = schema->type;
+    record->info->size = size;
+    record->size = size;
+    record->ops = schema->ops;
+    record->plain = size && !schema->ops.reflected_type;
+    for (uint32_t i = 0; i < schema->count; i++)
+        ecs_query_index_refresh_table_fields(ecs_get_table(schema->columns[i].table));
+    system_index.plan_dirty = true;
+    schema->applied = true;
+}
+
+void ecs_component_schema_notify(
+    const ecs_component_schema_t *schema,
+    bool (*already_written)(ecs_entity_t, ecs_component_t, void *),
+    void *context
+) {
+    ecs_pair_schema_notify(schema->pairs);
+    for (uint32_t i = 0; i < schema->count; i++) {
+        ecs_table_t *table = ecs_get_table(schema->columns[i].table);
+        uint16_t column = schema->columns[i].column;
+        for (uint32_t row = 0; row < table->entity_count; row++) {
+            if (already_written &&
+                already_written(table->entities[row], schema->component, context))
+                continue;
+            ecs_emit(
+                table,
+                table->entities[row],
+                EcsOnSet,
+                schema->component,
+                ecs_table_component_at_column(table, column, row)
+            );
+        }
+    }
+}
+
+bool ecs_component_dynamic_redefine(ecs_component_t component, const char *fields) {
+    if (!ecs_component_info(component) || !fields || ecs_is_deferred() ||
+        !ecs_component_index_get(component)->dynamic)
+        return false;
+    sireflect_transaction_t *transaction = sireflect_transaction_begin();
+    if (!transaction)
+        return false;
+    sireflect_handle_t type =
+        sireflect_try_replace_dynamic_struct(ecs_component_name(component), fields);
+    ecs_component_schema_t *schema =
+        type ? ecs_component_schema_prepare(component, type, fields) : NULL;
+    if (!schema || !ecs_component_schema_validate(schema) ||
+        !sireflect_transaction_commit(transaction)) {
+        ecs_component_schema_free(schema);
+        sireflect_transaction_abort(transaction);
+        return false;
+    }
+    ecs_sync_begin();
+    ecs_observer_batch_begin();
+    ecs_component_schema_apply(schema);
+    ecs_component_schema_notify(schema, NULL, NULL);
+    ecs_observer_batch_end();
+    ecs_component_schema_free(schema);
+    ecs_sync_end();
+    return true;
+}
+
 void ecs_entity_materialize(ecs_entity_t entity) {
     ecs_entity_record_t *record = ecs_get_record(entity);
     if (record->table_row != UINT32_MAX || ecs_entity_record_table(record) != 0)
@@ -8648,8 +9107,11 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     ecs_inheritance_plan_copy(&plan, target, to_table, record->table_row);
     ecs_emit_added_components(from_table, to_table, entity, record->table_row);
     ecs_inheritance_plan_fini(&plan);
+    if (!ecs_is_alive(entity))
+        return;
+    ecs_pair_inherit(entity, target);
 
-    if (target) {
+    if (target && ecs_is_alive(entity)) {
         ecs_inheritance_instantiate_children(entity, target);
     }
 }
@@ -8672,6 +9134,9 @@ void ecs_kill_now(ecs_entity_t entity) {
     if (!ecs_is_alive(entity)) {
         return;
     }
+    ecs_pair_entity_fini(entity);
+    if (!ecs_is_alive(entity))
+        return;
 
     ecs_entity_record_t *record = ecs_get_record(entity);
     ecs_table_t *initial_table = ecs_get_table(ecs_entity_record_table(record));
@@ -8816,7 +9281,8 @@ static void ecs_inheritance_plan_build(
         return;
     }
 
-    ecs_component_t *ids = malloc(sizeof(ecs_component_t) * capacity);
+    ecs_assert(capacity <= UINT16_MAX / 2, "too many override components\n");
+    ecs_component_t *ids = malloc(sizeof(ecs_component_t) * capacity * 2);
     ecs_assert_not_null(ids);
 
     uint16_t count = 0;
@@ -8825,6 +9291,18 @@ static void ecs_inheritance_plan_build(
         const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
         for (uint16_t i = 0; i < table->type.component_count; i++) {
             ecs_component_t component = table->type.ids[i];
+            ecs_component_t overridden = ecs_component_index_get(component)->override_target;
+            if (overridden) {
+                if (ecs_has_cid(base, overridden)) {
+                    uint32_t at = ecs_ids_lower_bound(
+                        child_type->ids,
+                        child_type->component_count,
+                        overridden
+                    );
+                    if (at == child_type->component_count || child_type->ids[at] != overridden)
+                        ids[count++] = overridden;
+                }
+            }
             if (!ecs_inheritance_component_is_owned(component))
                 continue;
             uint32_t at =
@@ -9731,6 +10209,20 @@ typedef struct {
     ecs_type_ops_t ops;
 } ecs_pending_observer_t;
 
+typedef struct {
+    ecs_pair_event_t event;
+    ecs_type_ops_t ops;
+    max_align_t alignment;
+    unsigned char value[];
+} ecs_pair_snapshot_t;
+
+static void pair_snapshot_fini(void *data, uint32_t count) {
+    (void)count;
+    ecs_pair_snapshot_t *snapshot = data;
+    if (snapshot->event.value)
+        ecs_value_fini(&snapshot->ops, snapshot->value, 1);
+}
+
 void ecs_observer_batch_begin(void) {
     ecs_assert_not_scheduler_parallel("observer batching");
     observer_index.batch_depth++;
@@ -9746,7 +10238,21 @@ void ecs_observer_dispatch(ecs_observer_id_t id, const ecs_observer_event_t *eve
                                        .observer = id,
                                        .revision = observer->revision };
     size_t size = 0;
-    if (event->component && event->trigger_data) {
+    if (event->event == EcsOnPairSet || event->event == EcsOnPairRemove) {
+        const ecs_pair_event_t *data = event->trigger_data;
+        const ecs_component_record_t *component = ecs_component_index_get(data->payload);
+        ecs_pair_snapshot_t *snapshot = calloc(1, sizeof(*snapshot) + component->size);
+        ecs_fatal_if(!snapshot, "out of memory retaining pair event");
+        snapshot->event = *data;
+        snapshot->ops = component->ops;
+        if (component->size) {
+            ecs_value_copy(&snapshot->ops, component->size, snapshot->value, data->value, 1, true);
+            snapshot->event.value = snapshot->value;
+        }
+        pending.owned_payload = snapshot;
+        pending.event.trigger_data = &snapshot->event;
+        pending.ops.dtor = pair_snapshot_fini;
+    } else if (event->component && event->trigger_data) {
         const ecs_component_record_t *component = ecs_component_index_get(event->component);
         size = component->size;
         pending.ops = component->ops;
@@ -10055,6 +10561,715 @@ void ecs_emit_observers(
 
     for (ecs_entity_t target = entity; target; target = ecs_entity_base_raw(target)) {
         ecs_emit_target_observers(table, entity, target, event, component, trigger_data);
+    }
+}
+
+typedef struct {
+    ecs_pair_id_t pair;
+    uint32_t row;
+} pair_entry_t;
+typedef struct {
+    ecs_entity_t entity;
+    pair_entry_t *entries;
+    uint32_t count, capacity;
+    ecs_pair_id_t *targets;
+    uint32_t target_count, target_capacity;
+    bool retiring;
+} pair_source_t;
+typedef struct {
+    ecs_pair_desc_t desc;
+    ecs_pair_id_t id;
+    ecs_type_ops_t ops;
+    ecs_entity_t *entities;
+    void *data;
+    uint32_t count, capacity;
+    size_t size;
+    uint64_t tick;
+    bool active;
+    bool retiring;
+} pair_column_t;
+static struct {
+    pair_column_t **columns;
+    uint32_t count, capacity;
+    ecs_pair_id_t *slots;
+    uint32_t slot_capacity;
+    pair_source_t **pages;
+    uint32_t page_capacity;
+    ecs_pair_id_t first;
+} pairs;
+static ecs_pair_id_t pair_sequence;
+
+static bool reserve(void **data, uint32_t *capacity, uint32_t count, size_t stride) {
+    if (count <= *capacity)
+        return true;
+    uint32_t next = *capacity ? *capacity : 8;
+    while (next < count) {
+        if (next > UINT32_MAX / 2)
+            return false;
+        next *= 2;
+    }
+    if (next > SIZE_MAX / stride)
+        return false;
+    void *replacement = realloc(*data, next * stride);
+    if (!replacement)
+        return false;
+    *data = replacement;
+    *capacity = next;
+    return true;
+}
+
+static pair_column_t *column(ecs_pair_id_t pair) {
+    return pair && pair >= pairs.first && pair - pairs.first < pairs.count
+               ? pairs.columns[pair - pairs.first]
+               : NULL;
+}
+
+static pair_source_t *source(ecs_entity_t entity, bool create) {
+    uint32_t page = ecs_entity_id(entity) >> 8;
+    if (page >= pairs.page_capacity) {
+        if (!create)
+            return NULL;
+        uint32_t previous = pairs.page_capacity;
+        if (!reserve((void **)&pairs.pages, &pairs.page_capacity, page + 1, sizeof(*pairs.pages)))
+            return NULL;
+        memset(pairs.pages + previous, 0, (pairs.page_capacity - previous) * sizeof(*pairs.pages));
+    }
+    if (!pairs.pages[page] && create)
+        pairs.pages[page] = calloc(256, sizeof(pair_source_t));
+    pair_source_t *owner =
+        pairs.pages[page] ? &pairs.pages[page][ecs_entity_id(entity) & 255] : NULL;
+    if (owner && owner->entity != entity) {
+        if (!create)
+            return NULL;
+        owner->entity = entity;
+        owner->retiring = false;
+    }
+    return owner;
+}
+
+static uint32_t entry_index(const pair_source_t *source, ecs_pair_id_t pair) {
+    uint32_t lo = 0, hi = source ? source->count : 0;
+    while (lo < hi) {
+        uint32_t mid = lo + (hi - lo) / 2;
+        if (source->entries[mid].pair < pair)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+
+static pair_entry_t *entry(ecs_entity_t entity, ecs_pair_id_t pair) {
+    pair_source_t *owner = source(entity, false);
+    uint32_t index = entry_index(owner, pair);
+    return owner && index < owner->count && owner->entries[index].pair == pair
+               ? &owner->entries[index]
+               : NULL;
+}
+
+static bool element_valid(ecs_pair_element_t element) {
+    switch (element.kind) {
+    case EcsPairEntity:
+        return element.id && ecs_is_alive(element.id);
+    case EcsPairComponent:
+        return element.id <= UINT16_MAX && ecs_component_info((ecs_component_t)element.id);
+    case EcsPairRelation:
+        return element.id <= UINT16_MAX && ecs_relation_info((ecs_relation_id_t)element.id);
+    default:
+        return false;
+    }
+}
+
+static bool same_element(ecs_pair_element_t a, ecs_pair_element_t b) {
+    return a.kind == b.kind && a.id == b.id;
+}
+
+static uint64_t identity_hash(const ecs_pair_desc_t *desc) {
+    uint64_t hash = UINT64_C(14695981039346656037);
+    const uint64_t words[] = { desc->first.id,
+                               desc->first.kind,
+                               desc->second.id,
+                               desc->second.kind };
+    for (unsigned i = 0; i < 4; i++) {
+        hash ^= words[i];
+        hash *= UINT64_C(1099511628211);
+        hash ^= hash >> 32;
+    }
+    return hash;
+}
+
+static bool reserve_identity(void) {
+    if (pairs.count + 1 <= pairs.slot_capacity / 2)
+        return true;
+    uint32_t capacity = pairs.slot_capacity ? pairs.slot_capacity * 2 : 16;
+    if (capacity < pairs.slot_capacity)
+        return false;
+    ecs_pair_id_t *slots = calloc(capacity, sizeof(*slots));
+    if (!slots)
+        return false;
+    for (uint32_t i = 0; i < pairs.count; i++) {
+        uint32_t slot = (uint32_t)identity_hash(&pairs.columns[i]->desc) & (capacity - 1);
+        while (slots[slot])
+            slot = (slot + 1) & (capacity - 1);
+        slots[slot] = pairs.first + i;
+    }
+    free(pairs.slots);
+    pairs.slots = slots;
+    pairs.slot_capacity = capacity;
+    return true;
+}
+
+ecs_pair_id_t ecs_pair_find(const ecs_pair_desc_t *desc) {
+    if (!desc || !pairs.slot_capacity)
+        return 0;
+    uint32_t slot = (uint32_t)identity_hash(desc) & (pairs.slot_capacity - 1);
+    while (pairs.slots[slot]) {
+        const pair_column_t *existing = column(pairs.slots[slot]);
+        if (same_element(existing->desc.first, desc->first) &&
+            same_element(existing->desc.second, desc->second))
+            return existing->active ? existing->id : 0;
+        slot = (slot + 1) & (pairs.slot_capacity - 1);
+    }
+    return 0;
+}
+
+ecs_pair_id_t ecs_pair_init(const ecs_pair_desc_t *desc) {
+    ecs_assert_not_scheduler_parallel("pair registration");
+    if (!desc || ecs_is_deferred() || !element_valid(desc->first) || !element_valid(desc->second) ||
+        !ecs_component_info(desc->payload))
+        return 0;
+    /* Builtin relation edges have one authoritative representation. */
+    const ecs_pair_element_t elements[] = { desc->first, desc->second };
+    for (unsigned i = 0; i < 2; i++)
+        if (elements[i].kind == EcsPairRelation &&
+            (elements[i].id == ecs_rid(ChildOf) || elements[i].id == ecs_rid(IsA)))
+            return 0;
+    ecs_pair_id_t existing = ecs_pair_find(desc);
+    if (existing)
+        return column(existing)->desc.payload == desc->payload ? existing : 0;
+    if (!reserve_identity())
+        return 0;
+    uint32_t slot = (uint32_t)identity_hash(desc) & (pairs.slot_capacity - 1);
+    while (pairs.slots[slot])
+        slot = (slot + 1) & (pairs.slot_capacity - 1);
+    if (pair_sequence == UINT32_MAX ||
+        !reserve((void **)&pairs.columns, &pairs.capacity, pairs.count + 1, sizeof(*pairs.columns)))
+        return 0;
+    pair_column_t *created = calloc(1, sizeof(*created));
+    if (!created)
+        return 0;
+    for (unsigned i = 0; i < 2; i++) {
+        if (elements[i].kind != EcsPairEntity || (i && same_element(elements[0], elements[1])))
+            continue;
+        pair_source_t *target = source(elements[i].id, true);
+        if (!target || !reserve(
+                           (void **)&target->targets,
+                           &target->target_capacity,
+                           target->target_count + 1,
+                           sizeof(*target->targets)
+                       )) {
+            free(created);
+            return 0;
+        }
+    }
+    ecs_pair_id_t id = ++pair_sequence;
+    if (!pairs.count)
+        pairs.first = id;
+    const ecs_component_record_t *record = ecs_component_index_get(desc->payload);
+    *created = (pair_column_t){ .desc = *desc,
+                                .id = id,
+                                .ops = record->ops,
+                                .size = record->size,
+                                .active = true };
+    pairs.columns[pairs.count++] = created;
+    pairs.slots[slot] = id;
+    for (unsigned i = 0; i < 2; i++)
+        if (elements[i].kind == EcsPairEntity && !(i && same_element(elements[0], elements[1]))) {
+            pair_source_t *target = source(elements[i].id, false);
+            target->targets[target->target_count++] = id;
+        }
+    return id;
+}
+
+const ecs_pair_desc_t *ecs_pair_info(ecs_pair_id_t pair) {
+    const pair_column_t *record = column(pair);
+    return record && record->active ? &record->desc : NULL;
+}
+
+bool ecs_pair_has_owned(ecs_entity_t entity, ecs_pair_id_t pair) {
+    return ecs_is_alive(entity) && ecs_pair_info(pair) && entry(entity, pair);
+}
+
+bool ecs_pair_entity_in_use(ecs_entity_t entity) {
+    if (!ecs_is_alive(entity))
+        return false;
+    const pair_source_t *owner = source(entity, false);
+    if (!owner)
+        return false;
+    if (owner->count)
+        return true;
+    for (uint32_t i = 0; i < owner->target_count; i++) {
+        const pair_column_t *record = column(owner->targets[i]);
+        if (record && record->active && record->count)
+            return true;
+    }
+    return false;
+}
+
+static ecs_entity_t value_owner(ecs_entity_t entity, ecs_pair_id_t pair) {
+    const pair_column_t *record = column(pair);
+    if (!record || !record->active)
+        return 0;
+    while (entity && ecs_is_alive(entity)) {
+        if (entry(entity, pair))
+            return entity;
+        entity = ecs_target_id(entity, ecs_rid(IsA));
+    }
+    return 0;
+}
+
+bool ecs_pair_has(ecs_entity_t entity, ecs_pair_id_t pair) {
+    return value_owner(entity, pair) != 0;
+}
+
+const void *ecs_pair_get(ecs_entity_t entity, ecs_pair_id_t pair) {
+    ecs_entity_t owner = value_owner(entity, pair);
+    pair_column_t *record = column(pair);
+    pair_entry_t *location = owner ? entry(owner, pair) : NULL;
+    return location && record->size ? (const char *)record->data + location->row * record->size
+                                    : NULL;
+}
+
+static bool reserve_rows(pair_column_t *record) {
+    if (record->count < record->capacity)
+        return true;
+    uint32_t capacity = record->capacity ? record->capacity * 2 : 8;
+    if (capacity < record->capacity || (record->size && capacity > SIZE_MAX / record->size))
+        return false;
+    ecs_entity_t *entities = malloc(capacity * sizeof(*entities));
+    void *data = record->size ? calloc(capacity, record->size) : NULL;
+    if (!entities || (record->size && !data)) {
+        free(entities);
+        free(data);
+        return false;
+    }
+    if (record->count) {
+        memcpy(entities, record->entities, record->count * sizeof(*entities));
+        ecs_value_transfer(
+            &record->ops,
+            record->size,
+            data,
+            record->data,
+            record->count,
+            true,
+            true
+        );
+    }
+    free(record->entities);
+    free(record->data);
+    record->entities = entities;
+    record->data = data;
+    record->capacity = capacity;
+    return true;
+}
+
+static void
+emit_pair(ecs_entity_t entity, ecs_pair_id_t pair, ecs_event_t event, const void *value) {
+    if (!ecs_is_alive(entity))
+        return;
+    const ecs_entity_record_t *location = ecs_get_record(entity);
+    ecs_table_t *table = ecs_get_table(ecs_entity_record_table(location));
+    pair_column_t *record = column(pair);
+    ecs_pair_event_t data = { pair, record->desc.payload, value };
+    ecs_emit(table, entity, event, 0, &data);
+}
+
+bool ecs_pair_apply(ecs_entity_t entity, ecs_pair_id_t pair, ecs_pair_op_t op, const void *value) {
+    pair_column_t *record = column(pair);
+    if (!ecs_is_alive(entity) || !record || !record->active ||
+        (record->retiring && op != EcsPairRemove) || (op == EcsPairSet && record->size && !value))
+        return false;
+    pair_source_t *owner = source(entity, op == EcsPairAdd || op == EcsPairSet);
+    if (owner && owner->retiring && op != EcsPairRemove)
+        return false;
+    pair_entry_t *location = entry(entity, pair);
+    _Alignas(max_align_t) unsigned char temporary[256];
+    if (op == EcsPairRemove) {
+        if (!location)
+            return true;
+        uint32_t row = location->row, index = entry_index(owner, pair);
+        const ecs_entity_record_t *entity_record = ecs_get_record(entity);
+        bool observed = ecs_table_observed(
+            ecs_get_table(ecs_entity_record_table(entity_record)),
+            EcsOnPairRemove
+        );
+        void *removed = !observed || !record->size         ? NULL
+                        : record->size <= sizeof temporary ? temporary
+                                                           : malloc(record->size);
+        if (observed && record->size && !removed)
+            return false;
+        if (removed)
+            ecs_value_transfer(
+                &record->ops,
+                record->size,
+                removed,
+                (char *)record->data + row * record->size,
+                1,
+                true,
+                true
+            );
+        else if (record->size)
+            ecs_value_fini(&record->ops, (char *)record->data + row * record->size, 1);
+        uint32_t last = --record->count;
+        memmove(
+            owner->entries + index,
+            owner->entries + index + 1,
+            (--owner->count - index) * sizeof(*owner->entries)
+        );
+        if (row != last) {
+            record->entities[row] = record->entities[last];
+            ecs_value_transfer(
+                &record->ops,
+                record->size,
+                (char *)record->data + row * record->size,
+                (char *)record->data + last * record->size,
+                1,
+                true,
+                true
+            );
+            entry(record->entities[row], pair)->row = row;
+        }
+        record->tick = ecs_change_tick();
+        ecs_type_ops_t ops = record->ops;
+        if (observed)
+            emit_pair(entity, pair, EcsOnPairRemove, removed);
+        if (removed)
+            ecs_value_fini(&ops, removed, 1);
+        if (removed != temporary)
+            free(removed);
+        return true;
+    }
+    if (op == EcsPairModified && !location)
+        return false;
+    if (op == EcsPairAdd && location)
+        return true;
+    /* Snapshot the RHS before growing a column: self assignment and copying a
+     * borrowed row from the same column must survive allocation/relocation. */
+    void *copy = NULL;
+    if (op == EcsPairSet && record->size) {
+        copy = record->size <= sizeof temporary ? temporary : malloc(record->size);
+        if (!copy)
+            return false;
+        ecs_value_copy(&record->ops, record->size, copy, value, 1, true);
+    }
+    if (!location) {
+        if (!owner ||
+            !reserve(
+                (void **)&owner->entries,
+                &owner->capacity,
+                owner->count + 1,
+                sizeof(*owner->entries)
+            ) ||
+            !reserve_rows(record)) {
+            if (copy)
+                ecs_value_fini(&record->ops, copy, 1);
+            if (copy != temporary)
+                free(copy);
+            return false;
+        }
+        uint32_t index = entry_index(owner, pair), row = record->count++;
+        memmove(
+            owner->entries + index + 1,
+            owner->entries + index,
+            (owner->count++ - index) * sizeof(*owner->entries)
+        );
+        owner->entries[index] = (pair_entry_t){ pair, row };
+        location = owner->entries + index;
+        record->entities[row] = entity;
+        void *destination = record->size ? (char *)record->data + row * record->size : NULL;
+        if (record->ops.ctor)
+            record->ops.ctor(destination, 1);
+        else if (record->size)
+            memset(destination, 0, record->size);
+    }
+    void *destination = record->size ? (char *)record->data + location->row * record->size : NULL;
+    if (copy) {
+        ecs_value_transfer(&record->ops, record->size, destination, copy, 1, true, false);
+        if (copy != temporary)
+            free(copy);
+    }
+    record->tick = ecs_change_tick();
+    emit_pair(entity, pair, EcsOnPairSet, destination);
+    return true;
+}
+
+static bool mutate(ecs_entity_t entity, ecs_pair_id_t pair, ecs_pair_op_t op, const void *value) {
+    if (!ecs_is_alive(entity) || !ecs_pair_info(pair))
+        return false;
+    if (ecs_is_deferred())
+        return ecs_command_buffer_pair(entity, pair, op, value);
+    ecs_assert_not_scheduler_parallel("immediate pair mutation");
+    ecs_sync_begin();
+    bool ok = ecs_pair_apply(entity, pair, op, value);
+    ecs_sync_end();
+    return ok;
+}
+bool ecs_pair_add(ecs_entity_t entity, ecs_pair_id_t pair) {
+    return mutate(entity, pair, EcsPairAdd, NULL);
+}
+bool ecs_pair_set(ecs_entity_t entity, ecs_pair_id_t pair, const void *value) {
+    return mutate(entity, pair, EcsPairSet, value);
+}
+bool ecs_pair_remove(ecs_entity_t entity, ecs_pair_id_t pair) {
+    return mutate(entity, pair, EcsPairRemove, NULL);
+}
+bool ecs_pair_modified(ecs_entity_t entity, ecs_pair_id_t pair) {
+    return mutate(entity, pair, EcsPairModified, NULL);
+}
+
+static bool element_matches(ecs_pair_element_t filter, ecs_pair_element_t value) {
+    return (filter.kind == EcsPairAny || filter.kind == value.kind) &&
+           (!filter.id || filter.id == value.id);
+}
+
+ecs_pair_iter_t ecs_pair_query_iter(const ecs_pair_query_desc_t *desc) {
+    ecs_pair_iter_t it = { 0 };
+    if (desc)
+        it.query = *desc;
+    it.tick = ecs_change_tick_take();
+    return it;
+}
+
+static bool source_matches(const ecs_pair_iter_t *it, ecs_entity_t entity) {
+    if (!it->query.filter_sources)
+        return true;
+    ecs_query_cache_t *cache = ecs_query_cache(it->query.sources);
+    const ecs_entity_record_t *record = ecs_get_record(entity);
+    return ecs_query_table_position(cache, ecs_entity_record_table(record)) != UINT16_MAX;
+}
+
+bool ecs_pair_next(ecs_pair_iter_t *it) {
+    while (it->pair_cursor < pairs.count) {
+        pair_column_t *record = pairs.columns[it->pair_cursor];
+        ecs_pair_id_t id = pairs.first + it->pair_cursor;
+        if (record->active && (!it->query.pair || it->query.pair == id) &&
+            (!it->query.payload || it->query.payload == record->desc.payload) &&
+            (!it->query.after_tick || record->tick > it->query.after_tick) &&
+            element_matches(it->query.first, record->desc.first) &&
+            element_matches(it->query.second, record->desc.second)) {
+            while (it->row_cursor < record->count &&
+                   !source_matches(it, record->entities[it->row_cursor]))
+                it->row_cursor++;
+            uint32_t first = it->row_cursor;
+            while (it->row_cursor < record->count &&
+                   source_matches(it, record->entities[it->row_cursor]))
+                it->row_cursor++;
+            if (it->row_cursor > first) {
+                it->pair = id;
+                it->entities = record->entities + first;
+                it->values =
+                    record->size ? (const char *)record->data + first * record->size : NULL;
+                it->count = it->row_cursor - first;
+                it->stride = record->size;
+                return true;
+            }
+        }
+        it->pair_cursor++;
+        it->row_cursor = 0;
+    }
+    it->count = 0;
+    return false;
+}
+
+void ecs_pair_inherit(ecs_entity_t entity, ecs_entity_t base) {
+    if (!pairs.count)
+        return;
+    for (ecs_entity_t ancestor = base; ancestor && ecs_is_alive(ancestor) && ecs_is_alive(entity);
+         ancestor = ecs_target_id(ancestor, ecs_rid(IsA))) {
+        pair_source_t *owner = source(ancestor, false);
+        uint32_t count = owner ? owner->count : 0;
+        /* A callback can mutate either source; retain identity handles only. */
+        ecs_pair_id_t *ids = count ? malloc(count * sizeof(*ids)) : NULL;
+        ecs_fatal_if(count && !ids, "out of memory inheriting pairs");
+        for (uint32_t i = 0; i < count; i++)
+            ids[i] = owner->entries[i].pair;
+        for (uint32_t i = 0; i < count; i++) {
+            pair_column_t *record = column(ids[i]);
+            if (ecs_is_alive(entity) && record->active &&
+                ecs_component_info(record->desc.payload)->inheritance == EcsInheritOwned &&
+                !ecs_pair_has_owned(entity, ids[i]) && ecs_pair_has_owned(ancestor, ids[i]))
+                ecs_fatal_if(
+                    !ecs_pair_apply(entity, ids[i], EcsPairSet, ecs_pair_get(ancestor, ids[i])),
+                    "could not inherit pair"
+                );
+        }
+        free(ids);
+    }
+}
+
+void ecs_pair_entity_fini(ecs_entity_t entity) {
+    pair_source_t *owner = source(entity, false);
+    if (!owner || owner->retiring)
+        return;
+    owner->retiring = true;
+    while (owner->count)
+        ecs_fatal_if(
+            !ecs_pair_apply(entity, owner->entries[owner->count - 1].pair, EcsPairRemove, NULL),
+            "could not remove pair"
+        );
+    while (owner->target_count) {
+        ecs_pair_id_t id = owner->targets[--owner->target_count];
+        pair_column_t *record = column(id);
+        if (!record || !record->active)
+            continue;
+        record->retiring = true;
+        while (record->count)
+            ecs_fatal_if(
+                !ecs_pair_apply(record->entities[record->count - 1], id, EcsPairRemove, NULL),
+                "could not remove target pair"
+            );
+        record->active = false;
+        free(record->data);
+        free(record->entities);
+        record->data = NULL;
+        record->entities = NULL;
+        record->capacity = 0;
+    }
+}
+
+void ecs_pair_storage_fini(void) {
+    for (uint32_t i = 0; i < pairs.count; i++) {
+        pair_column_t *record = pairs.columns[i];
+        if (record->size)
+            ecs_value_fini(&record->ops, record->data, record->count);
+        free(record->data);
+        free(record->entities);
+        free(record);
+    }
+    for (uint32_t page = 0; page < pairs.page_capacity; page++) {
+        if (!pairs.pages[page])
+            continue;
+        for (unsigned row = 0; row < 256; row++) {
+            free(pairs.pages[page][row].entries);
+            free(pairs.pages[page][row].targets);
+        }
+        free(pairs.pages[page]);
+    }
+    free(pairs.pages);
+    free(pairs.columns);
+    free(pairs.slots);
+    memset(&pairs, 0, sizeof pairs);
+}
+
+typedef struct {
+    pair_column_t *column;
+    void *previous, *data;
+    uint32_t count, capacity;
+} pair_schema_column_t;
+struct ecs_pair_schema_t {
+    size_t size;
+    ecs_type_ops_t ops;
+    uint32_t count;
+    uint32_t registry_count;
+    bool applied;
+    pair_schema_column_t columns[];
+};
+
+void ecs_pair_schema_free(ecs_pair_schema_t *plan) {
+    if (!plan)
+        return;
+    for (uint32_t i = 0; i < plan->count; i++)
+        free(plan->columns[i].data);
+    free(plan);
+}
+
+bool ecs_pair_schema_prepare(
+    ecs_component_t component,
+    sireflect_handle_t type,
+    ecs_pair_schema_t **out
+) {
+    *out = NULL;
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < pairs.count; i++)
+        count += pairs.columns[i]->desc.payload == component;
+    size_t allocation_count = count;
+    if (allocation_count > (SIZE_MAX - sizeof(ecs_pair_schema_t)) / sizeof(pair_schema_column_t))
+        return false;
+    ecs_pair_schema_t *plan = calloc(1, sizeof(*plan) + count * sizeof(pair_schema_column_t));
+    if (!plan)
+        return false;
+    plan->registry_count = pairs.count;
+    plan->size = sireflect_type_size(type);
+    plan->ops = ecs_reflected_ops(type);
+    for (uint32_t i = 0; i < pairs.count; i++) {
+        pair_column_t *record = pairs.columns[i];
+        if (record->desc.payload != component)
+            continue;
+        pair_schema_column_t *prepared = &plan->columns[plan->count++];
+        *prepared = (pair_schema_column_t){ .column = record,
+                                            .previous = record->data,
+                                            .count = record->count,
+                                            .capacity = record->capacity };
+        if (plan->size) {
+            if (record->capacity > SIZE_MAX / plan->size) {
+                ecs_pair_schema_free(plan);
+                return false;
+            }
+            prepared->data = record->capacity ? calloc(record->capacity, plan->size) : NULL;
+            if (record->capacity && !prepared->data) {
+                ecs_pair_schema_free(plan);
+                return false;
+            }
+        }
+    }
+    *out = plan;
+    return true;
+}
+
+bool ecs_pair_schema_validate(const ecs_pair_schema_t *plan) {
+    if (!plan)
+        return true;
+    if (plan->applied || plan->registry_count != pairs.count)
+        return false;
+    for (uint32_t i = 0; i < plan->count; i++) {
+        const pair_schema_column_t *prepared = &plan->columns[i];
+        if (prepared->column->data != prepared->previous ||
+            prepared->column->count != prepared->count ||
+            prepared->column->capacity != prepared->capacity)
+            return false;
+    }
+    return true;
+}
+
+void ecs_pair_schema_apply(ecs_pair_schema_t *plan) {
+    if (!plan)
+        return;
+    for (uint32_t i = 0; i < plan->count; i++) {
+        pair_schema_column_t *prepared = &plan->columns[i];
+        pair_column_t *record = prepared->column;
+        if (record->size)
+            ecs_value_fini(&record->ops, record->data, record->count);
+        free(record->data);
+        record->data = prepared->data;
+        prepared->data = NULL;
+        record->size = plan->size;
+        record->ops = plan->ops;
+        record->tick = ecs_change_tick();
+    }
+    plan->applied = true;
+}
+
+void ecs_pair_schema_notify(const ecs_pair_schema_t *plan) {
+    for (uint32_t i = 0; plan && i < plan->count; i++) {
+        pair_column_t *record = plan->columns[i].column;
+        for (uint32_t row = 0; row < record->count; row++) {
+            emit_pair(
+                record->entities[row],
+                record->id,
+                EcsOnPairSet,
+                record->size ? (char *)record->data + row * record->size : NULL
+            );
+        }
     }
 }
 
@@ -10399,6 +11614,7 @@ typedef enum {
     EcsReflectValueScalar,
     EcsReflectValueStruct,
     EcsReflectValueArray,
+    EcsReflectValueVector,
     EcsReflectValueString,
     EcsReflectValueEntity,
     EcsReflectValueEnum,
@@ -10415,6 +11631,8 @@ static inline ecs_reflect_value_kind_t ecs_reflect_value_kind(sireflect_handle_t
         return EcsReflectValueStruct;
     case sireflect_category_array:
         return EcsReflectValueArray;
+    case sireflect_category_vector:
+        return EcsReflectValueVector;
     case sireflect_category_cstring:
         return EcsReflectValueString;
     case sireflect_category_enum:
@@ -11344,7 +12562,7 @@ void ecs_resource_storage_fini(void) {
     sicore_vec_fini(&ecs_resources);
 }
 
-#define ECS_SCENE_VERSION 1u
+#define ECS_SCENE_VERSION 2u
 #define ECS_SCENE_MAGIC_SIZE 8u
 #define ECS_SCENE_NULL_INDEX UINT32_MAX
 
@@ -11500,6 +12718,11 @@ static bool ecs_scene_traits_visit(const sireflect_type_visit_t *visit, void *us
         break;
     case EcsReflectValueString:
         traits->needs_codec = true;
+        traits->contains_string = true;
+        break;
+    case EcsReflectValueVector:
+        traits->needs_codec = true;
+        /* Vectors, like strings, require reflected destruction after decode. */
         traits->contains_string = true;
         break;
     case EcsReflectValuePointer:
@@ -11662,11 +12885,34 @@ static bool ecs_scene_codec_value(
                 return false;
         }
         return true;
-    case EcsReflectValueArray: {
+    case EcsReflectValueArray:
+    case EcsReflectValueVector: {
         const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
         if (!element)
             return false;
-        for (size_t i = 0; i < info->element_count; i++) {
+        size_t count = info->element_count;
+        if (info->kind == sireflect_kind_vector) {
+            sireflect_vector_t *vector = value;
+            if (mode == EcsSceneSave) {
+                count = vector->count;
+                if (count > UINT32_MAX || (count && !vector->data) ||
+                    !ecs_scene_write_u32(writer, (uint32_t)count))
+                    return false;
+            } else {
+                count = ecs_scene_read_u32(reader);
+                if (!reader->ok || !element->size || count > SIZE_MAX / element->size ||
+                    count > (size_t)(reader->end - reader->ptr))
+                    return false;
+                if (mode == EcsSceneLoad) {
+                    vector->data = count ? calloc(count, element->size) : NULL;
+                    if (count && !vector->data)
+                        return false;
+                    vector->count = count;
+                }
+            }
+            value = value ? vector->data : NULL;
+        }
+        for (size_t i = 0; i < count; i++) {
             void *child = value ? (unsigned char *)value + i * element->size : NULL;
             if (!ecs_scene_codec_value(
                     mode,
@@ -11841,6 +13087,60 @@ static bool ecs_scene_write_tables(ecs_scene_writer_t *w, const ecs_scene_save_c
     return true;
 }
 
+static bool ecs_scene_write_pair_element(
+    ecs_scene_writer_t *w,
+    ecs_pair_element_t element,
+    const ecs_scene_save_ctx_t *ctx
+) {
+    uint32_t id = (uint32_t)element.id;
+    if (element.kind == EcsPairEntity) {
+        uint32_t entity = ecs_entity_id(element.id);
+        if (entity >= ctx->entity_to_local_count ||
+            ctx->entity_to_local[entity] == ECS_SCENE_NULL_INDEX)
+            return false;
+        id = ctx->entity_to_local[entity];
+    }
+    return ecs_scene_write_u32(w, (uint32_t)element.kind) && ecs_scene_write_u32(w, id);
+}
+
+static bool ecs_scene_write_pairs(ecs_scene_writer_t *w, const ecs_scene_save_ctx_t *ctx) {
+    size_t count_at = w->size;
+    uint32_t count = 0;
+    if (!ecs_scene_write_u32(w, 0))
+        return false;
+    ecs_pair_iter_t it = ecs_pair_query_iter(NULL);
+    while (ecs_pair_next(&it)) {
+        const ecs_pair_desc_t *pair = ecs_pair_info(it.pair);
+        const ecs_component_record_t *component = ecs_component_index_get(pair->payload);
+        if (!ecs_scene_component_supported(component))
+            return false;
+        for (uint32_t row = 0; row < it.count; row++) {
+            uint32_t entity = ecs_entity_id(it.entities[row]);
+            if (entity >= ctx->entity_to_local_count || count == UINT32_MAX ||
+                !ecs_scene_write_pair_element(w, pair->first, ctx) ||
+                !ecs_scene_write_pair_element(w, pair->second, ctx) ||
+                !ecs_scene_write_u16(w, pair->payload) || !ecs_scene_write_u16(w, 0) ||
+                !ecs_scene_write_u32(w, ctx->entity_to_local[entity]))
+                return false;
+            size_t length_at = w->size;
+            if (!ecs_scene_write_u32(w, 0))
+                return false;
+            size_t begin = w->size;
+            const void *value = component->size ? (const char *)it.values + row * it.stride : NULL;
+            if (component->size &&
+                !(ecs_scene_component_use_codec(component)
+                      ? ecs_scene_save_value(w, component->info->type, value, ctx)
+                      : ecs_scene_write(w, value, component->size)))
+                return false;
+            if (w->size - begin > UINT32_MAX ||
+                !ecs_scene_writer_patch_u32(w, length_at, (uint32_t)(w->size - begin)))
+                return false;
+            count++;
+        }
+    }
+    return ecs_scene_writer_patch_u32(w, count_at, count);
+}
+
 static bool ecs_scene_write_relations(
     ecs_scene_writer_t *w,
     const ecs_scene_save_ctx_t *ctx,
@@ -11928,6 +13228,8 @@ SIECS_API bool ecs_save_memory(void **data_out, size_t *size_out) {
         ok = ecs_scene_write_relations(&writer, &ctx, &relation_edge_count);
     if (ok)
         ok = ecs_scene_writer_patch_u32(&writer, relation_count_offset, relation_edge_count);
+    if (ok)
+        ok = ecs_scene_write_pairs(&writer, &ctx);
 
     if (ok) {
         *data_out = writer.data;
@@ -12003,7 +13305,7 @@ static bool ecs_scene_read_file(const char *path, unsigned char **data_out, size
 typedef enum { EcsSceneCheck, EcsSceneCreate, EcsSceneApply } ecs_scene_table_pass_t;
 typedef struct {
     uint32_t table_count, entity_count, relation_count;
-    ecs_scene_reader_t tables, relations;
+    ecs_scene_reader_t tables, relations, pairs;
 } ecs_scene_document_t;
 
 static ecs_component_t ecs_scene_component_at(const unsigned char *ids, uint16_t at) {
@@ -12184,6 +13486,88 @@ static bool ecs_scene_read_relations(
     return r.ok && r.ptr == r.end;
 }
 
+static bool ecs_scene_read_pair_element(
+    ecs_scene_reader_t *r,
+    const ecs_scene_load_ctx_t *ctx,
+    bool apply,
+    ecs_pair_element_t *element
+) {
+    element->kind = (ecs_pair_kind_t)ecs_scene_read_u32(r);
+    element->id = ecs_scene_read_u32(r);
+    if (!r->ok)
+        return false;
+    switch (element->kind) {
+    case EcsPairEntity:
+        if (element->id >= ctx->entity_count)
+            return false;
+        if (apply)
+            element->id = ctx->local_to_entity[element->id];
+        return true;
+    case EcsPairComponent:
+        return element->id && element->id <= UINT16_MAX &&
+               ecs_component_info((ecs_component_t)element->id) &&
+               !ecs_scene_component_is_relation_internal((ecs_component_t)element->id);
+    case EcsPairRelation:
+        return element->id && element->id <= UINT16_MAX &&
+               ecs_relation_info((ecs_relation_id_t)element->id) &&
+               element->id != ecs_rid(ChildOf) && element->id != ecs_rid(IsA);
+    default:
+        return false;
+    }
+}
+
+static bool
+ecs_scene_read_pairs(ecs_scene_reader_t r, const ecs_scene_load_ctx_t *ctx, bool apply) {
+    uint32_t count = ecs_scene_read_u32(&r);
+    if (!r.ok || count > (size_t)(r.end - r.ptr) / 28)
+        return false;
+    for (uint32_t i = 0; i < count; i++) {
+        ecs_pair_desc_t desc = { 0 };
+        if (!ecs_scene_read_pair_element(&r, ctx, apply, &desc.first) ||
+            !ecs_scene_read_pair_element(&r, ctx, apply, &desc.second))
+            return false;
+        desc.payload = ecs_scene_read_u16(&r);
+        uint16_t reserved = ecs_scene_read_u16(&r);
+        uint32_t source = ecs_scene_read_u32(&r), length = ecs_scene_read_u32(&r);
+        if (!r.ok || reserved || source >= ctx->entity_count || !ecs_component_info(desc.payload) ||
+            ecs_scene_component_is_relation_internal(desc.payload) ||
+            !ecs_scene_reader_skip(&r, length))
+            return false;
+        const ecs_component_record_t *component = ecs_component_index_get(desc.payload);
+        if (!ecs_scene_component_supported(component))
+            return false;
+        ecs_scene_reader_t payload = { .ptr = r.ptr - length, .end = r.ptr, .ok = true };
+        bool codec = ecs_scene_component_use_codec(component);
+        if (!codec && length != component->size)
+            return false;
+        if (!apply) {
+            if (codec &&
+                (!ecs_scene_validate_value(&payload, component->info->type, ctx->entity_count) ||
+                 payload.ptr != payload.end))
+                return false;
+            continue;
+        }
+        ecs_pair_id_t pair = ecs_pair_init(&desc);
+        if (!pair)
+            return false;
+        void *value = component->size ? calloc(1, component->size) : NULL;
+        if (component->size && !value)
+            return false;
+        ecs_scene_load_ctx_t owned = *ctx;
+        owned.component_owns_strings = true;
+        bool ok = codec ? ecs_scene_load_value(&payload, component->info->type, value, &owned)
+                        : ecs_scene_reader_take(&payload, value, component->size);
+        ok = ok && payload.ptr == payload.end &&
+             ecs_pair_set(ctx->local_to_entity[source], pair, value);
+        if (value)
+            ecs_value_fini(&component->ops, value, 1);
+        free(value);
+        if (!ok)
+            return false;
+    }
+    return r.ok && r.ptr == r.end;
+}
+
 static bool ecs_scene_parse(const void *input, size_t size, ecs_scene_document_t *document) {
     if (!input || size < ECS_SCENE_MAGIC_SIZE + sizeof(uint32_t) * 4)
         return false;
@@ -12203,7 +13587,12 @@ static bool ecs_scene_parse(const void *input, size_t size, ecs_scene_document_t
         return false;
     document->tables.end = r.ptr;
     document->relations = r;
-    return ecs_scene_read_relations(r, document->relation_count, &ctx, false);
+    if (!ecs_scene_reader_skip(&r, (size_t)document->relation_count * 12))
+        return false;
+    document->relations.end = r.ptr;
+    document->pairs = r;
+    return ecs_scene_read_relations(document->relations, document->relation_count, &ctx, false) &&
+           ecs_scene_read_pairs(document->pairs, &ctx, false);
 }
 
 SIECS_API bool ecs_scene_validate(const void *input, size_t size) {
@@ -12235,7 +13624,8 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
               first.ptr == first.end &&
               ecs_scene_read_tables(&second, document.table_count, &ctx, EcsSceneApply) &&
               second.ptr == second.end &&
-              ecs_scene_read_relations(document.relations, document.relation_count, &ctx, true);
+              ecs_scene_read_relations(document.relations, document.relation_count, &ctx, true) &&
+              ecs_scene_read_pairs(document.pairs, &ctx, true);
     if (ok) {
         for (uint32_t i = 0; i < count; i++) {
             if (names[i].value &&
@@ -12589,17 +13979,8 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
             rec->info->size != 0 ? calloc(table->entity_capacity, rec->info->size) : NULL;
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
-        table->cls[i].flags = 0;
+        table->cls[i].flags = ecs_column_value_flags(rec->info->size, &rec->ops);
         atomic_init(&table->cls[i].tick, table->structure_tick);
-        if (rec->info->size == 0 || (!rec->ops.move_ctor && !rec->ops.copy_ctor)) {
-            table->cls[i].flags |= EcsColumnTrivialMove;
-        }
-        if (rec->info->size == 0 || (!rec->ops.dtor && !rec->ops.reflected_type)) {
-            table->cls[i].flags |= EcsColumnNoDtor;
-        }
-        if (rec->info->size == 0 || !rec->ops.ctor) {
-            table->cls[i].flags |= EcsColumnZeroCtor;
-        }
         if (rec->info->size != 0) {
             table->data_columns[table->add_edge.aux++] = (ecs_data_column_t){
                 .data = table->cls[i].data,
@@ -12618,6 +13999,26 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
         table->data_columns =
             realloc(table->data_columns, sizeof(ecs_data_column_t) * table->add_edge.aux);
     }
+}
+
+void ecs_table_rebind_data_columns(ecs_table_t *table, ecs_data_column_t *columns) {
+    uint16_t count = 0;
+    for (uint16_t i = 0; i < table->type.component_count; i++) {
+        const ecs_column_t *column = &table->cls[i];
+        if (column->size)
+            columns[count++] = (ecs_data_column_t){ column->data,
+                                                    column->size,
+                                                    table->type.ids[i],
+                                                    column->flags };
+    }
+    if (table->data_columns != ecs_no_data_columns)
+        free(table->data_columns);
+    table->add_edge.aux = count;
+    if (!count) {
+        free(columns);
+        table->data_columns = ecs_no_data_columns;
+    } else
+        table->data_columns = columns;
 }
 
 static inline void ecs_table_grow(ecs_table_t *table) {
@@ -13135,6 +14536,8 @@ static bool reflected_owns_strings(sireflect_handle_t type) {
     if (sireflect_type_is_cstring(type))
         return true;
     const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (info->kind == sireflect_kind_vector)
+        return true;
     if (info->kind == sireflect_kind_array)
         return reflected_owns_strings(info->element_type);
     if (sireflect_type_is_struct(info)) {
@@ -13157,7 +14560,14 @@ void ecs_reflected_value_fini(sireflect_handle_t type, void *value) {
         return;
     }
     const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (info->kind == sireflect_kind_array) {
+    if (info->kind == sireflect_kind_vector) {
+        sireflect_vector_t *vector = value;
+        size_t stride = sireflect_type_size(info->element_type);
+        for (size_t i = 0; i < vector->count; i++)
+            ecs_reflected_value_fini(info->element_type, (char *)vector->data + i * stride);
+        free(vector->data);
+        *vector = (sireflect_vector_t){ 0 };
+    } else if (info->kind == sireflect_kind_array) {
         size_t stride = sireflect_type_size(info->element_type);
         for (size_t i = 0; i < info->element_count; i++)
             ecs_reflected_value_fini(info->element_type, (char *)value + i * stride);
@@ -13192,7 +14602,26 @@ void ecs_reflected_value_copy(
         return;
     }
     const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (info->kind == sireflect_kind_array) {
+    if (info->kind == sireflect_kind_vector) {
+        const sireflect_vector_t *source_vector = source;
+        sireflect_vector_t copy = { .count = source_vector->count };
+        size_t stride = sireflect_type_size(info->element_type);
+        ecs_assert(copy.count <= SIZE_MAX / stride, "vector size overflow");
+        if (copy.count) {
+            copy.data = calloc(copy.count, stride);
+            ecs_assert(copy.data != NULL, "out of memory copying reflected vector");
+            for (size_t i = 0; i < copy.count; i++)
+                ecs_reflected_value_copy(
+                    info->element_type,
+                    (char *)copy.data + i * stride,
+                    (const char *)source_vector->data + i * stride,
+                    true
+                );
+        }
+        if (!construct)
+            ecs_reflected_value_fini(type, destination);
+        *(sireflect_vector_t *)destination = copy;
+    } else if (info->kind == sireflect_kind_array) {
         size_t stride = sireflect_type_size(info->element_type);
         for (size_t i = 0; i < info->element_count; i++)
             ecs_reflected_value_copy(
@@ -13225,6 +14654,20 @@ bool ecs_reflected_value_equal(sireflect_handle_t type, const void *left, const 
         return a && b ? !strcmp(a, b) : a == b;
     }
     const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (info->kind == sireflect_kind_vector) {
+        const sireflect_vector_t *a = left, *b = right;
+        if (a->count != b->count)
+            return false;
+        size_t stride = sireflect_type_size(info->element_type);
+        for (size_t i = 0; i < a->count; i++)
+            if (!ecs_reflected_value_equal(
+                    info->element_type,
+                    (const char *)a->data + i * stride,
+                    (const char *)b->data + i * stride
+                ))
+                return false;
+        return true;
+    }
     if (info->kind == sireflect_kind_array) {
         size_t stride = sireflect_type_size(info->element_type);
         for (size_t i = 0; i < info->element_count; i++)
@@ -13465,7 +14908,7 @@ static void ecs_worker_execute(ecs_worker_t *worker, ecs_worker_batch_t *batch) 
             batch->portions[i].count,
             pool->nodes[batch->node].tick
         );
-        if (job->context.commands.commands.size)
+        if (job->context.commands.commands.size || job->context.commands.pairs.size)
             batch->portions[i].commands = job;
         else
             ecs_worker_recycle(job);
@@ -13790,6 +15233,7 @@ void ecs_fini(void) {
     ecs_worker_pool_fini(&ecs_world.worker_pool);
     ecs_fini_callbacks_run();
     ecs_sync_storage_fini();
+    ecs_pair_storage_fini();
 
     /* Live component teardown must finish while world resources are available. */
     ecs_table_index_fini();
@@ -13930,9 +15374,18 @@ void ecs_component_index_register(
     static const ecs_type_ops_t no_ops = { 0 };
     ecs_component_record_t record = {
         .size = (uint32_t)desc->size,
-        .plain = desc->size != 0 && !memcmp(&desc->ops, &no_ops, sizeof no_ops) &&
-                 !desc->on_set && !desc->on_add && !desc->on_remove && !relation_flags,
+        .plain = desc->size != 0 && !memcmp(&desc->ops, &no_ops, sizeof no_ops) && !desc->on_set &&
+                 !desc->on_add && !desc->on_remove && !relation_flags,
         .info = info,
+        .override_target =
+            !desc->size && desc->name &&
+                    !strncmp(
+                        desc->name,
+                        ECS_AUTO_OVERRIDE_PREFIX,
+                        sizeof(ECS_AUTO_OVERRIDE_PREFIX) - 1
+                    )
+                ? ecs_component_lookup(desc->name + sizeof(ECS_AUTO_OVERRIDE_PREFIX) - 1)
+                : 0,
         .required = NULL,
         .required_count = 0,
         .default_relations = NULL,

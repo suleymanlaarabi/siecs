@@ -28,6 +28,8 @@ typedef struct {
     // component: setting it is a plain byte copy no user code can observe
     // unless an observer is registered.
     bool plain;
+    bool dynamic;
+    ecs_component_t override_target;
     ecs_component_info_t *info;
     uint16_t *required;
     uint32_t required_count;
@@ -43,7 +45,7 @@ typedef struct {
 
 typedef struct ecs_component_index_s {
     sicore_vec_t components; // ecs_component_record_t
-    sicore_map_t names; // public component name -> id; borrowed metadata keys
+    sicore_map_t names;      // public component name -> id; borrowed metadata keys
 } ecs_component_index_t;
 
 extern ecs_component_index_t component_index;

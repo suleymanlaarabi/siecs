@@ -7,6 +7,7 @@ typedef enum {
     EcsReflectValueScalar,
     EcsReflectValueStruct,
     EcsReflectValueArray,
+    EcsReflectValueVector,
     EcsReflectValueString,
     EcsReflectValueEntity,
     EcsReflectValueEnum,
@@ -23,6 +24,8 @@ static inline ecs_reflect_value_kind_t ecs_reflect_value_kind(sireflect_handle_t
         return EcsReflectValueStruct;
     case sireflect_category_array:
         return EcsReflectValueArray;
+    case sireflect_category_vector:
+        return EcsReflectValueVector;
     case sireflect_category_cstring:
         return EcsReflectValueString;
     case sireflect_category_enum:

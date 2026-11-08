@@ -111,8 +111,11 @@ static void parse_entity(ecs_parser_t *parser, const char *kind, const char *nam
     ecs_script_entity_t *entity = statement(parser, ecs_script_entity_t, EcsAstEntity);
     entity->kind = kind;
     entity->name = name && strcmp(name, "_") ? name : NULL;
-    if (!entity->name)
+    if (!entity->name) {
         entity->anonymous_id = ++siecs_script_impl(parser->script)->anonymous_count;
+        entity->next_anonymous = parser->script->anonymous;
+        parser->script->anonymous = entity;
+    }
     entity->name_expr = name_expression(parser, entity->name);
     entity->scope = siecs_script_scope_new(parser);
     ecs_script_scope_t *previous = parser->scope;
@@ -159,6 +162,7 @@ ecs_script_entity_t *script_parse_new_entity(ecs_parser_t *parser) {
     scope->stmts.size = count;
     entity->node.pos = begin;
     entity->node.end = parser->token.begin;
+    entity->identity_hash = script_source_hash(entity->node.pos, entity->node.end);
     return entity;
 }
 
@@ -387,10 +391,26 @@ static void parse_statement(ecs_parser_t *parser) {
         with->scope = body(parser);
     } else if (script_take(parser, '@')) {
         ecs_script_annot_t *annotation = statement(parser, ecs_script_annot_t, EcsAstAnnotation);
-        annotation->name = script_parse_name(parser);
-        annotation->expr = parser->token.value;
-        while (parser->token.kind && (int)parser->token.kind != '\n')
+        annotation->name = qualified_name(parser);
+        const char *begin = parser->token.begin;
+        bool quoted = parser->token.kind == EcsTokString;
+        annotation->expr = quoted ? parser->token.value : NULL;
+        if (quoted) {
+            if (!siecs_string_escape((char *)annotation->expr))
+                script_parse_error(parser, "invalid annotation string escape");
             script_lex(parser);
+        } else {
+            while (parser->token.kind && (int)parser->token.kind != '\n' &&
+                   (int)parser->token.kind != ';' && (int)parser->token.kind != '}')
+                script_lex(parser);
+            size_t length = (size_t)(parser->token.begin - begin);
+            while (length && isspace((unsigned char)begin[length - 1]))
+                length--;
+            char *text = script_alloc(&parser->script->allocator, length + 1);
+            memcpy(text, begin, length);
+            annotation->expr = text;
+        }
+
     } else if ((int)parser->token.kind == '(') {
         ecs_script_id_t id = parse_pair(parser);
         if ((int)parser->token.kind == '{') {
@@ -412,7 +432,7 @@ static void parse_statement(ecs_parser_t *parser) {
                 id = parse_pair(parser);
             else
                 id.first = qualified_name(parser);
-            id.flag = ECS_AUTO_OVERRIDE;
+            id.auto_override = true;
             parse_component(parser, id);
         } else if ((int)parser->token.kind == '=') {
             script_lex(parser);
@@ -462,6 +482,12 @@ bool script_parse_scope(ecs_parser_t *parser, ecs_script_scope_t *scope, bool br
         if (scope->stmts.size) {
             ecs_script_node_t **nodes = scope->stmts.data;
             nodes[scope->stmts.size - 1]->end = parser->token.begin;
+            ecs_script_node_t *node = nodes[scope->stmts.size - 1];
+            if (node->kind == EcsAstEntity) {
+                ecs_script_entity_t *entity = (ecs_script_entity_t *)node;
+                if (!entity->name)
+                    entity->identity_hash = script_source_hash(node->pos, node->end);
+            }
         }
         if (before == parser->token.begin)
             script_parse_error(parser, "expected statement separator");

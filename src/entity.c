@@ -124,8 +124,11 @@ void ecs_is_a_now(ecs_entity_t entity, ecs_entity_t target) {
     ecs_inheritance_plan_copy(&plan, target, to_table, record->table_row);
     ecs_emit_added_components(from_table, to_table, entity, record->table_row);
     ecs_inheritance_plan_fini(&plan);
+    if (!ecs_is_alive(entity))
+        return;
+    ecs_pair_inherit(entity, target);
 
-    if (target) {
+    if (target && ecs_is_alive(entity)) {
         ecs_inheritance_instantiate_children(entity, target);
     }
 }
@@ -148,6 +151,9 @@ void ecs_kill_now(ecs_entity_t entity) {
     if (!ecs_is_alive(entity)) {
         return;
     }
+    ecs_pair_entity_fini(entity);
+    if (!ecs_is_alive(entity))
+        return;
 
     ecs_entity_record_t *record = ecs_get_record(entity);
     ecs_table_t *initial_table = ecs_get_table(ecs_entity_record_table(record));

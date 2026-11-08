@@ -23,7 +23,7 @@ typedef struct {
 } ecs_observer_t;
 
 #define ECS_OBSERVER_GLOBAL_ENTITY UINT32_MAX
-#define ECS_BUILTIN_EVENT_COUNT 5
+#define ECS_BUILTIN_EVENT_COUNT 7
 #define ECS_OBSERVER_NO_QUERY UINT16_MAX
 
 typedef struct {

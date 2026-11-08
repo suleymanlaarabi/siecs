@@ -2,40 +2,40 @@
 #include "../../../../src/storage/component_index.h"
 #include "transaction.h"
 
-/* Script paths use dots; native naming stores the same hierarchy with ::. */
-static char *script_backend_path(const char *path) {
-    size_t len = strlen(path);
-    if (len > (SIZE_MAX - 1) / 2)
+char *script_backend_qualified_name(const char *name, ecs_entity_t scope) {
+    char *path = scope ? script_backend_entity_path(scope) : NULL;
+    const char *prefix = path && !strncmp(path, "::", 2) ? path + 2 : path;
+    size_t length = prefix ? strlen(prefix) : 0;
+    size_t count = strlen(name);
+    if (count > (SIZE_MAX - length - 3) / 2) {
+        free(path);
         return NULL;
-    char *result = malloc(len * 2 + 1);
-    if (!result)
-        return NULL;
-    char *out = result;
-    for (const char *ptr = path; *ptr; ptr++) {
-        if (*ptr == '.') {
+    }
+    char *qualified = malloc(length + count * 2 + 3);
+    assert(qualified != NULL);
+    char *out = qualified;
+    if (length) {
+        memcpy(out, prefix, length);
+        out += length;
+        *out++ = ':';
+        *out++ = ':';
+    }
+    for (const char *at = name; *at; at++) {
+        if (*at == '.') {
             *out++ = ':';
             *out++ = ':';
         } else
-            *out++ = *ptr;
+            *out++ = *at;
     }
-    *out = '\0';
-    return result;
+    *out = 0;
+    free(path);
+    return qualified;
 }
 
 ecs_entity_t script_backend_entity_lookup(const char *path, ecs_entity_t parent) {
     if (!path)
         return 0;
-    if (script_transaction_active) {
-        do {
-            script_transaction_lookup(script_transaction_active, path, parent);
-            ecs_entity_t entity =
-                script_transaction_entity(script_transaction_active, path, parent, false);
-            if (entity || !parent)
-                return entity;
-            parent = script_transaction_parent(script_transaction_active, parent);
-        } while (true);
-    }
-    char *native = strchr(path, '.') ? script_backend_path(path) : NULL;
+    char *native = strchr(path, '.') ? script_backend_qualified_name(path, 0) : NULL;
     const char *lookup = native ? native : path;
     ecs_entity_t result = 0;
     do {
@@ -49,23 +49,10 @@ ecs_entity_t script_backend_entity_lookup(const char *path, ecs_entity_t parent)
 }
 
 ecs_entity_t script_backend_entity_ensure(const char *path, ecs_entity_t parent) {
-    if (script_transaction_active) {
-        ecs_entity_t entity =
-            script_transaction_entity(script_transaction_active, path, parent, true);
-        if (entity)
-            sicore_vec_push(&script_transaction_active->produced, &entity, sizeof entity);
-        return entity;
-    }
-    if (!path) {
-        ecs_entity_t entity = ecs_new();
-        if (parent)
-            ecs_relate_id(entity, ecs_rid(ChildOf), parent);
-        return entity;
-    }
-    char *native = strchr(path, '.') ? script_backend_path(path) : NULL;
-    ecs_entity_t result = ecs_new_named(parent, native ? native : path);
-    free(native);
-    return result;
+    ecs_entity_t entity = script_transaction_entity(script_transaction_active, path, parent, true);
+    if (entity)
+        sicore_vec_push(&script_transaction_active->produced, &entity, sizeof entity);
+    return entity;
 }
 
 ecs_component_t script_backend_component_lookup(const char *name) {
@@ -75,28 +62,7 @@ ecs_component_t script_backend_component_lookup(const char *name) {
 }
 
 ecs_component_t script_backend_component_register_dynamic(const char *name, const char *fields) {
-    if (script_transaction_active)
-        return script_transaction_type(script_transaction_active, name, fields, true);
-    return ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
-        .name = name,
-        .fields = fields,
-    });
-}
-
-script_symbol_t script_backend_symbol_lookup(const char *name, ecs_entity_t parent) {
-    ecs_component_t component = script_backend_component_lookup(name);
-    if (component)
-        return (script_symbol_t){ ScriptSymbolComponent, { .component = component } };
-    ecs_relation_id_t relation = ecs_relation_lookup(name);
-    if (relation)
-        return (script_symbol_t){ ScriptSymbolRelation, { .relation = relation } };
-    ecs_entity_t entity = script_backend_entity_lookup(name, parent);
-    if (entity)
-        return (script_symbol_t){ ScriptSymbolEntity, { .entity = entity } };
-    sireflect_handle_t type = script_backend_type_lookup(name);
-    if (type)
-        return (script_symbol_t){ ScriptSymbolReflectType, { .type = type } };
-    return (script_symbol_t){ 0 };
+    return script_transaction_type(script_transaction_active, name, fields, true);
 }
 
 int script_backend_relation_add(
@@ -104,40 +70,15 @@ int script_backend_relation_add(
     ecs_relation_id_t relation,
     ecs_entity_t target
 ) {
-    if (script_transaction_active)
-        return script_transaction_relate(script_transaction_active, entity, relation, target);
-    /* Reject unsupported multiple targets instead of silently dropping a pair. */
-    ecs_entity_t old = ecs_target_id(entity, relation);
-    if (old && old != target)
-        return -1;
-    ecs_relate_id(entity, relation, target);
-    return 0;
+    return script_transaction_relate(script_transaction_active, entity, relation, target);
 }
 
-void script_backend_component_add(ecs_entity_t entity, ecs_component_t component) {
-    if (script_transaction_active)
-        script_transaction_set(script_transaction_active, entity, component, NULL, false);
-    else
-        ecs_add_cid(entity, component);
+void script_backend_component_add(ecs_entity_t entity, script_key_t component) {
+    script_transaction_set(script_transaction_active, entity, component, NULL, false);
 }
 
-void script_backend_component_set(
-    ecs_entity_t entity,
-    ecs_component_t component,
-    const void *value
-) {
-    if (script_transaction_active)
-        script_transaction_set(script_transaction_active, entity, component, value, false);
-    else
-        ecs_set_cid(entity, component, value);
-}
-
-const void *script_backend_component_get(ecs_entity_t entity, ecs_component_t component) {
-    if (script_transaction_active)
-        script_transaction_read(script_transaction_active, entity, component);
-    return script_transaction_active
-               ? script_transaction_get(script_transaction_active, entity, component)
-               : ecs_get_cid(entity, component);
+void script_backend_component_set(ecs_entity_t entity, script_key_t component, const void *value) {
+    script_transaction_set(script_transaction_active, entity, component, value, false);
 }
 
 sireflect_handle_t script_backend_type_lookup(const char *name) {
@@ -149,14 +90,12 @@ sireflect_handle_t script_backend_type_lookup(const char *name) {
 }
 
 ecs_component_t script_backend_tag_register(const char *name) {
-    return script_transaction_active
-               ? script_transaction_type(script_transaction_active, name, NULL, true)
-               : ecs_tag_init(name);
+    return script_backend_component_register_dynamic(name, NULL);
 }
 
-const ecs_component_info_t *script_backend_component_info(ecs_component_t component) {
+const ecs_component_info_t *script_backend_component_info(script_key_t component) {
     return script_transaction_active ? script_transaction_info(script_transaction_active, component)
-                                     : ecs_component_info(component);
+                                     : script_key_info(component);
 }
 
 char *script_backend_entity_path(ecs_entity_t entity) {
@@ -165,24 +104,16 @@ char *script_backend_entity_path(ecs_entity_t entity) {
 }
 
 void script_backend_isa_add(ecs_entity_t entity, ecs_entity_t target) {
-    if (script_transaction_active) {
-        if (script_transaction_relate(script_transaction_active, entity, ecs_rid(IsA), target))
-            script_transaction_active->failed = true;
-    } else
-        ecs_is_a(entity, target);
+    if (script_transaction_relate(script_transaction_active, entity, ecs_rid(IsA), target))
+        script_transaction_active->failed = true;
 }
 
 void script_backend_prefab(ecs_entity_t entity) {
-    if (script_transaction_active)
-        script_transaction_prefab(script_transaction_active, entity);
-    else
-        ecs_abstract(entity);
+    script_transaction_prefab(script_transaction_active, entity);
 }
 
-void script_backend_value_init(ecs_component_t component, void *destination, const void *source) {
-    const ecs_type_ops_t *ops = script_transaction_active
-                                    ? script_transaction_ops(script_transaction_active, component)
-                                    : &ecs_component_index_get(component)->ops;
+void script_backend_value_init(script_key_t component, void *destination, const void *source) {
+    const ecs_type_ops_t *ops = script_backend_value_ops(component);
     size_t size = script_backend_component_info(component)->size;
     if (source)
         ecs_value_transfer(ops, size, destination, source, 1, false, true);
@@ -192,17 +123,13 @@ void script_backend_value_init(ecs_component_t component, void *destination, con
         memset(destination, 0, size);
 }
 
-void script_backend_value_fini(ecs_component_t component, void *value) {
-    const ecs_type_ops_t *ops = script_transaction_active
-                                    ? script_transaction_ops(script_transaction_active, component)
-                                    : &ecs_component_index_get(component)->ops;
+void script_backend_value_fini(script_key_t component, void *value) {
+    const ecs_type_ops_t *ops = script_backend_value_ops(component);
     ecs_value_fini(ops, value, 1);
 }
 
-void script_backend_value_copy(ecs_component_t component, void *destination, const void *source) {
-    const ecs_type_ops_t *ops = script_transaction_active
-                                    ? script_transaction_ops(script_transaction_active, component)
-                                    : &ecs_component_index_get(component)->ops;
+void script_backend_value_copy(script_key_t component, void *destination, const void *source) {
+    const ecs_type_ops_t *ops = script_backend_value_ops(component);
     ecs_value_transfer(
         ops,
         script_backend_component_info(component)->size,
@@ -214,15 +141,93 @@ void script_backend_value_copy(ecs_component_t component, void *destination, con
     );
 }
 
-bool script_backend_component_has(ecs_entity_t entity, ecs_component_t component) {
+bool script_backend_component_has(ecs_entity_t entity, script_key_t component) {
     if (script_transaction_active)
         script_transaction_read(script_transaction_active, entity, component);
     return script_transaction_active
                ? script_transaction_has(script_transaction_active, entity, component)
-               : ecs_has_cid(entity, component);
+               : script_key_has(entity, component);
 }
 
-const ecs_type_ops_t *script_backend_value_ops(ecs_component_t component) {
+const ecs_type_ops_t *script_backend_value_ops(script_key_t component) {
     return script_transaction_active ? script_transaction_ops(script_transaction_active, component)
-                                     : &ecs_component_index_get(component)->ops;
+                                     : script_key_ops(component);
+}
+
+const ecs_component_info_t *script_key_info(script_key_t key) {
+    return ecs_component_info(script_key_payload(NULL, key));
+}
+const ecs_type_ops_t *script_key_ops(script_key_t key) {
+    return &ecs_component_index_get(script_key_payload(NULL, key))->ops;
+}
+bool script_key_valid(script_key_t key) {
+    if (key & SCRIPT_PAIR_PENDING)
+        return false;
+    return key & SCRIPT_PAIR_KEY ? ecs_pair_info((ecs_pair_id_t)key) != NULL
+                                 : key < ecs_component_count();
+}
+bool script_key_has(ecs_entity_t entity, script_key_t key) {
+    if (key & SCRIPT_PAIR_PENDING)
+        return false;
+    return key & SCRIPT_PAIR_KEY ? ecs_pair_has(entity, (ecs_pair_id_t)key)
+                                 : ecs_has_cid(entity, (ecs_component_t)key);
+}
+bool script_key_owned(ecs_entity_t entity, script_key_t key) {
+    if (key & SCRIPT_PAIR_PENDING)
+        return false;
+    return key & SCRIPT_PAIR_KEY ? ecs_pair_has_owned(entity, (ecs_pair_id_t)key)
+                                 : ecs_has_cid_owned(entity, (ecs_component_t)key);
+}
+const void *script_key_get(ecs_entity_t entity, script_key_t key) {
+    if (key & SCRIPT_PAIR_PENDING)
+        return NULL;
+    return key & SCRIPT_PAIR_KEY ? ecs_pair_get(entity, (ecs_pair_id_t)key)
+                                 : ecs_get_cid(entity, (ecs_component_t)key);
+}
+void script_key_write(ecs_entity_t entity, script_key_t key, const void *value, bool remove) {
+    if (key & SCRIPT_PAIR_KEY) {
+        bool ok = remove  ? ecs_pair_remove(entity, (ecs_pair_id_t)key)
+                  : value ? ecs_pair_set(entity, (ecs_pair_id_t)key, value)
+                          : ecs_pair_add(entity, (ecs_pair_id_t)key);
+        ecs_assert(ok, "validated Script pair write failed");
+    } else if (remove)
+        ecs_remove_cid(entity, (ecs_component_t)key);
+    else if (value)
+        ecs_set_cid(entity, (ecs_component_t)key, value);
+    else
+        ecs_add_cid(entity, (ecs_component_t)key);
+}
+bool script_key_event(script_key_t key, const ecs_observer_event_t *event) {
+    if (key & SCRIPT_PAIR_KEY)
+        return event->trigger_data &&
+               ((const ecs_pair_event_t *)event->trigger_data)->pair == (ecs_pair_id_t)key;
+    if (event->component != key)
+        return false;
+    return key || (event->trigger_data &&
+                   ((const ecs_relation_event_t *)event->trigger_data)->relation == ecs_rid(IsA));
+}
+ecs_observer_id_t script_key_observe(
+    ecs_entity_t entity,
+    script_key_t key,
+    uint32_t slot,
+    ecs_observer_callback_t callback,
+    uintptr_t context,
+    void (*destroy)(uintptr_t)
+) {
+    const ecs_event_t values[] = { EcsOnAdd, EcsOnSet, EcsOnRemove };
+    const ecs_event_t pairs[] = { EcsOnPairSet, EcsOnPairRemove };
+    const ecs_event_t links[] = { EcsOnRelationSet, EcsOnRelationRemove };
+    if (slot == 2 && (!key || (key & SCRIPT_PAIR_KEY)))
+        return UINT32_MAX;
+    return ecs_observer_init(&(ecs_observer_desc_t){
+        .on = key & SCRIPT_PAIR_KEY ? pairs[slot]
+              : key                 ? values[slot]
+                                    : links[slot],
+        .entity = entity,
+        .query.components = { { ecs_id(Abstract), EcsInOptional },
+                              { ecs_id(Disabled), EcsInOptional },
+                              { key & SCRIPT_PAIR_KEY ? 0 : (ecs_component_t)key, EcsInOptional } },
+        .callback = callback,
+        .user_data = context,
+        .user_data_dtor = destroy });
 }

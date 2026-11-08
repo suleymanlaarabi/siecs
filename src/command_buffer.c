@@ -39,6 +39,44 @@ typedef struct {
 
 ECS_THREAD_LOCAL ecs_execution_context_t *ecs_tls_context;
 
+typedef struct {
+    ecs_entity_t entity;
+    ecs_pair_id_t pair;
+    ecs_pair_op_t op;
+    ecs_type_ops_t ops;
+    void *data;
+} ecs_deferred_pair_t;
+
+static void deferred_pair_fini(ecs_deferred_pair_t *pair) {
+    if (pair->data) {
+        ecs_value_fini(&pair->ops, pair->data, 1);
+        free(pair->data);
+    }
+}
+
+bool ecs_command_buffer_pair(
+    ecs_entity_t entity,
+    ecs_pair_id_t pair,
+    ecs_pair_op_t op,
+    const void *value
+) {
+    const ecs_pair_desc_t *desc = ecs_pair_info(pair);
+    if (!desc)
+        return false;
+    const ecs_component_record_t *record = ecs_component_index_get(desc->payload);
+    ecs_deferred_pair_t command = { .entity = entity, .pair = pair, .op = op, .ops = record->ops };
+    if (op == EcsPairSet && record->size) {
+        if (!value)
+            return false;
+        command.data = malloc(record->size);
+        if (!command.data)
+            return false;
+        ecs_value_copy(&record->ops, record->size, command.data, value, 1, true);
+    }
+    sicore_vec_push(&ecs_execution_context_current()->commands.pairs, &command, sizeof command);
+    return true;
+}
+
 void ecs_execution_context_set(ecs_execution_context_t *context) { ecs_tls_context = context; }
 
 static inline void deferred_change_fini(ecs_deferred_change_t *change) {
@@ -225,6 +263,7 @@ static inline void command_fini(ecs_entity_command_t *command) {
 void ecs_command_buffer_init(ecs_command_buffer_t *buffer, ecs_arena_t *arena) {
     sicore_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
     sicore_vec_init(&buffer->relations, sizeof(ecs_deferred_relation_t));
+    sicore_vec_init(&buffer->pairs, sizeof(ecs_deferred_pair_t));
     buffer->command_slots = NULL;
     buffer->slot_capacity = 0;
     buffer->arena = arena;
@@ -238,6 +277,10 @@ void ecs_command_buffer_fini(ecs_command_buffer_t *buffer) {
     }
     sicore_vec_fini(&buffer->commands);
     sicore_vec_fini(&buffer->relations);
+    ecs_deferred_pair_t *pending_pairs = buffer->pairs.data;
+    for (uint32_t i = 0; i < buffer->pairs.size; i++)
+        deferred_pair_fini(&pending_pairs[i]);
+    sicore_vec_fini(&buffer->pairs);
     free(buffer->command_slots);
     ecs_name_index_fini(&buffer->pending_names);
 }
@@ -739,25 +782,29 @@ static void command_apply(
     command_apply_changes(command);
     command_apply_relations(command, relations);
     if (base_changed) {
+        ecs_pair_inherit(command->entity, command->base);
         command_finish_base_change(command, old_base);
     }
 }
 
 void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
-    if (buffer->commands.size == 0) {
+    if (buffer->commands.size == 0 && buffer->pairs.size == 0) {
         ecs_arena_reset(buffer->arena);
         return;
     }
 
     ecs_command_transition_t transition = { 0 };
-    while (buffer->commands.size != 0) {
+    while (buffer->commands.size != 0 || buffer->pairs.size != 0) {
         sicore_vec_t commands = buffer->commands;
         sicore_vec_t relations = buffer->relations;
+        sicore_vec_t pending_pairs = buffer->pairs;
         sicore_vec_init(&buffer->commands, sizeof(ecs_entity_command_t));
         sicore_vec_init(&buffer->relations, sizeof(ecs_deferred_relation_t));
+        sicore_vec_init(&buffer->pairs, sizeof(ecs_deferred_pair_t));
 
         ecs_entity_command_t *items = sicore_vec_data(&commands, ecs_entity_command_t);
-        memset(buffer->command_slots, 0, buffer->slot_capacity * sizeof(uint32_t));
+        if (buffer->slot_capacity)
+            memset(buffer->command_slots, 0, buffer->slot_capacity * sizeof(uint32_t));
 
         for (uint32_t i = 0; i < commands.size; i++) {
             if (items[i].identity && items[i].identity->reservation) {
@@ -777,6 +824,17 @@ void ecs_command_buffer_flush_buffer(ecs_command_buffer_t *buffer) {
             );
             command_fini(&items[i]);
         }
+        ecs_deferred_pair_t *pair_commands = pending_pairs.data;
+        for (uint32_t i = 0; i < pending_pairs.size; i++) {
+            ecs_deferred_pair_t *pair = &pair_commands[i];
+            if (ecs_is_alive(pair->entity) && ecs_pair_info(pair->pair))
+                ecs_fatal_if(
+                    !ecs_pair_apply(pair->entity, pair->pair, pair->op, pair->data),
+                    "could not apply deferred pair"
+                );
+            deferred_pair_fini(pair);
+        }
+        sicore_vec_fini(&pending_pairs);
         if (!buffer->commands.size) {
             // Keep the detached storage when hooks did not enqueue another batch.
             sicore_vec_fini(&buffer->commands);
@@ -811,7 +869,7 @@ void ecs_defer_end(void) {
     ecs_assert(context->defer_depth > 0, "ecs_defer_end called without ecs_defer_begin\n");
     context->defer_depth--;
     if (context->defer_depth == 0 && !context->flushing_commands && !context->scheduler_parallel &&
-        context->commands.commands.size != 0) {
+        (context->commands.commands.size != 0 || context->commands.pairs.size != 0)) {
         ecs_command_buffer_flush();
         return;
     }

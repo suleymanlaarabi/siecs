@@ -18,6 +18,96 @@ static ecs_component_t position(void) {
     });
 }
 
+void Template_collection_properties(void) {
+    ecs_init();
+    test_int(
+        run("struct Value(x: i32)\n"
+            "struct Label(text: string)\n"
+            "template Base { prop values: i32[] = [2, 4]\n"
+            " for (i, v) in $values { \"Item_$i\" { Value: {$v} } } }\n"
+            "template Derived: Base { prop labels: string[] = [\"alpha\", \"beta\"]\n"
+            " Label: {$labels[1]} }\n"
+            "Derived A()\nDerived B(values: [7, 9, 11], labels: [\"one\", \"two\"])\n"
+            "Base Empty(values: [])\n"
+            "template Inferred { prop values = [10, 12]\n"
+            " Value: {$values[1]} }\nInferred C()\n"),
+        0
+    );
+    ecs_component_t value = ecs_component_lookup("Value");
+    ecs_component_t label = ecs_component_lookup("Label");
+    test_int(*(const int *)ecs_get_cid(ecs_lookup("A::Item_1"), value), 4);
+    test_int(*(const int *)ecs_get_cid(ecs_lookup("B::Item_2"), value), 11);
+    test_int(*(const int *)ecs_get_cid(ecs_lookup("C"), value), 12);
+    test_uint(ecs_lookup("Empty::Item_0"), 0);
+    test_str(*(char *const *)ecs_get_cid(ecs_lookup("A"), label), "beta");
+    test_str(*(char *const *)ecs_get_cid(ecs_lookup("B"), label), "two");
+    ecs_component_t base = ecs_component_lookup("Base");
+    ecs_component_t derived = ecs_component_lookup("Derived");
+    const sireflect_vector_t *base_values = ecs_get_cid(ecs_lookup("A"), base);
+    const sireflect_vector_t *derived_values = ecs_get_cid(ecs_lookup("A"), derived);
+    test_uint(base_values->count, 2);
+    test_true(base_values->data != derived_values->data);
+    test_int(((const int *)base_values->data)[0], 2);
+    ecs_fini();
+}
+
+void Template_collection_reload_and_reactivity(void) {
+    ecs_init();
+    ecs_script_instance_t *owner = ecs_script_instance_run(
+        "vectors.si",
+        "struct Value(x: i32)\n"
+        "template Items { prop values: i32[] = [2, 5]\n"
+        " Value: {$values[1]} }\nItems Source()",
+        NULL,
+        NULL
+    );
+    test_true(owner != NULL);
+    ecs_script_instance_t *consumer = ecs_script_instance_run(
+        "consumer.si",
+        "Output { Value: {Source[Items].values[1]} }",
+        NULL,
+        NULL
+    );
+    test_true(consumer != NULL);
+    ecs_component_t component = ecs_component_lookup("Items");
+    ecs_component_t value = ecs_component_lookup("Value");
+    ecs_entity_t source = ecs_lookup("Source");
+    ecs_entity_t output = ecs_lookup("Output");
+    test_int(*(const int *)ecs_get_cid(output, value), 5);
+    int numbers[] = { 10, 13 };
+    sireflect_vector_t data = { numbers, 2 };
+    ecs_set_cid(source, component, &data);
+    test_int(*(const int *)ecs_get_cid(output, value), 13);
+    ecs_script_t *candidate = ecs_script_parse(
+        "vectors.si",
+        "struct Value(x: i32)\n"
+        "template Items { prop values: i32[] = [3, 8]\n"
+        " Value: {$values[1]} }\nItems Source()\nBroken { Missing }",
+        NULL,
+        NULL
+    );
+    test_int(ecs_script_instance_reload(owner, candidate, NULL), -1);
+    ecs_script_free(candidate);
+    const sireflect_vector_t *stored = ecs_get_cid(source, component);
+    test_int(((const int *)stored->data)[1], 13);
+    test_int(*(const int *)ecs_get_cid(output, value), 13);
+    candidate = ecs_script_parse(
+        "vectors.si",
+        "struct Value(x: i32)\n"
+        "template Items { prop values: i32[] = [3, 8]\n"
+        " Value: {$values[1]} }\nItems Source()",
+        NULL,
+        NULL
+    );
+    test_int(ecs_script_instance_reload(owner, candidate, NULL), 0);
+    ecs_script_free(candidate);
+    test_uint(ecs_lookup("Source"), source);
+    test_int(*(const int *)ecs_get_cid(output, value), 8);
+    ecs_script_instance_free(consumer);
+    ecs_script_instance_free(owner);
+    ecs_fini();
+}
+
 void Template_defaults_and_arguments(void) {
     ecs_init();
     ecs_component_t component = position();

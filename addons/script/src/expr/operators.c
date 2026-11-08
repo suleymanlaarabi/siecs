@@ -136,19 +136,3 @@ int script_operator_int64_t(
     memcpy(out, &value, sizeof value);
     return 0;
 }
-
-int script_operator_bool(
-    const void *left,
-    const void *right,
-    void *out,
-    ecs_token_kind_t operation
-) {
-    bool a = *(const bool *)left, b = *(const bool *)right;
-    if (operation == EcsTokAnd)
-        *(bool *)out = a && b;
-    else if (operation == EcsTokOr)
-        *(bool *)out = a || b;
-    else
-        return compare_numbers(a, b, out, operation);
-    return 0;
-}

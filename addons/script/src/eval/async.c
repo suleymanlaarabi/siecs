@@ -4,10 +4,117 @@
 
 SCRIPT_THREAD_LOCAL ecs_script_instance_t *script_current_instance;
 
+/* Prepared on the main thread. Workers use this immutable ownership tree and
+ * never consult a registry that can grow while a schema is being compiled. */
+typedef struct script_result_layout_t {
+    struct script_result_layout_t *children, *next;
+    size_t size, offset, count;
+    sireflect_kind_t kind;
+    bool string;
+} script_result_layout_t;
+
+static void result_layout_free(script_result_layout_t *layout) {
+    while (layout) {
+        script_result_layout_t *next = layout->next;
+        result_layout_free(layout->children);
+        free(layout);
+        layout = next;
+    }
+}
+
+static script_result_layout_t *result_layout_new(sireflect_handle_t type, unsigned depth) {
+    const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (!info || depth > 256)
+        return NULL;
+    script_result_layout_t *layout = calloc(1, sizeof(*layout));
+    if (!layout)
+        return NULL;
+    layout->size = info->size;
+    layout->kind = info->kind;
+    layout->count = info->element_count;
+    layout->string = sireflect_type_is_cstring(type);
+    size_t count = info->kind == sireflect_kind_struct ? info->fields.field_count
+                   : info->kind == sireflect_kind_array || info->kind == sireflect_kind_vector ? 1
+                                                                                               : 0;
+    script_result_layout_t **tail = &layout->children;
+    for (size_t i = 0; i < count; i++) {
+        bool field = info->kind == sireflect_kind_struct;
+        *tail =
+            result_layout_new(field ? info->fields.fields[i].type : info->element_type, depth + 1);
+        if (!*tail) {
+            result_layout_free(layout);
+            return NULL;
+        }
+        (*tail)->offset = field ? info->fields.fields[i].offset : 0;
+        tail = &(*tail)->next;
+    }
+    return layout;
+}
+
+static void result_value_fini(const script_result_layout_t *layout, void *value) {
+    if (layout->string)
+        free(*(char **)value);
+    else if (layout->kind == sireflect_kind_vector || layout->kind == sireflect_kind_array) {
+        sireflect_vector_t *vector = value;
+        void *data = layout->kind == sireflect_kind_vector ? vector->data : value;
+        size_t count = layout->kind == sireflect_kind_vector ? vector->count : layout->count;
+        for (size_t i = 0; i < count; i++)
+            result_value_fini(layout->children, (char *)data + i * layout->children->size);
+        if (layout->kind == sireflect_kind_vector)
+            free(data);
+    } else
+        for (const script_result_layout_t *child = layout->children; child; child = child->next)
+            result_value_fini(child, (char *)value + child->offset);
+    memset(value, 0, layout->size);
+}
+
+/* Copy construction into zeroed, unpublished storage. Failure leaves a valid
+ * partially constructed value that result_value_fini can always destroy. */
+static bool result_value_copy(const script_result_layout_t *layout, void *dst, const void *src) {
+    if (layout->string) {
+        const char *text = *(char *const *)src;
+        *(char **)dst = text ? script_strdup(text) : NULL;
+        return !text || *(char **)dst;
+    }
+    if (layout->kind == sireflect_kind_vector || layout->kind == sireflect_kind_array) {
+        size_t count = layout->count, stride = layout->children->size;
+        if (layout->kind == sireflect_kind_vector) {
+            const sireflect_vector_t *source = src;
+            sireflect_vector_t *destination = dst;
+            count = source->count;
+            if (!stride || count > SIZE_MAX / stride || (count && !source->data))
+                return false;
+            destination->data = count ? calloc(count, stride) : NULL;
+            if (count && !destination->data)
+                return false;
+            destination->count = count;
+            dst = destination->data;
+            src = source->data;
+        }
+        for (size_t i = 0; i < count; i++)
+            if (!result_value_copy(
+                    layout->children,
+                    (char *)dst + i * stride,
+                    (const char *)src + i * stride
+                ))
+                return false;
+    } else if (layout->kind == sireflect_kind_struct) {
+        for (const script_result_layout_t *child = layout->children; child; child = child->next)
+            if (!result_value_copy(
+                    child,
+                    (char *)dst + child->offset,
+                    (const char *)src + child->offset
+                ))
+                return false;
+    } else
+        memcpy(dst, src, layout->size);
+    return true;
+}
+
 typedef struct script_host_function_t {
     struct script_host_function_t *next;
     ecs_script_function_desc_t desc;
-    sicore_vec_t result_strings;
+    script_result_layout_t *result_layout;
 } script_host_function_t;
 typedef struct script_async_block_t script_async_block_t;
 typedef struct script_future_t {
@@ -37,6 +144,7 @@ typedef struct script_task_frame_t {
     const ecs_script_for_t *loop;
     uint32_t cursor;
     uint32_t variable_count;
+    uint32_t import_count, function_count, template_count;
     int64_t iteration;
     int64_t end;
     script_value_t collection;
@@ -52,7 +160,7 @@ typedef struct script_task_observer_t {
     script_async_block_t *block;
     ecs_observer_id_t id;
     ecs_entity_t entity;
-    ecs_component_t component;
+    script_key_t component;
 } script_task_observer_t;
 struct script_async_block_t {
     script_async_block_t *next;
@@ -105,7 +213,7 @@ static script_value_t copy_script_value(script_eval_t *destination, const script
             copy.items[i] = copy_script_value(destination, &source->items[i]);
     } else if (source->type) {
         const sireflect_type_info_t *info = sireflect_type_info(source->type);
-        if (sireflect_type_is_cstring(source->type)) {
+        if (!source->ops && ecs_reflected_ops(source->type).reflected_type) {
             copy = (script_value_t){ 0 };
             void *data = script_value_storage(destination, source->type, &copy);
             ecs_reflected_value_copy(source->type, data, script_value_data(source), false);
@@ -132,7 +240,9 @@ static script_value_t copy_script_value(script_eval_t *destination, const script
                 ecs_component_t component = script_backend_component_lookup(info->name);
                 if (component && script_backend_component_info(component)->type == source->type) {
                     script_backend_value_init(component, data, script_value_data(source));
-                    script_owned_value_t owned = { .ptr = data, .component = component };
+                    script_owned_value_t owned = { .ptr = data,
+                                                   .ops = *script_backend_value_ops(component),
+                                                   .custom = true };
                     sicore_vec_push(&destination->owned_values, &owned, sizeof owned);
                 } else
                     memcpy(data, script_value_data(source), info->size);
@@ -158,6 +268,48 @@ copy_variables(script_eval_t *destination, const script_variable_t *source, uint
     return variables;
 }
 
+static script_annotation_t *
+copy_annotations(script_eval_t *ctx, const script_annotation_t *source) {
+    script_annotation_t *head = NULL, **tail = &head;
+    for (; source; source = source->next) {
+        *tail = script_alloc(&ctx->values, sizeof(**tail));
+        **tail = (script_annotation_t){ .name = siecs_strdup(&ctx->values, source->name),
+                                        .value = siecs_strdup(&ctx->values, source->value) };
+        tail = &(*tail)->next;
+    }
+    return head;
+}
+
+static bool same_annotations(const script_annotation_t *left, const script_annotation_t *right) {
+    for (; left && right; left = left->next, right = right->next)
+        if (strcmp(left->name, right->name) || strcmp(left->value, right->value))
+            return false;
+    return !left && !right;
+}
+
+static script_import_t *copy_imports(script_eval_t *ctx, const script_import_t *source) {
+    script_import_t *head = NULL, **tail = &head;
+    for (; source; source = source->next) {
+        *tail = script_alloc(&ctx->values, sizeof(**tail));
+        **tail = *source;
+        (*tail)->next = NULL;
+        tail = &(*tail)->next;
+    }
+    return head;
+}
+
+static bool same_imports(const script_import_t *left, const script_import_t *right) {
+    for (; left && right; left = left->next, right = right->next)
+        if (left->scope != right->scope)
+            return false;
+    return !left && !right;
+}
+
+static void remap_imports(script_transaction_t *transaction, script_import_t *imports) {
+    for (; imports; imports = imports->next)
+        imports->scope = script_transaction_committed_entity(transaction, imports->scope);
+}
+
 typedef struct script_function_copy_t {
     const script_function_t *source;
     script_function_t *copy;
@@ -176,6 +328,7 @@ copy_functions(script_eval_t *destination, const script_function_t *source, sico
         script_function_t *copy = script_alloc(&destination->values, sizeof(*copy));
         *copy = *item;
         copy->captures = copy_variables(destination, item->captures, item->capture_count);
+        copy->imports = copy_imports(destination, item->imports);
         copy->next = NULL;
         script_function_copy_t pair = { item, copy };
         sicore_vec_push(copies, &pair, sizeof pair);
@@ -185,9 +338,19 @@ copy_functions(script_eval_t *destination, const script_function_t *source, sico
     return head;
 }
 
+script_eval_t *script_context_clone(const script_eval_t *source) {
+    if (!source)
+        return NULL;
+    script_eval_t *copy = malloc(sizeof(*copy));
+    assert(copy != NULL);
+    script_context_copy(copy, source);
+    return copy;
+}
+
 void script_context_copy(script_eval_t *destination, const script_eval_t *source) {
     *destination = *source;
     destination->values = (ecs_allocator_t){ 0 };
+    destination->annotations = copy_annotations(destination, source->annotations);
     sicore_vec_init(&destination->variables, sizeof(script_variable_t));
     sicore_vec_init(&destination->owned_values, sizeof(script_owned_value_t));
     script_variable_t *variables =
@@ -195,6 +358,7 @@ void script_context_copy(script_eval_t *destination, const script_eval_t *source
     for (uint32_t i = 0; i < source->variables.size; i++)
         sicore_vec_push(&destination->variables, &variables[i], sizeof(*variables));
     destination->captures = copy_variables(destination, source->captures, source->capture_count);
+    destination->imports = copy_imports(destination, source->imports);
     sicore_vec_t function_copies;
     sicore_vec_init(&function_copies, sizeof(script_function_copy_t));
     destination->functions = copy_functions(destination, source->functions, &function_copies);
@@ -204,6 +368,7 @@ void script_context_copy(script_eval_t *destination, const script_eval_t *source
         script_template_t *copy = script_alloc(&destination->values, sizeof(*copy));
         *copy = *item;
         copy->captures = copy_variables(destination, item->captures, item->capture_count);
+        copy->imports = copy_imports(destination, item->imports);
         copy->functions = copy_functions(destination, item->functions, &function_copies);
         copy->next = NULL;
         *template_tail = copy;
@@ -229,6 +394,7 @@ void script_context_copy(script_eval_t *destination, const script_eval_t *source
         script_with_frame_t *copy = script_alloc(&destination->values, sizeof(*copy));
         *copy = *item;
         copy->captures = copy_variables(destination, item->captures, item->capture_count);
+        copy->imports = copy_imports(destination, item->imports);
         copy->functions = copy_functions(destination, item->functions, &function_copies);
         if (item->pair)
             copy->expressions = script_pair_expressions(destination, item->pair);
@@ -281,15 +447,20 @@ visit_context_values(const script_eval_t *ctx, script_value_visitor_t visit, voi
     return false;
 }
 
-void script_context_fini(script_eval_t *ctx) {
+void script_context_release_values(script_eval_t *ctx, uint32_t keep) {
     const script_owned_value_t *owned = ctx->owned_values.data;
-    for (uint32_t i = ctx->owned_values.size; i; i--) {
+    for (uint32_t i = ctx->owned_values.size; i > keep; i--) {
         const script_owned_value_t *value = &owned[i - 1];
-        if (value->custom) {
+        if (value->custom)
             script_custom_value_fini(&value->ops, value->ptr);
-        } else
+        else
             script_backend_value_fini(value->component, value->ptr);
     }
+    ctx->owned_values.size = keep;
+}
+
+void script_context_fini(script_eval_t *ctx) {
+    script_context_release_values(ctx, 0);
     sicore_vec_fini(&ctx->owned_values);
     sicore_vec_fini(&ctx->variables);
     script_allocator_fini(&ctx->values);
@@ -298,14 +469,7 @@ void script_context_fini(script_eval_t *ctx) {
 
 void script_context_restore(script_eval_t *ctx, script_eval_t *snapshot, uint32_t owned_count) {
     uint32_t budget = ctx->instruction_budget;
-    script_owned_value_t *owned = ctx->owned_values.data;
-    for (uint32_t i = ctx->owned_values.size; i > owned_count; i--) {
-        if (owned[i - 1].custom)
-            script_custom_value_fini(&owned[i - 1].ops, owned[i - 1].ptr);
-        else
-            script_backend_value_fini(owned[i - 1].component, owned[i - 1].ptr);
-    }
-    ctx->owned_values.size = owned_count;
+    script_context_release_values(ctx, owned_count);
     script_allocator_adopt(&ctx->values, &snapshot->values);
     script_allocator_retire_vector(&ctx->values, ctx->variables);
     script_owned_value_t *restored = snapshot->owned_values.data;
@@ -474,6 +638,13 @@ static script_future_t *new_future(
         futures[index] = future;
     else
         sicore_vec_push(&async_state.futures, &future, sizeof future);
+    /* Every live task can settle once. Reserve on the main thread so worker
+     * completion and failure cannot allocate while publishing notifications. */
+    if (async_state.completed.size > UINT32_MAX - async_state.futures.size)
+        abort();
+    uint32_t completion_capacity = async_state.completed.size + async_state.futures.size;
+    while (async_state.completed.capacity < completion_capacity)
+        sicore_vec_grow(&async_state.completed, sizeof(ecs_script_task_t));
     unlock_futures();
     if (future->owner)
         sicore_vec_push(&future->owner->futures, &future->handle, sizeof future->handle);
@@ -505,19 +676,15 @@ bool ecs_script_task_complete(ecs_script_task_t task, const void *value) {
         if (desc->result_ops.dtor)
             desc->result_ops.dtor(future->result, 1);
         desc->result_ops.copy_ctor(future->result, value, 1);
+    } else if (future->function->result_layout) {
+        const script_result_layout_t *layout = future->function->result_layout;
+        if (!result_value_copy(layout, future->result, value)) {
+            result_value_fini(layout, future->result);
+            unlock_futures();
+            return false;
+        }
     } else
         memcpy(future->result, value, future->result_size);
-    if (!desc->result_ops.copy && !desc->result_ops.copy_ctor) {
-        /* Prepared offsets make reflected completion independent of concurrent
-         * main-thread registry growth. No reflection lookup runs on the worker. */
-        const size_t *offsets = future->function->result_strings.data;
-        for (uint32_t i = 0; i < future->function->result_strings.size; i++) {
-            const char *source;
-            memcpy(&source, (const char *)value + offsets[i], sizeof source);
-            char *copy = source ? script_strdup(source) : NULL;
-            memcpy((char *)future->result + offsets[i], &copy, sizeof copy);
-        }
-    }
     future->settled = true;
     sicore_vec_push(&async_state.completed, &future->handle, sizeof future->handle);
     unlock_futures();
@@ -531,30 +698,20 @@ bool ecs_script_task_fail(ecs_script_task_t task, const char *error_type, const 
         unlock_futures();
         return false;
     }
-    future->error_type = script_strdup(error_type ? error_type : "TaskError");
-    future->error = script_strdup(message ? message : "asynchronous operation failed");
+    char *type = script_strdup(error_type ? error_type : "TaskError");
+    char *error = script_strdup(message ? message : "asynchronous operation failed");
+    if (!type || !error) {
+        free(type);
+        free(error);
+        unlock_futures();
+        return false;
+    }
+    future->error_type = type;
+    future->error = error;
     future->settled = true;
     sicore_vec_push(&async_state.completed, &future->handle, sizeof future->handle);
     unlock_futures();
     return true;
-}
-
-static void result_string_offsets(sicore_vec_t *offsets, sireflect_handle_t type, size_t offset) {
-    if (sireflect_type_is_cstring(type)) {
-        sicore_vec_push(offsets, &offset, sizeof offset);
-        return;
-    }
-    const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (info->kind == sireflect_kind_array) {
-        size_t stride = sireflect_type_size(info->element_type);
-        for (size_t i = 0; i < info->element_count; i++)
-            result_string_offsets(offsets, info->element_type, offset + i * stride);
-    } else if (sireflect_type_is_struct(info)) {
-        for (size_t i = 0; i < info->fields.field_count; i++) {
-            const sireflect_field_info_t *field = &info->fields.fields[i];
-            result_string_offsets(offsets, field->type, offset + field->offset);
-        }
-    }
 }
 
 int ecs_script_function_register(const ecs_script_function_desc_t *desc) {
@@ -582,13 +739,15 @@ int ecs_script_function_register(const ecs_script_function_desc_t *desc) {
     if (desc->parameter_count)
         memcpy(parameters, desc->parameters, desc->parameter_count * sizeof(*parameters));
     function->desc.parameters = parameters;
-    sicore_vec_init(&function->result_strings, sizeof(size_t));
-    if (function->desc.result_ops.reflected_type)
-        result_string_offsets(
-            &function->result_strings,
-            function->desc.result_ops.reflected_type,
-            0
-        );
+    if (function->desc.result_ops.reflected_type) {
+        function->result_layout = result_layout_new(function->desc.result_ops.reflected_type, 0);
+        if (!function->result_layout) {
+            free((char *)function->desc.name);
+            free((void *)function->desc.parameters);
+            free(function);
+            return -1;
+        }
+    }
     function->next = async_state.functions;
     async_state.functions = function;
     return 0;
@@ -686,11 +845,7 @@ static void queue_block(script_async_block_t *block) {
 
 static void task_changed(ecs_observer_event_t *event) {
     script_task_observer_t *observer = (void *)event->user_data;
-    if (!observer->component &&
-        (!event->trigger_data ||
-         ((const ecs_relation_event_t *)event->trigger_data)->relation != ecs_rid(IsA)))
-        return;
-    if (event->component == observer->component)
+    if (script_key_event(observer->component, event))
         queue_block(observer->block);
 }
 static void task_observer_removed(uintptr_t data) {
@@ -709,8 +864,6 @@ static void clear_task_observers(script_async_block_t *block) {
 static void observe_task(script_async_block_t *block, const script_transaction_t *transaction) {
     clear_task_observers(block);
     const script_read_t *reads = transaction->reads.data;
-    const ecs_event_t events[] = { EcsOnSet, EcsOnAdd, EcsOnRemove };
-    const ecs_event_t links[] = { EcsOnRelationSet, EcsOnRelationRemove };
     for (uint32_t i = 0; i < transaction->reads.size; i++) {
         if (!ecs_is_alive(reads[i].entity))
             continue;
@@ -721,15 +874,14 @@ static void observe_task(script_async_block_t *block, const script_transaction_t
             *observer = (script_task_observer_t){ .block = block,
                                                   .entity = reads[i].entity,
                                                   .component = reads[i].component };
-            observer->id = ecs_observer_init(&(ecs_observer_desc_t){
-                .on = reads[i].component ? events[j] : links[j],
-                .entity = observer->entity,
-                .query.components = { { ecs_id(Abstract), EcsInOptional },
-                                      { ecs_id(Disabled), EcsInOptional },
-                                      { observer->component, EcsInOptional } },
-                .callback = task_changed,
-                .user_data = (uintptr_t)observer,
-                .user_data_dtor = task_observer_removed });
+            observer->id = script_key_observe(
+                observer->entity,
+                observer->component,
+                j,
+                task_changed,
+                (uintptr_t)observer,
+                task_observer_removed
+            );
             sicore_vec_push(&block->observers, &observer, sizeof observer);
         }
     }
@@ -737,36 +889,33 @@ static void observe_task(script_async_block_t *block, const script_transaction_t
 
 static void push_frame(sicore_vec_t *frames, ecs_script_scope_t *scope, const script_eval_t *ctx) {
     script_task_frame_t frame = { .scope = scope, .variable_count = ctx->variables.size };
+    for (const script_import_t *import = ctx->imports; import; import = import->next)
+        frame.import_count++;
+    for (const script_function_t *function = ctx->functions; function; function = function->next)
+        frame.function_count++;
+    for (const script_template_t *template = ctx->templates; template; template = template->next)
+        frame.template_count++;
     sicore_vec_push(frames, &frame, sizeof frame);
 }
 
-static uint64_t source_hash(const char *begin, const char *end) {
-    uint64_t hash = UINT64_C(1469598103934665603);
-    if (!begin || !end)
-        return hash;
-    size_t length = (size_t)(end - begin);
-    char *source = malloc(length + 1);
-    assert(source != NULL);
-    memcpy(source, begin, length);
-    source[length] = '\0';
-    ecs_script_impl_t scratch = { 0 };
-    ecs_parser_t parser = { .script = &scratch,
-                            .name = "<continuation>",
-                            .code = source,
-                            .pos = source };
-    script_lex(&parser);
-    while (parser.token.kind) {
-        if ((int)parser.token.kind != '\n') {
-            hash = (hash ^ (uint32_t)parser.token.kind) * UINT64_C(1099511628211);
-            for (const unsigned char *at = (const unsigned char *)parser.token.value; *at; at++)
-                hash = (hash ^ *at) * UINT64_C(1099511628211);
-            hash = (hash ^ UINT64_C(0xff)) * UINT64_C(1099511628211);
-        }
-        script_lex(&parser);
-    }
-    script_allocator_fini(&scratch.allocator);
-    free(source);
-    return hash;
+static void restore_frame_scope(script_eval_t *ctx, const script_task_frame_t *frame) {
+    if (!frame->scope)
+        return;
+    uint32_t count = 0;
+    for (const script_import_t *import = ctx->imports; import; import = import->next)
+        count++;
+    while (count-- > frame->import_count)
+        ctx->imports = ctx->imports->next;
+    count = 0;
+    for (const script_function_t *function = ctx->functions; function; function = function->next)
+        count++;
+    while (count-- > frame->function_count)
+        ctx->functions = ctx->functions->next;
+    count = 0;
+    for (const script_template_t *template = ctx->templates; template; template = template->next)
+        count++;
+    while (count-- > frame->template_count)
+        ctx->templates = ctx->templates->next;
 }
 
 static bool same_value(const script_value_t *left, const script_value_t *right) {
@@ -809,13 +958,14 @@ static bool same_capture_list(
 static bool same_source(const ecs_script_node_t *left, const ecs_script_node_t *right) {
     return left == right ||
            (left->kind == right->kind && left->pos && left->end && right->pos && right->end &&
-            source_hash(left->pos, left->end) == source_hash(right->pos, right->end));
+            script_source_hash(left->pos, left->end) == script_source_hash(right->pos, right->end));
 }
 
 static bool same_expression(const ecs_expr_node_t *left, const ecs_expr_node_t *right) {
     return left == right ||
            (left && right && left->kind == right->kind && left->pos && left->end && right->pos &&
-            right->end && source_hash(left->pos, left->end) == source_hash(right->pos, right->end));
+            right->end &&
+            script_source_hash(left->pos, left->end) == script_source_hash(right->pos, right->end));
 }
 
 static bool same_name(const char *left, const char *right) {
@@ -824,12 +974,14 @@ static bool same_name(const char *left, const char *right) {
 
 static bool same_functions(const script_function_t *left, const script_function_t *right) {
     for (; left && right; left = left->next, right = right->next)
-        if (!same_source(&left->node->node, &right->node->node) || !same_capture_list(
-                                                                       left->captures,
-                                                                       left->capture_count,
-                                                                       right->captures,
-                                                                       right->capture_count
-                                                                   ))
+        if (!same_imports(left->imports, right->imports) ||
+            !same_source(&left->node->node, &right->node->node) ||
+            !same_capture_list(
+                left->captures,
+                left->capture_count,
+                right->captures,
+                right->capture_count
+            ))
             return false;
     return !left && !right;
 }
@@ -844,8 +996,8 @@ static bool same_defaults(const ecs_script_scope_t *left, const ecs_script_scope
         const ecs_script_tag_t *first = (const ecs_script_tag_t *)a[i];
         const ecs_script_tag_t *second = (const ecs_script_tag_t *)b[i];
         if (!same_name(first->id.first, second->id.first) ||
-            !same_name(first->id.second, second->id.second) || first->id.flag != second->id.flag ||
-            !same_expression(first->id.index_expr, second->id.index_expr))
+            !same_name(first->id.second, second->id.second) ||
+            first->id.auto_override != second->id.auto_override)
             return false;
         if (a[i]->kind == EcsAstComponent) {
             const ecs_script_component_t *x = (const ecs_script_component_t *)a[i];
@@ -858,8 +1010,11 @@ static bool same_defaults(const ecs_script_scope_t *left, const ecs_script_scope
 }
 
 bool script_context_same_captures(const script_eval_t *left, const script_eval_t *right) {
-    if (left->entity != right->entity || left->parent != right->parent ||
-        left->variable_base != right->variable_base ||
+    if (!same_annotations(left->annotations, right->annotations) ||
+        !same_imports(left->imports, right->imports) || left->entity != right->entity ||
+        left->parent != right->parent || left->variable_base != right->variable_base ||
+        left->loop_depth != right->loop_depth || left->call_depth != right->call_depth ||
+        left->template_depth != right->template_depth ||
         !same_capture_list(
             left->variables.data,
             left->variables.size,
@@ -875,7 +1030,8 @@ bool script_context_same_captures(const script_eval_t *left, const script_eval_t
         return false;
     const script_template_t *a = left->templates, *b = right->templates;
     for (; a && b; a = a->next, b = b->next)
-        if (a->component != b->component || !same_source(&a->node->node, &b->node->node) ||
+        if (!same_imports(a->imports, b->imports) || a->component != b->component ||
+            !same_source(&a->node->node, &b->node->node) ||
             !same_functions(a->functions, b->functions) ||
             !same_capture_list(a->captures, a->capture_count, b->captures, b->capture_count))
             return false;
@@ -885,7 +1041,8 @@ bool script_context_same_captures(const script_eval_t *left, const script_eval_t
         return false;
     const script_with_frame_t *first = left->with, *second = right->with;
     for (; first && second; first = first->previous, second = second->previous)
-        if (!same_defaults(first->expressions, second->expressions) ||
+        if (!same_imports(first->imports, second->imports) ||
+            !same_defaults(first->expressions, second->expressions) ||
             !same_functions(first->functions, second->functions) ||
             !same_capture_list(
                 first->captures,
@@ -953,13 +1110,13 @@ int script_async_spawn(script_eval_t *ctx, const ecs_script_async_t *node) {
     block->node = node;
     block->program = ecs_script_retain(ctx->script);
     sicore_vec_init(&block->programs, sizeof(ecs_script_t *));
-    block->hash = source_hash(node->node.pos, node->node.end);
+    block->hash = script_source_hash(node->node.pos, node->node.end);
     for (const script_function_t *function = ctx->functions; function; function = function->next) {
-        block->hash ^= source_hash(function->node->node.pos, function->node->node.end);
+        block->hash ^= script_source_hash(function->node->node.pos, function->node->node.end);
         retain_block_program(block, function->program);
     }
     for (const script_template_t *template = ctx->templates; template; template = template->next) {
-        block->hash ^= source_hash(template->node->node.pos, template->node->node.end);
+        block->hash ^= script_source_hash(template->node->node.pos, template->node->node.end);
         retain_block_program(block, template->program);
         retain_function_programs(block, template->functions);
     }
@@ -1103,9 +1260,21 @@ void script_context_remap(script_transaction_t *transaction, script_eval_t *ctx)
     ctx->entity = script_transaction_committed_entity(transaction, ctx->entity);
     ctx->parent = script_transaction_committed_entity(transaction, ctx->parent);
     visit_context_values(ctx, remap_captured_value, transaction);
-    for (script_template_t *template = ctx->templates; template; template = template->next)
+    remap_imports(transaction, ctx->imports);
+    for (script_function_t *function = ctx->functions; function; function = function->next)
+        remap_imports(transaction, function->imports);
+    for (script_template_t *template = ctx->templates; template; template = template->next) {
         template->component =
             script_transaction_committed_component(transaction, template->component);
+        remap_imports(transaction, template->imports);
+        for (script_function_t *function = template->functions; function; function = function->next)
+            remap_imports(transaction, function->imports);
+    }
+    for (script_with_frame_t *frame = ctx->with; frame; frame = frame->previous) {
+        remap_imports(transaction, frame->imports);
+        for (script_function_t *function = frame->functions; function; function = function->next)
+            remap_imports(transaction, function->imports);
+    }
     script_owned_value_t *owned = ctx->owned_values.data;
     for (uint32_t i = 0; i < ctx->owned_values.size; i++)
         owned[i].component =
@@ -1209,6 +1378,7 @@ static void pop_frame(script_eval_t *ctx, sicore_vec_t *frames) {
     script_task_frame_t frame = ((script_task_frame_t *)frames->data)[frames->size - 1];
     frames->size--;
     ctx->variables.size = frame.variable_count;
+    restore_frame_scope(ctx, &frame);
     if (frame.with_scope)
         ctx->with = ctx->with->previous;
     if (frame.prefab)
@@ -1222,6 +1392,7 @@ static void pop_frame(script_eval_t *ctx, sicore_vec_t *frames) {
 static void abandon_frame(script_eval_t *ctx, sicore_vec_t *frames) {
     script_task_frame_t frame = ((script_task_frame_t *)frames->data)[--frames->size];
     ctx->variables.size = frame.variable_count;
+    restore_frame_scope(ctx, &frame);
     if (frame.with_scope)
         ctx->with = ctx->with->previous;
     if (frame.restore_entity) {
@@ -1586,8 +1757,8 @@ restart_segment:;
         script_transaction_active = NULL;
         sicore_vec_fini(&frames);
         observe_task(block, &transaction);
-        block->pending_names =
-            error && (strstr(error, "unresolved identifier") || strstr(error, "has no component"));
+        block->pending_names = error && (strstr(error, "unresolved identifier") ||
+                                         strstr(error, "has no requested component or pair"));
     }
     int32_t line = 0, column = 0;
     siecs_log_get_captured_error_pos(&line, &column);
@@ -1710,7 +1881,7 @@ void script_async_fini(void) {
             function->desc.context_free(function->desc.context);
         free((char *)function->desc.name);
         free((void *)function->desc.parameters);
-        sicore_vec_fini(&function->result_strings);
+        result_layout_free(function->result_layout);
         free(function);
         function = next;
     }

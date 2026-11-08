@@ -5,11 +5,17 @@
     "language": "cpp",
     "public": false,
     "clangd": true,
-    "use": ["siecs", "siecs_spatial", "siecs.test.cpp_plugin"]
+    "use": [
+      "siecs",
+      "siecs_spatial",
+      "siecs.test.cpp_plugin"
+    ]
   },
   "lang.cpp": {
     "cpp-standard": "c++20",
-    "include": ["../../include"]
+    "include": [
+      "../../include"
+    ]
   },
   "test": {
     "testsuites": [
@@ -20,6 +26,12 @@
           "rename_and_reparent_replace",
           "deferred_creation_and_anonymous_paths",
           "cpp_type_names"
+        ]
+      },
+      {
+        "id": "pair",
+        "testcases": [
+          "native_lifecycle"
         ]
       },
       {
@@ -64,7 +76,6 @@
           "at_fini_captures_callable_state"
         ]
       },
-
       {
         "id": "entity_state",
         "testcases": [

@@ -455,3 +455,40 @@ void entity_is_with_multiple_depth(void) {
 
     ecs_fini();
 }
+
+void entity_per_base_auto_override(void) {
+    ecs_init();
+    test_uint(ecs_component_override_tag(ecs_id(Name)), 0);
+    test_uint(ecs_component_override_tag(ecs_id(Abstract)), 0);
+    ECS_COMPONENT_REGISTER(InheritSharedValue);
+    ecs_component_t flag = ecs_component_override_tag(ecs_id(InheritSharedValue));
+    test_true(flag != 0);
+    test_uint(flag, ecs_component_override_tag(ecs_id(InheritSharedValue)));
+    ecs_entity_t base = ecs_new();
+    ecs_set(base, InheritSharedValue, { 42 });
+    ecs_add_cid(base, flag);
+    ecs_entity_t other = ecs_new();
+    ecs_set(other, InheritSharedValue, { 7 });
+    ecs_entity_t child = ecs_new();
+    ecs_is_a(child, base);
+    test_true(ecs_has_cid_owned(child, ecs_id(InheritSharedValue)));
+    test_int(ecs_get(child, InheritSharedValue)->value, 42);
+    ecs_set(base, InheritSharedValue, { 99 });
+    test_int(ecs_get(child, InheritSharedValue)->value, 42);
+    ecs_entity_t grandchild = ecs_new();
+    ecs_defer_begin();
+    ecs_is_a(grandchild, child);
+    ecs_defer_end();
+    test_true(ecs_has_cid_owned(grandchild, ecs_id(InheritSharedValue)));
+    test_int(ecs_get(grandchild, InheritSharedValue)->value, 42);
+    ecs_entity_t shared = ecs_new();
+    ecs_is_a(shared, other);
+    test_false(ecs_has_cid_owned(shared, ecs_id(InheritSharedValue)));
+    test_int(ecs_get(shared, InheritSharedValue)->value, 7);
+    ecs_remove_cid(base, flag);
+    ecs_entity_t later = ecs_new();
+    ecs_is_a(later, base);
+    test_false(ecs_has_cid_owned(later, ecs_id(InheritSharedValue)));
+    test_int(ecs_get(later, InheritSharedValue)->value, 99);
+    ecs_fini();
+}

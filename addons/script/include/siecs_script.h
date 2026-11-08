@@ -46,6 +46,11 @@ SIECS_SCRIPT_API ecs_script_t *ecs_script_parse_file(
 SIECS_SCRIPT_API void ecs_script_free(ecs_script_t *script);
 SIECS_SCRIPT_API const ecs_script_t *ecs_script_retain(const ecs_script_t *script);
 
+/* Borrowed text annotation attached to an entity, or NULL when absent.
+ * Annotations are owning native CString components under
+ * siecs::script::annotation::<name>, and participate in instance ownership. */
+SIECS_SCRIPT_API const char *ecs_script_annotation(ecs_entity_t entity, const char *name);
+
 typedef struct ecs_script_instance_t ecs_script_instance_t;
 typedef enum ecs_script_instance_state_t {
     EcsScriptActive,
@@ -112,6 +117,9 @@ SIECS_SCRIPT_API int ecs_script_clock_set(ecs_script_clock_t clock, void *contex
  * Use a separate runtime for each concurrent execution thread. */
 SIECS_SCRIPT_API ecs_script_runtime_t *ecs_script_runtime_new(void);
 SIECS_SCRIPT_API void ecs_script_runtime_free(ecs_script_runtime_t *runtime);
+/* Evaluation publishes Script writes only after success. An evaluation error
+ * discards staged entities, declarations, pairs and values. Native callbacks
+ * remain responsible for their own effects. */
 SIECS_SCRIPT_API int ecs_script_eval(
     const ecs_script_t *script,
     const ecs_script_eval_desc_t *desc,
@@ -169,7 +177,9 @@ typedef struct ecs_script_function_desc_t {
  * Result lifecycle functions must be thread-safe when completion uses a worker. */
 SIECS_SCRIPT_API int ecs_script_function_register(const ecs_script_function_desc_t *desc);
 /* Complete once from any thread. Values are copied through result_ops. A stale,
- * already completed or cancelled handle returns false without copying data. */
+ * already completed or cancelled handle returns false without copying data.
+ * Failure to copy default reflected storage returns false and leaves the live
+ * task unsettled, so the caller can retry. */
 SIECS_SCRIPT_API bool ecs_script_task_complete(ecs_script_task_t task, const void *value);
 SIECS_SCRIPT_API bool
 ecs_script_task_fail(ecs_script_task_t task, const char *error_type, const char *message);

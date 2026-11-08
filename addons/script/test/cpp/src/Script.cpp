@@ -407,3 +407,26 @@ void Script_scoped_budget(void) {
     test_uint(ecs_lookup("Group::Recovered"), 0);
     ecs::fini();
 }
+
+void Script_pairs_and_global_rollback(void) {
+    ecs::init();
+    test_true(bool(ecs::script::run(
+        "struct Payload(x: i64)\nTarget {}\nSource { (Payload, Target): {7} }\n"
+        "Copy { Payload: {Source[Payload, Target].x} }")));
+    const auto component = ecs_component_lookup("Payload");
+    const auto source = ecs_lookup("Source");
+    const ecs_pair_desc_t descriptor{
+        .first = {component, EcsPairComponent},
+        .second = {ecs_lookup("Target"), EcsPairEntity}, .payload = component};
+    const auto pair = ecs_pair_find(&descriptor);
+    test_true(pair != 0);
+    test_int(*static_cast<const int64_t *>(ecs_pair_get(source, pair)), 7);
+    const auto failed = ecs::script::run(
+        "Source { (Payload, Target): {99} }\nDiscarded {}\nBad { Missing }");
+    test_false(bool(failed));
+    test_false(failed.error().message.empty());
+    test_int(*static_cast<const int64_t *>(ecs_pair_get(source, pair)), 7);
+    test_uint(ecs_lookup("Discarded"), 0);
+    test_uint(ecs_lookup("Bad"), 0);
+    ecs::fini();
+}

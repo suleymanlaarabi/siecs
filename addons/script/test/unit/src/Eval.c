@@ -97,7 +97,7 @@ void Eval_interpolated_ids(void) {
         test_flt(value[1], 20);
     }
     test_int(run("Bad { (IsA, \"Missing_{42}\") }"), -1);
-    test_uint(ecs_target_id(ecs_lookup("Bad"), ecs_rid(IsA)), 0);
+    test_uint(ecs_lookup("Bad"), 0);
     ecs_relation_id_t follows = ecs_relation_init("Follows", &(ecs_relation_desc_t){.storage = EcsRelationDense});
     test_int(run("const relation = \"Follows\"\nTarget {}\nSource { (\"$relation\", Target) }"), 0);
     test_uint(ecs_target_id(ecs_lookup("Source"), follows), ecs_lookup("Target"));

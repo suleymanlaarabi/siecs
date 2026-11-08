@@ -270,6 +270,11 @@ ecs_expr_node_t *script_parse_expression(ecs_parser_t *parser, int minimum) {
         } else if (token == '[' || token == EcsTokHasBracketOpen) {
             script_lex(parser);
             ecs_expr_node_t *index = script_parse_expression(parser, 1);
+            ecs_expr_node_t *second = NULL;
+            if ((int)parser->token.kind == ',') {
+                script_lex(parser);
+                second = script_parse_expression(parser, 1);
+            }
             script_expect(parser, ']');
             if (token == '[') {
                 ecs_expr_element_t *element =
@@ -277,12 +282,14 @@ ecs_expr_node_t *script_parse_expression(ecs_parser_t *parser, int minimum) {
                 element->node.pos = left->pos;
                 element->left = left;
                 element->index = index;
+                element->second = second;
                 left = (ecs_expr_node_t *)element;
             } else {
                 ecs_expr_has_t *has = expression(parser, ecs_expr_has_t, EcsExprHas);
                 has->node.pos = left->pos;
                 has->left = left;
                 has->first = index;
+                has->second = second;
                 left = (ecs_expr_node_t *)has;
             }
         } else if (token == '(') {

@@ -24,6 +24,7 @@ void Script_cancels_worker_task(void);
 void Script_owned_worker_result(void);
 void Script_controlled_clock(void);
 void Script_scoped_budget(void);
+void Script_pairs_and_global_rollback(void);
 
 bake_test_case Script_testcases[] = {
     {
@@ -85,6 +86,10 @@ bake_test_case Script_testcases[] = {
     {
         "scoped_budget",
         Script_scoped_budget
+    },
+    {
+        "pairs_and_global_rollback",
+        Script_pairs_and_global_rollback
     }
 };
 
@@ -94,7 +99,7 @@ static bake_test_suite suites[] = {
         "Script",
         NULL,
         NULL,
-        15,
+        16,
         Script_testcases
     }
 };

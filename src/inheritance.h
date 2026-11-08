@@ -6,6 +6,8 @@
 #include "type.h"
 #include <stdint.h>
 
+#define ECS_AUTO_OVERRIDE_PREFIX "siecs::auto_override::"
+
 typedef struct {
     ecs_component_t *ids;
     uint16_t count;

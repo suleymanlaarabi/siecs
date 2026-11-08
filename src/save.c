@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define ECS_SCENE_VERSION 1u
+#define ECS_SCENE_VERSION 2u
 #define ECS_SCENE_MAGIC_SIZE 8u
 #define ECS_SCENE_NULL_INDEX UINT32_MAX
 
@@ -170,6 +170,11 @@ static bool ecs_scene_traits_visit(const sireflect_type_visit_t *visit, void *us
         break;
     case EcsReflectValueString:
         traits->needs_codec = true;
+        traits->contains_string = true;
+        break;
+    case EcsReflectValueVector:
+        traits->needs_codec = true;
+        /* Vectors, like strings, require reflected destruction after decode. */
         traits->contains_string = true;
         break;
     case EcsReflectValuePointer:
@@ -332,11 +337,34 @@ static bool ecs_scene_codec_value(
                 return false;
         }
         return true;
-    case EcsReflectValueArray: {
+    case EcsReflectValueArray:
+    case EcsReflectValueVector: {
         const sireflect_type_info_t *element = sireflect_type_info(info->element_type);
         if (!element)
             return false;
-        for (size_t i = 0; i < info->element_count; i++) {
+        size_t count = info->element_count;
+        if (info->kind == sireflect_kind_vector) {
+            sireflect_vector_t *vector = value;
+            if (mode == EcsSceneSave) {
+                count = vector->count;
+                if (count > UINT32_MAX || (count && !vector->data) ||
+                    !ecs_scene_write_u32(writer, (uint32_t)count))
+                    return false;
+            } else {
+                count = ecs_scene_read_u32(reader);
+                if (!reader->ok || !element->size || count > SIZE_MAX / element->size ||
+                    count > (size_t)(reader->end - reader->ptr))
+                    return false;
+                if (mode == EcsSceneLoad) {
+                    vector->data = count ? calloc(count, element->size) : NULL;
+                    if (count && !vector->data)
+                        return false;
+                    vector->count = count;
+                }
+            }
+            value = value ? vector->data : NULL;
+        }
+        for (size_t i = 0; i < count; i++) {
             void *child = value ? (unsigned char *)value + i * element->size : NULL;
             if (!ecs_scene_codec_value(
                     mode,
@@ -511,6 +539,60 @@ static bool ecs_scene_write_tables(ecs_scene_writer_t *w, const ecs_scene_save_c
     return true;
 }
 
+static bool ecs_scene_write_pair_element(
+    ecs_scene_writer_t *w,
+    ecs_pair_element_t element,
+    const ecs_scene_save_ctx_t *ctx
+) {
+    uint32_t id = (uint32_t)element.id;
+    if (element.kind == EcsPairEntity) {
+        uint32_t entity = ecs_entity_id(element.id);
+        if (entity >= ctx->entity_to_local_count ||
+            ctx->entity_to_local[entity] == ECS_SCENE_NULL_INDEX)
+            return false;
+        id = ctx->entity_to_local[entity];
+    }
+    return ecs_scene_write_u32(w, (uint32_t)element.kind) && ecs_scene_write_u32(w, id);
+}
+
+static bool ecs_scene_write_pairs(ecs_scene_writer_t *w, const ecs_scene_save_ctx_t *ctx) {
+    size_t count_at = w->size;
+    uint32_t count = 0;
+    if (!ecs_scene_write_u32(w, 0))
+        return false;
+    ecs_pair_iter_t it = ecs_pair_query_iter(NULL);
+    while (ecs_pair_next(&it)) {
+        const ecs_pair_desc_t *pair = ecs_pair_info(it.pair);
+        const ecs_component_record_t *component = ecs_component_index_get(pair->payload);
+        if (!ecs_scene_component_supported(component))
+            return false;
+        for (uint32_t row = 0; row < it.count; row++) {
+            uint32_t entity = ecs_entity_id(it.entities[row]);
+            if (entity >= ctx->entity_to_local_count || count == UINT32_MAX ||
+                !ecs_scene_write_pair_element(w, pair->first, ctx) ||
+                !ecs_scene_write_pair_element(w, pair->second, ctx) ||
+                !ecs_scene_write_u16(w, pair->payload) || !ecs_scene_write_u16(w, 0) ||
+                !ecs_scene_write_u32(w, ctx->entity_to_local[entity]))
+                return false;
+            size_t length_at = w->size;
+            if (!ecs_scene_write_u32(w, 0))
+                return false;
+            size_t begin = w->size;
+            const void *value = component->size ? (const char *)it.values + row * it.stride : NULL;
+            if (component->size &&
+                !(ecs_scene_component_use_codec(component)
+                      ? ecs_scene_save_value(w, component->info->type, value, ctx)
+                      : ecs_scene_write(w, value, component->size)))
+                return false;
+            if (w->size - begin > UINT32_MAX ||
+                !ecs_scene_writer_patch_u32(w, length_at, (uint32_t)(w->size - begin)))
+                return false;
+            count++;
+        }
+    }
+    return ecs_scene_writer_patch_u32(w, count_at, count);
+}
+
 static bool ecs_scene_write_relations(
     ecs_scene_writer_t *w,
     const ecs_scene_save_ctx_t *ctx,
@@ -598,6 +680,8 @@ SIECS_API bool ecs_save_memory(void **data_out, size_t *size_out) {
         ok = ecs_scene_write_relations(&writer, &ctx, &relation_edge_count);
     if (ok)
         ok = ecs_scene_writer_patch_u32(&writer, relation_count_offset, relation_edge_count);
+    if (ok)
+        ok = ecs_scene_write_pairs(&writer, &ctx);
 
     if (ok) {
         *data_out = writer.data;
@@ -673,7 +757,7 @@ static bool ecs_scene_read_file(const char *path, unsigned char **data_out, size
 typedef enum { EcsSceneCheck, EcsSceneCreate, EcsSceneApply } ecs_scene_table_pass_t;
 typedef struct {
     uint32_t table_count, entity_count, relation_count;
-    ecs_scene_reader_t tables, relations;
+    ecs_scene_reader_t tables, relations, pairs;
 } ecs_scene_document_t;
 
 static ecs_component_t ecs_scene_component_at(const unsigned char *ids, uint16_t at) {
@@ -854,6 +938,88 @@ static bool ecs_scene_read_relations(
     return r.ok && r.ptr == r.end;
 }
 
+static bool ecs_scene_read_pair_element(
+    ecs_scene_reader_t *r,
+    const ecs_scene_load_ctx_t *ctx,
+    bool apply,
+    ecs_pair_element_t *element
+) {
+    element->kind = (ecs_pair_kind_t)ecs_scene_read_u32(r);
+    element->id = ecs_scene_read_u32(r);
+    if (!r->ok)
+        return false;
+    switch (element->kind) {
+    case EcsPairEntity:
+        if (element->id >= ctx->entity_count)
+            return false;
+        if (apply)
+            element->id = ctx->local_to_entity[element->id];
+        return true;
+    case EcsPairComponent:
+        return element->id && element->id <= UINT16_MAX &&
+               ecs_component_info((ecs_component_t)element->id) &&
+               !ecs_scene_component_is_relation_internal((ecs_component_t)element->id);
+    case EcsPairRelation:
+        return element->id && element->id <= UINT16_MAX &&
+               ecs_relation_info((ecs_relation_id_t)element->id) &&
+               element->id != ecs_rid(ChildOf) && element->id != ecs_rid(IsA);
+    default:
+        return false;
+    }
+}
+
+static bool
+ecs_scene_read_pairs(ecs_scene_reader_t r, const ecs_scene_load_ctx_t *ctx, bool apply) {
+    uint32_t count = ecs_scene_read_u32(&r);
+    if (!r.ok || count > (size_t)(r.end - r.ptr) / 28)
+        return false;
+    for (uint32_t i = 0; i < count; i++) {
+        ecs_pair_desc_t desc = { 0 };
+        if (!ecs_scene_read_pair_element(&r, ctx, apply, &desc.first) ||
+            !ecs_scene_read_pair_element(&r, ctx, apply, &desc.second))
+            return false;
+        desc.payload = ecs_scene_read_u16(&r);
+        uint16_t reserved = ecs_scene_read_u16(&r);
+        uint32_t source = ecs_scene_read_u32(&r), length = ecs_scene_read_u32(&r);
+        if (!r.ok || reserved || source >= ctx->entity_count || !ecs_component_info(desc.payload) ||
+            ecs_scene_component_is_relation_internal(desc.payload) ||
+            !ecs_scene_reader_skip(&r, length))
+            return false;
+        const ecs_component_record_t *component = ecs_component_index_get(desc.payload);
+        if (!ecs_scene_component_supported(component))
+            return false;
+        ecs_scene_reader_t payload = { .ptr = r.ptr - length, .end = r.ptr, .ok = true };
+        bool codec = ecs_scene_component_use_codec(component);
+        if (!codec && length != component->size)
+            return false;
+        if (!apply) {
+            if (codec &&
+                (!ecs_scene_validate_value(&payload, component->info->type, ctx->entity_count) ||
+                 payload.ptr != payload.end))
+                return false;
+            continue;
+        }
+        ecs_pair_id_t pair = ecs_pair_init(&desc);
+        if (!pair)
+            return false;
+        void *value = component->size ? calloc(1, component->size) : NULL;
+        if (component->size && !value)
+            return false;
+        ecs_scene_load_ctx_t owned = *ctx;
+        owned.component_owns_strings = true;
+        bool ok = codec ? ecs_scene_load_value(&payload, component->info->type, value, &owned)
+                        : ecs_scene_reader_take(&payload, value, component->size);
+        ok = ok && payload.ptr == payload.end &&
+             ecs_pair_set(ctx->local_to_entity[source], pair, value);
+        if (value)
+            ecs_value_fini(&component->ops, value, 1);
+        free(value);
+        if (!ok)
+            return false;
+    }
+    return r.ok && r.ptr == r.end;
+}
+
 static bool ecs_scene_parse(const void *input, size_t size, ecs_scene_document_t *document) {
     if (!input || size < ECS_SCENE_MAGIC_SIZE + sizeof(uint32_t) * 4)
         return false;
@@ -873,7 +1039,12 @@ static bool ecs_scene_parse(const void *input, size_t size, ecs_scene_document_t
         return false;
     document->tables.end = r.ptr;
     document->relations = r;
-    return ecs_scene_read_relations(r, document->relation_count, &ctx, false);
+    if (!ecs_scene_reader_skip(&r, (size_t)document->relation_count * 12))
+        return false;
+    document->relations.end = r.ptr;
+    document->pairs = r;
+    return ecs_scene_read_relations(document->relations, document->relation_count, &ctx, false) &&
+           ecs_scene_read_pairs(document->pairs, &ctx, false);
 }
 
 SIECS_API bool ecs_scene_validate(const void *input, size_t size) {
@@ -905,7 +1076,8 @@ SIECS_API bool ecs_load_memory(const void *input, size_t size) {
               first.ptr == first.end &&
               ecs_scene_read_tables(&second, document.table_count, &ctx, EcsSceneApply) &&
               second.ptr == second.end &&
-              ecs_scene_read_relations(document.relations, document.relation_count, &ctx, true);
+              ecs_scene_read_relations(document.relations, document.relation_count, &ctx, true) &&
+              ecs_scene_read_pairs(document.pairs, &ctx, true);
     if (ok) {
         for (uint32_t i = 0; i < count; i++) {
             if (names[i].value &&

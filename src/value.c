@@ -6,6 +6,8 @@ static bool reflected_owns_strings(sireflect_handle_t type) {
     if (sireflect_type_is_cstring(type))
         return true;
     const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (info->kind == sireflect_kind_vector)
+        return true;
     if (info->kind == sireflect_kind_array)
         return reflected_owns_strings(info->element_type);
     if (sireflect_type_is_struct(info)) {
@@ -28,7 +30,14 @@ void ecs_reflected_value_fini(sireflect_handle_t type, void *value) {
         return;
     }
     const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (info->kind == sireflect_kind_array) {
+    if (info->kind == sireflect_kind_vector) {
+        sireflect_vector_t *vector = value;
+        size_t stride = sireflect_type_size(info->element_type);
+        for (size_t i = 0; i < vector->count; i++)
+            ecs_reflected_value_fini(info->element_type, (char *)vector->data + i * stride);
+        free(vector->data);
+        *vector = (sireflect_vector_t){ 0 };
+    } else if (info->kind == sireflect_kind_array) {
         size_t stride = sireflect_type_size(info->element_type);
         for (size_t i = 0; i < info->element_count; i++)
             ecs_reflected_value_fini(info->element_type, (char *)value + i * stride);
@@ -63,7 +72,26 @@ void ecs_reflected_value_copy(
         return;
     }
     const sireflect_type_info_t *info = sireflect_type_info(type);
-    if (info->kind == sireflect_kind_array) {
+    if (info->kind == sireflect_kind_vector) {
+        const sireflect_vector_t *source_vector = source;
+        sireflect_vector_t copy = { .count = source_vector->count };
+        size_t stride = sireflect_type_size(info->element_type);
+        ecs_assert(copy.count <= SIZE_MAX / stride, "vector size overflow");
+        if (copy.count) {
+            copy.data = calloc(copy.count, stride);
+            ecs_assert(copy.data != NULL, "out of memory copying reflected vector");
+            for (size_t i = 0; i < copy.count; i++)
+                ecs_reflected_value_copy(
+                    info->element_type,
+                    (char *)copy.data + i * stride,
+                    (const char *)source_vector->data + i * stride,
+                    true
+                );
+        }
+        if (!construct)
+            ecs_reflected_value_fini(type, destination);
+        *(sireflect_vector_t *)destination = copy;
+    } else if (info->kind == sireflect_kind_array) {
         size_t stride = sireflect_type_size(info->element_type);
         for (size_t i = 0; i < info->element_count; i++)
             ecs_reflected_value_copy(
@@ -96,6 +124,20 @@ bool ecs_reflected_value_equal(sireflect_handle_t type, const void *left, const 
         return a && b ? !strcmp(a, b) : a == b;
     }
     const sireflect_type_info_t *info = sireflect_type_info(type);
+    if (info->kind == sireflect_kind_vector) {
+        const sireflect_vector_t *a = left, *b = right;
+        if (a->count != b->count)
+            return false;
+        size_t stride = sireflect_type_size(info->element_type);
+        for (size_t i = 0; i < a->count; i++)
+            if (!ecs_reflected_value_equal(
+                    info->element_type,
+                    (const char *)a->data + i * stride,
+                    (const char *)b->data + i * stride
+                ))
+                return false;
+        return true;
+    }
     if (info->kind == sireflect_kind_array) {
         size_t stride = sireflect_type_size(info->element_type);
         for (size_t i = 0; i < info->element_count; i++)

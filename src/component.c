@@ -1,5 +1,6 @@
 #include "command_buffer.h"
 #include "helper.h"
+#include "inheritance.h"
 #include "relation.h"
 #include "siecs.h"
 #include "sijson.h"
@@ -287,7 +288,9 @@ ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *d
     component.name = desc->name;
 
     ecs_component_t id = 0;
-    return ecs_component_register_type(&id, &component, type);
+    ecs_component_t registered = ecs_component_register_type(&id, &component, type);
+    ecs_component_index_get(registered)->dynamic = true;
+    return registered;
 }
 
 ecs_component_t ecs_tag_init(const char *name) {
@@ -295,6 +298,23 @@ ecs_component_t ecs_tag_init(const char *name) {
         .name = name,
         .fields = "{}",
     });
+}
+
+ecs_component_t ecs_component_override_tag(ecs_component_t component) {
+    const ecs_component_info_t *info = ecs_component_info(component);
+    if (!info || !info->name || component == ecs_id(Name) || component == ecs_id(Abstract) ||
+        ecs_component_index_get(component)->relation_flags)
+        return 0;
+    size_t size = sizeof(ECS_AUTO_OVERRIDE_PREFIX) + strlen(info->name);
+    char *name = malloc(size);
+    if (!name)
+        return 0;
+    snprintf(name, size, "%s%s", ECS_AUTO_OVERRIDE_PREFIX, info->name);
+    ecs_component_t tag = ecs_component_lookup(name);
+    if (!tag)
+        tag = ecs_tag_init(name);
+    free(name);
+    return tag;
 }
 
 const char *ecs_component_name(ecs_component_t component) {

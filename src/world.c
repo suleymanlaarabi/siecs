@@ -85,6 +85,7 @@ void ecs_fini(void) {
     ecs_worker_pool_fini(&ecs_world.worker_pool);
     ecs_fini_callbacks_run();
     ecs_sync_storage_fini();
+    ecs_pair_storage_fini();
 
     /* Live component teardown must finish while world resources are available. */
     ecs_table_index_fini();

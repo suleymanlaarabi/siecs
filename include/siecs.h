@@ -284,17 +284,84 @@ typedef struct {
      * copy_ctor. A move-only owning type must supply this to be observed in a
      * batch. The snapshot is released through dtor. */
     ecs_type_copy_t snapshot;
-    /* Native recursive lifecycle for reflected strings/arrays/structures.
+    /* Native recursive lifecycle for reflected strings/arrays/vectors/structures.
      * Explicit callbacks take precedence. Non-string pointers stay borrowed. */
     sireflect_handle_t reflected_type;
 } ecs_type_ops_t;
 
-/* Derive native owning string lifecycle without allocating a component id. */
+/* Derive native owning reflected lifecycle without allocating a component id. */
 SIECS_API ecs_type_ops_t ecs_reflected_ops(sireflect_handle_t type);
-SIECS_API void ecs_reflected_value_copy(sireflect_handle_t type, void *destination,
-    const void *source, bool construct);
-SIECS_API bool ecs_reflected_value_equal(sireflect_handle_t type, const void *left, const void *right);
+SIECS_API void ecs_reflected_value_copy(
+    sireflect_handle_t type,
+    void *destination,
+    const void *source,
+    bool construct
+);
+SIECS_API bool
+ecs_reflected_value_equal(sireflect_handle_t type, const void *left, const void *right);
 SIECS_API void ecs_reflected_value_fini(sireflect_handle_t type, void *value);
+
+/* Pair elements retain their namespace and, for entities, their generation.
+ * Zero-valued elements are wildcards in queries, never in registered pairs. */
+typedef enum { EcsPairAny, EcsPairEntity, EcsPairComponent, EcsPairRelation } ecs_pair_kind_t;
+typedef struct {
+    uint64_t id;
+    ecs_pair_kind_t kind;
+} ecs_pair_element_t;
+typedef uint32_t ecs_pair_id_t;
+typedef struct {
+    ecs_pair_element_t first, second;
+    ecs_component_t payload;
+} ecs_pair_desc_t;
+
+/* Intern one world-owned identity. Payload is a registered native component
+ * whose lifecycle and inheritance policy apply to every row of this pair.
+ * Conflicting payloads and builtin exclusive relations return 0. */
+SIECS_API ecs_pair_id_t ecs_pair_init(const ecs_pair_desc_t *desc);
+/* Find an existing identity without registering it; payload is ignored. */
+SIECS_API ecs_pair_id_t ecs_pair_find(const ecs_pair_desc_t *desc);
+SIECS_API const ecs_pair_desc_t *ecs_pair_info(ecs_pair_id_t pair);
+SIECS_API bool ecs_pair_add(ecs_entity_t entity, ecs_pair_id_t pair);
+SIECS_API bool ecs_pair_set(ecs_entity_t entity, ecs_pair_id_t pair, const void *value);
+SIECS_API bool ecs_pair_remove(ecs_entity_t entity, ecs_pair_id_t pair);
+SIECS_API bool ecs_pair_has(ecs_entity_t entity, ecs_pair_id_t pair);
+SIECS_API bool ecs_pair_has_owned(ecs_entity_t entity, ecs_pair_id_t pair);
+/* True when a live entity owns pair rows or is an element of a nonempty pair
+ * column. Useful when deciding whether an otherwise empty entity is in use. */
+SIECS_API bool ecs_pair_entity_in_use(ecs_entity_t entity);
+SIECS_API const void *ecs_pair_get(ecs_entity_t entity, ecs_pair_id_t pair);
+SIECS_API bool ecs_pair_modified(ecs_entity_t entity, ecs_pair_id_t pair);
+
+typedef struct {
+    ecs_pair_element_t first, second;
+    ecs_component_t payload;
+    ecs_pair_id_t pair;
+    /* Optional source query; set filter_sources to distinguish query id 0. */
+    ecs_query_id_t sources;
+    bool filter_sources;
+    uint64_t after_tick;
+} ecs_pair_query_desc_t;
+
+/* Dense native payload batches. A structural pair edit invalidates views and
+ * iterators. Source queries join the ordinary native query cache. */
+typedef struct {
+    ecs_pair_query_desc_t query;
+    ecs_pair_id_t pair;
+    const ecs_entity_t *entities;
+    const void *values;
+    uint32_t count;
+    uint32_t pair_cursor, row_cursor;
+    size_t stride;
+    uint64_t tick;
+} ecs_pair_iter_t;
+SIECS_API ecs_pair_iter_t ecs_pair_query_iter(const ecs_pair_query_desc_t *desc);
+SIECS_API bool ecs_pair_next(ecs_pair_iter_t *it);
+
+typedef struct {
+    ecs_pair_id_t pair;
+    ecs_component_t payload;
+    const void *value;
+} ecs_pair_event_t;
 
 /*
  * Component registration descriptor.
@@ -988,8 +1055,22 @@ SIECS_API ecs_component_t ecs_component_lookup(const char *name);
  * Returns 0 on error. */
 SIECS_API ecs_component_t ecs_component_dynamic_init(const ecs_dynamic_component_desc_t *desc);
 
+/* Replace a dynamic component layout at a main-thread synchronization boundary.
+ * Keeps its component id and presence, destroys old values, and zero-initializes
+ * the replacement columns. Existing queries rebind their fields. Borrowed data
+ * and metadata layouts must be acquired again. Static C/C++ types are rejected.
+ * Returns false without changing the world if preparation or validation fails. */
+SIECS_API bool ecs_component_dynamic_redefine(ecs_component_t component, const char *fields);
+
 /* Register a zero-sized reflected tag. Returns 0 on error. */
 SIECS_API ecs_component_t ecs_tag_init(const char *name);
+
+/* Return the native tag that requests an owned copy of component on IsA
+ * instantiation, even when the component's default inheritance is Shared.
+ * Add/remove it on a base with ecs_add_cid/ecs_remove_cid. The flag also
+ * propagates to descendants. Existing instances are unchanged. Returns 0 for
+ * invalid IDs, Name, Abstract, and internal relation components. */
+SIECS_API ecs_component_t ecs_component_override_tag(ecs_component_t component);
 
 /* Return the registered component name. */
 SIECS_API const char *ecs_component_name(ecs_component_t component);
@@ -1068,7 +1149,6 @@ SIECS_API void ecs_sync_unregister(ecs_sync_id_t callback);
 SIECS_API void ecs_sync_begin(void);
 SIECS_API void ecs_sync_end(void);
 SIECS_API void ecs_sync(void);
-
 
 /*
  * Return whether entity is alive in world.
@@ -1477,6 +1557,10 @@ ecs_with_relation_id(ecs_component_t component, ecs_relation_id_t relation, ecs_
 #define EcsOnRelationSet 3
 /* Fired before a relation is removed. */
 #define EcsOnRelationRemove 4
+/* Pair events carry ecs_pair_event_t with an owning snapshot when batched.
+ * Removal is delivered after the owned row has been removed. */
+#define EcsOnPairSet 5
+#define EcsOnPairRemove 6
 
 /* Delay observer callbacks until the outer batch ends. Builtin event payloads
  * are owned snapshots; observers match the table at emission time and read the
@@ -1657,7 +1741,7 @@ ecs_targets_id(const ecs_iter_t *it, ecs_relation_id_t relation);
 SIECS_API ecs_entity_t ecs_target_shared_id(const ecs_iter_t *it, ecs_relation_id_t relation);
 #define ecs_target_shared(it, relation) ecs_target_shared_id(it, ecs_rid(relation))
 SIECS_API
-    ecs_relation_batch_t ecs_relation_batch_id(const ecs_iter_t *it, ecs_relation_id_t relation);
+ecs_relation_batch_t ecs_relation_batch_id(const ecs_iter_t *it, ecs_relation_id_t relation);
 #define ecs_relation_batch(it, relation) ecs_relation_batch_id(it, ecs_rid(relation))
 
 /*

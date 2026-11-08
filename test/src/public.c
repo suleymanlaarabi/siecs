@@ -169,8 +169,8 @@ void public_scene_failed_apply_rolls_back(void) {
     test_true(ecs_save_memory(&data, &size));
     ecs_fini();
 
-    /* The relation block ends the scene: retarget its only edge onto its source. */
-    unsigned char *edge = (unsigned char *)data + size - 12;
+    /* Retarget the only relation edge, preceding the empty pair section. */
+    unsigned char *edge = (unsigned char *)data + size - 16;
     memcpy(edge + 8, edge, sizeof(uint32_t));
 
     ecs_init();
@@ -208,14 +208,26 @@ void public_scene_reflected_codec_roundtrip(void) {
     ECS_COMPONENT_REGISTER(SceneComposite);
     ecs_entity_t target = ecs_new();
     ecs_entity_t source = ecs_new();
-    ecs_set(source, SceneComposite, {
-        .nested = { .matrix = { { 1, 2 }, { 3, 4 } } },
-        .mode = SCENE_MODE_B, .text = "hello", .target = target,
-    });
-    ecs_set(target, SceneComposite, {
-        .nested = { .matrix = { { 5, 6 }, { 7, 8 } } },
-        .mode = SCENE_MODE_A, .text = NULL, .target = 0,
-    });
+    ecs_set(
+        source,
+        SceneComposite,
+        {
+            .nested = { .matrix = { { 1, 2 }, { 3, 4 } } },
+            .mode = SCENE_MODE_B,
+            .text = "hello",
+            .target = target,
+        }
+    );
+    ecs_set(
+        target,
+        SceneComposite,
+        {
+            .nested = { .matrix = { { 5, 6 }, { 7, 8 } } },
+            .mode = SCENE_MODE_A,
+            .text = NULL,
+            .target = 0,
+        }
+    );
     test_true(ecs_save_memory(&data, &size));
     test_true(ecs_scene_validate(data, size));
     unsigned char *old = malloc(size);
@@ -223,7 +235,7 @@ void public_scene_reflected_codec_roundtrip(void) {
     memcpy(old, data, size);
     old[8] = 0;
     test_false(ecs_scene_validate(old, size));
-    old[8] = 2;
+    old[8] = 3;
     test_false(ecs_scene_validate(old, size));
     free(old);
     ecs_fini();
@@ -278,11 +290,11 @@ void public_scene_binary_fixture_and_truncation(void) {
     ecs_entity_t entity = ecs_new();
     int value = 42;
     ecs_set_cid(entity, cid, &value);
-    /* Version 1: header, one table, one component id and its raw column. */
-    unsigned char fixture[42] = { 'S', 'I', 'E', 'C', 'S', 'S', 'C', 'N' };
-    uint32_t one = 1, zero = 0, payload = sizeof(int);
+    /* Current scene: header, table, raw column and empty pair section. */
+    unsigned char fixture[46] = { 'S', 'I', 'E', 'C', 'S', 'S', 'C', 'N' };
+    uint32_t one = 1, zero = 0, payload = sizeof(int), version = 2;
     uint16_t count = 1;
-    memcpy(fixture + 8, &one, 4);
+    memcpy(fixture + 8, &version, 4);
     memcpy(fixture + 12, &one, 4);
     memcpy(fixture + 16, &one, 4);
     memcpy(fixture + 20, &zero, 4);

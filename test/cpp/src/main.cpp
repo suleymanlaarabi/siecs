@@ -14,6 +14,9 @@ void naming_rename_and_reparent_replace(void);
 void naming_deferred_creation_and_anonymous_paths(void);
 void naming_cpp_type_names(void);
 
+// Testsuite 'pair'
+void pair_native_lifecycle(void);
+
 // Testsuite 'system_param'
 void system_param_custom_query_phases(void);
 void system_param_custom_system_phases(void);
@@ -156,6 +159,13 @@ bake_test_case naming_testcases[] = {
     {
         "cpp_type_names",
         naming_cpp_type_names
+    }
+};
+
+bake_test_case pair_testcases[] = {
+    {
+        "native_lifecycle",
+        pair_native_lifecycle
     }
 };
 
@@ -613,6 +623,13 @@ static bake_test_suite suites[] = {
         naming_testcases
     },
     {
+        "pair",
+        NULL,
+        NULL,
+        1,
+        pair_testcases
+    },
+    {
         "system_param",
         NULL,
         NULL,
@@ -699,5 +716,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.cpp.test", argc, argv, suites, 13);
+    return bake_test_run("siecs.cpp.test", argc, argv, suites, 14);
 }

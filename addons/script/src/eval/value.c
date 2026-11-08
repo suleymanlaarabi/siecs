@@ -59,6 +59,42 @@ void *script_value_storage(script_eval_t *ctx, sireflect_handle_t type, script_v
     return storage;
 }
 
+static int
+component_identifier(script_eval_t *ctx, const ecs_expr_node_t *expression, const char **name) {
+    if (!expression)
+        return script_eval_error(ctx, NULL, "expected component identifier");
+    if (expression->kind == EcsExprIdentifier) {
+        *name = ((const ecs_expr_identifier_t *)expression)->value;
+        return 0;
+    }
+    script_value_t value = { 0 };
+    if (script_eval_expr(ctx, expression, &value))
+        return -1;
+    if (expression->kind == EcsExprVariable && value.type == script_backend_type_lookup("entity")) {
+        const char *variable = ((const ecs_expr_variable_t *)expression)->name;
+        char *reference = script_alloc(&ctx->values, strlen(variable) + 2);
+        sprintf(reference, "$%s", variable);
+        *name = reference;
+        return 0;
+    }
+    if (!sireflect_type_is_cstring(value.type))
+        return script_eval_error(ctx, expression->pos, "expected component name string");
+    *name = *(const char *const *)script_value_data(&value);
+    return 0;
+}
+
+static script_key_t
+component_key(script_eval_t *ctx, const ecs_expr_node_t *first, const ecs_expr_node_t *second) {
+    const char *name = NULL, *target = NULL;
+    if (component_identifier(ctx, first, &name))
+        return 0;
+    if (!second)
+        return script_resolve_component(ctx, name);
+    if (component_identifier(ctx, second, &target))
+        return 0;
+    return script_resolve_pair(ctx, name, target);
+}
+
 static const char *literal_types[] = { "bool", "char", "int64_t", "uint64_t", "double", "char *" };
 static bool integer_value(const script_value_t *value, bool *is_unsigned, uint64_t *bits);
 
@@ -371,7 +407,7 @@ static int eval_expression(script_eval_t *ctx, const ecs_expr_node_t *expr, scri
             *out = variable->value;
             return 0;
         }
-        ecs_entity_t entity = script_backend_entity_lookup(name, ctx->parent);
+        ecs_entity_t entity = script_resolve_entity(ctx, name);
         if (entity) {
             out->type = script_backend_type_lookup("entity");
             out->storage.entity = entity;
@@ -403,11 +439,11 @@ static int eval_expression(script_eval_t *ctx, const ecs_expr_node_t *expr, scri
         script_value_t entity;
         if (script_eval_expr(ctx, has->left, &entity))
             return -1;
-        if (entity.type != script_backend_type_lookup("entity") || !has->first ||
-            has->first->kind != EcsExprIdentifier)
+        if (entity.type != script_backend_type_lookup("entity"))
             return script_eval_error(ctx, expr->pos, "invalid presence test");
-        ecs_component_t component =
-            script_backend_component_lookup(((ecs_expr_identifier_t *)has->first)->value);
+        script_key_t component = component_key(ctx, has->first, has->second);
+        if (!component && has->second)
+            return -1;
         ecs_entity_t handle;
         memcpy(&handle, script_value_data(&entity), sizeof handle);
         out->type = script_backend_type_lookup("bool");
@@ -419,6 +455,8 @@ static int eval_expression(script_eval_t *ctx, const ecs_expr_node_t *expr, scri
         script_value_t container;
         if (script_eval_expr(ctx, element->left, &container))
             return -1;
+        if (element->second && container.type != script_backend_type_lookup("entity"))
+            return script_eval_error(ctx, expr->pos, "pair access requires an entity");
         if (container.collection) {
             script_value_t index;
             long double number;
@@ -451,28 +489,26 @@ static int eval_expression(script_eval_t *ctx, const ecs_expr_node_t *expr, scri
             out->source_offset = container.source_offset + offset;
             return 0;
         }
-        if (!element->index || element->index->kind != EcsExprIdentifier)
-            return script_eval_error(ctx, expr->pos, "expected component identifier");
-        const char *name = ((const ecs_expr_identifier_t *)element->index)->value;
-        ecs_component_t component = script_backend_component_lookup(name);
+        script_key_t component = component_key(ctx, element->index, element->second);
         if (!component)
-            return script_eval_error(ctx, expr->pos, "unresolved component '%s'", name);
+            return script_eval_error(ctx, expr->pos, "unresolved component or pair");
         script_value_t entity = container;
         if (entity.type != script_backend_type_lookup("entity"))
             return script_eval_error(ctx, expr->pos, "expected entity reference");
         ecs_entity_t handle;
         memcpy(&handle, script_value_data(&entity), sizeof handle);
-        const void *source =
-            script_transaction_active
-                ? script_transaction_get(script_transaction_active, handle, component)
-                : ecs_get_cid(handle, component);
+        const void *source = script_transaction_get(script_transaction_active, handle, component);
         if (!source && script_transaction_active)
             script_transaction_read(script_transaction_active, handle, component);
         if (!source)
-            return script_eval_error(ctx, expr->pos, "entity has no component '%s'", name);
+            return script_eval_error(ctx, expr->pos, "entity has no requested component or pair");
         const ecs_component_info_t *info = script_backend_component_info(component);
         if (!info->type)
-            return script_eval_error(ctx, expr->pos, "component '%s' has no reflection", name);
+            return script_eval_error(
+                ctx,
+                expr->pos,
+                "requested component or pair has no reflection"
+            );
         out->type = info->type;
         out->source_entity = handle;
         out->source_component = component;
@@ -520,6 +556,30 @@ static int eval_expression(script_eval_t *ctx, const ecs_expr_node_t *expr, scri
             }
             if (length == 1)
                 *out = out->items[0];
+            return 0;
+        }
+        if (left.type == script_backend_type_lookup("entity")) {
+            ecs_entity_t scope;
+            memcpy(&scope, script_value_data(&left), sizeof(scope));
+            ecs_entity_t child;
+            if (script_transaction_active) {
+                script_transaction_lookup(script_transaction_active, member->member_name, scope);
+                child = script_transaction_entity(
+                    script_transaction_active,
+                    member->member_name,
+                    scope,
+                    false
+                );
+            } else
+                child = ecs_lookup_from(scope, member->member_name);
+            if (!child)
+                return script_eval_error(
+                    ctx,
+                    expr->pos,
+                    "unresolved entity member '%s'",
+                    member->member_name
+                );
+            *out = (script_value_t){ .type = left.type, .storage.entity = child };
             return 0;
         }
         const sireflect_fields_t *fields = sireflect_type_fields(left.type);
@@ -656,9 +716,14 @@ static int eval_expression(script_eval_t *ctx, const ecs_expr_node_t *expr, scri
     }
 }
 
+static bool collection_view(script_eval_t *ctx, const script_value_t *value, script_value_t *view);
+
 int script_eval_expr(script_eval_t *ctx, const ecs_expr_node_t *expr, script_value_t *out) {
     int status = eval_expression(ctx, expr, out);
-    if (!status && !ctx->defer_read && out->source_component && script_transaction_active)
+    bool vector =
+        !status && out->type && sireflect_type_info(out->type)->kind == sireflect_kind_vector;
+    if (!status && (!ctx->defer_read || vector) && out->source_component &&
+        script_transaction_active)
         script_transaction_read_member(
             script_transaction_active,
             out->source_entity,
@@ -666,7 +731,52 @@ int script_eval_expr(script_eval_t *ctx, const ecs_expr_node_t *expr, script_val
             out->type,
             out->source_offset
         );
+    if (vector) {
+        script_value_t view;
+        if (!collection_view(ctx, out, &view))
+            return script_eval_error(ctx, expr->pos, "vector exceeds collection limit");
+        *out = view;
+    }
     return status;
+}
+
+static int write_vector(
+    script_eval_t *ctx,
+    const char *position,
+    sireflect_handle_t type,
+    void *destination,
+    const script_value_t *source,
+    const ecs_expr_initializer_t *initializer
+) {
+    const sireflect_type_info_t *info = sireflect_type_info(type);
+    size_t stride = sireflect_type_size(info->element_type);
+    size_t count = initializer ? initializer->elements.size : source->count;
+    if (count > SIZE_MAX / stride)
+        return script_eval_error(ctx, position, "vector size overflow");
+    sireflect_vector_t vector = { .count = count, .data = count ? calloc(count, stride) : NULL };
+    if (count && !vector.data)
+        return script_eval_error(ctx, position, "out of memory");
+    const ecs_expr_initializer_element_t *elements =
+        initializer ? initializer->elements.data : NULL;
+    for (uint32_t i = 0; i < count; i++) {
+        void *item = (char *)vector.data + i * stride;
+        int status;
+        if (initializer) {
+            status = elements[i].member
+                         ? script_eval_error(ctx, position, "vector elements cannot be named")
+                         : script_value_write(ctx, elements[i].value, info->element_type, item);
+        } else {
+            script_value_t element = script_collection_at(source, i);
+            status = script_value_convert(ctx, position, &element, info->element_type, item);
+        }
+        if (status) {
+            ecs_reflected_value_fini(type, &vector);
+            return status;
+        }
+    }
+    ecs_reflected_value_fini(type, destination);
+    *(sireflect_vector_t *)destination = vector;
+    return 0;
 }
 
 int script_value_write(
@@ -681,6 +791,8 @@ int script_value_write(
     if (expr->kind == EcsExprInitializer || expr->kind == EcsExprEmptyInitializer) {
         const ecs_expr_initializer_t *init = (const ecs_expr_initializer_t *)expr;
         const ecs_expr_initializer_element_t *elements = init->elements.data;
+        if (info->kind == sireflect_kind_vector)
+            return write_vector(ctx, expr->pos, type, destination, NULL, init);
         const sireflect_fields_t *fields = sireflect_type_fields(type);
         if (info->kind == sireflect_kind_array) {
             if (init->elements.size > info->element_count)
@@ -753,6 +865,8 @@ int script_value_convert(
 ) {
     const sireflect_type_info_t *info = sireflect_type_info(type);
     if (value->collection) {
+        if (info->kind == sireflect_kind_vector)
+            return write_vector(ctx, position, type, destination, value, NULL);
         size_t count =
             info->kind == sireflect_kind_array ? info->element_count : info->fields.field_count;
         if ((info->kind != sireflect_kind_array && !sireflect_type_is_struct(info)) ||
@@ -779,7 +893,7 @@ int script_value_convert(
     }
     if (type == script_backend_type_lookup("entity") && sireflect_type_is_cstring(value->type)) {
         const char *name = *(const char *const *)script_value_data(value);
-        ecs_entity_t entity = script_backend_entity_lookup(name, ctx->parent);
+        ecs_entity_t entity = script_resolve_entity(ctx, name);
         if (!entity)
             return script_eval_error(ctx, position, "unresolved entity '%s'", name);
         memcpy(destination, &entity, sizeof entity);
@@ -828,7 +942,7 @@ int script_call(script_eval_t *ctx, const ecs_expr_function_t *call, script_valu
         return script_eval_error(ctx, call->node.pos, "expected named function");
     const ecs_expr_initializer_element_t *args = call->args->elements.data;
     uint32_t count = call->args->elements.size;
-    sireflect_handle_t conversion = script_backend_type_lookup(call->function_name);
+    sireflect_handle_t conversion = script_resolve_type(ctx, call->function_name);
     if (conversion) {
         if (count != 1)
             return script_eval_error(ctx, call->node.pos, "conversion requires one argument");
@@ -850,7 +964,9 @@ int script_call(script_eval_t *ctx, const ecs_expr_function_t *call, script_valu
     const ecs_script_fn_param_t *declarations = function->node->params.data;
     for (uint32_t i = 0; i < count; i++) {
         parameters[i].name = declarations[i].name;
-        parameters[i].value.type = script_backend_type_lookup(declarations[i].type);
+        script_eval_t lexical = *ctx;
+        lexical.imports = function->imports;
+        parameters[i].value.type = script_resolve_type(&lexical, declarations[i].type);
         if (!parameters[i].value.type)
             return script_eval_error(ctx, call->node.pos, "unknown parameter type");
         void *storage = script_value_storage(ctx, parameters[i].value.type, &parameters[i].value);
@@ -861,11 +977,13 @@ int script_call(script_eval_t *ctx, const ecs_expr_function_t *call, script_valu
     const script_variable_t *previous_captures = ctx->captures;
     uint32_t previous_capture_count = ctx->capture_count;
     script_function_t *previous_functions = ctx->functions;
+    script_import_t *previous_imports = ctx->imports;
     int32_t previous_loop_depth = ctx->loop_depth;
     ctx->variable_base = previous_size;
     ctx->captures = function->captures;
     ctx->capture_count = function->capture_count;
     ctx->functions = function;
+    ctx->imports = function->imports;
     ctx->loop_depth = 0;
     ctx->call_depth++;
     for (uint32_t i = 0; i < count; i++)
@@ -877,7 +995,7 @@ int script_call(script_eval_t *ctx, const ecs_expr_function_t *call, script_valu
     for (uint32_t i = 0; i < function->node->body->stmts.size && !status; i++)
         status = script_eval_node(ctx, statements[i]);
     if (!status) {
-        out->type = script_backend_type_lookup(function->node->return_type);
+        out->type = script_resolve_type(ctx, function->node->return_type);
         if (!out->type || !function->node->return_expr)
             status = script_eval_error(ctx, call->node.pos, "function requires a typed result");
         else {
@@ -890,6 +1008,7 @@ int script_call(script_eval_t *ctx, const ecs_expr_function_t *call, script_valu
     ctx->captures = previous_captures;
     ctx->capture_count = previous_capture_count;
     ctx->functions = previous_functions;
+    ctx->imports = previous_imports;
     ctx->loop_depth = previous_loop_depth;
     ctx->call_depth--;
     ctx->script = previous_program;
@@ -1002,10 +1121,17 @@ static bool collection_view(script_eval_t *ctx, const script_value_t *value, scr
     if (!value->type || value->type == script_backend_type_lookup("entity"))
         return false;
     const sireflect_type_info_t *info = sireflect_type_info(value->type);
-    if (info->kind != sireflect_kind_array && !sireflect_type_is_struct(info))
+    bool vector = info->kind == sireflect_kind_vector;
+    bool sequence = vector || info->kind == sireflect_kind_array;
+    if (!sequence && !sireflect_type_is_struct(info))
         return false;
-    size_t count =
-        info->kind == sireflect_kind_array ? info->element_count : info->fields.field_count;
+    const void *data = script_value_data(value);
+    size_t count = sequence ? info->element_count : info->fields.field_count;
+    if (vector) {
+        const sireflect_vector_t *storage = data;
+        count = storage->count;
+        data = storage->data;
+    }
     if (count > UINT32_MAX || count > ctx->instruction_budget)
         return false;
     if (sireflect_type_is_struct(info)) {
@@ -1015,15 +1141,14 @@ static bool collection_view(script_eval_t *ctx, const script_value_t *value, scr
                 return false;
         }
     }
-    *view = (script_value_t){ .collection = true, .count = (uint32_t)count };
+    *view = (script_value_t){ .collection = true,
+                              .count = (uint32_t)count,
+                              .item_type = sequence ? info->element_type : 0 };
     view->items = script_alloc(&ctx->values, count * sizeof(script_value_t));
     for (uint32_t i = 0; i < count; i++) {
-        sireflect_handle_t type =
-            info->kind == sireflect_kind_array ? info->element_type : info->fields.fields[i].type;
-        size_t offset = info->kind == sireflect_kind_array ? i * sireflect_type_size(type)
-                                                           : info->fields.fields[i].offset;
-        view->items[i] = (script_value_t){ .type = type,
-                                           .ptr = (const char *)script_value_data(value) + offset };
+        sireflect_handle_t type = sequence ? info->element_type : info->fields.fields[i].type;
+        size_t offset = sequence ? i * sireflect_type_size(type) : info->fields.fields[i].offset;
+        view->items[i] = (script_value_t){ .type = type, .ptr = (const char *)data + offset };
     }
     return true;
 }

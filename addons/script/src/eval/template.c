@@ -7,15 +7,14 @@ script_template_t *script_template_lookup(script_eval_t *ctx, const char *name) 
     return NULL;
 }
 
-/* Template properties use the native dynamic component's reflected layout.
- * Owning pointer/collection properties require native reflected lifecycle hooks. */
+/* Template properties use the native dynamic component's reflected layout. */
 static bool property_type_supported(sireflect_handle_t type) {
     const sireflect_type_info_t *info = sireflect_type_info(type);
     if (!info)
         return false;
     if (sireflect_type_is_cstring(type))
         return true;
-    if (info->kind == sireflect_kind_array)
+    if (info->kind == sireflect_kind_array || info->kind == sireflect_kind_vector)
         return property_type_supported(info->element_type);
     if (sireflect_type_is_struct(info)) {
         const sireflect_fields_t *fields = sireflect_type_fields(type);
@@ -108,7 +107,7 @@ int script_template_declare(script_eval_t *ctx, const ecs_script_template_node_t
                     prop->name
                 );
             }
-        sireflect_handle_t type = prop->type   ? script_backend_type_lookup(prop->type)
+        sireflect_handle_t type = prop->type   ? script_resolve_type(ctx, prop->type)
                                   : overridden ? overridden->type
                                                : 0;
         if (!type && !prop->type && prop->expr) {
@@ -118,8 +117,16 @@ int script_template_declare(script_eval_t *ctx, const ecs_script_template_node_t
                 return -1;
             }
             type = value.type;
+            if (value.collection) {
+                sireflect_handle_t element = value.item_type;
+                if (!element && value.count)
+                    element = script_collection_at(&value, 0).type;
+                type = element ? sireflect_vector_type(element) : 0;
+            }
         }
-        if (prop->type_is_template || prop->type_is_vector || !property_type_supported(type) ||
+        if (type && prop->type_is_vector)
+            type = sireflect_vector_type(type);
+        if (prop->type_is_template || !property_type_supported(type) ||
             (overridden && overridden->type != type)) {
             free(ecs_strbuf_get(&description));
             return script_eval_error(
@@ -137,6 +144,10 @@ int script_template_declare(script_eval_t *ctx, const ecs_script_template_node_t
     ecs_strbuf_appendch(&description, '}');
     char *fields = ecs_strbuf_get(&description);
     ecs_entity_t entity = script_backend_entity_ensure(node->name, ctx->parent);
+    if (script_annotations_apply(ctx, entity)) {
+        free(fields);
+        return -1;
+    }
     char *path = script_backend_entity_path(entity);
     const char *name = path && !strncmp(path, "::", 2) ? path + 2 : path;
     ecs_component_t component = !name ? 0
@@ -160,6 +171,7 @@ int script_template_declare(script_eval_t *ctx, const ecs_script_template_node_t
                                      .program = ctx->script,
                                      .component = component,
                                      .functions = ctx->functions,
+                                     .imports = ctx->imports,
                                      .next = ctx->templates };
     template->capture_count = ctx->capture_count + ctx->variables.size - ctx->variable_base;
     if (template->capture_count) {
@@ -200,6 +212,7 @@ static int eval_template_body(
     ctx->capture_count = definition->capture_count;
     ctx->templates = definition;
     ctx->functions = definition->functions;
+    ctx->imports = definition->imports;
     const ecs_component_info_t *info = script_backend_component_info(definition->component);
     const sireflect_fields_t *fields = template_fields(definition);
     bool borrowed = fields == root_fields;
@@ -306,6 +319,7 @@ int script_template_eval(
     uint32_t capture_count = ctx->capture_count;
     script_template_t *previous_templates = ctx->templates;
     script_function_t *previous_functions = ctx->functions;
+    script_import_t *previous_imports = ctx->imports;
     int32_t loop_depth = ctx->loop_depth;
     const ecs_script_t *previous_program = ctx->script;
     ctx->script = template->program;
@@ -328,6 +342,7 @@ int script_template_eval(
         ctx->capture_count = owner->capture_count;
         ctx->templates = owner;
         ctx->functions = owner->functions;
+        ctx->imports = owner->imports;
         void *ptr = (char *)buffer + member->offset;
         if (!supplied[field] && prop->expr)
             status = script_value_write(ctx, prop->expr, member->type, ptr);
@@ -346,6 +361,7 @@ int script_template_eval(
     ctx->capture_count = capture_count;
     ctx->templates = previous_templates;
     ctx->functions = previous_functions;
+    ctx->imports = previous_imports;
     ctx->loop_depth = loop_depth;
     ctx->template_depth--;
     ctx->script = previous_program;

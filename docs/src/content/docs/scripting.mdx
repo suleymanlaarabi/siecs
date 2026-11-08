@@ -54,27 +54,76 @@ statements and loop steps. Large generators can provide a larger explicit budget
 exhaustion returns an evaluation diagnostic.
 
 Instance dependencies record the component members actually read. Changing an
-unread member does not evaluate the instance. Eligible named scopes of component
-writes reuse their results when their inputs, referenced lexical values, and
-entity lookups are unchanged. Capture plans are compiled with the program; an
-unrelated local does not invalidate a cached region. Interpolated names and loop
-iterations retain separate captures. Enclosing control flow and scopes using
-Script functions, templates, or scoped defaults still use the interpreter.
+unread member does not evaluate the instance. Compiled regions reuse their results when their inputs, referenced lexical values,
+and entity lookups are unchanged. Regions include lexical declarations, function
+calls, templates, scoped defaults, loops, conditions, and caught branches. Nested
+regions can be reused independently when an enclosing region changes. Capture
+plans keep simple named scopes independent of unrelated locals. Interpolated names
+and loop iterations retain separate captures. Async launches still execute their
+reconciliation step so that pending continuations remain correctly owned.
 
 Full component assignments own the complete value. Partial assignments, such as
 `Position = {x: 10}`, own the selected top-level fields. Different instances may
 produce disjoint fields; overlapping producers are rejected. Unloading restores
 prior values only where the published contribution still matches the world,
 preserving subsequent host edits. Named entities and authored anonymous entities
-retain their handles across reevaluation. Anonymous identity uses source,
-anonymous declaration order, parent, and occurrence within that declaration.
+retain their handles across reevaluation. Anonymous identity matches tokenized declarations within their source and parent,
+including repeated occurrences. Inserting or moving an unchanged declaration
+preserves its handle; comments and whitespace do not change its identity. When a
+declaration changes, its ordinal provides a fallback unless the previous declaration
+still occurs elsewhere. Simultaneous edits of indistinguishable anonymous
+declarations can require new handles.
+
+## Typed pairs
+
+Pairs carry independent values for each ordered identity:
+
+```text
+struct Position(x: f32, y: f32)
+Target {}
+Other {}
+Source {
+    (Position, Target): {1, 2}
+    (Target, Position): {3, 4}
+    (Position, Other): {5, 6}
+}
+const value = Source[Position, Target]
+if Source?[Target, Position] {
+    Copy { Position: {$value.x, $value.y} }
+}
+```
+
+Elements resolve to native components, entities, or relations. Entity properties
+such as `$target` work in either position. The first component supplies the
+payload; if only the second element is a component, it supplies the payload.
+An entity/entity pair is a tag. Pair identities do not allocate a component ID
+for every target. `(IsA, Target)` and `(ChildOf, Target)` remain native relation
+edges and do not accept payload initializers.
+
+Pair writes, member assignments with `=`, dependency reads, inherited reads,
+async waits, and instance output ownership use the same transaction rules as
+ordinary components. Freeing or reloading an instance restores its contribution
+while preserving independently changed host values. Conflicting instance outputs
+are rejected before publication.
+
+Each `ecs_script_eval` or `ecs_script_run` execution prepares all Script writes
+before publishing them. An evaluation error discards the entire execution's
+entities, component declarations, pair identities, and values. A caught `try`
+error discards only its failed branch. Native functions remain responsible for
+their own effects; arbitrary native writes are outside this transaction.
 
 ## Reload and watched files
 
 `ecs_script_instance_reload` prepares a candidate before publishing its changes.
 Evaluation failures preserve the active program, subscriptions, contributions,
-and tasks. Observers receive committed state. A changed definition of an existing
-component schema is rejected; live schema replacement is not implemented.
+and tasks. Observers receive committed state. An instance can replace dynamic
+component schemas that it created. Replacement retains the component ID and
+presence, destroys old values, and zeroes replacement storage before applying the
+new authored values. This also resets external values of that component. Queries
+rebind their fields; callers must acquire borrowed data and layout metadata again.
+Host schemas and schemas owned by another instance cannot be replaced. Native
+code can request the same operation with `ecs_component_dynamic_redefine`.
+Replacement does not migrate values between layouts.
 
 Enable `watch` in the instance descriptor to poll the root file and its includes.
 The default interval is 250 ms. Polling confirms file content before reloading;
@@ -136,6 +185,12 @@ keep their order and type; a derived declaration can replace a default or append
 properties. An override without a type keeps the inherited type. Base bodies run
 before derived bodies and retain their original lexical captures. Instances carry
 each template's native component with its corresponding property values.
+Collection properties use `prop values: i32[] = [1, 2]` or infer their element
+type from a nonempty default such as `prop values = [1, 2]`. They are owning
+native vectors: defaults, supplied arguments, inherited properties, reloads,
+and saved scenes copy their elements. Strings and reflected structs can be
+elements. Empty defaults require an explicit element type. Iterate or index
+properties with `for value in $values` and `$values[0]`.
 Template defaults, template bodies, and `with` expressions keep the function
 definitions visible when they were declared. Functions can start cooperative
 `async` scopes when evaluated through a persistent instance; captured entity
@@ -147,6 +202,33 @@ precision, and a type: `d`, `u`, `x`, `X`, `o`, `f`, `F`, `e`, `E`, `g`, `G`, or
 `s`. Width and precision are limited to 1024. String formats accept only the `-`
 flag. Invalid formats fail parsing; incompatible value types fail evaluation.
 
+## Imports, annotations, and inheritance
+
+`using Space` imports the native namespace entity `Space` into the current lexical
+scope. Inner imports take precedence, and scope exit restores the previous imports.
+Functions, templates, scoped defaults, and suspended async bodies retain the imports
+visible at their definition. Qualified entity paths such as `Space.Source` and
+component names such as `"Space.Item"` resolve through native namespaces.
+
+An annotation precedes an entity, struct, or template definition:
+
+```text
+@brief "A moving object"
+@color dark blue
+Object {}
+```
+
+Read it with `ecs_script_annotation(entity, "brief")`. Values are owning native
+string components and follow instance publication and ownership rules. Template
+annotations describe their definition; instances do not inherit them.
+
+`auto_override | Position: {1, 2}` adds a native override tag to its base entity.
+Future `IsA` instances own a copy even if `Position` normally uses shared
+inheritance. The flag propagates to descendants without changing other bases or
+existing instances. Native callers obtain it with
+`ecs_component_override_tag(component)` and add or remove it using ordinary tag
+operations. Script publishes authored values before instantiating inheritance.
+
 ## Editing source
 
 `ecs_script_document_t` and `ecs::script_document` preserve source revisions.
@@ -157,9 +239,10 @@ program through the C API. Failed application leaves the active instance intact.
 
 ## Current boundaries
 
-Typed pair payloads and multiple targets on an exclusive relation are unavailable.
-General region scheduling for lexical control flow, live component schema changes,
-and allocator-failure recovery remain incomplete. Annotations, `auto_override` flags, custom `using` imports,
-and collection properties on templates still return execution diagnostics.
+Pair iteration and wildcard queries use the native `ecs_pair_*` API.
+Exclusive relation assignment still replaces its one target.
+Allocator-failure recovery across the entire native commit path remains incomplete.
+Region reuse avoids unchanged execution but still walks the root instruction sequence
+and compares captures during reevaluation.
 The native test suite covers the executable subset and does not establish a
 complete language implementation.

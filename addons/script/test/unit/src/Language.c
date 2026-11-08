@@ -306,3 +306,171 @@ void Language_struct_bodies_and_arrays(void) {
     ecs_script_instance_free(instance);
     ecs_fini();
 }
+
+void Language_lexical_namespace_imports(void) {
+    ecs_init();
+    test_int(
+        run("struct Value(x: i64)\n"
+            "Space { struct Item(x: i32)\nSource { Item: {5} } }\n"
+            "Other { struct Item(x: i64)\nSource { Item: {50} } }\n"
+            "using Space\n"
+            "fn read() -> i32 { Source[Item].x }\n"
+            "fn identity(value: Item) -> Item { $value }\n"
+            "template Model { prop p: Item = {7}\nItem: {$p.x} }\n"
+            "with Item: {8} { Model First() }\n"
+            "using Other\n"
+            "Output { Value: {read()} }\n"
+            "Second { Item: {identity({9}).x} }\n"
+            "Third { using Space\nChild { Item: {11} } }\n"
+            "Last { Item: {12} }\n"
+            "Qualified { Value: {Space.Source[\"Space.Item\"].x} }"),
+        0
+    );
+    ecs_component_t first = ecs_component_lookup("Space::Item");
+    ecs_component_t second = ecs_component_lookup("Other::Item");
+    test_true(first != 0 && second != 0 && first != second);
+    test_int(*(const int32_t *)ecs_get_cid(ecs_lookup("First"), first), 7);
+    test_false(ecs_has_cid(ecs_lookup("First"), second));
+    test_int(*(const int64_t *)ecs_get_cid(ecs_lookup("Output"), ecs_component_lookup("Value")), 5);
+    test_int(*(const int64_t *)ecs_get_cid(ecs_lookup("Second"), second), 9);
+    test_int(*(const int32_t *)ecs_get_cid(ecs_lookup("Third::Child"), first), 11);
+    test_int(*(const int64_t *)ecs_get_cid(ecs_lookup("Last"), second), 12);
+    test_int(
+        *(const int64_t *)ecs_get_cid(ecs_lookup("Qualified"), ecs_component_lookup("Value")),
+        5
+    );
+    test_int(run("using Missing"), -1);
+    ecs_fini();
+}
+
+void Language_native_annotations(void) {
+    ecs_init();
+    test_int(
+        run("@brief \"two lines\\nwith text\"\n@color dark blue\n@flag\nOutput {}\n"
+            "Plain {}\n@brief \"schema\"\nstruct Shape(x: i32)\n"
+            "@brief \"definition\"\ntemplate Model { prop x: i32 = 1 }\n"
+            "Model Instance()\n@brief old\n@brief new\nLast {}"),
+        0
+    );
+    test_str(ecs_script_annotation(ecs_lookup("Output"), "brief"), "two lines\nwith text");
+    test_str(ecs_script_annotation(ecs_lookup("Output"), "color"), "dark blue");
+    test_str(ecs_script_annotation(ecs_lookup("Output"), "flag"), "");
+    test_str(ecs_script_annotation(ecs_lookup("Shape"), "brief"), "schema");
+    test_str(ecs_script_annotation(ecs_lookup("Model"), "brief"), "definition");
+    test_str(ecs_script_annotation(ecs_lookup("Last"), "brief"), "new");
+    test_true(ecs_script_annotation(ecs_lookup("Plain"), "brief") == NULL);
+    test_true(ecs_script_annotation(ecs_lookup("Instance"), "brief") == NULL);
+    test_true(ecs_script_annotation(0, "brief") == NULL);
+    test_true(ecs_script_annotation(ecs_lookup("Output"), NULL) == NULL);
+    test_int(run("@brief orphan"), -1);
+    test_int(run("@brief misplaced\nconst x = 1"), -1);
+    ecs_fini();
+}
+
+void Language_auto_override_and_staged_inheritance(void) {
+    ecs_init();
+    test_int(run("Invalid { auto_override | Name }"), -1);
+    test_int(run("Invalid { auto_override | Abstract }"), -1);
+    ecs_component_t shared = ecs_component_dynamic_init(&(
+        ecs_dynamic_component_desc_t
+    ){ .name = "SharedValue", .fields = "{ int32_t x; }", .inheritance = EcsInheritShared });
+    test_true(shared != 0);
+    ecs_script_instance_t *instance = ecs_script_instance_run(
+        "override.si",
+        "struct OwnValue(x: i32)\n"
+        "prefab Base { auto_override | SharedValue: {42}\nOwnValue: {19} }\n"
+        "Child { (IsA, Base) }\nGrandchild { (IsA, Child) }\n"
+        "prefab Other { SharedValue: {7} }\nOtherChild { (IsA, Other) }",
+        NULL,
+        NULL
+    );
+    test_true(instance != NULL);
+    ecs_entity_t base = ecs_lookup("Base");
+    ecs_entity_t child = ecs_lookup("Child");
+    ecs_entity_t grandchild = ecs_lookup("Grandchild");
+    test_true(ecs_has_cid_owned(child, shared));
+    test_true(ecs_has_cid_owned(grandchild, shared));
+    test_int(*(const int32_t *)ecs_get_cid(child, shared), 42);
+    test_int(*(const int32_t *)ecs_get_cid(grandchild, shared), 42);
+    test_int(*(const int32_t *)ecs_get_cid(child, ecs_component_lookup("OwnValue")), 19);
+    test_false(ecs_has_cid_owned(ecs_lookup("OtherChild"), shared));
+    test_int(*(const int32_t *)ecs_get_cid(ecs_lookup("OtherChild"), shared), 7);
+    int32_t changed = 99;
+    ecs_set_cid(base, shared, &changed);
+    test_int(*(const int32_t *)ecs_get_cid(child, shared), 42);
+    ecs_script_instance_free(instance);
+    ecs_fini();
+}
+
+void Language_inheritance_publication_order(void) {
+    ecs_init();
+    ecs_script_instance_t *instance = ecs_script_instance_run(
+        "bases.si",
+        "struct Value(x: i32)\nprefab Root { Value: {42} }\n"
+        "prefab Middle {}\nLeaf { (IsA, Middle) }\nMiddle { (IsA, Root) }",
+        NULL,
+        NULL
+    );
+    test_true(instance != NULL);
+    ecs_component_t value = ecs_component_lookup("Value");
+    ecs_entity_t leaf = ecs_lookup("Leaf");
+    ecs_entity_t middle = ecs_lookup("Middle");
+    test_true(ecs_has_cid_owned(middle, value));
+    test_true(ecs_has_cid_owned(leaf, value));
+    test_int(*(const int32_t *)ecs_get_cid(middle, value), 42);
+    test_int(*(const int32_t *)ecs_get_cid(leaf, value), 42);
+    ecs_script_t *candidate = ecs_script_parse(
+        "bases.si",
+        "struct Value(x: i32)\nprefab Root { Value: {12} }\n"
+        "prefab Middle {}\nLeaf { (IsA, Middle) }\nMiddle { (IsA, Leaf) }",
+        NULL,
+        NULL
+    );
+    test_int(ecs_script_instance_reload(instance, candidate, NULL), -1);
+    test_int(*(const int32_t *)ecs_get_cid(leaf, value), 42);
+    test_uint(ecs_target_id(middle, ecs_rid(IsA)), ecs_lookup("Root"));
+    ecs_script_free(candidate);
+    ecs_script_instance_free(instance);
+    ecs_fini();
+
+    ecs_init();
+    leaf = ecs_new_named(0, "Leaf");
+    middle = ecs_new_named(0, "Middle");
+    ecs_entity_t bridge = ecs_new_named(0, "Bridge");
+    ecs_is_a(bridge, middle);
+    instance = ecs_script_instance_run(
+        "bridge.si",
+        "struct Value(x: i32)\nprefab Root { Value: {31} }\n"
+        "Leaf { (IsA, Bridge) }\nMiddle { (IsA, Root) }",
+        NULL,
+        NULL
+    );
+    test_true(instance != NULL);
+    value = ecs_component_lookup("Value");
+    test_true(ecs_has_cid_owned(leaf, value));
+    test_int(*(const int32_t *)ecs_get_cid(leaf, value), 31);
+    ecs_script_instance_free(instance);
+    ecs_fini();
+}
+
+void Language_staged_inherited_presence(void) {
+    ecs_init();
+    test_true(ecs_tag_init("Marker") != 0);
+    test_true(ecs_tag_init("Absent") != 0);
+    test_int(
+        run("struct Value(x: i32)\n"
+            "prefab Base { Value: {42}\nMarker }\nChild { (IsA, Base) }\n"
+            "Grandchild { (IsA, Child) }\n"
+            "if Child?[Value] { Found {} } else { Wrong {} }\n"
+            "if Grandchild?[Marker] { FoundTag {} } else { WrongTag {} }\n"
+            "if Grandchild?[Absent] { WrongAbsent {} }"),
+        0
+    );
+    test_true(ecs_has_cid(ecs_lookup("Child"), ecs_component_lookup("Value")));
+    test_true(ecs_lookup("Found") != 0);
+    test_true(ecs_lookup("FoundTag") != 0);
+    test_uint(ecs_lookup("Wrong"), 0);
+    test_uint(ecs_lookup("WrongTag"), 0);
+    test_uint(ecs_lookup("WrongAbsent"), 0);
+    ecs_fini();
+}

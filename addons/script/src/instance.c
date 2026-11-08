@@ -17,9 +17,11 @@ typedef struct script_file_stamp_t {
 } script_file_stamp_t;
 typedef struct script_baseline_t {
     ecs_entity_t entity;
-    ecs_component_t component;
+    script_key_t component;
     void *value;
     bool present;
+    sireflect_handle_t schema;
+    ecs_type_ops_t ops;
 } script_baseline_t;
 typedef struct script_async_baseline_t {
     script_baseline_t initial;
@@ -42,7 +44,7 @@ typedef struct script_watch_observer_t {
 } script_watch_observer_t;
 struct script_watch_t {
     ecs_entity_t entity;
-    ecs_component_t component;
+    script_key_t component;
     ecs_observer_id_t observers[3];
     script_watch_observer_t contexts[3];
     sicore_vec_t listeners;
@@ -60,6 +62,7 @@ struct ecs_script_instance_t {
     sicore_vec_t relation_baselines;
     sicore_vec_t subscriptions;
     sicore_vec_t created;
+    sicore_vec_t schemas;
     sicore_vec_t files;
     double next_file_check;
     bool watch_failed;
@@ -79,9 +82,10 @@ struct ecs_script_instance_t {
 
 typedef struct script_owner_t {
     ecs_entity_t entity;
-    ecs_component_t component;
+    script_key_t component;
     ecs_script_instance_t *instance;
     uint8_t *members;
+    sireflect_handle_t schema;
     bool async;
 } script_owner_t;
 typedef struct script_manager_t {
@@ -99,35 +103,70 @@ typedef struct script_manager_t {
 } script_manager_t;
 static script_manager_t manager;
 
+bool script_instance_owns_schema(ecs_script_instance_t *instance, script_key_t component) {
+    if (!instance)
+        return false;
+    const ecs_component_t *schemas = instance->schemas.data;
+    for (uint32_t i = 0; i < instance->schemas.size; i++)
+        if (schemas[i] == component)
+            return true;
+    return false;
+}
+
+static bool identity_claimed(const script_transaction_t *transaction, ecs_entity_t entity) {
+    const script_identity_t *identities = transaction->identities.data;
+    for (uint32_t i = 0; i < transaction->identities.size; i++)
+        if (identities[i].entity == entity)
+            return true;
+    return false;
+}
+
+static bool identity_reserved(const ecs_script_t *program, uint64_t fingerprint) {
+    for (const ecs_script_entity_t *node = siecs_script_impl(program)->anonymous; node;
+         node = node->next_anonymous)
+        if (node->identity_hash == fingerprint)
+            return true;
+    return false;
+}
+
 ecs_entity_t script_instance_anonymous(
     ecs_script_instance_t *instance,
     script_transaction_t *transaction,
     const ecs_script_t *program,
-    uint32_t node,
+    const ecs_script_entity_t *node,
     ecs_entity_t parent
 ) {
     uint32_t occurrence = 0;
     const script_identity_t *identities = transaction->identities.data;
     for (uint32_t i = 0; i < transaction->identities.size; i++)
-        if (identities[i].node == node && identities[i].parent == parent &&
+        if (identities[i].node == node->anonymous_id && identities[i].parent == parent &&
             !strcmp(identities[i].source, program->name))
             occurrence++;
-    ecs_entity_t entity = 0;
+    ecs_entity_t entity = 0, fallback = 0;
     identities = instance->active.identities.data;
     for (uint32_t i = 0; instance->has_active && i < instance->active.identities.size; i++) {
         const script_identity_t *previous = &identities[i];
-        if (previous->node == node && previous->parent == parent &&
-            previous->occurrence == occurrence && !strcmp(previous->source, program->name) &&
-            ecs_is_alive(previous->entity) &&
-            ecs_target_id(previous->entity, ecs_rid(ChildOf)) == parent) {
+        if (previous->parent != parent || previous->occurrence != occurrence ||
+            strcmp(previous->source, program->name) || !ecs_is_alive(previous->entity) ||
+            ecs_target_id(previous->entity, ecs_rid(ChildOf)) != parent ||
+            identity_claimed(transaction, previous->entity))
+            continue;
+        if (previous->fingerprint == node->identity_hash) {
             entity = previous->entity;
-            break;
+            if (previous->node == node->anonymous_id)
+                break;
+        } else if (
+            previous->node == node->anonymous_id &&
+            !identity_reserved(program, previous->fingerprint)
+        ) {
+            fallback = previous->entity;
         }
     }
     if (!entity)
-        entity = script_transaction_entity(transaction, NULL, parent, true);
+        entity = fallback ? fallback : script_transaction_entity(transaction, NULL, parent, true);
     script_identity_t identity = { .source = script_strdup(program->name),
-                                   .node = node,
+                                   .node = node->anonymous_id,
+                                   .fingerprint = node->identity_hash,
                                    .occurrence = occurrence,
                                    .parent = parent,
                                    .entity = entity };
@@ -136,7 +175,7 @@ ecs_entity_t script_instance_anonymous(
     return entity;
 }
 
-static size_t owner_position(ecs_entity_t entity, ecs_component_t component) {
+static size_t owner_position(ecs_entity_t entity, script_key_t component) {
     const script_owner_t *owners = manager.owners.data;
     size_t low = 0, high = manager.owners.size;
     while (low < high) {
@@ -153,7 +192,7 @@ static size_t owner_position(ecs_entity_t entity, ecs_component_t component) {
 static void release_output(
     ecs_script_instance_t *instance,
     ecs_entity_t entity,
-    ecs_component_t component,
+    script_key_t component,
     bool async
 ) {
     size_t at = owner_position(entity, component);
@@ -180,7 +219,8 @@ claim_output(ecs_script_instance_t *instance, const script_staged_value_t *outpu
         (script_owner_t){ .entity = output->entity,
                           .component = output->component,
                           .instance = instance,
-                          .members = script_output_copy_mask(output->component, output->members),
+                          .schema = output->schema,
+                          .members = script_output_copy_mask(output->schema, output->members),
                           .async = async };
 }
 
@@ -195,15 +235,15 @@ conflicting_outputs(ecs_script_instance_t *instance, const script_transaction_t 
         for (; at < manager.owners.size && owners[at].entity == outputs[i].entity &&
                owners[at].component == outputs[i].component;
              at++)
-            if (owners[at].instance != instance &&
+            if (owners[at].instance != instance && owners[at].schema == outputs[i].schema &&
                 script_output_overlap(outputs[i].component, owners[at].members, outputs[i].members))
                 return true;
     }
     return false;
 }
 
-static bool equal_component(ecs_component_t component, const void *left, const void *right) {
-    const ecs_component_info_t *info = ecs_component_info(component);
+static bool equal_component(script_key_t component, const void *left, const void *right) {
+    const ecs_component_info_t *info = script_key_info(component);
     return info->type ? ecs_reflected_value_equal(info->type, left, right) : !info->size;
 }
 
@@ -218,11 +258,7 @@ static void enqueue(ecs_script_instance_t *instance) {
 static void watch_changed(ecs_observer_event_t *event) {
     script_watch_observer_t *context = (void *)event->user_data;
     script_watch_t *watch = context->watch;
-    if (event->component != watch->component)
-        return;
-    if (!watch->component &&
-        (!event->trigger_data ||
-         ((const ecs_relation_event_t *)event->trigger_data)->relation != ecs_rid(IsA)))
+    if (!script_key_event(watch->component, event))
         return;
     ecs_script_instance_t **listeners = watch->listeners.data;
     for (uint32_t i = 0; i < watch->listeners.size; i++) {
@@ -244,7 +280,7 @@ static void watch_removed(uintptr_t data) {
     context->watch->observers[context->slot] = UINT32_MAX;
 }
 
-static size_t watch_position(ecs_entity_t entity, ecs_component_t component) {
+static size_t watch_position(ecs_entity_t entity, script_key_t component) {
     script_watch_t **watches = manager.watches.data;
     size_t low = 0, high = manager.watches.size;
     while (low < high) {
@@ -259,8 +295,8 @@ static size_t watch_position(ecs_entity_t entity, ecs_component_t component) {
 }
 
 static void
-subscribe(ecs_script_instance_t *instance, ecs_entity_t entity, ecs_component_t component) {
-    if (!entity || !ecs_is_alive(entity) || component >= ecs_component_count())
+subscribe(ecs_script_instance_t *instance, ecs_entity_t entity, script_key_t component) {
+    if (!entity || !ecs_is_alive(entity) || !script_key_valid(component))
         return;
     script_watch_t **subscriptions = instance->subscriptions.data;
     for (uint32_t i = 0; i < instance->subscriptions.size; i++)
@@ -281,17 +317,14 @@ subscribe(ecs_script_instance_t *instance, ecs_entity_t entity, ecs_component_t 
             if (!component && slot == 2)
                 continue;
             watch->contexts[slot] = (script_watch_observer_t){ watch, slot };
-            const ecs_event_t events[] = { EcsOnAdd, EcsOnSet, EcsOnRemove };
-            const ecs_event_t links[] = { EcsOnRelationSet, EcsOnRelationRemove };
-            watch->observers[slot] = ecs_observer_init(&(ecs_observer_desc_t){
-                .on = component ? events[slot] : links[slot],
-                .entity = entity,
-                .query.components = { { ecs_id(Abstract), EcsInOptional },
-                                      { ecs_id(Disabled), EcsInOptional },
-                                      { component, EcsInOptional } },
-                .callback = watch_changed,
-                .user_data = (uintptr_t)&watch->contexts[slot],
-                .user_data_dtor = watch_removed });
+            watch->observers[slot] = script_key_observe(
+                entity,
+                component,
+                slot,
+                watch_changed,
+                (uintptr_t)&watch->contexts[slot],
+                watch_removed
+            );
         }
         sicore_vec_push_empty(&manager.watches, sizeof(watch));
         watches = manager.watches.data;
@@ -341,7 +374,7 @@ subscribe_reads(ecs_script_instance_t *instance, const script_transaction_t *tra
 }
 
 static script_baseline_t *
-find_baseline(sicore_vec_t *baselines, ecs_entity_t entity, ecs_component_t component) {
+find_baseline(sicore_vec_t *baselines, ecs_entity_t entity, script_key_t component) {
     script_baseline_t *values = baselines->data;
     for (uint32_t i = 0; i < baselines->size; i++)
         if (values[i].entity == entity && values[i].component == component)
@@ -349,8 +382,8 @@ find_baseline(sicore_vec_t *baselines, ecs_entity_t entity, ecs_component_t comp
     return NULL;
 }
 
-static void *copy_value(ecs_component_t component, const void *value) {
-    const ecs_component_info_t *info = ecs_component_info(component);
+static void *copy_value(script_key_t component, const void *value) {
+    const ecs_component_info_t *info = script_key_info(component);
     if (!value || !info->size)
         return NULL;
     void *copy = malloc((size_t)info->size);
@@ -365,19 +398,10 @@ static void clear_baselines(sicore_vec_t *baselines) {
     for (uint32_t i = 0; i < baselines->size; i++) {
         if (!values[i].value)
             continue;
-        script_backend_value_fini(values[i].component, values[i].value);
+        ecs_value_fini(&values[i].ops, values[i].value, 1);
         free(values[i].value);
     }
     sicore_vec_fini(baselines);
-}
-
-static script_staged_value_t *
-find_output(script_transaction_t *transaction, ecs_entity_t entity, ecs_component_t component) {
-    script_staged_value_t *values = transaction->values.data;
-    for (uint32_t i = 0; i < transaction->values.size; i++)
-        if (values[i].entity == entity && values[i].component == component)
-            return &values[i];
-    return NULL;
 }
 
 bool script_instance_region_replay(
@@ -385,32 +409,39 @@ bool script_instance_region_replay(
     script_transaction_t *transaction,
     const ecs_script_t *program,
     const ecs_script_node_t *node,
-    ecs_entity_t parent
+    ecs_entity_t parent,
+    script_eval_t *context
 ) {
     if (!instance->has_active)
         return false;
     const script_transaction_t *active = &instance->active;
     const script_region_t *regions = active->regions.data;
-    script_region_t *candidate =
-        &((script_region_t *)transaction->regions.data)[transaction->region - 1];
-    const script_region_t *region = NULL;
-    for (uint32_t i = 0; i < active->regions.size; i++)
-        if (regions[i].program == program && regions[i].node == node &&
-            regions[i].parent == parent &&
-            script_context_same_captures(regions[i].captures, candidate->captures)) {
-            region = &regions[i];
+    uint32_t next_id = transaction->region;
+    script_region_t *candidate = &((script_region_t *)transaction->regions.data)[next_id - 1];
+    uint32_t index = 0;
+    for (; index < active->regions.size; index++)
+        if (regions[index].program == program && regions[index].node == node &&
+            regions[index].parent == parent &&
+            script_context_same_captures(regions[index].captures, candidate->captures))
             break;
-        }
-    if (!region || !region->reusable)
+    if (index == active->regions.size || !regions[index].reusable)
         return false;
+    const script_region_t *region = &regions[index];
     const ecs_entity_t *produced = active->produced.data;
-    if (region->produced_begin == region->produced_end ||
-        script_transaction_entity(transaction, region->name, parent, false) !=
-            produced[region->produced_begin])
-        return false;
+    for (uint32_t i = region->produced_begin; i < region->produced_end; i++)
+        if (!ecs_is_alive(produced[i]))
+            return false;
+    for (uint32_t i = index; i < region->children_end; i++) {
+        const script_region_t *child = &regions[i];
+        if (child->node->kind == EcsAstEntity && child->produced_begin < child->produced_end &&
+            child->name &&
+            script_transaction_entity(transaction, child->name, child->parent, false) !=
+                produced[child->produced_begin])
+            return false;
+    }
     const script_read_t *reads = active->reads.data;
     for (uint32_t i = region->reads_begin; i < region->reads_end; i++)
-        if (find_output(transaction, reads[i].entity, reads[i].component) ||
+        if (script_transaction_find(transaction, reads[i].entity, reads[i].component) ||
             script_read_changed(&reads[i]))
             return false;
     const script_lookup_t *lookups = active->lookups.data;
@@ -419,25 +450,60 @@ bool script_instance_region_replay(
             lookups[i].resolved)
             return false;
     const script_staged_value_t *outputs = active->values.data;
-    for (uint32_t i = region->values_begin; i < region->values_end; i++) {
-        const script_staged_value_t *output = &outputs[i];
-        if (find_output(transaction, output->entity, output->component))
+    for (uint32_t i = region->values_begin; i < region->values_end; i++)
+        if (!script_key_valid(outputs[i].component) ||
+            outputs[i].schema != script_key_info(outputs[i].component)->type ||
+            script_transaction_find(transaction, outputs[i].entity, outputs[i].component))
             return false;
+    /* Preserve the subtree, including dependency ownership. If its parent is
+     * invalidated next time, the unchanged descendants can still be scheduled. */
+    for (uint32_t i = index; i < region->children_end; i++) {
+        script_region_t copy = regions[i];
+        copy.name = copy.name ? script_strdup(copy.name) : NULL;
+        copy.result = script_context_clone(copy.result);
+        copy.children_end = next_id - 1 + copy.children_end - index;
+#define REBASE_RANGE(field)                                                                        \
+    copy.field##_begin =                                                                           \
+        candidate->field##_begin + regions[i].field##_begin - region->field##_begin;               \
+    copy.field##_end = candidate->field##_begin + regions[i].field##_end - region->field##_begin
+        REBASE_RANGE(values);
+        REBASE_RANGE(reads);
+        REBASE_RANGE(lookups);
+        REBASE_RANGE(produced);
+        REBASE_RANGE(relations);
+        REBASE_RANGE(prefabs);
+        REBASE_RANGE(identities);
+#undef REBASE_RANGE
+        if (i == index) {
+            copy.captures = candidate->captures;
+            *candidate = copy;
+        } else {
+            copy.captures = script_context_clone(copy.captures);
+            sicore_vec_push(&transaction->regions, &copy, sizeof copy);
+            candidate = &((script_region_t *)transaction->regions.data)[next_id - 1];
+        }
     }
-    for (uint32_t i = region->reads_begin; i < region->reads_end; i++)
-        script_transaction_read_member(
-            transaction,
-            reads[i].entity,
-            reads[i].component,
-            reads[i].type,
-            reads[i].offset
-        );
-    for (uint32_t i = region->lookups_begin; i < region->lookups_end; i++)
-        script_transaction_lookup(transaction, lookups[i].name, lookups[i].parent);
+    for (uint32_t i = region->reads_begin; i < region->reads_end; i++) {
+        script_read_t copy = reads[i];
+        copy.region = next_id + copy.region - (index + 1);
+        if (copy.snapshot) {
+            copy.snapshot = calloc(1, sireflect_type_size(copy.type));
+            assert(copy.snapshot != NULL);
+            ecs_reflected_value_copy(copy.type, copy.snapshot, reads[i].snapshot, true);
+        }
+        sicore_vec_push(&transaction->reads, &copy, sizeof copy);
+    }
+    for (uint32_t i = region->lookups_begin; i < region->lookups_end; i++) {
+        script_lookup_t copy = lookups[i];
+        copy.region = next_id + copy.region - (index + 1);
+        copy.name = script_strdup(copy.name);
+        sicore_vec_push(&transaction->lookups, &copy, sizeof copy);
+    }
     for (uint32_t i = region->produced_begin; i < region->produced_end; i++)
         sicore_vec_push(&transaction->produced, &produced[i], sizeof produced[i]);
     for (uint32_t i = region->values_begin; i < region->values_end; i++) {
         const script_staged_value_t *output = &outputs[i];
+        transaction->region = next_id + output->region - (index + 1);
         script_transaction_set_members(
             transaction,
             output->entity,
@@ -445,21 +511,39 @@ bool script_instance_region_replay(
             output->data,
             output->members
         );
-        script_staged_value_t *cached = find_output(transaction, output->entity, output->component);
+        script_staged_value_t *cached =
+            script_transaction_find(transaction, output->entity, output->component);
         cached->cached = true;
     }
-    candidate->name = script_strdup(region->name);
+    transaction->region = next_id;
+    const script_staged_relation_t *relations = active->relations.data;
+    for (uint32_t i = region->relations_begin; i < region->relations_end; i++)
+        sicore_vec_push(&transaction->relations, &relations[i], sizeof relations[i]);
+    const ecs_entity_t *prefabs = active->prefabs.data;
+    for (uint32_t i = region->prefabs_begin; i < region->prefabs_end; i++)
+        sicore_vec_push(&transaction->prefabs, &prefabs[i], sizeof prefabs[i]);
+    const script_identity_t *identities = active->identities.data;
+    for (uint32_t i = region->identities_begin; i < region->identities_end; i++) {
+        script_identity_t copy = identities[i];
+        copy.source = script_strdup(copy.source);
+        sicore_vec_push(&transaction->identities, &copy, sizeof copy);
+    }
+    if (region->result) {
+        script_eval_t result;
+        script_context_copy(&result, region->result);
+        script_context_restore(context, &result, context->owned_values.size);
+    }
     return true;
 }
 
 static bool output_is_current(const script_staged_value_t *output) {
-    if (!ecs_is_alive(output->entity))
+    if (!ecs_is_alive(output->entity) || !script_key_valid(output->component))
         return false;
-    if (!ecs_has_cid(output->entity, output->component))
+    if (!script_key_has(output->entity, output->component))
         return output->remove;
     if (!output->data)
         return !output->remove;
-    return script_output_equal(output, ecs_get_cid(output->entity, output->component));
+    return script_output_equal(output, script_key_get(output->entity, output->component));
 }
 
 /* Restore each released member only while its published value is still live. */
@@ -469,13 +553,17 @@ static void restore_contribution(
     const script_baseline_t *baseline,
     const script_staged_value_t *next
 ) {
-    if (!baseline || !ecs_is_alive(previous->entity) ||
-        !ecs_has_cid(previous->entity, previous->component))
+    if (!script_key_valid(previous->component) ||
+        previous->schema != script_key_info(previous->component)->type ||
+        (transaction && script_transaction_replaces(transaction, previous->component)))
+        return;
+    if (!baseline || baseline->schema != previous->schema || !ecs_is_alive(previous->entity) ||
+        !script_key_has(previous->entity, previous->component))
         return;
     if (next && !next->members)
         return;
-    const void *live = ecs_get_cid(previous->entity, previous->component);
-    const ecs_component_info_t *info = ecs_component_info(previous->component);
+    const void *live = script_key_get(previous->entity, previous->component);
+    const ecs_component_info_t *info = script_key_info(previous->component);
     const sireflect_fields_t *fields = sireflect_type_fields(info->type);
     if (!previous->members && !next && output_is_current(previous)) {
         if (transaction)
@@ -487,9 +575,9 @@ static void restore_contribution(
                 !baseline->present
             );
         else if (!baseline->present)
-            ecs_remove_cid(previous->entity, previous->component);
+            script_key_write(previous->entity, previous->component, NULL, true);
         else if (baseline->value)
-            ecs_set_cid(previous->entity, previous->component, baseline->value);
+            script_key_write(previous->entity, previous->component, baseline->value, false);
         return;
     }
     if (!fields->field_count || !previous->data || !live)
@@ -531,7 +619,7 @@ static void restore_contribution(
                 mask
             );
         else
-            ecs_set_cid(previous->entity, previous->component, buffer);
+            script_key_write(previous->entity, previous->component, buffer, false);
     }
     script_backend_value_fini(previous->component, buffer);
     script_backend_value_fini(previous->component, initial);
@@ -612,9 +700,10 @@ static bool keeps_incoming_relation(
 static bool
 created_entity_is_removable(script_transaction_t *transaction, const script_created_t *created) {
     ecs_entity_t entity = created->entity;
-    if (!ecs_is_alive(entity) || contains_entity(&transaction->produced, entity))
+    if (!ecs_is_alive(entity) || contains_entity(&transaction->produced, entity) ||
+        ecs_pair_entity_in_use(entity))
         return false;
-    const Name *explicit_name = ecs_get_cid(entity, ecs_id(Name));
+    const Name *explicit_name = script_key_get(entity, ecs_id(Name));
     const char *name = explicit_name ? explicit_name->value : NULL;
     if ((name && !created->name) || (!name && created->name) ||
         (name && strcmp(name, created->name)) ||
@@ -623,11 +712,11 @@ created_entity_is_removable(script_transaction_t *transaction, const script_crea
     uint32_t count = 0;
     const ecs_component_t *components = ecs_entity_component_ids(entity, &count);
     for (uint32_t i = 0; i < count; i++) {
-        ecs_component_t component = components[i];
+        script_key_t component = components[i];
         if (component == ecs_id(Name) || component == ecs_id(Abstract) ||
             ecs_component_index_get(component)->relation_flags)
             continue;
-        script_staged_value_t *change = find_output(transaction, entity, component);
+        script_staged_value_t *change = script_transaction_find(transaction, entity, component);
         if (!change || !change->remove)
             return false;
     }
@@ -659,6 +748,10 @@ plan_entity_removal(ecs_script_instance_t *instance, script_transaction_t *trans
 
 static void
 remember_created(ecs_script_instance_t *instance, const script_transaction_t *transaction) {
+    const script_staged_type_t *types = transaction->types.data;
+    for (uint32_t i = 0; i < transaction->types.size; i++)
+        if (!script_instance_owns_schema(instance, types[i].committed))
+            sicore_vec_push_u16(&instance->schemas, types[i].committed);
     const script_staged_entity_t *entities = transaction->entities.data;
     for (uint32_t i = 0; i < transaction->entities.size; i++) {
         script_created_t created = { .entity = entities[i].handle,
@@ -687,11 +780,20 @@ static void names_changed(ecs_observer_event_t *event) {
     if (event->component != ecs_id(Name))
         return;
     script_async_names_changed();
-    for (ecs_script_instance_t *instance = manager.instances; instance; instance = instance->next)
-        if (instance->pending_names) {
+    for (ecs_script_instance_t *instance = manager.instances; instance; instance = instance->next) {
+        bool changed = instance->pending_names;
+        const script_lookup_t *lookups = instance->active.lookups.data;
+        for (uint32_t i = 0; !changed && instance->has_active && i < instance->active.lookups.size;
+             i++) {
+            char *path = script_backend_qualified_name(lookups[i].name, 0);
+            changed = ecs_lookup_from(lookups[i].parent, path) != lookups[i].resolved;
+            free(path);
+        }
+        if (changed) {
             instance->force_evaluation = true;
             enqueue(instance);
         }
+    }
 }
 
 static void collect_files(ecs_script_instance_t *instance, const ecs_script_t *program);
@@ -779,7 +881,7 @@ static int evaluate_instance(
         const script_read_t *reads = candidate.reads.data;
         for (uint32_t i = 0; i < candidate.reads.size && !status; i++) {
             const script_staged_value_t *output =
-                find_output(&candidate, reads[i].entity, reads[i].component);
+                script_transaction_find(&candidate, reads[i].entity, reads[i].component);
             if (output && script_output_reads(output, &reads[i]))
                 status = instance_error(&evaluation, "cyclic script output dependency");
         }
@@ -798,26 +900,31 @@ static int evaluate_instance(
         for (uint32_t i = 0; i < produced_count; i++) {
             script_staged_value_t *output = &outputs[i];
             script_baseline_t baseline = { .entity = output->entity,
-                                           .component = output->component };
+                                           .component = output->component,
+                                           .schema = output->schema,
+                                           .ops = output->ops };
             if (!script_entity_is_placeholder(output->entity) &&
-                output->component < ecs_component_count()) {
+                script_key_valid(output->component) &&
+                !script_transaction_replaces(&candidate, output->component)) {
                 script_baseline_t *previous =
                     find_baseline(&instance->baselines, output->entity, output->component);
-                baseline.present =
-                    previous ? previous->present : ecs_has_cid(output->entity, output->component);
+                if (previous && previous->schema != output->schema)
+                    previous = NULL;
+                baseline.present = previous ? previous->present
+                                            : script_key_has(output->entity, output->component);
                 baseline.value = copy_value(
                     output->component,
                     previous           ? previous->value
-                    : baseline.present ? ecs_get_cid(output->entity, output->component)
+                    : baseline.present ? script_key_get(output->entity, output->component)
                                        : NULL
                 );
                 output->unchanged =
                     output->cached ||
-                    (ecs_has_cid(output->entity, output->component) && output->data &&
+                    (script_key_has(output->entity, output->component) && output->data &&
                      equal_component(
                          output->component,
                          output->data,
-                         ecs_get_cid(output->entity, output->component)
+                         script_key_get(output->entity, output->component)
                      ));
             }
             sicore_vec_push(&next_baselines, &baseline, sizeof baseline);
@@ -826,13 +933,14 @@ static int evaluate_instance(
             script_staged_value_t *previous = instance->active.values.data;
             for (uint32_t i = 0; i < instance->active.values.size; i++) {
                 script_staged_value_t *next =
-                    find_output(&candidate, previous[i].entity, previous[i].component);
+                    script_transaction_find(&candidate, previous[i].entity, previous[i].component);
                 script_baseline_t *baseline =
                     find_baseline(&instance->baselines, previous[i].entity, previous[i].component);
                 uint8_t *authored =
-                    next ? script_output_copy_mask(next->component, next->members) : NULL;
+                    next ? script_output_copy_mask(next->schema, next->members) : NULL;
                 restore_contribution(&candidate, &previous[i], baseline, next);
-                next = find_output(&candidate, previous[i].entity, previous[i].component);
+                next =
+                    script_transaction_find(&candidate, previous[i].entity, previous[i].component);
                 if (authored && next) {
                     free(next->members);
                     next->members = authored;
@@ -888,11 +996,7 @@ static int evaluate_instance(
         clear_baselines(&instance->baselines);
         script_staged_value_t *transient = candidate.values.data;
         for (uint32_t i = produced_count; i < candidate.values.size; i++) {
-            free(transient[i].members);
-            if (transient[i].data) {
-                script_backend_value_fini(transient[i].component, transient[i].data);
-                free(transient[i].data);
-            }
+            script_output_fini(&transient[i]);
         }
         candidate.values.size = produced_count;
         instance->active = candidate;
@@ -911,6 +1015,8 @@ static int evaluate_instance(
         for (uint32_t i = 0; i < produced_count; i++) {
             baselines[i].entity = outputs[i].entity;
             baselines[i].component = outputs[i].component;
+            baselines[i].schema = outputs[i].schema;
+            baselines[i].ops = outputs[i].ops;
         }
         remember_created(instance, &candidate);
         const ecs_script_t *retained = ecs_script_retain(program);
@@ -928,10 +1034,12 @@ static int evaluate_instance(
         if (!reload) {
             subscribe_reads(instance, &candidate);
             instance->pending_names =
-                evaluation.error && (strstr(evaluation.error, "unresolved identifier") ||
-                                     strstr(evaluation.error, "unresolved entity") ||
-                                     strstr(evaluation.error, "unresolved target") ||
-                                     strstr(evaluation.error, "has no component"));
+                evaluation.error &&
+                (strstr(evaluation.error, "unresolved identifier") ||
+                 strstr(evaluation.error, "unresolved entity") ||
+                 strstr(evaluation.error, "unresolved target") ||
+                 strstr(evaluation.error, "unresolved namespace") ||
+                 strstr(evaluation.error, "has no requested component or pair"));
             instance->state = instance->pending_names ? EcsScriptPending : EcsScriptFailed;
         }
         script_transaction_fini(&candidate);
@@ -1131,6 +1239,7 @@ ecs_script_instance_t *ecs_script_instance_new(
     sicore_vec_init(&instance->async_baselines, sizeof(script_async_baseline_t));
     sicore_vec_init(&instance->subscriptions, sizeof(script_watch_t *));
     sicore_vec_init(&instance->created, sizeof(script_created_t));
+    sicore_vec_init(&instance->schemas, sizeof(ecs_component_t));
     sicore_vec_init(&instance->relation_baselines, sizeof(script_relation_baseline_t));
     sicore_vec_init(&instance->files, sizeof(script_file_stamp_t));
     instance->next = manager.instances;
@@ -1261,20 +1370,10 @@ void ecs_script_instance_free(ecs_script_instance_t *instance) {
                     );
             }
             if (async_values[i].initial.value) {
-                script_backend_value_fini(
-                    async_values[i].initial.component,
-                    async_values[i].initial.value
-                );
+                ecs_value_fini(&async_values[i].initial.ops, async_values[i].initial.value, 1);
                 free(async_values[i].initial.value);
             }
-            free(async_values[i].last.members);
-            if (async_values[i].last.data) {
-                script_backend_value_fini(
-                    async_values[i].last.component,
-                    async_values[i].last.data
-                );
-                free(async_values[i].last.data);
-            }
+            script_output_fini(&async_values[i].last);
         }
         if (!manager.finishing)
             remove_outputs(instance);
@@ -1289,6 +1388,7 @@ void ecs_script_instance_free(ecs_script_instance_t *instance) {
         for (uint32_t i = 0; i < instance->created.size; i++)
             free(created[i].name);
         sicore_vec_fini(&instance->created);
+        sicore_vec_fini(&instance->schemas);
         sicore_vec_fini(&instance->relation_baselines);
         sicore_vec_fini(&instance->files);
         ecs_script_instance_t **watched = manager.watched.data;
@@ -1392,7 +1492,7 @@ void script_instance_async_state(
 }
 
 static script_async_baseline_t *
-async_baseline(ecs_script_instance_t *instance, ecs_entity_t entity, ecs_component_t component) {
+async_baseline(ecs_script_instance_t *instance, ecs_entity_t entity, script_key_t component) {
     script_async_baseline_t *values = instance->async_baselines.data;
     for (uint32_t i = 0; i < instance->async_baselines.size; i++)
         if (values[i].initial.entity == entity && values[i].initial.component == component)
@@ -1409,15 +1509,17 @@ int script_instance_async_prepare(
     const script_staged_value_t *values = transaction->values.data;
     for (uint32_t i = 0; i < transaction->values.size; i++) {
         if (script_entity_is_placeholder(values[i].entity) ||
-            values[i].component >= ecs_component_count() ||
+            !script_key_valid(values[i].component) ||
             async_baseline(instance, values[i].entity, values[i].component))
             continue;
         script_async_baseline_t baseline = { .initial = { .entity = values[i].entity,
                                                           .component = values[i].component } };
-        baseline.initial.present = ecs_has_cid(values[i].entity, values[i].component);
+        baseline.initial.schema = values[i].schema;
+        baseline.initial.ops = values[i].ops;
+        baseline.initial.present = script_key_has(values[i].entity, values[i].component);
         baseline.initial.value = copy_value(
             values[i].component,
-            baseline.initial.present ? ecs_get_cid(values[i].entity, values[i].component) : NULL
+            baseline.initial.present ? script_key_get(values[i].entity, values[i].component) : NULL
         );
         sicore_vec_push(&instance->async_baselines, &baseline, sizeof baseline);
     }
@@ -1438,11 +1540,22 @@ void script_instance_async_published(script_transaction_t *transaction, void *co
             sicore_vec_push(&instance->async_baselines, &added, sizeof added);
             baseline = async_baseline(instance, values[i].entity, values[i].component);
         }
+        if (baseline->initial.schema != values[i].schema) {
+            if (baseline->initial.value) {
+                ecs_value_fini(&baseline->initial.ops, baseline->initial.value, 1);
+                free(baseline->initial.value);
+            }
+            script_output_fini(&baseline->last);
+            *baseline = (script_async_baseline_t){ .initial = { .entity = values[i].entity,
+                                                                .component = values[i].component,
+                                                                .schema = values[i].schema,
+                                                                .ops = values[i].ops } };
+        }
         void *last = copy_value(values[i].component, values[i].data);
-        uint8_t *members = script_output_copy_mask(values[i].component, values[i].members);
+        uint8_t *members = script_output_copy_mask(values[i].schema, values[i].members);
         if (baseline->committed && values[i].members) {
             const sireflect_fields_t *fields =
-                sireflect_type_fields(ecs_component_info(values[i].component)->type);
+                sireflect_type_fields(script_key_info(values[i].component)->type);
             uint8_t *retained = calloc(fields->field_count, 1);
             if (!retained)
                 abort();
@@ -1460,11 +1573,7 @@ void script_instance_async_published(script_transaction_t *transaction, void *co
                 );
             free(retained);
         }
-        if (baseline->last.data) {
-            script_backend_value_fini(baseline->last.component, baseline->last.data);
-            free(baseline->last.data);
-        }
-        free(baseline->last.members);
+        script_output_fini(&baseline->last);
         baseline->last = values[i];
         baseline->last.members = members;
         baseline->last.data = last;

@@ -10,17 +10,10 @@ typedef enum ecs_expr_node_kind_t {
     EcsExprBinary,
     EcsExprIdentifier,
     EcsExprVariable,
-    EcsExprGlobalVariable,
     EcsExprFunction,
-    EcsExprMethod,
-    EcsExprTemplate,
     EcsExprMember,
-    EcsExprSwizzle,
     EcsExprElement,
-    EcsExprComponent,
     EcsExprHas,
-    EcsExprCast,
-    EcsExprCastNumber,
     EcsExprMatch,
     EcsExprRange,
     EcsExprNew,
@@ -74,6 +67,7 @@ typedef struct ecs_expr_element_t {
     ecs_expr_node_t node;
     ecs_expr_node_t *left;
     ecs_expr_node_t *index;
+    ecs_expr_node_t *second;
 } ecs_expr_element_t;
 typedef struct ecs_expr_function_t {
     ecs_expr_node_t node;

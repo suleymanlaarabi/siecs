@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <test.h>
+#include <threads.h>
 
 static ecs_component_t value_type;
 static ecs_entity_t input;
@@ -74,6 +75,53 @@ static void register_task(void) {
             .cancel = cancel_task }),
         0
     );
+}
+
+static int complete_vector(void *argument) {
+    test_true(ecs_script_task_complete(pending, argument));
+    return 0;
+}
+
+void Async_owning_vector_result(void) {
+    setup();
+    sireflect_handle_t label =
+        sireflect_try_register_dynamic_struct("TaskLabel", "{ char *text; }");
+    sireflect_handle_t strings =
+        sireflect_vector_type(sireflect_type_fields(label)->fields[0].type);
+    test_int(
+        ecs_script_function_register(&(
+            ecs_script_function_desc_t
+        ){ .name = "fetch", .result_type = strings, .start = start_task, .cancel = cancel_task }),
+        0
+    );
+    ecs_script_instance_t *instance = ecs_script_instance_run(
+        "vector-task.si",
+        "struct Label(text: string)\nasync { const labels = await fetch()\n"
+        "Output { Label: {$labels[1]} } }",
+        NULL,
+        NULL
+    );
+    test_true(instance != NULL);
+    sireflect_vector_t invalid = { .count = SIZE_MAX };
+    test_false(ecs_script_task_complete(pending, &invalid));
+    test_uint(ecs_lookup("Output"), 0);
+    char first[] = "alpha", second[] = "beta";
+    char *texts[] = { first, second };
+    sireflect_vector_t result = { texts, 2 };
+    thrd_t worker;
+    test_int(thrd_create(&worker, complete_vector, &result), thrd_success);
+    int status;
+    test_int(thrd_join(worker, &status), thrd_success);
+    test_int(status, 0);
+    second[0] = 'X';
+    test_false(ecs_script_task_complete(pending, &result));
+    test_int(ecs_script_flush(NULL), 0);
+    test_str(
+        *(char *const *)ecs_get_cid(ecs_lookup("Output"), ecs_component_lookup("Label")),
+        "beta"
+    );
+    ecs_script_instance_free(instance);
+    ecs_fini();
 }
 
 void Async_typed_host_task(void) {
@@ -541,5 +589,84 @@ void Async_stabilizes_reactive_consumers(void) {
     test_int(ecs_script_instance_state(consumer), EcsScriptActive);
     ecs_script_instance_free(consumer);
     ecs_script_instance_free(producer);
+    ecs_fini();
+}
+
+void Async_namespace_imports_across_suspension(void) {
+    setup();
+    ecs_script_instance_t *instance = ecs_script_instance_run(
+        "imports.si",
+        "First { struct Item(x: i64)\nSource { Item: {10} } }\n"
+        "Second { struct Item(x: i64)\nSource { Item: {20} } }\n"
+        "using First\n"
+        "fn read() -> i64 { Source[Item].x }\n"
+        "template Model { prop x: i64 = read()\nItem: {$x} }\n"
+        "async {\n"
+        " if true { using Second\nawait Input[Value].x > 0\n"
+        "   Local { Item: {Source[Item].x} }\n }\n"
+        " with Item: {Source[Item].x} {\n"
+        "   await Input[Value].x > 1\nDefault {}\nModel Object()\n }\n"
+        " Result { Value: {read()} }\n}",
+        NULL,
+        NULL
+    );
+    test_true(instance != NULL);
+    ecs_component_t first = ecs_component_lookup("First::Item");
+    ecs_component_t second = ecs_component_lookup("Second::Item");
+    int64_t ready = 1;
+    ecs_set_cid(input, value_type, &ready);
+    test_int(*(const int64_t *)ecs_get_cid(ecs_lookup("Local"), second), 20);
+    test_false(ecs_has_cid(ecs_lookup("Local"), first));
+    ready = 2;
+    ecs_set_cid(input, value_type, &ready);
+    test_int(*(const int64_t *)ecs_get_cid(ecs_lookup("Default"), first), 10);
+    test_int(*(const int64_t *)ecs_get_cid(ecs_lookup("Object"), first), 10);
+    test_int(value("Result"), 10);
+    ecs_script_instance_free(instance);
+    ecs_fini();
+}
+
+void Async_inline_owning_capture(void) {
+    setup();
+    double now = 0;
+    test_int(ecs_script_clock_set(controlled_time, &now), 0);
+    ecs_script_instance_t *instance = ecs_script_instance_run(
+        "capture.si",
+        "struct Inner(text: string)\nstruct Outer(inner: Inner)\n"
+        "Source { Outer: {{\"captured text\"}} }\n"
+        "const inner = Source[Outer].inner\n"
+        "async { await sleep(1)\nOutput { Inner: {$inner.text} } }",
+        NULL,
+        NULL
+    );
+    test_true(instance != NULL);
+    test_uint(ecs_lookup("Output"), 0);
+    now = 1;
+    test_int(ecs_script_flush(NULL), 0);
+    const char *const *text = ecs_get_cid(ecs_lookup("Output"), ecs_component_lookup("Inner"));
+    test_true(text != NULL);
+    test_str(*text, "captured text");
+    ecs_script_instance_free(instance);
+    ecs_fini();
+}
+
+void Async_missing_component_recovers(void) {
+    setup();
+    ecs_remove_cid(input, value_type);
+    ecs_script_instance_t *instance = ecs_script_instance_run(
+        "missing-component.si",
+        "async { Output { Value: {Input[Value].x} } }",
+        NULL,
+        NULL
+    );
+    test_true(instance != NULL);
+    test_int(ecs_script_instance_state(instance), EcsScriptPending);
+    test_uint(ecs_lookup("Output"), 0);
+    int64_t ready = 42;
+    ecs_set_cid(input, value_type, &ready);
+    test_int(ecs_script_flush(NULL), 0);
+    test_int(value("Output"), 42);
+    test_int(ecs_script_instance_state(instance), EcsScriptActive);
+    ecs_script_instance_free(instance);
     ecs_fini();
 }

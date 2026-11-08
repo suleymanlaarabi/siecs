@@ -32,11 +32,13 @@ void script_async_instance_free(ecs_script_instance_t *instance);
 void script_async_fini(void);
 void script_async_transaction_commit(struct script_transaction_t *transaction);
 void script_async_transaction_fini(struct script_transaction_t *transaction);
+script_eval_t *script_context_clone(const script_eval_t *source);
 void script_context_copy(script_eval_t *destination, const script_eval_t *source);
 bool script_context_same_captures(const script_eval_t *left, const script_eval_t *right);
 void script_context_remap(struct script_transaction_t *transaction, script_eval_t *ctx);
 void script_context_restore(script_eval_t *ctx, script_eval_t *snapshot, uint32_t owned_count);
 void script_context_fini(script_eval_t *ctx);
+void script_context_release_values(script_eval_t *ctx, uint32_t keep);
 ecs_script_scope_t *script_matching_catch(const ecs_script_try_t *attempt, const char *message);
 ecs_script_scope_t *
 script_pair_expressions(script_eval_t *ctx, const ecs_script_pair_scope_t *pair);

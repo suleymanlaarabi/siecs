@@ -3,6 +3,7 @@
 
 #include "datastructure/arena.h"
 #include "naming.h"
+#include "pair.h"
 #include "siecs.h"
 #include "storage/entity_index.h"
 #include <stdbool.h>
@@ -53,11 +54,19 @@ typedef struct {
 typedef struct ecs_command_buffer_s {
     sicore_vec_t commands;
     sicore_vec_t relations;
+    sicore_vec_t pairs;
     uint32_t *command_slots;
     uint32_t slot_capacity;
     ecs_arena_t *arena;
     ecs_name_index_t pending_names;
 } ecs_command_buffer_t;
+
+bool ecs_command_buffer_pair(
+    ecs_entity_t entity,
+    ecs_pair_id_t pair,
+    ecs_pair_op_t op,
+    const void *value
+);
 
 typedef struct ecs_execution_context_s {
     ecs_command_buffer_t commands;

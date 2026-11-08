@@ -125,6 +125,7 @@ static const char *ecs_rest_category_name(sireflect_handle_t id) {
     case EcsReflectValueStruct:
         return "object";
     case EcsReflectValueArray:
+    case EcsReflectValueVector:
         return "array";
     case EcsReflectValueString:
         return "string";
@@ -168,9 +169,10 @@ static sijson_value_t ecs_rest_type_json(sireflect_handle_t id) {
     sijson_object_set(object, "editor", sijson_make_string(editor));
     if (type->kind == sireflect_kind_struct)
         sijson_object_set(object, "fields", ecs_rest_fields_json(id));
-    if (type->kind == sireflect_kind_array) {
+    if (type->kind == sireflect_kind_array || type->kind == sireflect_kind_vector) {
         sijson_object_set(object, "element", sijson_make_number((double)type->element_type));
-        sijson_object_set(object, "count", sijson_make_number((double)type->element_count));
+        if (type->kind == sireflect_kind_array)
+            sijson_object_set(object, "count", sijson_make_number((double)type->element_count));
     }
     if (strcmp(category, "pointer") == 0 && type->element_type)
         sijson_object_set(object, "element", sijson_make_number((double)type->element_type));

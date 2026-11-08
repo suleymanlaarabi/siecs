@@ -54,6 +54,15 @@ struct ecs_table_s {
     sicore_vec_t observers_by_event; // sicore_vec_t per event id; each holds uint16_t observer ids.
 };
 
+static inline uint16_t ecs_column_value_flags(size_t size, const ecs_type_ops_t *ops) {
+    return ((!size || (!ops->move_ctor && !ops->copy_ctor)) ? EcsColumnTrivialMove : 0) |
+           ((!size || (!ops->dtor && !ops->reflected_type)) ? EcsColumnNoDtor : 0) |
+           ((!size || !ops->ctor) ? EcsColumnZeroCtor : 0);
+}
+
+/* Adopt preallocated storage and rebuild from current column descriptors. */
+void ecs_table_rebind_data_columns(ecs_table_t *table, ecs_data_column_t *columns);
+
 void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id);
 void ecs_table_fini(ecs_table_t *table);
 uint32_t ecs_table_add_entity(ecs_table_t *table, ecs_entity_t entity);

@@ -211,26 +211,6 @@ void ecs_parser_error(const char *name, const char *code, int64_t offset, const 
     va_end(args);
 }
 
-void ecs_parser_warning(
-    const char *name,
-    const char *code,
-    int64_t offset,
-    const char *format,
-    ...
-) {
-    (void)name;
-    (void)code;
-    (void)offset;
-    (void)format;
-}
-
-void ecs_err(const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    script_error_v(NULL, NULL, 0, format, args);
-    va_end(args);
-}
-
 #ifdef _WIN32
 #include <windows.h>
 double script_monotonic_time(void) {

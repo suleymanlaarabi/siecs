@@ -4,14 +4,27 @@
   "value": {
     "public": false,
     "clangd": true,
-    "use": ["siecs", "siecs_rest", "sijson", "sireflect", "sicore"],
-    "use_runtime": ["siecs.test.my_module"]
+    "use": [
+      "siecs",
+      "siecs_rest",
+      "sijson",
+      "sireflect",
+      "sicore"
+    ],
+    "use_runtime": [
+      "siecs.test.my_module"
+    ]
   },
   "lang.c": {
     "c-standard": "c17",
-    "include": ["../src", "../include"],
+    "include": [
+      "../src",
+      "../include"
+    ],
     "${os windows}": {
-      "cflags": ["/experimental:c11atomics"]
+      "cflags": [
+        "/experimental:c11atomics"
+      ]
     }
   },
   "bundle": {
@@ -24,7 +37,35 @@
     "testsuites": [
       {
         "id": "sync",
-        "testcases": ["immediate_and_grouped", "deferred_boundary", "reentrant_and_stale_handles", "batched_observer_generation_reuse", "batched_owning_snapshots"]
+        "testcases": [
+          "immediate_and_grouped",
+          "deferred_boundary",
+          "reentrant_and_stale_handles",
+          "batched_observer_generation_reuse",
+          "batched_owning_snapshots"
+        ]
+      },
+      {
+        "id": "schema",
+        "testcases": [
+          "dynamic_columns_and_queries",
+          "failed_preparation_and_stale_plan",
+          "scene_roundtrip",
+          "vector_lifecycle_and_scene"
+        ]
+      },
+      {
+        "id": "pair",
+        "testcases": [
+          "find_is_read_only",
+          "identity_and_multiple_targets",
+          "dense_rows_queries_and_ticks",
+          "deferred_owning_values_and_inheritance",
+          "observers_target_deletion_and_world_lifetimes",
+          "hot_payload_schema",
+          "scene_roundtrip",
+          "parallel_deferred_publication"
+        ]
       },
       {
         "id": "public",
@@ -103,7 +144,8 @@
           "is_a_repeated_base_abstract_is_noop",
           "deferred_is_a_marks_childof_subtree_abstract",
           "default_query_excludes_abstract_childof_subtree",
-          "is_with_multiple_depth"
+          "is_with_multiple_depth",
+          "per_base_auto_override"
         ]
       },
       {
@@ -169,12 +211,12 @@
       },
       {
         "id": "rest",
-    "testcases": [
-      "is_a_and_child_of_same_target_routes",
-      "enum_schema_and_component_roundtrip",
-      "in_process_body_limit",
-      "invalid_route_parameters"
-    ]
+        "testcases": [
+          "is_a_and_child_of_same_target_routes",
+          "enum_schema_and_component_roundtrip",
+          "in_process_body_limit",
+          "invalid_route_parameters"
+        ]
       },
       {
         "id": "rest_reflection",
@@ -339,7 +381,6 @@
           "parallel_batched_commands_keep_logical_order"
         ]
       },
-
       {
         "id": "change",
         "testcases": [

@@ -15,6 +15,22 @@ void sync_reentrant_and_stale_handles(void);
 void sync_batched_observer_generation_reuse(void);
 void sync_batched_owning_snapshots(void);
 
+// Testsuite 'schema'
+void schema_dynamic_columns_and_queries(void);
+void schema_failed_preparation_and_stale_plan(void);
+void schema_scene_roundtrip(void);
+void schema_vector_lifecycle_and_scene(void);
+
+// Testsuite 'pair'
+void pair_find_is_read_only(void);
+void pair_identity_and_multiple_targets(void);
+void pair_dense_rows_queries_and_ticks(void);
+void pair_deferred_owning_values_and_inheritance(void);
+void pair_observers_target_deletion_and_world_lifetimes(void);
+void pair_hot_payload_schema(void);
+void pair_scene_roundtrip(void);
+void pair_parallel_deferred_publication(void);
+
 // Testsuite 'public'
 void public_metadata_and_entity_introspection(void);
 void public_scene_save_memory_roundtrip(void);
@@ -79,6 +95,7 @@ void entity_is_a_repeated_base_abstract_is_noop(void);
 void entity_deferred_is_a_marks_childof_subtree_abstract(void);
 void entity_default_query_excludes_abstract_childof_subtree(void);
 void entity_is_with_multiple_depth(void);
+void entity_per_base_auto_override(void);
 
 // Testsuite 'component'
 void component_reflection(void);
@@ -364,6 +381,60 @@ bake_test_case sync_testcases[] = {
     }
 };
 
+bake_test_case schema_testcases[] = {
+    {
+        "dynamic_columns_and_queries",
+        schema_dynamic_columns_and_queries
+    },
+    {
+        "failed_preparation_and_stale_plan",
+        schema_failed_preparation_and_stale_plan
+    },
+    {
+        "scene_roundtrip",
+        schema_scene_roundtrip
+    },
+    {
+        "vector_lifecycle_and_scene",
+        schema_vector_lifecycle_and_scene
+    }
+};
+
+bake_test_case pair_testcases[] = {
+    {
+        "find_is_read_only",
+        pair_find_is_read_only
+    },
+    {
+        "identity_and_multiple_targets",
+        pair_identity_and_multiple_targets
+    },
+    {
+        "dense_rows_queries_and_ticks",
+        pair_dense_rows_queries_and_ticks
+    },
+    {
+        "deferred_owning_values_and_inheritance",
+        pair_deferred_owning_values_and_inheritance
+    },
+    {
+        "observers_target_deletion_and_world_lifetimes",
+        pair_observers_target_deletion_and_world_lifetimes
+    },
+    {
+        "hot_payload_schema",
+        pair_hot_payload_schema
+    },
+    {
+        "scene_roundtrip",
+        pair_scene_roundtrip
+    },
+    {
+        "parallel_deferred_publication",
+        pair_parallel_deferred_publication
+    }
+};
+
 bake_test_case public_testcases[] = {
     {
         "metadata_and_entity_introspection",
@@ -596,6 +667,10 @@ bake_test_case entity_testcases[] = {
     {
         "is_with_multiple_depth",
         entity_is_with_multiple_depth
+    },
+    {
+        "per_base_auto_override",
+        entity_per_base_auto_override
     }
 };
 
@@ -1598,6 +1673,20 @@ static bake_test_suite suites[] = {
         sync_testcases
     },
     {
+        "schema",
+        NULL,
+        NULL,
+        4,
+        schema_testcases
+    },
+    {
+        "pair",
+        NULL,
+        NULL,
+        8,
+        pair_testcases
+    },
+    {
         "public",
         NULL,
         NULL,
@@ -1629,7 +1718,7 @@ static bake_test_suite suites[] = {
         "entity",
         NULL,
         NULL,
-        21,
+        22,
         entity_testcases
     },
     {
@@ -1712,5 +1801,5 @@ static bake_test_suite suites[] = {
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs.test", argc, argv, suites, 17);
+    return bake_test_run("siecs.test", argc, argv, suites, 19);
 }

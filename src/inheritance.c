@@ -51,7 +51,8 @@ static void ecs_inheritance_plan_build(
         return;
     }
 
-    ecs_component_t *ids = malloc(sizeof(ecs_component_t) * capacity);
+    ecs_assert(capacity <= UINT16_MAX / 2, "too many override components\n");
+    ecs_component_t *ids = malloc(sizeof(ecs_component_t) * capacity * 2);
     ecs_assert_not_null(ids);
 
     uint16_t count = 0;
@@ -60,6 +61,18 @@ static void ecs_inheritance_plan_build(
         const ecs_table_t *table = ecs_get_table(ecs_entity_record_table(record));
         for (uint16_t i = 0; i < table->type.component_count; i++) {
             ecs_component_t component = table->type.ids[i];
+            ecs_component_t overridden = ecs_component_index_get(component)->override_target;
+            if (overridden) {
+                if (ecs_has_cid(base, overridden)) {
+                    uint32_t at = ecs_ids_lower_bound(
+                        child_type->ids,
+                        child_type->component_count,
+                        overridden
+                    );
+                    if (at == child_type->component_count || child_type->ids[at] != overridden)
+                        ids[count++] = overridden;
+                }
+            }
             if (!ecs_inheritance_component_is_owned(component))
                 continue;
             uint32_t at =

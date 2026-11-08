@@ -1,9 +1,14 @@
 #include "eval.h"
+#include "../../../../src/inheritance.h"
 #include "../backend/transaction.h"
 #include "async.h"
 
 static int eval_id_name(script_eval_t *ctx, const ecs_expr_node_t *expr, const char **name) {
     if (!expr)
+        return 0;
+    const script_variable_t *variable =
+        *name && (*name)[0] == '$' ? script_find_variable(ctx, *name + 1) : NULL;
+    if (variable && variable->value.type == script_backend_type_lookup("entity"))
         return 0;
     script_value_t value;
     if (script_eval_expr(ctx, expr, &value))
@@ -18,8 +23,6 @@ static int
 eval_id(script_eval_t *ctx, const ecs_script_id_t *id, const ecs_expr_node_t *value, bool partial) {
     if (!ctx->entity)
         return script_eval_error(ctx, NULL, "component outside entity scope");
-    if (id->flag || id->index_expr)
-        return script_eval_error(ctx, NULL, "flagged or indexed component id not implemented");
     const char *first = id->first, *second = id->second;
     ecs_entity_t target = 0;
     if (second && second[0] == '$') {
@@ -31,41 +34,39 @@ eval_id(script_eval_t *ctx, const ecs_script_id_t *id, const ecs_expr_node_t *va
         (!target && eval_id_name(ctx, id->second_expr, &second)))
         return -1;
     script_template_t *template = script_template_lookup(ctx, first);
-    if (template && !second)
+    if (template && !second && !id->auto_override)
         return script_template_eval(ctx, template, value);
-    script_symbol_t symbol = script_backend_symbol_lookup(first, ctx->parent);
+    script_symbol_t symbol = script_resolve_symbol(ctx, first);
+    script_key_t component = 0;
     if (second) {
-        if (value)
-            return script_eval_error(
-                ctx,
-                value->pos,
-                "typed pair payload requires native core support"
-            );
-        if (symbol.kind != ScriptSymbolRelation)
-            return script_eval_error(ctx, NULL, "unresolved relation '%s'", first);
-        if (!target)
-            target = script_backend_entity_lookup(second, ctx->parent);
-        if (!target)
-            return script_eval_error(ctx, NULL, "unresolved target '%s'", second);
-        if (!strcmp(first, "IsA")) {
-            script_backend_isa_add(ctx->entity, target);
+        if (id->auto_override)
+            return script_eval_error(ctx, NULL, "auto_override requires a component");
+        if (symbol.kind == ScriptSymbolRelation && !value) {
+            if (!target)
+                target = script_resolve_entity(ctx, second);
+            if (!target)
+                return script_eval_error(ctx, NULL, "unresolved target '%s'", second);
+            if (symbol.id.relation == ecs_rid(IsA))
+                script_backend_isa_add(ctx->entity, target);
+            else if (script_backend_relation_add(ctx->entity, symbol.id.relation, target))
+                return script_eval_error(
+                    ctx,
+                    NULL,
+                    "exclusive Script relations accept one target per source"
+                );
             return 0;
         }
-        if (script_backend_relation_add(ctx->entity, symbol.id.relation, target))
-            return script_eval_error(
-                ctx,
-                NULL,
-                "multiple relation targets require native typed pair support"
-            );
-        return 0;
+        component = script_resolve_pair(ctx, first, second);
+        if (!component)
+            return -1;
     }
     if (symbol.kind == ScriptSymbolNone && ctx->skip_unknown) {
         script_backend_entity_ensure(first, ctx->parent);
         symbol.kind = ScriptSymbolEntity;
     }
-    if (symbol.kind == ScriptSymbolEntity) {
+    if (!component && symbol.kind == ScriptSymbolEntity) {
         /* An entity used as a tag maps to a real native zero-size component. */
-        ecs_entity_t entity = script_backend_entity_lookup(first, ctx->parent);
+        ecs_entity_t entity = script_resolve_entity(ctx, first);
         char *path = script_backend_entity_path(entity);
         if (!path)
             return script_eval_error(ctx, NULL, "could not resolve tag path");
@@ -78,9 +79,26 @@ eval_id(script_eval_t *ctx, const ecs_script_id_t *id, const ecs_expr_node_t *va
         free(path);
         symbol = (script_symbol_t){ ScriptSymbolComponent, { .component = component } };
     }
-    if (symbol.kind != ScriptSymbolComponent)
+    if (!component && symbol.kind != ScriptSymbolComponent)
         return script_eval_error(ctx, NULL, "unresolved component '%s'", first);
-    ecs_component_t component = symbol.id.component;
+    if (!component)
+        component = symbol.id.component;
+    if (id->auto_override) {
+        if (component == ecs_id(Name) || component == ecs_id(Abstract))
+            return script_eval_error(ctx, NULL, "component has protected inheritance semantics");
+        const ecs_component_info_t *info = script_backend_component_info(component);
+        size_t size = sizeof(ECS_AUTO_OVERRIDE_PREFIX) + strlen(info->name);
+        char *name = script_alloc(&ctx->values, size);
+        if (!name)
+            return script_eval_error(ctx, NULL, "out of memory");
+        snprintf(name, size, "%s%s", ECS_AUTO_OVERRIDE_PREFIX, info->name);
+        ecs_component_t marker = script_backend_component_lookup(name);
+        if (!marker)
+            marker = script_backend_tag_register(name);
+        if (!marker)
+            return script_eval_error(ctx, NULL, "could not register override flag");
+        script_backend_component_add(ctx->entity, marker);
+    }
     if (!value) {
         script_backend_component_add(ctx->entity, component);
         return 0;
@@ -105,10 +123,7 @@ eval_id(script_eval_t *ctx, const ecs_script_id_t *id, const ecs_expr_node_t *va
     if (!buffer)
         return script_eval_error(ctx, value->pos, "out of memory");
     const void *old =
-        partial ? (script_transaction_active
-                       ? script_transaction_get(script_transaction_active, ctx->entity, component)
-                       : ecs_get_cid(ctx->entity, component))
-                : NULL;
+        partial ? script_transaction_get(script_transaction_active, ctx->entity, component) : NULL;
     script_backend_value_init(component, buffer, old);
     int result;
     if (value->kind == EcsExprInitializer || value->kind == EcsExprEmptyInitializer) {
@@ -143,16 +158,13 @@ eval_id(script_eval_t *ctx, const ecs_script_id_t *id, const ecs_expr_node_t *va
                 }
             }
         }
-        if (script_transaction_active)
-            script_transaction_set_members(
-                script_transaction_active,
-                ctx->entity,
-                component,
-                buffer,
-                members
-            );
-        else
-            script_backend_component_set(ctx->entity, component, buffer);
+        script_transaction_set_members(
+            script_transaction_active,
+            ctx->entity,
+            component,
+            buffer,
+            members
+        );
     }
     script_backend_value_fini(component, buffer);
     return result;
@@ -194,7 +206,7 @@ static int append_struct_member(
     if (expression->kind != EcsExprIdentifier)
         return script_eval_error(ctx, expression->pos, "expected a member type name");
     const char *name = ((const ecs_expr_identifier_t *)expression)->value;
-    sireflect_handle_t type = script_backend_type_lookup(name);
+    sireflect_handle_t type = script_resolve_type(ctx, name);
     if (!type)
         return script_eval_error(ctx, expression->pos, "unknown member type '%s'", name);
     if (count && sireflect_type_size(type) > SIZE_MAX / count)
@@ -237,8 +249,8 @@ static int eval_struct(script_eval_t *ctx, ecs_script_entity_t *entity) {
             expression = members[i].value;
         } else if (nodes[i]->kind == EcsAstComponent) {
             const ecs_script_component_t *component = (const ecs_script_component_t *)nodes[i];
-            if (!component->id.second && !component->id.first_expr && !component->id.flag &&
-                !component->id.index_expr) {
+            if (!component->id.second && !component->id.first_expr &&
+                !component->id.auto_override) {
                 member = component->id.first;
                 expression = component->expr;
             }
@@ -251,6 +263,10 @@ static int eval_struct(script_eval_t *ctx, ecs_script_entity_t *entity) {
     ecs_strbuf_appendch(&fields, '}');
     char *description = ecs_strbuf_get(&fields);
     ecs_entity_t metadata = script_backend_entity_ensure(entity->name, ctx->parent);
+    if (script_annotations_apply(ctx, metadata)) {
+        free(description);
+        return -1;
+    }
     char *path = script_backend_entity_path(metadata);
     const char *name = path;
     if (name && !strncmp(name, "::", 2))
@@ -281,11 +297,13 @@ static int apply_with(script_eval_t *ctx, const script_with_frame_t *frame) {
     const script_variable_t *captures = ctx->captures;
     uint32_t capture_count = ctx->capture_count, base = ctx->variable_base;
     script_function_t *functions = ctx->functions;
+    script_import_t *imports = ctx->imports;
     const ecs_script_t *program = ctx->script;
     ctx->captures = frame->captures;
     ctx->capture_count = frame->capture_count;
     ctx->variable_base = ctx->variables.size;
     ctx->functions = frame->functions;
+    ctx->imports = frame->imports;
     ctx->script = frame->program;
     ecs_script_node_t **nodes = frame->expressions->stmts.data;
     int status = 0;
@@ -295,6 +313,7 @@ static int apply_with(script_eval_t *ctx, const script_with_frame_t *frame) {
     ctx->capture_count = capture_count;
     ctx->variable_base = base;
     ctx->functions = functions;
+    ctx->imports = imports;
     ctx->script = program;
     return status;
 }
@@ -324,7 +343,8 @@ void script_with_scope_push(
         .capture_count = ctx->capture_count + ctx->variables.size - ctx->variable_base,
         .pair = pair,
         .program = ctx->script,
-        .functions = ctx->functions
+        .functions = ctx->functions,
+        .imports = ctx->imports
     };
     frame->captures = script_alloc(&ctx->values, frame->capture_count * sizeof(script_variable_t));
     if (ctx->capture_count)
@@ -359,19 +379,23 @@ int script_entity_scope_begin(script_eval_t *ctx, const ecs_script_entity_t *ent
     }
     if (script_transaction_active && script_transaction_active->region) {
         script_region_t *regions = script_transaction_active->regions.data;
-        regions[script_transaction_active->region - 1].name = name ? script_strdup(name) : NULL;
+        script_region_t *region = &regions[script_transaction_active->region - 1];
+        if (region->node == &entity->node)
+            region->name = name ? script_strdup(name) : NULL;
     }
     ecs_entity_t output = !name && ctx->instance && script_transaction_active
                               ? script_instance_anonymous(
                                     ctx->instance,
                                     script_transaction_active,
                                     ctx->script,
-                                    entity->anonymous_id,
+                                    entity,
                                     ctx->parent
                                 )
                               : script_backend_entity_ensure(name, ctx->parent);
     if (!output)
         return script_eval_error(ctx, entity->node.pos, "invalid entity name");
+    if (script_annotations_apply(ctx, output))
+        return -1;
     bool prefab = entity->kind && !strcmp(entity->kind, "prefab");
     if (entity->kind && !entity->kind_w_expr) {
         if (!prefab) {
@@ -407,7 +431,7 @@ static int eval_var(script_eval_t *ctx, ecs_script_var_node_t *node) {
                                    .mutable = node->node.kind == EcsAstMut ||
                                               node->node.kind == EcsAstExportMut };
     if (node->type) {
-        variable.value.type = script_backend_type_lookup(node->type);
+        variable.value.type = script_resolve_type(ctx, node->type);
         if (!variable.value.type)
             return script_eval_error(ctx, node->node.pos, "unknown variable type '%s'", node->type);
         if (node->type_is_vector) {
@@ -563,7 +587,8 @@ static bool compile_region_expression(
     case EcsExprElement: {
         const ecs_expr_element_t *element = (const ecs_expr_element_t *)expr;
         return compile_region_expression(impl, element->left, names) &&
-               compile_region_expression(impl, element->index, names);
+               compile_region_expression(impl, element->index, names) &&
+               compile_region_expression(impl, element->second, names);
     }
     case EcsExprUnary:
         return compile_region_expression(impl, ((const ecs_expr_unary_t *)expr)->expr, names);
@@ -591,8 +616,7 @@ static void compile_entity_region(ecs_script_impl_t *impl, ecs_script_entity_t *
         if (nodes[i]->kind != EcsAstComponent)
             return;
         const ecs_script_component_t *component = (const ecs_script_component_t *)nodes[i];
-        if (component->id.second || component->id.first_expr || component->id.flag ||
-            component->id.index_expr ||
+        if (component->id.second || component->id.first_expr || component->id.auto_override ||
             !compile_region_expression(impl, component->expr, &entity->capture_names))
             return;
     }
@@ -601,9 +625,8 @@ static void compile_entity_region(ecs_script_impl_t *impl, ecs_script_entity_t *
 
 static bool
 capture_entity(script_eval_t *ctx, const ecs_script_entity_t *entity, script_eval_t *captures) {
-    if (!entity->cacheable || !ctx->instance || ctx->async_block || ctx->templates ||
-        ctx->functions || ctx->with || !script_transaction_active ||
-        script_transaction_active->region)
+    if (!entity->cacheable || ctx->annotations || !ctx->instance || ctx->async_block ||
+        ctx->templates || ctx->functions || ctx->with || !script_transaction_active)
         return false;
     const char *const *names = entity->capture_names.data;
     for (uint32_t i = 0; i < entity->capture_names.size; i++) {
@@ -615,40 +638,7 @@ capture_entity(script_eval_t *ctx, const ecs_script_entity_t *entity, script_eva
 }
 
 static int execute_entity(script_eval_t *ctx, const ecs_script_node_t *node) {
-    const ecs_script_entity_t *entity = (const ecs_script_entity_t *)node;
-    script_eval_t captures = { .entity = ctx->entity, .parent = ctx->parent };
-    sicore_vec_init(&captures.variables, sizeof(script_variable_t));
-    if (!capture_entity(ctx, entity, &captures)) {
-        sicore_vec_fini(&captures.variables);
-        return eval_entity(ctx, (ecs_script_entity_t *)node);
-    }
-    script_eval_t *snapshot = malloc(sizeof(*snapshot));
-    assert(snapshot != NULL);
-    script_context_copy(snapshot, &captures);
-    sicore_vec_fini(&captures.variables);
-    script_transaction_t *transaction = script_transaction_active;
-    script_region_t region = { .program = ctx->script,
-                               .captures = snapshot,
-                               .node = node,
-                               .parent = ctx->parent,
-                               .values_begin = transaction->values.size,
-                               .reads_begin = transaction->reads.size,
-                               .lookups_begin = transaction->lookups.size,
-                               .produced_begin = transaction->produced.size,
-                               .reusable = true };
-    sicore_vec_push(&transaction->regions, &region, sizeof region);
-    uint32_t id = transaction->regions.size;
-    transaction->region = id;
-    int status = 0;
-    if (!script_instance_region_replay(ctx->instance, transaction, ctx->script, node, ctx->parent))
-        status = eval_entity(ctx, (ecs_script_entity_t *)node);
-    transaction->region = 0;
-    script_region_t *saved = &((script_region_t *)transaction->regions.data)[id - 1];
-    saved->values_end = transaction->values.size;
-    saved->reads_end = transaction->reads.size;
-    saved->lookups_end = transaction->lookups.size;
-    saved->produced_end = transaction->produced.size;
-    return status;
+    return eval_entity(ctx, (ecs_script_entity_t *)node);
 }
 
 static int execute_tag(script_eval_t *ctx, const ecs_script_node_t *node) {
@@ -689,10 +679,26 @@ static int execute_continue(script_eval_t *ctx, const ecs_script_node_t *node) {
     return ctx->loop_depth ? 1 : script_eval_error(ctx, node->pos, "continue outside loop");
 }
 
+static int execute_annotation(script_eval_t *ctx, const ecs_script_node_t *node) {
+    const ecs_script_annot_t *annotation = (const ecs_script_annot_t *)node;
+    script_annotation_t *pending = script_alloc(&ctx->values, sizeof(*pending));
+    *pending = (script_annotation_t){ .name = annotation->name,
+                                      .value = annotation->expr,
+                                      .next = ctx->annotations };
+    ctx->annotations = pending;
+    return 0;
+}
+
 static int execute_using(script_eval_t *ctx, const ecs_script_node_t *node) {
     const char *name = ((const ecs_script_using_t *)node)->name;
-    if (strcmp(name, "siecs.meta") && strcmp(name, "siecs"))
-        return script_eval_error(ctx, node->pos, "using namespace '%s' not implemented", name);
+    if (!strcmp(name, "siecs.meta") || !strcmp(name, "siecs"))
+        return 0;
+    ecs_entity_t scope = script_resolve_entity(ctx, name);
+    if (!scope)
+        return script_eval_error(ctx, node->pos, "unresolved namespace '%s'", name);
+    script_import_t *import = script_alloc(&ctx->values, sizeof(*import));
+    *import = (script_import_t){ .scope = scope, .next = ctx->imports };
+    ctx->imports = import;
     return 0;
 }
 
@@ -803,14 +809,6 @@ ecs_script_scope_t *script_matching_catch(const ecs_script_try_t *attempt, const
 
 static int execute_try(script_eval_t *ctx, const ecs_script_node_t *node) {
     const ecs_script_try_t *attempt = (const ecs_script_try_t *)node;
-    script_transaction_t local;
-    script_transaction_t *outer = script_transaction_active;
-    if (!outer) {
-        script_transaction_init(&local);
-        if (local.failed)
-            return script_eval_error(ctx, node->pos, "cannot prepare try transaction");
-        script_transaction_active = &local;
-    }
     script_transaction_t *transaction = script_transaction_active;
     script_savepoint_t savepoint;
     script_transaction_savepoint(transaction, &savepoint);
@@ -838,12 +836,6 @@ static int execute_try(script_eval_t *ctx, const ecs_script_node_t *node) {
         script_transaction_discard_savepoint(&savepoint);
     }
     free(message);
-    if (!outer) {
-        script_transaction_active = NULL;
-        if (status >= 0 && !local.failed && script_transaction_commit(&local))
-            status = -1;
-        script_transaction_fini(&local);
-    }
     return status;
 }
 
@@ -875,6 +867,7 @@ static int execute_while(script_eval_t *ctx, const ecs_script_node_t *node) {
 
 static int execute_function(script_eval_t *ctx, const ecs_script_node_t *node) {
     script_function_t *function = script_alloc(&ctx->values, sizeof(*function));
+    function->imports = ctx->imports;
     function->node = (const ecs_script_function_node_t *)node;
     function->program = ctx->script;
     function->next = ctx->functions;
@@ -944,6 +937,8 @@ static script_execute_t instruction_handler(ecs_script_node_kind_t kind) {
         return execute_continue;
     case EcsAstUsing:
         return execute_using;
+    case EcsAstAnnotation:
+        return execute_annotation;
     case EcsAstModule:
         return execute_module;
     case EcsAstWith:
@@ -955,11 +950,82 @@ static script_execute_t instruction_handler(ecs_script_node_kind_t kind) {
     }
 }
 
+/* Persist control flow and its lexical transition, as well as leaf entities.
+ * Children remain independently reusable when an enclosing condition changes. */
+static int
+execute_region(script_eval_t *ctx, const ecs_script_node_t *node, script_execute_t execute) {
+    script_transaction_t *transaction = script_transaction_active;
+    bool eligible = ctx->instance && !ctx->async_block && transaction &&
+                    (!transaction->region ||
+                     !((script_region_t *)transaction->regions.data)[transaction->region - 1].leaf);
+    if (node->kind == EcsAstComponent || node->kind == EcsAstTag || node->kind == EcsAstProp ||
+        node->kind == EcsAstContinue || node->kind == EcsAstAwait || node->kind == EcsAstAsync ||
+        node->kind == EcsAstTemplate ||
+        (node->kind == EcsAstEntity && ((const ecs_script_entity_t *)node)->kind &&
+         !strcmp(((const ecs_script_entity_t *)node)->kind, "struct")))
+        eligible = false;
+    if (!eligible)
+        return execute(ctx, node);
+    script_eval_t captures = { .entity = ctx->entity,
+                               .parent = ctx->parent,
+                               .imports = ctx->imports };
+    sicore_vec_init(&captures.variables, sizeof(script_variable_t));
+    bool leaf = node->kind == EcsAstEntity &&
+                capture_entity(ctx, (const ecs_script_entity_t *)node, &captures);
+    script_eval_t *snapshot = script_context_clone(leaf ? &captures : ctx);
+    sicore_vec_fini(&captures.variables);
+    uint32_t parent = transaction->region;
+    script_region_t region = { .program = ctx->script,
+                               .captures = snapshot,
+                               .node = node,
+                               .parent = ctx->parent,
+                               .leaf = leaf,
+                               .values_begin = transaction->values.size,
+                               .reads_begin = transaction->reads.size,
+                               .lookups_begin = transaction->lookups.size,
+                               .produced_begin = transaction->produced.size,
+                               .relations_begin = transaction->relations.size,
+                               .prefabs_begin = transaction->prefabs.size,
+                               .identities_begin = transaction->identities.size,
+                               .reusable = true };
+    sicore_vec_push(&transaction->regions, &region, sizeof region);
+    uint32_t id = transaction->regions.size;
+    uint32_t blocks = transaction->async_blocks.size, launches = transaction->async_launches.size;
+    transaction->region = id;
+    int status = 0;
+    bool replayed = script_instance_region_replay(
+        ctx->instance,
+        transaction,
+        ctx->script,
+        node,
+        ctx->parent,
+        ctx
+    );
+    if (!replayed)
+        status = execute(ctx, node);
+    transaction->region = parent;
+    script_region_t *saved = &((script_region_t *)transaction->regions.data)[id - 1];
+    saved->values_end = transaction->values.size;
+    saved->reads_end = transaction->reads.size;
+    saved->lookups_end = transaction->lookups.size;
+    saved->produced_end = transaction->produced.size;
+    saved->relations_end = transaction->relations.size;
+    saved->prefabs_end = transaction->prefabs.size;
+    saved->identities_end = transaction->identities.size;
+    saved->children_end = transaction->regions.size;
+    saved->reusable &= !status && blocks == transaction->async_blocks.size &&
+                       launches == transaction->async_launches.size;
+    if (!leaf && !replayed) {
+        saved->result = script_context_clone(ctx);
+    }
+    return status;
+}
+
 int script_eval_node(script_eval_t *ctx, const ecs_script_node_t *node) {
     if (!ctx->instruction_budget--)
         return script_eval_error(ctx, node->pos, "instruction budget exhausted");
     ctx->position = node->pos;
-    return instruction_handler(node->kind)(ctx, node);
+    return execute_region(ctx, node, instruction_handler(node->kind));
 }
 
 static int compile_scope(ecs_script_scope_t *scope, void *data) {
@@ -974,6 +1040,18 @@ static int compile_scope(ecs_script_scope_t *scope, void *data) {
         return -1;
     ecs_script_node_t **nodes = scope->stmts.data;
     for (uint32_t i = 0; i < scope->stmts.size; i++) {
+        if (nodes[i]->kind == EcsAstAnnotation &&
+            (i + 1 == scope->stmts.size ||
+             (nodes[i + 1]->kind != EcsAstAnnotation && nodes[i + 1]->kind != EcsAstEntity &&
+              nodes[i + 1]->kind != EcsAstTemplate))) {
+            ecs_parser_error(
+                impl->pub.name,
+                impl->pub.code,
+                nodes[i]->pos - impl->pub.code,
+                "annotation must precede an entity, struct or template"
+            );
+            return -1;
+        }
         scope->instructions[i] =
             (script_instruction_t){ instruction_handler(nodes[i]->kind), nodes[i] };
         if (nodes[i]->kind == EcsAstEntity)
@@ -994,6 +1072,7 @@ int script_eval_scope(script_eval_t *ctx, ecs_script_scope_t *scope) {
     uint32_t variable_count = ctx->variables.size;
     script_template_t *templates = ctx->templates;
     script_function_t *functions = ctx->functions;
+    script_import_t *imports = ctx->imports;
     ecs_script_node_t **statements = scope->stmts.data;
     int result = 0;
     for (uint32_t i = 0; i < scope->stmts.size && !result; i++) {
@@ -1003,14 +1082,15 @@ int script_eval_scope(script_eval_t *ctx, ecs_script_scope_t *scope) {
         ctx->position = node->pos;
         if (ctx->ir) {
             const script_instruction_t *instruction = &scope->instructions[i];
-            result = instruction->execute(ctx, instruction->operand);
+            result = execute_region(ctx, instruction->operand, instruction->execute);
         } else {
-            result = instruction_handler(node->kind)(ctx, node);
+            result = execute_region(ctx, node, instruction_handler(node->kind));
         }
     }
     ctx->variables.size = variable_count;
     ctx->templates = templates;
     ctx->functions = functions;
+    ctx->imports = imports;
     return result;
 }
 
@@ -1047,6 +1127,12 @@ int ecs_script_eval(
         sicore_vec_init(&ctx.variables, sizeof(script_variable_t));
         sicore_vec_init(&ctx.owned_values, sizeof(script_owned_value_t));
     }
+    script_transaction_t local;
+    bool owns_transaction = script_transaction_active == NULL;
+    if (owns_transaction) {
+        script_transaction_init(&local);
+        script_transaction_active = &local;
+    }
     const ecs_script_impl_t *impl = (const ecs_script_impl_t *)script;
     ctx.skip_unknown = (desc && desc->skip_unknown) || (impl && impl->skip_unknown);
     int status;
@@ -1065,13 +1151,7 @@ int ecs_script_eval(
         ctx.ir = (desc && desc->ir) || impl->ir_enabled;
         status = script_eval_scope(&ctx, impl->root);
     }
-    script_owned_value_t *owned = ctx.owned_values.data;
-    for (uint32_t i = ctx.owned_values.size; i; i--)
-        if (owned[i - 1].custom) {
-            script_custom_value_fini(&owned[i - 1].ops, owned[i - 1].ptr);
-        } else
-            script_backend_value_fini(owned[i - 1].component, owned[i - 1].ptr);
-    ctx.owned_values.size = 0;
+    script_context_release_values(&ctx, 0);
     if (runtime) {
         runtime->variables = ctx.variables;
         runtime->variables.size = 0;
@@ -1083,6 +1163,14 @@ int ecs_script_eval(
         sicore_vec_fini(&ctx.variables);
         sicore_vec_fini(&ctx.owned_values);
         script_allocator_fini(&ctx.values);
+    }
+    if (owns_transaction) {
+        script_transaction_active = NULL;
+        if (status >= 0 && script_transaction_commit(&local)) {
+            ecs_parser_error(script ? script->name : NULL, NULL, 0, "transaction commit failed");
+            status = -1;
+        }
+        script_transaction_fini(&local);
     }
     if (result) {
         result->error = siecs_log_capture_pop();

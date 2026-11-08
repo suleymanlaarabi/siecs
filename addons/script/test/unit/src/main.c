@@ -48,6 +48,8 @@ void Template_prefab_hierarchy(void);
 void Template_anonymous_calls_in_scopes(void);
 void Template_inheritance(void);
 void Template_lexical_functions(void);
+void Template_collection_properties(void);
+void Template_collection_reload_and_reactivity(void);
 
 // Testsuite 'Document'
 void Document_source_history(void);
@@ -72,13 +74,28 @@ void Instance_watched_files_and_includes(void);
 void Instance_member_ownership_and_restore(void);
 void Instance_member_dependencies(void);
 void Instance_anonymous_identity(void);
+void Instance_anonymous_insertion_and_reorder(void);
 void Instance_reuses_unchanged_regions(void);
 void Instance_disjoint_self_dependency(void);
-void Instance_rejects_incompatible_schema(void);
+void Instance_replaces_schema_transactionally(void);
 void Instance_inherited_member_dependencies(void);
 void Instance_preserves_reentrant_invalidation(void);
 void Instance_captured_regions(void);
 void Instance_loop_regions(void);
+void Instance_control_regions(void);
+void Instance_lexical_transitions(void);
+void Instance_template_regions(void);
+void Instance_schema_owning_values_and_consumers(void);
+void Instance_schema_ownership(void);
+void Instance_schema_notifies_once(void);
+void Instance_namespace_appears(void);
+void Instance_annotation_reload_and_ownership(void);
+void Instance_caught_regions(void);
+void Instance_native_pairs_preserve_host_state(void);
+void Instance_missing_component_recovers(void);
+void Instance_nearer_name_appears(void);
+void Instance_prefab_marking_restores(void);
+void Instance_prefab_reparented_descendants_restore(void);
 
 // Testsuite 'Language'
 void Language_typed_functions_and_captures(void);
@@ -91,6 +108,11 @@ void Language_native_expression_execution(void);
 void Language_methods_scripts_arrays_and_typed_collections(void);
 void Language_interpolation_formats(void);
 void Language_struct_bodies_and_arrays(void);
+void Language_lexical_namespace_imports(void);
+void Language_native_annotations(void);
+void Language_auto_override_and_staged_inheritance(void);
+void Language_inheritance_publication_order(void);
+void Language_staged_inherited_presence(void);
 
 // Testsuite 'Async'
 void Async_wait_for_component_condition(void);
@@ -111,6 +133,25 @@ void Async_repeated_world_lifetimes(void);
 void Async_member_outputs_across_suspensions(void);
 void Async_waits_on_inherited_value(void);
 void Async_stabilizes_reactive_consumers(void);
+void Async_namespace_imports_across_suspension(void);
+void Async_owning_vector_result(void);
+void Async_inline_owning_capture(void);
+void Async_missing_component_recovers(void);
+
+// Testsuite 'Pair'
+void Pair_typed_positions_and_reads(void);
+void Pair_global_rollback_and_notifications(void);
+void Pair_caught_rollback_and_owning_values(void);
+void Pair_reactive_reads_and_absence(void);
+void Pair_pending_presence_dependency(void);
+void Pair_output_ownership_and_restore(void);
+void Pair_async_wait_and_outputs(void);
+void Pair_inherited_reads(void);
+void Pair_caught_pending_dependency(void);
+void Pair_reload_and_target_deletion(void);
+void Pair_tags_relations_and_errors(void);
+void Pair_schema_reload(void);
+void Pair_pending_self_dependency_is_rejected(void);
 
 bake_test_case Parser_testcases[] = {
     {
@@ -253,6 +294,14 @@ bake_test_case Template_testcases[] = {
     {
         "lexical_functions",
         Template_lexical_functions
+    },
+    {
+        "collection_properties",
+        Template_collection_properties
+    },
+    {
+        "collection_reload_and_reactivity",
+        Template_collection_reload_and_reactivity
     }
 };
 
@@ -336,6 +385,10 @@ bake_test_case Instance_testcases[] = {
         Instance_anonymous_identity
     },
     {
+        "anonymous_insertion_and_reorder",
+        Instance_anonymous_insertion_and_reorder
+    },
+    {
         "reuses_unchanged_regions",
         Instance_reuses_unchanged_regions
     },
@@ -344,8 +397,8 @@ bake_test_case Instance_testcases[] = {
         Instance_disjoint_self_dependency
     },
     {
-        "rejects_incompatible_schema",
-        Instance_rejects_incompatible_schema
+        "replaces_schema_transactionally",
+        Instance_replaces_schema_transactionally
     },
     {
         "inherited_member_dependencies",
@@ -362,6 +415,62 @@ bake_test_case Instance_testcases[] = {
     {
         "loop_regions",
         Instance_loop_regions
+    },
+    {
+        "control_regions",
+        Instance_control_regions
+    },
+    {
+        "lexical_transitions",
+        Instance_lexical_transitions
+    },
+    {
+        "template_regions",
+        Instance_template_regions
+    },
+    {
+        "schema_owning_values_and_consumers",
+        Instance_schema_owning_values_and_consumers
+    },
+    {
+        "schema_ownership",
+        Instance_schema_ownership
+    },
+    {
+        "schema_notifies_once",
+        Instance_schema_notifies_once
+    },
+    {
+        "namespace_appears",
+        Instance_namespace_appears
+    },
+    {
+        "annotation_reload_and_ownership",
+        Instance_annotation_reload_and_ownership
+    },
+    {
+        "caught_regions",
+        Instance_caught_regions
+    },
+    {
+        "native_pairs_preserve_host_state",
+        Instance_native_pairs_preserve_host_state
+    },
+    {
+        "missing_component_recovers",
+        Instance_missing_component_recovers
+    },
+    {
+        "nearer_name_appears",
+        Instance_nearer_name_appears
+    },
+    {
+        "prefab_marking_restores",
+        Instance_prefab_marking_restores
+    },
+    {
+        "prefab_reparented_descendants_restore",
+        Instance_prefab_reparented_descendants_restore
     }
 };
 
@@ -405,6 +514,26 @@ bake_test_case Language_testcases[] = {
     {
         "struct_bodies_and_arrays",
         Language_struct_bodies_and_arrays
+    },
+    {
+        "lexical_namespace_imports",
+        Language_lexical_namespace_imports
+    },
+    {
+        "native_annotations",
+        Language_native_annotations
+    },
+    {
+        "auto_override_and_staged_inheritance",
+        Language_auto_override_and_staged_inheritance
+    },
+    {
+        "inheritance_publication_order",
+        Language_inheritance_publication_order
+    },
+    {
+        "staged_inherited_presence",
+        Language_staged_inherited_presence
     }
 };
 
@@ -480,6 +609,77 @@ bake_test_case Async_testcases[] = {
     {
         "stabilizes_reactive_consumers",
         Async_stabilizes_reactive_consumers
+    },
+    {
+        "namespace_imports_across_suspension",
+        Async_namespace_imports_across_suspension
+    },
+    {
+        "owning_vector_result",
+        Async_owning_vector_result
+    },
+    {
+        "inline_owning_capture",
+        Async_inline_owning_capture
+    },
+    {
+        "missing_component_recovers",
+        Async_missing_component_recovers
+    }
+};
+
+bake_test_case Pair_testcases[] = {
+    {
+        "typed_positions_and_reads",
+        Pair_typed_positions_and_reads
+    },
+    {
+        "global_rollback_and_notifications",
+        Pair_global_rollback_and_notifications
+    },
+    {
+        "caught_rollback_and_owning_values",
+        Pair_caught_rollback_and_owning_values
+    },
+    {
+        "reactive_reads_and_absence",
+        Pair_reactive_reads_and_absence
+    },
+    {
+        "pending_presence_dependency",
+        Pair_pending_presence_dependency
+    },
+    {
+        "output_ownership_and_restore",
+        Pair_output_ownership_and_restore
+    },
+    {
+        "async_wait_and_outputs",
+        Pair_async_wait_and_outputs
+    },
+    {
+        "inherited_reads",
+        Pair_inherited_reads
+    },
+    {
+        "caught_pending_dependency",
+        Pair_caught_pending_dependency
+    },
+    {
+        "reload_and_target_deletion",
+        Pair_reload_and_target_deletion
+    },
+    {
+        "tags_relations_and_errors",
+        Pair_tags_relations_and_errors
+    },
+    {
+        "schema_reload",
+        Pair_schema_reload
+    },
+    {
+        "pending_self_dependency_is_rejected",
+        Pair_pending_self_dependency_is_rejected
     }
 };
 
@@ -510,7 +710,7 @@ static bake_test_suite suites[] = {
         "Template",
         NULL,
         NULL,
-        8,
+        10,
         Template_testcases
     },
     {
@@ -531,25 +731,32 @@ static bake_test_suite suites[] = {
         "Instance",
         NULL,
         NULL,
-        18,
+        33,
         Instance_testcases
     },
     {
         "Language",
         NULL,
         NULL,
-        10,
+        15,
         Language_testcases
     },
     {
         "Async",
         NULL,
         NULL,
-        18,
+        22,
         Async_testcases
+    },
+    {
+        "Pair",
+        NULL,
+        NULL,
+        13,
+        Pair_testcases
     }
 };
 
 int main(int argc, char *argv[]) {
-    return bake_test_run("siecs_script.test", argc, argv, suites, 9);
+    return bake_test_run("siecs_script.test", argc, argv, suites, 10);
 }

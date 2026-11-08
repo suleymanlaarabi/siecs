@@ -16,7 +16,7 @@ typedef struct script_value_t {
     ecs_script_task_t future;
     const ecs_type_ops_t *ops;
     ecs_entity_t source_entity;
-    ecs_component_t source_component;
+    script_key_t source_component;
     size_t source_offset;
 } script_value_t;
 
@@ -25,7 +25,7 @@ static inline const void *script_value_data(const script_value_t *value) {
 }
 
 typedef struct script_owned_value_t {
-    ecs_component_t component;
+    script_key_t component;
     void *ptr;
     ecs_type_ops_t ops;
     bool custom;
@@ -37,12 +37,24 @@ typedef struct script_variable_t {
     bool mutable;
 } script_variable_t;
 
+typedef struct script_annotation_t {
+    struct script_annotation_t *next;
+    const char *name;
+    const char *value;
+} script_annotation_t;
+
+typedef struct script_import_t {
+    struct script_import_t *next;
+    ecs_entity_t scope;
+} script_import_t;
+
 typedef struct script_function_t {
     struct script_function_t *next;
     const ecs_script_function_node_t *node;
     const ecs_script_t *program;
     script_variable_t *captures;
     uint32_t capture_count;
+    script_import_t *imports;
 } script_function_t;
 
 typedef struct script_template_t {
@@ -50,9 +62,10 @@ typedef struct script_template_t {
     struct script_template_t *base;
     const ecs_script_template_node_t *node;
     const ecs_script_t *program;
-    ecs_component_t component;
+    script_key_t component;
     script_variable_t *captures;
     uint32_t capture_count;
+    script_import_t *imports;
     script_function_t *functions;
 } script_template_t;
 
@@ -68,6 +81,7 @@ typedef struct script_with_frame_t {
     ecs_script_scope_t *expressions;
     script_variable_t *captures;
     uint32_t capture_count;
+    script_import_t *imports;
     const ecs_script_pair_scope_t *pair;
     const ecs_script_t *program;
     script_function_t *functions;
@@ -78,6 +92,7 @@ typedef struct script_eval_t {
     ecs_script_instance_t *instance;
     void *async_block;
     const char *position;
+    script_annotation_t *annotations;
     sicore_vec_t variables;
     sicore_vec_t owned_values;
     ecs_allocator_t values;
@@ -90,6 +105,7 @@ typedef struct script_eval_t {
     uint32_t variable_base;
     const script_variable_t *captures;
     uint32_t capture_count;
+    script_import_t *imports;
     script_template_t *templates;
     script_function_t *functions;
     script_with_frame_t *with;
@@ -97,6 +113,13 @@ typedef struct script_eval_t {
     uint32_t instruction_budget;
     uint32_t template_depth;
 } script_eval_t;
+
+int script_annotations_apply(script_eval_t *ctx, ecs_entity_t entity);
+ecs_entity_t script_resolve_entity(script_eval_t *ctx, const char *name);
+ecs_component_t script_resolve_component(script_eval_t *ctx, const char *name);
+sireflect_handle_t script_resolve_type(script_eval_t *ctx, const char *name);
+script_symbol_t script_resolve_symbol(script_eval_t *ctx, const char *name);
+script_key_t script_resolve_pair(script_eval_t *ctx, const char *first, const char *second);
 
 void script_custom_value_fini(const ecs_type_ops_t *ops, void *value);
 void *script_value_storage(script_eval_t *ctx, sireflect_handle_t type, script_value_t *value);
@@ -149,7 +172,6 @@ int script_operator_double(
     void *out,
     ecs_token_kind_t operator
 );
-int script_operator_bool(const void *left, const void *right, void *out, ecs_token_kind_t operator);
 int script_call(script_eval_t *ctx, const ecs_expr_function_t *call, script_value_t *out);
 int script_eval_with(script_eval_t *ctx, const ecs_script_with_t *with);
 int script_eval_node(script_eval_t *ctx, const ecs_script_node_t *node);

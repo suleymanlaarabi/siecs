@@ -38,17 +38,8 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
             rec->info->size != 0 ? calloc(table->entity_capacity, rec->info->size) : NULL;
         ecs_id_map_set(&table->add_edge, type.ids[i], i);
         table->cls[i].remove_edge = UINT16_MAX;
-        table->cls[i].flags = 0;
+        table->cls[i].flags = ecs_column_value_flags(rec->info->size, &rec->ops);
         atomic_init(&table->cls[i].tick, table->structure_tick);
-        if (rec->info->size == 0 || (!rec->ops.move_ctor && !rec->ops.copy_ctor)) {
-            table->cls[i].flags |= EcsColumnTrivialMove;
-        }
-        if (rec->info->size == 0 || (!rec->ops.dtor && !rec->ops.reflected_type)) {
-            table->cls[i].flags |= EcsColumnNoDtor;
-        }
-        if (rec->info->size == 0 || !rec->ops.ctor) {
-            table->cls[i].flags |= EcsColumnZeroCtor;
-        }
         if (rec->info->size != 0) {
             table->data_columns[table->add_edge.aux++] = (ecs_data_column_t){
                 .data = table->cls[i].data,
@@ -67,6 +58,26 @@ void ecs_table_init(ecs_table_t *table, ecs_type_t type, uint16_t table_id) {
         table->data_columns =
             realloc(table->data_columns, sizeof(ecs_data_column_t) * table->add_edge.aux);
     }
+}
+
+void ecs_table_rebind_data_columns(ecs_table_t *table, ecs_data_column_t *columns) {
+    uint16_t count = 0;
+    for (uint16_t i = 0; i < table->type.component_count; i++) {
+        const ecs_column_t *column = &table->cls[i];
+        if (column->size)
+            columns[count++] = (ecs_data_column_t){ column->data,
+                                                    column->size,
+                                                    table->type.ids[i],
+                                                    column->flags };
+    }
+    if (table->data_columns != ecs_no_data_columns)
+        free(table->data_columns);
+    table->add_edge.aux = count;
+    if (!count) {
+        free(columns);
+        table->data_columns = ecs_no_data_columns;
+    } else
+        table->data_columns = columns;
 }
 
 static inline void ecs_table_grow(ecs_table_t *table) {

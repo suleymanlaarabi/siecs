@@ -218,7 +218,7 @@ static void ecs_worker_execute(ecs_worker_t *worker, ecs_worker_batch_t *batch) 
             batch->portions[i].count,
             pool->nodes[batch->node].tick
         );
-        if (job->context.commands.commands.size)
+        if (job->context.commands.commands.size || job->context.commands.pairs.size)
             batch->portions[i].commands = job;
         else
             ecs_worker_recycle(job);

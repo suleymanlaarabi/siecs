@@ -5,8 +5,6 @@ typedef enum ecs_script_node_kind_t {
     EcsAstScope,
     EcsAstTag,
     EcsAstComponent,
-    EcsAstWithTag,
-    EcsAstWithComponent,
     EcsAstWith,
     EcsAstUsing,
     EcsAstModule,
@@ -46,10 +44,9 @@ struct ecs_script_scope_t {
 typedef struct ecs_script_id_t {
     const char *first;
     const char *second;
-    uint64_t flag;
+    bool auto_override;
     ecs_expr_node_t *first_expr;
     ecs_expr_node_t *second_expr;
-    ecs_expr_node_t *index_expr;
 } ecs_script_id_t;
 typedef struct ecs_script_tag_t {
     ecs_script_node_t node;
@@ -69,6 +66,8 @@ struct ecs_script_entity_t {
     ecs_script_scope_t *scope;
     ecs_expr_node_t *name_expr;
     uint32_t anonymous_id;
+    uint64_t identity_hash;
+    ecs_script_entity_t *next_anonymous;
     sicore_vec_t capture_names;
     bool cacheable;
 };

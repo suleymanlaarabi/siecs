@@ -1,4 +1,5 @@
 #include "component_index.h"
+#include "../inheritance.h"
 #include "sicore.h"
 #include "siecs.h"
 #include "sireflect.h"
@@ -46,9 +47,18 @@ void ecs_component_index_register(
     static const ecs_type_ops_t no_ops = { 0 };
     ecs_component_record_t record = {
         .size = (uint32_t)desc->size,
-        .plain = desc->size != 0 && !memcmp(&desc->ops, &no_ops, sizeof no_ops) &&
-                 !desc->on_set && !desc->on_add && !desc->on_remove && !relation_flags,
+        .plain = desc->size != 0 && !memcmp(&desc->ops, &no_ops, sizeof no_ops) && !desc->on_set &&
+                 !desc->on_add && !desc->on_remove && !relation_flags,
         .info = info,
+        .override_target =
+            !desc->size && desc->name &&
+                    !strncmp(
+                        desc->name,
+                        ECS_AUTO_OVERRIDE_PREFIX,
+                        sizeof(ECS_AUTO_OVERRIDE_PREFIX) - 1
+                    )
+                ? ecs_component_lookup(desc->name + sizeof(ECS_AUTO_OVERRIDE_PREFIX) - 1)
+                : 0,
         .required = NULL,
         .required_count = 0,
         .default_relations = NULL,

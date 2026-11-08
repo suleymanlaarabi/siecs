@@ -17,6 +17,20 @@ typedef struct {
     ecs_type_ops_t ops;
 } ecs_pending_observer_t;
 
+typedef struct {
+    ecs_pair_event_t event;
+    ecs_type_ops_t ops;
+    max_align_t alignment;
+    unsigned char value[];
+} ecs_pair_snapshot_t;
+
+static void pair_snapshot_fini(void *data, uint32_t count) {
+    (void)count;
+    ecs_pair_snapshot_t *snapshot = data;
+    if (snapshot->event.value)
+        ecs_value_fini(&snapshot->ops, snapshot->value, 1);
+}
+
 void ecs_observer_batch_begin(void) {
     ecs_assert_not_scheduler_parallel("observer batching");
     observer_index.batch_depth++;
@@ -32,7 +46,21 @@ void ecs_observer_dispatch(ecs_observer_id_t id, const ecs_observer_event_t *eve
                                        .observer = id,
                                        .revision = observer->revision };
     size_t size = 0;
-    if (event->component && event->trigger_data) {
+    if (event->event == EcsOnPairSet || event->event == EcsOnPairRemove) {
+        const ecs_pair_event_t *data = event->trigger_data;
+        const ecs_component_record_t *component = ecs_component_index_get(data->payload);
+        ecs_pair_snapshot_t *snapshot = calloc(1, sizeof(*snapshot) + component->size);
+        ecs_fatal_if(!snapshot, "out of memory retaining pair event");
+        snapshot->event = *data;
+        snapshot->ops = component->ops;
+        if (component->size) {
+            ecs_value_copy(&snapshot->ops, component->size, snapshot->value, data->value, 1, true);
+            snapshot->event.value = snapshot->value;
+        }
+        pending.owned_payload = snapshot;
+        pending.event.trigger_data = &snapshot->event;
+        pending.ops.dtor = pair_snapshot_fini;
+    } else if (event->component && event->trigger_data) {
         const ecs_component_record_t *component = ecs_component_index_get(event->component);
         size = component->size;
         pending.ops = component->ops;

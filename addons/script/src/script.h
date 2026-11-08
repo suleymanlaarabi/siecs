@@ -5,6 +5,11 @@
 #include "platform.h"
 #include <stdatomic.h>
 
+/* Component IDs and native/staged pair identities share Script's value pipeline. */
+typedef uint64_t script_key_t;
+#define SCRIPT_PAIR_KEY (UINT64_C(1) << 32)
+#define SCRIPT_PAIR_PENDING (UINT64_C(1) << 33)
+
 typedef struct ecs_expr_node_t ecs_expr_node_t;
 typedef struct ecs_script_entity_t ecs_script_entity_t;
 typedef union ecs_expr_small_value_t {
@@ -45,12 +50,14 @@ struct ecs_script_impl_t {
     bool from_file;
     bool has_async;
     uint32_t anonymous_count;
+    ecs_script_entity_t *anonymous;
     sicore_vec_t nested_scripts;
 };
 #define siecs_script_impl(script) ((ecs_script_impl_t *)(script))
 
 ecs_script_t *siecs_script_new(void);
 int script_ir_compile(ecs_script_t *script);
+uint64_t script_source_hash(const char *begin, const char *end);
 void script_adopt_nested(ecs_script_impl_t *parent, ecs_script_t *child);
 ecs_script_scope_t *siecs_script_scope_new(ecs_parser_t *parser);
 bool siecs_string_is_interpolated(const char *value);

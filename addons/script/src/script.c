@@ -137,20 +137,44 @@ void ecs_script_free(ecs_script_t *script) {
         ecs_script_free(nested[i]);
     }
     sicore_vec_fini(&impl->nested_scripts);
+    /* Parse branches can abandon nodes; the script arena owns all of them. */
     script_allocator_fini(&impl->allocator);
     free((char *)script->code);
     free((char *)script->name);
     free(impl);
 }
 
-void siecs_expr_visit_free(ecs_script_t *script, ecs_expr_node_t *node) {
-    /* Parse branches can abandon nodes; the script arena owns all of them. */
-    (void)script;
-    (void)node;
-}
-
 const ecs_script_t *ecs_script_retain(const ecs_script_t *script) {
     if (script)
         atomic_fetch_add_explicit(&siecs_script_impl(script)->references, 1, memory_order_relaxed);
     return script;
+}
+
+uint64_t script_source_hash(const char *begin, const char *end) {
+    uint64_t hash = UINT64_C(1469598103934665603);
+    if (!begin || !end)
+        return hash;
+    size_t length = (size_t)(end - begin);
+    char *source = malloc(length + 1);
+    assert(source != NULL);
+    memcpy(source, begin, length);
+    source[length] = '\0';
+    ecs_script_impl_t scratch = { 0 };
+    ecs_parser_t parser = { .script = &scratch,
+                            .name = "<continuation>",
+                            .code = source,
+                            .pos = source };
+    script_lex(&parser);
+    while (parser.token.kind) {
+        if ((int)parser.token.kind != '\n') {
+            hash = (hash ^ (uint32_t)parser.token.kind) * UINT64_C(1099511628211);
+            for (const unsigned char *at = (const unsigned char *)parser.token.value; *at; at++)
+                hash = (hash ^ *at) * UINT64_C(1099511628211);
+            hash = (hash ^ UINT64_C(0xff)) * UINT64_C(1099511628211);
+        }
+        script_lex(&parser);
+    }
+    script_allocator_fini(&scratch.allocator);
+    free(source);
+    return hash;
 }
