@@ -1,8 +1,8 @@
+#include "../../../../../src/platform.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <test.h>
-#include <threads.h>
 
 static ecs_component_t value_type;
 static ecs_entity_t input;
@@ -77,7 +77,11 @@ static void register_task(void) {
     );
 }
 
-static int complete_vector(void *argument) {
+#ifdef _WIN32
+static DWORD ECS_PLATFORM_THREAD_CALL complete_vector(void *argument) {
+#else
+static void *complete_vector(void *argument) {
+#endif
     test_true(ecs_script_task_complete(pending, argument));
     return 0;
 }
@@ -108,11 +112,9 @@ void Async_owning_vector_result(void) {
     char first[] = "alpha", second[] = "beta";
     char *texts[] = { first, second };
     sireflect_vector_t result = { texts, 2 };
-    thrd_t worker;
-    test_int(thrd_create(&worker, complete_vector, &result), thrd_success);
-    int status;
-    test_int(thrd_join(worker, &status), thrd_success);
-    test_int(status, 0);
+    ecs_platform_thread_t worker;
+    test_true(ecs_platform_thread_create(&worker, complete_vector, &result));
+    ecs_platform_thread_join(&worker);
     second[0] = 'X';
     test_false(ecs_script_task_complete(pending, &result));
     test_int(ecs_script_flush(NULL), 0);

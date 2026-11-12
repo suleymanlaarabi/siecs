@@ -286,7 +286,8 @@ void pair_parallel_deferred_publication(void) {
                                           .query.components = { { selected, EcsFilter } },
                                           .callback = pair_worker_set });
     ecs_progress();
-    test_false(atomic_load(&pair_worker_failed));
+    const bool worker_failed = atomic_load(&pair_worker_failed);
+    test_false(worker_failed);
     for (unsigned i = 0; i < 65; i++) {
         test_true(ecs_pair_has_owned(entities[i], pair));
         test_int(*(const int *)ecs_pair_get(entities[i], pair), ecs_entity_id(entities[i]));
