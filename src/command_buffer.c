@@ -89,10 +89,6 @@ static inline void deferred_change_fini(ecs_deferred_change_t *change) {
     change->data = NULL;
 }
 
-static inline ecs_deferred_change_t *command_changes(ecs_entity_command_t *command) {
-    return command->changes;
-}
-
 static bool command_transition_matches(
     const ecs_command_transition_t *transition,
     const ecs_entity_command_t *command,
@@ -222,7 +218,7 @@ static inline ecs_deferred_change_t *change_get(
     bool *inserted
 ) {
     uint32_t at = change_lower_bound(command, id);
-    ecs_deferred_change_t *items = command_changes(command);
+    ecs_deferred_change_t *items = command->changes;
     *inserted = at == command->change_count || items[at].id != id;
     if (!*inserted)
         return &items[at];
@@ -250,7 +246,7 @@ static inline void command_init(ecs_entity_command_t *command, ecs_entity_t enti
 }
 
 static inline void command_fini(ecs_entity_command_t *command) {
-    ecs_deferred_change_t *changes = command_changes(command);
+    ecs_deferred_change_t *changes = command->changes;
     for (uint32_t i = 0; i < command->change_count; i++) {
         deferred_change_fini(&changes[i]);
     }
@@ -413,7 +409,7 @@ void ecs_command_buffer_kill(ecs_entity_t entity) {
     }
     command->kill = true;
     command->has_base = false;
-    ecs_deferred_change_t *changes = command_changes(command);
+    ecs_deferred_change_t *changes = command->changes;
     for (uint32_t i = 0; i < command->change_count; i++) {
         deferred_change_fini(&changes[i]);
     }
@@ -547,7 +543,7 @@ static ecs_type_t command_build_type(
     ecs_entity_command_t *command
 ) {
     for (uint32_t i = 0; i < command->change_count; i++) {
-        ecs_deferred_change_t *change = &command_changes(command)[i];
+        ecs_deferred_change_t *change = &command->changes[i];
         if (change->op == EcsDeferredRemove)
             continue;
         const ecs_component_record_t *record = ecs_component_index_get(change->id);
@@ -560,7 +556,7 @@ static ecs_type_t command_build_type(
         }
     }
 
-    const ecs_deferred_change_t *changes = command_changes(command);
+    const ecs_deferred_change_t *changes = command->changes;
     ecs_component_t *ids = ecs_arena_alloc(
         buffer->arena,
         sizeof *ids * (table->type.component_count + command->change_count)
@@ -594,7 +590,7 @@ static ecs_type_t command_build_type(
 }
 
 static bool command_type_unchanged(const ecs_table_t *table, const ecs_entity_command_t *command) {
-    const ecs_deferred_change_t *changes = command_changes((ecs_entity_command_t *)command);
+    const ecs_deferred_change_t *changes = command->changes;
     if (command->has_base && command->base != ecs_type_isa_target(&table->type)) {
         return false;
     }
@@ -608,7 +604,7 @@ static bool command_type_unchanged(const ecs_table_t *table, const ecs_entity_co
 }
 
 static void command_apply_changes(ecs_entity_command_t *command) {
-    ecs_deferred_change_t *changes = command_changes(command);
+    ecs_deferred_change_t *changes = command->changes;
     for (uint32_t i = 0; i < command->change_count && ecs_is_alive(command->entity); i++) {
         if (changes[i].op != EcsDeferredCopy && changes[i].op != EcsDeferredMove) {
             continue;

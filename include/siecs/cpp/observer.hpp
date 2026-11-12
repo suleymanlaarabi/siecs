@@ -142,7 +142,7 @@ void ecs_cpp_observer_callback(ecs_observer_event_t *event) {
     );
     bool has_shared = false;
     auto cursors = make_cursors<Args>(&it, has_shared, indices);
-    invoke_row<Args>(func, params, cursors, 0, indices);
+    invoke_row<false, Args>(func, params, cursors, 0, indices);
 }
 
 } // namespace detail

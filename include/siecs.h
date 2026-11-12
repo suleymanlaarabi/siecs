@@ -1611,7 +1611,8 @@ SIECS_API ecs_event_t ecs_event(void);
  * use. Every binary of the process (executable, shared libraries, plugins)
  * gets the same stable pointer, so typed C++ ids registered in one binary are
  * visible from the others. Keys are copied; the pointer lives until exit.
- * ecs_fini resets slot values to zero so a new world registers its own ids.
+ * ecs_fini restores the first initial value so a new world registers its own ids.
+ * Later lookups of an existing key do not change its initial value.
  */
 SIECS_API uint16_t *ecs_type_slot(const char *key, uint16_t initial);
 

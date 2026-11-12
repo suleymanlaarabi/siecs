@@ -149,7 +149,8 @@
           "component_ids_match",
           "plugin_trigger_reaches_app_observer",
           "type_slots_survive_growth",
-          "concurrent_type_slots"
+          "concurrent_type_slots",
+          "events_survive_world_restart"
         ]
       },
       {

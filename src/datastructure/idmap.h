@@ -4,10 +4,12 @@
 
 typedef struct {
     uint16_t *ids;
-    uint16_t capacity;
-    uint16_t aux; /* free metadata stored in the pointer-alignment gap */
-    uint32_t aux_flags; /* more free metadata in the same gap */
+    uint32_t capacity;
+    uint16_t aux;       /* data column count when embedded in a table */
+    uint16_t aux_flags; /* table flags */
 } ecs_id_map_t;
+
+_Static_assert(sizeof(ecs_id_map_t) == sizeof(void *) + 8, "id maps must remain compact");
 
 void ecs_id_map_init(ecs_id_map_t *map);
 void ecs_id_map_fini(ecs_id_map_t *map);

@@ -294,26 +294,11 @@ ecs_query_add(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t id, b
             ecs_type_pairs(&table->type)[pair].value != term.target)
             return false;
     }
-    if (!q->field_count) {
-        if (cache->table_count == cache->table_capacity) {
-            cache->table_capacity = cache->table_capacity ? cache->table_capacity * 2 : 4;
-            cache->tables = realloc(cache->tables, cache->table_capacity * q->stride);
-        }
-        uint16_t at = cache->table_count;
-        if (ordered && q->order_by.func)
-            at = ecs_query_insert(cache, table, 0, at);
-        ((uint16_t *)cache->tables)[at] = id;
-        cache->table_count++;
-        if (ordered)
-            ecs_query_positions(cache, at);
-        return true;
-    }
     union {
         ecs_query_table_t entry;
         uint8_t bytes[sizeof(ecs_query_table_t) + ECS_QUERY_TERM_CAPACITY * sizeof(void *)];
     } result;
-    result.entry.id = id;
-    if (!ecs_query_bind(q, table, &result.entry))
+    if (q->field_count && !ecs_query_bind(q, table, &result.entry))
         return false;
     if (cache->table_count == cache->table_capacity) {
         cache->table_capacity = cache->table_capacity ? cache->table_capacity * 2 : 4;
@@ -322,7 +307,12 @@ ecs_query_add(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t id, b
     uint16_t at = cache->table_count;
     if (ordered && q->order_by.func)
         at = ecs_query_insert(cache, table, 0, at);
-    memcpy(ecs_query_table_at(cache, at), &result.entry, q->stride);
+    if (q->field_count) {
+        result.entry.id = id;
+        memcpy(ecs_query_table_at(cache, at), &result.entry, q->stride);
+    } else {
+        ((uint16_t *)cache->tables)[at] = id;
+    }
     cache->table_count++;
     if (ordered)
         ecs_query_positions(cache, at);

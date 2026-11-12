@@ -926,3 +926,85 @@ void query_iter_table_id_survives_ordered_insert(void) {
     ecs_query_fini(query);
     ecs_fini();
 }
+
+void query_filter_only_cache_growth_preserves_positions(void) {
+    for (unsigned ordered = 0; ordered < 2; ordered++) {
+        query_test_world();
+        ecs_relation_id_t relation =
+            ecs_relation_init(NULL, &(ecs_relation_desc_t){ .storage = EcsRelationByTarget });
+        ecs_entity_t targets[40], entities[40];
+        for (uint32_t i = 0; i < 40; i++)
+            targets[i] = ecs_new();
+        ecs_query_desc_t desc = {
+            .components = { ecs_filter(QueryMass) },
+            .relations = { { .id = relation, .kind = EcsRelationRequired } },
+        };
+        if (ordered)
+            desc.order_by = ecs_order_by_target_id(relation);
+        ecs_query_id_t query = ecs_query_init(&desc);
+        for (uint32_t i = 0; i < 40; i++) {
+            entities[i] = ecs_new();
+            ecs_relate_id(entities[i], relation, targets[39 - i]);
+            ecs_set(entities[i], QueryMass, { (int)i });
+        }
+        ecs_query_cache_t *cache = ecs_query_cache(query);
+        test_uint(40, cache->table_count);
+        test_uint(0, cache->query->field_count);
+        test_not_null(cache->positions.ids);
+        uint32_t seen = 0;
+        ecs_entity_t previous = 0;
+        for (ecs_iter_t it = ecs_query_iter(query); ecs_iter_next(&it);) {
+            test_null(it.ptrs);
+            test_uint(1, it.count);
+            uint16_t table = ecs_iter_table_id(&it);
+            test_uint(it.table_idx, ecs_query_table_position(cache, table));
+            ecs_entity_t target = ecs_target_id(it.entities[0], relation);
+            uint32_t index = 0;
+            while (index < 40 && targets[index] != target)
+                index++;
+            test_assert(index < 40);
+            test_uint(entities[39 - index], it.entities[0]);
+            if (ordered)
+                test_assert(target > previous);
+            previous = target;
+            seen++;
+        }
+        test_uint(40, seen);
+        ecs_query_fini(query);
+        ecs_fini();
+    }
+}
+
+void query_rejected_shared_table_keeps_cache_unchanged(void) {
+    query_test_world();
+    ecs_query_id_t query = ecs_query(
+        {
+            .components = { ecs_inout(QueryPosition), ecs_filter(QueryMass) },
+        }
+    );
+    ecs_entity_t base = ecs_new(), shared = ecs_new();
+    ecs_set(base, QueryPosition, { 11 });
+    ecs_is_a(shared, base);
+    ecs_set(shared, QueryMass, { 1 });
+    test_uint(0, ecs_query_cache(query)->table_count);
+    test_uint(0, ecs_query_count(query));
+
+    ecs_entity_t valid = ecs_new();
+    ecs_set(valid, QueryPosition, { 37 });
+    ecs_set(valid, QueryMass, { 2 });
+    ecs_query_cache_t *cache = ecs_query_cache(query);
+    test_uint(1, cache->table_count);
+    ecs_entity_t shared_again = ecs_new();
+    ecs_is_a(shared_again, base);
+    ecs_add(shared_again, QueryVelocity);
+    ecs_set(shared_again, QueryMass, { 3 });
+    test_uint(1, cache->table_count);
+    ecs_iter_t it = ecs_query_iter(query);
+    test_true(ecs_iter_next(&it));
+    test_uint(1, it.count);
+    test_uint(valid, it.entities[0]);
+    test_int(37, ((QueryPosition *)ecs_field(&it, 0))->value);
+    test_false(ecs_iter_next(&it));
+    ecs_query_fini(query);
+    ecs_fini();
+}

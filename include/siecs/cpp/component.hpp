@@ -42,8 +42,10 @@ enum class id_kind : uint8_t { component, relation, resource, event, module };
  * observed by the app).
  */
 template <typename T> uint16_t &shared_id(id_kind kind, uint16_t initial) {
-    static constexpr const char *prefixes[] = { "component:", "relation:", "resource:", "event:", "module:" };
-    std::string key = std::string(prefixes[static_cast<uint8_t>(kind)]) + std::string(type_name<T>());
+    static constexpr const char
+        *prefixes[] = { "component:", "relation:", "resource:", "event:", "module:" };
+    std::string key =
+        std::string(prefixes[static_cast<uint8_t>(kind)]) + std::string(type_name<T>());
     return *ecs_type_slot(key.c_str(), initial);
 }
 
@@ -130,7 +132,7 @@ value_transfer(void *dst, std::conditional_t<Move, void *, const void *> src, ui
 template <typename T> consteval ecs_type_ops_t value_ops() {
     if constexpr (!is_complete<T>::value) {
         return {};
-    } else if constexpr (sizeof(T) == 0 || std::is_trivially_copyable_v<T>) {
+    } else if constexpr (std::is_trivially_copyable_v<T>) {
         return {};
     } else {
         return {

@@ -6,6 +6,7 @@
 
 typedef struct ecs_typed_id_slot_t {
     uint16_t value;
+    uint16_t initial;
     char key[];
 } ecs_typed_id_slot_t;
 
@@ -31,6 +32,7 @@ uint16_t *ecs_type_slot(const char *key, uint16_t initial) {
         ecs_assert_not_null(slot);
         memcpy(slot->key, key, length);
         slot->value = initial;
+        slot->initial = initial;
         index = type_slots.size;
         sicore_vec_push(&type_slots, &slot, sizeof slot);
         sicore_map_set(&type_slot_names, slot->key, index);
@@ -48,6 +50,6 @@ void ecs_type_slots_reset(void) {
     }
     ecs_typed_id_slot_t *const *slots = type_slots.data;
     for (uint32_t i = 0; i < type_slots.size; i++)
-        slots[i]->value = 0;
+        slots[i]->value = slots[i]->initial;
     atomic_flag_clear_explicit(&type_slots_lock, memory_order_release);
 }

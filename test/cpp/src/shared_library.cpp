@@ -1,7 +1,7 @@
-#include <cpp_plugin.hpp>
-#include <test.h>
 #include <atomic>
+#include <cpp_plugin.hpp>
 #include <cstdio>
+#include <test.h>
 #include <thread>
 
 static int shared_library_calls;
@@ -72,4 +72,47 @@ void shared_library_plugin_trigger_reaches_app_observer(void) {
     cpp_plugin_trigger(entity.id());
 
     test_int(1, shared_library_calls);
+}
+
+struct RestartEvent {
+    int value;
+};
+struct UnrelatedRestartEvent {};
+
+void shared_library_events_survive_world_restart(void) {
+    for (int cycle = 0; cycle < 3; cycle++) {
+        ecs_test_scope scope;
+        auto source = ecs::spawn();
+        const auto event_id = ecs::event_id<RestartEvent>();
+        test_assert(event_id > EcsOnPairRemove);
+        test_int(cpp_plugin_event_id(), ecs::event_id<CppPluginEvent>());
+        test_true(event_id != cpp_plugin_event_id());
+        test_assert(cpp_plugin_event_id() > EcsOnPairRemove);
+        RestartEvent payload{ 37 + cycle };
+        unsigned calls = 0, plugin_calls = 0;
+        ecs::observe<RestartEvent>().each([&](ecs::entity entity, ecs::event<RestartEvent> event) {
+            test_uint(source.id(), entity.id());
+            test_uint(source.id(), event.target().id());
+            test_int(event_id, event.id());
+            test_ptr(&payload, &*event);
+            test_int(37 + cycle, event->value);
+            calls++;
+        });
+        ecs::observe<CppPluginEvent>().each([&](ecs::entity entity,
+                                                ecs::event<CppPluginEvent> event) {
+            test_uint(source.id(), entity.id());
+            test_int(cpp_plugin_event_id(), event.id());
+            test_true(event.trigger_data<CppPluginEvent>() != nullptr);
+            plugin_calls++;
+        });
+        ecs::emit(source, UnrelatedRestartEvent{});
+        test_uint(0, calls);
+        test_uint(0, plugin_calls);
+        ecs::emit(source, payload);
+        test_uint(1, calls);
+        test_uint(0, plugin_calls);
+        cpp_plugin_trigger(source.id());
+        test_uint(1, calls);
+        test_uint(1, plugin_calls);
+    }
 }

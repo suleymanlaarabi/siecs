@@ -88,7 +88,8 @@
           "growth_and_owned_names",
           "duplicate_names_keep_first",
           "world_restart",
-          "type_slots_preserve_pointers"
+          "type_slots_preserve_pointers",
+          "id_map_growth_preserves_values"
         ]
       },
       {
@@ -312,7 +313,9 @@
           "fields_refresh_after_table_growth",
           "inherited_fields_refresh_after_base_table_growth",
           "entities_macro_visits_each_row_once",
-          "iter_table_id_survives_ordered_insert"
+          "iter_table_id_survives_ordered_insert",
+          "filter_only_cache_growth_preserves_positions",
+          "rejected_shared_table_keeps_cache_unchanged"
         ]
       },
       {

@@ -25,7 +25,6 @@ struct ecs_world_s {
     sicore_vec_t fini_callbacks;
     sicore_vec_t sync_callbacks;
     uint32_t sync_depth;
-    uint32_t sync_generation;
     bool synchronizing;
     bool did_start;
     atomic_bool exit;
@@ -102,7 +101,8 @@ static inline void ecs_emit_target_observers(
         ecs_observer_id_t oid = ids[at++];
         ecs_observer_t *observer =
             sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
-        if (!observer->enabled || observer->target_handle != observer_target) continue;
+        if (!observer->enabled || observer->target_handle != observer_target)
+            continue;
         if (observer->query != ECS_OBSERVER_NO_QUERY) {
             ecs_query_cache_t *cache = ecs_query_cache(observer->query);
             if (ecs_query_table_position(cache, table_id) == UINT16_MAX)

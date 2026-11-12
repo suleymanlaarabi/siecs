@@ -48,6 +48,7 @@ void registry_growth_and_owned_names(void);
 void registry_duplicate_names_keep_first(void);
 void registry_world_restart(void);
 void registry_type_slots_preserve_pointers(void);
+void registry_id_map_growth_preserves_values(void);
 
 // Testsuite 'script_host'
 void script_host_single_target_relations_and_dynamic_ids(void);
@@ -242,6 +243,8 @@ void query_fields_refresh_after_table_growth(void);
 void query_inherited_fields_refresh_after_base_table_growth(void);
 void query_entities_macro_visits_each_row_once(void);
 void query_iter_table_id_survives_ordered_insert(void);
+void query_filter_only_cache_growth_preserves_positions(void);
+void query_rejected_shared_table_keeps_cache_unchanged(void);
 
 // Testsuite 'system'
 void system_run(void);
@@ -494,6 +497,10 @@ bake_test_case registry_testcases[] = {
     {
         "type_slots_preserve_pointers",
         registry_type_slots_preserve_pointers
+    },
+    {
+        "id_map_growth_preserves_values",
+        registry_id_map_growth_preserves_values
     }
 };
 
@@ -1220,6 +1227,14 @@ bake_test_case query_testcases[] = {
     {
         "iter_table_id_survives_ordered_insert",
         query_iter_table_id_survives_ordered_insert
+    },
+    {
+        "filter_only_cache_growth_preserves_positions",
+        query_filter_only_cache_growth_preserves_positions
+    },
+    {
+        "rejected_shared_table_keeps_cache_unchanged",
+        query_rejected_shared_table_keeps_cache_unchanged
     }
 };
 
@@ -1697,7 +1712,7 @@ static bake_test_suite suites[] = {
         "registry",
         NULL,
         NULL,
-        6,
+        7,
         registry_testcases
     },
     {
@@ -1767,7 +1782,7 @@ static bake_test_suite suites[] = {
         "query",
         NULL,
         NULL,
-        29,
+        31,
         query_testcases
     },
     {

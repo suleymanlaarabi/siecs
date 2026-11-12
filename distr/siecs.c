@@ -5155,10 +5155,12 @@ static inline unsigned ecs_ctz(unsigned value) {
 
 typedef struct {
     uint16_t *ids;
-    uint16_t capacity;
-    uint16_t aux; /* free metadata stored in the pointer-alignment gap */
-    uint32_t aux_flags; /* more free metadata in the same gap */
+    uint32_t capacity;
+    uint16_t aux;       /* data column count when embedded in a table */
+    uint16_t aux_flags; /* table flags */
 } ecs_id_map_t;
+
+_Static_assert(sizeof(ecs_id_map_t) == sizeof(void *) + 8, "id maps must remain compact");
 
 void ecs_id_map_init(ecs_id_map_t *map);
 void ecs_id_map_fini(ecs_id_map_t *map);
@@ -6476,7 +6478,6 @@ struct ecs_world_s {
     sicore_vec_t fini_callbacks;
     sicore_vec_t sync_callbacks;
     uint32_t sync_depth;
-    uint32_t sync_generation;
     bool synchronizing;
     bool did_start;
     atomic_bool exit;
@@ -6553,7 +6554,8 @@ static inline void ecs_emit_target_observers(
         ecs_observer_id_t oid = ids[at++];
         ecs_observer_t *observer =
             sicore_vec_get_mut(&observer_index.observers, oid, ecs_observer_t);
-        if (!observer->enabled || observer->target_handle != observer_target) continue;
+        if (!observer->enabled || observer->target_handle != observer_target)
+            continue;
         if (observer->query != ECS_OBSERVER_NO_QUERY) {
             ecs_query_cache_t *cache = ecs_query_cache(observer->query);
             if (ecs_query_table_position(cache, table_id) == UINT16_MAX)
@@ -7164,10 +7166,6 @@ static inline void deferred_change_fini(ecs_deferred_change_t *change) {
     change->data = NULL;
 }
 
-static inline ecs_deferred_change_t *command_changes(ecs_entity_command_t *command) {
-    return command->changes;
-}
-
 static bool command_transition_matches(
     const ecs_command_transition_t *transition,
     const ecs_entity_command_t *command,
@@ -7297,7 +7295,7 @@ static inline ecs_deferred_change_t *change_get(
     bool *inserted
 ) {
     uint32_t at = change_lower_bound(command, id);
-    ecs_deferred_change_t *items = command_changes(command);
+    ecs_deferred_change_t *items = command->changes;
     *inserted = at == command->change_count || items[at].id != id;
     if (!*inserted)
         return &items[at];
@@ -7325,7 +7323,7 @@ static inline void command_init(ecs_entity_command_t *command, ecs_entity_t enti
 }
 
 static inline void command_fini(ecs_entity_command_t *command) {
-    ecs_deferred_change_t *changes = command_changes(command);
+    ecs_deferred_change_t *changes = command->changes;
     for (uint32_t i = 0; i < command->change_count; i++) {
         deferred_change_fini(&changes[i]);
     }
@@ -7488,7 +7486,7 @@ void ecs_command_buffer_kill(ecs_entity_t entity) {
     }
     command->kill = true;
     command->has_base = false;
-    ecs_deferred_change_t *changes = command_changes(command);
+    ecs_deferred_change_t *changes = command->changes;
     for (uint32_t i = 0; i < command->change_count; i++) {
         deferred_change_fini(&changes[i]);
     }
@@ -7622,7 +7620,7 @@ static ecs_type_t command_build_type(
     ecs_entity_command_t *command
 ) {
     for (uint32_t i = 0; i < command->change_count; i++) {
-        ecs_deferred_change_t *change = &command_changes(command)[i];
+        ecs_deferred_change_t *change = &command->changes[i];
         if (change->op == EcsDeferredRemove)
             continue;
         const ecs_component_record_t *record = ecs_component_index_get(change->id);
@@ -7635,7 +7633,7 @@ static ecs_type_t command_build_type(
         }
     }
 
-    const ecs_deferred_change_t *changes = command_changes(command);
+    const ecs_deferred_change_t *changes = command->changes;
     ecs_component_t *ids = ecs_arena_alloc(
         buffer->arena,
         sizeof *ids * (table->type.component_count + command->change_count)
@@ -7669,7 +7667,7 @@ static ecs_type_t command_build_type(
 }
 
 static bool command_type_unchanged(const ecs_table_t *table, const ecs_entity_command_t *command) {
-    const ecs_deferred_change_t *changes = command_changes((ecs_entity_command_t *)command);
+    const ecs_deferred_change_t *changes = command->changes;
     if (command->has_base && command->base != ecs_type_isa_target(&table->type)) {
         return false;
     }
@@ -7683,7 +7681,7 @@ static bool command_type_unchanged(const ecs_table_t *table, const ecs_entity_co
 }
 
 static void command_apply_changes(ecs_entity_command_t *command) {
-    ecs_deferred_change_t *changes = command_changes(command);
+    ecs_deferred_change_t *changes = command->changes;
     for (uint32_t i = 0; i < command->change_count && ecs_is_alive(command->entity); i++) {
         if (changes[i].op != EcsDeferredCopy && changes[i].op != EcsDeferredMove) {
             continue;
@@ -12701,8 +12699,6 @@ static bool ecs_scene_has_type_ops(const ecs_component_record_t *record) {
 typedef struct {
     bool needs_codec;
     bool supported;
-    bool contains_entity;
-    bool contains_string;
     bool analyzed;
 } ecs_scene_type_traits_t;
 
@@ -12713,17 +12709,9 @@ static bool ecs_scene_traits_visit(const sireflect_type_visit_t *visit, void *us
     ecs_scene_type_traits_t *traits = user;
     switch (ecs_reflect_value_kind(visit->type)) {
     case EcsReflectValueEntity:
-        traits->needs_codec = true;
-        traits->contains_entity = true;
-        break;
     case EcsReflectValueString:
-        traits->needs_codec = true;
-        traits->contains_string = true;
-        break;
     case EcsReflectValueVector:
         traits->needs_codec = true;
-        /* Vectors, like strings, require reflected destruction after decode. */
-        traits->contains_string = true;
         break;
     case EcsReflectValuePointer:
         traits->needs_codec = true;
@@ -14486,6 +14474,7 @@ uint64_t ecs_type_bloom(const ecs_type_t *type) {
 
 typedef struct ecs_typed_id_slot_t {
     uint16_t value;
+    uint16_t initial;
     char key[];
 } ecs_typed_id_slot_t;
 
@@ -14511,6 +14500,7 @@ uint16_t *ecs_type_slot(const char *key, uint16_t initial) {
         ecs_assert_not_null(slot);
         memcpy(slot->key, key, length);
         slot->value = initial;
+        slot->initial = initial;
         index = type_slots.size;
         sicore_vec_push(&type_slots, &slot, sizeof slot);
         sicore_map_set(&type_slot_names, slot->key, index);
@@ -14528,7 +14518,7 @@ void ecs_type_slots_reset(void) {
     }
     ecs_typed_id_slot_t *const *slots = type_slots.data;
     for (uint32_t i = 0; i < type_slots.size; i++)
-        slots[i]->value = 0;
+        slots[i]->value = slots[i]->initial;
     atomic_flag_clear_explicit(&type_slots_lock, memory_order_release);
 }
 
@@ -15325,11 +15315,13 @@ void ecs_id_map_fini(ecs_id_map_t *map) { free(map->ids); }
 
 void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id) {
     if (ECS_UNLIKELY(id >= map->capacity)) {
-        uint16_t new_cap = map->capacity;
+        uint32_t new_cap = map->capacity;
         while (new_cap <= id)
             new_cap *= 2;
-        map->ids = realloc(map->ids, sizeof(uint16_t) * new_cap);
-        memset(map->ids + map->capacity, 0xFF, sizeof(uint16_t) * (new_cap - map->capacity));
+        uint16_t *ids = realloc(map->ids, sizeof(uint16_t) * new_cap);
+        ecs_fatal_if(!ids, "out of memory growing id map\n");
+        memset(ids + map->capacity, 0xFF, sizeof(uint16_t) * (new_cap - map->capacity));
+        map->ids = ids;
         map->capacity = new_cap;
     }
 }
@@ -15848,26 +15840,11 @@ ecs_query_add(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t id, b
             ecs_type_pairs(&table->type)[pair].value != term.target)
             return false;
     }
-    if (!q->field_count) {
-        if (cache->table_count == cache->table_capacity) {
-            cache->table_capacity = cache->table_capacity ? cache->table_capacity * 2 : 4;
-            cache->tables = realloc(cache->tables, cache->table_capacity * q->stride);
-        }
-        uint16_t at = cache->table_count;
-        if (ordered && q->order_by.func)
-            at = ecs_query_insert(cache, table, 0, at);
-        ((uint16_t *)cache->tables)[at] = id;
-        cache->table_count++;
-        if (ordered)
-            ecs_query_positions(cache, at);
-        return true;
-    }
     union {
         ecs_query_table_t entry;
         uint8_t bytes[sizeof(ecs_query_table_t) + ECS_QUERY_TERM_CAPACITY * sizeof(void *)];
     } result;
-    result.entry.id = id;
-    if (!ecs_query_bind(q, table, &result.entry))
+    if (q->field_count && !ecs_query_bind(q, table, &result.entry))
         return false;
     if (cache->table_count == cache->table_capacity) {
         cache->table_capacity = cache->table_capacity ? cache->table_capacity * 2 : 4;
@@ -15876,7 +15853,12 @@ ecs_query_add(ecs_query_cache_t *cache, const ecs_table_t *table, uint16_t id, b
     uint16_t at = cache->table_count;
     if (ordered && q->order_by.func)
         at = ecs_query_insert(cache, table, 0, at);
-    memcpy(ecs_query_table_at(cache, at), &result.entry, q->stride);
+    if (q->field_count) {
+        result.entry.id = id;
+        memcpy(ecs_query_table_at(cache, at), &result.entry, q->stride);
+    } else {
+        ((uint16_t *)cache->tables)[at] = id;
+    }
     cache->table_count++;
     if (ordered)
         ecs_query_positions(cache, at);

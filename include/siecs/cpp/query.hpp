@@ -73,18 +73,10 @@ template <typename Args, std::size_t I> consteval std::size_t field_index_before
 
 template <typename T>
 inline constexpr bool callback_arg_requires_row = !SystemParam<T> || IsSystemParamRow<T>;
-template <typename T>
-inline constexpr bool callback_arg_requires_table =
-    !SystemParam<T> || IsSystemParamTable<T> || IsSystemParamRow<T>;
 
 template <typename Args, std::size_t... Is>
 consteval bool callback_requires_row(std::index_sequence<Is...>) {
     return (callback_arg_requires_row<std::tuple_element_t<Is, Args>> || ...);
-}
-
-template <typename Args, std::size_t... Is>
-consteval bool callback_requires_table(std::index_sequence<Is...>) {
-    return (callback_arg_requires_table<std::tuple_element_t<Is, Args>> || ...);
 }
 
 template <typename T> auto init_system_param() {
@@ -122,8 +114,9 @@ template <typename Args> auto init_callback_params() {
     }(indices);
     std::apply(
         [&](auto &...param) {
-            if constexpr ((IsSystemParamWorld<std::remove_cvref_t<decltype(param)>> || ... ||
-                           false)) {
+            if constexpr (
+                (IsSystemParamWorld<std::remove_cvref_t<decltype(param)>> || ... || false)
+            ) {
                 ecs_world_t *world = ecs_world_current();
                 (prepare_world(param, world), ...);
             }
@@ -160,48 +153,30 @@ inline auto make_cursors(ecs_iter_t *it, bool &has_shared, std::index_sequence<I
     return std::tuple{ make_cursor<Args, Is>(it, has_shared)... };
 }
 
-template <typename Arg, typename Param, typename Cursor>
+/* Dense fields use a compile-time unit step so the compiler can vectorize
+ * their loop; shared fields retain their zero or unit cursor step. */
+template <bool Dense, typename Arg, typename Param, typename Cursor>
 inline decltype(auto) callback_arg(Param &param, Cursor &cursor, uint32_t row) noexcept {
     if constexpr (SystemParam<Arg>)
         return system_param_t<Arg>(param);
+    else if constexpr (Dense)
+        return cursor.value[row];
     else
         return *(cursor.value + row * cursor.step);
 }
 
-/* Same as callback_arg for tables without shared fields: every field is a
- * dense column, so the row indexes it directly with a compile-time unit step. */
-template <typename Arg, typename Param, typename Cursor>
-inline decltype(auto) callback_arg_dense(Param &param, Cursor &cursor, uint32_t row) noexcept {
-    if constexpr (SystemParam<Arg>)
-        return system_param_t<Arg>(param);
-    else
-        return cursor.value[row];
-}
-
-template <typename Args, typename F, typename Params, typename Cursors, std::size_t... Is>
+template <
+    bool Dense,
+    typename Args,
+    typename F,
+    typename Params,
+    typename Cursors,
+    std::size_t... Is>
 inline void
 invoke_row(F &func, Params &params, Cursors &cursors, uint32_t row, std::index_sequence<Is...>) {
     std::invoke(
         func,
-        callback_arg<std::tuple_element_t<Is, Args>>(
-            std::get<Is>(params),
-            std::get<Is>(cursors),
-            row
-        )...
-    );
-}
-
-template <typename Args, typename F, typename Params, typename Cursors, std::size_t... Is>
-inline void invoke_row_dense(
-    F &func,
-    Params &params,
-    Cursors &cursors,
-    uint32_t row,
-    std::index_sequence<Is...>
-) {
-    std::invoke(
-        func,
-        callback_arg_dense<std::tuple_element_t<Is, Args>>(
+        callback_arg<Dense, std::tuple_element_t<Is, Args>>(
             std::get<Is>(params),
             std::get<Is>(cursors),
             row
@@ -214,6 +189,21 @@ inline void invoke_once(F &func, Params &params, std::index_sequence<Is...>) {
     std::invoke(func, system_param_t<std::tuple_element_t<Is, Args>>(std::get<Is>(params))...);
 }
 
+template <bool Dense, typename Args, typename F, typename Params, typename Cursors>
+#if defined(_MSC_VER)
+__forceinline
+#else
+[[gnu::always_inline]] inline
+#endif
+    void run_rows(F &func, ecs_iter_t *it, Params &params, Cursors &cursors) {
+    constexpr auto indices = std::make_index_sequence<std::tuple_size_v<Args>>{};
+    const uint32_t count = it->count;
+    for (uint32_t row = 0; row < count; ++row) {
+        std::apply([&](auto &...param) { (prepare_row(param, it, row), ...); }, params);
+        invoke_row<Dense, Args>(func, params, cursors, row, indices);
+    }
+}
+
 template <typename Args, typename F, typename Params>
 inline void run_batch(F &func, ecs_iter_t *it, Params &params) {
     constexpr auto indices = std::make_index_sequence<std::tuple_size_v<Args>>{};
@@ -221,19 +211,11 @@ inline void run_batch(F &func, ecs_iter_t *it, Params &params) {
     if constexpr (callback_requires_row<Args>(indices)) {
         bool has_shared = false;
         auto cursors = make_cursors<Args>(it, has_shared, indices);
-        const uint32_t count = it->count;
-        /* Inherited (shared) values only come with IsA bases; every other table
-         * gets the loop the compiler sees as plain arrays and can vectorize. */
+        /* Select the dense specialization once per batch, outside the row loop. */
         if (!has_shared) [[likely]] {
-            for (uint32_t row = 0; row < count; ++row) {
-                std::apply([&](auto &...param) { (prepare_row(param, it, row), ...); }, params);
-                invoke_row_dense<Args>(func, params, cursors, row, indices);
-            }
-            return;
-        }
-        for (uint32_t row = 0; row < count; ++row) {
-            std::apply([&](auto &...param) { (prepare_row(param, it, row), ...); }, params);
-            invoke_row<Args>(func, params, cursors, row, indices);
+            run_rows<true, Args>(func, it, params, cursors);
+        } else {
+            run_rows<false, Args>(func, it, params, cursors);
         }
     } else {
         invoke_once<Args>(func, params, indices);

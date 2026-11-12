@@ -110,6 +110,7 @@ void shared_library_component_ids_match(void);
 void shared_library_plugin_trigger_reaches_app_observer(void);
 void shared_library_type_slots_survive_growth(void);
 void shared_library_concurrent_type_slots(void);
+void shared_library_events_survive_world_restart(void);
 
 // Testsuite 'module_import'
 void module_import_import_without_props(void);
@@ -502,6 +503,10 @@ bake_test_case shared_library_testcases[] = {
     {
         "concurrent_type_slots",
         shared_library_concurrent_type_slots
+    },
+    {
+        "events_survive_world_restart",
+        shared_library_events_survive_world_restart
     }
 };
 
@@ -682,7 +687,7 @@ static bake_test_suite suites[] = {
         "shared_library",
         NULL,
         NULL,
-        5,
+        6,
         shared_library_testcases
     },
     {

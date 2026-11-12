@@ -1,3 +1,4 @@
+#include "datastructure/idmap.h"
 #include <siecs.h>
 #include <siecs_test.h>
 #include <stdio.h>
@@ -16,22 +17,31 @@ void registry_component_names(void) {
     test_int(0, ecs_component_lookup(NULL));
     test_int(0, ecs_component_lookup(""));
     ecs_component_t dynamic = ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
-        .name = "RegistryDynamic", .fields = "{ int value; }",
+        .name = "RegistryDynamic",
+        .fields = "{ int value; }",
     });
     test_true(dynamic != 0);
     test_int(dynamic, ecs_component_lookup("RegistryDynamic"));
-    test_int(dynamic, ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
-        .name = "RegistryDynamic", .fields = "{ int value; }",
-    }));
+    test_int(
+        dynamic,
+        ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
+            .name = "RegistryDynamic",
+            .fields = "{ int value; }",
+        })
+    );
 
     /* The existing reflected-type alias behavior remains intact. */
     ecs_component_desc_t alias = ecs_id(RegistryValue_desc);
     alias.name = "RegistryAlias";
     ecs_component_t aliased = ecs_component_init(&alias);
     test_int(aliased, ecs_component_lookup("RegistryAlias"));
-    test_int(ecs_id(RegistryValue), ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
-        .name = "RegistryValue", .fields = "{ int value; }",
-    }));
+    test_int(
+        ecs_id(RegistryValue),
+        ecs_component_dynamic_init(&(ecs_dynamic_component_desc_t){
+            .name = "RegistryValue",
+            .fields = "{ int value; }",
+        })
+    );
     ecs_fini();
 }
 
@@ -43,9 +53,12 @@ void registry_relation_names_and_namespaces(void) {
     test_int(0, ecs_relation_lookup(""));
     test_int(0, ecs_relation_lookup("childof"));
     test_int(0, ecs_relation_lookup("MissingRegistryRelation"));
-    ecs_relation_id_t relation = ecs_relation_init("RegistryShared", &(ecs_relation_desc_t){
-        .storage = EcsRelationDense,
-    });
+    ecs_relation_id_t relation = ecs_relation_init(
+        "RegistryShared",
+        &(ecs_relation_desc_t){
+            .storage = EcsRelationDense,
+        }
+    );
     test_true(relation != 0);
     test_int(relation, ecs_relation_lookup("RegistryShared"));
     test_int(0, ecs_component_lookup("RegistryShared"));
@@ -65,9 +78,12 @@ void registry_growth_and_owned_names(void) {
         snprintf(name, sizeof name, "RegistryGrowComponent%u", i);
         components[i] = ecs_component({ .name = name });
         snprintf(name, sizeof name, "RegistryGrowRelation%u", i);
-        relations[i] = ecs_relation_init(name, &(ecs_relation_desc_t){
-            .storage = EcsRelationByTarget,
-        });
+        relations[i] = ecs_relation_init(
+            name,
+            &(ecs_relation_desc_t){
+                .storage = EcsRelationByTarget,
+            }
+        );
     }
     memset(name, 'x', sizeof name);
     for (unsigned i = 0; i < 1024; i++) {
@@ -99,9 +115,12 @@ void registry_world_restart(void) {
     ecs_init();
     ECS_COMPONENT_REGISTER(RegistryValue);
     ecs_component({ .name = "RegistryPreviousWorld" });
-    ecs_relation_init("RegistryPreviousWorld", &(ecs_relation_desc_t){
-        .storage = EcsRelationDense,
-    });
+    ecs_relation_init(
+        "RegistryPreviousWorld",
+        &(ecs_relation_desc_t){
+            .storage = EcsRelationDense,
+        }
+    );
     ecs_fini();
     ecs_init();
     test_int(0, ecs_component_lookup("RegistryValue"));
@@ -129,11 +148,41 @@ void registry_type_slots_preserve_pointers(void) {
     uint16_t *relation = ecs_type_slot("relation:RegistryStable", 17);
     test_true(stable != relation);
     test_int(17, *relation);
-    ecs_init();
-    ecs_fini();
-    ecs_init();
-    test_ptr(stable, ecs_type_slot("component:RegistryStable", 0));
-    test_int(0, *stable);
-    test_int(0, *relation);
-    ecs_fini();
+    uint16_t *event = ecs_type_slot("event:RegistryStable", UINT16_MAX);
+    *event = 7;
+    test_ptr(event, ecs_type_slot("event:RegistryStable", 0));
+    test_int(7, *event);
+    for (unsigned cycle = 0; cycle < 3; cycle++) {
+        ecs_init();
+        ecs_fini();
+        test_ptr(stable, ecs_type_slot("component:RegistryStable", 0));
+        test_ptr(event, ecs_type_slot("event:RegistryStable", 0));
+        test_int(37, *stable);
+        test_int(17, *relation);
+        test_int(UINT16_MAX, *event);
+        *stable = 91;
+        *relation = 92;
+        *event = 7;
+    }
+}
+
+void registry_id_map_growth_preserves_values(void) {
+    ecs_id_map_t map;
+    ecs_id_map_init(&map);
+    test_uint(sizeof(void *) + 8, sizeof(map));
+    map.aux = 13;
+    map.aux_flags = 1;
+    const uint16_t ids[] = { 0, 32767, 32768, 65534, 65535 };
+    for (uint32_t i = 0; i < sizeof(ids) / sizeof(ids[0]); i++) {
+        ecs_id_map_set(&map, ids[i], (uint16_t)(i + 1));
+        for (uint32_t j = 0; j <= i; j++)
+            test_uint(j + 1, ecs_id_map_at_or_invalid(&map, ids[j]));
+        test_uint(UINT16_MAX, ecs_id_map_at_or_invalid(&map, 1));
+        if (ids[i] != UINT16_MAX)
+            test_uint(UINT16_MAX, ecs_id_map_at_or_invalid(&map, ids[i] + 1));
+        test_uint(13, map.aux);
+        test_uint(1, map.aux_flags);
+    }
+    test_uint(65536, map.capacity);
+    ecs_id_map_fini(&map);
 }

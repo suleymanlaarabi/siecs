@@ -1,5 +1,6 @@
 #include "idmap.h"
 #include "helper.h"
+#include "utils.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,11 +17,13 @@ void ecs_id_map_fini(ecs_id_map_t *map) { free(map->ids); }
 
 void ecs_id_map_ensure(ecs_id_map_t *map, uint16_t id) {
     if (ECS_UNLIKELY(id >= map->capacity)) {
-        uint16_t new_cap = map->capacity;
+        uint32_t new_cap = map->capacity;
         while (new_cap <= id)
             new_cap *= 2;
-        map->ids = realloc(map->ids, sizeof(uint16_t) * new_cap);
-        memset(map->ids + map->capacity, 0xFF, sizeof(uint16_t) * (new_cap - map->capacity));
+        uint16_t *ids = realloc(map->ids, sizeof(uint16_t) * new_cap);
+        ecs_fatal_if(!ids, "out of memory growing id map\n");
+        memset(ids + map->capacity, 0xFF, sizeof(uint16_t) * (new_cap - map->capacity));
+        map->ids = ids;
         map->capacity = new_cap;
     }
 }

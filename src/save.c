@@ -153,8 +153,6 @@ static bool ecs_scene_has_type_ops(const ecs_component_record_t *record) {
 typedef struct {
     bool needs_codec;
     bool supported;
-    bool contains_entity;
-    bool contains_string;
     bool analyzed;
 } ecs_scene_type_traits_t;
 
@@ -165,17 +163,9 @@ static bool ecs_scene_traits_visit(const sireflect_type_visit_t *visit, void *us
     ecs_scene_type_traits_t *traits = user;
     switch (ecs_reflect_value_kind(visit->type)) {
     case EcsReflectValueEntity:
-        traits->needs_codec = true;
-        traits->contains_entity = true;
-        break;
     case EcsReflectValueString:
-        traits->needs_codec = true;
-        traits->contains_string = true;
-        break;
     case EcsReflectValueVector:
         traits->needs_codec = true;
-        /* Vectors, like strings, require reflected destruction after decode. */
-        traits->contains_string = true;
         break;
     case EcsReflectValuePointer:
         traits->needs_codec = true;
