@@ -42,12 +42,14 @@ string and borrowed user state alive for that lifetime.
 | `.name` | Diagnostic string, borrowed |
 | `.query` | Full descriptor; empty means one task invocation |
 | `.callback` | Required `void(ecs_iter_t*)` |
-| `.phase` | **C zero defaults to `EcsPreStart`**; specify `EcsOnUpdate` for recurring work |
+| `.phase` | Omitted (`ECS_PHASE_NONE`, zero) defaults to `EcsOnUpdate` |
 | `.after = { id1, id2 }` | Up to 16 already registered systems in the same phase |
 | `.interval` | Seconds, nonnegative; zero means every recurring frame |
 | `.disabled` | Initially disabled if true; false by default |
 | `.main_thread_only` | Thread-affine work; false by default |
 | `.no_defer` | Immediate task-only mutations; false by default |
+| `.parallel` | Concurrent callbacks over disjoint row portions; false by default |
+| `.chunk_size` | Rows per parallel portion within one table; zero selects 1024 |
 | `.callback_iterates_query` | Callback advances the iterator itself; false by default |
 | `.user_data` | `uintptr_t` context, available as `it->user_data` |
 | `.user_data_dtor` | Optional `void(uintptr_t)`, called once at world teardown |
@@ -79,10 +81,28 @@ ecs_phase_t physics = ecs_phase({
 });
 ```
 
-Set **both** phase anchors. For a missing anchor use `ECS_PHASE_NONE`, not zero
-(zero is `EcsPreStart`). Both NONE selects the default recurring insertion after
-OnUpdate/before PostUpdate. Startup-anchored phases are one-shot; recurring
-anchors must not cross that boundary.
+Both anchors are optional. An omitted anchor is `ECS_PHASE_NONE` (zero), which
+never names a real phase; builtin ids start at one. Without anchors the phase
+runs between OnUpdate and PostUpdate. Startup-anchored phases are one-shot;
+recurring anchors must not cross that boundary.
+
+## Parallel row portions
+
+```c
+ecs_system({
+    .name = "Integrate",
+    .query.components = { ecs_inout(Position), ecs_in(Velocity) },
+    .callback = move,
+    .parallel = true,
+    .chunk_size = 512,
+});
+```
+
+The callback then runs concurrently on portions of one table; `it->count` is
+the portion size and fields/entities cover only that portion. This needs an
+unordered entity query and read-only resources, and is rejected with
+`main_thread_only` or `no_defer`. Make `user_data` and external state safe for
+concurrent calls. [Publication and restrictions](../systems.md).
 
 `ecs_system_enable/disable(id)` preserves registration; changing enabled state
 resets the interval accumulator. `ecs_run_system(id)` and `ecs_run_phase(phase)`

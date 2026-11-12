@@ -46,6 +46,7 @@ control handle, not a builder. Registration/captures are world-owned.
 | `.disabled(bool = true)` | Initial enabled state; default enabled |
 | `.main_thread()` | Keep work on the calling thread |
 | `.no_defer()` | Immediate task-only mutation; forbidden with entity criteria |
+| `.parallel(chunk_size = 0)` | Concurrent callbacks over row portions of one table; zero selects 1024 rows |
 | `.each(callback)` | Register once; explicitly typed callback, returns `system_ref` |
 
 `system_ref` exposes `id()`, `enable()`, `disable()` and `run()`.
@@ -75,6 +76,10 @@ nested queries or emits synchronous observers must still declare all accesses
 on the enclosing system. Observer callbacks have no independent scheduler job.
 Use `.after` when later work must observe earlier structural commands.
 
+`.parallel()` requires an unordered entity query and rejects writable resources
+(`ecs::res<T>`), `.main_thread()` and `.no_defer()`. The lambda and everything
+it captures must support concurrent invocation.
+
 ## Phases and elapsed time
 
 ```cpp
@@ -83,10 +88,10 @@ ecs_phase_t physics = ecs::phase("Physics")
 ecs::system("PhysicsStep").phase(physics).each([](Position &p) { /* ... */ (void)p; });
 ```
 
-Set both anchors; an unused one must be `ECS_PHASE_NONE` because the builder's
-zero-initialized anchors otherwise refer to `EcsPreStart`. `.id()` or conversion
-registers the phase. Both NONE selects the default recurring insertion after
-OnUpdate/before PostUpdate; startup anchors create one-shot phases.
+Both anchors are optional: an unset one is `ECS_PHASE_NONE` (zero), which never
+names a real phase. `.id()` or conversion registers the phase. Without anchors
+the phase runs between OnUpdate and PostUpdate; startup anchors create one-shot
+phases.
 `ecs::run_phase(physics)` forces enabled work; `ecs_phase_name(physics)` inspects
 its name. Builtin phase order and worker/barrier rules are in [scheduling](../systems.md).
 

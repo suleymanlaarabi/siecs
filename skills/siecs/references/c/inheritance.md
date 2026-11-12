@@ -12,6 +12,12 @@ Owned inheritance is the default. For shared data, declare the component with
 `ECS_COMPONENT_DEFINE(Material, .inheritance = EcsInheritShared)` before
 registration. Configure the base before attaching instances.
 
+To copy a shared component into each new instance of one base, add its override
+tag to that base before instantiating:
+`ecs_add_cid(base, ecs_component_override_tag(ecs_id(Material)))`. Remove it
+with `ecs_remove_cid`. The function returns zero for invalid ids, `Name`,
+`Abstract` and internal relation components.
+
 Use `ecs_is(instance, base)` for ancestry and `ecs_entity_base(instance)` for
 the direct base. `ecs_abstract` marks a base and its owned child subtree.
 The generic `IsA` relation APIs have the same instantiation semantics.

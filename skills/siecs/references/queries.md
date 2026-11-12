@@ -22,6 +22,16 @@ Relation terms select required/optional/excluded edges, exact targets, or depth.
 Target/depth ordering orders tables, not arbitrary component values or entities
 within a table. Custom order callbacks must not mutate the world.
 
+A change-filtered field makes the query skip a table unless one of its flagged
+columns, or the table's rows, changed since that query last ran. Detection is
+per table, not per row: a returned batch contains every row. `set`, `modified`,
+flushed deferred writes, writes to a shared base, row additions/removals/moves
+and the write-access fields of other queries all count; a query's own writes do
+not retrigger it, and a table it skips is not stamped as written. Direct pointer
+edits outside a write-access field need `modified`. A run is recorded when an
+iteration completes; an abandoned iterator or a disabled system keeps pending
+changes. Change filters are invalid on filter, exclusion and ancestor terms.
+
 Retain persistent queries for recurring work; short-lived helpers allocate a
 temporary query. Create queries during setup, not in parallel system callbacks.
 Destroy owned queries before the world ends. Defer structural

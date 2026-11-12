@@ -13,6 +13,11 @@
 - `ecs_progress` — `bool ecs_progress(void)`
 - `ecs_quit` — `void ecs_quit(void)`
 - `ecs_run` — `void ecs_run(void)`
+- `ecs_sync` — `void ecs_sync(void)`
+- `ecs_sync_begin` — `void ecs_sync_begin(void)`
+- `ecs_sync_end` — `void ecs_sync_end(void)`
+- `ecs_sync_register` — `ecs_sync_id_t ecs_sync_register(ecs_sync_callback_t callback, void *context)`
+- `ecs_sync_unregister` — `void ecs_sync_unregister(ecs_sync_id_t callback)`
 - `ecs_world_current` — `ecs_world_t *ecs_world_current(void)`
 
 ## Types and members
@@ -21,6 +26,8 @@
 - `ecs_fini_desc_t` — `typedef struct { /* fields below */ } ecs_fini_desc_t`
 - `ecs_fini_desc_t.callback` — `ecs_fini_callback_t callback`
 - `ecs_fini_desc_t.data` — `void *data`
+- `ecs_sync_callback_t` — `typedef void (*ecs_sync_callback_t)(void *context)`
+- `ecs_sync_id_t` — `typedef uint64_t ecs_sync_id_t`
 - `ecs_world_feat_desc_t` — `typedef struct { /* fields below */ } ecs_world_feat_desc_t`
 - `ecs_world_feat_desc_t.target_fps` — `uint16_t target_fps`
 - `ecs_world_feat_desc_t.worker_threads` — `uint16_t worker_threads`

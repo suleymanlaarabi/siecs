@@ -11,6 +11,8 @@ Types and relation policies must already be registered.
 | `ecs_in(T)` | T present | Read; owned array or one shared inherited value |
 | `ecs_out(T)` | T owned | Write; existing storage, not implicit creation |
 | `ecs_inout(T)` | T owned | Read/write |
+| `ecs_in_changed(T)` | T present and its table changed | Read; skipped while unchanged |
+| `ecs_inout_changed(T)` | T owned and its table changed | Read/write; skipped while unchanged |
 | `ecs_in_optional(T)` | No presence requirement | Nullable read; shared allowed |
 | `ecs_inout_optional(T)` | No presence requirement | Nullable owned read/write |
 | `ecs_filter(T)` | T present | No field and no declared data access |
@@ -30,7 +32,13 @@ predicates belong in the callback. For OR, use separate queries and account for
 entities matching both; there is no OR/predicate-expression API.
 
 Dynamic terms use `{ .id = cid, .access = EcsIn }`. Ancestor access encodes
-`ECS_QUERY_UP_ACCESS(EcsInUp, rid)` or `EcsInUpOptional` in `.access`.
+`ECS_QUERY_UP_ACCESS(EcsInUp, rid)` or `EcsInUpOptional` in `.access`. A dynamic
+change filter ORs `ECS_TERM_CHANGED` into a field access:
+`{ .id = cid, .access = EcsIn | ECS_TERM_CHANGED }`.
+
+With several changed terms the table is returned when any one of them changed.
+The flag is rejected on filter, not and up terms; the
+[change rules](../queries.md) define what counts as a change.
 
 ## Resources: `.resources`
 

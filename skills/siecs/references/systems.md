@@ -12,14 +12,30 @@ terms. Hidden global access is outside this analysis.
 | Once, on the first progress | `EcsPreStart`, `EcsStart`, `EcsPostStart` |
 | Each recurring frame | `EcsOnLoad`, `EcsPostLoad`, `EcsPreUpdate`, `EcsOnUpdate`, `EcsPostUpdate`, `EcsPreRender`, `EcsOnRender`, `EcsPostRender` |
 
-Custom phases declare before/after anchors in the same startup/recurring region.
-`ECS_PHASE_NONE` means no anchor; zero is a real startup phase. Same-phase system
+Custom phases declare optional before/after anchors in the same startup/recurring
+region. `ECS_PHASE_NONE` is zero: an omitted anchor or system phase never names
+a real phase, and builtin phase ids start at one. A system without a phase runs
+in `EcsOnUpdate`; a custom phase without anchors runs between `EcsOnUpdate` and
+`EcsPostUpdate`. Same-phase system
 `after` dependencies establish ordering and barriers. Dependencies must refer to
 already registered systems in that phase; module import order is not a barrier.
 
-Independent systems can run concurrently when workers are enabled. Their
-structural commands flush at synchronization boundaries. Use `main_thread_only`
-for thread-affine APIs; these systems also isolate their scheduler batch.
+Ready systems can run concurrently when workers are enabled, without a
+happens-before relationship. A dependency waits for all portions of its
+predecessors and for their deferred commands. Commands publish on the calling
+thread in system registration order, then query table/portion order. Use
+`main_thread_only` for thread-affine or global APIs; it runs exclusively on the
+calling thread.
+
+A system without `parallel` has at most one active callback. `parallel` opts in
+to concurrent callbacks over disjoint portions of one table, at most `chunk_size`
+rows each (zero selects 1024). It requires an unordered entity query and
+read-only resources, and excludes `main_thread_only` and `no_defer`. Captures,
+user data, lifecycle callbacks and external state must then support concurrent
+invocation. Global registration, query/observer configuration, serialization
+and nested scheduling are forbidden inside parallel callbacks. An entity created
+there has its handle reserved immediately but becomes query-visible only when
+the scheduler publishes commands; reserved handles can vary between runs.
 Component conflicts need overlapping matching tables; resource conflicts are
 world-wide. Filters alone do not declare component data access. Observer/nested
 helper accesses must be declared on the enclosing system, including resources.

@@ -1,6 +1,6 @@
 # API catalogue
 
-Core API reference based on the public headers at revision `6f0c925`.
+Core API reference based on the public headers at revision `f63d167`.
 
 Select a subject; search within its file for the symbol you need. The catalogue
 includes public descriptors and fields, enum values, helper macros, C ABI
@@ -15,6 +15,7 @@ functions, and C++ overloads. Application patterns live in the usage guides.
 | queries | [C](c-queries.md) | [C++](cpp-queries.md) |
 | systems | [C](c-systems.md) | [C++](cpp-systems.md) |
 | relations | [C](c-relations.md) | [C++](cpp-relations.md) |
+| pairs | [C](c-pairs.md) | [C ABI](c-pairs.md) |
 | inheritance | [C](c-inheritance.md) | [C++](cpp-inheritance.md) |
 | events | [C](c-events.md) | [C++](cpp-events.md) |
 | modules | [C](c-modules.md) | [C++](cpp-modules.md) |
@@ -23,8 +24,8 @@ functions, and C++ overloads. Application patterns live in the usage guides.
 
 C member paths use `Type.field` to identify descriptor fields. C enum values
 are global identifiers. C++ methods are grouped with their owning type; inherited
-`query_filter` methods are in the queries catalogue. Debug-only declarations
-are marked. Macro definitions/expansion internals are intentionally omitted.
+`query_filter` methods are in the queries catalogue. Macro definitions/expansion
+internals are intentionally omitted.
 
 Types and helpers from `ecs::detail`, private/protected members, internal runtime
 headers, include guards, and temporary preprocessor switches are implementation

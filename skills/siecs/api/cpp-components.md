@@ -24,7 +24,7 @@ The C ABI remains available. Operations without a typed facade use the
 - `ecs::component_options` — `template <typename T> struct component_options`
 - `ecs::component_options::hooks` — `component_hooks<T> hooks{}`
 - `ecs::component_options::inheritance` — `ecs_component_inheritance_t inheritance = EcsInheritOwned`
-- `ecs::component_options::mutation` — `ecs_component_mutation_t mutation = EcsMutable` (debug only)
+- `ecs::component_options::mutation` — `ecs_component_mutation_t mutation = EcsMutable`
 - `ecs::component_ref` — `template <typename T> class component_ref`
 - `ecs::component_ref::component_ref<T>` — `explicit constexpr component_ref(ecs_component_t id) noexcept`
 - `ecs::component_ref::id` — `[[nodiscard]] constexpr ecs_component_t id() const noexcept`
@@ -52,8 +52,7 @@ Function-like macros show invocation shape, not their implementation.
 - `ECS_COMPONENT_REGISTER` — `ECS_COMPONENT_REGISTER(...)`
 - `ECS_COMPONENT_REGISTER_ONE` — `ECS_COMPONENT_REGISTER_ONE(cname)`
 - `ECS_CTOR` — `ECS_CTOR(cname,...)`
-- `ECS_SET_ONLY` — `ECS_SET_ONLY` (release only)
-- `ECS_SET_ONLY` — `ECS_SET_ONLY .mutation = EcsSetOnly,` (debug only)
+- `ECS_SET_ONLY` — `ECS_SET_ONLY .mutation = EcsSetOnly,`
 - `ECS_TAG` — `ECS_TAG(cname)`
 - `ECS_TAG_DECLARE` — `ECS_TAG_DECLARE(cname)`
 - `ECS_TAG_DEFINE` — `ECS_TAG_DEFINE(cname,...)`

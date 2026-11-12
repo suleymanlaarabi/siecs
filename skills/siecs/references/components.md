@@ -25,5 +25,6 @@ component descriptors derive layout from field declarations. Introspection
 returns borrowed metadata. Native C++ types need reflected field declarations
 when tooling/serialization needs structure. See [scenes](scenes.md).
 
-Inheritance policy belongs to component registration. Debug-only `EcsSetOnly`
-rejects mutable access; use `set` consistently in every configuration.
+Inheritance policy belongs to component registration. So does the mutation
+policy: `EcsSetOnly` is always present in descriptors and metadata, and debug
+builds reject mutable access. Use `set` consistently in every configuration.

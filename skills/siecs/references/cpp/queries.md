@@ -68,6 +68,25 @@ The builder's raw `.optional<T>()` is distinct from a callback's
 `ecs::optional<T>`; do not add both for the same T. Raw iteration follows the
 [C field/defer rules](../c/queries.md#fields).
 
+## Change detection
+
+```cpp
+ecs::system("SyncTransforms")
+    .changed<Position>()
+    .each([](const Position &p, Transform &t) { t.x = p.x; });
+
+auto dirty = ecs::query<const Velocity&>().changed<Velocity>().build();
+dirty.each([](const Velocity &v) { /* Only tables changed since the last each(). */ (void)v; });
+```
+
+`.changed<T...>()` is a shared builder filter for queries and systems; T must
+also appear as a callback argument. Detection is per table, and a
+persistent handle tracks its own last run: the first `each()` visits everything,
+later ones only changed tables. Use a built handle or a system; a temporary
+`query().each()` has no previous run to compare with. `entity.set`,
+`ecs_modified_cid` and other systems' `T&` writes count as changes; direct
+`edit<T>()` writes need `ecs_modified_cid`. [Change rules](../queries.md).
+
 ## Iteration behavior
 
 Callback references and optional values automatically handle shared versus owned

@@ -68,4 +68,24 @@ run in reverse registration order after workers stop and before entity/resource
 teardown. Do not register another fini callback from one. `ecs_world_current()`
 returns the active opaque world; it is not a multi-world creation API.
 
+## Synchronization callbacks
+
+```c
+static void mirror(void *context) { /* World is consistent; refresh a view. */ (void)context; }
+
+ecs_sync_id_t handle = ecs_sync_register(mirror, state);
+ecs_sync_begin();
+ecs_set(entity, Position, { 1 });
+ecs_set(entity, Velocity, { 2 });
+ecs_sync_end();              /* mirror runs once here, not after each set. */
+ecs_sync_unregister(handle);
+```
+
+Without a group, the callback runs after every complete immediate mutation.
+`ecs_sync()` runs the callbacks now, unless called inside a sync group, a defer
+scope or a sync callback. The context pointer is borrowed
+until unregistration. Begin/end only group notifications: writes and observers
+still happen immediately, so use `ecs_defer_begin/end` to delay mutations.
+`ecs_component_dynamic_redefine` must be called at such a main-thread boundary.
+
 [World semantics](../world.md) · [API](../../api/c-world.md)

@@ -25,11 +25,16 @@ for (uint32_t id = 1; id < ecs_component_count(); id++) {
 ```
 
 Component info contains `.name`, `.size`, reflected `.type` handle,
-`.reflection` descriptor, `.inheritance`, and debug-only `.mutation`. Resource
+`.reflection` descriptor, `.inheritance`, and `.mutation`. Resource
 info has `.name`, `.size`, `.type`, `.reflection`. Relation info has `.name` and
 `.desc` (`storage`, `on_delete_target`, `acyclic`). A registered resource id does
-not imply a live resource value; use `ecs_has_resource_rid` after confirming
-`ecs_resource_is_registered_rid`.
+not imply a live resource value; use `ecs_has_resource_id` after confirming
+`ecs_resource_is_registered_id`.
+
+`ecs_entity_component_ids(entity, &count)` returns the component ids an entity
+owns. The array is borrowed until that entity changes archetype; copy it before
+adding or removing components. Relations are not listed: inspect them through
+the relation APIs.
 
 ## Reflected fields
 

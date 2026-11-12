@@ -13,6 +13,8 @@ Use systems for recurring bulk processing rather than issuing an event per row.
 | `OnRemove` | Borrowed previous component data for the removal reaction |
 | `OnRelationSet` | Relation, old target, new target; after add/retarget |
 | `OnRelationRemove` | Relation, old target, zero new target; before removal |
+| `OnPairSet` | Pair id, payload component and value; after a pair add/set/modified |
+| `OnPairRemove` | Pair id, payload component and removed value; after the row is removed |
 | Custom | Caller-supplied payload, borrowed for the callback |
 
 Component hooks and observers differ: `on_set` hooks run before the final copy;
@@ -29,5 +31,14 @@ releases owned callback state once.
 
 Deferred structural/set mutations emit at flush and can coalesce; explicit custom
 emission and `modified` notify synchronously even inside a defer scope.
+An observer batch delays every callback until the outermost batch ends. Builtin
+event payloads are then owned snapshots, observers are matched against the
+emitter's table at emission time, and callbacks read the final world when
+delivered. Custom event payloads stay borrowed and must outlive the batch. An
+observer removed before delivery receives nothing. A batch groups notifications
+only; it is not a transaction and provides no rollback. A component observed in
+a batch needs a copy operation: move-only owning types supply a dedicated
+`snapshot` type operation. Pair events are described in [pairs](pairs.md).
+
 Observer order is not a system pipeline. Keep callback data and captures alive,
 avoid recursive event loops, and copy payloads if they must outlive a callback.

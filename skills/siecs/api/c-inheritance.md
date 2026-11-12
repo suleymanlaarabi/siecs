@@ -5,6 +5,7 @@
 ## Functions
 
 - `ecs_abstract` — `void ecs_abstract(ecs_entity_t entity)`
+- `ecs_component_override_tag` — `ecs_component_t ecs_component_override_tag(ecs_component_t component)`
 - `ecs_entity_base` — `ecs_entity_t ecs_entity_base(ecs_entity_t entity)`
 - `ecs_is` — `bool ecs_is(ecs_entity_t entity, ecs_entity_t target)`
 - `ecs_is_a` — `void ecs_is_a(ecs_entity_t entity, ecs_entity_t target)`

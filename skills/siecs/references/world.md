@@ -27,6 +27,14 @@ commands can coalesce to a final state, so callbacks are not an operation log.
 Manual C iteration needs a defer scope for structural changes; normal systems
 and C++ query callbacks provide one.
 
+Synchronization callbacks let an integration (a tool, a script host, a mirror
+of ECS state) react once the world is consistent. They run on the main thread
+after each complete immediate mutation, after an outer deferred flush and after
+progression, never on scheduler workers. A sync group merges several immediate
+operations into one boundary; unlike deferral it does not delay storage writes
+or observers. Callbacks may mutate the world; synchronization nested inside a
+callback is suppressed. Handles belong to the world that issued them.
+
 Use nullable lookups for expected absence. APIs requiring registered types,
 live handles, or present data have programmer contracts, often debug assertions;
 release mode does not make violations valid.

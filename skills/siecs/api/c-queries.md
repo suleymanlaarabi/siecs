@@ -7,7 +7,10 @@
 - `ecs_field` — `static inline void *ecs_field(ecs_iter_t *it, uint16_t field_index)`
 - `ecs_field_is_shared` — `static inline bool ecs_field_is_shared(ecs_iter_t *it, uint16_t field_index)`
 - `ecs_field_kind` — `static inline ecs_field_kind_t ecs_field_kind(const ecs_iter_t *it, uint16_t field_index)`
+- `ecs_iter_changed` — `bool ecs_iter_changed(const ecs_iter_t *it, uint16_t field_index)`
 - `ecs_iter_next` — `bool ecs_iter_next(ecs_iter_t *it)`
+- `ecs_iter_structure_changed` — `bool ecs_iter_structure_changed(const ecs_iter_t *it)`
+- `ecs_iter_table_id` — `uint16_t ecs_iter_table_id(const ecs_iter_t *it)`
 - `ecs_order_by_depth_id` — `ecs_query_order_t ecs_order_by_depth_id(ecs_relation_id_t relation)`
 - `ecs_order_by_target_id` — `ecs_query_order_t ecs_order_by_target_id(ecs_relation_id_t relation)`
 - `ecs_query_count` — `uint32_t ecs_query_count(ecs_query_id_t query_id)`
@@ -41,14 +44,21 @@ iterator/field helpers; do not mutate its cache or internal row/table state.
 - `EcsFieldOwned` — `EcsFieldOwned`
 - `EcsFieldShared` — `EcsFieldShared`
 - `ecs_iter_t` — `typedef struct { /* fields below */ } ecs_iter_t`
+- `ecs_iter_t.bounded` — `bool bounded`
 - `ecs_iter_t.cache` — `struct ecs_query_cache_s *cache`
+- `ecs_iter_t.commit` — `bool commit`
 - `ecs_iter_t.count` — `uint32_t count`
 - `ecs_iter_t.delta_time` — `float delta_time`
 - `ecs_iter_t.entities` — `ecs_entity_t *entities`
 - `ecs_iter_t.field_kind_bits` — `uint32_t field_kind_bits`
+- `ecs_iter_t.field_storage` — `void *field_storage[ECS_QUERY_TERM_CAPACITY + ECS_QUERY_RELATION_CAPACITY + 2]`
+- `ecs_iter_t.last_run` — `uint64_t last_run`
 - `ecs_iter_t.ptrs` — `void **ptrs`
+- `ecs_iter_t.row_limit` — `uint32_t row_limit`
+- `ecs_iter_t.row_offset` — `uint32_t row_offset`
 - `ecs_iter_t.table_count` — `uint16_t table_count`
 - `ecs_iter_t.table_idx` — `uint16_t table_idx`
+- `ecs_iter_t.tick` — `uint64_t tick`
 - `ecs_iter_t.user_data` — `uintptr_t user_data`
 - `ecs_query_desc_t` — `typedef struct { /* fields below */ } ecs_query_desc_t`
 - `ecs_query_desc_t.components` — `ecs_component_term_t components[ECS_QUERY_TERM_CAPACITY]`
@@ -80,11 +90,14 @@ Function-like macros show invocation shape, not their implementation.
 - `ECS_QUERY_RELATION_CAPACITY` — `ECS_QUERY_RELATION_CAPACITY 8`
 - `ECS_QUERY_TERM_CAPACITY` — `ECS_QUERY_TERM_CAPACITY 16`
 - `ECS_QUERY_UP_ACCESS` — `ECS_QUERY_UP_ACCESS(access,relation)`
+- `ECS_TERM_CHANGED` — `ECS_TERM_CHANGED (UINT32_C(1) << 24)`
 - `ecs_depth` — `ecs_depth(name,value)`
 - `ecs_filter` — `ecs_filter(cname)`
 - `ecs_in` — `ecs_in(cname)`
+- `ecs_in_changed` — `ecs_in_changed(cname)`
 - `ecs_in_optional` — `ecs_in_optional(cname)`
 - `ecs_inout` — `ecs_inout(cname)`
+- `ecs_inout_changed` — `ecs_inout_changed(cname)`
 - `ecs_inout_optional` — `ecs_inout_optional(cname)`
 - `ecs_not` — `ecs_not(cname)`
 - `ecs_not_rel` — `ecs_not_rel(name)`

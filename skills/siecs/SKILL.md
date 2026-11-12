@@ -1,6 +1,6 @@
 ---
 name: siecs
-description: Write and review application code using SIECS's C17 or C++20 API. Use for SIECS components, queries, systems, relations, modules, events, and scenes.
+description: Write and review application code using SIECS's C17 or C++20 API. Use for SIECS entities, components, resources, queries, change detection, systems, relations, typed pairs, inheritance, modules, events, scenes, and introspection.
 ---
 
 # SIECS
@@ -35,16 +35,19 @@ For an unfamiliar symbol, search `api/` by name; its [index](api/README.md) grou
 
 | Need | C17 | C++20 |
 | --- | --- | --- |
-| Build, initialize, stop, defer | [world](references/c/world.md) | [world](references/cpp/world.md) |
+| Build, initialize, stop, defer, synchronization callbacks | [world](references/c/world.md) | [world](references/cpp/world.md) |
 | Entities, names, paths, enabled state | [entities](references/c/entities.md) | [entities](references/cpp/entities.md) |
 | Components, tags, requirements, hooks, reflection | [components](references/c/components.md) | [components](references/cpp/components.md) |
+| Raw descriptors, type operations, dynamic components | [registration](references/c/registration.md) | [registration](references/c/registration.md) |
 | World resources | [resources](references/c/resources.md) | [resources](references/cpp/resources.md) |
 | All selection filters and combinations | [filters](references/c/filters.md) | [filters](references/cpp/filters.md) |
-| Queries, optional fields, ordering, ancestor access | [queries](references/c/queries.md) | [queries](references/cpp/queries.md) |
-| Systems, phases, workers, intervals | [systems](references/c/systems.md) | [systems](references/cpp/systems.md) |
+| Queries, optional fields, ordering, ancestor access, change detection | [queries](references/c/queries.md) | [queries](references/cpp/queries.md) |
+| Whole-column batch parameters | [queries](references/c/queries.md) | [batches](references/cpp/batches.md) |
+| Systems, phases, workers, parallel portions, intervals | [systems](references/c/systems.md) | [systems](references/cpp/systems.md) |
 | Relations, hierarchy, targets, cleanup | [relations](references/c/relations.md) | [relations](references/cpp/relations.md) |
+| Typed pairs: many targets with payload values | [pairs](references/pairs.md) | [pairs](references/pairs.md) |
 | Templates, IsA, shared/owned inheritance | [inheritance](references/c/inheritance.md) | [inheritance](references/cpp/inheritance.md) |
-| Observers and custom events | [events](references/c/events.md) | [events](references/cpp/events.md) |
+| Observers, custom events, batched delivery | [events](references/c/events.md) | [events](references/cpp/events.md) |
 | Modules and dynamic imports | [modules](references/c/modules.md) | [modules](references/cpp/modules.md) |
 | Scene serialization and introspection | [scenes](references/c/scenes.md) | [scenes](references/cpp/scenes.md) |
 | Registry enumeration and reflected fields | [introspection](references/introspection.md) | [introspection](references/introspection.md) |

@@ -15,7 +15,9 @@ Raw registration uses `ecs_resource_desc_t`, hooks, and type operations.
 
 Use `get_resource_read/try_get_resource_read` for const access, mutable forms
 for writes, `has_resource` for presence, and `remove_resource` for cleanup.
-The `_rid` APIs operate on dynamic ids and include copy/move setters.
+For dynamic ids use the `_id` forms: `ecs_set_resource_id` (copy),
+`ecs_move_resource_id`, `ecs_get_resource_id`, `ecs_try_get_resource_id`,
+`ecs_has_resource_id` and `ecs_remove_resource_id`.
 Registry count/find/name/info and registration-presence APIs support tools.
 For full descriptors, hook signatures and storage operations, use
 [registration](registration.md); for id enumeration, [introspection](../introspection.md).

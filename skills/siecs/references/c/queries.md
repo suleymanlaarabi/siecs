@@ -54,6 +54,30 @@ owned storage; optional writable terms can be absent despite a shared value.
 `EcsOut` still requires presence and does not add a component. Field pointers,
 entity arrays and relation views are borrowed for the current batch only.
 
+## Change detection
+
+```c
+ecs_query_id_t dirty = ecs_query({
+    .components = { ecs_in_changed(Position), ecs_in(Velocity) },
+});
+ecs_iter_t it = ecs_query_iter(dirty);
+while (ecs_iter_next(&it)) {
+    if (ecs_iter_structure_changed(&it)) { /* Rows were added, removed or moved. */ }
+    if (ecs_iter_changed(&it, 0)) { /* Position column or rows changed. */ }
+}
+```
+
+A persistent query remembers its last completed run, so the next iteration
+returns only tables changed since then; the first run returns everything.
+Run the loop to completion: leaving early does not record the run.
+`ecs_iter_changed(&it, field)` reports one field of the current batch and is
+always true for a field this query writes. `ecs_query_count` ignores change
+filters and records nothing. `ecs_iter_table_id(&it)` is a table id that is the
+same in every query and stable for the world's lifetime, and `it.row_offset` is
+the table row of `it.entities[0]`; use them to key external per-table caches.
+In a system the same terms skip unchanged tables on each run.
+[Change rules](../queries.md).
+
 ## Structural edits and early exit
 
 For an existing live query id, defer around the whole iteration:

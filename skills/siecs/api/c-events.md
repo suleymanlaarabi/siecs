@@ -8,6 +8,8 @@ Every `.query` option uses the shared [C filter table](../references/c/filters.m
 
 - `ecs_event` — `ecs_event_t ecs_event(void)`
 - `ecs_event_register` — `ecs_event_t ecs_event_register(ecs_event_t *id)`
+- `ecs_observer_batch_begin` — `void ecs_observer_batch_begin(void)`
+- `ecs_observer_batch_end` — `void ecs_observer_batch_end(void)`
 - `ecs_observer_disable` — `void ecs_observer_disable(ecs_observer_id_t id)`
 - `ecs_observer_enable` — `void ecs_observer_enable(ecs_observer_id_t id)`
 - `ecs_observer_fini` — `void ecs_observer_fini(ecs_observer_id_t id)`
@@ -42,6 +44,8 @@ Every `.query` option uses the shared [C filter table](../references/c/filters.m
 Function-like macros show invocation shape, not their implementation.
 
 - `EcsOnAdd` — `EcsOnAdd 0`
+- `EcsOnPairRemove` — `EcsOnPairRemove 6`
+- `EcsOnPairSet` — `EcsOnPairSet 5`
 - `EcsOnRelationRemove` — `EcsOnRelationRemove 4`
 - `EcsOnRelationSet` — `EcsOnRelationSet 3`
 - `EcsOnRemove` — `EcsOnRemove 1`

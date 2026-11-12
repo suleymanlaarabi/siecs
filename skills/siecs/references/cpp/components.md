@@ -20,7 +20,7 @@ Native non-trivial types infer the supported lifecycle operations. Trivially
 copyable types use zero/memcpy storage; do not rely on default member initializers
 being run by `add<T>()`.
 Install `component_hooks<T>` or `component_options<T>` before first use; options
-include inheritance and the debug-only mutation field. Do not replace those
+include inheritance and the mutation policy. Do not replace those
 options by registering the same type again later.
 
 For reflection, declare fields with `reflected(...)` inside the struct; keep
@@ -44,9 +44,10 @@ Hook callbacks are function pointers, so use non-capturing lambdas:
 `on_add/on_remove` have signature `void(ecs_entity_t, T&)`, and `on_set` has
 `void(ecs_entity_t, const T&, T&)`. C-declared types retain their C descriptor
 hooks; typed options cannot replace them. Native options contain `.hooks`,
-`.inheritance` and debug-only `.mutation`. Install them before any entity/query
-or requirement implicitly registers T. `ECS_SET_ONLY` can populate `.mutation`
-portably inside a descriptor/options initializer; it expands away in release.
+`.inheritance` and `.mutation` (`EcsMutable` by default). Install them before
+any entity/query or requirement implicitly registers T. `ECS_SET_ONLY` expands
+to `.mutation = EcsSetOnly,` inside a descriptor/options initializer in every
+configuration; debug builds enforce it.
 
 ## Entity data operations
 

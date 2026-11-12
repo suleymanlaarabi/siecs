@@ -11,6 +11,10 @@ ecs_add(actor, Disabled);
 ecs_remove(actor, Disabled);
 ```
 
+Inside a parallel system callback `ecs_new()` reserves the handle immediately,
+but the entity enters query-visible tables only when the scheduler publishes
+commands; components added before that are deferred with it.
+
 `ecs_lookup_from` resolves relative paths. Check zero on lookup failure;
 `ecs_is_alive` validates an existing world handle. `ecs_entity_id/generation`
 extract fields; `ecs_entity_from_index` resolves the currently live generation.

@@ -29,6 +29,7 @@ Callback forms and custom parameter hooks: [parameters](../references/cpp/parame
 - `ecs::system::interval` — `system &interval(double seconds)`
 - `ecs::system::main_thread` — `system &main_thread()`
 - `ecs::system::no_defer` — `system &no_defer()`
+- `ecs::system::parallel` — `system &parallel(uint32_t chunk_size = 0)`
 - `ecs::system::phase` — `system &phase(ecs_phase_t _phase)`
 - `ecs::system::system` — `explicit system(const char *name = "unnamed")`
 - `ecs::system_param_query` — `class system_param_query`
@@ -47,7 +48,7 @@ Callback forms and custom parameter hooks: [parameters](../references/cpp/parame
 
 Function-like macros show invocation shape, not their implementation.
 
-- `ECS_PHASE_NONE` — `ECS_PHASE_NONE ((ecs_phase_t) - 1)`
+- `ECS_PHASE_NONE` — `ECS_PHASE_NONE ((ecs_phase_t)0)`
 - `ECS_SYSTEM_AFTER_CAPACITY` — `ECS_SYSTEM_AFTER_CAPACITY 16`
 - `ecs_phase` — `ecs_phase(...)`
 - `ecs_system` — `ecs_system(...)`

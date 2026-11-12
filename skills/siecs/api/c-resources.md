@@ -4,19 +4,19 @@
 
 ## Functions
 
-- `ecs_has_resource_rid` — `bool ecs_has_resource_rid(const ecs_resource_t id)`
-- `ecs_move_resource_rid` — `void ecs_move_resource_rid(ecs_resource_t id, void *data)`
-- `ecs_remove_resource_rid` — `void ecs_remove_resource_rid(ecs_resource_t id)`
+- `ecs_get_resource_id` — `void *ecs_get_resource_id(ecs_resource_t id)`
+- `ecs_has_resource_id` — `bool ecs_has_resource_id(const ecs_resource_t id)`
+- `ecs_move_resource_id` — `void ecs_move_resource_id(ecs_resource_t id, void *data)`
+- `ecs_remove_resource_id` — `void ecs_remove_resource_id(ecs_resource_t id)`
 - `ecs_resource_count` — `uint32_t ecs_resource_count(void)`
 - `ecs_resource_find` — `ecs_resource_t ecs_resource_find(const char *name)`
 - `ecs_resource_info` — `const ecs_resource_info_t *ecs_resource_info(ecs_resource_t resource)`
 - `ecs_resource_init` — `ecs_resource_t ecs_resource_init(const ecs_resource_desc_t *desc)`
-- `ecs_resource_is_registered_rid` — `bool ecs_resource_is_registered_rid(ecs_resource_t id)`
+- `ecs_resource_is_registered_id` — `bool ecs_resource_is_registered_id(ecs_resource_t id)`
 - `ecs_resource_name` — `const char *ecs_resource_name(ecs_resource_t resource)`
 - `ecs_resource_register` — `ecs_resource_t ecs_resource_register(ecs_resource_t *id, const ecs_resource_desc_t *desc)`
-- `ecs_resource_rid` — `void *ecs_resource_rid(ecs_resource_t id)`
-- `ecs_set_resource_rid` — `void ecs_set_resource_rid(ecs_resource_t id, const void *data)`
-- `ecs_try_resource_rid` — `void *ecs_try_resource_rid(ecs_resource_t id)`
+- `ecs_set_resource_id` — `void ecs_set_resource_id(ecs_resource_t id, const void *data)`
+- `ecs_try_get_resource_id` — `void *ecs_try_get_resource_id(ecs_resource_t id)`
 
 ## Types and members
 

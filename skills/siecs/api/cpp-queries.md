@@ -25,6 +25,7 @@ The C ABI remains available. Operations without a typed facade use the
 - `ecs::query::each` — `template <typename F> void each(F &&func)`
 - `ecs::query::first` — `entity first()`
 - `ecs::query_filter` — `template <typename Derived> class query_filter`
+- `ecs::query_filter::changed` — `template <typename... T> Derived &changed()`
 - `ecs::query_filter::depth` — `template <typename Relation> Derived &depth(uint32_t value)`
 - `ecs::query_filter::is_a` — `Derived &is_a(ecs_entity_t target)`
 - `ecs::query_filter::is_a` — `Derived &is_a(entity target)`

@@ -49,8 +49,9 @@ Declare actual access on any enclosing scheduled system as well.
 
 ## Component lifecycle events
 
-Builtin ids are `EcsOnAdd`, `EcsOnSet`, `EcsOnRemove`, `EcsOnRelationSet` and
-`EcsOnRelationRemove`. Their [payload/timing table](../events.md) distinguishes
+Builtin ids are `EcsOnAdd`, `EcsOnSet`, `EcsOnRemove`, `EcsOnRelationSet`,
+`EcsOnRelationRemove`, and for [typed pairs](../pairs.md) `EcsOnPairSet` and
+`EcsOnPairRemove`. Their [payload/timing table](../events.md) distinguishes
 incoming values, current storage and removal state. Example for exact Health
 changes (assuming Health has an `int value` field):
 
@@ -91,6 +92,22 @@ The relation payload is `.relation`, `.old_target`, `.new_target`; `.component`
 is zero. RelationSet matches the new table/target; RelationRemove matches the
 pre-removal state. To track leaving a group by retargeting, inspect old/new in
 the payload rather than requiring the old target in the observer's query.
+
+## Batched delivery
+
+```c
+ecs_observer_batch_begin();
+ecs_set(entity, Health, { 10 });
+ecs_set(entity, Health, { 20 });
+ecs_observer_batch_end(); /* Callbacks run here, with snapshot payloads. */
+```
+
+Batches nest; delivery happens when the outermost one ends. Builtin payloads
+are owned snapshots released after delivery, so `trigger_data` stays valid even
+though storage moved on; reading the entity returns its final state. Payloads
+passed to `ecs_observer_trigger` are not copied: keep them alive until the batch
+ends. Snapshots use `.ops.snapshot`, falling back to `.ops.copy_ctor`, and are
+released through `.ops.dtor`. [Batch semantics](../events.md).
 
 ## Targeting, filters and lifetime
 

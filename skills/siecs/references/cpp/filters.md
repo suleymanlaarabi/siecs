@@ -9,6 +9,7 @@ policies before any filter lazily registers that relation as `Dense`.
 | --- | --- |
 | `.with<A, B...>()` | Require component/tag presence without a returned field |
 | `.without<A, B...>()` | Require component/tag absence |
+| `.changed<T...>()` | Skip tables where none of these components changed since the last run; each T must also be a callback argument |
 | `.optional<T...>()` | Append raw optional writable fields; see raw-field caveat below |
 | `.is_a(base)` | Require `IsA` ancestry; accepts `ecs::entity` or `ecs_entity_t` |
 | `.with_relation<R>()` | Require an R edge, with any target |
@@ -51,6 +52,8 @@ One component/relation may appear only once, except these deliberate merges:
 
 - A callback component argument replaces a matching `.with<T>()` filter with its
   inferred access. In particular `optional<T>` makes that term optional.
+- A callback component argument merges with `.changed<T>()`: the argument
+  supplies the access and the term keeps its change filter.
 - `ecs::target<R>` reuses a required/exact-target/depth term; it rejects an
   excluded or optional relation. For optional targets, take `ecs::entity` and
   call `entity.target<R>()`, checking for zero; do not wrap `target<R>` in

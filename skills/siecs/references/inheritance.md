@@ -15,6 +15,11 @@ Choose each component's policy at registration:
 - `EcsInheritShared` resolves read-only data from the base. A local override
   gives the instance owned storage. Mutable queries do not write shared storage.
 
+A base can override the policy per component: the component's override tag
+requests an owned copy on instantiation even when its registered policy is
+shared. The tag is itself a component added to the base; it propagates to
+descendants and does not change instances that already exist.
+
 On a new `IsA` target, SIECS recursively snapshots the base's owned `ChildOf`
 subtree. Each generated child belongs to the generated parent and inherits from
 its corresponding source child. Reapplying the same target is a no-op.

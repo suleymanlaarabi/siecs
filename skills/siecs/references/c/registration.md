@@ -18,7 +18,8 @@ ECS_COMPONENT_REGISTER(Position);
 Use `ECS_TAG_DECLARE/DEFINE` for size-zero presence markers. Component/resource
 definitions accept descriptor overrides such as `.ops`, `.on_set`, `.on_remove`;
 components additionally accept `.on_add` and `.inheritance`.
-`ECS_SET_ONLY` sets the debug-only mutation policy and expands away in release.
+`ECS_SET_ONLY` expands to `.mutation = EcsSetOnly,` in every configuration; the
+field is always part of the descriptor, and the policy is enforced in debug builds.
 
 Raw registration uses `ecs_component_init(&desc)` (or `ecs_component({...})`),
 `ecs_component_register(&id, &desc)`, `ecs_resource_init(&desc)` or
@@ -35,7 +36,7 @@ resource storage. Use raw descriptors for dynamic names or custom lifecycle.
 | `.on_set` | `void(entity, component_id, const void *incoming, void *current)` | `void(const void *incoming)` |
 | `.on_remove` | `void(entity, component_id, void *value)` | `void(const void *previous)` |
 | `.inheritance` | Owned by default; `EcsInheritShared` for readonly defaults | Not available |
-| `.mutation` | Debug-only `EcsMutable` / `EcsSetOnly` | Not available |
+| `.mutation` | `EcsMutable` (default) / `EcsSetOnly`; enforced in debug builds | Not available |
 
 Component on_set runs before copying/moving the value; OnSet observers also
 receive incoming data before replacement. Resource on_set sees the incoming
@@ -53,6 +54,8 @@ their own or retain pointers after the call.
 | `.copy` | Same as copy_ctor | Already initialized storage |
 | `.move_ctor` | `void(void *dst, void *src, uint32_t count)` | Uninitialized storage; consume source |
 | `.move` | Same as move_ctor | Already initialized storage; consume source |
+| `.snapshot` | Same as copy_ctor | Owning copy for delayed observer payloads; defaults to copy_ctor |
+| `.reflected_type` | `sireflect_handle_t` | Derive lifecycle from reflection; explicit callbacks win |
 
 Handle every row in count, not just one. Implement assignment separately from
 construction so replacing an owned value releases its previous allocation.
@@ -62,6 +65,15 @@ no copy hook it falls back to memcpy. Missing ordinary operations are zero-init,
 memcpy and no destruction, not a deep-copy implementation.
 These operations are also used by table migration and deferred-value storage.
 Do not combine owning pointers with plain memcpy lifecycle defaults.
+
+`.reflected_type` gives a reflected type a native recursive lifecycle for its
+strings, arrays, vectors and nested structures; non-string pointers stay
+borrowed. `ecs_reflected_ops(type)` returns such operations without allocating
+a component id. For values held outside ECS storage, use
+`ecs_reflected_value_copy(type, dst, src, construct)` (construct is true for
+uninitialized destinations), `ecs_reflected_value_equal(type, a, b)` and
+`ecs_reflected_value_fini(type, value)`. A move-only owning type must supply
+`.snapshot` to be observed inside an [observer batch](../events.md).
 
 ## Dynamic schema and requirements
 
@@ -80,6 +92,14 @@ registration can reuse a compatible reflected type; don't rely on fresh identity
 for repeated declarations. Use `_cid` access and raw query terms for these ids.
 For an explicitly sized/reflected type with custom operations, use the full
 component descriptor instead.
+
+`ecs_component_dynamic_redefine(point, "{ double x; double y; }")` replaces a
+dynamic component's layout in place. The id and each entity's presence are kept,
+old values are destroyed and the new columns are zero-initialized; existing
+queries rebind their fields. Call it at a main-thread synchronization boundary
+and reacquire every borrowed pointer and metadata layout afterward. It returns
+false and changes nothing when the declaration is invalid, and rejects static
+C/C++ types.
 
 `ecs_with(A, B, C)` makes adding A materialize B and C. Raw equivalent:
 `ecs_with_many(a_id, b_id, c_id, 0)`. Requirements must be acyclic and declared
