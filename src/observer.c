@@ -1,3 +1,4 @@
+#include "datastructure/arena.h"
 #include "module.h"
 #include "siecs.h"
 #include "storage/observer_index.h"
@@ -20,7 +21,7 @@ typedef struct {
 typedef struct {
     ecs_pair_event_t event;
     ecs_type_ops_t ops;
-    max_align_t alignment;
+    ecs_arena_max_align_t alignment;
     unsigned char value[];
 } ecs_pair_snapshot_t;
 

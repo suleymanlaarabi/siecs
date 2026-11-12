@@ -10210,7 +10210,7 @@ typedef struct {
 typedef struct {
     ecs_pair_event_t event;
     ecs_type_ops_t ops;
-    max_align_t alignment;
+    ecs_arena_max_align_t alignment;
     unsigned char value[];
 } ecs_pair_snapshot_t;
 
@@ -10891,7 +10891,7 @@ bool ecs_pair_apply(ecs_entity_t entity, ecs_pair_id_t pair, ecs_pair_op_t op, c
     if (owner && owner->retiring && op != EcsPairRemove)
         return false;
     pair_entry_t *location = entry(entity, pair);
-    _Alignas(max_align_t) unsigned char temporary[256];
+    _Alignas(ecs_arena_max_align_t) unsigned char temporary[256];
     if (op == EcsPairRemove) {
         if (!location)
             return true;

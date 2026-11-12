@@ -333,7 +333,7 @@ bool ecs_pair_apply(ecs_entity_t entity, ecs_pair_id_t pair, ecs_pair_op_t op, c
     if (owner && owner->retiring && op != EcsPairRemove)
         return false;
     pair_entry_t *location = entry(entity, pair);
-    _Alignas(max_align_t) unsigned char temporary[256];
+    _Alignas(ecs_arena_max_align_t) unsigned char temporary[256];
     if (op == EcsPairRemove) {
         if (!location)
             return true;
