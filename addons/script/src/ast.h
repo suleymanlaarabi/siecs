@@ -84,7 +84,6 @@ typedef struct ecs_script_var_node_t {
     const char *type;
     ecs_expr_node_t *expr;
     bool is_await;
-    bool type_is_template;
     bool type_is_vector;
 } ecs_script_var_node_t;
 typedef struct ecs_script_if_t {

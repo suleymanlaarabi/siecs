@@ -90,7 +90,6 @@ static ecs_expr_node_t *primary(ecs_parser_t *parser) {
         script_lex(parser);
         ecs_expr_initializer_t *value = script_parse_arguments(parser, kind == '{' ? '}' : ']');
         value->node.pos = token.begin;
-        value->is_collection = kind == '[';
         return (ecs_expr_node_t *)value;
     }
     if (kind == EcsTokString && siecs_string_is_interpolated(token.value)) {

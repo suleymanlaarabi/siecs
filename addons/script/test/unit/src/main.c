@@ -101,6 +101,7 @@ void Instance_prefab_reparented_descendants_restore(void);
 void Language_typed_functions_and_captures(void);
 void Language_mutable_function_locals(void);
 void Language_collection_iteration_and_indexing(void);
+void Language_iteration_boundaries(void);
 void Language_includes_keep_lexical_declarations(void);
 void Language_owning_strings_and_template_properties(void);
 void Language_try_catch_rolls_back_scope(void);
@@ -120,6 +121,7 @@ void Async_typed_host_task(void);
 void Async_reload_keeps_identical_continuation(void);
 void Async_cancellation_and_late_result(void);
 void Async_loops_and_zero_delay(void);
+void Async_iteration_boundaries_and_collections(void);
 void Async_controlled_clock(void);
 void Async_clock_switch_preserves_remaining_delay(void);
 void Async_inherited_templates(void);
@@ -488,6 +490,10 @@ bake_test_case Language_testcases[] = {
         Language_collection_iteration_and_indexing
     },
     {
+        "iteration_boundaries",
+        Language_iteration_boundaries
+    },
+    {
         "includes_keep_lexical_declarations",
         Language_includes_keep_lexical_declarations
     },
@@ -557,6 +563,10 @@ bake_test_case Async_testcases[] = {
     {
         "loops_and_zero_delay",
         Async_loops_and_zero_delay
+    },
+    {
+        "iteration_boundaries_and_collections",
+        Async_iteration_boundaries_and_collections
     },
     {
         "controlled_clock",
@@ -738,14 +748,14 @@ static bake_test_suite suites[] = {
         "Language",
         NULL,
         NULL,
-        15,
+        16,
         Language_testcases
     },
     {
         "Async",
         NULL,
         NULL,
-        22,
+        23,
         Async_testcases
     },
     {

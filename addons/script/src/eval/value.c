@@ -421,8 +421,7 @@ static int eval_expression(script_eval_t *ctx, const ecs_expr_node_t *expr, scri
         out->type = script_backend_type_lookup("string");
         out->storage.string = (char *)((const ecs_expr_script_t *)expr)->script->code;
         return 0;
-    case EcsExprInitializer:
-    case EcsExprEmptyInitializer: {
+    case EcsExprInitializer: {
         const ecs_expr_initializer_t *initializer = (const ecs_expr_initializer_t *)expr;
         out->collection = true;
         out->count = initializer->elements.size;
@@ -788,7 +787,7 @@ int script_value_write(
     const sireflect_type_info_t *info = sireflect_type_info(type);
     if (!info)
         return script_eval_error(ctx, expr->pos, "unknown reflected type");
-    if (expr->kind == EcsExprInitializer || expr->kind == EcsExprEmptyInitializer) {
+    if (expr->kind == EcsExprInitializer) {
         const ecs_expr_initializer_t *init = (const ecs_expr_initializer_t *)expr;
         const ecs_expr_initializer_element_t *elements = init->elements.data;
         if (info->kind == sireflect_kind_vector)

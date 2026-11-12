@@ -114,6 +114,33 @@ typedef struct script_eval_t {
     uint32_t template_depth;
 } script_eval_t;
 
+typedef struct script_iteration_t {
+    int64_t current;
+    int64_t end;
+    script_value_t collection;
+    sireflect_handle_t range_type;
+} script_iteration_t;
+
+/* Capture lexical bindings without taking ownership of their values. */
+script_variable_t *script_capture_variables(script_eval_t *ctx, uint32_t *count);
+int script_iteration_init(
+    script_eval_t *ctx,
+    const ecs_script_for_t *node,
+    script_iteration_t *iteration
+);
+/* Bind the next element and advance; false once the iteration is exhausted. */
+bool script_iteration_next(
+    script_eval_t *ctx,
+    const ecs_script_for_t *node,
+    script_iteration_t *iteration
+);
+void script_field_append(
+    ecs_strbuf_t *description,
+    sireflect_handle_t type,
+    const char *name,
+    size_t count
+);
+
 int script_annotations_apply(script_eval_t *ctx, ecs_entity_t entity);
 ecs_entity_t script_resolve_entity(script_eval_t *ctx, const char *name);
 ecs_component_t script_resolve_component(script_eval_t *ctx, const char *name);

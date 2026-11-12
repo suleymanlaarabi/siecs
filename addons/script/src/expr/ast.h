@@ -5,7 +5,6 @@ typedef enum ecs_expr_node_kind_t {
     EcsExprValue,
     EcsExprInterpolatedString,
     EcsExprInitializer,
-    EcsExprEmptyInitializer,
     EcsExprUnary,
     EcsExprBinary,
     EcsExprIdentifier,
@@ -50,13 +49,11 @@ typedef struct ecs_expr_binary_t {
 } ecs_expr_binary_t;
 typedef struct ecs_expr_initializer_element_t {
     const char *member;
-    ecs_expr_node_t *key;
     ecs_expr_node_t *value;
 } ecs_expr_initializer_element_t;
 typedef struct ecs_expr_initializer_t {
     ecs_expr_node_t node;
     sicore_vec_t elements;
-    bool is_collection;
 } ecs_expr_initializer_t;
 typedef struct ecs_expr_member_t {
     ecs_expr_node_t node;

@@ -458,9 +458,7 @@ bool script_instance_region_replay(
     /* Preserve the subtree, including dependency ownership. If its parent is
      * invalidated next time, the unchanged descendants can still be scheduled. */
     for (uint32_t i = index; i < region->children_end; i++) {
-        script_region_t copy = regions[i];
-        copy.name = copy.name ? script_strdup(copy.name) : NULL;
-        copy.result = script_context_clone(copy.result);
+        script_region_t copy = script_region_clone(&regions[i]);
         copy.children_end = next_id - 1 + copy.children_end - index;
 #define REBASE_RANGE(field)                                                                        \
     copy.field##_begin =                                                                           \
@@ -484,19 +482,13 @@ bool script_instance_region_replay(
         }
     }
     for (uint32_t i = region->reads_begin; i < region->reads_end; i++) {
-        script_read_t copy = reads[i];
+        script_read_t copy = script_read_clone(&reads[i]);
         copy.region = next_id + copy.region - (index + 1);
-        if (copy.snapshot) {
-            copy.snapshot = calloc(1, sireflect_type_size(copy.type));
-            assert(copy.snapshot != NULL);
-            ecs_reflected_value_copy(copy.type, copy.snapshot, reads[i].snapshot, true);
-        }
         sicore_vec_push(&transaction->reads, &copy, sizeof copy);
     }
     for (uint32_t i = region->lookups_begin; i < region->lookups_end; i++) {
-        script_lookup_t copy = lookups[i];
+        script_lookup_t copy = script_lookup_clone(&lookups[i]);
         copy.region = next_id + copy.region - (index + 1);
-        copy.name = script_strdup(copy.name);
         sicore_vec_push(&transaction->lookups, &copy, sizeof copy);
     }
     for (uint32_t i = region->produced_begin; i < region->produced_end; i++)
@@ -524,8 +516,7 @@ bool script_instance_region_replay(
         sicore_vec_push(&transaction->prefabs, &prefabs[i], sizeof prefabs[i]);
     const script_identity_t *identities = active->identities.data;
     for (uint32_t i = region->identities_begin; i < region->identities_end; i++) {
-        script_identity_t copy = identities[i];
-        copy.source = script_strdup(copy.source);
+        script_identity_t copy = script_identity_clone(&identities[i]);
         sicore_vec_push(&transaction->identities, &copy, sizeof copy);
     }
     if (region->result) {

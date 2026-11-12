@@ -18,7 +18,6 @@ typedef struct script_staged_entity_t {
     ecs_entity_t handle;
     ecs_entity_t parent;
     char *name;
-    bool abstract;
 } script_staged_entity_t;
 typedef struct script_staged_type_t {
     ecs_component_t handle;
@@ -88,6 +87,13 @@ typedef struct script_identity_t {
     ecs_entity_t parent;
     ecs_entity_t entity;
 } script_identity_t;
+
+script_read_t script_read_clone(const script_read_t *source);
+script_lookup_t script_lookup_clone(const script_lookup_t *source);
+script_identity_t script_identity_clone(const script_identity_t *source);
+/* Captures still alias the source; the caller assigns the copy's owned captures. */
+script_region_t script_region_clone(const script_region_t *source);
+
 typedef struct script_transaction_t {
     sicore_vec_t entities;
     sicore_vec_t types;

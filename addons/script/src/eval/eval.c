@@ -89,8 +89,6 @@ eval_id(script_eval_t *ctx, const ecs_script_id_t *id, const ecs_expr_node_t *va
         const ecs_component_info_t *info = script_backend_component_info(component);
         size_t size = sizeof(ECS_AUTO_OVERRIDE_PREFIX) + strlen(info->name);
         char *name = script_alloc(&ctx->values, size);
-        if (!name)
-            return script_eval_error(ctx, NULL, "out of memory");
         snprintf(name, size, "%s%s", ECS_AUTO_OVERRIDE_PREFIX, info->name);
         ecs_component_t marker = script_backend_component_lookup(name);
         if (!marker)
@@ -120,13 +118,11 @@ eval_id(script_eval_t *ctx, const ecs_script_id_t *id, const ecs_expr_node_t *va
     sireflect_handle_t type = info->type;
     size_t size = (size_t)info->size;
     void *buffer = script_alloc(&ctx->values, size);
-    if (!buffer)
-        return script_eval_error(ctx, value->pos, "out of memory");
     const void *old =
         partial ? script_transaction_get(script_transaction_active, ctx->entity, component) : NULL;
     script_backend_value_init(component, buffer, old);
     int result;
-    if (value->kind == EcsExprInitializer || value->kind == EcsExprEmptyInitializer) {
+    if (value->kind == EcsExprInitializer) {
         result = script_value_write(ctx, value, type, buffer);
     } else {
         script_value_t source;
@@ -140,8 +136,7 @@ eval_id(script_eval_t *ctx, const ecs_script_id_t *id, const ecs_expr_node_t *va
     }
     if (!result) {
         uint8_t *members = NULL;
-        if (partial &&
-            (value->kind == EcsExprInitializer || value->kind == EcsExprEmptyInitializer)) {
+        if (partial && value->kind == EcsExprInitializer) {
             const sireflect_fields_t *fields = sireflect_type_fields(type);
             if (fields->field_count) {
                 members = script_alloc(&ctx->values, fields->field_count);
@@ -168,6 +163,33 @@ eval_id(script_eval_t *ctx, const ecs_script_id_t *id, const ecs_expr_node_t *va
     }
     script_backend_value_fini(component, buffer);
     return result;
+}
+
+static void append_array_length(ecs_strbuf_t *description, size_t length) {
+    char suffix[32];
+    snprintf(suffix, sizeof suffix, "[%zu]", length);
+    ecs_strbuf_appendstr(description, suffix);
+}
+
+void script_field_append(
+    ecs_strbuf_t *description,
+    sireflect_handle_t type,
+    const char *name,
+    size_t count
+) {
+    sireflect_handle_t element = type;
+    while (sireflect_type_info(element)->kind == sireflect_kind_array)
+        element = sireflect_type_info(element)->element_type;
+    ecs_strbuf_appendstr(description, sireflect_type_name(element));
+    ecs_strbuf_appendch(description, ' ');
+    ecs_strbuf_appendstr(description, name);
+    if (count)
+        append_array_length(description, count);
+    for (const sireflect_type_info_t *info = sireflect_type_info(type);
+         info->kind == sireflect_kind_array;
+         info = sireflect_type_info(info->element_type))
+        append_array_length(description, info->element_count);
+    ecs_strbuf_appendstr(description, "; ");
 }
 
 static int append_struct_member(
@@ -211,15 +233,7 @@ static int append_struct_member(
         return script_eval_error(ctx, expression->pos, "unknown member type '%s'", name);
     if (count && sireflect_type_size(type) > SIZE_MAX / count)
         return script_eval_error(ctx, expression->pos, "array size out of range");
-    ecs_strbuf_appendstr(fields, sireflect_type_name(type));
-    ecs_strbuf_appendch(fields, ' ');
-    ecs_strbuf_appendstr(fields, member);
-    if (count) {
-        char suffix[32];
-        snprintf(suffix, sizeof suffix, "[%u]", (uint32_t)count);
-        ecs_strbuf_appendstr(fields, suffix);
-    }
-    ecs_strbuf_appendstr(fields, "; ");
+    script_field_append(fields, type, member, (size_t)count);
     return 0;
 }
 
@@ -232,8 +246,7 @@ static int eval_struct(script_eval_t *ctx, ecs_script_entity_t *entity) {
         if (entity->scope->stmts.size != 1 || nodes[0]->kind != EcsAstComponent)
             return script_eval_error(ctx, entity->node.pos, "expected a struct member list");
         const ecs_expr_node_t *expression = ((const ecs_script_component_t *)nodes[0])->expr;
-        if (!expression ||
-            (expression->kind != EcsExprInitializer && expression->kind != EcsExprEmptyInitializer))
+        if (!expression || expression->kind != EcsExprInitializer)
             return script_eval_error(ctx, entity->node.pos, "expected a struct member list");
         initializer = (const ecs_expr_initializer_t *)expression;
     }
@@ -331,31 +344,37 @@ script_pair_expressions(script_eval_t *ctx, const ecs_script_pair_scope_t *pair)
     return scope;
 }
 
+script_variable_t *script_capture_variables(script_eval_t *ctx, uint32_t *count) {
+    uint32_t locals = ctx->variables.size - ctx->variable_base;
+    *count = ctx->capture_count + locals;
+    if (!*count)
+        return NULL;
+    script_variable_t *captures = script_alloc(&ctx->values, *count * sizeof(*captures));
+    if (ctx->capture_count)
+        memcpy(captures, ctx->captures, ctx->capture_count * sizeof(*captures));
+    if (locals)
+        memcpy(
+            captures + ctx->capture_count,
+            (script_variable_t *)ctx->variables.data + ctx->variable_base,
+            locals * sizeof(*captures)
+        );
+    return captures;
+}
+
 void script_with_scope_push(
     script_eval_t *ctx,
     ecs_script_scope_t *expressions,
     const ecs_script_pair_scope_t *pair
 ) {
     script_with_frame_t *frame = script_alloc(&ctx->values, sizeof(*frame));
-    *frame = (script_with_frame_t){
-        .previous = ctx->with,
-        .expressions = pair ? script_pair_expressions(ctx, pair) : expressions,
-        .capture_count = ctx->capture_count + ctx->variables.size - ctx->variable_base,
-        .pair = pair,
-        .program = ctx->script,
-        .functions = ctx->functions,
-        .imports = ctx->imports
-    };
-    frame->captures = script_alloc(&ctx->values, frame->capture_count * sizeof(script_variable_t));
-    if (ctx->capture_count)
-        memcpy(frame->captures, ctx->captures, ctx->capture_count * sizeof(script_variable_t));
-    uint32_t locals = ctx->variables.size - ctx->variable_base;
-    if (locals)
-        memcpy(
-            frame->captures + ctx->capture_count,
-            (script_variable_t *)ctx->variables.data + ctx->variable_base,
-            locals * sizeof(script_variable_t)
-        );
+    *frame = (script_with_frame_t){ .previous = ctx->with,
+                                    .expressions =
+                                        pair ? script_pair_expressions(ctx, pair) : expressions,
+                                    .pair = pair,
+                                    .program = ctx->script,
+                                    .functions = ctx->functions,
+                                    .imports = ctx->imports };
+    frame->captures = script_capture_variables(ctx, &frame->capture_count);
     ctx->with = frame;
 }
 
@@ -381,7 +400,7 @@ int script_entity_scope_begin(script_eval_t *ctx, const ecs_script_entity_t *ent
         script_region_t *regions = script_transaction_active->regions.data;
         script_region_t *region = &regions[script_transaction_active->region - 1];
         if (region->node == &entity->node)
-            region->name = name ? script_strdup(name) : NULL;
+            region->name = script_strdup(name);
     }
     ecs_entity_t output = !name && ctx->instance && script_transaction_active
                               ? script_instance_anonymous(
@@ -466,72 +485,79 @@ static int eval_var(script_eval_t *ctx, ecs_script_var_node_t *node) {
     return 0;
 }
 
-static int eval_for(script_eval_t *ctx, ecs_script_for_t *node) {
-    if (!node->from || !node->to) {
-        script_value_t collection;
-        if (script_eval_expr(ctx, node->expr, &collection))
+int script_iteration_init(
+    script_eval_t *ctx,
+    const ecs_script_for_t *node,
+    script_iteration_t *iteration
+) {
+    *iteration = (script_iteration_t){ 0 };
+    if (node->from && node->to) {
+        if (node->loop_var_count != 1)
+            return script_eval_error(ctx, node->node.pos, "range requires one iteration variable");
+        iteration->range_type = script_backend_type_lookup("int64_t");
+        if (script_value_write(ctx, node->from, iteration->range_type, &iteration->current) ||
+            script_value_write(ctx, node->to, iteration->range_type, &iteration->end))
             return -1;
-        if (!collection.collection || node->loop_var_count > 2)
-            return script_eval_error(
-                ctx,
-                node->node.pos,
-                "expected collection with one value or (index, value) binding"
-            );
-        uint32_t previous_size = ctx->variables.size;
-        ctx->loop_depth++;
-        int result = 0;
-        for (uint32_t i = 0; i < collection.count; i++) {
-            if (!ctx->instruction_budget) {
-                result = script_eval_error(ctx, node->node.pos, "instruction budget exhausted");
-                break;
-            }
-            ctx->instruction_budget--;
-            if (node->loop_var_count == 2) {
-                script_variable_t index = {
-                    .name = node->loop_vars[0],
-                    .value = { .type = script_backend_type_lookup("uint64_t"), .storage.u64 = i }
-                };
-                sicore_vec_push(&ctx->variables, &index, sizeof index);
-            }
-            script_variable_t item = { .name = node->loop_vars[node->loop_var_count - 1],
-                                       .value = script_collection_at(&collection, i) };
-            sicore_vec_push(&ctx->variables, &item, sizeof item);
-            result = script_eval_scope(ctx, node->scope);
-            ctx->variables.size = previous_size;
-            if (result < 0)
-                break;
-            result = 0;
-        }
-        ctx->loop_depth--;
-        return result;
+        return 0;
     }
-    if (node->loop_var_count != 1)
-        return script_eval_error(ctx, node->node.pos, "range requires one iteration variable");
-    int32_t from = 0, to = 0;
-    sireflect_handle_t type = script_backend_type_lookup("int32_t");
-    if (script_value_write(ctx, node->from, type, &from) ||
-        script_value_write(ctx, node->to, type, &to))
+    if (script_eval_expr(ctx, node->expr, &iteration->collection))
+        return -1;
+    if (!iteration->collection.collection || node->loop_var_count > 2)
+        return script_eval_error(
+            ctx,
+            node->node.pos,
+            "expected collection with one value or (index, value) binding"
+        );
+    iteration->end = iteration->collection.count;
+    return 0;
+}
+
+bool script_iteration_next(
+    script_eval_t *ctx,
+    const ecs_script_for_t *node,
+    script_iteration_t *iteration
+) {
+    if (iteration->current >= iteration->end)
+        return false;
+    if (iteration->collection.collection && node->loop_var_count == 2) {
+        script_variable_t index = { .name = node->loop_vars[0],
+                                    .value = { .type = script_backend_type_lookup("uint64_t"),
+                                               .storage.u64 = (uint64_t)iteration->current } };
+        sicore_vec_push(&ctx->variables, &index, sizeof index);
+    }
+    script_variable_t value = {
+        .name = node->loop_vars[node->loop_var_count - 1],
+        .value = iteration->collection.collection
+                     ? script_collection_at(&iteration->collection, (uint32_t)iteration->current)
+                     : (script_value_t){ .type = iteration->range_type,
+                                         .storage.i64 = iteration->current }
+    };
+    sicore_vec_push(&ctx->variables, &value, sizeof value);
+    iteration->current++;
+    return true;
+}
+
+static int eval_for(script_eval_t *ctx, ecs_script_for_t *node) {
+    script_iteration_t iteration;
+    if (script_iteration_init(ctx, node, &iteration))
         return -1;
     uint32_t count = ctx->variables.size;
-    script_variable_t variable = { .name = node->loop_vars[0], .value.type = type };
-    sicore_vec_push(&ctx->variables, &variable, sizeof variable);
     ctx->loop_depth++;
     int result = 0;
-    for (int32_t i = from; i < to; i++) {
+    while (script_iteration_next(ctx, node, &iteration)) {
         if (!ctx->instruction_budget) {
             result = script_eval_error(ctx, node->node.pos, "instruction budget exhausted");
             break;
         }
         ctx->instruction_budget--;
-        script_variable_t *variables = ctx->variables.data;
-        memcpy(&variables[count].value.storage, &i, sizeof i);
         result = script_eval_scope(ctx, node->scope);
         if (result < 0)
             break;
         result = 0; /* Continue exits only the current loop body. */
+        ctx->variables.size = count;
     }
-    ctx->loop_depth--;
     ctx->variables.size = count;
+    ctx->loop_depth--;
     return result;
 }
 
@@ -573,8 +599,7 @@ static bool compile_region_expression(
                 return false;
         return true;
     }
-    case EcsExprInitializer:
-    case EcsExprEmptyInitializer: {
+    case EcsExprInitializer: {
         const ecs_expr_initializer_t *init = (const ecs_expr_initializer_t *)expr;
         const ecs_expr_initializer_element_t *items = init->elements.data;
         for (uint32_t i = 0; i < init->elements.size; i++)
@@ -871,24 +896,7 @@ static int execute_function(script_eval_t *ctx, const ecs_script_node_t *node) {
     function->node = (const ecs_script_function_node_t *)node;
     function->program = ctx->script;
     function->next = ctx->functions;
-    function->capture_count = ctx->capture_count + ctx->variables.size - ctx->variable_base;
-    if (function->capture_count) {
-        function->captures =
-            script_alloc(&ctx->values, function->capture_count * sizeof(script_variable_t));
-        if (ctx->capture_count)
-            memcpy(
-                function->captures,
-                ctx->captures,
-                ctx->capture_count * sizeof(script_variable_t)
-            );
-        uint32_t locals = ctx->variables.size - ctx->variable_base;
-        if (locals)
-            memcpy(
-                function->captures + ctx->capture_count,
-                (script_variable_t *)ctx->variables.data + ctx->variable_base,
-                locals * sizeof(script_variable_t)
-            );
-    }
+    function->captures = script_capture_variables(ctx, &function->capture_count);
     ctx->functions = function;
     return 0;
 }
@@ -1028,16 +1036,13 @@ int script_eval_node(script_eval_t *ctx, const ecs_script_node_t *node) {
     return execute_region(ctx, node, instruction_handler(node->kind));
 }
 
-static int compile_scope(ecs_script_scope_t *scope, void *data) {
+static int compile_scope(ecs_script_scope_t *scope, ecs_script_impl_t *impl) {
     if (scope->instructions)
         return 0;
-    ecs_script_impl_t *impl = data;
     if (!scope->stmts.size)
         return 0;
     scope->instructions =
         script_alloc(&impl->allocator, scope->stmts.size * sizeof(script_instruction_t));
-    if (!scope->instructions)
-        return -1;
     ecs_script_node_t **nodes = scope->stmts.data;
     for (uint32_t i = 0; i < scope->stmts.size; i++) {
         if (nodes[i]->kind == EcsAstAnnotation &&

@@ -37,8 +37,6 @@ typedef enum script_literal_kind_t {
 #include "ast.h"
 #include "expr/ast.h"
 
-typedef int (*siecs_script_scope_action_t)(ecs_script_scope_t *scope, void *ctx);
-
 struct ecs_script_impl_t {
     ecs_script_t pub;
     atomic_uint references;

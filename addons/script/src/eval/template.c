@@ -27,24 +27,6 @@ static bool property_type_supported(sireflect_handle_t type) {
            info->kind == sireflect_kind_char || info->kind == sireflect_kind_enum;
 }
 
-static void
-append_property_field(ecs_strbuf_t *description, sireflect_handle_t type, const char *name) {
-    sireflect_handle_t element = type;
-    while (sireflect_type_info(element)->kind == sireflect_kind_array)
-        element = sireflect_type_info(element)->element_type;
-    ecs_strbuf_appendstr(description, sireflect_type_name(element));
-    ecs_strbuf_appendch(description, ' ');
-    ecs_strbuf_appendstr(description, name);
-    for (const sireflect_type_info_t *info = sireflect_type_info(type);
-         info->kind == sireflect_kind_array;
-         info = sireflect_type_info(info->element_type)) {
-        char count[32];
-        snprintf(count, sizeof count, "[%zu]", info->element_count);
-        ecs_strbuf_appendstr(description, count);
-    }
-    ecs_strbuf_appendstr(description, "; ");
-}
-
 static const sireflect_fields_t *template_fields(const script_template_t *definition) {
     const ecs_component_info_t *info = script_backend_component_info(definition->component);
     static const sireflect_fields_t empty;
@@ -89,7 +71,7 @@ int script_template_declare(script_eval_t *ctx, const ecs_script_template_node_t
     ecs_strbuf_t description = ECS_STRBUF_INIT;
     ecs_strbuf_appendstr(&description, "{ ");
     for (size_t i = 0; i < inherited->field_count; i++)
-        append_property_field(&description, inherited->fields[i].type, inherited->fields[i].name);
+        script_field_append(&description, inherited->fields[i].type, inherited->fields[i].name, 0);
     ecs_script_node_t **statements = node->scope->stmts.data;
     for (uint32_t i = 0; i < node->scope->stmts.size; i++) {
         if (statements[i]->kind != EcsAstProp)
@@ -126,8 +108,7 @@ int script_template_declare(script_eval_t *ctx, const ecs_script_template_node_t
         }
         if (type && prop->type_is_vector)
             type = sireflect_vector_type(type);
-        if (prop->type_is_template || !property_type_supported(type) ||
-            (overridden && overridden->type != type)) {
+        if (!property_type_supported(type) || (overridden && overridden->type != type)) {
             free(ecs_strbuf_get(&description));
             return script_eval_error(
                 ctx,
@@ -137,7 +118,7 @@ int script_template_declare(script_eval_t *ctx, const ecs_script_template_node_t
             );
         }
         if (!overridden) {
-            append_property_field(&description, type, prop->name);
+            script_field_append(&description, type, prop->name, 0);
             prop_count++;
         }
     }
@@ -164,8 +145,6 @@ int script_template_declare(script_eval_t *ctx, const ecs_script_template_node_t
             node->name
         );
     script_template_t *template = script_alloc(&ctx->values, sizeof(*template));
-    if (!template)
-        return script_eval_error(ctx, node->node.pos, "out of memory");
     *template = (script_template_t){ .base = base,
                                      .node = node,
                                      .program = ctx->script,
@@ -173,26 +152,7 @@ int script_template_declare(script_eval_t *ctx, const ecs_script_template_node_t
                                      .functions = ctx->functions,
                                      .imports = ctx->imports,
                                      .next = ctx->templates };
-    template->capture_count = ctx->capture_count + ctx->variables.size - ctx->variable_base;
-    if (template->capture_count) {
-        template->captures =
-            script_alloc(&ctx->values, template->capture_count * sizeof(script_variable_t));
-        if (!template->captures)
-            return script_eval_error(ctx, node->node.pos, "out of memory");
-        if (ctx->capture_count)
-            memcpy(
-                template->captures,
-                ctx->captures,
-                ctx->capture_count * sizeof(script_variable_t)
-            );
-        uint32_t locals = ctx->variables.size - ctx->variable_base;
-        if (locals)
-            memcpy(
-                template->captures + ctx->capture_count,
-                (script_variable_t *)ctx->variables.data + ctx->variable_base,
-                locals * sizeof(script_variable_t)
-            );
-    }
+    template->captures = script_capture_variables(ctx, &template->capture_count);
     ctx->templates = template;
     return 0;
 }
@@ -271,13 +231,11 @@ int script_template_eval(
     size_t count = fields->field_count;
     void *buffer = script_alloc(&ctx->values, (size_t)info.size);
     bool *supplied = script_alloc(&ctx->values, count * sizeof(bool));
-    if (!buffer || (count && !supplied))
-        return script_eval_error(ctx, ctx->position, "out of memory");
     script_backend_value_init(template->component, buffer, NULL);
     int status = 0;
     /* Arguments are evaluated in the caller's lexical frame, before binding props. */
     if (arguments) {
-        if (arguments->kind != EcsExprInitializer && arguments->kind != EcsExprEmptyInitializer) {
+        if (arguments->kind != EcsExprInitializer) {
             status = script_value_write(ctx, arguments, info.type, buffer);
             if (!status)
                 memset(supplied, true, count);

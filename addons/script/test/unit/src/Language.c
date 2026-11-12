@@ -59,6 +59,42 @@ void Language_collection_iteration_and_indexing(void) {
     ecs_fini();
 }
 
+void Language_iteration_boundaries(void) {
+    const char *source =
+        "struct Value(x: i64)\n"
+        "for i in 2147483647..2147483649 { \"High_$i\" { Value: {$i} } }\n"
+        "for i in -2147483650..-2147483648 { \"Low_$i\" { Value: {$i} } }\n"
+        "for i in 9223372036854775806..9223372036854775807 { Last { Value: {$i} } }\n"
+        "for i in 5..2 { Unexpected {} }\n"
+        "for (index, item) in [] { Unexpected {} }\n"
+        "for (index, item) in [10, 20] { if $index == 0 { continue }\n"
+        "\"Item_$index\" { Value: {$item} } }";
+    for (int mode = 0; mode < 2; mode++) {
+        ecs_init();
+        ecs_script_eval_desc_t desc = { .ir = mode != 0 };
+        ecs_script_eval_result_t result = { 0 };
+        test_int(ecs_script_run_w_desc("iteration.si", source, &desc, &result), 0);
+        test_true(result.error == NULL);
+        ecs_component_t component = ecs_component_lookup("Value");
+        test_int(
+            *(const int64_t *)ecs_get_cid(ecs_lookup("High_2147483648"), component),
+            2147483648LL
+        );
+        test_int(
+            *(const int64_t *)ecs_get_cid(ecs_lookup("Low_-2147483650"), component),
+            -2147483650LL
+        );
+        test_int(*(const int64_t *)ecs_get_cid(ecs_lookup("Last"), component), INT64_MAX - 1);
+        test_int(*(const int64_t *)ecs_get_cid(ecs_lookup("Item_1"), component), 20);
+        test_uint(ecs_lookup("Unexpected"), 0);
+        test_uint(ecs_lookup("Item_0"), 0);
+        test_int(run("for (index, item) in 0..2 { Invalid {} }"), -1);
+        test_int(run("for item in 42 { Invalid {} }"), -1);
+        test_uint(ecs_lookup("Invalid"), 0);
+        ecs_fini();
+    }
+}
+
 void Language_includes_keep_lexical_declarations(void) {
     const char *path = "native-script-include.si";
     FILE *file = fopen(path, "wb");

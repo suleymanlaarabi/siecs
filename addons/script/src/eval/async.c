@@ -145,9 +145,7 @@ typedef struct script_task_frame_t {
     uint32_t cursor;
     uint32_t variable_count;
     uint32_t import_count, function_count, template_count;
-    int64_t iteration;
-    int64_t end;
-    script_value_t collection;
+    script_iteration_t iteration;
     ecs_entity_t entity;
     ecs_entity_t parent;
     bool restore_entity;
@@ -1496,8 +1494,8 @@ restart_segment:;
     const script_task_frame_t *old_frames = block->frames.data;
     for (uint32_t i = 0; i < block->frames.size; i++) {
         script_task_frame_t frame = old_frames[i];
-        if (frame.collection.collection)
-            frame.collection = copy_script_value(&next, &frame.collection);
+        if (frame.iteration.collection.collection)
+            frame.iteration.collection = copy_script_value(&next, &frame.iteration.collection);
         sicore_vec_push(&frames, &frame, sizeof frame);
     }
     script_transaction_t transaction;
@@ -1532,32 +1530,11 @@ restart_segment:;
         script_task_frame_t *frame = &((script_task_frame_t *)frames.data)[frames.size - 1];
         if (frame->loop) {
             const ecs_script_for_t *loop = frame->loop;
-            if (frame->iteration >= frame->end) {
+            next.variables.size = frame->variable_count;
+            if (!script_iteration_next(&next, loop, &frame->iteration)) {
                 pop_frame(&next, &frames);
                 continue;
             }
-            next.variables.size = frame->variable_count;
-            if (frame->collection.collection) {
-                if (loop->loop_var_count == 2) {
-                    script_variable_t index = { .name = loop->loop_vars[0],
-                                                .value = {
-                                                    .type = script_backend_type_lookup("uint64_t"),
-                                                    .storage.u64 = (uint64_t)frame->iteration } };
-                    sicore_vec_push(&next.variables, &index, sizeof index);
-                }
-                script_variable_t value = {
-                    .name = loop->loop_vars[loop->loop_var_count - 1],
-                    .value = script_collection_at(&frame->collection, (uint32_t)frame->iteration)
-                };
-                sicore_vec_push(&next.variables, &value, sizeof value);
-            } else {
-                script_variable_t value = { .name = loop->loop_vars[0],
-                                            .value = { .type =
-                                                           script_backend_type_lookup("int64_t"),
-                                                       .storage.i64 = frame->iteration } };
-                sicore_vec_push(&next.variables, &value, sizeof value);
-            }
-            frame->iteration++;
             uint32_t base = frame->variable_count;
             push_frame(&frames, loop->scope, &next);
             ((script_task_frame_t *)frames.data)[frames.size - 1].variable_count = base;
@@ -1634,28 +1611,7 @@ restart_segment:;
         } else if (node->kind == EcsAstFor) {
             const ecs_script_for_t *loop = (const ecs_script_for_t *)node;
             script_task_frame_t iteration = { .loop = loop, .variable_count = next.variables.size };
-            if (loop->from && loop->to) {
-                status = script_value_write(
-                    &next,
-                    loop->from,
-                    script_backend_type_lookup("int64_t"),
-                    &iteration.iteration
-                );
-                if (!status)
-                    status = script_value_write(
-                        &next,
-                        loop->to,
-                        script_backend_type_lookup("int64_t"),
-                        &iteration.end
-                    );
-                if (loop->loop_var_count != 1)
-                    status = script_eval_error(&next, node->pos, "range requires one binding");
-            } else {
-                status = script_eval_expr(&next, loop->expr, &iteration.collection);
-                if (!status && (!iteration.collection.collection || loop->loop_var_count > 2))
-                    status = script_eval_error(&next, node->pos, "invalid collection iteration");
-                iteration.end = iteration.collection.count;
-            }
+            status = script_iteration_init(&next, loop, &iteration.iteration);
             frame->cursor++;
             if (!status)
                 sicore_vec_push(&frames, &iteration, sizeof iteration);

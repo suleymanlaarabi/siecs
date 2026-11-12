@@ -32,6 +32,10 @@ template <typename T> class script_task {
 };
 
 namespace detail {
+inline bool script_contains_null(std::string_view text) noexcept {
+    return text.find('\0') != std::string_view::npos;
+}
+
 template <typename T> sireflect_handle_t script_host_type() {
     using type = std::remove_cv_t<T>;
     if constexpr (std::is_same_v<type, bool>)
@@ -81,7 +85,7 @@ template <typename R, typename... Args>
 ) {
     static_assert(std::is_default_constructible_v<R> && std::is_copy_constructible_v<R>);
     static_assert((!std::is_reference_v<Args> && ...));
-    if (!start || name.empty() || name.find('\0') != std::string_view::npos)
+    if (!start || name.empty() || detail::script_contains_null(name))
         return false;
     using binding = detail::script_task_binding<R, Args...>;
     auto context = std::make_unique<binding>(binding{ std::move(start), std::move(cancel) });
@@ -207,10 +211,6 @@ class [[nodiscard]] script {
                  options.instruction_budget };
     }
 
-    static bool contains_null(std::string_view text) noexcept {
-        return text.find('\0') != std::string_view::npos;
-    }
-
   public:
     script(const script &) = delete;
     script &operator=(const script &) = delete;
@@ -220,7 +220,7 @@ class [[nodiscard]] script {
     /** Copy and parse the given source; inspect error() if the returned handle is empty. */
     [[nodiscard]] static script parse(std::string_view source, std::string_view name = "<script>") {
         script value;
-        if (contains_null(source) || contains_null(name)) {
+        if (detail::script_contains_null(source) || detail::script_contains_null(name)) {
             value._result = script_result("script source and name must not contain null bytes");
             return value;
         }
@@ -259,7 +259,7 @@ class [[nodiscard]] script {
 
     [[nodiscard]] static script_result
     run_file(std::string_view filename, const script_options &options = {}) {
-        if (contains_null(filename))
+        if (detail::script_contains_null(filename))
             return script_result("script filename must not contain null bytes");
         if (options.runtime && !*options.runtime)
             return script_result("cannot evaluate with an empty script runtime");
@@ -283,10 +283,6 @@ class [[nodiscard]] script_document {
 
     script_document() = default;
 
-    static bool contains_null(std::string_view text) noexcept {
-        return text.find('\0') != std::string_view::npos;
-    }
-
   public:
     script_document(const script_document &) = delete;
     script_document &operator=(const script_document &) = delete;
@@ -296,7 +292,7 @@ class [[nodiscard]] script_document {
     [[nodiscard]] static script_document
     create(std::string_view source, std::string_view name = "<script>") {
         script_document value;
-        if (contains_null(source) || contains_null(name)) {
+        if (detail::script_contains_null(source) || detail::script_contains_null(name)) {
             value._result = script_result("source and name must not contain null bytes");
             return value;
         }
@@ -316,7 +312,7 @@ class [[nodiscard]] script_document {
     [[nodiscard]] std::string_view name() const noexcept { return get() ? get()->name : ""; }
 
     [[nodiscard]] script_result edit(size_t offset, size_t length, std::string_view replacement) {
-        if (contains_null(replacement))
+        if (detail::script_contains_null(replacement))
             return script_result("replacement must not contain null bytes");
         const std::string text(replacement), filename(name());
         ecs_script_eval_result_t result{};
@@ -329,7 +325,7 @@ class [[nodiscard]] script_document {
     [[nodiscard]] bool redo() noexcept { return ecs_script_document_redo(_document.get()); }
 
     [[nodiscard]] script_result save(std::string_view filename) const {
-        if (contains_null(filename))
+        if (detail::script_contains_null(filename))
             return script_result("filename must not contain null bytes");
         const std::string path(filename);
         ecs_script_eval_result_t result{};
@@ -358,9 +354,6 @@ class [[nodiscard]] script_instance {
     std::string _name;
 
     script_instance() = default;
-    static bool contains_null(std::string_view text) noexcept {
-        return text.find('\0') != std::string_view::npos;
-    }
     static ecs_script_instance_desc_t descriptor(const script_instance_options &options) noexcept {
         return { options.parent,
                  options.instruction_budget,
@@ -380,7 +373,7 @@ class [[nodiscard]] script_instance {
         const script_instance_options &options = {}
     ) {
         script_instance value;
-        if (contains_null(source) || contains_null(name)) {
+        if (detail::script_contains_null(source) || detail::script_contains_null(name)) {
             value._result = script_result("source and name must not contain null bytes");
             return value;
         }
@@ -398,7 +391,7 @@ class [[nodiscard]] script_instance {
     [[nodiscard]] static script_instance
     load(std::string_view filename, const script_instance_options &options = {}) {
         script_instance value;
-        if (contains_null(filename)) {
+        if (detail::script_contains_null(filename)) {
             value._result = script_result("filename must not contain null bytes");
             return value;
         }
@@ -433,7 +426,7 @@ class [[nodiscard]] script_instance {
         return script_result(status, result, program ? program->name : _name);
     }
     [[nodiscard]] script_result reload(std::string_view source) {
-        if (contains_null(source))
+        if (detail::script_contains_null(source))
             return script_result("source must not contain null bytes");
         const std::string text(source);
         ecs_script_eval_result_t result{};

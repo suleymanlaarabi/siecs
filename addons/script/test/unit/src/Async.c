@@ -214,6 +214,35 @@ void Async_loops_and_zero_delay(void) {
 
 static double controlled_time(void *context) { return *(double *)context; }
 
+void Async_iteration_boundaries_and_collections(void) {
+    setup();
+    ecs_script_instance_t *instance = ecs_script_instance_run(
+        "iteration.si",
+        "async {\n"
+        "for i in 2147483647..2147483649 { await sleep(0)\n"
+        "\"High_$i\" { Value: {$i} } }\n"
+        "for i in -2147483650..-2147483648 { await sleep(0)\n"
+        "\"Low_$i\" { Value: {$i} } }\n"
+        "for (index, item) in [11, 22] { await sleep(0)\n"
+        "if $index == 0 { continue }\n\"Item_$index\" { Value: {$item} } }\n"
+        "for i in 5..2 { Unexpected {} }\n"
+        "for (index, item) in [] { Unexpected {} }\n}",
+        NULL,
+        NULL
+    );
+    test_true(instance != NULL);
+    for (int i = 0; i < 12; i++)
+        test_int(ecs_script_flush(NULL), 0);
+    test_int(value("High_2147483648"), 2147483648LL);
+    test_int(value("Low_-2147483650"), -2147483650LL);
+    test_int(value("Item_1"), 22);
+    test_uint(ecs_lookup("Item_0"), 0);
+    test_uint(ecs_lookup("Unexpected"), 0);
+    test_int(ecs_script_instance_state(instance), EcsScriptActive);
+    ecs_script_instance_free(instance);
+    ecs_fini();
+}
+
 void Async_controlled_clock(void) {
     setup();
     double now = 100;

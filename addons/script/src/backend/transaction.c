@@ -146,6 +146,31 @@ static void *read_copy(const script_read_t *read, const void *source) {
     return copy;
 }
 
+script_read_t script_read_clone(const script_read_t *source) {
+    script_read_t copy = *source;
+    copy.snapshot = read_copy(source, source->snapshot);
+    return copy;
+}
+
+script_lookup_t script_lookup_clone(const script_lookup_t *source) {
+    script_lookup_t copy = *source;
+    copy.name = script_strdup(source->name);
+    return copy;
+}
+
+script_identity_t script_identity_clone(const script_identity_t *source) {
+    script_identity_t copy = *source;
+    copy.source = script_strdup(source->source);
+    return copy;
+}
+
+script_region_t script_region_clone(const script_region_t *source) {
+    script_region_t copy = *source;
+    copy.result = script_context_clone(source->result);
+    copy.name = script_strdup(source->name);
+    return copy;
+}
+
 bool script_read_changed(const script_read_t *read) {
     if (read->component && (!script_key_valid(read->component) ||
                             read->schema != script_key_info(read->component)->type))
@@ -984,13 +1009,13 @@ void script_transaction_savepoint(
     snapshot_vector(&copy->entities, &transaction->entities, sizeof(script_staged_entity_t));
     script_staged_entity_t *entities = copy->entities.data;
     for (uint32_t i = 0; i < copy->entities.size; i++)
-        entities[i].name = entities[i].name ? script_strdup(entities[i].name) : NULL;
+        entities[i].name = script_strdup(entities[i].name);
     snapshot_vector(&copy->pairs, &transaction->pairs, sizeof(script_staged_pair_t));
     snapshot_vector(&copy->types, &transaction->types, sizeof(script_staged_type_t));
     script_staged_type_t *types = copy->types.data;
     for (uint32_t i = 0; i < copy->types.size; i++) {
         types[i].info.name = script_strdup(types[i].info.name);
-        types[i].fields = types[i].fields ? script_strdup(types[i].fields) : NULL;
+        types[i].fields = script_strdup(types[i].fields);
     }
     snapshot_vector(&copy->values, &transaction->values, sizeof(script_staged_value_t));
     script_staged_value_t *values = copy->values.data;
@@ -1011,24 +1036,23 @@ void script_transaction_savepoint(
     snapshot_vector(&copy->reads, &transaction->reads, sizeof(script_read_t));
     script_read_t *reads = copy->reads.data;
     for (uint32_t i = 0; i < copy->reads.size; i++)
-        reads[i].snapshot = read_copy(&reads[i], reads[i].snapshot);
+        reads[i] = script_read_clone(&reads[i]);
     snapshot_vector(&copy->lookups, &transaction->lookups, sizeof(script_lookup_t));
     script_lookup_t *lookups = copy->lookups.data;
     for (uint32_t i = 0; i < copy->lookups.size; i++)
-        lookups[i].name = script_strdup(lookups[i].name);
+        lookups[i] = script_lookup_clone(&lookups[i]);
     snapshot_vector(&copy->produced, &transaction->produced, sizeof(ecs_entity_t));
     snapshot_vector(&copy->identities, &transaction->identities, sizeof(script_identity_t));
     snapshot_vector(&copy->regions, &transaction->regions, sizeof(script_region_t));
     script_region_t *regions = copy->regions.data;
     for (uint32_t i = 0; i < copy->regions.size; i++) {
+        regions[i] = script_region_clone(&regions[i]);
         regions[i].captures = script_context_clone(regions[i].captures);
-        regions[i].result = script_context_clone(regions[i].result);
-        regions[i].name = regions[i].name ? script_strdup(regions[i].name) : NULL;
     }
     copy->region = transaction->region;
     script_identity_t *identities = copy->identities.data;
     for (uint32_t i = 0; i < copy->identities.size; i++)
-        identities[i].source = script_strdup(identities[i].source);
+        identities[i] = script_identity_clone(&identities[i]);
     snapshot_vector(&copy->kills, &transaction->kills, sizeof(ecs_entity_t));
 }
 

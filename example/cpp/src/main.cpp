@@ -13,7 +13,7 @@
 int main() {
     ecs::init();
 
-    ecs::import<sigpu>(sigpu::props_t{
+    ecs::import<sigpu>({
         .title = "SIECS + sigpu",
         .width = 1280,
         .height = 720,
@@ -42,6 +42,7 @@ int main() {
             PointerEvents{ SiPointerEnterMask | SiClickMask }
         )
         .add<Static>();
+
     ecs::ensure("Static sphere")
         .set(
             Position3d{ 7.0f, -0.075f, -2.0f },
