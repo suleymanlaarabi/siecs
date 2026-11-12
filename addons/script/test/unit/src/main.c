@@ -102,6 +102,7 @@ void Language_typed_functions_and_captures(void);
 void Language_mutable_function_locals(void);
 void Language_collection_iteration_and_indexing(void);
 void Language_iteration_boundaries(void);
+void Language_numeric_aliases_preserve_integer_limits(void);
 void Language_includes_keep_lexical_declarations(void);
 void Language_owning_strings_and_template_properties(void);
 void Language_try_catch_rolls_back_scope(void);
@@ -494,6 +495,10 @@ bake_test_case Language_testcases[] = {
         Language_iteration_boundaries
     },
     {
+        "numeric_aliases_preserve_integer_limits",
+        Language_numeric_aliases_preserve_integer_limits
+    },
+    {
         "includes_keep_lexical_declarations",
         Language_includes_keep_lexical_declarations
     },
@@ -748,7 +753,7 @@ static bake_test_suite suites[] = {
         "Language",
         NULL,
         NULL,
-        16,
+        17,
         Language_testcases
     },
     {

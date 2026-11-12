@@ -134,6 +134,7 @@
           "mutable_function_locals",
           "collection_iteration_and_indexing",
           "iteration_boundaries",
+          "numeric_aliases_preserve_integer_limits",
           "includes_keep_lexical_declarations",
           "owning_strings_and_template_properties",
           "try_catch_rolls_back_scope",

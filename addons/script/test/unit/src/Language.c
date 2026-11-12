@@ -95,6 +95,32 @@ void Language_iteration_boundaries(void) {
     }
 }
 
+void Language_numeric_aliases_preserve_integer_limits(void) {
+    const char *source =
+        "struct Limits(low: int64_t, high: int64_t, unsigned: uint64_t)\n"
+        "const low: i64 = -9223372036854775808u\n"
+        "const high: i64 = 9223372036854775807\n"
+        "const unsigned: u64 = 18446744073709551615u\n"
+        "Values { Limits: {$low, $high, $unsigned} }";
+    for (int mode = 0; mode < 2; mode++) {
+        ecs_init();
+        ecs_script_eval_desc_t desc = { .ir = mode != 0 };
+        ecs_script_eval_result_t result = { 0 };
+        test_int(ecs_script_run_w_desc("limits.si", source, &desc, &result), 0);
+        test_true(result.error == NULL);
+        const struct {
+            int64_t low;
+            int64_t high;
+            uint64_t unsigned_value;
+        } *values = ecs_get_cid(ecs_lookup("Values"), ecs_component_lookup("Limits"));
+        test_not_null(values);
+        test_int(values->low, INT64_MIN);
+        test_int(values->high, INT64_MAX);
+        test_uint(values->unsigned_value, UINT64_MAX);
+        ecs_fini();
+    }
+}
+
 void Language_includes_keep_lexical_declarations(void) {
     const char *path = "native-script-include.si";
     FILE *file = fopen(path, "wb");

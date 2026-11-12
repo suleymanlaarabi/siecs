@@ -904,7 +904,10 @@ int script_value_convert(
         ecs_reflected_value_copy(type, destination, script_value_data(value), false);
         return 0;
     }
-    if (value->type == type) {
+    const sireflect_type_info_t *source = sireflect_type_info(value->type);
+    bool matching_number = source && source->kind == info->kind && source->size == info->size &&
+                           sireflect_is_numeric(info->kind);
+    if (value->type == type || matching_number) {
         ecs_component_t component = script_backend_component_lookup(info->name);
         if (component && script_backend_component_info(component)->type == type)
             script_backend_value_copy(component, destination, script_value_data(value));

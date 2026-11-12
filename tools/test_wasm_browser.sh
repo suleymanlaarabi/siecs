@@ -2,8 +2,9 @@
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-command -v chromium >/dev/null 2>&1 || {
-    echo "test_wasm_browser.sh: chromium is required" >&2
+chromium_bin=${CHROMIUM:-chromium}
+command -v "$chromium_bin" >/dev/null 2>&1 || {
+    echo "test_wasm_browser.sh: $chromium_bin is required" >&2
     exit 1
 }
 
@@ -32,6 +33,6 @@ done
     exit 1
 }
 
-dom=$(chromium --headless --no-sandbox --disable-gpu --dump-dom \
+dom=$("$chromium_bin" --headless --no-sandbox --disable-gpu --dump-dom \
     --virtual-time-budget=5000 "http://127.0.0.1:$port/test/wasm/index.html")
 printf '%s\n' "$dom" | grep -q 'SIECS_WASM_OK'
